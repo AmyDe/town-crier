@@ -208,16 +208,77 @@ describe('renderTownPage', () => {
     );
   });
 
-  it('tags every download CTA with the ct=seo-town campaign token', () => {
+  it('tags each download CTA with its own per-surface campaign token (tc-fgoyj)', () => {
     const html = renderTownPage(townData());
-    const tagged = appStoreUrl('seo-town');
-    // Header "Get the app" + inline CTA above the list + bottom banner CTA
-    // (tc-r4n9.3 adds the inline one, on top of the pre-existing two).
-    const occurrences = html.split(`href="${tagged}"`).length - 1;
-    expect(occurrences).toBe(3);
-    expect(html).toContain('ct=seo-town');
+    // One ct token per placement so App Analytics attributes store arrivals
+    // to the surface that sent them. The QR block has no href (its link lives
+    // in the QR modules) and the mid-list card needs a longer list, so the
+    // 2-app fixture carries exactly these three.
+    for (const surface of ['seo-town-hdr', 'seo-town-inline', 'seo-town-btm']) {
+      const occurrences = html.split(`href="${appStoreUrl(surface)}"`).length - 1;
+      expect(occurrences, surface).toBe(1);
+    }
+    // Every store link carries the provider token — Apple ignores ct without pt.
+    expect(html).toContain('pt=');
     // Never the bare, campaign-free URL in a CTA href.
     expect(html).not.toContain(`href="${APP_DOWNLOAD_URL}"`);
+  });
+
+  describe('mid-list CTA card (tc-fgoyj)', () => {
+    /** @returns {import('../render-shared.mjs').PlanningApplicationItem[]} */
+    function manyApplications(count) {
+      return Array.from({ length: count }, (_, i) => ({
+        uid: `CW/2026/${1000 + i}`,
+        name: `26/${1000 + i}`,
+        address: `${i + 1} Lemon Quay, Truro, TR1 2LW`,
+        description: 'Change of use of ground floor from retail to café',
+        appState: 'Permitted',
+        startDate: '2026-01-12',
+        lastDifferent: '2026-06-12T09:30:00+00:00',
+        link: null,
+        url: null,
+      }));
+    }
+
+    // The bare class name also appears in the inline stylesheet, so assertions
+    // target the rendered card markup.
+    const MID_CARD = 'class="appCard appCard--cta"';
+
+    it('slots a CTA card naming the town into a long list, after the eighth application', () => {
+      const html = renderTownPage(townData({ applications: manyApplications(12) }));
+      expect(html).toContain(MID_CARD);
+      expect(html).toContain(`href="${appStoreUrl('seo-town-mid')}"`);
+      expect(html).toContain('Town Crier watches Truro');
+      // After the 8th card, before the 9th. Scoped to the rendered list —
+      // the JSON-LD in <head> repeats the addresses much earlier in the page.
+      const list = html.slice(html.indexOf('<ul class="appList">'));
+      expect(list.indexOf('8 Lemon Quay')).toBeLessThan(list.indexOf(MID_CARD));
+      expect(list.indexOf(MID_CARD)).toBeLessThan(list.indexOf('9 Lemon Quay'));
+    });
+
+    it('omits the card on a short list so two CTAs never sit almost back to back', () => {
+      const html = renderTownPage(townData());
+      expect(html).not.toContain(MID_CARD);
+      expect(html).not.toContain('ct=seo-town-mid');
+    });
+  });
+
+  describe('desktop QR block (tc-fgoyj)', () => {
+    it('renders an inline QR code inside the bottom CTA banner', () => {
+      const html = renderTownPage(townData());
+      const cta = html.match(/<section class="cta">[\s\S]*?<\/section>/);
+      expect(cta).not.toBeNull();
+      const [ctaHtml] = cta;
+      expect(ctaHtml).toContain('class="cta__qr"');
+      expect(ctaHtml).toContain('<svg class="qr" role="img"');
+      expect(ctaHtml).toContain('scan with your phone camera');
+    });
+
+    it('hides the QR block on touch devices via the pointer media query', () => {
+      const html = renderTownPage(townData());
+      expect(html).toContain('.cta__qr { display: none; }');
+      expect(html).toContain('@media (hover: hover) and (pointer: fine)');
+    });
   });
 
   describe('inline alerts CTA above the list (tc-r4n9.3)', () => {
@@ -247,7 +308,7 @@ describe('renderTownPage', () => {
     expect(header).not.toBeNull();
     const [headerHtml] = header;
     expect(headerHtml).toContain('siteHeader__cta');
-    expect(headerHtml).toContain(`href="${appStoreUrl('seo-town')}"`);
+    expect(headerHtml).toContain(`href="${appStoreUrl('seo-town-hdr')}"`);
     expect(headerHtml).toContain('Get the app');
     // Match the bottom CTA's link safety exactly.
     expect(headerHtml).toContain('rel="noopener"');
@@ -260,7 +321,9 @@ describe('renderTownPage', () => {
     const html = renderTownPage(townData());
     expect(html).toContain('<section class="cta">');
     expect(html).toContain('class="cta__button"');
-    expect(html).toContain('Download on the App Store');
+    // "free" is honest (the download is free; the free tier is the weekly
+    // digest) and one of the oldest CTR levers there is.
+    expect(html).toContain('Download free on the App Store');
   });
 
   it('carries the mandatory PlanIt + OGL + OS + OSM attribution', () => {

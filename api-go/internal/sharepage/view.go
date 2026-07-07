@@ -19,10 +19,15 @@ const (
 	appleAppID = "6764095657"
 
 	// App Store deep link, mirroring the web appStoreUrl('share-page') shape: the
-	// campaign-free base, the share-page campaign token, and mt=8.
-	appStoreBaseURL    = "https://apps.apple.com/gb/app/town-crier-planning-alerts/id6764095657"
-	shareCampaignToken = "share-page"
-	appStoreMediaType  = "8"
+	// campaign-free base, the provider token, the share-page campaign token, and
+	// mt=8. The provider token (pt) is the App Store Connect account id Apple
+	// requires alongside ct — a bare ct is silently dropped from App Analytics.
+	// It is a build-time constant identifying us, never the visitor; mirrors
+	// APP_STORE_PROVIDER_TOKEN in web/src/config/links.ts.
+	appStoreBaseURL       = "https://apps.apple.com/gb/app/town-crier-planning-alerts/id6764095657"
+	appStoreProviderToken = "128810278"
+	shareCampaignToken    = "share-page"
+	appStoreMediaType     = "8"
 
 	// homeURL is the Town Crier marketing homepage. The share page has no
 	// per-application web destination, so the always-present homepage link
@@ -36,10 +41,11 @@ const (
 	ogDescriptionMaxRunes = 200
 )
 
-// ctaURL is the sticky-CTA App Store link carrying the share-page campaign token,
-// e.g. .../id6764095657?ct=share-page&mt=8.
+// ctaURL is the sticky-CTA App Store link carrying the provider and share-page
+// campaign tokens, e.g. .../id6764095657?pt=128810278&ct=share-page&mt=8.
 func ctaURL() string {
-	return appStoreBaseURL + "?ct=" + shareCampaignToken + "&mt=" + appStoreMediaType
+	return appStoreBaseURL + "?pt=" + appStoreProviderToken +
+		"&ct=" + shareCampaignToken + "&mt=" + appStoreMediaType
 }
 
 // pageView is the pre-formatted, template-ready projection of a

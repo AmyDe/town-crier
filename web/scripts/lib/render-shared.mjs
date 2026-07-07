@@ -18,6 +18,7 @@ import {
   dataUpdatedLine,
   formatDate,
 } from './format.mjs';
+import { qrSvg } from './qr.mjs';
 
 /**
  * @typedef {Object} PlanningApplicationItem
@@ -149,6 +150,37 @@ ${body}
 }
 
 /**
+ * How far down the list the mid-list CTA card sits, and the smallest list that
+ * gets one. Eight cards in is past the point a reader is clearly engaged but
+ * well before the bottom banner; short lists skip it so the page never shows
+ * two CTAs almost back to back.
+ */
+const MID_LIST_CTA_AFTER = 8;
+const MID_LIST_CTA_MIN_APPLICATIONS = 12;
+
+/**
+ * Render the mid-list CTA card (tc-fgoyj): a card-shaped `<li>` slotted into
+ * the applications list itself, because on a full 30-card page the inline pill
+ * above the list and the banner below it are separated by a very long scroll
+ * with no ask in between. Styled as a card so it reads as part of the list,
+ * but visibly a Town Crier pitch — never disguised as an application.
+ *
+ * @param {string} area   the resident-facing area name (authority or town)
+ * @param {string} storeHref   the campaign-tagged App Store link for this
+ *   surface; build-time constructed from a hardcoded campaign literal, so —
+ *   matching every other CTA here — interpolated as-is rather than through
+ *   `escapeHtml` (which would mangle the `&` in its query string)
+ * @returns {string}
+ */
+export function renderMidListCta(area, storeHref) {
+  return `      <li class="appCard appCard--cta">
+        <h3 class="appCard__ctaHeading">Get told when the next one lands</h3>
+        <p class="appCard__ctaBody">Town Crier watches ${escapeHtml(area)} and alerts you when a new application is submitted or decided. Free to download.</p>
+        <a class="ctaInline__button" href="${storeHref}" rel="noopener" target="_blank">Get the app</a>
+      </li>`;
+}
+
+/**
  * Render the recent-applications list body (the `<li>` cards joined by newlines).
  *
  * @param {PlanningApplicationItem[]} applications
@@ -156,10 +188,17 @@ ${body}
  *   each card can link to its share page. Omitted (or no ref on the app) -> the
  *   card renders without a link at all (decision 6 retired the external
  *   PlanIt/council per-card links, so there is no other href to fall back to).
+ * @param {{ area: string, storeHref: string }} [midCta] when present and the
+ *   list is long enough, a mid-list CTA card is slotted in after the
+ *   {@link MID_LIST_CTA_AFTER}th application.
  * @returns {string}
  */
-export function renderApplicationsList(applications, authoritySlug) {
-  return applications.map((app) => renderApplication(app, authoritySlug)).join('\n');
+export function renderApplicationsList(applications, authoritySlug, midCta) {
+  const cards = applications.map((app) => renderApplication(app, authoritySlug));
+  if (midCta && applications.length >= MID_LIST_CTA_MIN_APPLICATIONS) {
+    cards.splice(MID_LIST_CTA_AFTER, 0, renderMidListCta(midCta.area, midCta.storeHref));
+  }
+  return cards.join('\n');
 }
 
 /**
@@ -249,6 +288,26 @@ export function renderInlineCta(area, storeHref) {
   return `        <p class="ctaInline">
           <a class="ctaInline__button" href="${storeHref}" rel="noopener" target="_blank">Get push alerts for ${escapeHtml(area)} →</a>
         </p>`;
+}
+
+/**
+ * Render the QR block for the bottom CTA banner (tc-fgoyj). Hidden on touch
+ * devices by the stylesheet (see `.cta__qr`) and shown only where the primary
+ * pointer is a mouse/trackpad: a desktop visitor who clicks the App Store link
+ * lands on Apple's web listing and has to remember the app later, whereas a
+ * scan puts the store on the phone in their hand. Generated at build time and
+ * inlined, so the page stays self-contained.
+ *
+ * @param {string} storeHref   the campaign-tagged App Store link to encode
+ *   (give the QR its own `ct` token so scans are attributable separately from
+ *   clicks)
+ * @returns {string}
+ */
+export function renderQrBlock(storeHref) {
+  return `          <div class="cta__qr">
+            ${qrSvg(storeHref, 'QR code linking to Town Crier on the App Store')}
+            <p class="cta__qrCaption">Or scan with your phone camera to get the app.</p>
+          </div>`;
 }
 
 /**
@@ -486,6 +545,12 @@ export function pageStyles() {
       font-weight: 700;
     }
     .ctaInline__button:hover { background: var(--tc-amber-hover); }
+    /* Mid-list CTA card (tc-fgoyj): shares the card chrome so it sits
+       naturally in the list, with centred copy and the pill button so it is
+       unmistakably a Town Crier pitch rather than an application. */
+    .appCard--cta { text-align: center; padding: var(--tc-space-lg); }
+    .appCard__ctaHeading { margin: 0 0 var(--tc-space-sm); }
+    .appCard__ctaBody { margin: 0 0 var(--tc-space-md); color: var(--tc-text-secondary); }
     .cta {
       margin: var(--tc-space-xl) 0;
       padding: var(--tc-space-lg);
@@ -493,6 +558,27 @@ export function pageStyles() {
       border: 1px solid var(--tc-border);
       border-radius: var(--tc-radius-md);
       text-align: center;
+    }
+    /* Desktop-only QR (tc-fgoyj): pointer/hover media queries approximate
+       "no App Store on this device" without any UA sniffing or JS. The SVG's
+       own colours stay dark-on-light in dark mode (see qr.mjs) — only the
+       frame is themed. */
+    .cta__qr { display: none; }
+    @media (hover: hover) and (pointer: fine) {
+      .cta__qr {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: var(--tc-space-sm);
+        margin-top: var(--tc-space-lg);
+      }
+      .cta__qr svg.qr {
+        width: 132px;
+        height: 132px;
+        border: 1px solid var(--tc-border);
+        border-radius: var(--tc-radius-md);
+      }
+      .cta__qrCaption { margin: 0; font-size: 0.875rem; color: var(--tc-text-secondary); }
     }
     .cta__button {
       display: inline-block;

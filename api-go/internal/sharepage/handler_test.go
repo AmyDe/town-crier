@@ -178,6 +178,9 @@ func TestServe_KnownApplication_RendersMetaAndVisibleContent(t *testing.T) {
 		"Get the app",
 		"Instant notifications about planning updates like this one.",
 		"town-crier-planning-alerts",
+		// Apple only attributes ct campaigns when the pt provider token is
+		// also present (tc-fgoyj).
+		"pt=128810278",
 		"ct=share-page",
 		"mt=8",
 	}

@@ -7,6 +7,7 @@ import {
   renderStatusSummary,
   renderDataUpdated,
   renderInlineCta,
+  renderQrBlock,
   renderAttributionList,
 } from './render-shared.mjs';
 
@@ -130,7 +131,12 @@ export function renderPlanningPage(data) {
   const jsonLd = buildJsonLd(data, canonical);
   const year = new Date().getFullYear();
 
-  const applicationsList = renderApplicationsList(data.applications, data.slug);
+  // One ct token per CTA surface (all under the same pt provider token), so
+  // App Analytics shows which placement actually sends people to the store.
+  const applicationsList = renderApplicationsList(data.applications, data.slug, {
+    area: data.areaName,
+    storeHref: appStoreUrl('seo-lpa-mid'),
+  });
   const townLinks = renderTownLinks(data);
   const attribution = renderAttributionList();
   const dataUpdated = renderDataUpdated(data.applications);
@@ -162,7 +168,7 @@ ${pageStyles()}
         <a href="/">Town Crier</a>
         <nav class="siteHeader__nav">
           <a href="/">Home</a>
-          <a class="siteHeader__cta" href="${appStoreUrl('seo-lpa')}" rel="noopener" target="_blank">Get the app</a>
+          <a class="siteHeader__cta" href="${appStoreUrl('seo-lpa-hdr')}" rel="noopener" target="_blank">Get the app</a>
         </nav>
       </header>
       <nav class="breadcrumb" aria-label="Breadcrumb">
@@ -175,7 +181,7 @@ ${pageStyles()}
         <h1>Planning applications in ${area}</h1>
         ${dataUpdated}
         <p class="lead">${lead}</p>
-${renderInlineCta(data.areaName, appStoreUrl('seo-lpa'))}
+${renderInlineCta(data.areaName, appStoreUrl('seo-lpa-inline'))}
 
 ${renderStatusSummary(data.statusBreakdown)}
 
@@ -205,9 +211,11 @@ ${townLinks}
           <h2>Get push alerts for ${area}</h2>
           <p>
             Draw a circle on the map and Town Crier will notify you the moment a new
-            planning application is submitted or decided inside it.
+            planning application is submitted or decided inside it. Most councils
+            allow around three weeks for comments, so hearing early matters.
           </p>
-          <a class="cta__button" href="${appStoreUrl('seo-lpa')}" rel="noopener" target="_blank">Download on the App Store</a>
+          <a class="cta__button" href="${appStoreUrl('seo-lpa-btm')}" rel="noopener" target="_blank">Download free on the App Store</a>
+${renderQrBlock(appStoreUrl('seo-lpa-qr'))}
         </section>
       </main>
 
