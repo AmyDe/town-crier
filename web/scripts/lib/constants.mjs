@@ -59,11 +59,25 @@ export const APP_DOWNLOAD_URL =
 export const APPLE_APP_ID = '6764095657';
 
 /**
+ * App Store Connect provider token (`pt`). Apple only attributes a `ct`
+ * campaign when the link ALSO carries the account's provider token — a bare
+ * `ct` is silently dropped from App Analytics, which is why the original
+ * `ct`-only links never showed up under Campaigns. One static value for the
+ * whole developer account; it identifies us, never the visitor. Mirrors
+ * `src/config/links.ts`, kept in lockstep by the drift-guard test.
+ * @type {string}
+ */
+export const APP_STORE_PROVIDER_TOKEN = '128810278';
+
+/**
  * Build a campaign-tagged App Store link from the campaign-free
- * {@link APP_DOWNLOAD_URL}. The `ct` token surfaces under App Store Connect →
- * App Analytics → Acquisition so installs can be attributed to the surface that
- * sent them (e.g. `seo-lpa`, `seo-town`, `web-home`); `mt=8` is Apple's
- * software-app media type. Cookieless and aggregate — sets nothing on-device.
+ * {@link APP_DOWNLOAD_URL}. The `pt` provider token plus the `ct` campaign
+ * token surface under App Store Connect → App Analytics → Acquisition so
+ * installs can be attributed to the surface that sent them (e.g.
+ * `seo-lpa-inline`, `seo-town-btm`, `web-home`); `mt=8` is Apple's
+ * software-app media type. Cookieless and aggregate — the tokens are
+ * build-time constants, identical for every visitor, so nothing is stored
+ * on-device and no visitor is identifiable.
  *
  * `APP_DOWNLOAD_URL` is deliberately left campaign-free so the byte-equal
  * lockstep guard between this file and `src/config/links.ts` still holds.
@@ -72,7 +86,7 @@ export const APPLE_APP_ID = '6764095657';
  * @returns {string}
  */
 export function appStoreUrl(campaign) {
-  return `${APP_DOWNLOAD_URL}?ct=${encodeURIComponent(campaign)}&mt=8`;
+  return `${APP_DOWNLOAD_URL}?pt=${APP_STORE_PROVIDER_TOKEN}&ct=${encodeURIComponent(campaign)}&mt=8`;
 }
 
 /**

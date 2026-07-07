@@ -5,6 +5,8 @@ import {
   renderStatusSummary,
   renderDataUpdated,
   renderInlineCta,
+  renderMidListCta,
+  renderQrBlock,
   pageStyles,
 } from '../render-shared.mjs';
 import { ATTRIBUTION_LINES } from '../constants.mjs';
@@ -549,5 +551,82 @@ describe('pageStyles light-first token flip (tc-r4n9.1)', () => {
     // visible to anyone reading the generated page source.
     expect(root).toMatch(/\/\*[^]*share page[^]*\*\//i);
     expect(root.toLowerCase()).toContain('faf8f5');
+  });
+});
+
+describe('renderMidListCta and mid-list injection (tc-fgoyj)', () => {
+  const STORE_HREF = 'https://apps.apple.com/x?pt=1&ct=seo-lpa-mid&mt=8';
+  const MID_CARD = 'class="appCard appCard--cta"';
+
+  /** @param {number} count */
+  function manyApplications(count) {
+    return Array.from({ length: count }, (_, i) =>
+      application({
+        uid: `BDB/2026/${1000 + i}`,
+        name: `26/${1000 + i}/FUL`,
+        address: `${i + 1} Mill Road, Basingstoke, RG21 1AA`,
+      }),
+    );
+  }
+
+  it('renders a card-shaped CTA naming the area, never disguised as an application', () => {
+    const html = renderMidListCta('Basingstoke and Deane', STORE_HREF);
+    expect(html).toContain(MID_CARD);
+    expect(html).toContain('Get told when the next one lands');
+    expect(html).toContain('Town Crier watches Basingstoke and Deane');
+    // The store href is a build-time literal, interpolated as-is (escaping
+    // would mangle the & in its query string).
+    expect(html).toContain(`href="${STORE_HREF}"`);
+    expect(html).toContain('rel="noopener"');
+    expect(html).toContain('target="_blank"');
+    // A pitch card must not carry application-card furniture.
+    expect(html).not.toContain('appCard__address');
+    expect(html).not.toContain('View details');
+  });
+
+  it('HTML-escapes the area name', () => {
+    const html = renderMidListCta('<script>alert(1)</script>', STORE_HREF);
+    expect(html).not.toContain('<script>alert(1)</script>');
+    expect(html).toContain('&lt;script&gt;');
+  });
+
+  it('injects the card after the 8th application when the list has 12 or more', () => {
+    const html = renderApplicationsList(manyApplications(12), SLUG, {
+      area: 'Basingstoke and Deane',
+      storeHref: STORE_HREF,
+    });
+    expect(html).toContain(MID_CARD);
+    expect(html.indexOf('8 Mill Road')).toBeLessThan(html.indexOf(MID_CARD));
+    expect(html.indexOf(MID_CARD)).toBeLessThan(html.indexOf('9 Mill Road'));
+  });
+
+  it('skips the card below 12 applications, and always without a midCta argument', () => {
+    const withCta = renderApplicationsList(manyApplications(11), SLUG, {
+      area: 'Basingstoke and Deane',
+      storeHref: STORE_HREF,
+    });
+    expect(withCta).not.toContain(MID_CARD);
+    const withoutArg = renderApplicationsList(manyApplications(12), SLUG);
+    expect(withoutArg).not.toContain(MID_CARD);
+  });
+});
+
+describe('renderQrBlock (tc-fgoyj)', () => {
+  const STORE_HREF = 'https://apps.apple.com/x?pt=1&ct=seo-lpa-qr&mt=8';
+
+  it('wraps an inline QR SVG and a plain-language caption', () => {
+    const html = renderQrBlock(STORE_HREF);
+    expect(html).toContain('class="cta__qr"');
+    expect(html).toContain('<svg class="qr" role="img"');
+    expect(html).toContain('aria-label="QR code linking to Town Crier on the App Store"');
+    expect(html).toContain('Or scan with your phone camera to get the app.');
+  });
+
+  it('hides the block on touch devices and shows it for mouse/trackpad pointers', () => {
+    const css = pageStyles();
+    expect(css).toContain('.cta__qr { display: none; }');
+    const mediaBlock = css.slice(css.indexOf('@media (hover: hover) and (pointer: fine)'));
+    expect(mediaBlock).toContain('.cta__qr {');
+    expect(mediaBlock).toContain('display: flex;');
   });
 });

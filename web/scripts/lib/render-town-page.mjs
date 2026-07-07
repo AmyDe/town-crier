@@ -27,6 +27,7 @@ import {
   renderStatusSummary,
   renderDataUpdated,
   renderInlineCta,
+  renderQrBlock,
   renderAttributionList,
 } from './render-shared.mjs';
 
@@ -120,7 +121,12 @@ export function renderTownPage(data) {
   const jsonLd = buildTownJsonLd(data, canonical, authorityCanonical);
   const year = new Date().getFullYear();
 
-  const applicationsList = renderApplicationsList(data.applications, data.authoritySlug);
+  // One ct token per CTA surface (all under the same pt provider token), so
+  // App Analytics shows which placement actually sends people to the store.
+  const applicationsList = renderApplicationsList(data.applications, data.authoritySlug, {
+    area: data.townName,
+    storeHref: appStoreUrl('seo-town-mid'),
+  });
   // Town pages credit the ONS Built-Up-Area + NRS gazetteers (their centroid
   // sources) on top of the base PlanIt/OGL/OS/OSM lines; authority pages keep the
   // base list since they don't use the gazetteer.
@@ -154,7 +160,7 @@ ${pageStyles()}
         <a href="/">Town Crier</a>
         <nav class="siteHeader__nav">
           <a href="/">Home</a>
-          <a class="siteHeader__cta" href="${appStoreUrl('seo-town')}" rel="noopener" target="_blank">Get the app</a>
+          <a class="siteHeader__cta" href="${appStoreUrl('seo-town-hdr')}" rel="noopener" target="_blank">Get the app</a>
         </nav>
       </header>
       <nav class="breadcrumb" aria-label="Breadcrumb">
@@ -168,7 +174,7 @@ ${pageStyles()}
         <h1>Planning applications in ${town}</h1>
         ${dataUpdated}
         <p class="lead">${lead}</p>
-${renderInlineCta(data.townName, appStoreUrl('seo-town'))}
+${renderInlineCta(data.townName, appStoreUrl('seo-town-inline'))}
 
 ${renderStatusSummary(data.statusBreakdown)}
 
@@ -199,9 +205,11 @@ ${applicationsList}
           <h2>Get push alerts for ${town}</h2>
           <p>
             Draw a circle on the map and Town Crier will notify you the moment a new
-            planning application is submitted or decided inside it.
+            planning application is submitted or decided inside it. Most councils
+            allow around three weeks for comments, so hearing early matters.
           </p>
-          <a class="cta__button" href="${appStoreUrl('seo-town')}" rel="noopener" target="_blank">Download on the App Store</a>
+          <a class="cta__button" href="${appStoreUrl('seo-town-btm')}" rel="noopener" target="_blank">Download free on the App Store</a>
+${renderQrBlock(appStoreUrl('seo-town-qr'))}
         </section>
       </main>
 
