@@ -14,11 +14,16 @@ import (
 // fakeZones serves the cross-partition zone-containment lookup. Matching is
 // purely geographic (tc-b179): the lookup no longer takes an authority, so the
 // fake returns its zones regardless of which authority the app is tagged with.
+// GetByUserID (GH#889) filters zones by owner, mirroring the real store's
+// per-user scoping, and records whether it was called so tests can assert the
+// unlimited-tier fast path skips it.
 type fakeZones struct {
-	zones    []watchzones.WatchZone
-	queryErr error
-	lastLat  float64
-	lastLng  float64
+	zones             []watchzones.WatchZone
+	queryErr          error
+	lastLat           float64
+	lastLng           float64
+	getByUserIDCalled bool
+	getByUserIDErr    error
 }
 
 func (f *fakeZones) FindZonesContaining(_ context.Context, lat, lng float64) ([]watchzones.WatchZone, error) {
@@ -28,6 +33,20 @@ func (f *fakeZones) FindZonesContaining(_ context.Context, lat, lng float64) ([]
 		return nil, f.queryErr
 	}
 	return f.zones, nil
+}
+
+func (f *fakeZones) GetByUserID(_ context.Context, userID string) ([]watchzones.WatchZone, error) {
+	f.getByUserIDCalled = true
+	if f.getByUserIDErr != nil {
+		return nil, f.getByUserIDErr
+	}
+	var owned []watchzones.WatchZone
+	for _, z := range f.zones {
+		if z.UserID == userID {
+			owned = append(owned, z)
+		}
+	}
+	return owned, nil
 }
 
 // fakeSaved serves the cross-partition saved-bookmark lookup.

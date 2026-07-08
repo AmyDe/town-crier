@@ -392,6 +392,135 @@ func TestEnqueuer_Dedup_SkipsWhenAlreadyNotified(t *testing.T) {
 	}
 }
 
+func TestEnqueuer_FreeTierOverQuota_PausesNewerZones(t *testing.T) {
+	t.Parallel()
+	// Free tier (limit 1) with 3 zones ranked oldest-first by (CreatedAt, ID):
+	// only rank 1 (zone-1, the oldest) is active; rank 2 (zone-2) is paused.
+	z1 := testZoneAt(t, "zone-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+	z2 := testZoneAt(t, "zone-2", "auth0|alice", time.Date(2026, 6, 2, 0, 0, 0, 0, time.UTC))
+	z3 := testZoneAt(t, "zone-3", "auth0|alice", time.Date(2026, 6, 3, 0, 0, 0, 0, time.UTC))
+	allZones := []watchzones.WatchZone{z1, z2, z3}
+
+	t.Run("rank 2 creates no record", func(t *testing.T) {
+		t.Parallel()
+		zones := &fakeZones{zones: allZones}
+		enq, notifs, queue, _ := newEnqueuerHarnessWithZones(t, profiles.TierFree, zones)
+		app := testApplication(t, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
+
+		if err := enq.Enqueue(context.Background(), app, z2); err != nil {
+			t.Fatalf("Enqueue: %v", err)
+		}
+		if len(notifs.created) != 0 {
+			t.Errorf("paused (over-quota) zone must create NO record, got %d", len(notifs.created))
+		}
+		if len(queue.queued) != 0 {
+			t.Errorf("paused zone must not queue a push, got %d", len(queue.queued))
+		}
+		if !zones.getByUserIDCalled {
+			t.Error("bounded (non-unlimited) tier must call GetByUserID to rank the zone")
+		}
+	})
+
+	t.Run("rank 1 creates a record", func(t *testing.T) {
+		t.Parallel()
+		zones := &fakeZones{zones: allZones}
+		enq, notifs, _, _ := newEnqueuerHarnessWithZones(t, profiles.TierFree, zones)
+		app := testApplication(t, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
+
+		if err := enq.Enqueue(context.Background(), app, z1); err != nil {
+			t.Fatalf("Enqueue: %v", err)
+		}
+		if len(notifs.created) != 1 {
+			t.Errorf("the active (rank 1) zone must still create a record, got %d", len(notifs.created))
+		}
+	})
+}
+
+func TestEnqueuer_PersonalTierAtQuota_AllZonesActive(t *testing.T) {
+	t.Parallel()
+	// Personal tier (limit 3) with exactly 3 zones: nobody is over quota, so all
+	// three must still create records.
+	z1 := testZoneAt(t, "zone-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+	z2 := testZoneAt(t, "zone-2", "auth0|alice", time.Date(2026, 6, 2, 0, 0, 0, 0, time.UTC))
+	z3 := testZoneAt(t, "zone-3", "auth0|alice", time.Date(2026, 6, 3, 0, 0, 0, 0, time.UTC))
+	allZones := []watchzones.WatchZone{z1, z2, z3}
+
+	for _, z := range allZones {
+		t.Run(z.ID, func(t *testing.T) {
+			t.Parallel()
+			zones := &fakeZones{zones: allZones}
+			enq, notifs, _, _ := newEnqueuerHarnessWithZones(t, profiles.TierPersonal, zones)
+			app := testApplication(t, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
+
+			if err := enq.Enqueue(context.Background(), app, z); err != nil {
+				t.Fatalf("Enqueue: %v", err)
+			}
+			if len(notifs.created) != 1 {
+				t.Errorf("zone %s: at-quota Personal tier must still create a record, got %d", z.ID, len(notifs.created))
+			}
+		})
+	}
+}
+
+func TestEnqueuer_ProTierOverTenZones_AllActiveAndSkipsRankingQuery(t *testing.T) {
+	t.Parallel()
+	// Pro tier is unlimited (math.MaxInt32): every one of the 10 zones must
+	// create a record, and the fast path must never call GetByUserID.
+	allZones := make([]watchzones.WatchZone, 0, 10)
+	for i := range 10 {
+		allZones = append(allZones, testZoneAt(t, strconv.Itoa(i), "auth0|alice",
+			time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC).AddDate(0, 0, i)))
+	}
+
+	for _, z := range allZones {
+		t.Run(z.ID, func(t *testing.T) {
+			t.Parallel()
+			zones := &fakeZones{zones: allZones}
+			enq, notifs, _, _ := newEnqueuerHarnessWithZones(t, profiles.TierPro, zones)
+			app := testApplication(t, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
+
+			if err := enq.Enqueue(context.Background(), app, z); err != nil {
+				t.Fatalf("Enqueue: %v", err)
+			}
+			if len(notifs.created) != 1 {
+				t.Errorf("zone %s: Pro (unlimited) tier must still create a record, got %d", z.ID, len(notifs.created))
+			}
+			if zones.getByUserIDCalled {
+				t.Error("unlimited tier must skip the GetByUserID ranking query entirely")
+			}
+		})
+	}
+}
+
+func TestEnqueuer_LapsedPaidTier_RankedAgainstFreeLimit(t *testing.T) {
+	t.Parallel()
+	// Stored Personal (limit 3), but expired with no grace: EffectiveTier
+	// collapses to Free (limit 1), so rank 2 must be paused even though the
+	// stored tier would have allowed it.
+	notifs := newFakeNotifications()
+	profile := profileWithTier(t, "auth0|alice", profiles.TierPersonal)
+	past := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC) // before the harness clock
+	profile.SubscriptionExpiry = &past
+	profs := &fakeProfiles{byID: map[string]*profiles.UserProfile{"auth0|alice": profile}}
+	queue := &fakePushQueue{}
+
+	z1 := testZoneAt(t, "zone-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+	z2 := testZoneAt(t, "zone-2", "auth0|alice", time.Date(2026, 6, 2, 0, 0, 0, 0, time.UTC))
+	zones := &fakeZones{zones: []watchzones.WatchZone{z1, z2}}
+	enq := NewEnqueuer(notifs, zones, profs, queue,
+		func() string { return "n-1" },
+		func() time.Time { return time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC) },
+		testLogger(t))
+	app := testApplication(t, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
+
+	if err := enq.Enqueue(context.Background(), app, z2); err != nil {
+		t.Fatalf("Enqueue: %v", err)
+	}
+	if len(notifs.created) != 0 {
+		t.Errorf("a lapsed paid tier must be ranked against the Free limit, got %d records for rank-2 zone", len(notifs.created))
+	}
+}
+
 func TestEnqueuer_UnknownProfile_NoRecord(t *testing.T) {
 	t.Parallel()
 	enq, notifs, queue := newEnqueuerHarness(t, profiles.TierPro)

@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"math"
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
@@ -74,6 +76,17 @@ func WithProfileCAS(cas profileCAS) Option {
 	return func(h *handler) { h.profileCAS = cas }
 }
 
+// WithProfileReader wires the profile reader the list/patch handlers use to
+// compute each zone's derived "paused" field (GH#889): a zone whose
+// oldest-first rank among the caller's own zones — by (CreatedAt, ID) —
+// exceeds their current effective-tier watch-zone limit. Mirrors nearby.go's
+// create-path profile read. Not wiring this option leaves h.profiles nil, so
+// every zone reports unpaused (fail open, never block a read on a missing
+// dependency).
+func WithProfileReader(pr profileReader) Option {
+	return func(h *handler) { h.profiles = pr }
+}
+
 // handler serves the /v1/me/watch-zones surface. The auth middleware guarantees
 // a subject in context before these handlers run. The list/update/delete methods
 // use only store + logger; the create and applications methods (nearby.go) use
@@ -96,7 +109,7 @@ type handler struct {
 // (they need the profile, application, geocode, notification-state and
 // notification stores).
 func Routes(mux *http.ServeMux, store zoneStore, logger *slog.Logger, opts ...Option) {
-	h := &handler{store: store, logger: logger}
+	h := &handler{store: store, logger: logger, now: time.Now}
 	for _, opt := range opts {
 		opt(h)
 	}
@@ -106,7 +119,8 @@ func Routes(mux *http.ServeMux, store zoneStore, logger *slog.Logger, opts ...Op
 }
 
 // watchZoneSummary is the per-zone wire shape returned by list and update.
-// createdAt is deliberately absent from the summary.
+// createdAt is deliberately absent from the summary. Paused is additive
+// (GH#889): a derived, never-stored flag — see pausedIDs.
 type watchZoneSummary struct {
 	ID                  string  `json:"id"`
 	Name                string  `json:"name"`
@@ -116,9 +130,10 @@ type watchZoneSummary struct {
 	AuthorityID         int     `json:"authorityId"`
 	PushEnabled         bool    `json:"pushEnabled"`
 	EmailInstantEnabled bool    `json:"emailInstantEnabled"`
+	Paused              bool    `json:"paused"`
 }
 
-func summaryOf(z WatchZone) watchZoneSummary {
+func summaryOf(z WatchZone, paused bool) watchZoneSummary {
 	return watchZoneSummary{
 		ID:                  z.ID,
 		Name:                z.Name,
@@ -128,6 +143,7 @@ func summaryOf(z WatchZone) watchZoneSummary {
 		AuthorityID:         z.AuthorityID,
 		PushEnabled:         z.PushEnabled,
 		EmailInstantEnabled: z.EmailInstantEnabled,
+		Paused:              paused,
 	}
 }
 
@@ -150,11 +166,66 @@ func (h *handler) list(w http.ResponseWriter, r *http.Request) {
 		h.serverError(w, r, "list watch zones", err)
 		return
 	}
+	paused, err := h.pausedZoneIDs(r.Context(), userID, zones)
+	if err != nil {
+		h.serverError(w, r, "compute paused zones", err)
+		return
+	}
 	summaries := make([]watchZoneSummary, 0, len(zones))
 	for _, z := range zones {
-		summaries = append(summaries, summaryOf(z))
+		summaries = append(summaries, summaryOf(z, paused[z.ID]))
 	}
 	h.writeJSON(w, r, http.StatusOK, listResult{Zones: summaries})
+}
+
+// pausedZoneIDs resolves which of zones (the caller's full zone set) are
+// paused (GH#889): ranked oldest-first by (CreatedAt, ID), a zone is paused
+// once its rank exceeds the caller's current effective-tier watch-zone limit.
+// Returns a nil map — every zone unpaused — when no profile reader is wired,
+// the profile is missing, or the tier is unlimited (Pro): the same "fail
+// open" shape nearby.go's create-path quota check uses for a missing profile.
+func (h *handler) pausedZoneIDs(ctx context.Context, userID string, zones []WatchZone) (map[string]bool, error) {
+	if h.profiles == nil {
+		return nil, nil
+	}
+	profile, err := h.profiles.Get(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("load profile for pause check: %w", err)
+	}
+	if profile == nil {
+		return nil, nil
+	}
+	limit := profile.EffectiveTier(h.now()).WatchZoneLimit()
+	if limit >= math.MaxInt32 {
+		return nil, nil
+	}
+	return pausedIDs(zones, limit), nil
+}
+
+// pausedIDs partitions zones into the paused set (GH#889): ranked
+// oldest-first by (CreatedAt, ID), a zone whose rank exceeds limit is paused.
+// Purely derived — no schema change, no stored flag — so a re-upgrade or a
+// delete of an older zone revives the next zone in rank with zero extra work.
+// Never mutates zones.
+func pausedIDs(zones []WatchZone, limit int) map[string]bool {
+	if len(zones) <= limit {
+		return nil
+	}
+	sorted := make([]WatchZone, len(zones))
+	copy(sorted, zones)
+	sort.Slice(sorted, func(i, j int) bool {
+		if !sorted[i].CreatedAt.Equal(sorted[j].CreatedAt) {
+			return sorted[i].CreatedAt.Before(sorted[j].CreatedAt)
+		}
+		return sorted[i].ID < sorted[j].ID
+	})
+	paused := make(map[string]bool, len(sorted)-limit)
+	for i, z := range sorted {
+		if i >= limit {
+			paused[z.ID] = true
+		}
+	}
+	return paused
 }
 
 // patchRequest is the PATCH body: every field optional (nil = unchanged).
@@ -237,7 +308,25 @@ func (h *handler) patch(w http.ResponseWriter, r *http.Request) {
 	if h.metrics != nil {
 		h.metrics.WatchZoneUpdated(r.Context())
 	}
-	h.writeJSON(w, r, http.StatusOK, updateResult{Zone: summaryOf(updated)})
+
+	// The paused computation (GH#889) needs the caller's full zone set to rank
+	// the edited zone, unlike list (which already has it); skip the extra
+	// store round trip entirely when no profile reader is wired.
+	var paused bool
+	if h.profiles != nil {
+		allZones, zerr := h.store.GetByUserID(r.Context(), userID)
+		if zerr != nil {
+			h.serverError(w, r, "list watch zones for pause check", zerr)
+			return
+		}
+		pausedSet, perr := h.pausedZoneIDs(r.Context(), userID, allZones)
+		if perr != nil {
+			h.serverError(w, r, "compute paused zones", perr)
+			return
+		}
+		paused = pausedSet[updated.ID]
+	}
+	h.writeJSON(w, r, http.StatusOK, updateResult{Zone: summaryOf(updated, paused)})
 }
 
 // maxCASRetries is the maximum number of etag-conditional replace attempts for

@@ -249,6 +249,147 @@ func TestPatch_RejectsOversizedRadius(t *testing.T) {
 	}
 }
 
+// threeZonesRankedByAge builds three zones for testUser with distinct,
+// ascending CreatedAt timestamps so oldest-first (CreatedAt, ID) ranking is
+// unambiguous: zone-1 is rank 1 (oldest), zone-2 rank 2, zone-3 rank 3.
+func threeZonesRankedByAge(t *testing.T) (zone1, zone2, zone3 WatchZone) {
+	t.Helper()
+	mk := func(id string, day int) WatchZone {
+		z, err := NewWatchZone(id, testUser, "Zone "+id, 51.5, -0.1, 1000, 99,
+			time.Date(2026, 6, day, 9, 0, 0, 0, time.UTC), true, true)
+		if err != nil {
+			t.Fatalf("NewWatchZone %s: %v", id, err)
+		}
+		return z
+	}
+	return mk("zone-1", 1), mk("zone-2", 2), mk("zone-3", 3)
+}
+
+func TestHandler_List_MarksPausedZonesOverEffectiveTierLimit(t *testing.T) {
+	t.Parallel()
+	z1, z2, z3 := threeZonesRankedByAge(t)
+	store := &fakeZoneStore{zones: []WatchZone{z1, z2, z3}}
+	mux := http.NewServeMux()
+	// Free tier: WatchZoneLimit() == 1, so only the oldest zone stays active.
+	Routes(mux, store, slog.New(slog.DiscardHandler), WithProfileReader(&fakeProfileReader{profile: freeProfile(t)}))
+
+	rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200 (body %s)", rec.Code, rec.Body)
+	}
+
+	// Golden-check first: every pre-existing field must round-trip unchanged,
+	// and "paused" must be the only addition (9 keys total per zone).
+	var raw struct {
+		Zones []map[string]any `json:"zones"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
+		t.Fatalf("decode raw: %v", err)
+	}
+	if len(raw.Zones) != 3 {
+		t.Fatalf("zones: got %d, want 3", len(raw.Zones))
+	}
+	wantKeys := []string{"id", "name", "latitude", "longitude", "radiusMetres", "authorityId", "pushEnabled", "emailInstantEnabled", "paused"}
+	for i, obj := range raw.Zones {
+		if len(obj) != len(wantKeys) {
+			t.Errorf("zone %d: got %d keys %v, want %d keys %v", i, len(obj), keysOf(obj), len(wantKeys), wantKeys)
+		}
+		for _, k := range wantKeys {
+			if _, ok := obj[k]; !ok {
+				t.Errorf("zone %d: missing pre-existing/expected key %q", i, k)
+			}
+		}
+	}
+
+	var got struct {
+		Zones []watchZoneSummary `json:"zones"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	wantPaused := map[string]bool{"zone-1": false, "zone-2": true, "zone-3": true}
+	for _, z := range got.Zones {
+		if z.Paused != wantPaused[z.ID] {
+			t.Errorf("zone %s: paused = %v, want %v", z.ID, z.Paused, wantPaused[z.ID])
+		}
+		// Pre-existing fields must still be byte-identical to summaryOf's
+		// direct mapping of the domain zone.
+		if z.Name != "Zone "+z.ID || z.Latitude != 51.5 || z.Longitude != -0.1 ||
+			z.RadiusMetres != 1000 || z.AuthorityID != 99 || !z.PushEnabled || !z.EmailInstantEnabled {
+			t.Errorf("zone %s: pre-existing fields changed: %+v", z.ID, z)
+		}
+	}
+}
+
+func keysOf(m map[string]any) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+func TestHandler_Patch_ReturnsPausedForEditedZone(t *testing.T) {
+	t.Parallel()
+	z1, z2, _ := threeZonesRankedByAge(t)
+	tests := []struct {
+		name       string
+		zoneID     string
+		wantPaused bool
+	}{
+		{"editing the active (rank 1) zone reports unpaused", "zone-1", false},
+		{"editing an over-quota (rank 2) zone reports paused", "zone-2", true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			store := &fakeZoneStore{zones: []WatchZone{z1, z2}}
+			mux := http.NewServeMux()
+			Routes(mux, store, slog.New(slog.DiscardHandler), WithProfileReader(&fakeProfileReader{profile: freeProfile(t)}))
+
+			rec := doReq(t, mux, http.MethodPatch, "/v1/me/watch-zones/"+tc.zoneID, `{"name":"Renamed"}`)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status: got %d, want 200 (body %s)", rec.Code, rec.Body)
+			}
+			var got struct {
+				Zone watchZoneSummary `json:"zone"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			if got.Zone.Name != "Renamed" {
+				t.Errorf("zone not updated: %+v", got.Zone)
+			}
+			if got.Zone.Paused != tc.wantPaused {
+				t.Errorf("paused: got %v, want %v", got.Zone.Paused, tc.wantPaused)
+			}
+		})
+	}
+}
+
+func TestHandler_List_NoProfileReaderWired_EveryZoneUnpaused(t *testing.T) {
+	t.Parallel()
+	// No WithProfileReader option: the pause computation must fail open rather
+	// than block the list response on a missing dependency.
+	z1, z2, z3 := threeZonesRankedByAge(t)
+	store := &fakeZoneStore{zones: []WatchZone{z1, z2, z3}}
+	rec := doReq(t, testMux(t, store), http.MethodGet, "/v1/me/watch-zones", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200", rec.Code)
+	}
+	var got struct {
+		Zones []watchZoneSummary `json:"zones"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	for _, z := range got.Zones {
+		if z.Paused {
+			t.Errorf("zone %s: paused = true with no profile reader wired, want false (fail open)", z.ID)
+		}
+	}
+}
+
 func TestHandler_Delete_NotFound(t *testing.T) {
 	t.Parallel()
 	rec := doReq(t, testMux(t, &fakeZoneStore{}), http.MethodDelete, "/v1/me/watch-zones/missing", "")
