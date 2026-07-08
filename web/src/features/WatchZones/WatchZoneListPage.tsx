@@ -60,7 +60,18 @@ export function WatchZoneListPage({ repository }: Props) {
           {zones.map((zone) => (
             <li key={zone.id} className={styles.card}>
               <div className={styles.cardContent}>
-                <h2 className={styles.zoneName}>{zone.name}</h2>
+                <div className={styles.zoneNameRow}>
+                  <h2 className={styles.zoneName}>{zone.name}</h2>
+                  {zone.paused && (
+                    <span
+                      className={styles.pausedBadge}
+                      data-testid="zone-paused-badge"
+                      title="This area is paused because it's over your plan's zone limit. Upgrade for more zones."
+                    >
+                      Paused
+                    </span>
+                  )}
+                </div>
                 <p className={styles.zoneRadius}>{formatRadius(zone.radiusMetres)}</p>
               </div>
               <div className={styles.cardActions}>

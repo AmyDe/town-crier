@@ -137,6 +137,13 @@ export interface WatchZoneSummary {
   readonly authorityId: AuthorityId;
   readonly pushEnabled: boolean;
   readonly emailInstantEnabled: boolean;
+  /**
+   * True when this zone exceeds the caller's current tier zone limit and has
+   * stopped generating new notifications (GH#889). Derived server-side from
+   * `(createdAt, id)` rank against `EffectiveTier(now).WatchZoneLimit()` —
+   * never computed client-side. Additive, always present on the wire.
+   */
+  readonly paused: boolean;
 }
 
 // ---------------------------------------------------------------------------
