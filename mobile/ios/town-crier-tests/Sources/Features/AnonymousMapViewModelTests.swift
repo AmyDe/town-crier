@@ -153,4 +153,72 @@ struct AnonymousMapViewModelTests {
 
     #expect(invoked)
   }
+
+  // MARK: - Live radius picker (GH#868 Phase 3 refinement)
+
+  @Test func selectedRadiusMetres_seedsFromInitialRadius() {
+    let (sut, _) = makeSUT(radiusMetres: 1500)
+
+    #expect(sut.selectedRadiusMetres == 1500)
+  }
+
+  @Test func selectedRadiusMetres_clampsToFreeTierMaxWhenInitialRadiusIsLarger() {
+    // The fetch radius (server clamp: [100, 5000]) can exceed the free-tier
+    // cap the live picker is bounded to — the seeded picker value must never
+    // preview a zone bigger than a free account can actually have.
+    let (sut, _) = makeSUT(radiusMetres: 5000)
+
+    #expect(sut.selectedRadiusMetres == 2000)
+  }
+
+  @Test func maxSelectedRadiusMetres_matchesFreeTierCap() {
+    #expect(AnonymousMapViewModel.maxSelectedRadiusMetres == 2000)
+  }
+
+  @Test func updateSelectedRadius_updatesValue() {
+    let (sut, _) = makeSUT()
+
+    sut.updateSelectedRadius(750)
+
+    #expect(sut.selectedRadiusMetres == 750)
+  }
+
+  @Test func updateSelectedRadius_clampsAboveFreeTierMax() {
+    let (sut, _) = makeSUT()
+
+    sut.updateSelectedRadius(3000)
+
+    #expect(sut.selectedRadiusMetres == 2000)
+  }
+
+  @Test func updateSelectedRadius_clampsBelowMinimum() {
+    let (sut, _) = makeSUT()
+
+    sut.updateSelectedRadius(10)
+
+    #expect(sut.selectedRadiusMetres == 100)
+  }
+
+  @Test func updateSelectedRadius_invokesOnRadiusChangedWithClampedValue() {
+    let (sut, _) = makeSUT()
+    var received: Double?
+    sut.onRadiusChanged = { received = $0 }
+
+    sut.updateSelectedRadius(9000)
+
+    #expect(received == 2000)
+  }
+
+  @Test func anchorCoordinate_staysFixedAcrossRegionChanges() async {
+    let (sut, repository) = makeSUT(coordinate: .cambridge)
+    repository.fetchNearbyResult = .success([])
+
+    sut.regionDidChange(centreLat: 10, centreLon: 10, radiusMetres: 2000)
+    await sut.waitForPendingRegionChangeRefetch()
+
+    #expect(sut.anchorCoordinate == .cambridge)
+    // The viewport-following centre moved, but the anchor the radius circle
+    // is drawn around did not — the two are deliberately decoupled.
+    #expect(sut.centreLat == 10)
+  }
 }
