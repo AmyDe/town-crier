@@ -80,6 +80,11 @@ struct TownCrierApp: App {
     let anonymousApiClient = AnonymousURLSessionAPIClient(baseURL: apiBaseURL)
     let anonymousApplicationsRepository = APIAnonymousApplicationsRepository(
       apiClient: anonymousApiClient)
+    // Device-local zones (GH#879 Phase 4): up to 3 on-device areas, migrated
+    // from `anonymousBrowseStateRepository` on first load — see
+    // `UserDefaultsDeviceLocalZoneRepository`'s own docs.
+    let deviceLocalZoneRepository = UserDefaultsDeviceLocalZoneRepository(
+      legacyStateRepository: anonymousBrowseStateRepository)
     // Anonymous full detail + share-link fix (GH#879 Phase 2): backs both a
     // signed-out share Universal Link and the anonymous map/summary sheet's
     // "View full details".
@@ -147,6 +152,7 @@ struct TownCrierApp: App {
       geocoder: anonymousGeocoder,
       stateRepository: anonymousBrowseStateRepository,
       applicationsRepository: anonymousApplicationsRepository,
+      deviceLocalZoneRepository: deviceLocalZoneRepository,
       appearanceStore: sharedAppearanceStore,
       appVersionProvider: appVersionProvider
     )
