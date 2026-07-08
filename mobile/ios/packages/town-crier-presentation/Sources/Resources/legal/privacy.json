@@ -1,7 +1,7 @@
 {
   "documentType": "privacy",
   "title": "Privacy Policy",
-  "lastUpdated": "2026-07-01",
+  "lastUpdated": "2026-07-08",
   "sections": [
     {
       "heading": "Who We Are",
@@ -13,7 +13,7 @@
     },
     {
       "heading": "Why We Collect It",
-      "body": "We use your data on two lawful bases under UK GDPR. To deliver the service you asked for (Article 6(1)(b), contract): your account, watch zones, preferences, push token, and subscription information. To keep the service reliable and secure (Article 6(1)(f), legitimate interests): authentication and server-side error telemetry. We do not process any data on the basis of consent, we do not make automated decisions with legal effects on you, and we do not send marketing email."
+      "body": "We use your data on two lawful bases under UK GDPR. To deliver the service you asked for (Article 6(1)(b), contract): your account, watch zones, preferences, push token, and subscription information. To keep the service reliable and secure (Article 6(1)(f), legitimate interests): authentication, server-side error telemetry, and limiting the rate of unauthenticated requests to prevent abuse (see \"Rate Limiting and Abuse Prevention\" below). We do not process any data on the basis of consent, we do not make automated decisions with legal effects on you, and we do not send marketing email."
     },
     {
       "heading": "Who Processes Your Data for Us",
@@ -26,6 +26,10 @@
     {
       "heading": "Cookies and Similar Storage",
       "body": "On the web we store two things in your browser's local storage: your Auth0 authentication tokens, so you stay signed in, and your theme preference (light or dark). Both are strictly necessary for the service you asked for, so we do not ask for consent to use them. We do not set tracking cookies and we do not use third-party analytics. When you view a map, your browser fetches map tiles directly from OpenStreetMap, which receives your IP address."
+    },
+    {
+      "heading": "Rate Limiting and Abuse Prevention",
+      "body": "When you use the parts of the app that work before you sign in, your requests are not tied to an account. To stop those anonymous requests being abused, for example someone tiling the country with queries to scrape our whole dataset or to overload the free service we read planning data from, we limit how many requests come from each network (IP) address in a short window and slow down any address that sends too many. We rely on our legitimate interest in keeping the service available and secure for this (UK GDPR Article 6(1)(f)). For this we hold your IP address only in memory, for the length of that short window, and discard it as soon as the window passes. We do not write it to our logs, we do not save it to any database, and we never use it to identify you, track you, or build a profile of you. This is the only use we make of IP addresses on our own servers, and it does not change our position that we do not track you."
     },
     {
       "heading": "How Long We Keep It",
