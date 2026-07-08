@@ -43,6 +43,11 @@ public final class AnonymousBrowseCoordinator: ObservableObject {
   /// to `loginViewModel.login()`.
   public var onRequestSignIn: (() -> Void)?
 
+  /// Fired by the anonymous map's "View full details" handoff (GH#879 Phase
+  /// 2). Wired by the composition root to present the shared root detail
+  /// sheet in anonymous mode (`AppCoordinator.showAnonymousApplicationDetail`).
+  public var onShowApplicationDetail: ((PlanningApplication) -> Void)?
+
   public init(
     geocoder: PostcodeGeocoder,
     stateRepository: AnonymousBrowseStateRepository,
@@ -105,6 +110,9 @@ public final class AnonymousBrowseCoordinator: ObservableObject {
       radiusMetres: state.radiusMetres)
     viewModel.onRequestSignUp = { [weak self] in self?.onRequestSignIn?() }
     viewModel.onRadiusChanged = { [weak self] radius in self?.persistRadius(radius) }
+    viewModel.onShowApplicationDetail = { [weak self] application in
+      self?.onShowApplicationDetail?(application)
+    }
     return viewModel
   }
 
