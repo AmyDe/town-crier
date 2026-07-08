@@ -17,6 +17,12 @@ public final class OnboardingViewModel: ObservableObject, ErrorHandlingViewModel
   @Published public private(set) var isLoading = false
   @Published public internal(set) var error: DomainError?
   private var validatedPostcode: Postcode?
+  /// Set by ``prefill(name:coordinate:radiusMetres:)`` (GH#879 Phase 5): a
+  /// device-local zone's name is free text the user chose (or the postcode
+  /// it was seeded from), not necessarily a valid ``Postcode`` — so this
+  /// carries the name straight through to the zone ``confirmRadius()``
+  /// creates rather than round-tripping it through `Postcode` validation.
+  private var prefillZoneName: String?
   @Published public private(set) var geocodedCoordinate: Coordinate?
   @Published public var selectedRadiusMetres: Double = 1000
   private var createdWatchZone: WatchZone?
@@ -111,6 +117,20 @@ public final class OnboardingViewModel: ObservableObject, ErrorHandlingViewModel
     currentStep = .radiusPicker
   }
 
+  /// Seeds the wizard's zone name/coordinate/radius from an already-created
+  /// device-local zone (GH#879 Phase 5) and jumps straight to the radius
+  /// step, mirroring ``prefill(postcode:coordinate:radiusMetres:)`` but for a
+  /// zone whose name is arbitrary user text rather than a validated
+  /// postcode. `radiusMetres` is clamped the same way.
+  public func prefill(name: String, coordinate: Coordinate, radiusMetres: Double) {
+    prefillZoneName = name
+    postcodeInput = name
+    validatedPostcode = nil
+    geocodedCoordinate = coordinate
+    selectedRadiusMetres = min(max(radiusMetres, 100), maxRadiusMetres)
+    currentStep = .radiusPicker
+  }
+
   public func submitPostcode() async {
     isLoading = true
     error = nil
@@ -178,10 +198,18 @@ public final class OnboardingViewModel: ObservableObject, ErrorHandlingViewModel
   }
 
   public func confirmRadius() {
-    guard let coordinate = geocodedCoordinate, let postcode = validatedPostcode else { return }
+    guard let coordinate = geocodedCoordinate else { return }
     do {
-      let zone = try WatchZone(
-        postcode: postcode, centre: coordinate, radiusMetres: selectedRadiusMetres)
+      let zone: WatchZone
+      if let prefillZoneName {
+        zone = try WatchZone(
+          name: prefillZoneName, centre: coordinate, radiusMetres: selectedRadiusMetres)
+      } else if let postcode = validatedPostcode {
+        zone = try WatchZone(
+          postcode: postcode, centre: coordinate, radiusMetres: selectedRadiusMetres)
+      } else {
+        return
+      }
       createdWatchZone = zone
       currentStep = .notificationPermission
     } catch {
