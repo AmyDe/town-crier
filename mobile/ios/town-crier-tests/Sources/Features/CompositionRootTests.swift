@@ -183,6 +183,56 @@ struct CompositionRootTests {
     #expect(vm.canSave)
   }
 
+  // MARK: - Anonymous browse mode (GH#868 Phase 3)
+
+  @Test func anonymousBrowseDependencyGraphInitialises() {
+    // Mirrors TownCrierApp.init()'s anonymous-browse wiring with real
+    // concrete types, exactly as the rest of this suite does for the
+    // authenticated graph above.
+    // swiftlint:disable:next force_unwrapping
+    let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
+    let anonymousGeocoder = PostcodesIOGeocoder()
+    let anonymousApiClient = AnonymousURLSessionAPIClient(baseURL: apiBaseURL)
+    let anonymousApplicationsRepository = APIAnonymousApplicationsRepository(
+      apiClient: anonymousApiClient)
+    let anonymousBrowseStateRepository = UserDefaultsAnonymousBrowseStateRepository()
+
+    let anonymousCoordinator = AnonymousBrowseCoordinator(
+      geocoder: anonymousGeocoder,
+      stateRepository: anonymousBrowseStateRepository,
+      applicationsRepository: anonymousApplicationsRepository
+    )
+
+    #expect(anonymousCoordinator.screen == .welcome)
+  }
+
+  @Test func coordinatorAcceptsAnonymousBrowseStateRepository() {
+    let authService = Auth0AuthenticationService(config: makeTestAuth0Config())
+    // swiftlint:disable:next force_unwrapping
+    let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
+    let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
+
+    let coordinator = AppCoordinator(
+      repository: APIPlanningApplicationRepository(apiClient: apiClient),
+      authService: authService,
+      subscriptionService: StoreKitSubscriptionService(),
+      userProfileRepository: APIUserProfileRepository(apiClient: apiClient),
+      watchZoneRepository: APIWatchZoneRepository(apiClient: apiClient),
+      geocoder: APIPostcodeGeocoder(apiClient: apiClient),
+      onboardingRepository: UserDefaultsOnboardingRepository(),
+      notificationService: CompositeNotificationService(
+        permissionProvider: SpyNotificationPermissionProvider(),
+        apiService: APINotificationService(apiClient: apiClient),
+        remoteRegistrar: SpyRemoteNotificationRegistering()
+      ),
+      appVersionProvider: BundleAppVersionProvider(),
+      versionConfigService: APIVersionConfigService(baseURL: apiBaseURL),
+      anonymousBrowseStateRepository: UserDefaultsAnonymousBrowseStateRepository()
+    )
+
+    #expect(coordinator.detailApplication == nil)
+  }
+
   // MARK: - Helpers
 
   private func makeTestAuth0Config() -> Auth0Config {
