@@ -70,4 +70,25 @@ struct WatchZoneListViewTests {
     let sut = WatchZoneListView(viewModel: vm)
     _ = sut.body
   }
+
+  // MARK: - Unconverted device-local zones row (GH#879 Phase 5)
+
+  @Test func body_renders_whenLocalZoneRowShown() async throws {
+    let spy = SpyWatchZoneRepository()
+    let localRepo = SpyDeviceLocalZoneRepository()
+    localRepo.loadAllResult = [
+      try DeviceLocalZone(name: "Home", centre: .cambridge, radiusMetres: 1000)
+    ]
+    let vm = WatchZoneListViewModel(
+      repository: spy,
+      featureGate: FeatureGate(tier: .free),
+      deviceLocalZoneRepository: localRepo
+    )
+    await vm.load()
+
+    #expect(vm.showsLocalZoneRow)
+
+    let sut = WatchZoneListView(viewModel: vm)
+    _ = sut.body
+  }
 }

@@ -34,8 +34,10 @@ extension View {
   /// Presents this view in a sheet sized to its own content height.
   ///
   /// Use in place of `.presentationDetents([.medium])` for short, text-heavy
-  /// sheets where a fixed detent would clip and truncate the copy.
-  func selfSizingSheet() -> some View {
+  /// sheets where a fixed detent would clip and truncate the copy. Public so
+  /// the app-target composition root (a different module) can apply it too
+  /// — e.g. the device-local zone conversion sheet hoisted onto `MainTabView`.
+  public func selfSizingSheet() -> some View {
     modifier(SelfSizingSheetModifier())
   }
 }

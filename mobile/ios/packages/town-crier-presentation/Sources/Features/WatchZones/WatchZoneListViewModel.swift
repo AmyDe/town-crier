@@ -13,6 +13,15 @@ public final class WatchZoneListViewModel: ObservableObject, ErrorHandlingViewMo
   @Published public private(set) var isLoading = false
   @Published public internal(set) var error: DomainError?
   @Published public var isUpgradePromptPresented = false
+  /// Device-local zones (GH#879 Phase 4) not yet converted to a real
+  /// `WatchZone` — populated by ``load()`` from the injected
+  /// `deviceLocalZoneRepository`. Always empty when no repository was
+  /// injected (existing call sites/tests are unaffected).
+  @Published public private(set) var unconvertedLocalZones: [DeviceLocalZone] = []
+  /// Session-only dismissal of the unconverted-zones row (GH#879 Phase 5).
+  /// Never persisted — a fresh `WatchZoneListViewModel` (next app launch)
+  /// always starts un-dismissed, so the row reappears while zones remain.
+  @Published public private(set) var isLocalZoneRowDismissed = false
 
   /// The proactive feature gate derived from the user's subscription tier.
   public let featureGate: FeatureGate
@@ -21,15 +30,41 @@ public final class WatchZoneListViewModel: ObservableObject, ErrorHandlingViewMo
   var onEditZone: ((WatchZone) -> Void)?
   var onUpgradeRequired: (() -> Void)?
   var onViewPlans: (() -> Void)?
+  /// Fired when the user taps the unconverted-zones row (GH#879 Phase 5) —
+  /// wired by the coordinator to reopen the conversion sheet.
+  var onConvertLocalZones: (() -> Void)?
 
   private let repository: WatchZoneRepository
+  private let deviceLocalZoneRepository: DeviceLocalZoneRepository?
 
   public init(
     repository: WatchZoneRepository,
-    featureGate: FeatureGate
+    featureGate: FeatureGate,
+    deviceLocalZoneRepository: DeviceLocalZoneRepository? = nil
   ) {
     self.repository = repository
     self.featureGate = featureGate
+    self.deviceLocalZoneRepository = deviceLocalZoneRepository
+  }
+
+  /// True while any unconverted device-local zone remains AND the user has
+  /// not dismissed the row this session — clears entirely once none remain,
+  /// independent of the dismiss flag (never keep an empty row dismissable).
+  public var showsLocalZoneRow: Bool {
+    !unconvertedLocalZones.isEmpty && !isLocalZoneRowDismissed
+  }
+
+  /// Hides the unconverted-zones row for the rest of this session. The row
+  /// reappears on next launch (a fresh view model) while zones still remain
+  /// — local zones are never silently discarded, only converted or
+  /// explicitly deleted.
+  public func dismissLocalZoneRow() {
+    isLocalZoneRowDismissed = true
+  }
+
+  /// Reopens the post-signup conversion sheet from the row's tap target.
+  public func convertLocalZones() {
+    onConvertLocalZones?()
   }
 
   /// Whether the user can add another watch zone given their tier and current count.
@@ -65,6 +100,7 @@ public final class WatchZoneListViewModel: ObservableObject, ErrorHandlingViewMo
     } catch {
       handleError(error)
     }
+    unconvertedLocalZones = deviceLocalZoneRepository?.loadAll() ?? []
 
     isLoading = false
   }

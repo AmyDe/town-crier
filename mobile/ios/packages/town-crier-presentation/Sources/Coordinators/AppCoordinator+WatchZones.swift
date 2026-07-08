@@ -18,7 +18,8 @@ extension AppCoordinator {
     }
     let viewModel = WatchZoneListViewModel(
       repository: watchZoneRepository,
-      featureGate: FeatureGate(tier: subscriptionTier)
+      featureGate: FeatureGate(tier: subscriptionTier),
+      deviceLocalZoneRepository: deviceLocalZoneRepository
     )
     viewModel.onAddZone = { [weak self] in
       self?.isAddingWatchZone = true
@@ -28,6 +29,11 @@ extension AppCoordinator {
     }
     viewModel.onViewPlans = { [weak self] in
       self?.isSubscriptionPresented = true
+    }
+    // Unconverted device-local zones row (GH#879 Phase 5): reopens the same
+    // conversion sheet completeOnboarding() presents post-wizard.
+    viewModel.onConvertLocalZones = { [weak self] in
+      self?.reopenDeviceLocalZoneConversion()
     }
     watchZoneListViewModel = viewModel
     return viewModel

@@ -31,16 +31,18 @@ public struct WatchZoneListView: View {
         if viewModel.showsFreeTierUpsell {
           Section {
             WatchZoneInlineUpsellCard { viewModel.viewPlans() }
-              .listRowInsets(
-                EdgeInsets(
-                  top: TCSpacing.medium,
-                  leading: TCSpacing.medium,
-                  bottom: TCSpacing.medium,
-                  trailing: TCSpacing.medium
-                )
-              )
-              .listRowBackground(Color.clear)
-              .listRowSeparator(.hidden)
+              .cardRowInsets()
+          }
+        }
+
+        if viewModel.showsLocalZoneRow {
+          Section {
+            UnconvertedLocalZoneRow(
+              count: viewModel.unconvertedLocalZones.count,
+              onTap: { viewModel.convertLocalZones() },
+              onDismiss: { viewModel.dismissLocalZoneRow() }
+            )
+            .cardRowInsets()
           }
         }
       }
@@ -110,6 +112,25 @@ public struct WatchZoneListView: View {
   }
 }
 
+extension View {
+  /// Shared row insets for the card-style rows appended beneath the zone
+  /// list (the free-tier upsell card and the unconverted-local-zones row) —
+  /// clears the default list-row padding so each card fills the section
+  /// edge-to-edge with its own `TCSpacing.medium` margin.
+  func cardRowInsets() -> some View {
+    listRowInsets(
+      EdgeInsets(
+        top: TCSpacing.medium,
+        leading: TCSpacing.medium,
+        bottom: TCSpacing.medium,
+        trailing: TCSpacing.medium
+      )
+    )
+    .listRowBackground(Color.clear)
+    .listRowSeparator(.hidden)
+  }
+}
+
 private struct WatchZoneRow: View {
   let zone: WatchZone
 
@@ -136,4 +157,54 @@ private struct WatchZoneRow: View {
     .padding(.vertical, TCSpacing.extraSmall)
   }
 
+}
+
+/// Dismissible row surfaced while device-local zones (GH#879 Phase 4) remain
+/// unconverted after sign-up. Tapping the body reopens the "Add your other
+/// areas" conversion sheet; the trailing "x" dismisses the row for the
+/// session only — it reappears next launch while zones still remain, and
+/// clears entirely once none do (never silently discard user-created data).
+private struct UnconvertedLocalZoneRow: View {
+  let count: Int
+  let onTap: () -> Void
+  let onDismiss: () -> Void
+
+  private var bodyText: String {
+    "\(count) \(count == 1 ? "area" : "areas") from before you signed up"
+  }
+
+  var body: some View {
+    HStack(alignment: .top, spacing: TCSpacing.medium) {
+      Image(systemName: "mappin.and.ellipse")
+        .font(.system(.title3))
+        .foregroundStyle(Color.tcAmber)
+        .accessibilityHidden(true)
+
+      VStack(alignment: .leading, spacing: TCSpacing.extraSmall) {
+        Text(bodyText)
+          .font(TCTypography.body)
+          .foregroundStyle(Color.tcTextPrimary)
+          .fixedSize(horizontal: false, vertical: true)
+
+        Button(action: onTap) {
+          Text("Add them")
+            .font(TCTypography.bodyEmphasis)
+            .foregroundStyle(Color.tcAmber)
+        }
+      }
+
+      Spacer(minLength: 0)
+
+      Button(action: onDismiss) {
+        Image(systemName: "xmark")
+          .font(.system(.caption))
+          .foregroundStyle(Color.tcTextTertiary)
+      }
+      .buttonStyle(.plain)
+      .accessibilityLabel("Dismiss")
+    }
+    .padding(TCSpacing.medium)
+    .background(Color.tcAmberMuted)
+    .clipShape(RoundedRectangle(cornerRadius: TCCornerRadius.medium))
+  }
 }
