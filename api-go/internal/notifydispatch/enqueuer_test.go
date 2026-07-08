@@ -446,7 +446,6 @@ func TestEnqueuer_PersonalTierAtQuota_AllZonesActive(t *testing.T) {
 	allZones := []watchzones.WatchZone{z1, z2, z3}
 
 	for _, z := range allZones {
-		z := z
 		t.Run(z.ID, func(t *testing.T) {
 			t.Parallel()
 			zones := &fakeZones{zones: allZones}
@@ -467,14 +466,13 @@ func TestEnqueuer_ProTierOverTenZones_AllActiveAndSkipsRankingQuery(t *testing.T
 	t.Parallel()
 	// Pro tier is unlimited (math.MaxInt32): every one of the 10 zones must
 	// create a record, and the fast path must never call GetByUserID.
-	var allZones []watchzones.WatchZone
+	allZones := make([]watchzones.WatchZone, 0, 10)
 	for i := range 10 {
 		allZones = append(allZones, testZoneAt(t, strconv.Itoa(i), "auth0|alice",
 			time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC).AddDate(0, 0, i)))
 	}
 
 	for _, z := range allZones {
-		z := z
 		t.Run(z.ID, func(t *testing.T) {
 			t.Parallel()
 			zones := &fakeZones{zones: allZones}
