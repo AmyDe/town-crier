@@ -408,7 +408,11 @@ func applyNotification(profile *profiles.UserProfile, notification DecodedNotifi
 		return true, nil
 
 	case "DID_RENEW":
-		profile.RenewSubscription(txn.ExpiresDate)
+		tier, err := TierForProduct(txn.ProductID)
+		if err != nil {
+			return false, err
+		}
+		profile.ActivateSubscription(tier, txn.ExpiresDate)
 		return true, nil
 
 	case "DID_CHANGE_RENEWAL_PREF":
