@@ -123,7 +123,8 @@ struct TownCrierApp: App {
       reviewPromptTracker: reviewPromptTracker,
       anonymousBrowseStateRepository: anonymousBrowseStateRepository,
       appearanceStore: sharedAppearanceStore,
-      anonymousApplicationDetailRepository: anonymousApplicationDetailRepository
+      anonymousApplicationDetailRepository: anonymousApplicationDetailRepository,
+      deviceLocalZoneRepository: deviceLocalZoneRepository
     )
     reviewRequester.coordinator = appCoordinator  // weak; coordinator owns the tracker
     _coordinator = StateObject(wrappedValue: appCoordinator)

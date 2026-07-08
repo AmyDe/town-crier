@@ -102,6 +102,19 @@ struct MainTabView: View {
         }
       }
     )
+    // Post-signup "Add your other areas" conversion sheet (GH#879 Phase 5):
+    // presented once immediately after the wizard completes when unconverted
+    // device-local zones remain, and reopened from the authed Zones tab's
+    // dismissible row for as long as any remain. Content is rebuilt fresh on
+    // every presentation so it never shows already-converted/deleted zones.
+    // Hoisted to the TabView, mirroring the paywall sheet above, so it
+    // reaches the user regardless of active tab.
+    .sheet(isPresented: $coordinator.isDeviceLocalZoneConversionPresented) {
+      if let viewModel = coordinator.makeDeviceLocalZoneConversionViewModel() {
+        DeviceLocalZoneConversionView(viewModel: viewModel)
+          .selfSizingSheet()
+      }
+    }
   }
 
   /// Settings sheet — presented from the gear icon installed on every tab.
