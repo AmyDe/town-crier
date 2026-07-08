@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 import TownCrierDomain
 
@@ -25,8 +26,15 @@ struct AnonymousBrowseViewTests {
 
   @Test func body_renders_atPostcodeEntry() {
     let coordinator = makeCoordinator()
-    _ = coordinator.makeWelcomeViewModel().getStarted()
+    coordinator.makeWelcomeViewModel().getStarted()
     let sut = AnonymousBrowseView(coordinator: coordinator)
+    _ = sut.body
+  }
+
+  @Test func body_renders_atMap() throws {
+    let state = AnonymousBrowseState(
+      postcode: try Postcode("CB1 2AD"), coordinate: .cambridge, createdAt: Date())
+    let sut = AnonymousBrowseView(coordinator: makeCoordinator(persistedState: state))
     _ = sut.body
   }
 }
