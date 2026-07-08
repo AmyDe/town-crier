@@ -16,6 +16,7 @@ struct AnonymousBrowseViewTests {
       geocoder: SpyPostcodeGeocoder(),
       stateRepository: stateRepository,
       applicationsRepository: SpyAnonymousApplicationsRepository(),
+      deviceLocalZoneRepository: SpyDeviceLocalZoneRepository(),
       appVersionProvider: SpyAppVersionProvider()
     )
   }

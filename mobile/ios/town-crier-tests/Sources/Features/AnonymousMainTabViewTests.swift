@@ -5,9 +5,9 @@ import TownCrierDomain
 @testable import TownCrierPresentation
 
 /// GH#879 Phase 3 acceptance criteria: post-postcode routing lands on the
-/// tab shell with exactly Applications/Map/Settings, and the CTA banner
-/// (tested directly in `AccountCTABannerTests`) is reachable from Applications
-/// and Map.
+/// tab shell with exactly Applications/Map/Zones/Settings, and the CTA
+/// banner (tested directly in `AccountCTABannerTests`) is reachable from
+/// Applications and Map.
 @Suite("AnonymousMainTabView")
 @MainActor
 struct AnonymousMainTabViewTests {
@@ -19,6 +19,7 @@ struct AnonymousMainTabViewTests {
       geocoder: SpyPostcodeGeocoder(),
       stateRepository: stateRepository,
       applicationsRepository: SpyAnonymousApplicationsRepository(),
+      deviceLocalZoneRepository: SpyDeviceLocalZoneRepository(),
       appVersionProvider: SpyAppVersionProvider()
     )
   }
@@ -34,6 +35,14 @@ struct AnonymousMainTabViewTests {
   @Test func body_renders_onMapTab() throws {
     let coordinator = try makeCoordinator()
     coordinator.selectedTab = .map
+    let sut = AnonymousMainTabView(coordinator: coordinator)
+
+    _ = sut.body
+  }
+
+  @Test func body_renders_onZonesTab() throws {
+    let coordinator = try makeCoordinator()
+    coordinator.selectedTab = .zones
     let sut = AnonymousMainTabView(coordinator: coordinator)
 
     _ = sut.body
@@ -57,6 +66,7 @@ struct AnonymousMainTabViewTests {
       geocoder: SpyPostcodeGeocoder(),
       stateRepository: stateRepository,
       applicationsRepository: SpyAnonymousApplicationsRepository(),
+      deviceLocalZoneRepository: SpyDeviceLocalZoneRepository(),
       appVersionProvider: SpyAppVersionProvider()
     )
     let postcodeVM = coordinator.makePostcodeEntryViewModel()

@@ -59,15 +59,20 @@ public final class AnonymousMapViewModel: ObservableObject, ErrorHandlingViewMod
   public static let minSelectedRadiusMetres: Double = 100
   public static let maxSelectedRadiusMetres: Double = WatchZoneLimits(tier: .free).maxRadiusMetres
 
-  /// The postcode-resolved point the radius preview circle is drawn around
-  /// and the camera reframes to. Fixed for the view model's lifetime, unlike
-  /// `centreLat`/`centreLon`, which follow the viewport as the user pans/
-  /// zooms.
-  public let anchorCoordinate: Coordinate
+  /// The point the radius preview circle is drawn around and the camera
+  /// reframes to. Fixed across a `regionDidChange` pan/zoom (unlike
+  /// `centreLat`/`centreLon`, which follow the viewport) — but IS updated by
+  /// ``updateActiveZone(_:)`` when the active device-local zone changes
+  /// (GH#879 Phase 4), so it is `@Published private(set)`, not `let`.
+  @Published public private(set) var anchorCoordinate: Coordinate
 
   private let repository: AnonymousApplicationsRepository
   private let debounceNanoseconds: UInt64
   private var pendingRegionChangeTask: Task<Void, Never>?
+  /// Debounces ``updateActiveZone(_:)``'s fetch the same way
+  /// `pendingRegionChangeTask` debounces `regionDidChange` (GH#879 Phase 4
+  /// crash fix — see that method's docs).
+  private var pendingActiveZoneTask: Task<Void, Never>?
 
   /// Fired by the persistent CTA banner's "Create account"/"Sign in" buttons
   /// (full detail no longer requires an account — GH#879 Phase 2 replaced the
@@ -116,6 +121,10 @@ public final class AnonymousMapViewModel: ObservableObject, ErrorHandlingViewMod
     self.radiusMetres = clampedRadius
 
     pendingRegionChangeTask?.cancel()
+    // Mutual exclusion with an in-flight active-zone update (GH#879 Phase
+    // 4): a pan/zoom and a zone switch racing each other must never both
+    // land — "last request wins" — see `updateActiveZone(_:)`'s docs.
+    pendingActiveZoneTask?.cancel()
     let debounceDuration = debounceNanoseconds
     pendingRegionChangeTask = Task { [weak self] in
       try? await Task.sleep(nanoseconds: debounceDuration)
@@ -238,5 +247,69 @@ public final class AnonymousMapViewModel: ObservableObject, ErrorHandlingViewMod
 
   private static func clampSelectedRadius(_ metres: Double) -> Double {
     min(max(metres, minSelectedRadiusMetres), maxSelectedRadiusMetres)
+  }
+
+  /// Re-centres this SAME view model on `zone` (GH#879 Phase 4 defect fix)
+  /// when the active device-local zone changes — e.g. a zone-picker chip tap
+  /// on the Applications tab. Deliberately mutates in place rather than the
+  /// coordinator replacing the whole `AnonymousMapViewModel` instance:
+  /// `AnonymousMapView` holds this object in a `@StateObject`, which SwiftUI
+  /// keeps bound to the FIRST instance passed to it — a same-position
+  /// `AnonymousMapView(viewModel:)` re-init with a NEW instance is silently
+  /// ignored, which is exactly what live simulator verification caught (the
+  /// map stayed on the previous zone until a full relaunch). Mutating
+  /// `@Published` state on the existing instance instead triggers a normal
+  /// SwiftUI re-render, and preserves any live pan/zoom camera state rather
+  /// than tearing the map view down.
+  ///
+  /// Centre/anchor/radius update IMMEDIATELY (synchronously) so the camera
+  /// and radius overlay reframe as soon as the zone switches. The FETCH —
+  /// and therefore the full pin/annotation-set swap it produces — is
+  /// debounced the same way `regionDidChange` debounces a pan/zoom, and
+  /// mutually cancels any in-flight `regionDidChange`/`updateActiveZone`
+  /// fetch of the other kind. This is a crash fix (GH#879 Phase 4): live
+  /// simulator verification hit a MapKit-internal SIGABRT
+  /// (`-[MKMapView annotationContainer:requestAddingClusterForAnnotationViews:]`
+  /// → `doesNotRecognizeSelector:`) reproducibly when the active zone was
+  /// switched rapidly — MapKit's own deferred clustering pass cannot
+  /// tolerate the annotation set being replaced faster than it can settle.
+  /// Debouncing collapses a rapid run of zone switches to a single pin swap
+  /// for the LAST zone selected, rather than one overlapping swap per tap.
+  ///
+  /// Clears selection/stack state immediately (not debounced) — those refer
+  /// to pins from the OLD zone's result set, about to be replaced, and
+  /// leaving a stale summary/disambiguation sheet open over a map that has
+  /// already moved to a new area would be its own bug.
+  public func updateActiveZone(_ zone: DeviceLocalZone) {
+    pendingRegionChangeTask?.cancel()
+    pendingRegionChangeTask = nil
+    pendingActiveZoneTask?.cancel()
+
+    selectedApplication = nil
+    stackedApplications = nil
+    pendingSummaryApplication = nil
+    pendingDetailApplication = nil
+
+    centreLat = zone.centre.latitude
+    centreLon = zone.centre.longitude
+    anchorCoordinate = zone.centre
+    radiusMetres = zone.radiusMetres
+    selectedRadiusMetres = Self.clampSelectedRadius(zone.radiusMetres)
+
+    let debounceDuration = debounceNanoseconds
+    pendingActiveZoneTask = Task { [weak self] in
+      try? await Task.sleep(nanoseconds: debounceDuration)
+      guard !Task.isCancelled else { return }
+      await self?.fetch(
+        latitude: zone.centre.latitude,
+        longitude: zone.centre.longitude,
+        radiusMetres: zone.radiusMetres)
+    }
+  }
+
+  /// Test-only synchronisation: await the most recently scheduled debounced
+  /// active-zone refetch, mirroring ``waitForPendingRegionChangeRefetch()``.
+  public func waitForPendingActiveZoneUpdate() async {
+    await pendingActiveZoneTask?.value
   }
 }

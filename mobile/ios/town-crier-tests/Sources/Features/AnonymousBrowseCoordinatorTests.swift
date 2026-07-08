@@ -12,20 +12,22 @@ struct AnonymousBrowseCoordinatorTests {
     appearanceStore: AppearanceStore? = nil
   ) -> (
     AnonymousBrowseCoordinator, SpyPostcodeGeocoder, SpyAnonymousBrowseStateRepository,
-    SpyAnonymousApplicationsRepository
+    SpyAnonymousApplicationsRepository, SpyDeviceLocalZoneRepository
   ) {
     let geocoder = SpyPostcodeGeocoder()
     let stateRepository = SpyAnonymousBrowseStateRepository()
     stateRepository.loadResult = persistedState
     let applicationsRepository = SpyAnonymousApplicationsRepository()
+    let deviceLocalZoneRepository = SpyDeviceLocalZoneRepository()
     let sut = AnonymousBrowseCoordinator(
       geocoder: geocoder,
       stateRepository: stateRepository,
       applicationsRepository: applicationsRepository,
+      deviceLocalZoneRepository: deviceLocalZoneRepository,
       appearanceStore: appearanceStore,
       appVersionProvider: SpyAppVersionProvider()
     )
-    return (sut, geocoder, stateRepository, applicationsRepository)
+    return (sut, geocoder, stateRepository, applicationsRepository, deviceLocalZoneRepository)
   }
 
   private var testState: AnonymousBrowseState {
@@ -36,14 +38,14 @@ struct AnonymousBrowseCoordinatorTests {
   // MARK: - Initial screen
 
   @Test func init_withNoPersistedState_startsAtWelcome() {
-    let (sut, _, _, _) = makeSUT()
+    let (sut, _, _, _, _) = makeSUT()
 
     #expect(sut.screen == .welcome)
     #expect(sut.mapViewModel == nil)
   }
 
   @Test func init_withPersistedState_startsAtTabs() {
-    let (sut, _, _, _) = makeSUT(persistedState: testState)
+    let (sut, _, _, _, _) = makeSUT(persistedState: testState)
 
     #expect(sut.screen == .tabs)
     #expect(sut.mapViewModel != nil)
@@ -53,7 +55,7 @@ struct AnonymousBrowseCoordinatorTests {
   // MARK: - Welcome -> postcode entry
 
   @Test func welcomeViewModel_getStarted_advancesToPostcodeEntry() {
-    let (sut, _, _, _) = makeSUT()
+    let (sut, _, _, _, _) = makeSUT()
     let welcomeVM = sut.makeWelcomeViewModel()
 
     welcomeVM.getStarted()
@@ -62,7 +64,7 @@ struct AnonymousBrowseCoordinatorTests {
   }
 
   @Test func welcomeViewModel_signIn_invokesOnRequestSignIn() {
-    let (sut, _, _, _) = makeSUT()
+    let (sut, _, _, _, _) = makeSUT()
     var requested = false
     sut.onRequestSignIn = { requested = true }
     let welcomeVM = sut.makeWelcomeViewModel()
@@ -75,7 +77,7 @@ struct AnonymousBrowseCoordinatorTests {
   // MARK: - Postcode entry -> tab shell / back
 
   @Test func postcodeEntryViewModel_onResolved_advancesToTabs() {
-    let (sut, _, _, _) = makeSUT()
+    let (sut, _, _, _, _) = makeSUT()
     let postcodeVM = sut.makePostcodeEntryViewModel()
 
     // The coordinator wires `onResolved` when it builds the view model; invoke
@@ -88,7 +90,7 @@ struct AnonymousBrowseCoordinatorTests {
   }
 
   @Test func postcodeEntryViewModel_onBack_returnsToWelcome() {
-    let (sut, _, _, _) = makeSUT()
+    let (sut, _, _, _, _) = makeSUT()
     let welcomeVM = sut.makeWelcomeViewModel()
     welcomeVM.getStarted()
     let postcodeVM = sut.makePostcodeEntryViewModel()
@@ -101,7 +103,7 @@ struct AnonymousBrowseCoordinatorTests {
   // MARK: - Map sign-up handoff
 
   @Test func mapViewModel_requestSignUp_invokesOnRequestSignIn() {
-    let (sut, _, _, _) = makeSUT(persistedState: testState)
+    let (sut, _, _, _, _) = makeSUT(persistedState: testState)
     var requested = false
     sut.onRequestSignIn = { requested = true }
 
@@ -113,7 +115,7 @@ struct AnonymousBrowseCoordinatorTests {
   // MARK: - View full details handoff (GH#879 Phase 2)
 
   @Test func mapViewModel_onShowApplicationDetail_invokesCoordinatorCallback() {
-    let (sut, _, _, _) = makeSUT(persistedState: testState)
+    let (sut, _, _, _, _) = makeSUT(persistedState: testState)
     var captured: [PlanningApplication] = []
     sut.onShowApplicationDetail = { captured.append($0) }
 
@@ -127,7 +129,7 @@ struct AnonymousBrowseCoordinatorTests {
   // MARK: - Live radius picker persistence (GH#868 Phase 3 refinement)
 
   @Test func mapViewModel_radiusChange_persistsUpdatedStateWithSamePostcodeAndCoordinate() {
-    let (sut, _, stateRepository, _) = makeSUT(persistedState: testState)
+    let (sut, _, stateRepository, _, _) = makeSUT(persistedState: testState)
 
     sut.mapViewModel?.updateSelectedRadius(1500)
 
@@ -137,7 +139,7 @@ struct AnonymousBrowseCoordinatorTests {
   }
 
   @Test func postcodeEntryViewModel_onResolved_thenRadiusChange_persistsAgainstResolvedState() {
-    let (sut, _, stateRepository, _) = makeSUT()
+    let (sut, _, stateRepository, _, _) = makeSUT()
     let postcodeVM = sut.makePostcodeEntryViewModel()
     postcodeVM.onResolved?(testState)
 
@@ -155,7 +157,7 @@ struct AnonymousBrowseCoordinatorTests {
       createdAt: testState.createdAt
     )
 
-    let (sut, _, _, _) = makeSUT(persistedState: stateWithRadius)
+    let (sut, _, _, _, _) = makeSUT(persistedState: stateWithRadius)
 
     #expect(sut.mapViewModel?.selectedRadiusMetres == 1500)
   }
@@ -167,7 +169,7 @@ struct AnonymousBrowseCoordinatorTests {
     // swiftlint:disable:next force_unwrapping
     let appearanceStore = AppearanceStore(defaults: defaults!)
     appearanceStore.appearanceMode = .oledDark
-    let (sut, _, _, _) = makeSUT(appearanceStore: appearanceStore)
+    let (sut, _, _, _, _) = makeSUT(appearanceStore: appearanceStore)
 
     let welcomeVM = sut.makeWelcomeViewModel()
 
@@ -178,7 +180,7 @@ struct AnonymousBrowseCoordinatorTests {
     let defaults = UserDefaults(suiteName: UUID().uuidString)
     // swiftlint:disable:next force_unwrapping
     let appearanceStore = AppearanceStore(defaults: defaults!)
-    let (sut, _, _, _) = makeSUT(appearanceStore: appearanceStore)
+    let (sut, _, _, _, _) = makeSUT(appearanceStore: appearanceStore)
     let welcomeVM = sut.makeWelcomeViewModel()
 
     welcomeVM.selectAppearanceMode(.dark)
@@ -189,7 +191,7 @@ struct AnonymousBrowseCoordinatorTests {
   // MARK: - Reset (sign-out)
 
   @Test func reset_clearsStateAndReturnsToWelcome() {
-    let (sut, _, stateRepository, _) = makeSUT(persistedState: testState)
+    let (sut, _, stateRepository, _, _) = makeSUT(persistedState: testState)
     #expect(sut.screen == .tabs)
 
     sut.reset()
@@ -202,20 +204,20 @@ struct AnonymousBrowseCoordinatorTests {
   // MARK: - Tab shell (GH#879 Phase 3)
 
   @Test func selectedTab_defaultsToApplications() {
-    let (sut, _, _, _) = makeSUT(persistedState: testState)
+    let (sut, _, _, _, _) = makeSUT(persistedState: testState)
 
     #expect(sut.selectedTab == .applications)
   }
 
-  /// The tab set is exactly Applications/Map/Settings (Zones arrives in
-  /// Phase 4) — no Saved tab, deliberately (saving is account-bound).
-  @Test func tab_allCases_isExactlyApplicationsMapSettings() {
+  /// The tab set is exactly Applications/Map/Zones/Settings, in that order —
+  /// no Saved tab, deliberately (saving is account-bound).
+  @Test func tab_allCases_isExactlyApplicationsMapZonesSettings() {
     #expect(
-      AnonymousBrowseCoordinator.Tab.allCases == [.applications, .map, .settings])
+      AnonymousBrowseCoordinator.Tab.allCases == [.applications, .map, .zones, .settings])
   }
 
   @Test func makeApplicationListViewModel_afterPostcodeResolved_seedsFromCurrentState() {
-    let (sut, _, _, _) = makeSUT(persistedState: testState)
+    let (sut, _, _, _, _) = makeSUT(persistedState: testState)
 
     let viewModel = sut.makeApplicationListViewModel()
 
@@ -223,13 +225,13 @@ struct AnonymousBrowseCoordinatorTests {
   }
 
   @Test func makeApplicationListViewModel_beforePostcodeResolved_returnsNil() {
-    let (sut, _, _, _) = makeSUT()
+    let (sut, _, _, _, _) = makeSUT()
 
     #expect(sut.makeApplicationListViewModel() == nil)
   }
 
   @Test func applicationListViewModel_onShowApplicationDetail_invokesCoordinatorCallback() {
-    let (sut, _, _, applicationsRepository) = makeSUT(persistedState: testState)
+    let (sut, _, _, applicationsRepository, _) = makeSUT(persistedState: testState)
     applicationsRepository.fetchNearbyResult = .success([.pendingReview])
     var captured: [PlanningApplication] = []
     sut.onShowApplicationDetail = { captured.append($0) }
@@ -245,7 +247,7 @@ struct AnonymousBrowseCoordinatorTests {
     // swiftlint:disable:next force_unwrapping
     let appearanceStore = AppearanceStore(defaults: defaults!)
     appearanceStore.appearanceMode = .oledDark
-    let (sut, _, _, _) = makeSUT(appearanceStore: appearanceStore)
+    let (sut, _, _, _, _) = makeSUT(appearanceStore: appearanceStore)
 
     let settingsVM = sut.makeSettingsViewModel()
 
@@ -253,7 +255,7 @@ struct AnonymousBrowseCoordinatorTests {
   }
 
   @Test func requestSignIn_invokesOnRequestSignIn() {
-    let (sut, _, _, _) = makeSUT()
+    let (sut, _, _, _, _) = makeSUT()
     var requested = false
     sut.onRequestSignIn = { requested = true }
 
@@ -263,7 +265,7 @@ struct AnonymousBrowseCoordinatorTests {
   }
 
   @Test func showPrivacyPolicy_invokesOnShowPrivacyPolicy() {
-    let (sut, _, _, _) = makeSUT()
+    let (sut, _, _, _, _) = makeSUT()
     var invoked = false
     sut.onShowPrivacyPolicy = { invoked = true }
 
@@ -273,7 +275,7 @@ struct AnonymousBrowseCoordinatorTests {
   }
 
   @Test func showTermsOfService_invokesOnShowTermsOfService() {
-    let (sut, _, _, _) = makeSUT()
+    let (sut, _, _, _, _) = makeSUT()
     var invoked = false
     sut.onShowTermsOfService = { invoked = true }
 
@@ -283,12 +285,58 @@ struct AnonymousBrowseCoordinatorTests {
   }
 
   @Test func requestRateApp_invokesOnRateApp() {
-    let (sut, _, _, _) = makeSUT()
+    let (sut, _, _, _, _) = makeSUT()
     var invoked = false
     sut.onRateApp = { invoked = true }
 
     sut.requestRateApp()
 
     #expect(invoked)
+  }
+
+  // MARK: - Zones tab (GH#879 Phase 4)
+
+  @Test func makeDeviceLocalZoneListViewModel_requestSignUp_invokesOnRequestSignIn() {
+    let (sut, _, _, _, _) = makeSUT()
+    var requested = false
+    sut.onRequestSignIn = { requested = true }
+    let zonesVM = sut.makeDeviceLocalZoneListViewModel()
+
+    zonesVM.requestAlertsSignUp()
+    zonesVM.confirmSignUp()
+
+    #expect(requested)
+  }
+
+  /// Regression test for a live-simulator-verified defect: switching the
+  /// active zone on the Applications tab left the Map tab showing the
+  /// PREVIOUS zone until a full relaunch. Root cause: the coordinator was
+  /// replacing `mapViewModel` with a brand-new `AnonymousMapViewModel`
+  /// instance, but `AnonymousMapView` holds it in a `@StateObject` — SwiftUI
+  /// ignores a replaced constructor argument on an already-mounted view, so
+  /// the OLD instance kept rendering forever. The fix mutates the SAME
+  /// instance in place, so this test asserts identity is PRESERVED (not
+  /// replaced) alongside the updated centre/radius.
+  @Test func applicationListViewModel_selectZone_reCentresTheSameMapViewModelInstance() async throws {
+    let (sut, _, _, applicationsRepository, deviceLocalZoneRepository) = makeSUT(
+      persistedState: testState)
+    applicationsRepository.fetchNearbyResult = .success([])
+    let zoneA = try DeviceLocalZone(name: "A", centre: .cambridge, radiusMetres: 1000)
+    let zoneB = try DeviceLocalZone(
+      name: "B",
+      centre: try Coordinate(latitude: 51.5074, longitude: -0.1278),
+      radiusMetres: 3000)
+    deviceLocalZoneRepository.loadAllResult = [zoneA, zoneB]
+    deviceLocalZoneRepository.activeZoneIdResult = zoneA.id
+    let listViewModel = sut.makeApplicationListViewModel()
+    await listViewModel?.loadApplications()
+    let originalMapViewModel = sut.mapViewModel
+
+    await listViewModel?.selectZone(zoneB)
+
+    #expect(sut.mapViewModel === originalMapViewModel)
+    #expect(sut.mapViewModel?.centreLat == zoneB.centre.latitude)
+    #expect(sut.mapViewModel?.anchorCoordinate == zoneB.centre)
+    #expect(sut.mapViewModel?.radiusMetres == zoneB.radiusMetres)
   }
 }

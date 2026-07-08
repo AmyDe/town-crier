@@ -196,11 +196,14 @@ struct CompositionRootTests {
     let anonymousApplicationsRepository = APIAnonymousApplicationsRepository(
       apiClient: anonymousApiClient)
     let anonymousBrowseStateRepository = UserDefaultsAnonymousBrowseStateRepository()
+    let deviceLocalZoneRepository = UserDefaultsDeviceLocalZoneRepository(
+      legacyStateRepository: anonymousBrowseStateRepository)
 
     let anonymousCoordinator = AnonymousBrowseCoordinator(
       geocoder: anonymousGeocoder,
       stateRepository: anonymousBrowseStateRepository,
       applicationsRepository: anonymousApplicationsRepository,
+      deviceLocalZoneRepository: deviceLocalZoneRepository,
       appVersionProvider: BundleAppVersionProvider()
     )
 
