@@ -124,4 +124,27 @@ struct AppCoordinatorDeviceLocalZoneConversionTests {
 
     #expect(sut.isDeviceLocalZoneConversionPresented)
   }
+
+  // MARK: - Zones-tab wiring
+
+  @Test func makeWatchZoneListViewModel_populatesUnconvertedLocalZones() async throws {
+    let localRepo = SpyDeviceLocalZoneRepository()
+    let zone = try makeZone(id: "b", name: "Work")
+    localRepo.loadAllResult = [zone]
+    let sut = makeSUT(deviceLocalZoneRepository: localRepo)
+
+    let vm = sut.makeWatchZoneListViewModel()
+    await vm.load()
+
+    #expect(vm.unconvertedLocalZones == [zone])
+  }
+
+  @Test func makeWatchZoneListViewModel_onConvertLocalZones_reopensConversionSheet() {
+    let sut = makeSUT()
+    let vm = sut.makeWatchZoneListViewModel()
+
+    vm.convertLocalZones()
+
+    #expect(sut.isDeviceLocalZoneConversionPresented)
+  }
 }
