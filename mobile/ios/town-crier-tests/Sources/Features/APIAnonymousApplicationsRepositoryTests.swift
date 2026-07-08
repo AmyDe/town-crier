@@ -96,6 +96,46 @@ struct APIAnonymousApplicationsRepositoryTests {
     #expect(app.location == expectedLocation)
   }
 
+  @Test("fetchNearby maps the additive authoritySlug field onto the authority when present")
+  func fetchNearby_mapsAuthoritySlug_whenPresent() async throws {
+    // GH#879 Phase 1 (#880): near-point now emits authoritySlug per result,
+    // reusing the same PlanningApplicationDTO/toDomain() mapping the by-id
+    // and by-slug detail reads already exercise — no separate mapping
+    // needed on the iOS side. This is the confirming test for that finding.
+    let json = """
+      [
+          {
+              "name": "Kingston/25/02755/CLC",
+              "uid": "app-003",
+              "areaName": "Kingston upon Thames",
+              "areaId": 789,
+              "authoritySlug": "kingston",
+              "address": "1 Market Place, Kingston, KT1 1JS",
+              "postcode": "KT1 1JS",
+              "description": "Certificate of lawfulness",
+              "appType": "Full",
+              "appState": "Undecided",
+              "appSize": null,
+              "startDate": "2026-02-01",
+              "decidedDate": null,
+              "consultedDate": null,
+              "longitude": null,
+              "latitude": null,
+              "url": null,
+              "link": null,
+              "lastDifferent": "2026-02-01T00:00:00+00:00"
+          }
+      ]
+      """
+    let (sut, _) = makeSUT(responses: [(Data(json.utf8), httpResponse(statusCode: 200))])
+
+    let result = try await sut.fetchNearby(
+      latitude: 52.2053, longitude: 0.1218, radiusMetres: 2000, limit: 200)
+
+    #expect(result.count == 1)
+    #expect(result[0].authority.slug == "kingston")
+  }
+
   @Test("fetchNearby with network error throws networkUnavailable")
   func fetchNearby_networkError_throwsNetworkUnavailable() async throws {
     let transport = StubHTTPTransport()
