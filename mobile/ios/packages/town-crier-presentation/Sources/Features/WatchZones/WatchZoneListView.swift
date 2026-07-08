@@ -31,16 +31,7 @@ public struct WatchZoneListView: View {
         if viewModel.showsFreeTierUpsell {
           Section {
             WatchZoneInlineUpsellCard { viewModel.viewPlans() }
-              .listRowInsets(
-                EdgeInsets(
-                  top: TCSpacing.medium,
-                  leading: TCSpacing.medium,
-                  bottom: TCSpacing.medium,
-                  trailing: TCSpacing.medium
-                )
-              )
-              .listRowBackground(Color.clear)
-              .listRowSeparator(.hidden)
+              .cardRowInsets()
           }
         }
 
@@ -51,16 +42,7 @@ public struct WatchZoneListView: View {
               onTap: { viewModel.convertLocalZones() },
               onDismiss: { viewModel.dismissLocalZoneRow() }
             )
-            .listRowInsets(
-              EdgeInsets(
-                top: TCSpacing.medium,
-                leading: TCSpacing.medium,
-                bottom: TCSpacing.medium,
-                trailing: TCSpacing.medium
-              )
-            )
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
+            .cardRowInsets()
           }
         }
       }
@@ -127,6 +109,25 @@ public struct WatchZoneListView: View {
       }
       .padding(.vertical, TCSpacing.extraLarge)
     }
+  }
+}
+
+extension View {
+  /// Shared row insets for the card-style rows appended beneath the zone
+  /// list (the free-tier upsell card and the unconverted-local-zones row) —
+  /// clears the default list-row padding so each card fills the section
+  /// edge-to-edge with its own `TCSpacing.medium` margin.
+  func cardRowInsets() -> some View {
+    listRowInsets(
+      EdgeInsets(
+        top: TCSpacing.medium,
+        leading: TCSpacing.medium,
+        bottom: TCSpacing.medium,
+        trailing: TCSpacing.medium
+      )
+    )
+    .listRowBackground(Color.clear)
+    .listRowSeparator(.hidden)
   }
 }
 
