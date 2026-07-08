@@ -162,7 +162,7 @@ type adminUserStore interface {
 // newRouter wires the feature routes onto a mux and wraps it in the production
 // middleware chain. Ordering, from outermost to innermost:
 //
-//		CORS -> SecurityHeaders -> ErrorBody -> Recover -> RequireAuth -> RateLimit -> RecordActivity -> mux
+//		CORS -> SecurityHeaders -> ErrorBody -> Recover -> RequireAuth -> AnonRateLimit -> RateLimit -> RecordActivity -> mux
 //
 //	  - CORS runs first so its headers are present on every response, including
 //	    the 401s and 500s produced further in.
@@ -173,8 +173,15 @@ type adminUserStore interface {
 //	  - Recover converts a handler panic into a 500 + Detail, which ErrorBody
 //	    then renders — the Go equivalent of ErrorResponseMiddleware's try/catch.
 //	  - RequireAuth applies the Auth0 bearer + fallback-deny policy, then
-//	    dispatches through rate limiting and activity recording (both no-ops for
-//	    anonymous routes, which carry no subject).
+//	    dispatches through AnonRateLimit, rate limiting and activity recording.
+//	  - AnonRateLimit (GH#868 Phase 1) is a no-op for authenticated requests (it
+//	    only meters when auth.Subject is empty) and, unlike RateLimit/
+//	    RecordActivity below, it always wraps dispatch regardless of whether the
+//	    profile store is wired — a store-less boot must not leave anonymous
+//	    routes completely unmetered. GET /health and GET /v1/health are exempt
+//	    (ACA probes; see middleware.AnonRateLimit's doc for the convention).
+//	  - RateLimit/RecordActivity are no-ops for anonymous routes (no subject),
+//	    the mirror image of AnonRateLimit's no-op for authenticated ones.
 //
 // The store parameters are consumer-side interfaces backed by the Postgres
 // stores. Each retains the nil-means-unwired convention so a store-less local
@@ -208,6 +215,8 @@ func newRouter(
 	appleEnvironments []string,
 	registry *metrics.Registry,
 	shareCardCache *blobstore.Store,
+	anonRateLimitRequests int,
+	anonRateLimitWindowSeconds int,
 	logger *slog.Logger,
 ) http.Handler {
 	mux := http.NewServeMux()
@@ -239,6 +248,15 @@ func newRouter(
 			middleware.RecordActivity(profiles.NewActivityRecorder(store), time.Now, logger)(mux),
 		)
 	}
+	// AnonRateLimit (GH#868 Phase 1) always wraps whatever dispatch chain was
+	// built above — unlike RateLimit/RecordActivity, it needs no profile store,
+	// so it must not be skipped on a store-less boot: that would leave every
+	// anonymous route (a scraping target for a future public geo endpoint, and
+	// load that ultimately lands on PlanIt) completely unmetered. It is a no-op
+	// for authenticated requests, so it never interferes with the per-subject
+	// RateLimit it wraps.
+	anonWindow := time.Duration(anonRateLimitWindowSeconds) * time.Second
+	dispatch = middleware.AnonRateLimit(middleware.NewAnonRateLimitStore(anonWindow), anonRateLimitRequests, logger)(dispatch)
 	if deviceStore != nil {
 		devicetokens.Routes(mux, deviceStore, time.Now, logger)
 	}
@@ -283,9 +301,10 @@ func newRouter(
 		// same store; it needs no build key (unlike the two SEO routes above) since
 		// it is not a build-time-only surface — it is the public-facing endpoint the
 		// /search web page (tc-geq7h.4) calls directly from a visitor's browser. It is
-		// anonymous to Auth0 (see anonymousPatterns) and subject to the SAME rate
-		// limiting as every other anonymous route: RateLimit no-ops on a request
-		// with no subject (middleware/ratelimit.go), so no new scheme is needed here.
+		// anonymous to Auth0 (see anonymousPatterns) and, like every other anonymous
+		// route, metered by the per-IP AnonRateLimit (GH#868 Phase 1, above): the
+		// per-subject RateLimit no-ops on a request with no subject, but
+		// AnonRateLimit does not — it is the scheme that actually covers this route.
 		applications.SearchRoutes(mux, appStore, authorities.NewLookup(), logger)
 		// The public share page (#738): an anonymous, server-rendered HTML page for a
 		// single application at GET /a/{authoritySlug}/{ref...}. It point-reads the
