@@ -72,7 +72,7 @@ func TestNearPointHandler_RequiresLatLng(t *testing.T) {
 			store := &fakeNearPointStore{}
 			h := newNearPointTestHandler(store)
 
-			req := httptest.NewRequest(http.MethodGet, tc.url, nil)
+			req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, tc.url, nil)
 			rec := httptest.NewRecorder()
 			h.ServeHTTP(rec, req)
 
@@ -95,7 +95,7 @@ func TestNearPointHandler_ValidLatLngUsesDefaults(t *testing.T) {
 	store := &fakeNearPointStore{}
 	h := newNearPointTestHandler(store)
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/applications/near-point?lat=51.5&lng=-0.1", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/v1/applications/near-point?lat=51.5&lng=-0.1", nil)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
@@ -125,7 +125,7 @@ func TestNearPointHandler_ResponseShape(t *testing.T) {
 	store := &fakeNearPointStore{apps: []PlanningApplication{app}}
 	h := newNearPointTestHandler(store)
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/applications/near-point?lat=51.5&lng=-0.1", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/v1/applications/near-point?lat=51.5&lng=-0.1", nil)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
@@ -176,7 +176,7 @@ func TestNearPointHandler_RadiusClamping(t *testing.T) {
 				url += "&radius=" + tc.radius
 			}
 
-			req := httptest.NewRequest(http.MethodGet, url, nil)
+			req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
 			rec := httptest.NewRecorder()
 			h.ServeHTTP(rec, req)
 
@@ -220,7 +220,7 @@ func TestNearPointHandler_LimitClamping(t *testing.T) {
 				url += "&limit=" + tc.limit
 			}
 
-			req := httptest.NewRequest(http.MethodGet, url, nil)
+			req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
 			rec := httptest.NewRecorder()
 			h.ServeHTTP(rec, req)
 
@@ -243,7 +243,7 @@ func TestNearPointHandler_CursorRoundTrip(t *testing.T) {
 	store := &fakeNearPointStore{nextCursor: "raw-keyset-token"}
 	h := newNearPointTestHandler(store)
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/applications/near-point?lat=51.5&lng=-0.1", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/v1/applications/near-point?lat=51.5&lng=-0.1", nil)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
@@ -260,7 +260,7 @@ func TestNearPointHandler_CursorRoundTrip(t *testing.T) {
 
 	store2 := &fakeNearPointStore{}
 	h2 := newNearPointTestHandler(store2)
-	req2 := httptest.NewRequest(http.MethodGet, "/v1/applications/near-point?lat=51.5&lng=-0.1&cursor="+nextHeader, nil)
+	req2 := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/v1/applications/near-point?lat=51.5&lng=-0.1&cursor="+nextHeader, nil)
 	rec2 := httptest.NewRecorder()
 	h2.ServeHTTP(rec2, req2)
 
@@ -280,7 +280,7 @@ func TestNearPointHandler_CursorOmittedOnLastPage(t *testing.T) {
 	store := &fakeNearPointStore{}
 	h := newNearPointTestHandler(store)
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/applications/near-point?lat=51.5&lng=-0.1", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/v1/applications/near-point?lat=51.5&lng=-0.1", nil)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
@@ -300,7 +300,7 @@ func TestNearPointHandler_MalformedCursorIsBadRequest(t *testing.T) {
 	store := &fakeNearPointStore{}
 	h := newNearPointTestHandler(store)
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/applications/near-point?lat=51.5&lng=-0.1&cursor=not-valid-base64url!!!", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/v1/applications/near-point?lat=51.5&lng=-0.1&cursor=not-valid-base64url!!!", nil)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
@@ -319,7 +319,7 @@ func TestNearPointHandler_StoreError(t *testing.T) {
 	store := &fakeNearPointStore{err: errors.New("boom")}
 	h := newNearPointTestHandler(store)
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/applications/near-point?lat=51.5&lng=-0.1", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/v1/applications/near-point?lat=51.5&lng=-0.1", nil)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 

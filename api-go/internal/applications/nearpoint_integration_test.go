@@ -46,7 +46,7 @@ func TestNearPointHandler_Integration_RealPostGIS(t *testing.T) {
 	firstURL := "/v1/applications/near-point?lat=" + strconv.FormatFloat(pgCentreLat, 'f', -1, 64) +
 		"&lng=" + strconv.FormatFloat(pgCentreLon, 'f', -1, 64) + "&radius=6000&limit=2"
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, firstURL, nil))
+	mux.ServeHTTP(rec, httptest.NewRequestWithContext(ctx, http.MethodGet, firstURL, nil))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("page 1 status = %d, want 200; body = %s", rec.Code, rec.Body.String())
@@ -65,7 +65,7 @@ func TestNearPointHandler_Integration_RealPostGIS(t *testing.T) {
 
 	secondURL := firstURL + "&cursor=" + nextCursor
 	rec2 := httptest.NewRecorder()
-	mux.ServeHTTP(rec2, httptest.NewRequest(http.MethodGet, secondURL, nil))
+	mux.ServeHTTP(rec2, httptest.NewRequestWithContext(ctx, http.MethodGet, secondURL, nil))
 
 	if rec2.Code != http.StatusOK {
 		t.Fatalf("page 2 status = %d, want 200; body = %s", rec2.Code, rec2.Body.String())
