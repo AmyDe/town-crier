@@ -215,4 +215,116 @@ struct ApplicationDetailViewModelTests {
 
     #expect(sut.shareURL == nil)
   }
+
+  // MARK: - Anonymous mode (GH#879 Phase 2)
+
+  private var kingstonApplication: PlanningApplication {
+    PlanningApplication(
+      id: PlanningApplicationId(authority: "789", name: "Kingston/25/02755/CLC"),
+      reference: ApplicationReference("Kingston/25/02755/CLC"),
+      authority: LocalAuthority(code: "789", name: "Kingston upon Thames", slug: "kingston"),
+      status: .undecided,
+      receivedDate: Date(timeIntervalSince1970: 1_700_000_000),
+      description: "Certificate of lawfulness",
+      address: "1 Market Place, Kingston, KT1 1JS"
+    )
+  }
+
+  @Test func showsSignUpCTA_isTrue_whenAnonymousRepositoryInjected() {
+    let sut = ApplicationDetailViewModel(
+      application: .pendingReview,
+      anonymousApplicationDetailRepository: SpyAnonymousApplicationDetailRepository()
+    )
+
+    #expect(sut.showsSignUpCTA)
+  }
+
+  @Test func showsSignUpCTA_isFalse_byDefault() {
+    let sut = ApplicationDetailViewModel(application: .pendingReview)
+
+    #expect(!sut.showsSignUpCTA)
+  }
+
+  @Test func canSave_isFalse_inAnonymousMode() {
+    // Anonymous construction never injects a SavedApplicationRepository, so
+    // Save stays hidden regardless of the anonymous repository being present.
+    let sut = ApplicationDetailViewModel(
+      application: .pendingReview,
+      anonymousApplicationDetailRepository: SpyAnonymousApplicationDetailRepository()
+    )
+
+    #expect(!sut.canSave)
+  }
+
+  @Test func loadSavedState_isNoOp_inAnonymousMode() async {
+    // No SavedApplicationRepository is injected in anonymous mode, so this
+    // stays a no-op exactly like the existing "no repository" case.
+    let sut = ApplicationDetailViewModel(
+      application: .pendingReview,
+      anonymousApplicationDetailRepository: SpyAnonymousApplicationDetailRepository()
+    )
+
+    await sut.loadSavedState()
+
+    #expect(!sut.isSaved)
+  }
+
+  @Test func requestSignUp_invokesOnRequestSignUpCallback() {
+    let sut = ApplicationDetailViewModel(application: .pendingReview)
+    var invoked = false
+    sut.onRequestSignUp = { invoked = true }
+
+    sut.requestSignUp()
+
+    #expect(invoked)
+  }
+
+  @Test func refresh_inAnonymousMode_callsAnonymousRepositoryBySlug() async {
+    let anonSpy = SpyAnonymousApplicationDetailRepository()
+    anonSpy.fetchApplicationBySlugResult = .success(.permitted)
+    let sut = ApplicationDetailViewModel(
+      application: kingstonApplication,
+      anonymousApplicationDetailRepository: anonSpy
+    )
+
+    await sut.refresh()
+
+    #expect(
+      anonSpy.fetchApplicationBySlugCalls == [
+        .init(authoritySlug: "kingston", ref: "Kingston/25/02755/CLC")
+      ])
+    #expect(sut.reference == "2026/0099")
+  }
+
+  @Test func refresh_inAnonymousMode_skipsSilently_whenApplicationHasNoSlug() async {
+    // `.pendingReview` carries no authority slug — refreshing it by-slug would
+    // be meaningless, so the anonymous repository must never be called.
+    let anonSpy = SpyAnonymousApplicationDetailRepository()
+    let sut = ApplicationDetailViewModel(
+      application: .pendingReview,
+      anonymousApplicationDetailRepository: anonSpy
+    )
+
+    await sut.refresh()
+
+    #expect(anonSpy.fetchApplicationBySlugCalls.isEmpty)
+    #expect(sut.reference == "2026/0042")
+  }
+
+  @Test func refresh_inAnonymousMode_doesNotCallPlanningApplicationRepository() async {
+    // Guards against a future regression where both repositories are
+    // injected and the authed by-id path fires instead of the by-slug one.
+    let planningSpy = SpyPlanningApplicationRepository()
+    let anonSpy = SpyAnonymousApplicationDetailRepository()
+    anonSpy.fetchApplicationBySlugResult = .success(.permitted)
+    let sut = ApplicationDetailViewModel(
+      application: kingstonApplication,
+      planningApplicationRepository: planningSpy,
+      anonymousApplicationDetailRepository: anonSpy
+    )
+
+    await sut.refresh()
+
+    #expect(planningSpy.fetchApplicationCalls.isEmpty)
+  }
 }
