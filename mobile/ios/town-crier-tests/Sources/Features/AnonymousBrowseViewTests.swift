@@ -1,0 +1,32 @@
+import Testing
+import TownCrierDomain
+
+@testable import TownCrierPresentation
+
+@MainActor
+@Suite("AnonymousBrowseView")
+struct AnonymousBrowseViewTests {
+  private func makeCoordinator(
+    persistedState: AnonymousBrowseState? = nil
+  ) -> AnonymousBrowseCoordinator {
+    let stateRepository = SpyAnonymousBrowseStateRepository()
+    stateRepository.loadResult = persistedState
+    return AnonymousBrowseCoordinator(
+      geocoder: SpyPostcodeGeocoder(),
+      stateRepository: stateRepository,
+      applicationsRepository: SpyAnonymousApplicationsRepository()
+    )
+  }
+
+  @Test func body_renders_atWelcome() {
+    let sut = AnonymousBrowseView(coordinator: makeCoordinator())
+    _ = sut.body
+  }
+
+  @Test func body_renders_atPostcodeEntry() {
+    let coordinator = makeCoordinator()
+    _ = coordinator.makeWelcomeViewModel().getStarted()
+    let sut = AnonymousBrowseView(coordinator: coordinator)
+    _ = sut.body
+  }
+}
