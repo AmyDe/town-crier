@@ -92,6 +92,20 @@ public final class OnboardingViewModel: ObservableObject, ErrorHandlingViewModel
     }
   }
 
+  /// Seeds the wizard's postcode/coordinate from an already-resolved location
+  /// and jumps straight to the radius step, skipping postcode entry a second
+  /// time. Used for the anonymous browse post-signup handoff (GH#868 Phase
+  /// 3.5): a user who located themselves before creating an account
+  /// shouldn't be asked for their postcode again. Additive — the normal
+  /// (non-prefilled) flow through `.postcodeEntry` -> ``submitPostcode()`` is
+  /// unchanged for every other caller.
+  public func prefill(postcode: Postcode, coordinate: Coordinate) {
+    postcodeInput = postcode.value
+    validatedPostcode = postcode
+    geocodedCoordinate = coordinate
+    currentStep = .radiusPicker
+  }
+
   public func submitPostcode() async {
     isLoading = true
     error = nil
