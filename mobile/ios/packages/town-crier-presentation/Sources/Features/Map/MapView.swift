@@ -70,7 +70,7 @@ public struct MapView: View {
       ),
       onDismiss: { viewModel.presentPendingSummaryIfNeeded() },
       content: { stacked in
-        StackedApplicationsSheet(stacked: stacked, viewModel: viewModel)
+        StackedApplicationsSheet(stacked: stacked, onSelect: viewModel.selectFromStack)
       }
     )
   }
