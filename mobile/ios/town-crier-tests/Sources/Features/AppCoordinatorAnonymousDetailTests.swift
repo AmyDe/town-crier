@@ -39,6 +39,20 @@ struct AppCoordinatorAnonymousDetailTests {
     return (coordinator, planningSpy, anonSpy, authSpy)
   }
 
+  /// Carries an authority slug, unlike `.permitted`/`.rejected` — required for
+  /// exercising `refresh()`'s by-slug read.
+  private var kingstonApplication: PlanningApplication {
+    PlanningApplication(
+      id: PlanningApplicationId(authority: "789", name: "Kingston/25/02755/CLC"),
+      reference: ApplicationReference("Kingston/25/02755/CLC"),
+      authority: LocalAuthority(code: "789", name: "Kingston upon Thames", slug: "kingston"),
+      status: .undecided,
+      receivedDate: Date(timeIntervalSince1970: 1_700_000_000),
+      description: "Certificate of lawfulness",
+      address: "1 Market Place, Kingston, KT1 1JS"
+    )
+  }
+
   // MARK: - Share link routing
 
   @Test func showApplicationDetailBySlug_noSession_usesAnonymousRepository() async {
@@ -117,12 +131,14 @@ struct AppCoordinatorAnonymousDetailTests {
 
   @Test func makeApplicationDetailViewModel_afterAnonymousShareLink_refreshUsesAnonymousRepository() async {
     let (sut, _, anonSpy, _) = makeSUT(hasSession: false)
-    anonSpy.fetchApplicationBySlugResult = .success(.permitted)
+    // `kingstonApplication` carries an authority slug — required for
+    // refresh()'s by-slug read; the other fixtures (.permitted, etc.) don't.
+    anonSpy.fetchApplicationBySlugResult = .success(kingstonApplication)
     sut.showApplicationDetail(bySlug: "kingston", ref: "Kingston/25/02755/CLC")
     await sut.waitForPendingDetailLoad()
     anonSpy.fetchApplicationBySlugResult = .success(.rejected)
 
-    let vm = sut.makeApplicationDetailViewModel(application: .permitted)
+    let vm = sut.makeApplicationDetailViewModel(application: kingstonApplication)
     await vm.refresh()
 
     #expect(anonSpy.fetchApplicationBySlugCalls.count == 2)

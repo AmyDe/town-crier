@@ -9,6 +9,11 @@ public final class AppCoordinator: ObservableObject {
   static let logger = Logger(subsystem: "uk.towncrierapp", category: "AppCoordinator")
 
   @Published public var detailApplication: PlanningApplication?
+  /// True when `detailApplication` was resolved via the anonymous
+  /// (no-session) path (GH#879 Phase 2), so `makeApplicationDetailViewModel`
+  /// builds the no-Save/sign-up-CTA/by-slug-refresh configuration. Internal
+  /// (not private) so AppCoordinator+Detail can set it.
+  var isDetailApplicationAnonymous = false
   @Published public var deepLinkError: DomainError?
   @Published public var presentedLegalDocument: LegalDocumentType?
   @Published public var isManageSubscriptionPresented = false
@@ -58,6 +63,13 @@ public final class AppCoordinator: ObservableObject {
   // nothing. Internal (not private) so the AppCoordinator+Onboarding
   // extension can read it.
   let anonymousBrowseStateRepository: AnonymousBrowseStateRepository?
+  // Anonymous share-link / in-app detail fetch (GH#879 Phase 2). Optional so
+  // existing call sites/tests inject nothing. Internal so AppCoordinator+Detail
+  // can read it.
+  let anonymousApplicationDetailRepository: AnonymousApplicationDetailRepository?
+  /// Fired by the anonymous detail CTA (GH#879 Phase 2) — wired by the
+  /// composition root to the same Auth0 entry point every sign-up surface uses.
+  public var onRequestSignUp: (() -> Void)?
   // Single live source of truth for the appearance preference (GH#878),
   // shared with the anonymous welcome screen. Optional so existing call
   // sites/tests that don't exercise appearance inject nothing — forwarded
@@ -72,7 +84,8 @@ public final class AppCoordinator: ObservableObject {
   let geocoder: PostcodeGeocoder?
   private let appVersionProvider: AppVersionProvider
   private let versionConfigService: VersionConfigService
-  private let savedApplicationRepository: SavedApplicationRepository?
+  // Internal (not private) so the AppCoordinator+Detail extension can read it.
+  let savedApplicationRepository: SavedApplicationRepository?
   let offerCodeService: OfferCodeService?
   private let tierCache: UserDefaults
   let notificationStateRepository: NotificationStateRepository?
@@ -124,7 +137,8 @@ public final class AppCoordinator: ObservableObject {
     badgeSetter: BadgeSetting? = nil,
     reviewPromptTracker: ReviewPromptTracker? = nil,
     anonymousBrowseStateRepository: AnonymousBrowseStateRepository? = nil,
-    appearanceStore: AppearanceStore? = nil
+    appearanceStore: AppearanceStore? = nil,
+    anonymousApplicationDetailRepository: AnonymousApplicationDetailRepository? = nil
   ) {
     self.repository = repository
     self.authService = authService
@@ -154,6 +168,7 @@ public final class AppCoordinator: ObservableObject {
     self.reviewPromptTracker = reviewPromptTracker
     self.anonymousBrowseStateRepository = anonymousBrowseStateRepository
     self.appearanceStore = appearanceStore
+    self.anonymousApplicationDetailRepository = anonymousApplicationDetailRepository
 
     // Restore the last successfully resolved tier so that paying users
     // retain feature access immediately, even before the live resolution
@@ -283,29 +298,6 @@ public final class AppCoordinator: ObservableObject {
       versionConfigService: versionConfigService,
       appVersionProvider: appVersionProvider
     )
-  }
-
-  public func makeApplicationDetailViewModel(
-    application: PlanningApplication
-  ) -> ApplicationDetailViewModel {
-    let viewModel = ApplicationDetailViewModel(
-      application: application,
-      savedApplicationRepository: savedApplicationRepository,
-      planningApplicationRepository: repository
-    )
-    viewModel.onDismiss = { [weak self] in
-      self?.detailApplication = nil
-    }
-    // Review-prompt value moments (GH #628): a portal tap-through and a save are
-    // both genuine engagement peaks. The save callback fires only on a
-    // successful false→true save (the view model guarantees this).
-    viewModel.onOpenPortal = { [weak self] _ in
-      self?.reviewPromptTracker?.record(.tappedPortal)
-    }
-    viewModel.onSaved = { [weak self] in
-      self?.reviewPromptTracker?.record(.savedApplication)
-    }
-    return viewModel
   }
 
   // MARK: - Subscription Tier Resolution
