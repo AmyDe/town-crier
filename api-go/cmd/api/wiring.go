@@ -255,9 +255,8 @@ func newRouter(
 	// load that ultimately lands on PlanIt) completely unmetered. It is a no-op
 	// for authenticated requests, so it never interferes with the per-subject
 	// RateLimit it wraps.
-	_ = anonRateLimitWindowSeconds
-	_ = anonRateLimitRequests
-	// TEMP-RED-CHECK: AnonRateLimit deliberately not wired yet.
+	anonWindow := time.Duration(anonRateLimitWindowSeconds) * time.Second
+	dispatch = middleware.AnonRateLimit(middleware.NewAnonRateLimitStore(anonWindow), anonRateLimitRequests, logger)(dispatch)
 	if deviceStore != nil {
 		devicetokens.Routes(mux, deviceStore, time.Now, logger)
 	}
