@@ -279,10 +279,14 @@ func newRouter(
 		// when the profile store is genuinely present — passing a typed-nil
 		// *profiles.PostgresStore would wrap into a non-nil interface and defeat the
 		// handler's nil-check (the same typed-nil gotcha guarded for the saved
-		// store above).
+		// store above). The list/patch handlers read the same store to compute
+		// each zone's derived "paused" field (GH#889): a downgrade that leaves a
+		// user over their new tier's watch-zone limit pauses the over-quota zones
+		// in API responses without deleting or mutating them.
 		zoneOpts := []watchzones.Option{watchzones.WithMetricsRecorder(registry)}
 		if store != nil {
 			zoneOpts = append(zoneOpts, watchzones.WithProfileCAS(store))
+			zoneOpts = append(zoneOpts, watchzones.WithProfileReader(store))
 		}
 		watchzones.Routes(mux, watchZoneStore, logger, zoneOpts...)
 		// application-authorities derives from the user's watch zones plus the
