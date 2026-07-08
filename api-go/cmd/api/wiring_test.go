@@ -158,6 +158,14 @@ func (f foundAppStore) Search(context.Context, string, string, int) ([]applicati
 	return []applications.PlanningApplication{f.app}, false, nil
 }
 
+// FindNearbyPage unconditionally returns the fixture application, ignoring the
+// lat/lng/radius/limit/cursor args — this fake exists only to give the
+// anonymous near-point route's end-to-end wiring test (GH#868 Phase 2) a real
+// record to render and serialise.
+func (f foundAppStore) FindNearbyPage(context.Context, float64, float64, float64, int, string) ([]applications.PlanningApplication, string, error) {
+	return []applications.PlanningApplication{f.app}, "", nil
+}
+
 // fakeSavedStore is a savedapplications.Store returning the empty path.
 type fakeSavedStore struct{}
 
@@ -413,6 +421,48 @@ func TestRouter_ApplicationSearchAnonymous(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), `"reference":"23/03456/FUL"`) {
 		t.Errorf("body missing reference 23/03456/FUL (planit_name, not uid); body = %s", rec.Body.String())
+	}
+}
+
+// TestRouter_NearPointAnonymous is the end-to-end wiring guard for the public
+// applications-near-a-point endpoint (GH#868 Phase 2): it boots the FULL
+// router with a store that returns a real application, then proves
+// GET /v1/applications/near-point serves anonymously (no token, 200
+// application/json) with a bare-array body — the same raw-domain wire shape
+// (NearbyResult) the authed nearby page emits. The pattern string match is a
+// drift guard: a rename here without updating anonymousPatterns would silently
+// 401 the route.
+func TestRouter_NearPointAnonymous(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.DiscardHandler)
+	app := applications.PlanningApplication{
+		Name:     "23/03456/FUL",
+		UID:      "croydon-23-03456-FUL",
+		AreaName: "Croydon",
+		AreaID:   301,
+		Address:  "10 Downing Street, London",
+	}
+	appStore := foundAppStore{app: app}
+	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, appStore, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "", nil, nil, "", nil, nil, nil, 60, 60, logger)
+
+	rec := serveReq(t, h, http.MethodGet, "/v1/applications/near-point?lat=51.5&lng=-0.1", "", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /v1/applications/near-point status = %d, want 200 (anonymous); body = %s", rec.Code, rec.Body.String())
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		t.Errorf("Content-Type = %q, want application/json", ct)
+	}
+	if !strings.Contains(rec.Body.String(), `"name":"23/03456/FUL"`) {
+		t.Errorf("body missing planit_name 23/03456/FUL; body = %s", rec.Body.String())
+	}
+	if !strings.HasPrefix(strings.TrimSpace(rec.Body.String()), "[") {
+		t.Errorf("body must be a bare JSON array, got: %s", rec.Body.String())
+	}
+
+	badReq := serveReq(t, h, http.MethodGet, "/v1/applications/near-point", "", "")
+	if badReq.Code != http.StatusBadRequest {
+		t.Fatalf("GET /v1/applications/near-point (no lat/lng) status = %d, want 400", badReq.Code)
 	}
 }
 
