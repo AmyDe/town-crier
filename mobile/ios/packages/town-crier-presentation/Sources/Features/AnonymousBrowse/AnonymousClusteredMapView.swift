@@ -204,8 +204,8 @@
         mapView.deselectAnnotation(annotation, animated: false)
 
         if let cluster = annotation as? MKClusterAnnotation {
-          let members = cluster.memberAnnotations.compactMap { annotation in
-            annotation as? AnonymousApplicationAnnotation
+          let members = cluster.memberAnnotations.compactMap { memberAnnotation in
+            memberAnnotation as? AnonymousApplicationAnnotation
           }
           let regionSpan = max(mapView.region.span.latitudeDelta, mapView.region.span.longitudeDelta)
           let isStacked = AnonymousClusterStackDetector.isStacked(
