@@ -24,6 +24,7 @@ public final class UserDefaultsAnonymousBrowseStateRepository: AnonymousBrowseSt
     return AnonymousBrowseState(
       postcode: postcode,
       coordinate: coordinate,
+      radiusMetres: stored.radiusMetres,
       createdAt: Date(timeIntervalSince1970: stored.createdAt)
     )
   }
@@ -33,6 +34,7 @@ public final class UserDefaultsAnonymousBrowseStateRepository: AnonymousBrowseSt
       postcode: state.postcode.value,
       latitude: state.coordinate.latitude,
       longitude: state.coordinate.longitude,
+      radiusMetres: state.radiusMetres,
       createdAt: state.createdAt.timeIntervalSince1970
     )
     guard let data = try? encoder.encode(stored) else { return }
@@ -50,6 +52,33 @@ public final class UserDefaultsAnonymousBrowseStateRepository: AnonymousBrowseSt
     let postcode: String
     let latitude: Double
     let longitude: Double
+    let radiusMetres: Double
     let createdAt: TimeInterval
+
+    private enum CodingKeys: String, CodingKey {
+      case postcode, latitude, longitude, radiusMetres, createdAt
+    }
+
+    init(postcode: String, latitude: Double, longitude: Double, radiusMetres: Double, createdAt: TimeInterval) {
+      self.postcode = postcode
+      self.latitude = latitude
+      self.longitude = longitude
+      self.radiusMetres = radiusMetres
+      self.createdAt = createdAt
+    }
+
+    /// Custom decode so a blob saved before `radiusMetres` existed (GH#868
+    /// Phase 3, pre-refinement) still loads — a live TestFlight tester's
+    /// already-persisted anonymous session shouldn't be silently dropped by
+    /// this change. Falls back to the same 2000m default
+    /// `AnonymousBrowseState` itself seeds.
+    init(from decoder: Decoder) throws {
+      let container = try decoder.container(keyedBy: CodingKeys.self)
+      postcode = try container.decode(String.self, forKey: .postcode)
+      latitude = try container.decode(Double.self, forKey: .latitude)
+      longitude = try container.decode(Double.self, forKey: .longitude)
+      createdAt = try container.decode(TimeInterval.self, forKey: .createdAt)
+      radiusMetres = try container.decodeIfPresent(Double.self, forKey: .radiusMetres) ?? 2000
+    }
   }
 }
