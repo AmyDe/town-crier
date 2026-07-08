@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import Testing
 import TownCrierDomain
@@ -85,5 +86,32 @@ struct SettingsAppearanceModeTests {
     let sut = makeSUT(appearanceMode: .dark)
 
     #expect(sut.appearanceMode == .dark)
+  }
+
+  // MARK: - Live re-render when the store changes from elsewhere (GH#878 follow-up)
+
+  /// The Settings Picker happened to look fine when the change originated
+  /// from the Picker's own binding — SwiftUI's `ObservedObject.Wrapper`
+  /// setter sends `objectWillChange` on our behalf in that one case. This
+  /// test targets a change that originates elsewhere (e.g. the welcome
+  /// screen's control), which that self-triggered path can't cover.
+  @Test func externalStoreMutation_notifiesSettingsViewModelObjectWillChange() {
+    let store = AppearanceStore(defaults: UserDefaults(suiteName: UUID().uuidString) ?? .standard)
+    let sut = SettingsViewModel(
+      authService: SpyAuthenticationService(),
+      subscriptionService: SpySubscriptionService(),
+      userProfileRepository: SpyUserProfileRepository(),
+      appVersionProvider: SpyAppVersionProvider(),
+      notificationService: SpyNotificationService(),
+      appearanceStore: store
+    )
+    var notified = false
+    let subscription = sut.objectWillChange.sink { _ in notified = true }
+
+    withExtendedLifetime(subscription) {
+      store.appearanceMode = .oledDark
+    }
+
+    #expect(notified)
   }
 }

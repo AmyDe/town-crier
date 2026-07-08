@@ -31,6 +31,11 @@ public final class AnonymousBrowseCoordinator: ObservableObject {
   /// radius picker so a slider drag re-persists the postcode/coordinate
   /// alongside the newly chosen radius (GH#868 Phase 3 refinement).
   private var currentState: AnonymousBrowseState?
+  /// Single live source of truth for the appearance preference (GH#878),
+  /// shared with `SettingsViewModel` — injected by the composition root so
+  /// the welcome screen's appearance control and the root
+  /// `.preferredColorScheme` observe the exact same instance.
+  private let appearanceStore: AppearanceStore
 
   /// Fired by "I already have an account", the postcode-entry back button's
   /// sibling CTA paths, and the map's CTA banner / deeper-action taps — all
@@ -41,11 +46,13 @@ public final class AnonymousBrowseCoordinator: ObservableObject {
   public init(
     geocoder: PostcodeGeocoder,
     stateRepository: AnonymousBrowseStateRepository,
-    applicationsRepository: AnonymousApplicationsRepository
+    applicationsRepository: AnonymousApplicationsRepository,
+    appearanceStore: AppearanceStore? = nil
   ) {
     self.geocoder = geocoder
     self.stateRepository = stateRepository
     self.applicationsRepository = applicationsRepository
+    self.appearanceStore = appearanceStore ?? AppearanceStore()
     self.screen = .welcome
     self.mapViewModel = nil
 
@@ -60,6 +67,7 @@ public final class AnonymousBrowseCoordinator: ObservableObject {
 
   public func makeWelcomeViewModel() -> WelcomeViewModel {
     WelcomeViewModel(
+      appearanceStore: appearanceStore,
       onGetStarted: { [weak self] in self?.screen = .postcodeEntry },
       onSignIn: { [weak self] in self?.onRequestSignIn?() }
     )

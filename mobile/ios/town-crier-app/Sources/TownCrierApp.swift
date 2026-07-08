@@ -15,6 +15,13 @@ struct TownCrierApp: App {
   @StateObject private var forceUpdateViewModel: ForceUpdateViewModel
   @StateObject private var settingsViewModel: SettingsViewModel
   @StateObject private var anonymousBrowseCoordinator: AnonymousBrowseCoordinator
+  // Single live source of truth for the appearance preference (GH#878): the
+  // ONE `AppearanceStore` instance shared by `SettingsViewModel`, the
+  // anonymous welcome screen's appearance control, and the root
+  // `.preferredColorScheme` below — a second object merely writing the same
+  // UserDefaults key would persist but not live-update this scheme until
+  // relaunch.
+  @StateObject private var appearanceStore: AppearanceStore
   private let crashReporter: CrashReporter
   private let notificationDelegate: NotificationDelegate
   private let pushRegistrar: PushNotificationRegistrar
@@ -25,6 +32,12 @@ struct TownCrierApp: App {
       domain: "towncrierapp.uk.auth0.com",
       audience: APIEnvironment.current.baseURL.absoluteString
     )
+
+    // Owned once here (GH#878) — every consumer below (`AppCoordinator`,
+    // `AnonymousBrowseCoordinator`, and this struct's own `appearanceStore`
+    // StateObject) shares this exact instance.
+    let sharedAppearanceStore = AppearanceStore()
+    _appearanceStore = StateObject(wrappedValue: sharedAppearanceStore)
 
     let authService = Auth0AuthenticationService(config: auth0Config)
     let appVersionProvider = BundleAppVersionProvider()
@@ -98,7 +111,8 @@ struct TownCrierApp: App {
       notificationStateRepository: notificationStateRepository,
       badgeSetter: UIApplicationBadgeSetter(),
       reviewPromptTracker: reviewPromptTracker,
-      anonymousBrowseStateRepository: anonymousBrowseStateRepository
+      anonymousBrowseStateRepository: anonymousBrowseStateRepository,
+      appearanceStore: sharedAppearanceStore
     )
     reviewRequester.coordinator = appCoordinator  // weak; coordinator owns the tracker
     _coordinator = StateObject(wrappedValue: appCoordinator)
@@ -122,7 +136,8 @@ struct TownCrierApp: App {
     let anonymousCoordinator = AnonymousBrowseCoordinator(
       geocoder: anonymousGeocoder,
       stateRepository: anonymousBrowseStateRepository,
-      applicationsRepository: anonymousApplicationsRepository
+      applicationsRepository: anonymousApplicationsRepository,
+      appearanceStore: sharedAppearanceStore
     )
     anonymousCoordinator.onRequestSignIn = {
       Task { @MainActor in await loginVM.login() }
@@ -226,7 +241,7 @@ struct TownCrierApp: App {
         Task { await coordinator.syncBadge() }
       }
       .requestingReview(when: coordinator)
-      .preferredColorScheme(settingsViewModel.appearanceMode.preferredColorScheme)
+      .preferredColorScheme(appearanceStore.appearanceMode.preferredColorScheme)
       .alert(
         coordinator.deepLinkError?.userTitle ?? "Error",
         isPresented: Binding(

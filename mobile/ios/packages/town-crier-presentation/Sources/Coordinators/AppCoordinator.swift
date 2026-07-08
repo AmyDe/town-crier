@@ -58,6 +58,11 @@ public final class AppCoordinator: ObservableObject {
   // nothing. Internal (not private) so the AppCoordinator+Onboarding
   // extension can read it.
   let anonymousBrowseStateRepository: AnonymousBrowseStateRepository?
+  // Single live source of truth for the appearance preference (GH#878),
+  // shared with the anonymous welcome screen. Optional so existing call
+  // sites/tests that don't exercise appearance inject nothing — forwarded
+  // as-is to `SettingsViewModel`, which falls back to its own store.
+  private let appearanceStore: AppearanceStore?
   let notificationService: NotificationService
   // Internal (not private) so the AppCoordinator+WatchZones extension can read it.
   let offlineRepository: OfflineAwareRepository?
@@ -118,7 +123,8 @@ public final class AppCoordinator: ObservableObject {
     notificationStateRepository: NotificationStateRepository? = nil,
     badgeSetter: BadgeSetting? = nil,
     reviewPromptTracker: ReviewPromptTracker? = nil,
-    anonymousBrowseStateRepository: AnonymousBrowseStateRepository? = nil
+    anonymousBrowseStateRepository: AnonymousBrowseStateRepository? = nil,
+    appearanceStore: AppearanceStore? = nil
   ) {
     self.repository = repository
     self.authService = authService
@@ -147,6 +153,7 @@ public final class AppCoordinator: ObservableObject {
     self.badgeSetter = badgeSetter
     self.reviewPromptTracker = reviewPromptTracker
     self.anonymousBrowseStateRepository = anonymousBrowseStateRepository
+    self.appearanceStore = appearanceStore
 
     // Restore the last successfully resolved tier so that paying users
     // retain feature access immediately, even before the live resolution
@@ -256,7 +263,8 @@ public final class AppCoordinator: ObservableObject {
       subscriptionService: subscriptionService,
       userProfileRepository: userProfileRepository,
       appVersionProvider: appVersionProvider,
-      notificationService: notificationService
+      notificationService: notificationService,
+      appearanceStore: appearanceStore
     )
   }
 

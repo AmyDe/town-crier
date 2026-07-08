@@ -8,7 +8,8 @@ import TownCrierDomain
 @MainActor
 struct AnonymousBrowseCoordinatorTests {
   private func makeSUT(
-    persistedState: AnonymousBrowseState? = nil
+    persistedState: AnonymousBrowseState? = nil,
+    appearanceStore: AppearanceStore? = nil
   ) -> (
     AnonymousBrowseCoordinator, SpyPostcodeGeocoder, SpyAnonymousBrowseStateRepository,
     SpyAnonymousApplicationsRepository
@@ -20,7 +21,8 @@ struct AnonymousBrowseCoordinatorTests {
     let sut = AnonymousBrowseCoordinator(
       geocoder: geocoder,
       stateRepository: stateRepository,
-      applicationsRepository: applicationsRepository
+      applicationsRepository: applicationsRepository,
+      appearanceStore: appearanceStore
     )
     return (sut, geocoder, stateRepository, applicationsRepository)
   }
@@ -141,6 +143,32 @@ struct AnonymousBrowseCoordinatorTests {
     let (sut, _, _, _) = makeSUT(persistedState: stateWithRadius)
 
     #expect(sut.mapViewModel?.selectedRadiusMetres == 1500)
+  }
+
+  // MARK: - Appearance (GH#878)
+
+  @Test func makeWelcomeViewModel_usesTheInjectedAppearanceStore() {
+    let defaults = UserDefaults(suiteName: UUID().uuidString)
+    // swiftlint:disable:next force_unwrapping
+    let appearanceStore = AppearanceStore(defaults: defaults!)
+    appearanceStore.appearanceMode = .oledDark
+    let (sut, _, _, _) = makeSUT(appearanceStore: appearanceStore)
+
+    let welcomeVM = sut.makeWelcomeViewModel()
+
+    #expect(welcomeVM.appearanceMode == .oledDark)
+  }
+
+  @Test func welcomeViewModel_selectAppearanceMode_updatesTheSameInjectedStore() {
+    let defaults = UserDefaults(suiteName: UUID().uuidString)
+    // swiftlint:disable:next force_unwrapping
+    let appearanceStore = AppearanceStore(defaults: defaults!)
+    let (sut, _, _, _) = makeSUT(appearanceStore: appearanceStore)
+    let welcomeVM = sut.makeWelcomeViewModel()
+
+    welcomeVM.selectAppearanceMode(.dark)
+
+    #expect(appearanceStore.appearanceMode == .dark)
   }
 
   // MARK: - Reset (sign-out)
