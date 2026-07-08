@@ -457,21 +457,26 @@ func TestApplyNotification(t *testing.T) {
 		name        string
 		notifType   string
 		subtype     string
+		productID   string
 		startTier   profiles.SubscriptionTier
+		wantErr     bool
 		wantChanged bool
 		wantTier    profiles.SubscriptionTier
 		wantGrace   bool
+		wantExpiry  bool // when true, assert SubscriptionExpiry == future
 	}{
-		{"subscribed", "SUBSCRIBED", "", profiles.TierFree, true, profiles.TierPro, false},
-		{"offer redeemed", "OFFER_REDEEMED", "", profiles.TierFree, true, profiles.TierPro, false},
-		{"did renew keeps tier", "DID_RENEW", "", profiles.TierPro, true, profiles.TierPro, false},
-		{"upgrade", "DID_CHANGE_RENEWAL_PREF", "UPGRADE", profiles.TierPersonal, true, profiles.TierPro, false},
-		{"downgrade no change", "DID_CHANGE_RENEWAL_PREF", "DOWNGRADE", profiles.TierPro, false, profiles.TierPro, false},
-		{"grace period", "DID_FAIL_TO_RENEW", "GRACE_PERIOD", profiles.TierPro, true, profiles.TierPro, true},
-		{"fail to renew expires", "DID_FAIL_TO_RENEW", "", profiles.TierPro, true, profiles.TierFree, false},
-		{"expired", "EXPIRED", "", profiles.TierPro, true, profiles.TierFree, false},
-		{"revoke", "REVOKE", "", profiles.TierPro, true, profiles.TierFree, false},
-		{"unknown type ignored", "PRICE_INCREASE", "", profiles.TierPro, false, profiles.TierPro, false},
+		{"subscribed", "SUBSCRIBED", "", ProductProMonthly, profiles.TierFree, false, true, profiles.TierPro, false, false},
+		{"offer redeemed", "OFFER_REDEEMED", "", ProductProMonthly, profiles.TierFree, false, true, profiles.TierPro, false, false},
+		{"did renew same product keeps tier", "DID_RENEW", "", ProductProMonthly, profiles.TierPro, false, true, profiles.TierPro, false, true},
+		{"did renew lower product downgrades tier", "DID_RENEW", "", ProductPersonalMonthly, profiles.TierPro, false, true, profiles.TierPersonal, false, true},
+		{"did renew unknown product errors", "DID_RENEW", "", "uk.towncrierapp.mystery.monthly", profiles.TierPro, true, false, profiles.TierPro, false, false},
+		{"upgrade", "DID_CHANGE_RENEWAL_PREF", "UPGRADE", ProductProMonthly, profiles.TierPersonal, false, true, profiles.TierPro, false, false},
+		{"downgrade no change", "DID_CHANGE_RENEWAL_PREF", "DOWNGRADE", ProductProMonthly, profiles.TierPro, false, false, profiles.TierPro, false, false},
+		{"grace period", "DID_FAIL_TO_RENEW", "GRACE_PERIOD", ProductProMonthly, profiles.TierPro, false, true, profiles.TierPro, true, false},
+		{"fail to renew expires", "DID_FAIL_TO_RENEW", "", ProductProMonthly, profiles.TierPro, false, true, profiles.TierFree, false, false},
+		{"expired", "EXPIRED", "", ProductProMonthly, profiles.TierPro, false, true, profiles.TierFree, false, false},
+		{"revoke", "REVOKE", "", ProductProMonthly, profiles.TierPro, false, true, profiles.TierFree, false, false},
+		{"unknown type ignored", "PRICE_INCREASE", "", ProductProMonthly, profiles.TierPro, false, false, profiles.TierPro, false, false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -479,9 +484,27 @@ func TestApplyNotification(t *testing.T) {
 			p := freshProfile(t)
 			p.Tier = tc.startTier
 			notif := DecodedNotification{NotificationType: tc.notifType, Subtype: tc.subtype}
-			txn := DecodedTransaction{ProductID: ProductProMonthly, ExpiresDate: future}
+			txn := DecodedTransaction{ProductID: tc.productID, ExpiresDate: future}
 
 			changed, err := applyNotification(p, notif, txn)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("applyNotification: want error, got nil")
+				}
+				if changed {
+					t.Error("changed = true, want false on error")
+				}
+				if p.Tier != tc.startTier {
+					t.Errorf("tier = %v after error, want unchanged %v", p.Tier, tc.startTier)
+				}
+				if p.SubscriptionExpiry != nil {
+					t.Errorf("expiry = %v after error, want unmutated (nil)", p.SubscriptionExpiry)
+				}
+				if p.GracePeriodExpiry != nil {
+					t.Error("grace period set after error, want unmutated")
+				}
+				return
+			}
 			if err != nil {
 				t.Fatalf("applyNotification: %v", err)
 			}
@@ -493,6 +516,9 @@ func TestApplyNotification(t *testing.T) {
 			}
 			if (p.GracePeriodExpiry != nil) != tc.wantGrace {
 				t.Errorf("grace set = %v, want %v", p.GracePeriodExpiry != nil, tc.wantGrace)
+			}
+			if tc.wantExpiry && (p.SubscriptionExpiry == nil || !p.SubscriptionExpiry.Equal(future)) {
+				t.Errorf("expiry = %v, want %v", p.SubscriptionExpiry, future)
 			}
 		})
 	}
