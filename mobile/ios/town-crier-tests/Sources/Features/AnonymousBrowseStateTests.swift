@@ -50,8 +50,11 @@ struct AnonymousBrowseStateTests {
     let coordinate = try Coordinate(latitude: 52.2053, longitude: 0.1218)
 
     let sut = AnonymousBrowseState(
-      postcode: postcode, coordinate: coordinate, radiusMetres: 1500,
-      createdAt: Date(timeIntervalSince1970: 0))
+      postcode: postcode,
+      coordinate: coordinate,
+      radiusMetres: 1500,
+      createdAt: Date(timeIntervalSince1970: 0)
+    )
 
     #expect(sut.radiusMetres == 1500)
   }
