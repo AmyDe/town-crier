@@ -207,6 +207,13 @@ struct AnonymousBrowseCoordinatorTests {
     #expect(sut.selectedTab == .applications)
   }
 
+  /// The tab set is exactly Applications/Map/Settings (Zones arrives in
+  /// Phase 4) — no Saved tab, deliberately (saving is account-bound).
+  @Test func tab_allCases_isExactlyApplicationsMapSettings() {
+    #expect(
+      AnonymousBrowseCoordinator.Tab.allCases == [.applications, .map, .settings])
+  }
+
   @Test func makeApplicationListViewModel_afterPostcodeResolved_seedsFromCurrentState() {
     let (sut, _, _, _) = makeSUT(persistedState: testState)
 

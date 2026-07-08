@@ -27,8 +27,9 @@ public final class AnonymousBrowseCoordinator: ObservableObject {
   /// The anonymous tab shell's tabs (GH#879 Phase 3). Deliberately no
   /// `.saved` case — saving is account-bound (ADR 0035) and stays the
   /// conversion pitch; no `.zones` case yet — device-local zones arrive in
-  /// Phase 4.
-  public enum Tab: Hashable, Sendable {
+  /// Phase 4. `CaseIterable` so tests can assert the tab set is exactly
+  /// these three, with no silent additions.
+  public enum Tab: Hashable, CaseIterable, Sendable {
     case applications
     case map
     case settings
