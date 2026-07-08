@@ -2,10 +2,11 @@ import SwiftUI
 
 /// The anonymous (pre-signup) tab shell (GH#879 Phase 3), parallel to the
 /// authenticated `MainTabView` (`town-crier-app/Sources/MainTabView.swift`):
-/// three tabs — Applications, Map, Settings. No Saved tab (saving is
-/// account-bound, ADR 0035); no Zones tab yet (device-local zones arrive in
-/// Phase 4). Replaces the bare `AnonymousMapView` as the post-postcode
-/// destination, and as what a persisted anonymous session relaunches into.
+/// four tabs — Applications, Map, Zones, Settings (Zones added Phase 4,
+/// matching the authed shell's tab order and its `mappin.and.ellipse` icon).
+/// No Saved tab (saving is account-bound, ADR 0035). Replaces the bare
+/// `AnonymousMapView` as the post-postcode destination, and as what a
+/// persisted anonymous session relaunches into.
 ///
 /// The persistent ``AccountCTABanner`` appears over Applications and Map via
 /// the shared `View.accountCTABanner(onCreateAccount:onSignIn:)` modifier,
@@ -18,7 +19,10 @@ import SwiftUI
 /// full writeup. It is omitted on Settings — Settings already has its own
 /// prominent "Create free account" section, so a second copy of the same
 /// pitch would be redundant clutter (design-language: calm clarity, one
-/// hero element per screen).
+/// hero element per screen). It is likewise omitted on Zones: every zone row
+/// already carries its own alert-affordance CTA
+/// (``DeviceLocalZoneListView``), and a persistent banner on top of that
+/// would be the same redundant-clutter problem, not a new one.
 public struct AnonymousMainTabView: View {
   @ObservedObject var coordinator: AnonymousBrowseCoordinator
 
@@ -30,6 +34,7 @@ public struct AnonymousMainTabView: View {
     TabView(selection: $coordinator.selectedTab) {
       applicationsTab
       mapTab
+      zonesTab
       settingsTab
     }
     .tint(Color.tcAmber)
@@ -73,6 +78,17 @@ public struct AnonymousMainTabView: View {
       Label("Map", systemImage: "map")
     }
     .tag(AnonymousBrowseCoordinator.Tab.map)
+  }
+
+  @ViewBuilder
+  private var zonesTab: some View {
+    NavigationStack {
+      DeviceLocalZoneListView(viewModel: coordinator.makeDeviceLocalZoneListViewModel())
+    }
+    .tabItem {
+      Label("Zones", systemImage: "mappin.and.ellipse")
+    }
+    .tag(AnonymousBrowseCoordinator.Tab.zones)
   }
 
   private var settingsTab: some View {

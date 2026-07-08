@@ -12,7 +12,10 @@ struct AnonymousApplicationListViewTests {
   ) -> (AnonymousApplicationListViewModel, SpyAnonymousApplicationsRepository) {
     let repository = SpyAnonymousApplicationsRepository()
     let viewModel = AnonymousApplicationListViewModel(
-      repository: repository, coordinate: coordinate, radiusMetres: radiusMetres)
+      repository: repository,
+      zoneRepository: SpyDeviceLocalZoneRepository(),
+      fallbackCoordinate: coordinate,
+      fallbackRadiusMetres: radiusMetres)
     return (viewModel, repository)
   }
 

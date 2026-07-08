@@ -18,20 +18,20 @@ public final class AnonymousBrowseCoordinator: ObservableObject {
   public enum Screen: Equatable, Sendable {
     case welcome
     case postcodeEntry
-    /// The anonymous tab shell — Applications, Map, Settings (GH#879 Phase
-    /// 3; Zones arrives in Phase 4). Replaces the bare map as the
-    /// post-postcode destination.
+    /// The anonymous tab shell — Applications, Map, Zones, Settings.
+    /// Replaces the bare map as the post-postcode destination.
     case tabs
   }
 
-  /// The anonymous tab shell's tabs (GH#879 Phase 3). Deliberately no
-  /// `.saved` case — saving is account-bound (ADR 0035) and stays the
-  /// conversion pitch; no `.zones` case yet — device-local zones arrive in
-  /// Phase 4. `CaseIterable` so tests can assert the tab set is exactly
-  /// these three, with no silent additions.
+  /// The anonymous tab shell's tabs, in display order (GH#879 Phase 3;
+  /// `.zones` added Phase 4). Deliberately no `.saved` case — saving is
+  /// account-bound (ADR 0035) and stays the conversion pitch. `CaseIterable`
+  /// so tests can assert the tab set is exactly these four, with no silent
+  /// additions.
   public enum Tab: Hashable, CaseIterable, Sendable {
     case applications
     case map
+    case zones
     case settings
   }
 
@@ -43,6 +43,11 @@ public final class AnonymousBrowseCoordinator: ObservableObject {
   private let geocoder: PostcodeGeocoder
   private let stateRepository: AnonymousBrowseStateRepository
   private let applicationsRepository: AnonymousApplicationsRepository
+  /// Backs the Zones tab (GH#879 Phase 4) and the Applications tab's
+  /// zone-driven query/picker. A distinct store from `stateRepository` — see
+  /// `DeviceLocalZoneRepository`'s own docs for the migration relationship
+  /// between the two.
+  private let deviceLocalZoneRepository: DeviceLocalZoneRepository
   /// The state backing the current map session, kept in sync with the live
   /// radius picker so a slider drag re-persists the postcode/coordinate
   /// alongside the newly chosen radius (GH#868 Phase 3 refinement). Also the
@@ -90,12 +95,14 @@ public final class AnonymousBrowseCoordinator: ObservableObject {
     geocoder: PostcodeGeocoder,
     stateRepository: AnonymousBrowseStateRepository,
     applicationsRepository: AnonymousApplicationsRepository,
+    deviceLocalZoneRepository: DeviceLocalZoneRepository,
     appearanceStore: AppearanceStore? = nil,
     appVersionProvider: AppVersionProvider
   ) {
     self.geocoder = geocoder
     self.stateRepository = stateRepository
     self.applicationsRepository = applicationsRepository
+    self.deviceLocalZoneRepository = deviceLocalZoneRepository
     self.appearanceStore = appearanceStore ?? AppearanceStore()
     self.appVersionProvider = appVersionProvider
     self.screen = .welcome
@@ -145,20 +152,41 @@ public final class AnonymousBrowseCoordinator: ObservableObject {
 
   // MARK: - Tab shell factories (GH#879 Phase 3)
 
-  /// Builds the Applications tab's list view model, sourced from the same
-  /// coordinate/radius the map preview uses. Returns `nil` only in the
-  /// practically-unreachable case the tab shell renders before postcode
-  /// resolution has completed — `screen` only transitions to `.tabs` once
-  /// `currentState` (and `mapViewModel`) are both set.
+  /// Builds the Applications tab's list view model. The active device-local
+  /// zone drives the query (GH#879 Phase 4); `state.coordinate`/
+  /// `state.radiusMetres` back it only as a fallback for the
+  /// practically-unreachable case no device-local zone exists at all.
+  /// Returns `nil` only in the practically-unreachable case the tab shell
+  /// renders before postcode resolution has completed — `screen` only
+  /// transitions to `.tabs` once `currentState` (and `mapViewModel`) are both
+  /// set.
   public func makeApplicationListViewModel() -> AnonymousApplicationListViewModel? {
     guard let state = currentState else { return nil }
     let viewModel = AnonymousApplicationListViewModel(
       repository: applicationsRepository,
-      coordinate: state.coordinate,
-      radiusMetres: state.radiusMetres)
+      zoneRepository: deviceLocalZoneRepository,
+      fallbackCoordinate: state.coordinate,
+      fallbackRadiusMetres: state.radiusMetres)
     viewModel.onShowApplicationDetail = { [weak self] application in
       self?.onShowApplicationDetail?(application)
     }
+    // Switching the active zone (a picker chip tap) re-centres the Map tab
+    // to match (GH#879 Phase 4 acceptance criteria) — rebuilding
+    // `mapViewModel` mirrors how a postcode/relaunch resolution already
+    // replaces it.
+    viewModel.onActiveZoneChanged = { [weak self] zone in
+      self?.mapViewModel = self?.makeMapViewModel(zone: zone)
+    }
+    return viewModel
+  }
+
+  /// Builds the Zones tab's view model (GH#879 Phase 4), sharing the same
+  /// anonymous `PostcodeGeocoder` instance postcode entry uses (never
+  /// `/v1/geocode`).
+  public func makeDeviceLocalZoneListViewModel() -> DeviceLocalZoneListViewModel {
+    let viewModel = DeviceLocalZoneListViewModel(
+      repository: deviceLocalZoneRepository, geocoder: geocoder)
+    viewModel.onRequestSignUp = { [weak self] in self?.onRequestSignIn?() }
     return viewModel
   }
 
@@ -201,6 +229,25 @@ public final class AnonymousBrowseCoordinator: ObservableObject {
       radiusMetres: state.radiusMetres)
     viewModel.onRequestSignUp = { [weak self] in self?.onRequestSignIn?() }
     viewModel.onRadiusChanged = { [weak self] radius in self?.persistRadius(radius) }
+    viewModel.onShowApplicationDetail = { [weak self] application in
+      self?.onShowApplicationDetail?(application)
+    }
+    return viewModel
+  }
+
+  /// Rebuilds the Map tab's view model centred on `zone` (GH#879 Phase 4),
+  /// used when the Applications tab's zone picker switches the active zone.
+  /// Deliberately does not wire `onRadiusChanged` the way
+  /// ``makeMapViewModel(state:)`` does: that persistence path writes into the
+  /// legacy `AnonymousBrowseState` for the onboarding-prefill seam, which is
+  /// out of scope for a zone-driven session — see `AnonymousMapView`'s radius
+  /// picker note for the follow-up this leaves open.
+  private func makeMapViewModel(zone: DeviceLocalZone) -> AnonymousMapViewModel {
+    let viewModel = AnonymousMapViewModel(
+      repository: applicationsRepository,
+      coordinate: zone.centre,
+      radiusMetres: zone.radiusMetres)
+    viewModel.onRequestSignUp = { [weak self] in self?.onRequestSignIn?() }
     viewModel.onShowApplicationDetail = { [weak self] application in
       self?.onShowApplicationDetail?(application)
     }
