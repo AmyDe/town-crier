@@ -26,15 +26,13 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
   /// User-facing message shown when an export fails. `nil` when there is no
   /// export error to display; the View presents an alert while it is non-nil.
   @Published public private(set) var exportErrorMessage: String?
-  @Published public var appearanceMode: AppearanceMode {
-    didSet {
-      defaults.set(appearanceMode.rawValue, forKey: Self.appearanceModeKey)
-    }
-  }
 
   public var onLogout: (() -> Void)?
 
-  static let appearanceModeKey = "appearanceMode"
+  /// Alias kept for source compatibility — the key itself now lives on
+  /// ``AppearanceStore``, the single live source of truth shared with the
+  /// anonymous welcome screen's appearance control (GH#878).
+  static let appearanceModeKey = AppearanceStore.appearanceModeKey
 
   private let authService: AuthenticationService
   private let subscriptionService: SubscriptionService
@@ -42,7 +40,7 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
   private let tierResolver: SubscriptionTierResolving
   private let appVersionProvider: AppVersionProvider
   private let notificationService: NotificationService
-  private let defaults: UserDefaults
+  private let appearanceStore: AppearanceStore
   private let exportFileWriter: (Data) throws -> URL
 
   public init(
@@ -53,6 +51,7 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
     appVersionProvider: AppVersionProvider,
     notificationService: NotificationService,
     defaults: UserDefaults = .standard,
+    appearanceStore: AppearanceStore? = nil,
     exportFileWriter: @escaping (Data) throws -> URL = SettingsViewModel.writeExportToTempFile
   ) {
     self.authService = authService
@@ -68,11 +67,16 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
       )
     self.appVersionProvider = appVersionProvider
     self.notificationService = notificationService
-    self.defaults = defaults
+    self.appearanceStore = appearanceStore ?? AppearanceStore(defaults: defaults)
     self.exportFileWriter = exportFileWriter
+  }
 
-    let storedRaw = defaults.string(forKey: Self.appearanceModeKey) ?? ""
-    self.appearanceMode = AppearanceMode(rawValue: storedRaw) ?? .system
+  /// The currently active appearance mode — a live read-through to the
+  /// shared ``AppearanceStore`` (GH#878), never a separate copy. Bound by the
+  /// Settings picker via `$viewModel.appearanceMode`.
+  public var appearanceMode: AppearanceMode {
+    get { appearanceStore.appearanceMode }
+    set { appearanceStore.appearanceMode = newValue }
   }
 
   public var appVersion: String {
