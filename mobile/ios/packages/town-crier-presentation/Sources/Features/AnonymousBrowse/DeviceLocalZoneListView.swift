@@ -1,12 +1,15 @@
 import SwiftUI
 import TownCrierDomain
 
-/// The anonymous (pre-signup) Zones tab (GH#879 Phase 4): up to
-/// ``DeviceLocalZone/maxZoneCount`` device-local areas with create/edit/
-/// delete. Mirrors `WatchZoneListView`'s visual conventions, but every
-/// notification affordance and any attempt to add a 4th zone route to a
-/// sign-up CTA rather than a real quota/entitlement flow — device-local
-/// zones never deliver alerts.
+/// The anonymous (pre-signup) Zones tab (GH#888): exactly one editable
+/// device-local area. No toolbar "+", no swipe-to-delete — the on-device cap
+/// is ``DeviceLocalZone/maxZoneCount`` == 1, and the only surviving mutation
+/// is editing the single zone via a row tap. A persistent sign-up pitch sits
+/// below the zone: with the add path gone, it is the only remaining route to
+/// another area, so it is load-bearing rather than decorative — copy pitches
+/// more areas AND alerts, and (like every anonymous CTA) never says
+/// "instant", since instant alerts are a paid, server-enforced entitlement
+/// (#868/#879 precedent).
 public struct DeviceLocalZoneListView: View {
   @StateObject private var viewModel: DeviceLocalZoneListViewModel
 
@@ -16,38 +19,23 @@ public struct DeviceLocalZoneListView: View {
 
   public var body: some View {
     List {
-      if viewModel.zones.isEmpty {
-        emptyState
+      if let zone = viewModel.zones.first {
+        DeviceLocalZoneRow(zone: zone) { viewModel.requestAlertsSignUp() }
+          .contentShape(Rectangle())
+          .onTapGesture { viewModel.editZone(zone) }
+        signUpPitchSection
       } else {
-        ForEach(viewModel.zones) { zone in
-          DeviceLocalZoneRow(zone: zone) { viewModel.requestAlertsSignUp() }
-            .contentShape(Rectangle())
-            .onTapGesture { viewModel.editZone(zone) }
-        }
-        .onDelete { indexSet in
-          guard let index = indexSet.first else { return }
-          viewModel.deleteZone(viewModel.zones[index])
-        }
+        emptyState
       }
     }
     .scrollContentBackground(.hidden)
     .background(Color.tcBackground)
     .navigationTitle("Zones")
-    .toolbar {
-      ToolbarItem(placement: .primaryAction) {
-        Button {
-          viewModel.addZoneTapped()
-        } label: {
-          Image(systemName: "plus")
-        }
-        .accessibilityLabel("Add Area")
-      }
-    }
     .task {
       viewModel.load()
     }
-    .sheet(item: $viewModel.editorTarget) { target in
-      DeviceLocalZoneEditorView(viewModel: viewModel.makeEditorViewModel(for: target))
+    .sheet(item: $viewModel.editorTarget) { zone in
+      DeviceLocalZoneEditorView(viewModel: viewModel.makeEditorViewModel(for: zone))
     }
     .sheet(isPresented: $viewModel.isSignUpCTAPresented) {
       DeviceLocalZoneSignUpCTAView(
@@ -59,27 +47,45 @@ public struct DeviceLocalZoneListView: View {
     }
   }
 
+  /// Load-bearing sign-up pitch (GH#888): this is the only remaining route to
+  /// another area now the cap is one.
+  private var signUpPitchSection: some View {
+    Section {
+      VStack(alignment: .leading, spacing: TCSpacing.small) {
+        Text("Want more areas or alerts?")
+          .font(TCTypography.headline)
+          .foregroundStyle(Color.tcTextPrimary)
+        Text(
+          "Create a free account to save more areas and get notified when things change."
+        )
+        .font(TCTypography.body)
+        .foregroundStyle(Color.tcTextSecondary)
+
+        HStack(spacing: TCSpacing.medium) {
+          PrimaryButton("Create free account") { viewModel.requestSignUpFromPitch() }
+
+          Button("Sign in") { viewModel.requestSignUpFromPitch() }
+            .font(TCTypography.bodyEmphasis)
+            .foregroundStyle(Color.tcTextSecondary)
+        }
+      }
+      .padding(.vertical, TCSpacing.small)
+    }
+    .listRowBackground(Color.tcSurface)
+  }
+
   private var emptyState: some View {
     Section {
       VStack(spacing: TCSpacing.medium) {
         Image(systemName: "mappin.and.ellipse")
           .font(.system(.largeTitle))
           .foregroundStyle(Color.tcTextTertiary)
-        Text("No Areas Yet")
+        Text("No Area Set Up")
           .font(.system(.headline).weight(.semibold))
-        Text("Add an area to see nearby planning applications.")
+        Text("Complete onboarding to set up your area.")
           .font(.system(.body))
           .foregroundStyle(Color.tcTextSecondary)
           .multilineTextAlignment(.center)
-        Button {
-          viewModel.addZoneTapped()
-        } label: {
-          Text("Add Area")
-            .font(.system(.body).weight(.semibold))
-            .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.borderedProminent)
-        .tint(Color.tcAmber)
       }
       .padding(.vertical, TCSpacing.extraLarge)
     }

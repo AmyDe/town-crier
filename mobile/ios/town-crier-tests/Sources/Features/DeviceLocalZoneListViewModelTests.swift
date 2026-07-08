@@ -4,10 +4,12 @@ import TownCrierDomain
 
 @testable import TownCrierPresentation
 
-/// GH#879 Phase 4: the anonymous Zones tab — up to `DeviceLocalZone.maxZoneCount`
-/// device-local areas with create/edit/delete. Any alert affordance and any
-/// attempt to add a 4th zone route to the sign-up CTA rather than a real
-/// quota/entitlement flow.
+/// GH#888: the anonymous Zones tab now holds exactly one editable
+/// device-local zone (`DeviceLocalZone.maxZoneCount == 1`) — no add, no
+/// delete. Any alert affordance (row bell or the persistent sign-up pitch)
+/// routes to the sign-up CTA, and a successful edit notifies
+/// `onZonesChanged` so the coordinator can propagate it live to the Map and
+/// Applications tabs.
 @Suite("DeviceLocalZoneListViewModel")
 @MainActor
 struct DeviceLocalZoneListViewModelTests {
@@ -25,52 +27,12 @@ struct DeviceLocalZoneListViewModelTests {
 
   @Test func load_populatesZonesFromRepository() throws {
     let (sut, repository) = makeSUT()
-    repository.loadAllResult = [try makeZone(name: "One"), try makeZone(name: "Two")]
+    let zone = try makeZone(name: "Home")
+    repository.loadAllResult = [zone]
 
     sut.load()
 
-    #expect(sut.zones.count == 2)
-  }
-
-  // MARK: - canAddZone
-
-  @Test func canAddZone_true_belowCap() throws {
-    let (sut, repository) = makeSUT()
-    repository.loadAllResult = [try makeZone(), try makeZone()]
-    sut.load()
-
-    #expect(sut.canAddZone)
-  }
-
-  @Test func canAddZone_false_atCap() throws {
-    let (sut, repository) = makeSUT()
-    repository.loadAllResult = [try makeZone(name: "1"), try makeZone(name: "2"), try makeZone(name: "3")]
-    sut.load()
-
-    #expect(!sut.canAddZone)
-  }
-
-  // MARK: - addZoneTapped
-
-  @Test func addZoneTapped_belowCap_opensNewEditor() {
-    let (sut, _) = makeSUT()
-    sut.load()
-
-    sut.addZoneTapped()
-
-    #expect(sut.editorTarget == .new)
-    #expect(!sut.isSignUpCTAPresented)
-  }
-
-  @Test func addZoneTapped_atCap_presentsSignUpCTA() throws {
-    let (sut, repository) = makeSUT()
-    repository.loadAllResult = [try makeZone(name: "1"), try makeZone(name: "2"), try makeZone(name: "3")]
-    sut.load()
-
-    sut.addZoneTapped()
-
-    #expect(sut.editorTarget == nil)
-    #expect(sut.isSignUpCTAPresented)
+    #expect(sut.zones == [zone])
   }
 
   // MARK: - editZone
@@ -81,21 +43,7 @@ struct DeviceLocalZoneListViewModelTests {
 
     sut.editZone(zone)
 
-    #expect(sut.editorTarget == .edit(zone))
-  }
-
-  // MARK: - deleteZone
-
-  @Test func deleteZone_removesFromRepositoryAndLocalList() throws {
-    let (sut, repository) = makeSUT()
-    let zone = try makeZone()
-    repository.loadAllResult = [zone]
-    sut.load()
-
-    sut.deleteZone(zone)
-
-    #expect(repository.deleteCalls == [zone.id])
-    #expect(sut.zones.isEmpty)
+    #expect(sut.editorTarget == zone)
   }
 
   // MARK: - Alert affordance -> sign-up CTA
@@ -104,6 +52,17 @@ struct DeviceLocalZoneListViewModelTests {
     let (sut, _) = makeSUT()
 
     sut.requestAlertsSignUp()
+
+    #expect(sut.isSignUpCTAPresented)
+  }
+
+  /// The persistent "want more areas or alerts?" pitch below the zone
+  /// (GH#888) is the only remaining route to another area now the cap is
+  /// one — it routes to the same sign-up CTA as the per-row bell.
+  @Test func requestSignUpFromPitch_presentsSignUpCTA() {
+    let (sut, _) = makeSUT()
+
+    sut.requestSignUpFromPitch()
 
     #expect(sut.isSignUpCTAPresented)
   }
@@ -131,28 +90,20 @@ struct DeviceLocalZoneListViewModelTests {
 
   // MARK: - Editor dismissal / reload
 
-  @Test func dismissEditor_clearsEditorTarget() {
+  @Test func dismissEditor_clearsEditorTarget() throws {
     let (sut, _) = makeSUT()
-    sut.addZoneTapped()
+    sut.editZone(try makeZone())
 
     sut.dismissEditor()
 
     #expect(sut.editorTarget == nil)
   }
 
-  @Test func makeEditorViewModel_forNew_isNotEditing() {
-    let (sut, _) = makeSUT()
-
-    let editorVM = sut.makeEditorViewModel(for: .new)
-
-    #expect(!editorVM.isEditing)
-  }
-
-  @Test func makeEditorViewModel_forEdit_seedsFromZone() throws {
+  @Test func makeEditorViewModel_seedsFromTheZoneBeingEdited() throws {
     let (sut, _) = makeSUT()
     let zone = try makeZone(name: "Existing")
 
-    let editorVM = sut.makeEditorViewModel(for: .edit(zone))
+    let editorVM = sut.makeEditorViewModel(for: zone)
 
     #expect(editorVM.isEditing)
     #expect(editorVM.nameInput == "Existing")
@@ -160,9 +111,11 @@ struct DeviceLocalZoneListViewModelTests {
 
   @Test func makeEditorViewModel_onSave_dismissesEditorAndReloadsZones() throws {
     let (sut, repository) = makeSUT()
-    sut.addZoneTapped()
-    let editorVM = sut.makeEditorViewModel(for: .new)
-    let saved = try makeZone(name: "Saved")
+    let zone = try makeZone(name: "Home")
+    sut.editZone(zone)
+    let editorVM = sut.makeEditorViewModel(for: zone)
+    let saved = try DeviceLocalZone(
+      id: zone.id, name: "Renamed", centre: .cambridge, radiusMetres: 2000)
     repository.loadAllResult = [saved]
 
     editorVM.onSave?(saved)
@@ -171,10 +124,30 @@ struct DeviceLocalZoneListViewModelTests {
     #expect(sut.zones == [saved])
   }
 
-  @Test func makeEditorViewModel_onRequestSignUp_dismissesEditorAndPresentsCTA() {
+  /// GH#888 acceptance criterion: a successful editor save fires
+  /// `onZonesChanged` with the saved zone, so the coordinator can propagate
+  /// it to the Map and Applications tabs.
+  @Test func makeEditorViewModel_onSave_invokesOnZonesChangedWithTheSavedZone() throws {
+    let (sut, repository) = makeSUT()
+    let zone = try makeZone(name: "Home")
+    sut.editZone(zone)
+    let editorVM = sut.makeEditorViewModel(for: zone)
+    let saved = try DeviceLocalZone(
+      id: zone.id, name: "Renamed", centre: .cambridge, radiusMetres: 2000)
+    repository.loadAllResult = [saved]
+    var changed: [DeviceLocalZone] = []
+    sut.onZonesChanged = { changed.append($0) }
+
+    editorVM.onSave?(saved)
+
+    #expect(changed == [saved])
+  }
+
+  @Test func makeEditorViewModel_onRequestSignUp_dismissesEditorAndPresentsCTA() throws {
     let (sut, _) = makeSUT()
-    sut.addZoneTapped()
-    let editorVM = sut.makeEditorViewModel(for: .new)
+    let zone = try makeZone()
+    sut.editZone(zone)
+    let editorVM = sut.makeEditorViewModel(for: zone)
 
     editorVM.onRequestSignUp?()
 

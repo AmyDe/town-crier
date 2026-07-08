@@ -19,11 +19,13 @@ public enum DomainError: Error, Equatable, Sendable {
   case restoreFailed(String)
   case unexpected(String)
   case insufficientEntitlement(required: String)
-  /// Attempted to save a NEW device-local zone (GH#879 Phase 4) while already
-  /// at ``DeviceLocalZone/maxZoneCount``. Distinct from
-  /// `.insufficientEntitlement`: this is an on-device cap with no
-  /// subscription tier behind it, so the UI routes to a sign-up CTA rather
-  /// than the paywall.
+  /// Attempted to save a NEW device-local zone while already at
+  /// ``DeviceLocalZone/maxZoneCount`` (GH#888: now 1, matching the Free
+  /// tier). The Zones tab UI no longer offers a create path — only edit — so
+  /// this now guards only defensively (e.g. a stale client); the repository
+  /// cap stays in place regardless. Distinct from `.insufficientEntitlement`:
+  /// this is an on-device cap with no subscription tier behind it, so the UI
+  /// routes to a sign-up CTA rather than the paywall.
   case deviceLocalZoneLimitReached
 
   /// User-facing title for display in error states.
@@ -80,7 +82,7 @@ public enum DomainError: Error, Equatable, Sendable {
     case .insufficientEntitlement:
       return "This feature is on a higher plan. Upgrade to use it."
     case .deviceLocalZoneLimitReached:
-      return "You can save up to 3 areas on this device. Delete one, or create a free account."
+      return "You can save one area on this device. Create a free account to add more."
     case .invalidPostcode(let raw):
       return "The postcode '\(raw)' doesn't look right. Please enter a valid UK postcode."
     case .geocodingFailed:

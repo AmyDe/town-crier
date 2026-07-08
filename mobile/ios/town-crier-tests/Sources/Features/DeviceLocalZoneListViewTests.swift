@@ -23,30 +23,26 @@ struct DeviceLocalZoneListViewTests {
     _ = sut.body
   }
 
-  @Test func body_renders_withZones() throws {
+  @Test func body_renders_withZone() throws {
     let (vm, repository) = makeViewModel()
-    repository.loadAllResult = [try makeZone(name: "One"), try makeZone(name: "Two")]
+    repository.loadAllResult = [try makeZone(name: "Home")]
     vm.load()
 
     let sut = DeviceLocalZoneListView(viewModel: vm)
     _ = sut.body
   }
 
-  @Test func body_renders_whenEditorPresented() {
+  @Test func body_renders_whenEditorPresented() throws {
     let (vm, _) = makeViewModel()
-    vm.addZoneTapped()
+    vm.editZone(try makeZone())
 
     let sut = DeviceLocalZoneListView(viewModel: vm)
     _ = sut.body
   }
 
-  @Test func body_renders_whenSignUpCTAPresented() throws {
-    let (vm, repository) = makeViewModel()
-    repository.loadAllResult = [
-      try makeZone(name: "1"), try makeZone(name: "2"), try makeZone(name: "3"),
-    ]
-    vm.load()
-    vm.addZoneTapped()
+  @Test func body_renders_whenSignUpCTAPresented() {
+    let (vm, _) = makeViewModel()
+    vm.requestAlertsSignUp()
 
     #expect(vm.isSignUpCTAPresented)
 

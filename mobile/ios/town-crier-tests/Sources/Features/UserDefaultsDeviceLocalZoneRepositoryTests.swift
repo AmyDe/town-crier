@@ -4,9 +4,11 @@ import TownCrierDomain
 
 @testable import TownCrierData
 
-/// GH#879 Phase 4 acceptance criteria: repository round-trip, cap-at-3
-/// enforcement, radius clamp [100, 5000], migration seeds zone 1 from the
-/// legacy `AnonymousBrowseState`.
+/// GH#879 Phase 4 / GH#888 acceptance criteria: repository round-trip,
+/// cap-at-1 enforcement (GH#888 reversed the original cap-at-3), radius
+/// clamp [100, 5000], migration seeds zone 1 from the legacy
+/// `AnonymousBrowseState`, and an idempotent trim-to-active-zone on every
+/// `loadAll()` call self-heals any pre-GH#888 multi-zone install.
 @Suite("UserDefaultsDeviceLocalZoneRepository")
 struct UserDefaultsDeviceLocalZoneRepositoryTests {
   private func makeSUT(
@@ -26,6 +28,48 @@ struct UserDefaultsDeviceLocalZoneRepositoryTests {
     name: String = "Home", radiusMetres: Double = 1000
   ) throws -> DeviceLocalZone {
     try DeviceLocalZone(name: name, centre: .cambridge, radiusMetres: radiusMetres)
+  }
+
+  /// A repository/defaults pair with no legacy-state repository injected —
+  /// used by the trim tests (GH#888), which need direct access to the
+  /// `UserDefaults` suite to seed pre-existing (pre-GH#888) multi-zone
+  /// storage.
+  private func makeSUTAndDefaults() -> (UserDefaultsDeviceLocalZoneRepository, UserDefaults) {
+    let defaults = UserDefaults(suiteName: UUID().uuidString)
+    // swiftlint:disable:next force_unwrapping
+    let sut = UserDefaultsDeviceLocalZoneRepository(defaults: defaults!)
+    // swiftlint:disable:next force_unwrapping
+    return (sut, defaults!)
+  }
+
+  /// Wire-format fixture mirroring the production repository's private
+  /// `StoredZone` shape — lets the trim tests (GH#888) seed the UserDefaults
+  /// suite directly, as if it were a pre-GH#888 multi-zone TestFlight
+  /// install, bypassing the (now much lower) `save()` cap entirely.
+  private struct RawStoredZone: Codable {
+    let id: String
+    let name: String
+    let latitude: Double
+    let longitude: Double
+    let radiusMetres: Double
+
+    init(_ zone: DeviceLocalZone) {
+      id = zone.id.value
+      name = zone.name
+      latitude = zone.centre.latitude
+      longitude = zone.centre.longitude
+      radiusMetres = zone.radiusMetres
+    }
+  }
+
+  private func seedRawZones(
+    _ zones: [DeviceLocalZone], activeId: DeviceLocalZoneId?, in defaults: UserDefaults
+  ) throws {
+    let data = try JSONEncoder().encode(zones.map(RawStoredZone.init))
+    defaults.set(data, forKey: "deviceLocalZones")
+    if let activeId {
+      defaults.set(activeId.value, forKey: "deviceLocalZoneActiveId")
+    }
   }
 
   // MARK: - Round-trip
@@ -77,42 +121,28 @@ struct UserDefaultsDeviceLocalZoneRepositoryTests {
     #expect(sut.loadAll() == [zone])
   }
 
-  // MARK: - Cap at 3
+  // MARK: - Cap at 1 (GH#888 — reversed the original cap-at-3)
 
-  @Test func save_thirdZone_succeeds() throws {
+  @Test func save_secondZone_throwsLimitReached() throws {
     let (sut, _) = makeSUT()
     try sut.save(try makeZone(name: "One"))
-    try sut.save(try makeZone(name: "Two"))
-
-    try sut.save(try makeZone(name: "Three"))
-
-    #expect(sut.loadAll().count == 3)
-  }
-
-  @Test func save_fourthZone_throwsLimitReached() throws {
-    let (sut, _) = makeSUT()
-    try sut.save(try makeZone(name: "One"))
-    try sut.save(try makeZone(name: "Two"))
-    try sut.save(try makeZone(name: "Three"))
 
     #expect(throws: DomainError.deviceLocalZoneLimitReached) {
-      try sut.save(try makeZone(name: "Four"))
+      try sut.save(try makeZone(name: "Two"))
     }
-    #expect(sut.loadAll().count == 3)
+    #expect(sut.loadAll().count == 1)
   }
 
   @Test func save_editingExistingZone_atCap_doesNotThrow() throws {
     let (sut, _) = makeSUT()
     let first = try makeZone(name: "One")
     try sut.save(first)
-    try sut.save(try makeZone(name: "Two"))
-    try sut.save(try makeZone(name: "Three"))
 
     let renamed = try DeviceLocalZone(
       id: first.id, name: "Renamed", centre: .cambridge, radiusMetres: 1000)
     try sut.save(renamed)
 
-    #expect(sut.loadAll().contains(renamed))
+    #expect(sut.loadAll() == [renamed])
   }
 
   // MARK: - Active zone
@@ -132,22 +162,11 @@ struct UserDefaultsDeviceLocalZoneRepositoryTests {
     #expect(sut.activeZoneId() == zone.id)
   }
 
-  @Test func save_secondZone_doesNotChangeActiveZone() throws {
-    let (sut, _) = makeSUT()
-    let first = try makeZone(name: "One")
-    try sut.save(first)
-
-    try sut.save(try makeZone(name: "Two"))
-
-    #expect(sut.activeZoneId() == first.id)
-  }
-
   @Test func setActiveZoneId_updatesTheActiveZone() throws {
-    let (sut, _) = makeSUT()
+    let (sut, defaults) = makeSUTAndDefaults()
     let first = try makeZone(name: "One")
     let second = try makeZone(name: "Two")
-    try sut.save(first)
-    try sut.save(second)
+    try seedRawZones([first, second], activeId: first.id, in: defaults)
 
     sut.setActiveZoneId(second.id)
 
@@ -164,11 +183,10 @@ struct UserDefaultsDeviceLocalZoneRepositoryTests {
   }
 
   @Test func delete_activeZone_promotesFirstRemainingZone() throws {
-    let (sut, _) = makeSUT()
+    let (sut, defaults) = makeSUTAndDefaults()
     let first = try makeZone(name: "One")
     let second = try makeZone(name: "Two")
-    try sut.save(first)
-    try sut.save(second)
+    try seedRawZones([first, second], activeId: first.id, in: defaults)
 
     sut.delete(first.id)
 
@@ -186,15 +204,69 @@ struct UserDefaultsDeviceLocalZoneRepositoryTests {
   }
 
   @Test func delete_nonActiveZone_doesNotChangeActiveZone() throws {
-    let (sut, _) = makeSUT()
+    let (sut, defaults) = makeSUTAndDefaults()
     let first = try makeZone(name: "One")
     let second = try makeZone(name: "Two")
-    try sut.save(first)
-    try sut.save(second)
+    try seedRawZones([first, second], activeId: first.id, in: defaults)
 
     sut.delete(second.id)
 
     #expect(sut.activeZoneId() == first.id)
+  }
+
+  // MARK: - Trim to active zone (GH#888)
+
+  /// The exact acceptance-criteria scenario: storage seeded with 3 zones
+  /// (active = the 2nd) — `loadAll()` returns only the active zone.
+  @Test func loadAll_moreThanOneZoneStored_activeSet_returnsOnlyTheActiveZone() throws {
+    let (sut, defaults) = makeSUTAndDefaults()
+    let one = try makeZone(name: "One")
+    let two = try makeZone(name: "Two")
+    let three = try makeZone(name: "Three")
+    try seedRawZones([one, two, three], activeId: two.id, in: defaults)
+
+    let zones = sut.loadAll()
+
+    #expect(zones == [two])
+  }
+
+  /// The trim is PERSISTED, not just returned transiently — a fresh
+  /// repository instance over the same `UserDefaults` suite (mirroring an
+  /// app relaunch) sees the same single zone.
+  @Test func loadAll_moreThanOneZoneStored_persistsTheTrim() throws {
+    let (sut, defaults) = makeSUTAndDefaults()
+    let one = try makeZone(name: "One")
+    let two = try makeZone(name: "Two")
+    let three = try makeZone(name: "Three")
+    try seedRawZones([one, two, three], activeId: two.id, in: defaults)
+
+    _ = sut.loadAll()
+
+    let reloaded = UserDefaultsDeviceLocalZoneRepository(defaults: defaults)
+    #expect(reloaded.loadAll() == [two])
+    #expect(reloaded.activeZoneId() == two.id)
+  }
+
+  @Test func loadAll_moreThanOneZoneStored_noActiveSet_keepsTheFirstZone() throws {
+    let (sut, defaults) = makeSUTAndDefaults()
+    let one = try makeZone(name: "One")
+    let two = try makeZone(name: "Two")
+    try seedRawZones([one, two], activeId: nil, in: defaults)
+
+    let zones = sut.loadAll()
+
+    #expect(zones == [one])
+    #expect(sut.activeZoneId() == one.id)
+  }
+
+  /// Idempotent: once at most one zone remains, repeated calls are a no-op.
+  @Test func loadAll_alreadyAtMostOneZone_isANoOp() throws {
+    let (sut, _) = makeSUT()
+    let zone = try makeZone()
+    try sut.save(zone)
+
+    #expect(sut.loadAll() == [zone])
+    #expect(sut.loadAll() == [zone])
   }
 
   // MARK: - Migration from legacy AnonymousBrowseState

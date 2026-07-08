@@ -13,6 +13,15 @@ import TownCrierDomain
 /// postcode string, centre/radius from the state) and makes it active.
 /// `AnonymousBrowseState` itself is left untouched —
 /// `AppCoordinator+Onboarding`'s post-signup prefill still reads it.
+///
+/// Trim (GH#888): every ``loadAll()`` call also idempotently enforces the
+/// cap dropping from 3 to 1 — if more than one zone is stored (a device that
+/// installed a Phase 4/5 TestFlight build before this change), it keeps the
+/// ACTIVE zone (falling back to the first if none is active), persists the
+/// reduced set, and clears the discarded zones. No new one-shot flag is
+/// needed for this: it is safe to re-run on every call because it is a
+/// no-op once at most one zone remains. User-approved 2026-07-08 — existing
+/// multi-zone TestFlight installs are not a migration concern beyond this.
 public final class UserDefaultsDeviceLocalZoneRepository: DeviceLocalZoneRepository,
   @unchecked Sendable {
   private let defaults: UserDefaults
@@ -33,7 +42,7 @@ public final class UserDefaultsDeviceLocalZoneRepository: DeviceLocalZoneReposit
 
   public func loadAll() -> [DeviceLocalZone] {
     migrateIfNeeded()
-    return storedZones()
+    return trimToActiveZoneIfNeeded()
   }
 
   public func save(_ zone: DeviceLocalZone) throws {
@@ -72,6 +81,22 @@ public final class UserDefaultsDeviceLocalZoneRepository: DeviceLocalZoneReposit
       return
     }
     defaults.set(id.value, forKey: activeZoneIdKey)
+  }
+
+  // MARK: - Trim (GH#888)
+
+  /// Enforces the cap on read: keeps only the active zone (or the first
+  /// zone, if none is marked active) when more than one is stored, and
+  /// persists the reduction so subsequent calls are a no-op. Returns the
+  /// (possibly already-compliant) stored zones.
+  private func trimToActiveZoneIfNeeded() -> [DeviceLocalZone] {
+    let zones = storedZones()
+    guard zones.count > 1 else { return zones }
+    let activeId = activeZoneId()
+    let keeper = zones.first { $0.id == activeId } ?? zones[0]
+    persist([keeper])
+    setActiveZoneId(keeper.id)
+    return [keeper]
   }
 
   // MARK: - Migration

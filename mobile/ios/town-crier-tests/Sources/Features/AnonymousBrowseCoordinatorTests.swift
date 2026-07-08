@@ -339,4 +339,62 @@ struct AnonymousBrowseCoordinatorTests {
     #expect(sut.mapViewModel?.anchorCoordinate == zoneB.centre)
     #expect(sut.mapViewModel?.radiusMetres == zoneB.radiusMetres)
   }
+
+  // MARK: - Zones-tab edit propagation (GH#888)
+
+  /// Mirrors the Phase 4 regression test above: an edit saved on the Zones
+  /// tab must mutate the SAME `AnonymousMapViewModel` instance in place
+  /// (`AnonymousMapView`'s `@StateObject` would otherwise keep rendering the old one).
+  @Test
+  func deviceLocalZoneListViewModel_onZonesChanged_reCentresTheSameMapViewModelInstance() throws {
+    let (sut, _, _, _, _) = makeSUT(persistedState: testState)
+    let zonesVM = sut.makeDeviceLocalZoneListViewModel()
+    let originalMapViewModel = sut.mapViewModel
+    let editedZone = try DeviceLocalZone(
+      name: "Edited",
+      centre: try Coordinate(latitude: 51.5074, longitude: -0.1278),
+      radiusMetres: 2500)
+
+    zonesVM.onZonesChanged?(editedZone)
+
+    #expect(sut.mapViewModel === originalMapViewModel)
+    #expect(sut.mapViewModel?.centreLat == editedZone.centre.latitude)
+    #expect(sut.mapViewModel?.anchorCoordinate == editedZone.centre)
+    #expect(sut.mapViewModel?.radiusMetres == editedZone.radiusMetres)
+  }
+
+  /// The Applications tab must pick up a Zones-tab edit without a relaunch —
+  /// asserted here against the SAME cached `AnonymousApplicationListViewModel`
+  /// instance `makeApplicationListViewModel()` hands back on every call
+  /// (GH#888), mirroring how the map identity is preserved above.
+  @Test
+  func deviceLocalZoneListViewModel_onZonesChanged_refetchesTheApplicationsList() async throws {
+    let (sut, _, _, applicationsRepository, _) = makeSUT(persistedState: testState)
+    applicationsRepository.fetchNearbyResult = .success([.pendingReview])
+    let listViewModel = sut.makeApplicationListViewModel()
+    await listViewModel?.loadApplications()
+    let zonesVM = sut.makeDeviceLocalZoneListViewModel()
+    let editedZone = try DeviceLocalZone(name: "Edited", centre: .cambridge, radiusMetres: 2500)
+    applicationsRepository.fetchNearbyResult = .success([.permitted])
+
+    zonesVM.onZonesChanged?(editedZone)
+    await sut.waitForPendingZoneEditRefetch()
+
+    #expect(sut.makeApplicationListViewModel() === listViewModel)
+    #expect(listViewModel?.applications == [.permitted])
+  }
+
+  /// `makeApplicationListViewModel()` returns the SAME cached instance on
+  /// every call (GH#888) — necessary so a later Zones-tab edit's refetch
+  /// lands on the instance the mounted view is actually showing, rather than
+  /// a throwaway `AnonymousApplicationListView`'s `@StateObject` silently
+  /// discards.
+  @Test func makeApplicationListViewModel_calledTwice_returnsTheSameInstance() {
+    let (sut, _, _, _, _) = makeSUT(persistedState: testState)
+
+    let first = sut.makeApplicationListViewModel()
+    let second = sut.makeApplicationListViewModel()
+
+    #expect(first === second)
+  }
 }

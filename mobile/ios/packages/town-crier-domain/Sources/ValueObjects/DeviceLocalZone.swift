@@ -18,10 +18,15 @@ public struct DeviceLocalZone: Equatable, Hashable, Identifiable, Sendable {
   public static let minRadiusMetres: Double = 100
   public static let maxRadiusMetres: Double = 5000
 
-  /// The on-device cap. Matches the Personal tier's watch-zone quota so a
-  /// post-signup conversion is never an absurd "delete some of your areas
-  /// first" moment (GH#879 pre-resolved decision).
-  public static let maxZoneCount = 3
+  /// The on-device cap. Deliberately 1, matching the Free tier's single
+  /// server zone (GH#888 — reverses GH#879 Phase 4's "match Personal tier"
+  /// pre-resolved decision). That earlier 3-zone cap made sign-up a net LOSS:
+  /// converting to a Free account could only keep one of three device-local
+  /// areas, and the very first extra-zone save hit
+  /// `DomainError.insufficientEntitlement`, bouncing a brand-new account
+  /// straight into the paywall. A cap of 1 means anonymous browsing never
+  /// promises more than a free account actually gets.
+  public static let maxZoneCount = 1
 
   public init(
     id: DeviceLocalZoneId = DeviceLocalZoneId(),
