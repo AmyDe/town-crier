@@ -60,7 +60,8 @@ extension AppCoordinator {
     // Anonymous state is cleared immediately after so a future sign-out
     // starts from the welcome screen, not a stale anonymous map.
     if let anonymousBrowseStateRepository, let state = anonymousBrowseStateRepository.load() {
-      viewModel.prefill(postcode: state.postcode, coordinate: state.coordinate)
+      viewModel.prefill(
+        postcode: state.postcode, coordinate: state.coordinate, radiusMetres: state.radiusMetres)
       anonymousBrowseStateRepository.clear()
     }
 
