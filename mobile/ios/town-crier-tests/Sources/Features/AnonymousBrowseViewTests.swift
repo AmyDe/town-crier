@@ -15,7 +15,8 @@ struct AnonymousBrowseViewTests {
     return AnonymousBrowseCoordinator(
       geocoder: SpyPostcodeGeocoder(),
       stateRepository: stateRepository,
-      applicationsRepository: SpyAnonymousApplicationsRepository()
+      applicationsRepository: SpyAnonymousApplicationsRepository(),
+      appVersionProvider: SpyAppVersionProvider()
     )
   }
 
@@ -31,7 +32,7 @@ struct AnonymousBrowseViewTests {
     _ = sut.body
   }
 
-  @Test func body_renders_atMap() throws {
+  @Test func body_renders_atTabs() throws {
     let state = AnonymousBrowseState(
       postcode: try Postcode("CB1 2AD"), coordinate: .cambridge, createdAt: Date())
     let sut = AnonymousBrowseView(coordinator: makeCoordinator(persistedState: state))
