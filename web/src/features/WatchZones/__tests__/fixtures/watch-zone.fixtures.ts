@@ -14,6 +14,7 @@ export function aWatchZone(overrides?: Partial<WatchZoneSummary>): WatchZoneSumm
     authorityId: asAuthorityId(1),
     pushEnabled: true,
     emailInstantEnabled: true,
+    paused: false,
     ...overrides,
   };
 }
@@ -28,6 +29,7 @@ export function aSecondWatchZone(overrides?: Partial<WatchZoneSummary>): WatchZo
     authorityId: asAuthorityId(2),
     pushEnabled: true,
     emailInstantEnabled: true,
+    paused: false,
     ...overrides,
   };
 }

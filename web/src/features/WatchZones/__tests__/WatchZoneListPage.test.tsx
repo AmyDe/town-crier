@@ -99,4 +99,22 @@ describe('WatchZoneListPage', () => {
     const editLink = screen.getByRole('link', { name: /edit/i });
     expect(editLink).toHaveAttribute('href', '/watch-zones/zone-1');
   });
+
+  it('renders a Paused badge when a zone is paused', async () => {
+    spy.listResult = [aWatchZone({ paused: true })];
+
+    renderWithRouter(<WatchZoneListPage repository={spy} />);
+
+    expect(await screen.findByText('Paused')).toBeInTheDocument();
+  });
+
+  it('does not render a Paused badge when a zone is not paused', async () => {
+    spy.listResult = [aWatchZone({ paused: false })];
+
+    renderWithRouter(<WatchZoneListPage repository={spy} />);
+
+    await screen.findByText('Home');
+
+    expect(screen.queryByText('Paused')).not.toBeInTheDocument();
+  });
 });
