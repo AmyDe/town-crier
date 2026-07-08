@@ -36,6 +36,17 @@ type Config struct {
 	// Defaults to localhost dev origin.
 	CorsAllowedOrigins []string
 
+	// AnonRateLimitRequests and AnonRateLimitWindowSeconds configure the
+	// per-IP anonymous rate limiter (middleware.AnonRateLimit, GH#868 Phase 1):
+	// the request budget and fixed window applied to every unauthenticated
+	// request, keyed on the client IP resolved via internal/clientip. Loaded
+	// from ANON_RATE_LIMIT_REQUESTS / ANON_RATE_LIMIT_WINDOW_SECONDS,
+	// defaulting to 60 requests per 60-second window so an unset env never
+	// leaves anonymous routes (a scraping target for a public geo endpoint,
+	// and load that ultimately lands on PlanIt) unmetered.
+	AnonRateLimitRequests      int
+	AnonRateLimitWindowSeconds int
+
 	// AzureClientID pins the user-assigned managed identity used for AAD auth
 	// (azidentity) by the Postgres pool (passwordless Entra token) and the Service
 	// Bus client (tc-6ig5). Empty falls back to the ambient managed identity.
@@ -254,6 +265,9 @@ func LoadConfig() (Config, error) {
 		Auth0Domain:        os.Getenv("AUTH0_DOMAIN"),
 		Auth0Audience:      os.Getenv("AUTH0_AUDIENCE"),
 		CorsAllowedOrigins: parseOrigins(os.Getenv("CORS_ALLOWED_ORIGINS")),
+
+		AnonRateLimitRequests:      getenvInt("ANON_RATE_LIMIT_REQUESTS", 60),
+		AnonRateLimitWindowSeconds: getenvInt("ANON_RATE_LIMIT_WINDOW_SECONDS", 60),
 
 		AzureClientID: os.Getenv("AZURE_CLIENT_ID"),
 
