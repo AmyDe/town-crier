@@ -65,6 +65,16 @@ var anonymousPatterns = map[string]struct{}{
 	// authority pages; the second feeds town pages (bounded geo query).
 	"GET /v1/authorities/{id}/applications": {},
 	"GET /v1/applications/near":             {},
+	// The public applications-near-a-point endpoint (GH#868 Phase 2) is anonymous
+	// to Auth0: it backs the iOS anonymous browse map, letting a fresh install
+	// see real applications near a point before creating an account. It is a
+	// DIFFERENT route from the build-key SEO endpoint immediately above — that
+	// one is build-time-only and gated by X-Build-Key inside the handler; this
+	// one is a genuine public runtime endpoint, metered solely by the per-IP
+	// AnonRateLimit (GH#868 Phase 1) plus its own radius/limit clamps (a
+	// point+radius read is a far more attractive whole-table scraping target
+	// than the text search below).
+	"GET /v1/applications/near-point": {},
 	// The by-slug application read is anonymous (public planning data only, no
 	// user/subscriber data, no refresh-on-tap): it resolves an authority slug to
 	// its area id and point-reads the application, feeding the public share page
@@ -306,6 +316,14 @@ func newRouter(
 		// per-subject RateLimit no-ops on a request with no subject, but
 		// AnonRateLimit does not — it is the scheme that actually covers this route.
 		applications.SearchRoutes(mux, appStore, authorities.NewLookup(), logger)
+		// The public applications-near-a-point endpoint (GH#868 Phase 2) reads from
+		// the same store; unlike SearchRoutes it needs no authority-slug resolver
+		// (NearbyResult, unlike SearchResult, carries no authoritySlug field — see
+		// result.go). It is anonymous to Auth0 (see anonymousPatterns, a route
+		// distinct from the build-key SEO NearRoutes above) and, like every other
+		// anonymous route, metered by the per-IP AnonRateLimit (GH#868 Phase 1)
+		// plus its own radius/limit clamps.
+		applications.NearPointRoutes(mux, appStore, logger)
 		// The public share page (#738): an anonymous, server-rendered HTML page for a
 		// single application at GET /a/{authoritySlug}/{ref...}. It point-reads the
 		// same applications store and resolves the authority slug via the static
