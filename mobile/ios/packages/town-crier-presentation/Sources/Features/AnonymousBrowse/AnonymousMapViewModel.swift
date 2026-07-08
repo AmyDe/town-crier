@@ -2,16 +2,30 @@ import Foundation
 import TownCrierDomain
 
 /// Drives the anonymous (pre-signup) map: pins near a stored coordinate, no
-/// account, no watch zone, no clustering (GH#868 Phase 3). A deliberately
-/// reduced feature set versus the authenticated ``MapViewModel`` — no save, no
-/// status filters, no stacked-cell disambiguation — so it is a small,
-/// self-contained view model rather than a shared abstraction over the two.
+/// account, no watch zone, no server-side clustering (GH#868 Phase 3). A
+/// deliberately reduced feature set versus the authenticated ``MapViewModel``
+/// — no save, no status filters — so it is a small, self-contained view model
+/// rather than a shared abstraction over the two. It does, however, support
+/// the same same-address disambiguation list (GH#877) via ``selectStack(_:)``
+/// / ``selectFromStack(_:)``, reusing ``StackedApplications`` and
+/// ``StackedApplicationsSheet`` from the Map feature.
 @MainActor
 public final class AnonymousMapViewModel: ObservableObject, ErrorHandlingViewModel {
   @Published public private(set) var applications: [PlanningApplication] = []
   @Published public private(set) var isLoading = false
   @Published public internal(set) var error: DomainError?
   @Published public private(set) var selectedApplication: PlanningApplication?
+  /// The applications stacked at the tapped coincident cluster (GH#877),
+  /// presented as a disambiguation list via the shared
+  /// ``StackedApplicationsSheet``. Nil when no stacked cluster is open.
+  @Published public private(set) var stackedApplications: StackedApplications?
+  /// The application whose *summary* sheet should open once the
+  /// disambiguation list has finished dismissing. Set by
+  /// ``selectFromStack(_:)`` and consumed by
+  /// ``presentPendingSummaryIfNeeded()`` from the list sheet's `onDismiss`, so
+  /// the list and the summary are never on screen at once (SwiftUI's
+  /// two-sheets race) — mirrors ``MapViewModel``'s handoff.
+  @Published public private(set) var pendingSummaryApplication: PlanningApplication?
   @Published public private(set) var centreLat: Double
   @Published public private(set) var centreLon: Double
   @Published public private(set) var radiusMetres: Double
@@ -132,6 +146,44 @@ public final class AnonymousMapViewModel: ObservableObject, ErrorHandlingViewMod
 
   public func clearSelection() {
     selectedApplication = nil
+  }
+
+  /// Opens the disambiguation list for a "stacked" (same-address) cluster tap
+  /// (GH#877). Unlike the authenticated map's `MapViewModel.selectStack(_:)`,
+  /// this makes no repository call: `near-point` already returned every
+  /// member as a full `PlanningApplication`, so the coordinator hands them
+  /// straight through. `id` is derived from the member ids so re-tapping the
+  /// same coincident cluster re-presents the same list rather than a spurious
+  /// second sheet.
+  public func selectStack(_ applications: [PlanningApplication]) {
+    let id = applications.map(\.id.value).joined(separator: ",")
+    stackedApplications = StackedApplications(id: id, applications: applications)
+  }
+
+  /// Handles a tap on a disambiguation-list row. Stashes the chosen
+  /// application as ``pendingSummaryApplication`` and clears
+  /// ``stackedApplications`` to dismiss the list. The list sheet's
+  /// `onDismiss` then calls ``presentPendingSummaryIfNeeded()`` so the summary
+  /// opens only after the list has gone.
+  public func selectFromStack(_ application: PlanningApplication) {
+    pendingSummaryApplication = application
+    stackedApplications = nil
+  }
+
+  /// Presents any pending stacked-row summary via ``selectApplication(_:)``,
+  /// clearing the pending slot first so it fires exactly once. Invoked from
+  /// the disambiguation list sheet's `onDismiss`. No-op when nothing is
+  /// pending (e.g. the user swiped the list away instead of tapping a row).
+  public func presentPendingSummaryIfNeeded() {
+    guard let pending = pendingSummaryApplication else { return }
+    pendingSummaryApplication = nil
+    selectApplication(pending)
+  }
+
+  /// Dismisses the disambiguation list without selecting a row — wired to the
+  /// list sheet's dismiss binding (swipe-to-dismiss).
+  public func clearStack() {
+    stackedApplications = nil
   }
 
   /// Any deeper touch than the summary preview (full detail, save) or the CTA

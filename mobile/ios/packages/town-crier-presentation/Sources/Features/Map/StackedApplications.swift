@@ -9,8 +9,15 @@ import TownCrierDomain
 /// Shared between the authenticated map (``MapViewModel``) and the anonymous
 /// map (``AnonymousMapViewModel``, GH#877) — both present the same
 /// ``StackedApplicationsSheet``, so this wrapper lives in its own file rather
-/// than inside either view model.
-struct StackedApplications: Identifiable, Equatable, Sendable {
-  let id: String
-  let applications: [PlanningApplication]
+/// than inside either view model. `public` because ``AnonymousMapViewModel``
+/// exposes its `stackedApplications` property publicly, unlike the
+/// module-internal ``MapViewModel``.
+public struct StackedApplications: Identifiable, Equatable, Sendable {
+  public let id: String
+  public let applications: [PlanningApplication]
+
+  public init(id: String, applications: [PlanningApplication]) {
+    self.id = id
+    self.applications = applications
+  }
 }
