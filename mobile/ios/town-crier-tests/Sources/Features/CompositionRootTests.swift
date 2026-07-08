@@ -206,6 +206,47 @@ struct CompositionRootTests {
     #expect(anonymousCoordinator.screen == .welcome)
   }
 
+  // MARK: - Anonymous detail (GH#879 Phase 2)
+
+  @Test func anonymousApplicationDetailRepositoryInitialises() {
+    // Mirrors TownCrierApp.init()'s anonymous-detail wiring with real
+    // concrete types.
+    // swiftlint:disable:next force_unwrapping
+    let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
+    let anonymousApiClient = AnonymousURLSessionAPIClient(baseURL: apiBaseURL)
+    let repository = APIAnonymousApplicationDetailRepository(apiClient: anonymousApiClient)
+
+    #expect(type(of: repository) == APIAnonymousApplicationDetailRepository.self)
+  }
+
+  @Test func coordinatorAcceptsAnonymousApplicationDetailRepository() {
+    let authService = Auth0AuthenticationService(config: makeTestAuth0Config())
+    // swiftlint:disable:next force_unwrapping
+    let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
+    let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
+    let anonymousApiClient = AnonymousURLSessionAPIClient(baseURL: apiBaseURL)
+
+    let coordinator = AppCoordinator(
+      repository: APIPlanningApplicationRepository(apiClient: apiClient),
+      authService: authService,
+      subscriptionService: StoreKitSubscriptionService(),
+      userProfileRepository: APIUserProfileRepository(apiClient: apiClient),
+      watchZoneRepository: APIWatchZoneRepository(apiClient: apiClient),
+      onboardingRepository: UserDefaultsOnboardingRepository(),
+      notificationService: CompositeNotificationService(
+        permissionProvider: SpyNotificationPermissionProvider(),
+        apiService: APINotificationService(apiClient: apiClient),
+        remoteRegistrar: SpyRemoteNotificationRegistering()
+      ),
+      appVersionProvider: BundleAppVersionProvider(),
+      versionConfigService: APIVersionConfigService(baseURL: apiBaseURL),
+      anonymousApplicationDetailRepository: APIAnonymousApplicationDetailRepository(
+        apiClient: anonymousApiClient)
+    )
+
+    #expect(coordinator.detailApplication == nil)
+  }
+
   @Test func coordinatorAcceptsAnonymousBrowseStateRepository() {
     let authService = Auth0AuthenticationService(config: makeTestAuth0Config())
     // swiftlint:disable:next force_unwrapping
