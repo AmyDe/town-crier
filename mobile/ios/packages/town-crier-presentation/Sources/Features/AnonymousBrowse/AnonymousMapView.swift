@@ -8,7 +8,9 @@ import TownCrierDomain
 /// on-device (GH#868 Phase 3 refinement), and pins a persistent
 /// ``AccountCTABanner`` — with a live monitoring-radius picker above it — over
 /// the bottom safe area. A pin tap shows a reduced-feature summary preview; a
-/// cluster tap zooms in; anything deeper than the summary preview routes to
+/// cluster tap zooms in, unless its members are coincident (same address),
+/// in which case it opens a ``StackedApplicationsSheet`` disambiguation list
+/// instead (GH#877); anything deeper than the summary preview routes to
 /// sign-up.
 ///
 /// On iOS, pins render via ``AnonymousClusteredMapView`` (`MKMapView` +
@@ -68,6 +70,20 @@ public struct AnonymousMapView: View {
         viewModel.requestSignUp()
       }
     }
+    // Disambiguation list for a coincident ("stacked") cluster tap (GH#877).
+    // Its `onDismiss` presents the chosen row's summary, so the list always
+    // finishes dismissing before the summary appears — the two `.sheet`s are
+    // never both up (mirrors `MapView.swift`).
+    .sheet(
+      item: Binding(
+        get: { viewModel.stackedApplications },
+        set: { _ in viewModel.clearStack() }
+      ),
+      onDismiss: { viewModel.presentPendingSummaryIfNeeded() },
+      content: { stacked in
+        StackedApplicationsSheet(stacked: stacked, onSelect: viewModel.selectFromStack)
+      }
+    )
   }
 
   // MARK: - Radius picker

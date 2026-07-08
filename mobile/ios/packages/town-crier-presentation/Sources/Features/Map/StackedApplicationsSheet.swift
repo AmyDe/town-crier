@@ -3,17 +3,21 @@ import TownCrierDomain
 
 /// A bottom sheet listing the planning applications stacked at one location —
 /// the disambiguation list shown when a coincident ("unsplittable") map cluster
-/// is tapped (GH#722). Zoom can never separate such members, so instead of
-/// zooming the user picks from this list; each row opens that application's
-/// existing summary sheet via the view model's row-select, exactly as a
-/// single-pin tap does.
+/// is tapped (GH#722, and GH#877 on the anonymous map). Zoom can never separate
+/// such members, so instead of zooming the user picks from this list; each row
+/// opens that application's existing summary sheet via the injected
+/// ``onSelect`` closure, exactly as a single-pin tap does.
 ///
-/// Tapping a row hands off through ``MapViewModel/selectFromStack(_:)`` so the
-/// list dismisses before the summary presents — the two sheets are never on
-/// screen at once (SwiftUI's two-sheets race).
+/// Presentation-only — no concrete view model dependency — so both the
+/// authenticated map (``MapViewModel/selectFromStack(_:)``) and the anonymous
+/// map (``AnonymousMapViewModel/selectFromStack(_:)``) can present the same
+/// sheet. The caller's `onSelect` is expected to hand off through its own
+/// view model's dismiss-then-present pattern so the list dismisses before the
+/// summary presents — the two sheets are never on screen at once (SwiftUI's
+/// two-sheets race).
 struct StackedApplicationsSheet: View {
   let stacked: StackedApplications
-  @ObservedObject var viewModel: MapViewModel
+  let onSelect: (PlanningApplication) -> Void
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -23,7 +27,7 @@ struct StackedApplicationsSheet: View {
         LazyVStack(spacing: 0) {
           ForEach(stacked.applications) { application in
             Button {
-              viewModel.selectFromStack(application)
+              onSelect(application)
             } label: {
               StackedApplicationRow(application: application)
                 .contentShape(Rectangle())

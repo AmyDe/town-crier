@@ -221,4 +221,65 @@ struct AnonymousMapViewModelTests {
     // is drawn around did not — the two are deliberately decoupled.
     #expect(sut.centreLat == 10)
   }
+
+  // MARK: - Stacked (same-address) cluster disambiguation (GH#877)
+
+  @Test func selectStack_publishesStackedApplicationsWithAllMembersInOrder() {
+    let (sut, _) = makeSUT()
+    let members = [PlanningApplication.pendingReview, .permitted, .rejected]
+
+    sut.selectStack(members)
+
+    #expect(sut.stackedApplications?.applications == members)
+  }
+
+  @Test func selectStack_makesNoRepositoryCall() {
+    // Unlike the authenticated map's `MapViewModel.selectStack(_:)`, the
+    // anonymous map already holds full `PlanningApplication` objects from the
+    // `near-point` fetch — no point read is needed.
+    let (sut, repository) = makeSUT()
+
+    sut.selectStack([.pendingReview, .permitted])
+
+    #expect(repository.fetchNearbyCalls.isEmpty)
+  }
+
+  @Test func selectFromStack_clearsStackedApplicationsWithoutImmediatelySelecting() {
+    let (sut, _) = makeSUT()
+    sut.selectStack([.pendingReview, .permitted])
+
+    sut.selectFromStack(.permitted)
+
+    // The list dismisses first — the summary must NOT be up yet (no two
+    // sheets at once).
+    #expect(sut.stackedApplications == nil)
+    #expect(sut.selectedApplication == nil)
+  }
+
+  @Test func presentPendingSummaryIfNeeded_presentsTheChosenApplicationAfterListDismisses() {
+    let (sut, _) = makeSUT()
+    sut.selectStack([.pendingReview, .permitted])
+    sut.selectFromStack(.permitted)
+
+    sut.presentPendingSummaryIfNeeded()
+
+    #expect(sut.selectedApplication == .permitted)
+  }
+
+  @Test func presentPendingSummaryIfNeeded_noOpWhenNothingPending() {
+    let (sut, _) = makeSUT()
+
+    sut.presentPendingSummaryIfNeeded()
+
+    #expect(sut.selectedApplication == nil)
+  }
+
+  @Test func clearStack_clearsStackedApplications() {
+    let (sut, _) = makeSUT()
+    sut.selectStack([.pendingReview, .permitted])
+
+    sut.clearStack()
+
+    #expect(sut.stackedApplications == nil)
+  }
 }
