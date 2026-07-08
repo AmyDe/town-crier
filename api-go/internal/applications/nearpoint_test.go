@@ -37,10 +37,11 @@ func (f *fakeNearPointStore) FindNearbyPage(_ context.Context, latitude, longitu
 }
 
 // newNearPointTestHandler builds a near-point mux wired to the given fake
-// store, discarding log output.
+// store and testResolver() (the shared fakeResolver from handler_test.go,
+// which maps AreaID 471 <-> "city-of-london"), discarding log output.
 func newNearPointTestHandler(store *fakeNearPointStore) http.Handler {
 	mux := http.NewServeMux()
-	NearPointRoutes(mux, store, slog.New(slog.DiscardHandler))
+	NearPointRoutes(mux, store, testResolver(), slog.New(slog.DiscardHandler))
 	return mux
 }
 
@@ -142,6 +143,67 @@ func TestNearPointHandler_ResponseShape(t *testing.T) {
 	}
 	if len(results) != 1 || results[0].Name != app.Name || results[0].UID != app.UID {
 		t.Errorf("results = %+v, want one NearbyResult matching %+v", results, app)
+	}
+}
+
+// TestNearPointHandler_AuthoritySlugResolved proves each result carries its
+// authority's resolved URL slug (GH#879 Phase 1) — the field ResultOf leaves
+// unset on the authed embeddings (watchzones/savedapplications), but which the
+// anonymous near-point endpoint needs so a client can build a share URL or a
+// by-slug detail fetch without ever holding a session.
+func TestNearPointHandler_AuthoritySlugResolved(t *testing.T) {
+	t.Parallel()
+
+	app := PlanningApplication{Name: "1/1", UID: "uid-471", AreaName: "City of London", AreaID: 471}
+	store := &fakeNearPointStore{apps: []PlanningApplication{app}}
+	h := newNearPointTestHandler(store)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/v1/applications/near-point?lat=51.5&lng=-0.1", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body = %s", rec.Code, rec.Body.String())
+	}
+	var results []NearbyResult
+	if err := json.Unmarshal(rec.Body.Bytes(), &results); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("results: got %d, want 1", len(results))
+	}
+	if want := "city-of-london"; results[0].AuthoritySlug != want {
+		t.Errorf("authoritySlug = %q, want %q", results[0].AuthoritySlug, want)
+	}
+}
+
+// TestNearPointHandler_AuthoritySlugFallback proves an application whose area
+// id the resolver doesn't know falls back to slugifying its raw area name,
+// exactly like the search and by-id/by-slug handlers (see
+// TestSearchHandler_AuthoritySlugFallback).
+func TestNearPointHandler_AuthoritySlugFallback(t *testing.T) {
+	t.Parallel()
+
+	app := PlanningApplication{Name: "1/1", UID: "uid-999999", AreaName: "Some Unknown Council", AreaID: 999999}
+	store := &fakeNearPointStore{apps: []PlanningApplication{app}}
+	h := newNearPointTestHandler(store)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/v1/applications/near-point?lat=51.5&lng=-0.1", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body = %s", rec.Code, rec.Body.String())
+	}
+	var results []NearbyResult
+	if err := json.Unmarshal(rec.Body.Bytes(), &results); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("results: got %d, want 1", len(results))
+	}
+	if want := "some-unknown-council"; results[0].AuthoritySlug != want {
+		t.Errorf("authoritySlug fallback: got %q, want %q", results[0].AuthoritySlug, want)
 	}
 }
 

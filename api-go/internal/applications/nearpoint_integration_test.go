@@ -36,7 +36,7 @@ func TestNearPointHandler_Integration_RealPostGIS(t *testing.T) {
 	}
 
 	mux := http.NewServeMux()
-	NearPointRoutes(mux, store, slog.New(slog.DiscardHandler))
+	NearPointRoutes(mux, store, testResolver(), slog.New(slog.DiscardHandler))
 
 	// limit=2: page 1 comes back FULL (2 rows), which always mints a
 	// continuation cursor regardless of whether more rows truly exist

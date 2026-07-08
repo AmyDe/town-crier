@@ -66,9 +66,9 @@ func ResultOf(a PlanningApplication) Result {
 }
 
 // NearbyResult is the wire shape of a raw domain PlanningApplication, as emitted
-// by the watch-zone create response. It is exactly Result without
-// latestUnreadEvent — that field is a Result projection concern, absent from
-// the domain shape.
+// by the watch-zone create response and the public near-point endpoint. It is
+// exactly Result without latestUnreadEvent — that field is a Result projection
+// concern, absent from the domain shape.
 type NearbyResult struct {
 	Name          string              `json:"name"`
 	UID           string              `json:"uid"`
@@ -88,6 +88,15 @@ type NearbyResult struct {
 	URL           *string             `json:"url"`
 	Link          *string             `json:"link"`
 	LastDifferent platform.DotNetTime `json:"lastDifferent"`
+	// AuthoritySlug is the URL slug of the application's authority, emitted ONLY
+	// by the public near-point endpoint (internal/applications/nearpoint.go,
+	// GH#879 Phase 1) so an anonymously-loaded application can build a share URL
+	// or a by-slug detail fetch. It is DELIBERATELY omitempty and NOT set by
+	// NearbyResultOf: the watch-zone create response
+	// (watchzones.handler.create -> createResult.NearbyApplications), which also
+	// embeds NearbyResult via NearbyResultOf, leaves it "" and so stays
+	// byte-identical on the wire — mirroring Result.AuthoritySlug/ResultOf above.
+	AuthoritySlug string `json:"authoritySlug,omitempty"`
 }
 
 // RecentByAuthorityResult is the wire shape of the build-time SEO endpoint

@@ -429,9 +429,11 @@ func TestRouter_ApplicationSearchAnonymous(t *testing.T) {
 // router with a store that returns a real application, then proves
 // GET /v1/applications/near-point serves anonymously (no token, 200
 // application/json) with a bare-array body — the same raw-domain wire shape
-// (NearbyResult) the authed nearby page emits. The pattern string match is a
-// drift guard: a rename here without updating anonymousPatterns would silently
-// 401 the route.
+// (NearbyResult) the authed nearby page emits, plus a resolved authoritySlug
+// (GH#879 Phase 1) so an anonymously-loaded application can build a share URL
+// or a by-slug detail fetch. The pattern string match is a drift guard: a
+// rename here without updating anonymousPatterns would silently 401 the
+// route.
 func TestRouter_NearPointAnonymous(t *testing.T) {
 	t.Parallel()
 
@@ -440,7 +442,7 @@ func TestRouter_NearPointAnonymous(t *testing.T) {
 		Name:     "23/03456/FUL",
 		UID:      "croydon-23-03456-FUL",
 		AreaName: "Croydon",
-		AreaID:   301,
+		AreaID:   301, // the real Croydon id, so SlugForAreaID(301) == "croydon"
 		Address:  "10 Downing Street, London",
 	}
 	appStore := foundAppStore{app: app}
@@ -455,6 +457,9 @@ func TestRouter_NearPointAnonymous(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), `"name":"23/03456/FUL"`) {
 		t.Errorf("body missing planit_name 23/03456/FUL; body = %s", rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"authoritySlug":"croydon"`) {
+		t.Errorf("body missing authoritySlug croydon; body = %s", rec.Body.String())
 	}
 	if !strings.HasPrefix(strings.TrimSpace(rec.Body.String()), "[") {
 		t.Errorf("body must be a bare JSON array, got: %s", rec.Body.String())
