@@ -282,4 +282,49 @@ struct AnonymousMapViewModelTests {
 
     #expect(sut.stackedApplications == nil)
   }
+
+  // MARK: - View full details (GH#879 Phase 2)
+
+  @Test func requestFullDetail_stashesSelectionAsPendingAndClearsSelection() {
+    let (sut, _) = makeSUT()
+    sut.selectApplication(.pendingReview)
+
+    sut.requestFullDetail()
+
+    #expect(sut.pendingDetailApplication == .pendingReview)
+    #expect(sut.selectedApplication == nil)
+  }
+
+  @Test func requestFullDetail_isNoOp_whenNothingSelected() {
+    let (sut, _) = makeSUT()
+
+    sut.requestFullDetail()
+
+    #expect(sut.pendingDetailApplication == nil)
+  }
+
+  @Test func presentPendingDetailIfNeeded_firesCallbackOnceWithPendingApplication() {
+    let (sut, _) = makeSUT()
+    sut.selectApplication(.pendingReview)
+    sut.requestFullDetail()
+
+    var captured: [PlanningApplication] = []
+    sut.onShowApplicationDetail = { captured.append($0) }
+
+    sut.presentPendingDetailIfNeeded()
+    sut.presentPendingDetailIfNeeded()
+
+    #expect(captured == [.pendingReview])
+    #expect(sut.pendingDetailApplication == nil)
+  }
+
+  @Test func presentPendingDetailIfNeeded_noOpWhenNothingPending() {
+    let (sut, _) = makeSUT()
+    var captured: [PlanningApplication] = []
+    sut.onShowApplicationDetail = { captured.append($0) }
+
+    sut.presentPendingDetailIfNeeded()
+
+    #expect(captured.isEmpty)
+  }
 }
