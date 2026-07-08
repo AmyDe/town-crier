@@ -14,6 +14,7 @@ struct TownCrierApp: App {
   @StateObject private var loginViewModel: LoginViewModel
   @StateObject private var forceUpdateViewModel: ForceUpdateViewModel
   @StateObject private var settingsViewModel: SettingsViewModel
+  @StateObject private var anonymousBrowseCoordinator: AnonymousBrowseCoordinator
   private let crashReporter: CrashReporter
   private let notificationDelegate: NotificationDelegate
   private let pushRegistrar: PushNotificationRegistrar
@@ -54,6 +55,19 @@ struct TownCrierApp: App {
     let authorityRepository = APIApplicationAuthorityRepository(apiClient: apiClient)
     let watchZoneRepository = APIWatchZoneRepository(apiClient: apiClient)
     let geocoder = APIPostcodeGeocoder(apiClient: apiClient)
+
+    // Anonymous browse mode (GH#868 Phase 3): a fresh install can reach a live
+    // map of nearby applications before creating an account. No Auth0 session
+    // anywhere in this path — client-side postcode lookup (never our own
+    // /v1/geocode) and a parallel unauthenticated API client hitting the
+    // public near-point endpoint. Deliberately parallel to the authed
+    // apiClient/geocoder above rather than sharing them.
+    let anonymousBrowseStateRepository = UserDefaultsAnonymousBrowseStateRepository()
+    let anonymousGeocoder = PostcodesIOGeocoder()
+    let anonymousApiClient = AnonymousURLSessionAPIClient(baseURL: apiBaseURL)
+    let anonymousApplicationsRepository = APIAnonymousApplicationsRepository(
+      apiClient: anonymousApiClient)
+
     let savedApplicationRepository = APISavedApplicationRepository(apiClient: apiClient)
     let notificationStateRepository = APINotificationStateRepository(apiClient: apiClient)
     // Offer-code redemption — POSTs to /v1/offer-codes/redeem (ADR 0022).
@@ -83,7 +97,8 @@ struct TownCrierApp: App {
       offerCodeService: offerCodeService,
       notificationStateRepository: notificationStateRepository,
       badgeSetter: UIApplicationBadgeSetter(),
-      reviewPromptTracker: reviewPromptTracker
+      reviewPromptTracker: reviewPromptTracker,
+      anonymousBrowseStateRepository: anonymousBrowseStateRepository
     )
     reviewRequester.coordinator = appCoordinator  // weak; coordinator owns the tracker
     _coordinator = StateObject(wrappedValue: appCoordinator)
@@ -100,6 +115,20 @@ struct TownCrierApp: App {
     }
     _loginViewModel = StateObject(wrappedValue: loginVM)
 
+    // Anonymous browse mode (GH#868 Phase 3): both "I already have an
+    // account" on the welcome screen and the map's CTA banner funnel into the
+    // same single sign-up/sign-in entry point the rest of the app uses —
+    // Auth0's hosted Universal Login handles both in one flow.
+    let anonymousCoordinator = AnonymousBrowseCoordinator(
+      geocoder: anonymousGeocoder,
+      stateRepository: anonymousBrowseStateRepository,
+      applicationsRepository: anonymousApplicationsRepository
+    )
+    anonymousCoordinator.onRequestSignIn = {
+      Task { @MainActor in await loginVM.login() }
+    }
+    _anonymousBrowseCoordinator = StateObject(wrappedValue: anonymousCoordinator)
+
     _forceUpdateViewModel = StateObject(
       wrappedValue: appCoordinator.makeForceUpdateViewModel()
     )
@@ -108,6 +137,9 @@ struct TownCrierApp: App {
     settingsVM.onLogout = {
       Task { @MainActor in
         await loginVM.logout()
+        // Sign-out is a deliberate return to zero state (GH#868 Phase 3.6):
+        // the user lands back on the welcome screen, never the anonymous map.
+        anonymousCoordinator.reset()
       }
     }
     _settingsViewModel = StateObject(wrappedValue: settingsVM)
@@ -139,8 +171,24 @@ struct TownCrierApp: App {
         } else if loginViewModel.isAuthenticated {
           authenticatedRootView
         } else {
-          LoginView(viewModel: loginViewModel)
+          // Three-state root routing (GH#868 Phase 3): an authenticated
+          // session always wins outright (above); otherwise
+          // AnonymousBrowseCoordinator itself resolves the remaining two
+          // states — persisted anonymous browse state routes straight to the
+          // map, anything else starts at the welcome screen. `LoginView`
+          // still exists and is reached from there via "I already have an
+          // account", which calls `loginViewModel.login()` directly (Auth0's
+          // hosted Universal Login), the same single entry point sign-up and
+          // sign-in both use.
+          AnonymousBrowseView(coordinator: anonymousBrowseCoordinator)
         }
+      }
+      // Session-restore on cold launch: previously lived in `LoginView`'s own
+      // `.task`, relocated here now that view is no longer unconditionally in
+      // the tree. Runs once; a restored session flips `isAuthenticated` and
+      // the switch above re-renders into `authenticatedRootView`.
+      .task {
+        await loginViewModel.checkExistingSession()
       }
       // Primary inbound UL + Auth0-callback entry point — OpenURLModifier.swift.
       // `.handlingUniversalLinks` below is a belt-and-braces fallback —
