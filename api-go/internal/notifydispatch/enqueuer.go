@@ -27,6 +27,8 @@ package notifydispatch
 import (
 	"context"
 	"log/slog"
+	"math"
+	"sort"
 	"time"
 
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
@@ -47,6 +49,16 @@ type notificationWriter interface {
 // paid-only) and the push preference. *profiles.CosmosStore satisfies it.
 type profileReader interface {
 	Get(ctx context.Context, userID string) (*profiles.UserProfile, error)
+}
+
+// zoneRanker is the consumer-side slice of the watch-zone store the enqueuer
+// needs: zoneMatcher's point-in-zone lookup plus GetByUserID, which the pause
+// check (GH#889) uses to rank a user's zones oldest-first by (CreatedAt, ID)
+// against their effective-tier watch-zone limit. *watchzones.PostgresStore
+// (and the watchzones.Store interface cmd/worker wires) satisfy both.
+type zoneRanker interface {
+	zoneMatcher
+	GetByUserID(ctx context.Context, userID string) ([]watchzones.WatchZone, error)
 }
 
 // pushQueue is the consumer-side contract the dispatchers hand an already
@@ -73,7 +85,7 @@ type notificationMetricsRecorder interface {
 // EnqueueForApplication runs the per-app zone fan-out the poll handler calls.
 type Enqueuer struct {
 	notifications notificationWriter
-	zones         zoneMatcher
+	zones         zoneRanker
 	profiles      profileReader
 	push          pushQueue
 	newID         func() string
@@ -96,7 +108,7 @@ func (e *Enqueuer) WithMetrics(rec notificationMetricsRecorder) *Enqueuer {
 // can pin them.
 func NewEnqueuer(
 	notifs notificationWriter,
-	zones zoneMatcher,
+	zones zoneRanker,
 	profs profileReader,
 	push pushQueue,
 	newID func() string,
@@ -163,6 +175,26 @@ func (e *Enqueuer) Enqueue(ctx context.Context, app applications.PlanningApplica
 		return nil
 	}
 
+	// Pause check (GH#889): a subscription downgrade that leaves a user
+	// holding more zones than their new tier allows must stop generating NEW
+	// notification records for the over-quota zones — ranked oldest-first by
+	// (CreatedAt, ID) — without touching the zones themselves (they stay
+	// listed, editable and browsable; watchzones.handler surfaces the same
+	// derivation as the "paused" field). The unlimited (Pro) tier never needs
+	// the extra ranking query.
+	limit := profile.EffectiveTier(e.now()).WatchZoneLimit()
+	if limit < math.MaxInt32 {
+		userZones, zerr := e.zones.GetByUserID(ctx, zone.UserID)
+		if zerr != nil {
+			return zerr
+		}
+		if len(userZones) > limit && isPaused(userZones, zone.ID, limit) {
+			e.logger.DebugContext(ctx, "enqueue: zone paused (over quota), skipping",
+				"user", zone.UserID, "zone", zone.ID, "limit", limit)
+			return nil
+		}
+	}
+
 	zoneID := zone.ID
 	n := newRecord(recordInput{
 		id:          e.newID(),
@@ -191,4 +223,27 @@ func (e *Enqueuer) Enqueue(ctx context.Context, app applications.PlanningApplica
 		e.metrics.NotificationCreated(ctx, string(n.EventType), n.Sources)
 	}
 	return nil
+}
+
+// isPaused reports whether the zone identified by zoneID is paused (GH#889):
+// ranked oldest-first by (CreatedAt, ID) among zones (the owning user's full
+// zone set), its rank exceeds limit. The caller only invokes this once it has
+// already confirmed the tier is not unlimited. A zoneID absent from zones
+// (should not happen — the caller passes the user's own zone) fails open
+// (unpaused) rather than blocking a fan-out on a lookup mismatch.
+func isPaused(zones []watchzones.WatchZone, zoneID string, limit int) bool {
+	sorted := make([]watchzones.WatchZone, len(zones))
+	copy(sorted, zones)
+	sort.Slice(sorted, func(i, j int) bool {
+		if !sorted[i].CreatedAt.Equal(sorted[j].CreatedAt) {
+			return sorted[i].CreatedAt.Before(sorted[j].CreatedAt)
+		}
+		return sorted[i].ID < sorted[j].ID
+	})
+	for i, z := range sorted {
+		if z.ID == zoneID {
+			return i >= limit
+		}
+	}
+	return false
 }
