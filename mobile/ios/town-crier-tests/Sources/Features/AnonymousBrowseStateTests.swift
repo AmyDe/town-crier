@@ -30,4 +30,29 @@ struct AnonymousBrowseStateTests {
 
     #expect(first == second)
   }
+
+  // MARK: - radiusMetres (GH#868 Phase 3 refinement)
+
+  @Test("radiusMetres defaults to 2000 when not provided")
+  func init_defaultsRadiusMetresTo2000() throws {
+    let postcode = try Postcode("CB1 2AD")
+    let coordinate = try Coordinate(latitude: 52.2053, longitude: 0.1218)
+
+    let sut = AnonymousBrowseState(
+      postcode: postcode, coordinate: coordinate, createdAt: Date(timeIntervalSince1970: 0))
+
+    #expect(sut.radiusMetres == 2000)
+  }
+
+  @Test("stores an explicit radiusMetres")
+  func init_storesExplicitRadiusMetres() throws {
+    let postcode = try Postcode("CB1 2AD")
+    let coordinate = try Coordinate(latitude: 52.2053, longitude: 0.1218)
+
+    let sut = AnonymousBrowseState(
+      postcode: postcode, coordinate: coordinate, radiusMetres: 1500,
+      createdAt: Date(timeIntervalSince1970: 0))
+
+    #expect(sut.radiusMetres == 1500)
+  }
 }
