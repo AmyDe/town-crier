@@ -12,6 +12,7 @@ struct APIAnonymousApplicationDetailRepositoryTests {
 
   // MARK: - Helpers
 
+  // swiftlint:disable:next force_unwrapping
   private let baseURL = URL(string: "https://api-dev.towncrierapp.uk")!
 
   private func makeSUT(
