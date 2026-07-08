@@ -163,7 +163,7 @@ struct AppCoordinatorOnboardingTests {
     let postcode = try Postcode("CB1 2AD")
     let coordinate = try Coordinate(latitude: 52.2053, longitude: 0.1218)
     anonymousRepo.loadResult = AnonymousBrowseState(
-      postcode: postcode, coordinate: coordinate, createdAt: Date())
+      postcode: postcode, coordinate: coordinate, radiusMetres: 1500, createdAt: Date())
     let sut = makeSUT(anonymousBrowseStateRepository: anonymousRepo)
 
     let vm = sut.makeOnboardingViewModel()
@@ -171,6 +171,7 @@ struct AppCoordinatorOnboardingTests {
     #expect(vm.postcodeInput == "CB1 2AD")
     #expect(vm.geocodedCoordinate == coordinate)
     #expect(vm.currentStep == .radiusPicker)
+    #expect(vm.selectedRadiusMetres == 1500)
     #expect(anonymousRepo.clearCallCount == 1)
   }
 

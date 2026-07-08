@@ -92,17 +92,22 @@ public final class OnboardingViewModel: ObservableObject, ErrorHandlingViewModel
     }
   }
 
-  /// Seeds the wizard's postcode/coordinate from an already-resolved location
-  /// and jumps straight to the radius step, skipping postcode entry a second
-  /// time. Used for the anonymous browse post-signup handoff (GH#868 Phase
-  /// 3.5): a user who located themselves before creating an account
-  /// shouldn't be asked for their postcode again. Additive — the normal
-  /// (non-prefilled) flow through `.postcodeEntry` -> ``submitPostcode()`` is
-  /// unchanged for every other caller.
-  public func prefill(postcode: Postcode, coordinate: Coordinate) {
+  /// Seeds the wizard's postcode/coordinate/radius from an already-resolved
+  /// anonymous browse session and jumps straight to the radius step,
+  /// skipping postcode entry a second time. Used for the anonymous browse
+  /// post-signup handoff (GH#868 Phase 3.5, radius carried through in the
+  /// Phase 3 refinement): a user who located themselves — and picked a live
+  /// monitoring radius — before creating an account shouldn't be asked for
+  /// either again. `radiusMetres` is clamped to `[100, maxRadiusMetres]` so a
+  /// stale or legacy persisted value can never land outside the radius
+  /// step's own slider bounds. Additive — the normal (non-prefilled) flow
+  /// through `.postcodeEntry` -> ``submitPostcode()`` is unchanged for every
+  /// other caller.
+  public func prefill(postcode: Postcode, coordinate: Coordinate, radiusMetres: Double) {
     postcodeInput = postcode.value
     validatedPostcode = postcode
     geocodedCoordinate = coordinate
+    selectedRadiusMetres = min(max(radiusMetres, 100), maxRadiusMetres)
     currentStep = .radiusPicker
   }
 

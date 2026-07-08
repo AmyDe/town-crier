@@ -294,19 +294,19 @@ struct OnboardingViewModelTests {
     let postcode = try Postcode("CB1 2AD")
     let coordinate = try Coordinate(latitude: 52.2053, longitude: 0.1218)
 
-    sut.prefill(postcode: postcode, coordinate: coordinate)
+    sut.prefill(postcode: postcode, coordinate: coordinate, radiusMetres: 1500)
 
     #expect(sut.postcodeInput == "CB1 2AD")
     #expect(sut.geocodedCoordinate == coordinate)
     #expect(sut.currentStep == .radiusPicker)
+    #expect(sut.selectedRadiusMetres == 1500)
   }
 
   @Test func prefill_thenConfirmRadius_createsZoneAtPrefilledLocation() async throws {
     let (sut, _, _, _, _) = makeSUT()
     let postcode = try Postcode("CB1 2AD")
     let coordinate = try Coordinate(latitude: 52.2053, longitude: 0.1218)
-    sut.prefill(postcode: postcode, coordinate: coordinate)
-    sut.selectedRadiusMetres = 1500
+    sut.prefill(postcode: postcode, coordinate: coordinate, radiusMetres: 1500)
 
     var completedZone: WatchZone?
     sut.onComplete = { zone in completedZone = zone }
@@ -316,6 +316,28 @@ struct OnboardingViewModelTests {
     #expect(completedZone != nil)
     #expect(completedZone?.centre == coordinate)
     #expect(completedZone?.radiusMetres == 1500)
+  }
+
+  @Test func prefill_withRadiusAboveTierMax_clampsToMaxRadiusMetres() throws {
+    let (sut, _, _, _, _) = makeSUT()
+    let postcode = try Postcode("CB1 2AD")
+    let coordinate = try Coordinate(latitude: 52.2053, longitude: 0.1218)
+
+    // Free tier's cap is 2000; the anonymous picker itself is bounded there
+    // too, so this only guards against a stale/legacy persisted radius.
+    sut.prefill(postcode: postcode, coordinate: coordinate, radiusMetres: 5000)
+
+    #expect(sut.selectedRadiusMetres == 2000)
+  }
+
+  @Test func prefill_withRadiusBelowMinimum_clampsTo100() throws {
+    let (sut, _, _, _, _) = makeSUT()
+    let postcode = try Postcode("CB1 2AD")
+    let coordinate = try Coordinate(latitude: 52.2053, longitude: 0.1218)
+
+    sut.prefill(postcode: postcode, coordinate: coordinate, radiusMetres: 10)
+
+    #expect(sut.selectedRadiusMetres == 100)
   }
 
   @Test func prefill_doesNotAffectNormalNonPrefilledFlow() async {
