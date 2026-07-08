@@ -78,10 +78,14 @@
   extension AnonymousClusteredMapView {
     /// `MKMapViewDelegate` for ``AnonymousClusteredMapView``. Styles individual
     /// and MapKit-synthesised cluster markers, routes a single-pin tap to
-    /// ``AnonymousMapViewModel/selectApplication(_:)`` and a cluster tap to a
-    /// zoom-in (MapKit's own clustering re-splits the group at the finer zoom
-    /// level — there is no server-side "stacked/unsplittable" concept here),
-    /// renders the radius preview circle, and forwards viewport changes to
+    /// ``AnonymousMapViewModel/selectApplication(_:)``, and a cluster tap
+    /// either to a zoom-in (MapKit's own clustering re-splits the group at the
+    /// finer zoom level) or, when ``AnonymousClusterStackDetector`` finds the
+    /// members coincident (or the region is already at its zoom floor), to
+    /// ``AnonymousMapViewModel/selectStack(_:)`` — there is no server-side
+    /// "stacked/unsplittable" signal here, so the decision is made on-device
+    /// (GH#877). Also renders the radius preview circle and forwards viewport
+    /// changes to
     /// ``AnonymousMapViewModel/regionDidChange(centreLat:centreLon:radiusMetres:)``,
     /// which debounces internally.
     @MainActor
@@ -200,15 +204,29 @@
         mapView.deselectAnnotation(annotation, animated: false)
 
         if let cluster = annotation as? MKClusterAnnotation {
-          // MapKit's own clustering re-splits the group once the map zooms in
-          // far enough — there is no server-side "unsplittable/stacked" case
-          // to special-case here (unlike `ClusteredMapView`).
-          var region = mapView.region
-          region.center = cluster.coordinate
-          region.span = MKCoordinateSpan(
-            latitudeDelta: max(region.span.latitudeDelta / 2, 0.0005),
-            longitudeDelta: max(region.span.longitudeDelta / 2, 0.0005))
-          mapView.setRegion(region, animated: true)
+          let members = cluster.memberAnnotations.compactMap { annotation in
+            annotation as? AnonymousApplicationAnnotation
+          }
+          let regionSpan = max(mapView.region.span.latitudeDelta, mapView.region.span.longitudeDelta)
+          let isStacked = AnonymousClusterStackDetector.isStacked(
+            memberCoordinates: members.map(\.coordinate), regionSpanDegrees: regionSpan)
+
+          if isStacked {
+            // Coincident (or effectively coincident) members: no zoom level
+            // can ever split them, so open the disambiguation list instead
+            // (GH#877). No network call — every member's full
+            // `PlanningApplication` is already loaded from `near-point`.
+            viewModel.selectStack(members.map(\.application))
+          } else {
+            // Splittable cluster: MapKit's own clustering re-splits the group
+            // once the map zooms in far enough.
+            var region = mapView.region
+            region.center = cluster.coordinate
+            region.span = MKCoordinateSpan(
+              latitudeDelta: max(region.span.latitudeDelta / 2, 0.0005),
+              longitudeDelta: max(region.span.longitudeDelta / 2, 0.0005))
+            mapView.setRegion(region, animated: true)
+          }
         } else if let point = annotation as? AnonymousApplicationAnnotation {
           viewModel.selectApplication(point.application)
         }
