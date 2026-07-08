@@ -34,6 +34,11 @@ public final class AppCoordinator: ObservableObject {
   @Published public var isAddingWatchZone = false
   @Published public var editingWatchZone: WatchZone?
   @Published public var isRedeemOfferCodePresented = false
+  /// Drives the post-signup "Add your other areas" conversion sheet (GH#879
+  /// Phase 5) — presented once immediately after ``completeOnboarding()``
+  /// when unconverted device-local zones remain, and reopened from the
+  /// authed Zones tab's dismissible row for as long as any remain.
+  @Published public var isDeviceLocalZoneConversionPresented = false
   /// Settings sheet — bound to the gear-icon toolbar action installed on each tab.
   @Published public var isSettingsPresented = false
   @Published public private(set) var subscriptionTier: SubscriptionTier = .free
@@ -67,6 +72,11 @@ public final class AppCoordinator: ObservableObject {
   // existing call sites/tests inject nothing. Internal so AppCoordinator+Detail
   // can read it.
   let anonymousApplicationDetailRepository: AnonymousApplicationDetailRepository?
+  // Device-local (pre-signup) zones (GH#879 Phase 4/5). Optional so existing
+  // call sites/tests that never exercise anonymous browsing inject nothing.
+  // Internal (not private) so AppCoordinator+Onboarding and
+  // AppCoordinator+DeviceLocalZoneConversion can read it.
+  let deviceLocalZoneRepository: DeviceLocalZoneRepository?
   /// Fired by the anonymous detail CTA (GH#879 Phase 2) — wired by the
   /// composition root to the same Auth0 entry point every sign-up surface uses.
   public var onRequestSignUp: (() -> Void)?
@@ -102,6 +112,13 @@ public final class AppCoordinator: ObservableObject {
   // and so SwiftUI's StateObject and the coordinator converge on one instance.
   // Internal (not private) so the AppCoordinator+Onboarding extension owns it.
   var onboardingViewModel: OnboardingViewModel?
+  // Set when the wizard is prefilled from an active device-local zone
+  // (GH#879 Phase 5); deleted from local storage only once completeOnboarding()
+  // confirms the save, never merely on wizard construction.
+  var pendingConvertedDeviceLocalZoneId: DeviceLocalZoneId?
+  // In-flight refresh of the authed Zones list after a device-local zone
+  // conversion pass (GH#879 Phase 5); tests await it, mirroring `pendingWatchZoneRefresh`.
+  var pendingDeviceLocalZoneConversionRefresh: Task<Void, Never>?
   // In-flight tasks tests can await deterministically (no `Task.sleep`).
   var pendingOfferCodeRefresh: Task<Void, Never>?
   // Internal (not private) so the AppCoordinator+WatchZones extension can drive it.
@@ -138,7 +155,8 @@ public final class AppCoordinator: ObservableObject {
     reviewPromptTracker: ReviewPromptTracker? = nil,
     anonymousBrowseStateRepository: AnonymousBrowseStateRepository? = nil,
     appearanceStore: AppearanceStore? = nil,
-    anonymousApplicationDetailRepository: AnonymousApplicationDetailRepository? = nil
+    anonymousApplicationDetailRepository: AnonymousApplicationDetailRepository? = nil,
+    deviceLocalZoneRepository: DeviceLocalZoneRepository? = nil
   ) {
     self.repository = repository
     self.authService = authService
@@ -169,6 +187,7 @@ public final class AppCoordinator: ObservableObject {
     self.anonymousBrowseStateRepository = anonymousBrowseStateRepository
     self.appearanceStore = appearanceStore
     self.anonymousApplicationDetailRepository = anonymousApplicationDetailRepository
+    self.deviceLocalZoneRepository = deviceLocalZoneRepository
 
     // Restore the last successfully resolved tier so that paying users
     // retain feature access immediately, even before the live resolution

@@ -4,10 +4,19 @@ import TownCrierDomain
 final class SpyWatchZoneRepository: WatchZoneRepository, @unchecked Sendable {
   private(set) var saveCalls: [WatchZone] = []
   var saveResult: Result<Void, Error> = .success(())
+  /// Per-call results consumed in order, one per `save(_:)` invocation —
+  /// lets a test script a sequence (e.g. "first zone succeeds, second hits
+  /// the quota"). Falls back to `saveResult` once exhausted (or if never
+  /// set), so existing single-result tests are unaffected.
+  var saveResults: [Result<Void, Error>] = []
 
   func save(_ zone: WatchZone) async throws {
     saveCalls.append(zone)
-    try saveResult.get()
+    if saveCalls.count <= saveResults.count {
+      try saveResults[saveCalls.count - 1].get()
+    } else {
+      try saveResult.get()
+    }
   }
 
   private(set) var updateCalls: [WatchZone] = []

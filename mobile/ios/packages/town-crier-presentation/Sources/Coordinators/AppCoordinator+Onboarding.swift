@@ -52,14 +52,33 @@ extension AppCoordinator {
       await self?.resolveSubscriptionTier()
     }
 
-    // Anonymous browse post-signup handoff (GH#868 Phase 3.5): a user who
-    // located themselves before creating an account carries that postcode/
-    // coordinate straight into the wizard, landing on the radius step instead
-    // of being asked again. Only applies on fresh construction (never the
-    // cached-instance return above), so it fires at most once per session.
-    // Anonymous state is cleared immediately after so a future sign-out
-    // starts from the welcome screen, not a stale anonymous map.
-    if let anonymousBrowseStateRepository, let state = anonymousBrowseStateRepository.load() {
+    // Anonymous browse post-signup handoff (GH#868 Phase 3.5, extended
+    // GH#879 Phase 5): prefer the active device-local zone (name/centre/
+    // radius) over the legacy single AnonymousBrowseState blob — a user who
+    // created explicit local zones (Phase 4) gets their active area carried
+    // straight into the wizard. Only applies on fresh construction (never
+    // the cached-instance return above), so it fires at most once per
+    // session. Unlike the legacy blob (cleared immediately below), the
+    // device-local zone is NOT deleted here — only once completeOnboarding()
+    // confirms the wizard actually saved it server-side, so abandoning the
+    // wizard mid-flow never silently loses the zone.
+    let activeZone: DeviceLocalZone? = deviceLocalZoneRepository.flatMap { repository in
+      repository.activeZoneId().flatMap { activeId in
+        repository.loadAll().first { $0.id == activeId }
+      }
+    }
+    if let activeZone {
+      viewModel.prefill(
+        name: activeZone.name,
+        coordinate: activeZone.centre,
+        radiusMetres: activeZone.radiusMetres
+      )
+      pendingConvertedDeviceLocalZoneId = activeZone.id
+    } else if let anonymousBrowseStateRepository, let state = anonymousBrowseStateRepository.load() {
+      // No device-local zones exist — fall back to the legacy single
+      // postcode/coordinate blob for users who never went further than the
+      // anonymous map. Cleared immediately: a future sign-out starts from
+      // the welcome screen, not a stale anonymous map.
       viewModel.prefill(
         postcode: state.postcode, coordinate: state.coordinate, radiusMetres: state.radiusMetres)
       anonymousBrowseStateRepository.clear()
@@ -98,8 +117,19 @@ extension AppCoordinator {
 
   /// Invoked when the wizard saves the user's first zone. Flips the gate so the
   /// root view falls through to the main app and releases the wizard VM.
+  ///
+  /// GH#879 Phase 5: if the wizard was prefilled from a device-local zone,
+  /// this is the moment it is actually deleted from local storage — only now
+  /// that the server save is confirmed, never at prefill time. If any other
+  /// local zones remain, offers them for conversion
+  /// (``presentDeviceLocalZoneConversionIfNeeded()``).
   func completeOnboarding() {
     onboardingPresentation = .notRequired
     onboardingViewModel = nil
+    if let pendingConvertedDeviceLocalZoneId {
+      deviceLocalZoneRepository?.delete(pendingConvertedDeviceLocalZoneId)
+      self.pendingConvertedDeviceLocalZoneId = nil
+    }
+    presentDeviceLocalZoneConversionIfNeeded()
   }
 }
