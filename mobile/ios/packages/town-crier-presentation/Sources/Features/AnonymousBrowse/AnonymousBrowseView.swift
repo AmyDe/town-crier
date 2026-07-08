@@ -18,10 +18,8 @@ public struct AnonymousBrowseView: View {
         WelcomeView(viewModel: coordinator.makeWelcomeViewModel())
       case .postcodeEntry:
         AnonymousPostcodeEntryView(viewModel: coordinator.makePostcodeEntryViewModel())
-      case .map:
-        if let mapViewModel = coordinator.mapViewModel {
-          AnonymousMapView(viewModel: mapViewModel)
-        }
+      case .tabs:
+        AnonymousMainTabView(coordinator: coordinator)
       }
     }
   }
