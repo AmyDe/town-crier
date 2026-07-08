@@ -104,72 +104,26 @@ public struct SettingsView: View {
   }
 
   // MARK: - Helpers
-
-  /// A label-value row: primary-styled label on the left, secondary-styled value on the right.
-  private func settingRow(label: String, value: String) -> some View {
-    HStack {
-      settingLabel(label)
-      Spacer()
-      settingValue(value)
-    }
-  }
-
-  /// Body text styled as a setting label (primary foreground).
-  private func settingLabel(_ text: String) -> some View {
-    Text(text)
-      .font(TCTypography.body)
-      .foregroundStyle(Color.tcTextPrimary)
-  }
-
-  /// Body text styled as a setting value (secondary foreground).
-  private func settingValue(_ text: String) -> some View {
-    Text(text)
-      .font(TCTypography.body)
-      .foregroundStyle(Color.tcTextSecondary)
-  }
-
-  /// Caption text styled for metadata (secondary foreground).
-  private func settingCaption(_ text: String) -> some View {
-    Text(text)
-      .font(TCTypography.caption)
-      .foregroundStyle(Color.tcTextSecondary)
-  }
-
-  /// A tappable row with a label, SF Symbol icon, and trailing chevron disclosure indicator.
-  private func navigationRow(
-    _ title: String, systemImage: String, action: @escaping () -> Void
-  ) -> some View {
-    Button(action: action) {
-      HStack {
-        Label(title, systemImage: systemImage)
-          .font(TCTypography.body)
-          .foregroundStyle(Color.tcTextPrimary)
-        Spacer()
-        settingChevron
-      }
-    }
-  }
-
-  /// Trailing chevron indicator for navigation rows.
-  private var settingChevron: some View {
-    Image(systemName: "chevron.right")
-      .font(.system(.caption))
-      .foregroundStyle(Color.tcTextTertiary)
-  }
+  //
+  // Row/section chrome (`settingRow`, `settingLabel`, `settingValue`,
+  // `settingCaption`, `navigationRow`, `settingChevron`) lives in
+  // `SettingsRowStyling`, shared with `AnonymousSettingsView` (GH#879 Phase 3)
+  // so the two Settings surfaces render identical row chrome with no
+  // duplicated helpers.
 
   // MARK: - Account
 
   private var accountSection: some View {
     Section {
       if let email = viewModel.userEmail {
-        settingRow(label: "Email", value: email)
+        SettingsRowStyling.settingRow(label: "Email", value: email)
 
         if let name = viewModel.userName {
-          settingRow(label: "Name", value: name)
+          SettingsRowStyling.settingRow(label: "Name", value: name)
         }
 
         if let method = viewModel.authMethod {
-          settingRow(label: "Sign-in Method", value: method.displayName)
+          SettingsRowStyling.settingRow(label: "Sign-in Method", value: method.displayName)
         }
       }
     } header: {
@@ -201,7 +155,7 @@ public struct SettingsView: View {
 
   private var notificationSection: some View {
     Section {
-      navigationRow("Notification Preferences", systemImage: "bell") {
+      SettingsRowStyling.navigationRow("Notification Preferences", systemImage: "bell") {
         onNotificationPreferences?()
       }
     } header: {
@@ -215,7 +169,7 @@ public struct SettingsView: View {
   private var subscriptionSection: some View {
     Section {
       HStack {
-        settingLabel("Current Plan")
+        SettingsRowStyling.settingLabel("Current Plan")
         Spacer()
         HStack(spacing: TCSpacing.extraSmall) {
           Text(viewModel.subscriptionTier.rawValue.capitalized)
@@ -229,12 +183,12 @@ public struct SettingsView: View {
         }
       }
 
-      navigationRow("Manage Subscription", systemImage: "creditcard") {
+      SettingsRowStyling.navigationRow("Manage Subscription", systemImage: "creditcard") {
         onManageSubscription?()
       }
 
       if onRedeemOfferCode != nil {
-        navigationRow("Redeem Offer Code", systemImage: "ticket") {
+        SettingsRowStyling.navigationRow("Redeem Offer Code", systemImage: "ticket") {
           onRedeemOfferCode?()
         }
       }
@@ -253,7 +207,7 @@ public struct SettingsView: View {
           Text(item.name)
             .font(TCTypography.bodyEmphasis)
             .foregroundStyle(Color.tcTextPrimary)
-          settingCaption(item.detail)
+          SettingsRowStyling.settingCaption(item.detail)
         }
       }
     } header: {
@@ -266,11 +220,11 @@ public struct SettingsView: View {
 
   private var legalSection: some View {
     Section {
-      navigationRow("Privacy Policy", systemImage: "hand.raised") {
+      SettingsRowStyling.navigationRow("Privacy Policy", systemImage: "hand.raised") {
         onPrivacyPolicy?()
       }
 
-      navigationRow("Terms of Service", systemImage: "doc.text") {
+      SettingsRowStyling.navigationRow("Terms of Service", systemImage: "doc.text") {
         onTermsOfService?()
       }
 
@@ -296,7 +250,7 @@ public struct SettingsView: View {
         if viewModel.isExporting {
           ProgressView()
         } else {
-          settingChevron
+          SettingsRowStyling.settingChevron
         }
       }
     }
@@ -331,14 +285,14 @@ public struct SettingsView: View {
 
   private var appInfoSection: some View {
     Section {
-      navigationRow("Rate the App", systemImage: "star") {
+      SettingsRowStyling.navigationRow("Rate the App", systemImage: "star") {
         onRateApp?()
       }
 
       HStack {
-        settingLabel("Version")
+        SettingsRowStyling.settingLabel("Version")
         Spacer()
-        settingCaption(viewModel.appVersion)
+        SettingsRowStyling.settingCaption(viewModel.appVersion)
       }
     } header: {
       Text("About")

@@ -93,26 +93,7 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
   }
 
   public var attributionItems: [AttributionItem] {
-    [
-      AttributionItem(
-        name: "PlanIt",
-        detail: "Planning application data",
-        url: URL(string: "https://www.planit.org.uk")
-      ),
-      AttributionItem(
-        name: "Crown Copyright",
-        detail: "Contains public sector information"
-      ),
-      AttributionItem(
-        name: "Ordnance Survey",
-        detail: "Mapping data"
-      ),
-      AttributionItem(
-        name: "Apple Maps",
-        detail: "Map rendering and geocoding",
-        url: URL(string: "https://www.apple.com/maps/")
-      ),
-    ]
+    AttributionItem.standard
   }
 
   public func load() async {
