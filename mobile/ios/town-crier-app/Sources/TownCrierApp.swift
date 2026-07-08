@@ -147,7 +147,8 @@ struct TownCrierApp: App {
       geocoder: anonymousGeocoder,
       stateRepository: anonymousBrowseStateRepository,
       applicationsRepository: anonymousApplicationsRepository,
-      appearanceStore: sharedAppearanceStore
+      appearanceStore: sharedAppearanceStore,
+      appVersionProvider: appVersionProvider
     )
     anonymousCoordinator.onRequestSignIn = {
       Task { @MainActor in await loginVM.login() }
@@ -157,6 +158,21 @@ struct TownCrierApp: App {
     // network call, the anonymous map already holds the full application.
     anonymousCoordinator.onShowApplicationDetail = { [weak appCoordinator] application in
       appCoordinator?.showAnonymousApplicationDetail(application)
+    }
+    // The anonymous Settings tab's Legal/Rate-the-App rows (GH#879 Phase 3)
+    // reuse the always-present `AppCoordinator`'s existing mechanisms rather
+    // than duplicating them: legal documents load from a bundled JSON
+    // resource with no network/auth dependency, and "Rate the App" only ever
+    // opens a static App Store URL — both are safe to share verbatim between
+    // the authed and anonymous surfaces.
+    anonymousCoordinator.onShowPrivacyPolicy = { [weak appCoordinator] in
+      appCoordinator?.showPrivacyPolicy()
+    }
+    anonymousCoordinator.onShowTermsOfService = { [weak appCoordinator] in
+      appCoordinator?.showTermsOfService()
+    }
+    anonymousCoordinator.onRateApp = { [weak appCoordinator] in
+      appCoordinator?.rateApp()
     }
     _anonymousBrowseCoordinator = StateObject(wrappedValue: anonymousCoordinator)
 
@@ -206,12 +222,24 @@ struct TownCrierApp: App {
           // session always wins outright (above); otherwise
           // AnonymousBrowseCoordinator itself resolves the remaining two
           // states — persisted anonymous browse state routes straight to the
-          // map, anything else starts at the welcome screen. `LoginView`
+          // tab shell, anything else starts at the welcome screen. `LoginView`
           // still exists and is reached from there via "I already have an
           // account", which calls `loginViewModel.login()` directly (Auth0's
           // hosted Universal Login), the same single entry point sign-up and
           // sign-in both use.
+          //
+          // The legal-document sheet and App Store review modifier
+          // (GH#879 Phase 3) mount here too — mutually exclusive with
+          // `MainTabView`'s own copies inside `authenticatedRootView` above,
+          // since only one branch of this `Group` is ever in the tree at a
+          // time, so `coordinator`'s flags can never be observed twice.
           AnonymousBrowseView(coordinator: anonymousBrowseCoordinator)
+            .sheet(item: $coordinator.presentedLegalDocument) { documentType in
+              NavigationStack {
+                LegalDocumentView(viewModel: LegalDocumentViewModel(documentType: documentType))
+              }
+            }
+            .openingAppStoreReview(when: coordinator)
         }
       }
       // Session-restore on cold launch: previously lived in `LoginView`'s own

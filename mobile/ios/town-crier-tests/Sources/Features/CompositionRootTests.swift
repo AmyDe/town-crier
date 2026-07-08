@@ -200,7 +200,8 @@ struct CompositionRootTests {
     let anonymousCoordinator = AnonymousBrowseCoordinator(
       geocoder: anonymousGeocoder,
       stateRepository: anonymousBrowseStateRepository,
-      applicationsRepository: anonymousApplicationsRepository
+      applicationsRepository: anonymousApplicationsRepository,
+      appVersionProvider: BundleAppVersionProvider()
     )
 
     #expect(anonymousCoordinator.screen == .welcome)

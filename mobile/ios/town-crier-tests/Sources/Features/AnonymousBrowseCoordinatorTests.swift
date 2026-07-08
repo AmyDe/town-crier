@@ -22,7 +22,8 @@ struct AnonymousBrowseCoordinatorTests {
       geocoder: geocoder,
       stateRepository: stateRepository,
       applicationsRepository: applicationsRepository,
-      appearanceStore: appearanceStore
+      appearanceStore: appearanceStore,
+      appVersionProvider: SpyAppVersionProvider()
     )
     return (sut, geocoder, stateRepository, applicationsRepository)
   }
@@ -41,10 +42,10 @@ struct AnonymousBrowseCoordinatorTests {
     #expect(sut.mapViewModel == nil)
   }
 
-  @Test func init_withPersistedState_startsAtMap() {
+  @Test func init_withPersistedState_startsAtTabs() {
     let (sut, _, _, _) = makeSUT(persistedState: testState)
 
-    #expect(sut.screen == .map)
+    #expect(sut.screen == .tabs)
     #expect(sut.mapViewModel != nil)
     #expect(sut.mapViewModel?.centreLat == Coordinate.cambridge.latitude)
   }
@@ -71,9 +72,9 @@ struct AnonymousBrowseCoordinatorTests {
     #expect(requested)
   }
 
-  // MARK: - Postcode entry -> map / back
+  // MARK: - Postcode entry -> tab shell / back
 
-  @Test func postcodeEntryViewModel_onResolved_advancesToMap() {
+  @Test func postcodeEntryViewModel_onResolved_advancesToTabs() {
     let (sut, _, _, _) = makeSUT()
     let postcodeVM = sut.makePostcodeEntryViewModel()
 
@@ -82,7 +83,7 @@ struct AnonymousBrowseCoordinatorTests {
     // view model's own geocode/persist behaviour (covered separately).
     postcodeVM.onResolved?(testState)
 
-    #expect(sut.screen == .map)
+    #expect(sut.screen == .tabs)
     #expect(sut.mapViewModel != nil)
   }
 
@@ -189,12 +190,105 @@ struct AnonymousBrowseCoordinatorTests {
 
   @Test func reset_clearsStateAndReturnsToWelcome() {
     let (sut, _, stateRepository, _) = makeSUT(persistedState: testState)
-    #expect(sut.screen == .map)
+    #expect(sut.screen == .tabs)
 
     sut.reset()
 
     #expect(stateRepository.clearCallCount == 1)
     #expect(sut.screen == .welcome)
     #expect(sut.mapViewModel == nil)
+  }
+
+  // MARK: - Tab shell (GH#879 Phase 3)
+
+  @Test func selectedTab_defaultsToApplications() {
+    let (sut, _, _, _) = makeSUT(persistedState: testState)
+
+    #expect(sut.selectedTab == .applications)
+  }
+
+  /// The tab set is exactly Applications/Map/Settings (Zones arrives in
+  /// Phase 4) — no Saved tab, deliberately (saving is account-bound).
+  @Test func tab_allCases_isExactlyApplicationsMapSettings() {
+    #expect(
+      AnonymousBrowseCoordinator.Tab.allCases == [.applications, .map, .settings])
+  }
+
+  @Test func makeApplicationListViewModel_afterPostcodeResolved_seedsFromCurrentState() {
+    let (sut, _, _, _) = makeSUT(persistedState: testState)
+
+    let viewModel = sut.makeApplicationListViewModel()
+
+    #expect(viewModel != nil)
+  }
+
+  @Test func makeApplicationListViewModel_beforePostcodeResolved_returnsNil() {
+    let (sut, _, _, _) = makeSUT()
+
+    #expect(sut.makeApplicationListViewModel() == nil)
+  }
+
+  @Test func applicationListViewModel_onShowApplicationDetail_invokesCoordinatorCallback() {
+    let (sut, _, _, applicationsRepository) = makeSUT(persistedState: testState)
+    applicationsRepository.fetchNearbyResult = .success([.pendingReview])
+    var captured: [PlanningApplication] = []
+    sut.onShowApplicationDetail = { captured.append($0) }
+    let listViewModel = sut.makeApplicationListViewModel()
+
+    listViewModel?.selectApplication(.pendingReview)
+
+    #expect(captured == [.pendingReview])
+  }
+
+  @Test func makeSettingsViewModel_usesTheInjectedAppearanceStore() {
+    let defaults = UserDefaults(suiteName: UUID().uuidString)
+    // swiftlint:disable:next force_unwrapping
+    let appearanceStore = AppearanceStore(defaults: defaults!)
+    appearanceStore.appearanceMode = .oledDark
+    let (sut, _, _, _) = makeSUT(appearanceStore: appearanceStore)
+
+    let settingsVM = sut.makeSettingsViewModel()
+
+    #expect(settingsVM.appearanceMode == .oledDark)
+  }
+
+  @Test func requestSignIn_invokesOnRequestSignIn() {
+    let (sut, _, _, _) = makeSUT()
+    var requested = false
+    sut.onRequestSignIn = { requested = true }
+
+    sut.requestSignIn()
+
+    #expect(requested)
+  }
+
+  @Test func showPrivacyPolicy_invokesOnShowPrivacyPolicy() {
+    let (sut, _, _, _) = makeSUT()
+    var invoked = false
+    sut.onShowPrivacyPolicy = { invoked = true }
+
+    sut.showPrivacyPolicy()
+
+    #expect(invoked)
+  }
+
+  @Test func showTermsOfService_invokesOnShowTermsOfService() {
+    let (sut, _, _, _) = makeSUT()
+    var invoked = false
+    sut.onShowTermsOfService = { invoked = true }
+
+    sut.showTermsOfService()
+
+    #expect(invoked)
+  }
+
+  @Test func requestRateApp_invokesOnRateApp() {
+    let (sut, _, _, _) = makeSUT()
+    var invoked = false
+    sut.onRateApp = { invoked = true }
+
+    sut.requestRateApp()
+
+    #expect(invoked)
   }
 }

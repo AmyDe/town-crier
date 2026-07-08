@@ -2,16 +2,19 @@ import MapKit
 import SwiftUI
 import TownCrierDomain
 
-/// The anonymous (pre-signup) map (GH#868 Phase 3) — the only screen in
-/// anonymous mode: no tab bar, no list, no settings. Centred on the stored
-/// coordinate, fetches pins via ``AnonymousMapViewModel``, clusters them
-/// on-device (GH#868 Phase 3 refinement), and pins a persistent
-/// ``AccountCTABanner`` — with a live monitoring-radius picker above it — over
-/// the bottom safe area. A pin tap shows a reduced-feature summary preview; a
-/// cluster tap zooms in, unless its members are coincident (same address),
-/// in which case it opens a ``StackedApplicationsSheet`` disambiguation list
-/// instead (GH#877); anything deeper than the summary preview routes to
-/// sign-up.
+/// The Map tab of the anonymous (pre-signup) tab shell (GH#868 Phase 3;
+/// promoted from the sole anonymous screen to a tab in GH#879 Phase 3).
+/// Centred on the stored coordinate, fetches pins via
+/// ``AnonymousMapViewModel``, clusters them on-device (GH#868 Phase 3
+/// refinement), and pins a live monitoring-radius picker over the bottom
+/// safe area. The persistent ``AccountCTABanner`` is hosted once by
+/// `AnonymousMainTabView` above the tab bar (GH#879 Phase 3) rather than
+/// here, so it appears over every tab, not just this one. A pin tap shows a
+/// reduced-feature summary preview; a cluster tap zooms in, unless its
+/// members are coincident (same address), in which case it opens a
+/// ``StackedApplicationsSheet`` disambiguation list instead (GH#877);
+/// anything deeper than the summary preview presents the full detail screen
+/// (GH#879 Phase 2).
 ///
 /// On iOS, pins render via ``AnonymousClusteredMapView`` (`MKMapView` +
 /// MapKit's built-in client-side clustering — near-point returns at most 200
@@ -43,13 +46,7 @@ public struct AnonymousMapView: View {
   public var body: some View {
     ZStack(alignment: .bottom) {
       mapBody
-      VStack(spacing: TCSpacing.small) {
-        radiusPickerCard
-        AccountCTABanner(
-          onCreateAccount: { viewModel.requestSignUp() },
-          onSignIn: { viewModel.requestSignUp() }
-        )
-      }
+      radiusPickerCard
     }
     .background(Color.tcBackground)
     .task { await viewModel.loadInitial() }
@@ -116,6 +113,7 @@ public struct AnonymousMapView: View {
     .background(Color.tcSurfaceElevated)
     .clipShape(RoundedRectangle(cornerRadius: TCCornerRadius.large))
     .padding(.horizontal, TCSpacing.medium)
+    .padding(.bottom, TCSpacing.small)
   }
 
   // MARK: - Map body
