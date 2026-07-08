@@ -7,14 +7,18 @@ import SwiftUI
 /// Phase 4). Replaces the bare `AnonymousMapView` as the post-postcode
 /// destination, and as what a persisted anonymous session relaunches into.
 ///
-/// The persistent ``AccountCTABanner`` is hosted exactly once here, above the
-/// tab bar via `.safeAreaInset(edge: .bottom)` (the same "content pinned
-/// above the tab bar" pattern used for mini-players), so it appears over
-/// Applications and Map without each tab's own view needing to know about
-/// it. It is hidden on Settings — Settings already has its own prominent
-/// "Create free account" section, so a second copy of the same pitch would
-/// be redundant clutter (design-language: calm clarity, one hero element per
-/// screen).
+/// The persistent ``AccountCTABanner`` appears over Applications and Map via
+/// the shared `View.accountCTABanner(onCreateAccount:onSignIn:)` modifier,
+/// applied INSIDE each of those tabs' own content — never on this `TabView`
+/// itself. Hosting it at the `TabView` level was tried first and found, via
+/// live simulator verification, to draw the banner over the tab bar
+/// (`.safeAreaInset(edge: .bottom)` on a `TabView` insets against the
+/// *window's* bottom edge, not the safe area above the tab bar), making
+/// Map/Settings entirely unreachable — see `AccountCTABanner.swift` for the
+/// full writeup. It is omitted on Settings — Settings already has its own
+/// prominent "Create free account" section, so a second copy of the same
+/// pitch would be redundant clutter (design-language: calm clarity, one
+/// hero element per screen).
 public struct AnonymousMainTabView: View {
   @ObservedObject var coordinator: AnonymousBrowseCoordinator
 
@@ -29,14 +33,6 @@ public struct AnonymousMainTabView: View {
       settingsTab
     }
     .tint(Color.tcAmber)
-    .safeAreaInset(edge: .bottom) {
-      if coordinator.selectedTab != .settings {
-        AccountCTABanner(
-          onCreateAccount: { coordinator.requestSignIn() },
-          onSignIn: { coordinator.requestSignIn() }
-        )
-      }
-    }
   }
 
   // MARK: - Tabs
@@ -46,6 +42,10 @@ public struct AnonymousMainTabView: View {
     NavigationStack {
       if let listViewModel = coordinator.makeApplicationListViewModel() {
         AnonymousApplicationListView(viewModel: listViewModel)
+          .accountCTABanner(
+            onCreateAccount: { coordinator.requestSignIn() },
+            onSignIn: { coordinator.requestSignIn() }
+          )
       }
     }
     .tabItem {
@@ -63,6 +63,10 @@ public struct AnonymousMainTabView: View {
           #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
           #endif
+          .accountCTABanner(
+            onCreateAccount: { coordinator.requestSignIn() },
+            onSignIn: { coordinator.requestSignIn() }
+          )
       }
     }
     .tabItem {
