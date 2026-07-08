@@ -171,11 +171,17 @@ public final class AnonymousBrowseCoordinator: ObservableObject {
       self?.onShowApplicationDetail?(application)
     }
     // Switching the active zone (a picker chip tap) re-centres the Map tab
-    // to match (GH#879 Phase 4 acceptance criteria) — rebuilding
-    // `mapViewModel` mirrors how a postcode/relaunch resolution already
-    // replaces it.
+    // to match (GH#879 Phase 4 acceptance criteria). Mutates the EXISTING
+    // `mapViewModel` in place via `updateActiveZone(_:)` rather than
+    // replacing the published property with a new instance — live simulator
+    // verification found that replacing it left the Map tab frozen on the
+    // previous zone until a full relaunch, because `AnonymousMapView` holds
+    // the view model in a `@StateObject`, which SwiftUI keeps bound to
+    // whichever instance was FIRST passed to it (see
+    // `AnonymousMapViewModel.updateActiveZone(_:)`'s own docs for the full
+    // writeup).
     viewModel.onActiveZoneChanged = { [weak self] zone in
-      self?.mapViewModel = self?.makeMapViewModel(zone: zone)
+      Task { await self?.mapViewModel?.updateActiveZone(zone) }
     }
     return viewModel
   }
@@ -229,25 +235,6 @@ public final class AnonymousBrowseCoordinator: ObservableObject {
       radiusMetres: state.radiusMetres)
     viewModel.onRequestSignUp = { [weak self] in self?.onRequestSignIn?() }
     viewModel.onRadiusChanged = { [weak self] radius in self?.persistRadius(radius) }
-    viewModel.onShowApplicationDetail = { [weak self] application in
-      self?.onShowApplicationDetail?(application)
-    }
-    return viewModel
-  }
-
-  /// Rebuilds the Map tab's view model centred on `zone` (GH#879 Phase 4),
-  /// used when the Applications tab's zone picker switches the active zone.
-  /// Deliberately does not wire `onRadiusChanged` the way
-  /// ``makeMapViewModel(state:)`` does: that persistence path writes into the
-  /// legacy `AnonymousBrowseState` for the onboarding-prefill seam, which is
-  /// out of scope for a zone-driven session — see `AnonymousMapView`'s radius
-  /// picker note for the follow-up this leaves open.
-  private func makeMapViewModel(zone: DeviceLocalZone) -> AnonymousMapViewModel {
-    let viewModel = AnonymousMapViewModel(
-      repository: applicationsRepository,
-      coordinate: zone.centre,
-      radiusMetres: zone.radiusMetres)
-    viewModel.onRequestSignUp = { [weak self] in self?.onRequestSignIn?() }
     viewModel.onShowApplicationDetail = { [weak self] application in
       self?.onShowApplicationDetail?(application)
     }

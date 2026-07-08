@@ -308,7 +308,16 @@ struct AnonymousBrowseCoordinatorTests {
     #expect(requested)
   }
 
-  @Test func applicationListViewModel_selectZone_reCentresMapViewModel() async throws {
+  /// Regression test for a live-simulator-verified defect: switching the
+  /// active zone on the Applications tab left the Map tab showing the
+  /// PREVIOUS zone until a full relaunch. Root cause: the coordinator was
+  /// replacing `mapViewModel` with a brand-new `AnonymousMapViewModel`
+  /// instance, but `AnonymousMapView` holds it in a `@StateObject` — SwiftUI
+  /// ignores a replaced constructor argument on an already-mounted view, so
+  /// the OLD instance kept rendering forever. The fix mutates the SAME
+  /// instance in place, so this test asserts identity is PRESERVED (not
+  /// replaced) alongside the updated centre/radius.
+  @Test func applicationListViewModel_selectZone_reCentresTheSameMapViewModelInstance() async throws {
     let (sut, _, _, applicationsRepository, deviceLocalZoneRepository) = makeSUT(
       persistedState: testState)
     applicationsRepository.fetchNearbyResult = .success([])
@@ -325,8 +334,9 @@ struct AnonymousBrowseCoordinatorTests {
 
     await listViewModel?.selectZone(zoneB)
 
-    #expect(sut.mapViewModel !== originalMapViewModel)
+    #expect(sut.mapViewModel === originalMapViewModel)
     #expect(sut.mapViewModel?.centreLat == zoneB.centre.latitude)
+    #expect(sut.mapViewModel?.anchorCoordinate == zoneB.centre)
     #expect(sut.mapViewModel?.radiusMetres == zoneB.radiusMetres)
   }
 }

@@ -59,11 +59,12 @@ public final class AnonymousMapViewModel: ObservableObject, ErrorHandlingViewMod
   public static let minSelectedRadiusMetres: Double = 100
   public static let maxSelectedRadiusMetres: Double = WatchZoneLimits(tier: .free).maxRadiusMetres
 
-  /// The postcode-resolved point the radius preview circle is drawn around
-  /// and the camera reframes to. Fixed for the view model's lifetime, unlike
-  /// `centreLat`/`centreLon`, which follow the viewport as the user pans/
-  /// zooms.
-  public let anchorCoordinate: Coordinate
+  /// The point the radius preview circle is drawn around and the camera
+  /// reframes to. Fixed across a `regionDidChange` pan/zoom (unlike
+  /// `centreLat`/`centreLon`, which follow the viewport) — but IS updated by
+  /// ``updateActiveZone(_:)`` when the active device-local zone changes
+  /// (GH#879 Phase 4), so it is `@Published private(set)`, not `let`.
+  @Published public private(set) var anchorCoordinate: Coordinate
 
   private let repository: AnonymousApplicationsRepository
   private let debounceNanoseconds: UInt64
@@ -238,5 +239,42 @@ public final class AnonymousMapViewModel: ObservableObject, ErrorHandlingViewMod
 
   private static func clampSelectedRadius(_ metres: Double) -> Double {
     min(max(metres, minSelectedRadiusMetres), maxSelectedRadiusMetres)
+  }
+
+  /// Re-centres this SAME view model on `zone` (GH#879 Phase 4 defect fix)
+  /// when the active device-local zone changes — e.g. a zone-picker chip tap
+  /// on the Applications tab. Deliberately mutates in place rather than the
+  /// coordinator replacing the whole `AnonymousMapViewModel` instance:
+  /// `AnonymousMapView` holds this object in a `@StateObject`, which SwiftUI
+  /// keeps bound to the FIRST instance passed to it — a same-position
+  /// `AnonymousMapView(viewModel:)` re-init with a NEW instance is silently
+  /// ignored, which is exactly what live simulator verification caught (the
+  /// map stayed on the previous zone until a full relaunch). Mutating
+  /// `@Published` state on the existing instance instead triggers a normal
+  /// SwiftUI re-render, and preserves any live pan/zoom camera state rather
+  /// than tearing the map view down.
+  ///
+  /// Cancels any in-flight debounced `regionDidChange` refetch first so a
+  /// stale pan/zoom fetch can never race this one and clobber the result.
+  /// Clears selection/stack state — those refer to pins from the OLD zone's
+  /// result set, about to be replaced.
+  public func updateActiveZone(_ zone: DeviceLocalZone) async {
+    pendingRegionChangeTask?.cancel()
+    pendingRegionChangeTask = nil
+    selectedApplication = nil
+    stackedApplications = nil
+    pendingSummaryApplication = nil
+    pendingDetailApplication = nil
+
+    centreLat = zone.centre.latitude
+    centreLon = zone.centre.longitude
+    anchorCoordinate = zone.centre
+    radiusMetres = zone.radiusMetres
+    selectedRadiusMetres = Self.clampSelectedRadius(zone.radiusMetres)
+
+    await fetch(
+      latitude: zone.centre.latitude,
+      longitude: zone.centre.longitude,
+      radiusMetres: zone.radiusMetres)
   }
 }
