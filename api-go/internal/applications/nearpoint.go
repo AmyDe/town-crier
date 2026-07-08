@@ -111,7 +111,9 @@ func (h *nearPointHandler) nearPoint(w http.ResponseWriter, r *http.Request) {
 
 	results := make([]NearbyResult, 0, len(apps))
 	for _, a := range apps {
-		results = append(results, NearbyResultOf(a))
+		result := NearbyResultOf(a)
+		result.AuthoritySlug = h.authoritySlug(r.Context(), a)
+		results = append(results, result)
 	}
 
 	// Set the continuation header before writeJSON, which calls WriteHeader;
@@ -120,6 +122,12 @@ func (h *nearPointHandler) nearPoint(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Next-Cursor", encodeNearPointCursor(nextCursor))
 	}
 	writeJSON(w, r, h.logger, results)
+}
+
+// authoritySlug returns the URL slug for the application's authority. See
+// resolveAuthoritySlugFor (respond.go) for the round-trip/fallback behaviour.
+func (h *nearPointHandler) authoritySlug(ctx context.Context, app PlanningApplication) string {
+	return resolveAuthoritySlugFor(ctx, h.resolver, h.logger, "near-point authority slug", app)
 }
 
 // parseNearPointCoordinates parses and validates the required lat/lng query
