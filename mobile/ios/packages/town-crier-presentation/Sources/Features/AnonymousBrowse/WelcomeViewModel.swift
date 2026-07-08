@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 
 /// Backs the anonymous browse flow's welcome screen (GH#868 Phase 3): a thin
@@ -16,15 +17,25 @@ public final class WelcomeViewModel: ObservableObject {
   private let onGetStarted: (() -> Void)?
   private let onSignIn: (() -> Void)?
   private let appearanceStore: AppearanceStore
+  // Forwards the shared store's own `objectWillChange` into this ViewModel's
+  // — without this, `WelcomeView` (which observes `self`, not the store
+  // directly) never re-renders when the mode changes from elsewhere (e.g.
+  // Settings), so the welcome Menu's Picker shows a stale checkmark on
+  // reopen even though `appearanceMode` itself always reads the live value.
+  private var appearanceStoreSubscription: AnyCancellable?
 
   public init(
     appearanceStore: AppearanceStore? = nil,
     onGetStarted: (() -> Void)? = nil,
     onSignIn: (() -> Void)? = nil
   ) {
-    self.appearanceStore = appearanceStore ?? AppearanceStore()
+    let store = appearanceStore ?? AppearanceStore()
+    self.appearanceStore = store
     self.onGetStarted = onGetStarted
     self.onSignIn = onSignIn
+    appearanceStoreSubscription = store.objectWillChange.sink { [weak self] in
+      self?.objectWillChange.send()
+    }
   }
 
   /// "Get started" — routes to postcode entry. Deliberately never calls Auth0;

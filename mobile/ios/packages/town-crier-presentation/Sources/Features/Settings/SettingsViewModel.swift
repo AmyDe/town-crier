@@ -41,6 +41,11 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
   private let appVersionProvider: AppVersionProvider
   private let notificationService: NotificationService
   private let appearanceStore: AppearanceStore
+  // Forwards the shared store's own `objectWillChange` into this ViewModel's
+  // (GH#878 follow-up) — a change originating elsewhere (e.g. the welcome
+  // screen) must still invalidate any open `SettingsView`, not just changes
+  // made through this ViewModel's own Picker binding.
+  private var appearanceStoreSubscription: AnyCancellable?
   private let exportFileWriter: (Data) throws -> URL
 
   public init(
@@ -67,8 +72,12 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
       )
     self.appVersionProvider = appVersionProvider
     self.notificationService = notificationService
-    self.appearanceStore = appearanceStore ?? AppearanceStore(defaults: defaults)
+    let store = appearanceStore ?? AppearanceStore(defaults: defaults)
+    self.appearanceStore = store
     self.exportFileWriter = exportFileWriter
+    appearanceStoreSubscription = store.objectWillChange.sink { [weak self] in
+      self?.objectWillChange.send()
+    }
   }
 
   /// The currently active appearance mode — a live read-through to the
