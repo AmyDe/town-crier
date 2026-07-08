@@ -6,7 +6,7 @@ import TownCrierDomain
 /// device-side ``PostcodesIOGeocoder`` in production — never `/v1/geocode`,
 /// which requires a session), persists the resolved
 /// ``AnonymousBrowseState``, and hands it to ``AnonymousBrowseCoordinator``
-/// via ``onResolved`` to advance to the map.
+/// via ``onResolved`` to advance to the tab shell (GH#879 Phase 3).
 @MainActor
 public final class AnonymousPostcodeEntryViewModel: ObservableObject, ErrorHandlingViewModel {
   @Published public var postcodeInput: String = ""
@@ -19,7 +19,8 @@ public final class AnonymousPostcodeEntryViewModel: ObservableObject, ErrorHandl
   /// Fired when the user taps "Back" — the coordinator returns to welcome.
   public var onBack: (() -> Void)?
   /// Fired once postcode entry has resolved and persisted a state — the
-  /// coordinator builds the map and advances the flow.
+  /// coordinator builds the map view model and advances the flow to the tab
+  /// shell.
   public var onResolved: ((AnonymousBrowseState) -> Void)?
 
   public init(geocoder: PostcodeGeocoder, stateRepository: AnonymousBrowseStateRepository) {
