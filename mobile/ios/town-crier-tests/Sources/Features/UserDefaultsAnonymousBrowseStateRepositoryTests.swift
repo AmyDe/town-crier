@@ -26,7 +26,8 @@ struct UserDefaultsAnonymousBrowseStateRepositoryTests {
     let postcode = try Postcode("CB1 2AD")
     let coordinate = try Coordinate(latitude: 52.2053, longitude: 0.1218)
     let createdAt = Date(timeIntervalSince1970: 1_700_000_000)
-    let state = AnonymousBrowseState(postcode: postcode, coordinate: coordinate, createdAt: createdAt)
+    let state = AnonymousBrowseState(
+      postcode: postcode, coordinate: coordinate, createdAt: createdAt)
 
     sut.save(state)
 

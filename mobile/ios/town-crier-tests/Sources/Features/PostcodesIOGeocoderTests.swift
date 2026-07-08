@@ -31,7 +31,8 @@ struct PostcodesIOGeocoderTests {
 
   @Test("geocode sends GET to postcodes.io directly, no /v1/geocode")
   func geocode_sendsDirectRequest_toPostcodesIO() async throws {
-    let json = #"{"status":200,"result":{"postcode":"CB1 2AD","latitude":52.2053,"longitude":0.1218}}"#
+    let json =
+      #"{"status":200,"result":{"postcode":"CB1 2AD","latitude":52.2053,"longitude":0.1218}}"#
     let (sut, transport) = makeSUT(responses: [(Data(json.utf8), httpResponse(statusCode: 200))])
 
     let postcode = try Postcode("CB1 2AD")
@@ -46,7 +47,8 @@ struct PostcodesIOGeocoderTests {
 
   @Test("geocode returns the mapped coordinate on success")
   func geocode_success_returnsMappedCoordinate() async throws {
-    let json = #"{"status":200,"result":{"postcode":"CB1 2AD","latitude":52.2053,"longitude":0.1218}}"#
+    let json =
+      #"{"status":200,"result":{"postcode":"CB1 2AD","latitude":52.2053,"longitude":0.1218}}"#
     let (sut, _) = makeSUT(responses: [(Data(json.utf8), httpResponse(statusCode: 200))])
 
     let result = try await sut.geocode(try Postcode("CB1 2AD"))
@@ -56,7 +58,9 @@ struct PostcodesIOGeocoderTests {
 
   // MARK: - Error mapping
 
-  @Test("geocode with postcodes.io 404 throws the same geocodingFailed DomainError APIPostcodeGeocoder uses")
+  @Test(
+    "geocode with postcodes.io 404 throws the same geocodingFailed DomainError APIPostcodeGeocoder uses"
+  )
   func geocode_notFound_throwsGeocodingFailed() async throws {
     // Real postcodes.io shape for an unknown postcode.
     let json = #"{"status":404,"error":"Postcode not found"}"#

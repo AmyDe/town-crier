@@ -34,7 +34,8 @@ struct APIAnonymousApplicationsRepositoryTests {
   func fetchNearby_sendsCorrectRequest() async throws {
     let (sut, transport) = makeSUT(responses: [(Data("[]".utf8), httpResponse(statusCode: 200))])
 
-    _ = try await sut.fetchNearby(latitude: 52.2053, longitude: 0.1218, radiusMetres: 2000, limit: 200)
+    _ = try await sut.fetchNearby(
+      latitude: 52.2053, longitude: 0.1218, radiusMetres: 2000, limit: 200)
 
     #expect(transport.requests.count == 1)
     let request = transport.requests[0]
@@ -103,7 +104,8 @@ struct APIAnonymousApplicationsRepositoryTests {
     let sut = APIAnonymousApplicationsRepository(apiClient: apiClient)
 
     await #expect(throws: DomainError.networkUnavailable) {
-      _ = try await sut.fetchNearby(latitude: 52.2053, longitude: 0.1218, radiusMetres: 2000, limit: 200)
+      _ = try await sut.fetchNearby(
+        latitude: 52.2053, longitude: 0.1218, radiusMetres: 2000, limit: 200)
     }
   }
 
@@ -112,7 +114,8 @@ struct APIAnonymousApplicationsRepositoryTests {
     let (sut, _) = makeSUT(responses: [(Data("Bad Request".utf8), httpResponse(statusCode: 400))])
 
     await #expect(throws: DomainError.serverError(statusCode: 400, message: "Bad Request")) {
-      _ = try await sut.fetchNearby(latitude: 52.2053, longitude: 0.1218, radiusMetres: 2000, limit: 200)
+      _ = try await sut.fetchNearby(
+        latitude: 52.2053, longitude: 0.1218, radiusMetres: 2000, limit: 200)
     }
   }
 }

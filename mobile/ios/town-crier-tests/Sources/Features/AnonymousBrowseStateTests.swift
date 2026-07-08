@@ -23,8 +23,10 @@ struct AnonymousBrowseStateTests {
     let coordinate = try Coordinate(latitude: 52.2053, longitude: 0.1218)
     let createdAt = Date(timeIntervalSince1970: 1_700_000_000)
 
-    let first = AnonymousBrowseState(postcode: postcode, coordinate: coordinate, createdAt: createdAt)
-    let second = AnonymousBrowseState(postcode: postcode, coordinate: coordinate, createdAt: createdAt)
+    let first = AnonymousBrowseState(
+      postcode: postcode, coordinate: coordinate, createdAt: createdAt)
+    let second = AnonymousBrowseState(
+      postcode: postcode, coordinate: coordinate, createdAt: createdAt)
 
     #expect(first == second)
   }

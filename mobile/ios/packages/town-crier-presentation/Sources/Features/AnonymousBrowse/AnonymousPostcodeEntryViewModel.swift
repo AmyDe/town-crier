@@ -42,7 +42,8 @@ public final class AnonymousPostcodeEntryViewModel: ObservableObject, ErrorHandl
 
     do {
       let coordinate = try await geocoder.geocode(postcode)
-      let state = AnonymousBrowseState(postcode: postcode, coordinate: coordinate, createdAt: Date())
+      let state = AnonymousBrowseState(
+        postcode: postcode, coordinate: coordinate, createdAt: Date())
       stateRepository.save(state)
       onResolved?(state)
     } catch {

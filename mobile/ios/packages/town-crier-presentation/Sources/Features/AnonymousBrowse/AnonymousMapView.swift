@@ -46,8 +46,9 @@ public struct AnonymousMapView: View {
         set: { _ in viewModel.clearSelection() }
       )
     ) { application in
-      AnonymousApplicationSummaryView(
-        application: application, onSignUp: { viewModel.requestSignUp() })
+      AnonymousApplicationSummaryView(application: application) {
+        viewModel.requestSignUp()
+      }
     }
   }
 

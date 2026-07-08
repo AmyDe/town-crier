@@ -66,8 +66,8 @@ public final class AnonymousBrowseCoordinator: ObservableObject {
     viewModel.onBack = { [weak self] in self?.screen = .welcome }
     viewModel.onResolved = { [weak self] state in
       guard let self else { return }
-      self.mapViewModel = self.makeMapViewModel(coordinate: state.coordinate)
-      self.screen = .map
+      mapViewModel = makeMapViewModel(coordinate: state.coordinate)
+      screen = .map
     }
     return viewModel
   }
@@ -84,7 +84,8 @@ public final class AnonymousBrowseCoordinator: ObservableObject {
   }
 
   private func makeMapViewModel(coordinate: Coordinate) -> AnonymousMapViewModel {
-    let viewModel = AnonymousMapViewModel(repository: applicationsRepository, coordinate: coordinate)
+    let viewModel = AnonymousMapViewModel(
+      repository: applicationsRepository, coordinate: coordinate)
     viewModel.onRequestSignUp = { [weak self] in self?.onRequestSignIn?() }
     return viewModel
   }

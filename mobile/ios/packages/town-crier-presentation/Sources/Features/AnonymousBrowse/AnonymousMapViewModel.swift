@@ -81,7 +81,11 @@ public final class AnonymousMapViewModel: ObservableObject, ErrorHandlingViewMod
     isLoading = true
     do {
       applications = try await repository.fetchNearby(
-        latitude: latitude, longitude: longitude, radiusMetres: radiusMetres, limit: Self.defaultLimit)
+        latitude: latitude,
+        longitude: longitude,
+        radiusMetres: radiusMetres,
+        limit: Self.defaultLimit
+      )
       error = nil
     } catch {
       // A transient refetch failure (pan/zoom) keeps the last good pins rather

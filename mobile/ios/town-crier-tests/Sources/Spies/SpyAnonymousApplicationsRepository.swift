@@ -16,7 +16,8 @@ final class SpyAnonymousApplicationsRepository: AnonymousApplicationsRepository,
     latitude: Double, longitude: Double, radiusMetres: Double, limit: Int
   ) async throws -> [PlanningApplication] {
     fetchNearbyCalls.append(
-      FetchNearbyCall(latitude: latitude, longitude: longitude, radiusMetres: radiusMetres, limit: limit))
+      FetchNearbyCall(
+        latitude: latitude, longitude: longitude, radiusMetres: radiusMetres, limit: limit))
     return try fetchNearbyResult.get()
   }
 }

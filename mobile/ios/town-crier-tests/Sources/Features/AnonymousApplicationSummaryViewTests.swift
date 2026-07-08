@@ -7,13 +7,13 @@ import TownCrierDomain
 @Suite("AnonymousApplicationSummaryView")
 struct AnonymousApplicationSummaryViewTests {
   @Test func body_renders() {
-    let sut = AnonymousApplicationSummaryView(application: .pendingReview, onSignUp: {})
+    let sut = AnonymousApplicationSummaryView(application: .pendingReview) {}
     _ = sut.body
   }
 
   @Test func onSignUp_invokedByCaller() {
     var invoked = false
-    let sut = AnonymousApplicationSummaryView(application: .pendingReview, onSignUp: { invoked = true })
+    let sut = AnonymousApplicationSummaryView(application: .pendingReview) { invoked = true }
     sut.onSignUp()
     #expect(invoked)
   }
