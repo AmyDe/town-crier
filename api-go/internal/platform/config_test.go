@@ -371,6 +371,38 @@ func TestLoadConfig_CorsAllowedOrigins(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_AnonRateLimitDefaults(t *testing.T) {
+	t.Setenv("ANON_RATE_LIMIT_REQUESTS", "")
+	t.Setenv("ANON_RATE_LIMIT_WINDOW_SECONDS", "")
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.AnonRateLimitRequests != 60 {
+		t.Errorf("AnonRateLimitRequests default: got %d, want 60", cfg.AnonRateLimitRequests)
+	}
+	if cfg.AnonRateLimitWindowSeconds != 60 {
+		t.Errorf("AnonRateLimitWindowSeconds default: got %d, want 60", cfg.AnonRateLimitWindowSeconds)
+	}
+}
+
+func TestLoadConfig_AnonRateLimitOverrides(t *testing.T) {
+	t.Setenv("ANON_RATE_LIMIT_REQUESTS", "30")
+	t.Setenv("ANON_RATE_LIMIT_WINDOW_SECONDS", "10")
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.AnonRateLimitRequests != 30 {
+		t.Errorf("AnonRateLimitRequests override: got %d, want 30", cfg.AnonRateLimitRequests)
+	}
+	if cfg.AnonRateLimitWindowSeconds != 10 {
+		t.Errorf("AnonRateLimitWindowSeconds override: got %d, want 10", cfg.AnonRateLimitWindowSeconds)
+	}
+}
+
 func TestLoadConfig_PollingDefaults(t *testing.T) {
 	// Clear any inherited overrides so the defaults are exercised.
 	for _, k := range []string{
