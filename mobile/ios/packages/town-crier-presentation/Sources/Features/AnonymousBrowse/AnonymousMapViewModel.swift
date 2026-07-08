@@ -69,6 +69,10 @@ public final class AnonymousMapViewModel: ObservableObject, ErrorHandlingViewMod
   private let repository: AnonymousApplicationsRepository
   private let debounceNanoseconds: UInt64
   private var pendingRegionChangeTask: Task<Void, Never>?
+  /// Debounces ``updateActiveZone(_:)``'s fetch the same way
+  /// `pendingRegionChangeTask` debounces `regionDidChange` (GH#879 Phase 4
+  /// crash fix — see that method's docs).
+  private var pendingActiveZoneTask: Task<Void, Never>?
 
   /// Fired by the persistent CTA banner's "Create account"/"Sign in" buttons
   /// (full detail no longer requires an account — GH#879 Phase 2 replaced the
@@ -117,6 +121,10 @@ public final class AnonymousMapViewModel: ObservableObject, ErrorHandlingViewMod
     self.radiusMetres = clampedRadius
 
     pendingRegionChangeTask?.cancel()
+    // Mutual exclusion with an in-flight active-zone update (GH#879 Phase
+    // 4): a pan/zoom and a zone switch racing each other must never both
+    // land — "last request wins" — see `updateActiveZone(_:)`'s docs.
+    pendingActiveZoneTask?.cancel()
     let debounceDuration = debounceNanoseconds
     pendingRegionChangeTask = Task { [weak self] in
       try? await Task.sleep(nanoseconds: debounceDuration)
@@ -254,13 +262,29 @@ public final class AnonymousMapViewModel: ObservableObject, ErrorHandlingViewMod
   /// SwiftUI re-render, and preserves any live pan/zoom camera state rather
   /// than tearing the map view down.
   ///
-  /// Cancels any in-flight debounced `regionDidChange` refetch first so a
-  /// stale pan/zoom fetch can never race this one and clobber the result.
-  /// Clears selection/stack state — those refer to pins from the OLD zone's
-  /// result set, about to be replaced.
-  public func updateActiveZone(_ zone: DeviceLocalZone) async {
+  /// Centre/anchor/radius update IMMEDIATELY (synchronously) so the camera
+  /// and radius overlay reframe as soon as the zone switches. The FETCH —
+  /// and therefore the full pin/annotation-set swap it produces — is
+  /// debounced the same way `regionDidChange` debounces a pan/zoom, and
+  /// mutually cancels any in-flight `regionDidChange`/`updateActiveZone`
+  /// fetch of the other kind. This is a crash fix (GH#879 Phase 4): live
+  /// simulator verification hit a MapKit-internal SIGABRT
+  /// (`-[MKMapView annotationContainer:requestAddingClusterForAnnotationViews:]`
+  /// → `doesNotRecognizeSelector:`) reproducibly when the active zone was
+  /// switched rapidly — MapKit's own deferred clustering pass cannot
+  /// tolerate the annotation set being replaced faster than it can settle.
+  /// Debouncing collapses a rapid run of zone switches to a single pin swap
+  /// for the LAST zone selected, rather than one overlapping swap per tap.
+  ///
+  /// Clears selection/stack state immediately (not debounced) — those refer
+  /// to pins from the OLD zone's result set, about to be replaced, and
+  /// leaving a stale summary/disambiguation sheet open over a map that has
+  /// already moved to a new area would be its own bug.
+  public func updateActiveZone(_ zone: DeviceLocalZone) {
     pendingRegionChangeTask?.cancel()
     pendingRegionChangeTask = nil
+    pendingActiveZoneTask?.cancel()
+
     selectedApplication = nil
     stackedApplications = nil
     pendingSummaryApplication = nil
@@ -272,9 +296,20 @@ public final class AnonymousMapViewModel: ObservableObject, ErrorHandlingViewMod
     radiusMetres = zone.radiusMetres
     selectedRadiusMetres = Self.clampSelectedRadius(zone.radiusMetres)
 
-    await fetch(
-      latitude: zone.centre.latitude,
-      longitude: zone.centre.longitude,
-      radiusMetres: zone.radiusMetres)
+    let debounceDuration = debounceNanoseconds
+    pendingActiveZoneTask = Task { [weak self] in
+      try? await Task.sleep(nanoseconds: debounceDuration)
+      guard !Task.isCancelled else { return }
+      await self?.fetch(
+        latitude: zone.centre.latitude,
+        longitude: zone.centre.longitude,
+        radiusMetres: zone.radiusMetres)
+    }
+  }
+
+  /// Test-only synchronisation: await the most recently scheduled debounced
+  /// active-zone refetch, mirroring ``waitForPendingRegionChangeRefetch()``.
+  public func waitForPendingActiveZoneUpdate() async {
+    await pendingActiveZoneTask?.value
   }
 }

@@ -181,7 +181,7 @@ public final class AnonymousBrowseCoordinator: ObservableObject {
     // `AnonymousMapViewModel.updateActiveZone(_:)`'s own docs for the full
     // writeup).
     viewModel.onActiveZoneChanged = { [weak self] zone in
-      Task { await self?.mapViewModel?.updateActiveZone(zone) }
+      self?.mapViewModel?.updateActiveZone(zone)
     }
     return viewModel
   }

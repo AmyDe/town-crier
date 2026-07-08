@@ -15,6 +15,27 @@
   /// status-coloured single pin, `MKCircle` radius overlay) without touching
   /// that file — the anonymous surface is a deliberately reduced,
   /// self-contained screen (see `AnonymousMapView`'s header).
+  ///
+  /// GH#879 Phase 4 crash fix: live simulator verification found a
+  /// reproducible `SIGABRT` inside MapKit's own deferred clustering pass
+  /// (`-[MKMapView annotationContainer:requestAddingClusterForAnnotationViews:]`
+  /// → Objective-C message forwarding → `doesNotRecognizeSelector:`),
+  /// triggered by switching the active device-local zone (which replaces
+  /// the map's full pin set) in combination with tab switches and a radius
+  /// drag, or by rapid zone-switch/tab cycling. `updateUIView` previously
+  /// mutated MapKit's annotations/overlay/camera SYNCHRONOUSLY and
+  /// re-entrantly every time any of several `@Published` properties changed
+  /// — which could land while MapKit's own `NSTimer`-driven clustering pass
+  /// from a PRIOR mutation was still pending, messaging annotation views
+  /// that were mid-rebuild. `Coordinator.scheduleUpdate(_:)` now coalesces
+  /// bursts of `updateUIView` calls onto a single deferred application (one
+  /// actor hop later, via `Task { @MainActor in }`), reading the ViewModel's
+  /// state fresh when it runs — this breaks the direct re-entrant call
+  /// chain and collapses rapid churn to one mutation. The exact MapKit
+  /// internal timing this races against cannot be reproduced in
+  /// `swift test` (no `MKMapView`/`NSTimer` harness here, and this type is
+  /// UIKit-only / has no existing unit-test coverage) — verified via a
+  /// dispatched simulator re-run instead.
   @MainActor
   struct AnonymousClusteredMapView: UIViewRepresentable {
     /// Observed so `updateUIView` re-runs whenever the ViewModel publishes —
@@ -55,19 +76,27 @@
     }
 
     func updateUIView(_ mapView: MKMapView, context: Context) {
+      // Deferred + coalesced (GH#879 Phase 4 crash fix — see this file's
+      // header): mutating MapKit's annotation/overlay state SYNCHRONOUSLY
+      // and possibly re-entrantly from within `updateUIView` reproducibly
+      // crashed on-device inside MapKit's own deferred clustering pass
+      // (`-[MKAnnotationContainerView _updateClusterableAnnotationViews:...]`).
       let coordinator = context.coordinator
-      coordinator.syncAnnotations(on: mapView, desired: viewModel.applications)
-      coordinator.applyRadiusOverlay(
-        to: mapView,
-        anchor: viewModel.anchorCoordinate,
-        radius: viewModel.selectedRadiusMetres)
-      // Reframe only when the selected radius actually changed, so a pin
-      // refetch (pan/zoom exploring) never yanks the user's current viewport
-      // back — mirrors `ClusteredMapView.frameCameraIfZoneChanged`.
-      coordinator.reframeIfRadiusChanged(
-        on: mapView,
-        centre: Self.coordinate(for: viewModel.anchorCoordinate),
-        radius: viewModel.selectedRadiusMetres)
+      let currentViewModel = viewModel
+      coordinator.scheduleUpdate {
+        coordinator.syncAnnotations(on: mapView, desired: currentViewModel.applications)
+        coordinator.applyRadiusOverlay(
+          to: mapView,
+          anchor: currentViewModel.anchorCoordinate,
+          radius: currentViewModel.selectedRadiusMetres)
+        // Reframe only when the selected radius actually changed, so a pin
+        // refetch (pan/zoom exploring) never yanks the user's current
+        // viewport back — mirrors `ClusteredMapView.frameCameraIfZoneChanged`.
+        coordinator.reframeIfRadiusChanged(
+          on: mapView,
+          centre: Self.coordinate(for: currentViewModel.anchorCoordinate),
+          radius: currentViewModel.selectedRadiusMetres)
+      }
     }
 
     static func coordinate(for coordinate: Coordinate) -> CLLocationCoordinate2D {
@@ -92,6 +121,10 @@
     final class Coordinator: NSObject, MKMapViewDelegate {
       private let viewModel: AnonymousMapViewModel
 
+      /// Guards ``scheduleUpdate(_:)``'s coalescing — see this file's header
+      /// for the crash this fixes.
+      private var hasScheduledUpdate = false
+
       /// The radius the camera is currently framed on, so a pin refetch never
       /// reframes — only an actual radius-slider change does.
       private var framedRadius: Double?
@@ -102,6 +135,29 @@
 
       init(viewModel: AnonymousMapViewModel) {
         self.viewModel = viewModel
+      }
+
+      // MARK: - Update coalescing (GH#879 Phase 4 crash fix)
+
+      /// Coalesces bursts of `updateUIView` calls (a radius drag, a pin
+      /// refetch, an active-zone switch — several `@Published` properties
+      /// can change together in one shot, e.g.
+      /// `AnonymousMapViewModel.updateActiveZone(_:)`) onto a SINGLE
+      /// deferred application, one main-actor hop later, rather than
+      /// mutating MapKit's annotation/overlay/camera state synchronously
+      /// and possibly re-entrantly on every call — see this file's header
+      /// for the crash this closes. `apply` reads the ViewModel's state
+      /// fresh at the point it actually runs, so a coalesced burst always
+      /// applies the LATEST state, never a stale intermediate one; calls
+      /// arriving while one is already pending are simply dropped (the
+      /// pending one will pick up their state too).
+      func scheduleUpdate(_ apply: @escaping @MainActor () -> Void) {
+        guard !hasScheduledUpdate else { return }
+        hasScheduledUpdate = true
+        Task { @MainActor [weak self] in
+          self?.hasScheduledUpdate = false
+          apply()
+        }
       }
 
       // MARK: - Annotation diffing
