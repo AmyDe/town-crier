@@ -4,6 +4,10 @@ import SwiftUI
 /// Extracted (GH#879 Phase 3) so `SettingsView` (authenticated) and
 /// `AnonymousSettingsView` render identical row chrome without duplicating
 /// the same private helper methods across both files.
+/// `@MainActor` because the CI toolchain treats `Spacer.init(minLength:)` as
+/// main-actor-isolated; every call site is a `View.body`, so this adds no
+/// constraint in practice.
+@MainActor
 enum SettingsRowStyling {
   /// A label-value row: primary-styled label on the left, secondary-styled
   /// value on the right.
