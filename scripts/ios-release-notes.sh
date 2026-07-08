@@ -45,11 +45,36 @@ fi
 STOCK="Bug fixes and performance improvements."
 
 # --- Source 1: authored Release-Note: trailers (verbatim, any commit) --------
-# `|| true` guards against grep exiting 1 (no match) tripping pipefail.
+# GitHub hard-wraps squash-commit bodies at ~72 chars, so a trailer authored as
+# one line can arrive wrapped across several. Join continuation lines until the
+# paragraph ends: a blank line, another `Key:` trailer, or a markdown-ish line
+# (`---` rule, list bullet, heading, HTML comment). A directly following
+# Release-Note: line starts a new note rather than being swallowed.
 trailer_notes="$(
   git log --format='%B' "$RANGE" 2>/dev/null \
-    | grep -iE '^Release-Note:' \
-    | sed -E 's/^[Rr]elease-[Nn]ote:[[:space:]]*//' || true
+    | awk '
+        function flush() { if (collecting) { print note; collecting = 0 } }
+        {
+          if (collecting) {
+            if ($0 ~ /^[[:space:]]*$/ \
+                || $0 ~ /^[[:alnum:]][[:alnum:]-]*:([[:space:]]|$)/ \
+                || $0 ~ /^(---|\*|-[[:space:]]|#|<|`)/) {
+              flush()
+            } else {
+              sub(/[[:space:]]+$/, "")
+              note = note " " $0
+              next
+            }
+          }
+          if ($0 ~ /^[Rr]elease-[Nn]ote:[[:space:]]*/) {
+            note = $0
+            sub(/^[Rr]elease-[Nn]ote:[[:space:]]*/, "", note)
+            sub(/[[:space:]]+$/, "", note)
+            collecting = 1
+          }
+        }
+        END { flush() }
+      ' || true
 )"
 
 # --- Source 2: cleaned mobile/ios subjects for commits WITHOUT a trailer -----
