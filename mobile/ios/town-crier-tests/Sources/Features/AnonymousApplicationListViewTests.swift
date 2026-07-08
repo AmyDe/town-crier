@@ -57,4 +57,48 @@ struct AnonymousApplicationListViewTests {
 
     #expect(captured == [.pendingReview])
   }
+
+  // MARK: - Zone picker chips (GH#879 Phase 4)
+
+  @Test func body_renders_withZonePickerVisible() async throws {
+    let (viewModel, repository) = makeViewModel()
+    let zoneRepository = SpyDeviceLocalZoneRepository()
+    zoneRepository.loadAllResult = [
+      try DeviceLocalZone(name: "Home", centre: .cambridge, radiusMetres: 1000),
+      try DeviceLocalZone(name: "Office", centre: .cambridge, radiusMetres: 1000),
+    ]
+    let vm = AnonymousApplicationListViewModel(
+      repository: repository,
+      zoneRepository: zoneRepository,
+      fallbackCoordinate: .cambridge,
+      fallbackRadiusMetres: 2000)
+    repository.fetchNearbyResult = .success([])
+    await vm.loadApplications()
+    #expect(vm.showZonePicker)
+    let sut = AnonymousApplicationListView(viewModel: vm)
+
+    _ = sut.body
+  }
+
+  @Test func chipTap_invokesSelectZone() async throws {
+    let (_, repository) = makeViewModel()
+    let zoneRepository = SpyDeviceLocalZoneRepository()
+    let zoneA = try DeviceLocalZone(name: "Home", centre: .cambridge, radiusMetres: 1000)
+    let zoneB = try DeviceLocalZone(name: "Office", centre: .cambridge, radiusMetres: 1000)
+    zoneRepository.loadAllResult = [zoneA, zoneB]
+    let vm = AnonymousApplicationListViewModel(
+      repository: repository,
+      zoneRepository: zoneRepository,
+      fallbackCoordinate: .cambridge,
+      fallbackRadiusMetres: 2000)
+    repository.fetchNearbyResult = .success([])
+    await vm.loadApplications()
+
+    // Mirrors the row-tap test above: the chip's tap gesture itself is not
+    // exercisable without UI-level automation, so this asserts the same
+    // ViewModel call the tap invokes.
+    await vm.selectZone(zoneB)
+
+    #expect(vm.selectedZone == zoneB)
+  }
 }
