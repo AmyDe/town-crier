@@ -2,15 +2,6 @@ import Combine
 import Foundation
 import TownCrierDomain
 
-/// The applications stacked at one unsplittable map cell, wrapped as an
-/// `Identifiable` value so it can drive a `.sheet(item:)` for the disambiguation
-/// list (GH#722). `id` is the source cluster's id, so re-tapping the same stacked
-/// cell re-presents the same list rather than a spurious second sheet.
-struct StackedApplications: Identifiable, Equatable, Sendable {
-  let id: String
-  let applications: [PlanningApplication]
-}
-
 /// ViewModel driving the map view with server-computed cluster aggregates
 /// (GH#698). Instead of eager-draining every application in the zone, the map
 /// fetches only the clusters inside the current viewport and refetches
