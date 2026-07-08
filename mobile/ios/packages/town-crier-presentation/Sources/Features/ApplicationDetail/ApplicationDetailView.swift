@@ -39,6 +39,10 @@ public struct ApplicationDetailView: View {
         if viewModel.hasPortalUrl {
           portalButton
         }
+
+        if viewModel.showsSignUpCTA {
+          signUpCTA
+        }
       }
       .padding(TCSpacing.medium)
     }
@@ -145,6 +149,40 @@ public struct ApplicationDetailView: View {
         Text("View on Council Portal")
       }
     }
+  }
+
+  // MARK: - Sign-Up CTA (GH#879 Phase 2)
+
+  /// Replaces the Save toolbar affordance for an anonymously-viewed
+  /// application. Reuses ``AccountCTABanner/Copy`` so the wording never drifts
+  /// from the anonymous map's CTA — a deliberate product/legal choice
+  /// (never say "instant") — while laying out for this screen's already-padded
+  /// scroll content rather than the banner's bottom-safe-area pinning.
+  private var signUpCTA: some View {
+    VStack(alignment: .leading, spacing: TCSpacing.small) {
+      Text(AccountCTABanner.Copy.headline)
+        .font(TCTypography.headline)
+        .foregroundStyle(Color.tcTextPrimary)
+
+      Text(AccountCTABanner.Copy.subline)
+        .font(TCTypography.body)
+        .foregroundStyle(Color.tcTextSecondary)
+
+      HStack(spacing: TCSpacing.medium) {
+        PrimaryButton(AccountCTABanner.Copy.createAccount) {
+          viewModel.requestSignUp()
+        }
+
+        Button(AccountCTABanner.Copy.signIn) {
+          viewModel.requestSignUp()
+        }
+        .font(TCTypography.bodyEmphasis)
+        .foregroundStyle(Color.tcTextSecondary)
+      }
+    }
+    .padding(TCSpacing.medium)
+    .background(Color.tcSurfaceElevated)
+    .clipShape(RoundedRectangle(cornerRadius: TCCornerRadius.large))
   }
 
 }
