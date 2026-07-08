@@ -107,6 +107,42 @@ struct AnonymousBrowseCoordinatorTests {
     #expect(requested)
   }
 
+  // MARK: - Live radius picker persistence (GH#868 Phase 3 refinement)
+
+  @Test func mapViewModel_radiusChange_persistsUpdatedStateWithSamePostcodeAndCoordinate() {
+    let (sut, _, stateRepository, _) = makeSUT(persistedState: testState)
+
+    sut.mapViewModel?.updateSelectedRadius(1500)
+
+    #expect(stateRepository.saveCalls.last?.radiusMetres == 1500)
+    #expect(stateRepository.saveCalls.last?.postcode == testState.postcode)
+    #expect(stateRepository.saveCalls.last?.coordinate == testState.coordinate)
+  }
+
+  @Test func postcodeEntryViewModel_onResolved_thenRadiusChange_persistsAgainstResolvedState() {
+    let (sut, _, stateRepository, _) = makeSUT()
+    let postcodeVM = sut.makePostcodeEntryViewModel()
+    postcodeVM.onResolved?(testState)
+
+    sut.mapViewModel?.updateSelectedRadius(500)
+
+    #expect(stateRepository.saveCalls.last?.radiusMetres == 500)
+    #expect(stateRepository.saveCalls.last?.postcode == testState.postcode)
+  }
+
+  @Test func init_withPersistedState_seedsMapViewModelSelectedRadiusFromPersistedRadius() {
+    let stateWithRadius = AnonymousBrowseState(
+      postcode: testState.postcode,
+      coordinate: testState.coordinate,
+      radiusMetres: 1500,
+      createdAt: testState.createdAt
+    )
+
+    let (sut, _, _, _) = makeSUT(persistedState: stateWithRadius)
+
+    #expect(sut.mapViewModel?.selectedRadiusMetres == 1500)
+  }
+
   // MARK: - Reset (sign-out)
 
   @Test func reset_clearsStateAndReturnsToWelcome() {
