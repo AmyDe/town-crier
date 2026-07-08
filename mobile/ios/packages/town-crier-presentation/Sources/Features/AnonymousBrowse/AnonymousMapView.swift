@@ -90,11 +90,24 @@ public struct AnonymousMapView: View {
   /// Live monitoring-radius `Slider`, mirroring `RadiusPickerStepView`'s
   /// paradigm (same `formatRadius` label, `tcAmber` tint) so the anonymous
   /// preview and the post-signup wizard feel like one continuous control.
+  ///
+  /// GH#879 Phase 4 screen-space note: this card previously stacked its
+  /// value label above the slider inside `TCSpacing.medium` padding on all
+  /// sides — combined with the CTA banner and tab bar, sim verification
+  /// found the three together ate roughly 45% of the Map screen. Collapsing
+  /// the label and slider onto a single row, with tighter vertical padding,
+  /// meaningfully reduces that footprint without losing the ability to
+  /// adjust the radius from the map. It still previews the free-tier zone
+  /// size for the onboarding handoff (`AnonymousBrowseState`) rather than
+  /// writing through to the active `DeviceLocalZone` — that deeper question
+  /// (tc-zagg4) was assessed as more than a small change for this bead.
   private var radiusPickerCard: some View {
-    VStack(spacing: TCSpacing.small) {
+    HStack(spacing: TCSpacing.small) {
       Text(formatRadius(viewModel.selectedRadiusMetres))
-        .font(TCTypography.bodyEmphasis)
+        .font(TCTypography.captionEmphasis)
         .foregroundStyle(Color.tcTextPrimary)
+        .frame(minWidth: 52, alignment: .leading)
+        .accessibilityHidden(true)
 
       Slider(
         value: Binding(
@@ -109,7 +122,8 @@ public struct AnonymousMapView: View {
       .accessibilityLabel("Monitoring radius")
       .accessibilityValue(formatRadius(viewModel.selectedRadiusMetres))
     }
-    .padding(TCSpacing.medium)
+    .padding(.horizontal, TCSpacing.medium)
+    .padding(.vertical, TCSpacing.small)
     .background(Color.tcSurfaceElevated)
     .clipShape(RoundedRectangle(cornerRadius: TCCornerRadius.large))
     .padding(.horizontal, TCSpacing.medium)
