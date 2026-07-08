@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import Testing
 import TownCrierDomain
@@ -90,6 +91,29 @@ struct WelcomeAppearanceModeTests {
     settingsVM.appearanceMode = .dark
 
     #expect(welcomeVM.appearanceMode == .dark)
+  }
+
+  // MARK: - Live re-render when the store changes from elsewhere (defect repro)
+
+  /// GH#878 follow-up: live-simulator verification found reopening the
+  /// welcome Menu after picking Dark/Light still showed "System" checked —
+  /// the underlying store value was correct, but `WelcomeViewModel` never
+  /// forwarded the store's change into its own `objectWillChange`, so
+  /// SwiftUI never rebuilt the Menu's Picker. `appearanceMode` being a live
+  /// read-through (already covered above) is necessary but not sufficient —
+  /// this test targets the missing notification specifically, by mutating
+  /// the store WITHOUT going through `sut.selectAppearanceMode(_:)`.
+  @Test func externalStoreMutation_notifiesWelcomeViewModelObjectWillChange() {
+    let store = AppearanceStore(defaults: makeDefaults())
+    let sut = WelcomeViewModel(appearanceStore: store)
+    var notified = false
+    let subscription = sut.objectWillChange.sink { _ in notified = true }
+
+    withExtendedLifetime(subscription) {
+      store.appearanceMode = .dark
+    }
+
+    #expect(notified)
   }
 
   // MARK: - Existing WelcomeViewModel callback behaviour is untouched
