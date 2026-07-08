@@ -13,10 +13,13 @@ import TownCrierDomain
 @Suite("DeviceLocalZoneListViewModel")
 @MainActor
 struct DeviceLocalZoneListViewModelTests {
-  private func makeSUT() -> (DeviceLocalZoneListViewModel, SpyDeviceLocalZoneRepository) {
+  private func makeSUT() -> (
+    DeviceLocalZoneListViewModel, SpyDeviceLocalZoneRepository, SpyPostcodeGeocoder
+  ) {
     let repository = SpyDeviceLocalZoneRepository()
-    let sut = DeviceLocalZoneListViewModel(repository: repository, geocoder: SpyPostcodeGeocoder())
-    return (sut, repository)
+    let geocoder = SpyPostcodeGeocoder()
+    let sut = DeviceLocalZoneListViewModel(repository: repository, geocoder: geocoder)
+    return (sut, repository, geocoder)
   }
 
   private func makeZone(name: String = "Home") throws -> DeviceLocalZone {
@@ -26,7 +29,7 @@ struct DeviceLocalZoneListViewModelTests {
   // MARK: - Load
 
   @Test func load_populatesZonesFromRepository() throws {
-    let (sut, repository) = makeSUT()
+    let (sut, repository, _) = makeSUT()
     let zone = try makeZone(name: "Home")
     repository.loadAllResult = [zone]
 
@@ -38,7 +41,7 @@ struct DeviceLocalZoneListViewModelTests {
   // MARK: - editZone
 
   @Test func editZone_opensEditorForThatZone() throws {
-    let (sut, _) = makeSUT()
+    let (sut, _, _) = makeSUT()
     let zone = try makeZone()
 
     sut.editZone(zone)
@@ -49,7 +52,7 @@ struct DeviceLocalZoneListViewModelTests {
   // MARK: - Alert affordance -> sign-up CTA
 
   @Test func requestAlertsSignUp_presentsSignUpCTA() {
-    let (sut, _) = makeSUT()
+    let (sut, _, _) = makeSUT()
 
     sut.requestAlertsSignUp()
 
@@ -60,7 +63,7 @@ struct DeviceLocalZoneListViewModelTests {
   /// (GH#888) is the only remaining route to another area now the cap is
   /// one — it routes to the same sign-up CTA as the per-row bell.
   @Test func requestSignUpFromPitch_presentsSignUpCTA() {
-    let (sut, _) = makeSUT()
+    let (sut, _, _) = makeSUT()
 
     sut.requestSignUpFromPitch()
 
@@ -68,7 +71,7 @@ struct DeviceLocalZoneListViewModelTests {
   }
 
   @Test func dismissSignUpCTA_clearsTheFlag() {
-    let (sut, _) = makeSUT()
+    let (sut, _, _) = makeSUT()
     sut.requestAlertsSignUp()
 
     sut.dismissSignUpCTA()
@@ -77,7 +80,7 @@ struct DeviceLocalZoneListViewModelTests {
   }
 
   @Test func confirmSignUp_clearsTheFlagAndInvokesOnRequestSignUp() {
-    let (sut, _) = makeSUT()
+    let (sut, _, _) = makeSUT()
     sut.requestAlertsSignUp()
     var requested = false
     sut.onRequestSignUp = { requested = true }
@@ -91,7 +94,7 @@ struct DeviceLocalZoneListViewModelTests {
   // MARK: - Editor dismissal / reload
 
   @Test func dismissEditor_clearsEditorTarget() throws {
-    let (sut, _) = makeSUT()
+    let (sut, _, _) = makeSUT()
     sut.editZone(try makeZone())
 
     sut.dismissEditor()
@@ -100,17 +103,16 @@ struct DeviceLocalZoneListViewModelTests {
   }
 
   @Test func makeEditorViewModel_seedsFromTheZoneBeingEdited() throws {
-    let (sut, _) = makeSUT()
+    let (sut, _, _) = makeSUT()
     let zone = try makeZone(name: "Existing")
 
     let editorVM = sut.makeEditorViewModel(for: zone)
 
-    #expect(editorVM.isEditing)
     #expect(editorVM.nameInput == "Existing")
   }
 
   @Test func makeEditorViewModel_onSave_dismissesEditorAndReloadsZones() throws {
-    let (sut, repository) = makeSUT()
+    let (sut, repository, _) = makeSUT()
     let zone = try makeZone(name: "Home")
     sut.editZone(zone)
     let editorVM = sut.makeEditorViewModel(for: zone)
@@ -128,7 +130,7 @@ struct DeviceLocalZoneListViewModelTests {
   /// `onZonesChanged` with the saved zone, so the coordinator can propagate
   /// it to the Map and Applications tabs.
   @Test func makeEditorViewModel_onSave_invokesOnZonesChangedWithTheSavedZone() throws {
-    let (sut, repository) = makeSUT()
+    let (sut, repository, _) = makeSUT()
     let zone = try makeZone(name: "Home")
     sut.editZone(zone)
     let editorVM = sut.makeEditorViewModel(for: zone)
@@ -143,8 +145,31 @@ struct DeviceLocalZoneListViewModelTests {
     #expect(changed == [saved])
   }
 
+  /// The regression this bead fixes (live-verified): the postcode field was
+  /// previously hidden whenever the editor opened in "editing" mode, which
+  /// GH#888 made the ONLY reachable mode — permanently stranding a mistyped
+  /// onboarding postcode. Proves the field is reachable end-to-end: editing
+  /// the postcode and saving still fires `onZonesChanged` with the
+  /// corrected coordinate.
+  @Test func makeEditorViewModel_afterCorrectingPostcode_onSave_invokesOnZonesChangedWithNewCoordinate() async throws {
+    let (sut, _, geocoder) = makeSUT()
+    let zone = try makeZone(name: "Home")
+    sut.editZone(zone)
+    let editorVM = sut.makeEditorViewModel(for: zone)
+    let newCoordinate = try Coordinate(latitude: 51.5074, longitude: -0.1278)
+    geocoder.geocodeResult = .success(newCoordinate)
+    editorVM.postcodeInput = "SW1A 1AA"
+    await editorVM.submitPostcode()
+    var changed: [DeviceLocalZone] = []
+    sut.onZonesChanged = { changed.append($0) }
+
+    await editorVM.save()
+
+    #expect(changed.first?.centre == newCoordinate)
+  }
+
   @Test func makeEditorViewModel_onRequestSignUp_dismissesEditorAndPresentsCTA() throws {
-    let (sut, _) = makeSUT()
+    let (sut, _, _) = makeSUT()
     let zone = try makeZone()
     sut.editZone(zone)
     let editorVM = sut.makeEditorViewModel(for: zone)
