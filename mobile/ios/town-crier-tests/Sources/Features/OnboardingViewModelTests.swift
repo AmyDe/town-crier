@@ -286,4 +286,48 @@ struct OnboardingViewModelTests {
     #expect(makeViewModel(tier: .personal).deliversInstantAlerts)
     #expect(makeViewModel(tier: .pro).deliversInstantAlerts)
   }
+
+  // MARK: - Anonymous browse post-signup handoff (GH#868 Phase 3.5)
+
+  @Test func prefill_seedsPostcodeAndCoordinate_andJumpsToRadiusPicker() throws {
+    let (sut, _, _, _, _) = makeSUT()
+    let postcode = try Postcode("CB1 2AD")
+    let coordinate = try Coordinate(latitude: 52.2053, longitude: 0.1218)
+
+    sut.prefill(postcode: postcode, coordinate: coordinate)
+
+    #expect(sut.postcodeInput == "CB1 2AD")
+    #expect(sut.geocodedCoordinate == coordinate)
+    #expect(sut.currentStep == .radiusPicker)
+  }
+
+  @Test func prefill_thenConfirmRadius_createsZoneAtPrefilledLocation() async throws {
+    let (sut, _, _, _, _) = makeSUT()
+    let postcode = try Postcode("CB1 2AD")
+    let coordinate = try Coordinate(latitude: 52.2053, longitude: 0.1218)
+    sut.prefill(postcode: postcode, coordinate: coordinate)
+    sut.selectedRadiusMetres = 1500
+
+    var completedZone: WatchZone?
+    sut.onComplete = { zone in completedZone = zone }
+    sut.confirmRadius()
+    await sut.skipNotifications()
+
+    #expect(completedZone != nil)
+    #expect(completedZone?.centre == coordinate)
+    #expect(completedZone?.radiusMetres == 1500)
+  }
+
+  @Test func prefill_doesNotAffectNormalNonPrefilledFlow() async {
+    // The additive prefill entry point leaves the existing postcode-entry ->
+    // submitPostcode() path completely unchanged when never called.
+    let (sut, geocoder, _, _, _) = makeSUT()
+    sut.advance()  // -> postcodeEntry
+    sut.postcodeInput = "CB1 2AD"
+
+    await sut.submitPostcode()
+
+    #expect(geocoder.geocodeCalls.count == 1)
+    #expect(sut.currentStep == .radiusPicker)
+  }
 }

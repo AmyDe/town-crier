@@ -51,6 +51,19 @@ extension AppCoordinator {
     viewModel.onUpgradeFlowCompleted = { [weak self] in
       await self?.resolveSubscriptionTier()
     }
+
+    // Anonymous browse post-signup handoff (GH#868 Phase 3.5): a user who
+    // located themselves before creating an account carries that postcode/
+    // coordinate straight into the wizard, landing on the radius step instead
+    // of being asked again. Only applies on fresh construction (never the
+    // cached-instance return above), so it fires at most once per session.
+    // Anonymous state is cleared immediately after so a future sign-out
+    // starts from the welcome screen, not a stale anonymous map.
+    if let anonymousBrowseStateRepository, let state = anonymousBrowseStateRepository.load() {
+      viewModel.prefill(postcode: state.postcode, coordinate: state.coordinate)
+      anonymousBrowseStateRepository.clear()
+    }
+
     onboardingViewModel = viewModel
     return viewModel
   }

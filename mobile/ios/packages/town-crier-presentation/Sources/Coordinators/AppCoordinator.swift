@@ -53,6 +53,11 @@ public final class AppCoordinator: ObservableObject {
   private let tierResolver: SubscriptionTierResolving
   // Internal (not private) so the AppCoordinator+Onboarding extension can read it.
   let onboardingRepository: OnboardingRepository
+  // Anonymous browse post-signup handoff (GH#868 Phase 3.5). Optional so
+  // existing call sites/tests that never exercise anonymous browsing inject
+  // nothing. Internal (not private) so the AppCoordinator+Onboarding
+  // extension can read it.
+  let anonymousBrowseStateRepository: AnonymousBrowseStateRepository?
   let notificationService: NotificationService
   // Internal (not private) so the AppCoordinator+WatchZones extension can read it.
   let offlineRepository: OfflineAwareRepository?
@@ -112,7 +117,8 @@ public final class AppCoordinator: ObservableObject {
     tierCache: UserDefaults? = nil,
     notificationStateRepository: NotificationStateRepository? = nil,
     badgeSetter: BadgeSetting? = nil,
-    reviewPromptTracker: ReviewPromptTracker? = nil
+    reviewPromptTracker: ReviewPromptTracker? = nil,
+    anonymousBrowseStateRepository: AnonymousBrowseStateRepository? = nil
   ) {
     self.repository = repository
     self.authService = authService
@@ -140,6 +146,7 @@ public final class AppCoordinator: ObservableObject {
     self.notificationStateRepository = notificationStateRepository
     self.badgeSetter = badgeSetter
     self.reviewPromptTracker = reviewPromptTracker
+    self.anonymousBrowseStateRepository = anonymousBrowseStateRepository
 
     // Restore the last successfully resolved tier so that paying users
     // retain feature access immediately, even before the live resolution

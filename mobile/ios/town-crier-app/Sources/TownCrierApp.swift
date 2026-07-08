@@ -14,6 +14,7 @@ struct TownCrierApp: App {
   @StateObject private var loginViewModel: LoginViewModel
   @StateObject private var forceUpdateViewModel: ForceUpdateViewModel
   @StateObject private var settingsViewModel: SettingsViewModel
+  @StateObject private var anonymousBrowseCoordinator: AnonymousBrowseCoordinator
   private let crashReporter: CrashReporter
   private let notificationDelegate: NotificationDelegate
   private let pushRegistrar: PushNotificationRegistrar
@@ -54,6 +55,19 @@ struct TownCrierApp: App {
     let authorityRepository = APIApplicationAuthorityRepository(apiClient: apiClient)
     let watchZoneRepository = APIWatchZoneRepository(apiClient: apiClient)
     let geocoder = APIPostcodeGeocoder(apiClient: apiClient)
+
+    // Anonymous browse mode (GH#868 Phase 3): a fresh install can reach a live
+    // map of nearby applications before creating an account. No Auth0 session
+    // anywhere in this path — client-side postcode lookup (never our own
+    // /v1/geocode) and a parallel unauthenticated API client hitting the
+    // public near-point endpoint. Deliberately parallel to the authed
+    // apiClient/geocoder above rather than sharing them.
+    let anonymousBrowseStateRepository = UserDefaultsAnonymousBrowseStateRepository()
+    let anonymousGeocoder = PostcodesIOGeocoder()
+    let anonymousApiClient = AnonymousURLSessionAPIClient(baseURL: apiBaseURL)
+    let anonymousApplicationsRepository = APIAnonymousApplicationsRepository(
+      apiClient: anonymousApiClient)
+
     let savedApplicationRepository = APISavedApplicationRepository(apiClient: apiClient)
     let notificationStateRepository = APINotificationStateRepository(apiClient: apiClient)
     // Offer-code redemption — POSTs to /v1/offer-codes/redeem (ADR 0022).
@@ -83,7 +97,8 @@ struct TownCrierApp: App {
       offerCodeService: offerCodeService,
       notificationStateRepository: notificationStateRepository,
       badgeSetter: UIApplicationBadgeSetter(),
-      reviewPromptTracker: reviewPromptTracker
+      reviewPromptTracker: reviewPromptTracker,
+      anonymousBrowseStateRepository: anonymousBrowseStateRepository
     )
     reviewRequester.coordinator = appCoordinator  // weak; coordinator owns the tracker
     _coordinator = StateObject(wrappedValue: appCoordinator)
@@ -100,6 +115,20 @@ struct TownCrierApp: App {
     }
     _loginViewModel = StateObject(wrappedValue: loginVM)
 
+    // Anonymous browse mode (GH#868 Phase 3): both "I already have an
+    // account" on the welcome screen and the map's CTA banner funnel into the
+    // same single sign-up/sign-in entry point the rest of the app uses —
+    // Auth0's hosted Universal Login handles both in one flow.
+    let anonymousCoordinator = AnonymousBrowseCoordinator(
+      geocoder: anonymousGeocoder,
+      stateRepository: anonymousBrowseStateRepository,
+      applicationsRepository: anonymousApplicationsRepository
+    )
+    anonymousCoordinator.onRequestSignIn = {
+      Task { @MainActor in await loginVM.login() }
+    }
+    _anonymousBrowseCoordinator = StateObject(wrappedValue: anonymousCoordinator)
+
     _forceUpdateViewModel = StateObject(
       wrappedValue: appCoordinator.makeForceUpdateViewModel()
     )
@@ -108,6 +137,9 @@ struct TownCrierApp: App {
     settingsVM.onLogout = {
       Task { @MainActor in
         await loginVM.logout()
+        // Sign-out is a deliberate return to zero state (GH#868 Phase 3.6):
+        // the user lands back on the welcome screen, never the anonymous map.
+        anonymousCoordinator.reset()
       }
     }
     _settingsViewModel = StateObject(wrappedValue: settingsVM)
@@ -139,8 +171,24 @@ struct TownCrierApp: App {
         } else if loginViewModel.isAuthenticated {
           authenticatedRootView
         } else {
-          LoginView(viewModel: loginViewModel)
+          // Three-state root routing (GH#868 Phase 3): an authenticated
+          // session always wins outright (above); otherwise
+          // AnonymousBrowseCoordinator itself resolves the remaining two
+          // states — persisted anonymous browse state routes straight to the
+          // map, anything else starts at the welcome screen. `LoginView`
+          // still exists and is reached from there via "I already have an
+          // account", which calls `loginViewModel.login()` directly (Auth0's
+          // hosted Universal Login), the same single entry point sign-up and
+          // sign-in both use.
+          AnonymousBrowseView(coordinator: anonymousBrowseCoordinator)
         }
+      }
+      // Session-restore on cold launch: previously lived in `LoginView`'s own
+      // `.task`, relocated here now that view is no longer unconditionally in
+      // the tree. Runs once; a restored session flips `isAuthenticated` and
+      // the switch above re-renders into `authenticatedRootView`.
+      .task {
+        await loginViewModel.checkExistingSession()
       }
       // Primary inbound UL + Auth0-callback entry point — OpenURLModifier.swift.
       // `.handlingUniversalLinks` below is a belt-and-braces fallback —
@@ -220,7 +268,7 @@ struct TownCrierApp: App {
     case .required:
       OnboardingView(viewModel: coordinator.makeOnboardingViewModel())
     case .notRequired:
-      mainTabView
+      MainTabView(coordinator: coordinator, settingsViewModel: settingsViewModel)
     case .undetermined:
       onboardingLoadingView
     }
@@ -234,164 +282,5 @@ struct TownCrierApp: App {
       ProgressView()
         .tint(Color.tcAmber)
     }
-  }
-
-  private var mainTabView: some View {
-    TabView(selection: $coordinator.selectedTab) {
-      // 1. Applications
-      NavigationStack {
-        VStack(spacing: 0) {
-          // Paid-user push-permission nudge (issue #624, Prong 2). Hidden
-          // unless the user is on a paid tier and notifications are not
-          // authorized. The `.id` is hoisted onto the VStack so both the
-          // banner and the list rebuild when the resolved tier changes (e.g.
-          // straight after a purchase).
-          PushNudgeBanner(viewModel: coordinator.makePushNudgeViewModel())
-          ApplicationListView(viewModel: coordinator.makeApplicationListViewModel())
-        }
-        .id(coordinator.subscriptionTier)
-        .settingsToolbar { coordinator.showSettings() }
-      }
-      .tabItem {
-        Label("Applications", systemImage: "doc.text.magnifyingglass")
-      }
-      .tag(MainTab.applications)
-
-      // 2. Saved
-      NavigationStack {
-        SavedApplicationListView(
-          viewModel: coordinator.makeSavedApplicationListViewModel()
-        )
-        .id(coordinator.subscriptionTier)
-        .settingsToolbar { coordinator.showSettings() }
-      }
-      .tabItem {
-        Label("Saved", systemImage: "bookmark.fill")
-      }
-      .tag(MainTab.saved)
-
-      // 3. Map
-      NavigationStack {
-        MapView(viewModel: coordinator.makeMapViewModel())
-          .id(coordinator.subscriptionTier)
-          .navigationTitle("Map")
-          #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-          #endif
-          .settingsToolbar { coordinator.showSettings() }
-      }
-      .tabItem {
-        Label("Map", systemImage: "map")
-      }
-      .tag(MainTab.map)
-
-      // 4. Zones
-      NavigationStack {
-        WatchZoneListView(viewModel: coordinator.makeWatchZoneListViewModel())
-          .id(coordinator.subscriptionTier)
-          .settingsToolbar { coordinator.showSettings() }
-      }
-      .sheet(isPresented: $coordinator.isAddingWatchZone) {
-        WatchZoneEditorView(
-          viewModel: coordinator.makeWatchZoneEditorViewModel()
-        )
-      }
-      .sheet(item: $coordinator.editingWatchZone) { zone in
-        WatchZoneEditorView(
-          viewModel: coordinator.makeWatchZoneEditorViewModel(editing: zone)
-        )
-      }
-      .tabItem {
-        Label("Zones", systemImage: "mappin.and.ellipse")
-      }
-      .tag(MainTab.zones)
-    }
-    .tint(Color.tcAmber)
-    .sheet(isPresented: $coordinator.isSettingsPresented) {
-      settingsSheet
-    }
-    // Subscription paywall — presented when an upsell (e.g. "View Plans" in
-    // the watch-zone quota banner) sets `isSubscriptionPresented`. Hoisted to
-    // the TabView so the paywall reaches the user regardless of active tab.
-    // On dismiss, re-resolve the tier so a successful purchase unlocks gated
-    // features (e.g. the larger watch-zone radius) live, without an app
-    // relaunch — the tier-keyed views rebuild on the change (tc-w3cb.3).
-    .sheet(
-      isPresented: $coordinator.isSubscriptionPresented,
-      onDismiss: { Task { await coordinator.resolveSubscriptionTier() } },
-      content: {
-        NavigationStack {
-          SubscriptionView(viewModel: coordinator.makeSubscriptionViewModel())
-        }
-      }
-    )
-  }
-
-  /// Settings sheet — presented from the gear icon installed on every tab.
-  /// Hosts the existing SettingsView and the legal/notification/manage-sub
-  /// side-effects that were previously bound to the Settings tab.
-  @ViewBuilder
-  private var settingsSheet: some View {
-    NavigationStack {
-      SettingsView(
-        viewModel: settingsViewModel,
-        onNotificationPreferences: {
-          coordinator.showNotificationPreferences()
-        },
-        onManageSubscription: {
-          coordinator.showManageSubscription()
-        },
-        onPrivacyPolicy: {
-          coordinator.showPrivacyPolicy()
-        },
-        onTermsOfService: {
-          coordinator.showTermsOfService()
-        },
-        // Surfacing the "Redeem Offer Code" row only when an OfferCodeService
-        // was injected — SettingsView hides the row when this callback is nil.
-        onRedeemOfferCode: coordinator.isOfferCodeRedemptionAvailable
-          ? { coordinator.showRedeemOfferCode() }
-          : nil,
-        onRateApp: coordinator.rateApp
-      )
-      .navigationDestination(isPresented: $coordinator.isNotificationPreferencesPresented) {
-        NotificationPreferencesView(
-          viewModel: coordinator.makeNotificationPreferencesViewModel(),
-          onZonesTap: {
-            coordinator.isSettingsPresented = false
-            coordinator.selectedTab = .zones
-          },
-          onSystemSettingsTap: {
-            coordinator.showSystemNotificationSettings()
-          }
-        )
-      }
-    }
-    .sheet(item: $coordinator.presentedLegalDocument) { documentType in
-      NavigationStack {
-        LegalDocumentView(viewModel: LegalDocumentViewModel(documentType: documentType))
-      }
-    }
-    // Offer-code redemption — presented from the "Redeem Offer Code" row in
-    // Settings (ADR 0022). The factory returns nil if no OfferCodeService was
-    // injected, in which case the row is also hidden, so the sheet body is a
-    // no-op fallback that should never render.
-    .sheet(isPresented: $coordinator.isRedeemOfferCodePresented) {
-      NavigationStack {
-        if let viewModel = coordinator.makeRedeemOfferCodeViewModel() {
-          RedeemOfferCodeView(viewModel: viewModel)
-        }
-      }
-    }
-    #if os(iOS)
-      .manageSubscriptionsSheet(
-        isPresented: $coordinator.isManageSubscriptionPresented.dispatchingSetOnMain()
-      )
-    #endif
-    // App-layer edge for coordinator-driven deep links: open the URL and reset
-    // the flag. Extracted into a shared modifier (mirrors ReviewPromptRequest-
-    // Modifier) so the file stays UIKit-free and within length limits.
-    .openingSystemNotificationSettings(when: coordinator)
-    .openingAppStoreReview(when: coordinator)
   }
 }

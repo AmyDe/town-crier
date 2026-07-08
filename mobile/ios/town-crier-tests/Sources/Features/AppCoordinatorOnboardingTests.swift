@@ -10,7 +10,8 @@ struct AppCoordinatorOnboardingTests {
   private func makeSUT(
     onboardingRepository: SpyOnboardingRepository = SpyOnboardingRepository(),
     watchZoneRepository: SpyWatchZoneRepository = SpyWatchZoneRepository(),
-    tierResolver: SubscriptionTierResolving? = nil
+    tierResolver: SubscriptionTierResolving? = nil,
+    anonymousBrowseStateRepository: SpyAnonymousBrowseStateRepository? = nil
   ) -> AppCoordinator {
     // Isolated tier cache so a leftover `cachedSubscriptionTier` from another
     // test can't seed a non-free tier at init.
@@ -27,7 +28,8 @@ struct AppCoordinatorOnboardingTests {
       notificationService: SpyNotificationService(),
       appVersionProvider: SpyAppVersionProvider(),
       versionConfigService: SpyVersionConfigService(),
-      tierCache: defaults
+      tierCache: defaults,
+      anonymousBrowseStateRepository: anonymousBrowseStateRepository
     )
   }
 
@@ -152,5 +154,51 @@ struct AppCoordinatorOnboardingTests {
     #expect(vm.subscriptionTier == .pro)
     #expect(vm.maxRadiusMetres == 10000)
     #expect(!vm.canUnlockLargerRadius)
+  }
+
+  // MARK: - Anonymous browse post-signup handoff (GH#868 Phase 3.5)
+
+  @Test func makeOnboardingViewModel_withAnonymousState_prefillsAndClearsState() throws {
+    let anonymousRepo = SpyAnonymousBrowseStateRepository()
+    let postcode = try Postcode("CB1 2AD")
+    let coordinate = try Coordinate(latitude: 52.2053, longitude: 0.1218)
+    anonymousRepo.loadResult = AnonymousBrowseState(
+      postcode: postcode, coordinate: coordinate, createdAt: Date())
+    let sut = makeSUT(anonymousBrowseStateRepository: anonymousRepo)
+
+    let vm = sut.makeOnboardingViewModel()
+
+    #expect(vm.postcodeInput == "CB1 2AD")
+    #expect(vm.geocodedCoordinate == coordinate)
+    #expect(vm.currentStep == .radiusPicker)
+    #expect(anonymousRepo.clearCallCount == 1)
+  }
+
+  @Test func makeOnboardingViewModel_withNoAnonymousState_startsAtWelcome() {
+    let anonymousRepo = SpyAnonymousBrowseStateRepository()
+    let sut = makeSUT(anonymousBrowseStateRepository: anonymousRepo)
+
+    let vm = sut.makeOnboardingViewModel()
+
+    #expect(vm.currentStep == .welcome)
+    #expect(anonymousRepo.clearCallCount == 0)
+  }
+
+  @Test func makeOnboardingViewModel_calledAgain_doesNotReapplyPrefill() throws {
+    let anonymousRepo = SpyAnonymousBrowseStateRepository()
+    anonymousRepo.loadResult = AnonymousBrowseState(
+      postcode: try Postcode("CB1 2AD"),
+      coordinate: try Coordinate(latitude: 52.2053, longitude: 0.1218),
+      createdAt: Date()
+    )
+    let sut = makeSUT(anonymousBrowseStateRepository: anonymousRepo)
+
+    let first = sut.makeOnboardingViewModel()
+    let second = sut.makeOnboardingViewModel()
+
+    #expect(first === second)
+    // The cached-instance path never re-reads the repository, so `clear()`
+    // fires exactly once across both calls.
+    #expect(anonymousRepo.clearCallCount == 1)
   }
 }

@@ -1,0 +1,77 @@
+import Foundation
+import Testing
+import TownCrierDomain
+
+@testable import TownCrierPresentation
+
+@Suite("AnonymousPostcodeEntryViewModel")
+@MainActor
+struct AnonymousPostcodeEntryViewModelTests {
+  private func makeSUT() -> (
+    AnonymousPostcodeEntryViewModel, SpyPostcodeGeocoder, SpyAnonymousBrowseStateRepository
+  ) {
+    let geocoder = SpyPostcodeGeocoder()
+    let stateRepository = SpyAnonymousBrowseStateRepository()
+    let sut = AnonymousPostcodeEntryViewModel(geocoder: geocoder, stateRepository: stateRepository)
+    return (sut, geocoder, stateRepository)
+  }
+
+  @Test func submitPostcode_geocodesAndPersistsState() async {
+    let (sut, geocoder, stateRepository) = makeSUT()
+    geocoder.geocodeResult = .success(.cambridge)
+    sut.postcodeInput = "CB1 2AD"
+    var resolved: AnonymousBrowseState?
+    sut.onResolved = { resolved = $0 }
+
+    await sut.submitPostcode()
+
+    #expect(geocoder.geocodeCalls.count == 1)
+    #expect(geocoder.geocodeCalls.first?.value == "CB1 2AD")
+    #expect(stateRepository.saveCalls.count == 1)
+    #expect(stateRepository.saveCalls.first?.coordinate == .cambridge)
+    #expect(resolved != nil)
+    #expect(resolved?.coordinate == .cambridge)
+  }
+
+  @Test func submitPostcode_invalidPostcode_setsErrorAndSkipsGeocode() async {
+    let (sut, geocoder, stateRepository) = makeSUT()
+    sut.postcodeInput = "INVALID"
+
+    await sut.submitPostcode()
+
+    #expect(geocoder.geocodeCalls.isEmpty)
+    #expect(stateRepository.saveCalls.isEmpty)
+    #expect(sut.error != nil)
+  }
+
+  @Test func submitPostcode_geocodingFailure_setsErrorAndSkipsSave() async {
+    let (sut, geocoder, stateRepository) = makeSUT()
+    geocoder.geocodeResult = .failure(DomainError.geocodingFailed("CB1 2AD"))
+    sut.postcodeInput = "CB1 2AD"
+
+    await sut.submitPostcode()
+
+    #expect(sut.error == .geocodingFailed("CB1 2AD"))
+    #expect(stateRepository.saveCalls.isEmpty)
+  }
+
+  @Test func submitPostcode_setsIsLoadingFalseAfterCompletion() async {
+    let (sut, geocoder, _) = makeSUT()
+    geocoder.geocodeResult = .success(.cambridge)
+    sut.postcodeInput = "CB1 2AD"
+
+    #expect(!sut.isLoading)
+    await sut.submitPostcode()
+    #expect(!sut.isLoading)
+  }
+
+  @Test func goBack_invokesOnBack() {
+    let (sut, _, _) = makeSUT()
+    var invoked = false
+    sut.onBack = { invoked = true }
+
+    sut.goBack()
+
+    #expect(invoked)
+  }
+}
