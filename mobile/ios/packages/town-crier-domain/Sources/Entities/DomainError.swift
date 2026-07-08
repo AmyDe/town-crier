@@ -19,6 +19,12 @@ public enum DomainError: Error, Equatable, Sendable {
   case restoreFailed(String)
   case unexpected(String)
   case insufficientEntitlement(required: String)
+  /// Attempted to save a NEW device-local zone (GH#879 Phase 4) while already
+  /// at ``DeviceLocalZone/maxZoneCount``. Distinct from
+  /// `.insufficientEntitlement`: this is an on-device cap with no
+  /// subscription tier behind it, so the UI routes to a sign-up CTA rather
+  /// than the paywall.
+  case deviceLocalZoneLimitReached
 
   /// User-facing title for display in error states.
   public var userTitle: String {
@@ -39,6 +45,8 @@ public enum DomainError: Error, Equatable, Sendable {
       return "Not Found"
     case .insufficientEntitlement:
       return "Upgrade Required"
+    case .deviceLocalZoneLimitReached:
+      return "Area Limit Reached"
     case .invalidPostcode:
       return "Invalid Postcode"
     case .geocodingFailed:
@@ -71,6 +79,8 @@ public enum DomainError: Error, Equatable, Sendable {
       return "There was a problem with your purchase. Please try again."
     case .insufficientEntitlement:
       return "This feature is on a higher plan. Upgrade to use it."
+    case .deviceLocalZoneLimitReached:
+      return "You can save up to 3 areas on this device. Delete one, or create a free account."
     case .invalidPostcode(let raw):
       return "The postcode '\(raw)' doesn't look right. Please enter a valid UK postcode."
     case .geocodingFailed:
@@ -90,7 +100,8 @@ public enum DomainError: Error, Equatable, Sendable {
     case .authenticationFailed, .invalidPostcode,
       .invalidCoordinate, .invalidWatchZoneRadius, .invalidWatchZoneName,
       .invalidStatusTransition, .applicationNotFound, .notificationPermissionDenied,
-      .purchaseCancelled, .productNotFound, .insufficientEntitlement:
+      .purchaseCancelled, .productNotFound, .insufficientEntitlement,
+      .deviceLocalZoneLimitReached:
       return false
     }
   }
