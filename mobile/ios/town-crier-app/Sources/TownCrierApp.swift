@@ -80,6 +80,11 @@ struct TownCrierApp: App {
     let anonymousApiClient = AnonymousURLSessionAPIClient(baseURL: apiBaseURL)
     let anonymousApplicationsRepository = APIAnonymousApplicationsRepository(
       apiClient: anonymousApiClient)
+    // Anonymous full detail + share-link fix (GH#879 Phase 2): backs both a
+    // signed-out share Universal Link and the anonymous map/summary sheet's
+    // "View full details".
+    let anonymousApplicationDetailRepository = APIAnonymousApplicationDetailRepository(
+      apiClient: anonymousApiClient)
 
     let savedApplicationRepository = APISavedApplicationRepository(apiClient: apiClient)
     let notificationStateRepository = APINotificationStateRepository(apiClient: apiClient)
@@ -112,7 +117,8 @@ struct TownCrierApp: App {
       badgeSetter: UIApplicationBadgeSetter(),
       reviewPromptTracker: reviewPromptTracker,
       anonymousBrowseStateRepository: anonymousBrowseStateRepository,
-      appearanceStore: sharedAppearanceStore
+      appearanceStore: sharedAppearanceStore,
+      anonymousApplicationDetailRepository: anonymousApplicationDetailRepository
     )
     reviewRequester.coordinator = appCoordinator  // weak; coordinator owns the tracker
     _coordinator = StateObject(wrappedValue: appCoordinator)
@@ -132,7 +138,11 @@ struct TownCrierApp: App {
     // Anonymous browse mode (GH#868 Phase 3): both "I already have an
     // account" on the welcome screen and the map's CTA banner funnel into the
     // same single sign-up/sign-in entry point the rest of the app uses —
-    // Auth0's hosted Universal Login handles both in one flow.
+    // Auth0's hosted Universal Login handles both in one flow. The anonymous
+    // detail screen's sign-up CTA (GH#879 Phase 2) uses the same entry point.
+    appCoordinator.onRequestSignUp = {
+      Task { @MainActor in await loginVM.login() }
+    }
     let anonymousCoordinator = AnonymousBrowseCoordinator(
       geocoder: anonymousGeocoder,
       stateRepository: anonymousBrowseStateRepository,
@@ -141,6 +151,12 @@ struct TownCrierApp: App {
     )
     anonymousCoordinator.onRequestSignIn = {
       Task { @MainActor in await loginVM.login() }
+    }
+    // "View full details" on the anonymous map/summary sheet presents the
+    // shared root detail sheet in anonymous mode (GH#879 Phase 2) — no
+    // network call, the anonymous map already holds the full application.
+    anonymousCoordinator.onShowApplicationDetail = { [weak appCoordinator] application in
+      appCoordinator?.showAnonymousApplicationDetail(application)
     }
     _anonymousBrowseCoordinator = StateObject(wrappedValue: anonymousCoordinator)
 

@@ -74,10 +74,22 @@ public final class ApplicationDetailViewModel: ObservableObject {
   /// Fired only on a successful false→true save (never on unsave or failure).
   /// Drives the review-prompt `savedApplication` signal (GH #628).
   public var onSaved: (() -> Void)?
+  /// Fired by the anonymous sign-up CTA (GH#879 Phase 2), in place of the
+  /// Save affordance. Wired by the coordinator to the app's single Auth0
+  /// entry point, the same one every other sign-up/sign-in surface uses.
+  public var onRequestSignUp: (() -> Void)?
 
   /// Whether the save/unsave action is available (repository was provided).
   public var canSave: Bool {
     savedApplicationRepository != nil
+  }
+
+  /// Whether the anonymous sign-up CTA should replace the Save affordance
+  /// (GH#879 Phase 2) — true exactly when this view model was built for the
+  /// anonymous detail path (an ``AnonymousApplicationDetailRepository`` was
+  /// injected instead of the authed save/refresh repositories).
+  public var showsSignUpCTA: Bool {
+    anonymousApplicationDetailRepository != nil
   }
 
   public var hasPortalUrl: Bool {
@@ -90,6 +102,11 @@ public final class ApplicationDetailViewModel: ObservableObject {
 
   private let savedApplicationRepository: SavedApplicationRepository?
   private let planningApplicationRepository: PlanningApplicationRepository?
+  /// The anonymous (no-session) by-slug refresh path (GH#879 Phase 2).
+  /// Mutually driving with `planningApplicationRepository` in ``refresh()``:
+  /// when present, it takes precedence — a view model is only ever built for
+  /// one path or the other by the coordinator's factory.
+  private let anonymousApplicationDetailRepository: AnonymousApplicationDetailRepository?
 
   /// Re-entrancy guard for ``refresh()``. The detail sheet's `.task` can fire
   /// repeatedly for a single open — alongside scenePhase changes or a
@@ -105,11 +122,13 @@ public final class ApplicationDetailViewModel: ObservableObject {
     application: PlanningApplication,
     savedApplicationRepository: SavedApplicationRepository? = nil,
     planningApplicationRepository: PlanningApplicationRepository? = nil,
+    anonymousApplicationDetailRepository: AnonymousApplicationDetailRepository? = nil,
     isSaved: Bool = false
   ) {
     self.application = application
     self.savedApplicationRepository = savedApplicationRepository
     self.planningApplicationRepository = planningApplicationRepository
+    self.anonymousApplicationDetailRepository = anonymousApplicationDetailRepository
     self.isSaved = isSaved
   }
 
@@ -134,21 +153,40 @@ public final class ApplicationDetailViewModel: ObservableObject {
     }
   }
 
-  /// Re-fetches the application by id and replaces the cached payload on
-  /// success. Silent on failure — the cached payload remains visible. Required
-  /// to keep saved-row snapshots fresh on the server even though the sheet
-  /// presents the cached payload synchronously (bd tc-sslz, tc-udby).
-  /// No-op if no `PlanningApplicationRepository` was injected.
+  /// Re-fetches the application and replaces the cached payload on success.
+  /// Silent on failure — the cached payload remains visible.
+  ///
+  /// Two mutually-exclusive paths, chosen by which repository the
+  /// coordinator's factory injected: the authed by-id read (required to keep
+  /// saved-row snapshots fresh on the server, bd tc-sslz/tc-udby), or the
+  /// anonymous by-slug read (GH#879 Phase 2), which is skipped silently when
+  /// the cached application carries no authority slug — refreshing a
+  /// slug-less payload by slug is meaningless. No-op if neither repository
+  /// was injected.
   public func refresh() async {
-    guard let repository = planningApplicationRepository else { return }
     // Drop re-entrant calls while a refresh is already running so a single
-    // detail open issues at most one per-id fetch (bd tc-eum5). The flag is
-    // read and set synchronously before any `await`, so a second call
-    // scheduled on the same actor sees it set and returns immediately.
+    // detail open issues at most one fetch (bd tc-eum5). The flag is read
+    // and set synchronously before any `await`, so a second call scheduled
+    // on the same actor sees it set and returns immediately.
     guard !isRefreshInFlight else { return }
     isRefreshInFlight = true
     defer { isRefreshInFlight = false }
 
+    if let anonymousApplicationDetailRepository {
+      guard let slug = application.authority.slug else { return }
+      do {
+        let fresh = try await anonymousApplicationDetailRepository.fetchApplication(
+          bySlug: slug, ref: application.id.name)
+        if fresh != application {
+          application = fresh
+        }
+      } catch {
+        // Silent on failure — keep the cached payload visible.
+      }
+      return
+    }
+
+    guard let repository = planningApplicationRepository else { return }
     do {
       let fresh = try await repository.fetchApplication(by: applicationId)
       if fresh != application {
@@ -166,6 +204,11 @@ public final class ApplicationDetailViewModel: ObservableObject {
 
   public func dismiss() {
     onDismiss?()
+  }
+
+  /// Invokes the anonymous sign-up CTA (GH#879 Phase 2).
+  public func requestSignUp() {
+    onRequestSignUp?()
   }
 
   /// Toggles the saved state, calling the repository to persist the change.

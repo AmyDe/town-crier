@@ -3,12 +3,13 @@ import TownCrierDomain
 
 /// A reduced-feature bottom sheet showing a preview of a tapped pin on the
 /// anonymous map (GH#868 Phase 3). Unlike the authenticated
-/// `ApplicationSummarySheet`, there is no save affordance and no "View full
-/// details" — any deeper look routes to sign-up instead, since full detail and
-/// saving both require an account.
+/// `ApplicationSummarySheet`, there is no save affordance — saving requires
+/// an account — but "View full details" presents the full detail screen with
+/// no sign-up gate (GH#879 Phase 2): the anonymous map already holds the full
+/// `PlanningApplication`, so no network call is needed either.
 struct AnonymousApplicationSummaryView: View {
   let application: PlanningApplication
-  let onSignUp: () -> Void
+  let onViewFullDetails: () -> Void
 
   var body: some View {
     VStack(alignment: .leading, spacing: TCSpacing.medium) {
@@ -33,14 +34,14 @@ struct AnonymousApplicationSummaryView: View {
         .foregroundStyle(Color.tcTextTertiary)
 
       PrimaryButton {
-        onSignUp()
+        onViewFullDetails()
       } label: {
         HStack {
-          Image(systemName: "bell.badge")
-          Text("Create free account for full details")
+          Image(systemName: "doc.text.magnifyingglass")
+          Text("View full details")
         }
       }
-      .accessibilityLabel("Create free account for full details")
+      .accessibilityLabel("View full details")
     }
     .padding(TCSpacing.medium)
     .frame(maxWidth: .infinity, alignment: .leading)

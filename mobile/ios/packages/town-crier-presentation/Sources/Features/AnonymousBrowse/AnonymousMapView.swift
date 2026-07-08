@@ -64,12 +64,14 @@ public struct AnonymousMapView: View {
       item: Binding(
         get: { viewModel.selectedApplication },
         set: { _ in viewModel.clearSelection() }
-      )
-    ) { application in
-      AnonymousApplicationSummaryView(application: application) {
-        viewModel.requestSignUp()
+      ),
+      onDismiss: { viewModel.presentPendingDetailIfNeeded() },
+      content: { application in
+        AnonymousApplicationSummaryView(application: application) {
+          viewModel.requestFullDetail()
+        }
       }
-    }
+    )
     // Disambiguation list for a coincident ("stacked") cluster tap (GH#877).
     // Its `onDismiss` presents the chosen row's summary, so the list always
     // finishes dismissing before the summary appears — the two `.sheet`s are

@@ -109,6 +109,20 @@ struct AnonymousBrowseCoordinatorTests {
     #expect(requested)
   }
 
+  // MARK: - View full details handoff (GH#879 Phase 2)
+
+  @Test func mapViewModel_onShowApplicationDetail_invokesCoordinatorCallback() {
+    let (sut, _, _, _) = makeSUT(persistedState: testState)
+    var captured: [PlanningApplication] = []
+    sut.onShowApplicationDetail = { captured.append($0) }
+
+    sut.mapViewModel?.selectApplication(.pendingReview)
+    sut.mapViewModel?.requestFullDetail()
+    sut.mapViewModel?.presentPendingDetailIfNeeded()
+
+    #expect(captured == [.pendingReview])
+  }
+
   // MARK: - Live radius picker persistence (GH#868 Phase 3 refinement)
 
   @Test func mapViewModel_radiusChange_persistsUpdatedStateWithSamePostcodeAndCoordinate() {

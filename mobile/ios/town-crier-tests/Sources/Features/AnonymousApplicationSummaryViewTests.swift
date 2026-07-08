@@ -11,10 +11,10 @@ struct AnonymousApplicationSummaryViewTests {
     _ = sut.body
   }
 
-  @Test func onSignUp_invokedByCaller() {
+  @Test func onViewFullDetails_invokedByCaller() {
     var invoked = false
     let sut = AnonymousApplicationSummaryView(application: .pendingReview) { invoked = true }
-    sut.onSignUp()
+    sut.onViewFullDetails()
     #expect(invoked)
   }
 }

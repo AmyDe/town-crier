@@ -26,6 +26,13 @@ public final class AnonymousMapViewModel: ObservableObject, ErrorHandlingViewMod
   /// the list and the summary are never on screen at once (SwiftUI's
   /// two-sheets race) — mirrors ``MapViewModel``'s handoff.
   @Published public private(set) var pendingSummaryApplication: PlanningApplication?
+  /// The application whose full detail screen should present once the
+  /// summary sheet has finished dismissing (GH#879 Phase 2). Set by
+  /// ``requestFullDetail()`` and consumed by ``presentPendingDetailIfNeeded()``
+  /// from the summary sheet's `onDismiss`, so the summary and the detail
+  /// sheet are never on screen at once — mirrors ``MapViewModel``'s
+  /// `pendingDetailApplication` handoff.
+  @Published public private(set) var pendingDetailApplication: PlanningApplication?
   @Published public private(set) var centreLat: Double
   @Published public private(set) var centreLon: Double
   @Published public private(set) var radiusMetres: Double
@@ -62,10 +69,15 @@ public final class AnonymousMapViewModel: ObservableObject, ErrorHandlingViewMod
   private let debounceNanoseconds: UInt64
   private var pendingRegionChangeTask: Task<Void, Never>?
 
-  /// Fired when the user takes any action deeper than the pin summary preview
-  /// (full detail, save) or taps the CTA banner — the anonymous map has no
-  /// such features itself, so every one of them routes to sign-up instead.
+  /// Fired by the persistent CTA banner's "Create account"/"Sign in" buttons
+  /// (full detail no longer requires an account — GH#879 Phase 2 replaced the
+  /// summary sheet's own sign-up handoff with ``onShowApplicationDetail``).
   public var onRequestSignUp: (() -> Void)?
+  /// Fired by ``presentPendingDetailIfNeeded()`` once the summary sheet has
+  /// dismissed, handing the full application to the coordinator to present
+  /// the detail screen (GH#879 Phase 2) — no network call, the anonymous map
+  /// already holds the full `PlanningApplication` from `near-point`.
+  public var onShowApplicationDetail: ((PlanningApplication) -> Void)?
 
   /// Fired whenever the live radius picker changes, so the coordinator can
   /// persist the chosen radius into `AnonymousBrowseState` ahead of the
@@ -186,11 +198,33 @@ public final class AnonymousMapViewModel: ObservableObject, ErrorHandlingViewMod
     stackedApplications = nil
   }
 
-  /// Any deeper touch than the summary preview (full detail, save) or the CTA
-  /// banner itself routes to sign-up — the anonymous map has none of those
-  /// features.
+  /// The CTA banner itself routes to sign-up — full detail no longer does
+  /// (GH#879 Phase 2).
   public func requestSignUp() {
     onRequestSignUp?()
+  }
+
+  /// Requests the full detail screen for the currently selected application
+  /// (GH#879 Phase 2). Stashes the selection as `pendingDetailApplication`
+  /// and clears `selectedApplication`, which dismisses the summary sheet.
+  /// The map view's sheet `onDismiss` then calls
+  /// ``presentPendingDetailIfNeeded()`` so the detail screen opens only
+  /// after the summary has gone — never two sheets at once. No-op when
+  /// nothing is selected. Mirrors ``MapViewModel/requestFullDetail()``.
+  public func requestFullDetail() {
+    guard let selected = selectedApplication else { return }
+    pendingDetailApplication = selected
+    selectedApplication = nil
+  }
+
+  /// Presents any pending detail application via ``onShowApplicationDetail``,
+  /// clearing the pending slot first so it fires exactly once. Invoked from
+  /// the summary sheet's `onDismiss`. No-op when nothing is pending (e.g. the
+  /// user swiped the summary away instead of tapping "View full details").
+  public func presentPendingDetailIfNeeded() {
+    guard let pending = pendingDetailApplication else { return }
+    pendingDetailApplication = nil
+    onShowApplicationDetail?(pending)
   }
 
   /// Updates the live radius picker, clamping to
