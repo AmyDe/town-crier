@@ -316,14 +316,14 @@ func newRouter(
 		// per-subject RateLimit no-ops on a request with no subject, but
 		// AnonRateLimit does not — it is the scheme that actually covers this route.
 		applications.SearchRoutes(mux, appStore, authorities.NewLookup(), logger)
-		// The public applications-near-a-point endpoint (GH#868 Phase 2) reads from
-		// the same store; unlike SearchRoutes it needs no authority-slug resolver
-		// (NearbyResult, unlike SearchResult, carries no authoritySlug field — see
-		// result.go). It is anonymous to Auth0 (see anonymousPatterns, a route
-		// distinct from the build-key SEO NearRoutes above) and, like every other
-		// anonymous route, metered by the per-IP AnonRateLimit (GH#868 Phase 1)
-		// plus its own radius/limit clamps.
-		applications.NearPointRoutes(mux, appStore, logger)
+		// The public applications-near-a-point endpoint (GH#868 Phase 2; GH#879
+		// Phase 1 added the authority-slug resolver so each result carries
+		// authoritySlug, mirroring SearchRoutes) reads from the same store. It is
+		// anonymous to Auth0 (see anonymousPatterns, a route distinct from the
+		// build-key SEO NearRoutes above) and, like every other anonymous route,
+		// metered by the per-IP AnonRateLimit (GH#868 Phase 1) plus its own
+		// radius/limit clamps.
+		applications.NearPointRoutes(mux, appStore, authorities.NewLookup(), logger)
 		// The public share page (#738): an anonymous, server-rendered HTML page for a
 		// single application at GET /a/{authoritySlug}/{ref...}. It point-reads the
 		// same applications store and resolves the authority slug via the static

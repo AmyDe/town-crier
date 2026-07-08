@@ -55,17 +55,21 @@ type nearPointStore interface {
 
 // nearPointHandler serves the public applications-near-a-point endpoint.
 type nearPointHandler struct {
-	store  nearPointStore
-	logger *slog.Logger
+	store    nearPointStore
+	resolver authoritySlugResolver
+	logger   *slog.Logger
 }
 
 // NearPointRoutes registers the public GET /v1/applications/near-point
 // endpoint (GH#868 Phase 2). It is kept in cmd/api/wiring.go's
 // anonymousPatterns — a DIFFERENT route from the build-key-gated
 // GET /v1/applications/near SEO route (applications.NearRoutes) — and reads
-// only public planning data from Postgres.
-func NearPointRoutes(mux *http.ServeMux, store nearPointStore, logger *slog.Logger) {
-	h := &nearPointHandler{store: store, logger: logger}
+// only public planning data from Postgres. The resolver populates each
+// result's AuthoritySlug (GH#879 Phase 1), mirroring SearchRoutes, so an
+// anonymously-loaded application can build a share URL or a by-slug detail
+// fetch.
+func NearPointRoutes(mux *http.ServeMux, store nearPointStore, resolver authoritySlugResolver, logger *slog.Logger) {
+	h := &nearPointHandler{store: store, resolver: resolver, logger: logger}
 	mux.HandleFunc("GET /v1/applications/near-point", h.nearPoint)
 }
 
