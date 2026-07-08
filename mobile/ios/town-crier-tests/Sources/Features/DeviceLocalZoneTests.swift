@@ -77,7 +77,7 @@ struct DeviceLocalZoneTests {
     #expect(DeviceLocalZone.clampRadius(2500) == 2500)
   }
 
-  @Test func maxZoneCount_isThree() {
-    #expect(DeviceLocalZone.maxZoneCount == 3)
+  @Test func maxZoneCount_isOne() {
+    #expect(DeviceLocalZone.maxZoneCount == 1)
   }
 }

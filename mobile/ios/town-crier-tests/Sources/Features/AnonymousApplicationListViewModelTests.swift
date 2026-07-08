@@ -12,6 +12,11 @@ import TownCrierDomain
 /// zone picker mirroring the authed `ApplicationListViewModel`'s pattern.
 /// `fallbackCoordinate`/`fallbackRadiusMetres` back the query only in the
 /// practically-unreachable case no device-local zone exists at all.
+///
+/// GH#888: the on-device cap dropped to one zone, so `showZonePicker` now
+/// renders once any zone exists (not only when a second exists), paired
+/// with a trailing "Add area" chip that routes to the sign-up CTA
+/// (`isSignUpCTAPresented`/`requestAddArea()`/`confirmSignUp()`).
 @Suite("AnonymousApplicationListViewModel")
 @MainActor
 struct AnonymousApplicationListViewModelTests {
@@ -20,7 +25,10 @@ struct AnonymousApplicationListViewModelTests {
     fallbackRadiusMetres: Double = 2000,
     zones: [DeviceLocalZone] = [],
     activeZoneId: DeviceLocalZoneId? = nil
-  ) -> (AnonymousApplicationListViewModel, SpyAnonymousApplicationsRepository, SpyDeviceLocalZoneRepository) {
+  ) -> (
+    AnonymousApplicationListViewModel, SpyAnonymousApplicationsRepository,
+    SpyDeviceLocalZoneRepository
+  ) {
     let repository = SpyAnonymousApplicationsRepository()
     let zoneRepository = SpyDeviceLocalZoneRepository()
     zoneRepository.loadAllResult = zones
@@ -159,17 +167,26 @@ struct AnonymousApplicationListViewModelTests {
     #expect(sut.selectedZone == zone)
   }
 
-  @Test func showZonePicker_false_whenZeroOrOneZone() async throws {
-    let (sutZero, repoZero, _) = makeSUT(zones: [])
-    repoZero.fetchNearbyResult = .success([])
-    await sutZero.loadApplications()
-    #expect(!sutZero.showZonePicker)
+  /// GH#888: the on-device cap dropped to one zone, so the picker row (with
+  /// its trailing "Add area" chip) now renders once ANY zone exists — it is
+  /// only hidden in the practically-unreachable zero-zone case.
+  @Test func showZonePicker_false_whenZeroZones() async throws {
+    let (sut, repository, _) = makeSUT(zones: [])
+    repository.fetchNearbyResult = .success([])
 
+    await sut.loadApplications()
+
+    #expect(!sut.showZonePicker)
+  }
+
+  @Test func showZonePicker_true_whenOneZone() async throws {
     let zone = try makeZone()
-    let (sutOne, repoOne, _) = makeSUT(zones: [zone])
-    repoOne.fetchNearbyResult = .success([])
-    await sutOne.loadApplications()
-    #expect(!sutOne.showZonePicker)
+    let (sut, repository, _) = makeSUT(zones: [zone])
+    repository.fetchNearbyResult = .success([])
+
+    await sut.loadApplications()
+
+    #expect(sut.showZonePicker)
   }
 
   @Test func showZonePicker_true_whenMultipleZones() async throws {
@@ -180,6 +197,37 @@ struct AnonymousApplicationListViewModelTests {
     await sut.loadApplications()
 
     #expect(sut.showZonePicker)
+  }
+
+  // MARK: - "Add area" chip -> sign-up CTA (GH#888)
+
+  @Test func requestAddArea_presentsSignUpCTA() {
+    let (sut, _, _) = makeSUT()
+
+    sut.requestAddArea()
+
+    #expect(sut.isSignUpCTAPresented)
+  }
+
+  @Test func dismissSignUpCTA_clearsTheFlag() {
+    let (sut, _, _) = makeSUT()
+    sut.requestAddArea()
+
+    sut.dismissSignUpCTA()
+
+    #expect(!sut.isSignUpCTAPresented)
+  }
+
+  @Test func confirmSignUp_clearsTheFlagAndInvokesOnRequestSignUp() {
+    let (sut, _, _) = makeSUT()
+    sut.requestAddArea()
+    var requested = false
+    sut.onRequestSignUp = { requested = true }
+
+    sut.confirmSignUp()
+
+    #expect(!sut.isSignUpCTAPresented)
+    #expect(requested)
   }
 
   @Test func selectZone_persistsActiveZoneAndRefetches() async throws {

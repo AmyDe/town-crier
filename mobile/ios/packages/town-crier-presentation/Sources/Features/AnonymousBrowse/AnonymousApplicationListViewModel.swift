@@ -15,6 +15,14 @@ import TownCrierDomain
 /// `fallbackCoordinate`/`fallbackRadiusMetres` back the query only in the
 /// practically-unreachable case no device-local zone exists at all (e.g.
 /// before the legacy-state migration has ever run).
+///
+/// GH#888: the on-device cap dropped to one zone, so the picker row is now
+/// always shown once any zone exists (``showZonePicker``), rather than only
+/// once a second zone made a picker a meaningful choice. A trailing
+/// "Add area" chip renders alongside it, routing to the same sign-up CTA
+/// sheet every other anonymous zone-limit affordance uses
+/// (``isSignUpCTAPresented``) — adding a second area now requires an
+/// account.
 @MainActor
 public final class AnonymousApplicationListViewModel: ObservableObject, ErrorHandlingViewModel {
   @Published public private(set) var applications: [PlanningApplication] = []
@@ -22,6 +30,7 @@ public final class AnonymousApplicationListViewModel: ObservableObject, ErrorHan
   @Published public internal(set) var error: DomainError?
   @Published public private(set) var zones: [DeviceLocalZone] = []
   @Published public private(set) var selectedZone: DeviceLocalZone?
+  @Published public var isSignUpCTAPresented = false
 
   /// Mirrors ``AnonymousMapViewModel/defaultLimit`` — `near-point` returns at
   /// most this many results in nearest-first order; the anonymous list is a
@@ -44,15 +53,21 @@ public final class AnonymousApplicationListViewModel: ObservableObject, ErrorHan
   /// the coordinator can re-centre the Map tab to match.
   public var onActiveZoneChanged: ((DeviceLocalZone) -> Void)?
 
+  /// Fired when the user confirms the "Add area" chip's sign-up CTA
+  /// (GH#888). Wired by the coordinator to the same single sign-up/sign-in
+  /// entry point every anonymous CTA uses.
+  public var onRequestSignUp: (() -> Void)?
+
   public var isEmpty: Bool {
     applications.isEmpty && error == nil && !isLoading
   }
 
-  /// True when the picker should render — mirrors the authed
-  /// `ApplicationListViewModel.showZonePicker`: a single zone is no
-  /// meaningful choice.
+  /// True when the zone chip row should render (GH#888): unlike the authed
+  /// `ApplicationListViewModel.showZonePicker`, a single zone IS shown —
+  /// it's paired with a trailing "Add area" chip, so even one zone is a
+  /// meaningful row (the chip and the CTA, not a choice between zones).
   public var showZonePicker: Bool {
-    zones.count > 1
+    !zones.isEmpty
   }
 
   public init(
@@ -117,6 +132,22 @@ public final class AnonymousApplicationListViewModel: ObservableObject, ErrorHan
 
   public func selectApplication(_ application: PlanningApplication) {
     onShowApplicationDetail?(application)
+  }
+
+  /// The trailing "Add area" chip (GH#888) — the on-device cap is one zone,
+  /// so adding another always routes to the sign-up CTA rather than opening
+  /// a device-local editor.
+  public func requestAddArea() {
+    isSignUpCTAPresented = true
+  }
+
+  public func dismissSignUpCTA() {
+    isSignUpCTAPresented = false
+  }
+
+  public func confirmSignUp() {
+    isSignUpCTAPresented = false
+    onRequestSignUp?()
   }
 
   private func refreshZones() {

@@ -6,11 +6,15 @@ import TownCrierDomain
 /// ``ApplicationListRow`` the authenticated Applications tab uses. No
 /// sort/filter chips (pre-resolved: v1 is nearest-first only).
 ///
-/// GH#879 Phase 4: when more than one device-local zone exists, a zone
-/// picker chip row appears above the list — mirroring the authed
-/// `ApplicationListView`'s zone chips (`ApplicationListView.swift:120-140`)
-/// but over ``DeviceLocalZone``. Switching the active zone re-fetches this
-/// list and re-centres the Map tab.
+/// GH#879 Phase 4: when a device-local zone exists, a zone picker chip row
+/// appears above the list — mirroring the authed `ApplicationListView`'s
+/// zone chips (`ApplicationListView.swift:120-140`) but over
+/// ``DeviceLocalZone``. Switching the active zone re-fetches this list and
+/// re-centres the Map tab.
+///
+/// GH#888: the on-device cap is now one zone, so the chip row (with its
+/// trailing "Add area" chip) always renders once a zone exists — it is no
+/// longer gated on a second zone existing to make it a meaningful choice.
 public struct AnonymousApplicationListView: View {
   @StateObject private var viewModel: AnonymousApplicationListViewModel
 
@@ -36,6 +40,14 @@ public struct AnonymousApplicationListView: View {
     .refreshable {
       await viewModel.loadApplications()
     }
+    .sheet(isPresented: $viewModel.isSignUpCTAPresented) {
+      DeviceLocalZoneSignUpCTAView(
+        onCreateAccount: { viewModel.confirmSignUp() },
+        onSignIn: { viewModel.confirmSignUp() },
+        onDismiss: { viewModel.dismissSignUpCTA() }
+      )
+      .selfSizingSheet()
+    }
   }
 
   // MARK: - Zone picker (GH#879 Phase 4)
@@ -54,6 +66,15 @@ public struct AnonymousApplicationListView: View {
                 await viewModel.selectZone(zone)
               }
             }
+          }
+
+          // GH#888: the on-device cap is one zone — adding another always
+          // routes to the sign-up CTA rather than a device-local editor.
+          CapsuleChipView(
+            label: "+ Add area",
+            isSelected: false
+          ) {
+            viewModel.requestAddArea()
           }
         }
         .padding(.horizontal, TCSpacing.medium)

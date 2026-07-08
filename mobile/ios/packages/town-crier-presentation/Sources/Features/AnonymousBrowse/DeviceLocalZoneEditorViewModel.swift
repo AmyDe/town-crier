@@ -1,10 +1,18 @@
 import Foundation
 import TownCrierDomain
 
-/// Creates or edits a single device-local zone (GH#879 Phase 4): name,
-/// postcode entry geocoded client-side via `PostcodeGeocoder` — never
-/// `/v1/geocode` — and a radius clamped to
-/// `[DeviceLocalZone.minRadiusMetres, DeviceLocalZone.maxRadiusMetres]`.
+/// Edits the anonymous user's single device-local zone (GH#888: the
+/// on-device cap dropped to 1, so this editor no longer has a "create new
+/// zone" mode — the Zones tab's only entry point is `editZone(_:)` on the
+/// existing zone, so `editing` is a required, already-geocoded zone rather
+/// than an optional "nil means new"). Postcode entry is geocoded
+/// client-side via `PostcodeGeocoder` — never `/v1/geocode` — and radius is
+/// clamped to `[DeviceLocalZone.minRadiusMetres, DeviceLocalZone.maxRadiusMetres]`.
+///
+/// The postcode field is always reachable, even though the zone already has
+/// a coordinate: it's the only way to correct a mistyped onboarding postcode
+/// (GH#888 acceptance criteria) without deleting and re-seeding the zone,
+/// which isn't possible any more now there's no add path.
 ///
 /// Visual/interaction conventions mirror the authed `WatchZoneEditorViewModel`,
 /// but this is a distinct, simpler type — no tier, no entitlement gating, no
@@ -12,10 +20,14 @@ import TownCrierDomain
 /// is a sign-up CTA handled by the list, not the editor.
 @MainActor
 public final class DeviceLocalZoneEditorViewModel: ObservableObject, ErrorHandlingViewModel {
-  @Published public var nameInput: String = ""
+  @Published public var nameInput: String
   @Published public var postcodeInput: String = ""
-  @Published public var selectedRadiusMetres: Double = 1000
-  @Published public private(set) var geocodedCoordinate: Coordinate?
+  @Published public var selectedRadiusMetres: Double
+  /// The zone's coordinate — seeded from the zone being edited, and updated
+  /// by a successful ``submitPostcode()``. Never nil: unlike GH#879 Phase 4's
+  /// "new zone" mode, this editor always starts from an existing zone that
+  /// already has a coordinate.
+  @Published public private(set) var geocodedCoordinate: Coordinate
   @Published public private(set) var isLoading = false
   @Published public internal(set) var error: DomainError?
 
@@ -23,36 +35,29 @@ public final class DeviceLocalZoneEditorViewModel: ObservableObject, ErrorHandli
 
   /// Invoked when saving would exceed the on-device cap
   /// (`DomainError.deviceLocalZoneLimitReached`) — the list dismisses the
-  /// editor and shows the sign-up CTA instead of an inline error.
+  /// editor and shows the sign-up CTA instead of an inline error. Defensive
+  /// only (GH#888): this editor only ever edits the zone already occupying
+  /// the cap, never creates a new one.
   public var onRequestSignUp: (() -> Void)?
 
-  public let isEditing: Bool
   public let minRadiusMetres = DeviceLocalZone.minRadiusMetres
   public let maxRadiusMetres = DeviceLocalZone.maxRadiusMetres
 
   private let geocoder: PostcodeGeocoder
   private let repository: DeviceLocalZoneRepository
-  private let existingId: DeviceLocalZoneId?
+  private let existingId: DeviceLocalZoneId
 
   public init(
     geocoder: PostcodeGeocoder,
     repository: DeviceLocalZoneRepository,
-    editing zone: DeviceLocalZone? = nil
+    editing zone: DeviceLocalZone
   ) {
     self.geocoder = geocoder
     self.repository = repository
-    self.isEditing = zone != nil
-    self.existingId = zone?.id
-
-    if let zone {
-      self.nameInput = zone.name
-      self.selectedRadiusMetres = zone.radiusMetres
-      self.geocodedCoordinate = zone.centre
-    }
-  }
-
-  public var isPostcodeFieldVisible: Bool {
-    !isEditing
+    self.existingId = zone.id
+    self.nameInput = zone.name
+    self.selectedRadiusMetres = zone.radiusMetres
+    self.geocodedCoordinate = zone.centre
   }
 
   public func submitPostcode() async {
@@ -89,14 +94,13 @@ public final class DeviceLocalZoneEditorViewModel: ObservableObject, ErrorHandli
   /// editor stays open.
   @discardableResult
   public func save() async -> Bool {
-    guard let coordinate = geocodedCoordinate else { return false }
     error = nil
 
     do {
       let zone = try DeviceLocalZone(
-        id: existingId ?? DeviceLocalZoneId(),
+        id: existingId,
         name: nameInput,
-        centre: coordinate,
+        centre: geocodedCoordinate,
         radiusMetres: selectedRadiusMetres
       )
       try repository.save(zone)

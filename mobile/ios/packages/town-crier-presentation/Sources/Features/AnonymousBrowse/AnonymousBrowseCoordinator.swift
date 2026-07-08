@@ -53,6 +53,23 @@ public final class AnonymousBrowseCoordinator: ObservableObject {
   /// alongside the newly chosen radius (GH#868 Phase 3 refinement). Also the
   /// source for the Applications tab's list view model (GH#879 Phase 3).
   private var currentState: AnonymousBrowseState?
+  /// The live Applications list view model, cached the first time
+  /// ``makeApplicationListViewModel()`` builds one, and returned unchanged on
+  /// every later call (GH#888). Necessary for the SAME reason
+  /// ``mapViewModel`` is a stored property mutated in place rather than
+  /// rebuilt: `AnonymousMainTabView`'s tab content is re-evaluated on every
+  /// `selectedTab`/coordinator change (`TabView` builds every tab's content
+  /// closure up front, not just the selected one), so a naive "build fresh
+  /// every call" factory would hand back a throwaway instance the mounted
+  /// `AnonymousApplicationListView`'s `@StateObject` immediately discards —
+  /// leaving nothing for a later Zones-tab edit to refetch. Caching the
+  /// first instance gives ``makeDeviceLocalZoneListViewModel()``'s
+  /// `onZonesChanged` wiring a stable handle to call `loadApplications()` on.
+  private var applicationListViewModel: AnonymousApplicationListViewModel?
+  /// Test-only synchronisation handle for the Applications-list refetch
+  /// ``makeDeviceLocalZoneListViewModel()`` kicks off after a Zones-tab edit
+  /// — mirrors `AnonymousMapViewModel.waitForPendingRegionChangeRefetch()`.
+  private var pendingZoneEditRefetchTask: Task<Void, Never>?
   /// Single live source of truth for the appearance preference (GH#878),
   /// shared with `SettingsViewModel` — injected by the composition root so
   /// the welcome screen's appearance control and the root
@@ -147,6 +164,7 @@ public final class AnonymousBrowseCoordinator: ObservableObject {
     stateRepository.clear()
     currentState = nil
     mapViewModel = nil
+    applicationListViewModel = nil
     screen = .welcome
   }
 
@@ -161,6 +179,11 @@ public final class AnonymousBrowseCoordinator: ObservableObject {
   /// transitions to `.tabs` once `currentState` (and `mapViewModel`) are both
   /// set.
   public func makeApplicationListViewModel() -> AnonymousApplicationListViewModel? {
+    // Cached (GH#888) — see `applicationListViewModel`'s own docs for why a
+    // fresh instance on every call would be silently discarded by the
+    // mounted view's `@StateObject`, leaving nothing for a Zones-tab edit to
+    // refetch later.
+    if let applicationListViewModel { return applicationListViewModel }
     guard let state = currentState else { return nil }
     let viewModel = AnonymousApplicationListViewModel(
       repository: applicationsRepository,
@@ -183,17 +206,42 @@ public final class AnonymousBrowseCoordinator: ObservableObject {
     viewModel.onActiveZoneChanged = { [weak self] zone in
       self?.mapViewModel?.updateActiveZone(zone)
     }
+    // The "Add area" chip's sign-up CTA (GH#888) — the on-device cap is one
+    // zone, so adding another always routes here.
+    viewModel.onRequestSignUp = { [weak self] in self?.onRequestSignIn?() }
+    applicationListViewModel = viewModel
     return viewModel
   }
 
-  /// Builds the Zones tab's view model (GH#879 Phase 4), sharing the same
-  /// anonymous `PostcodeGeocoder` instance postcode entry uses (never
-  /// `/v1/geocode`).
+  /// Builds the Zones tab's view model, sharing the same anonymous
+  /// `PostcodeGeocoder` instance postcode entry uses (never `/v1/geocode`).
+  ///
+  /// GH#888: a successful edit fires ``DeviceLocalZoneListViewModel/onZonesChanged``
+  /// with the saved zone. That mutates the EXISTING `mapViewModel` in place
+  /// via `updateActiveZone(_:)` — the same identity-preserving requirement
+  /// `onActiveZoneChanged` above satisfies, and for the same reason (see
+  /// that wiring's docs) — and kicks off a refetch of the cached
+  /// ``applicationListViewModel`` so the Applications tab picks up the edit
+  /// without a relaunch.
   public func makeDeviceLocalZoneListViewModel() -> DeviceLocalZoneListViewModel {
     let viewModel = DeviceLocalZoneListViewModel(
       repository: deviceLocalZoneRepository, geocoder: geocoder)
     viewModel.onRequestSignUp = { [weak self] in self?.onRequestSignIn?() }
+    viewModel.onZonesChanged = { [weak self] zone in
+      guard let self else { return }
+      mapViewModel?.updateActiveZone(zone)
+      pendingZoneEditRefetchTask = Task { [weak self] in
+        await self?.applicationListViewModel?.loadApplications()
+      }
+    }
     return viewModel
+  }
+
+  /// Test-only synchronisation: await the most recently scheduled
+  /// Applications-list refetch triggered by a Zones-tab edit (GH#888),
+  /// mirroring `AnonymousMapViewModel.waitForPendingRegionChangeRefetch()`.
+  public func waitForPendingZoneEditRefetch() async {
+    await pendingZoneEditRefetchTask?.value
   }
 
   /// Builds the Settings tab's view model, sharing the same live

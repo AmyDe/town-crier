@@ -1,8 +1,13 @@
 import SwiftUI
 import TownCrierDomain
 
-/// Create or edit a device-local zone: name → postcode entry → radius picker
-/// → map preview → save (GH#879 Phase 4).
+/// Edits the anonymous user's single device-local zone: name → postcode →
+/// radius picker → map preview → save (GH#888: no create mode any more — see
+/// ``DeviceLocalZoneEditorViewModel``'s docs).
+///
+/// The postcode field is always shown, even though the zone already has a
+/// coordinate: it's the only way left to correct a mistyped onboarding
+/// postcode now there's no add/delete path to fall back on.
 ///
 /// Visual conventions mirror the authed `WatchZoneEditorView`, but this is a
 /// separate, simpler anonymous editor — no entitlement gate, no per-zone
@@ -20,18 +25,14 @@ public struct DeviceLocalZoneEditorView: View {
     NavigationStack {
       Form {
         nameSection
-        if viewModel.isPostcodeFieldVisible {
-          postcodeSection
-        }
-        if viewModel.geocodedCoordinate != nil {
-          radiusSection
-          mapPreviewSection
-        }
+        postcodeSection
+        radiusSection
+        mapPreviewSection
         if let error = viewModel.error {
           errorSection(error)
         }
       }
-      .navigationTitle(viewModel.isEditing ? "Edit Area" : "New Area")
+      .navigationTitle("Edit Area")
       #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
       #endif
@@ -52,7 +53,7 @@ public struct DeviceLocalZoneEditorView: View {
             }
           }
           .disabled(
-            viewModel.geocodedCoordinate == nil || viewModel.isLoading
+            viewModel.isLoading
               || viewModel.nameInput.trimmingCharacters(in: .whitespaces).isEmpty
           )
         }
@@ -128,25 +129,22 @@ public struct DeviceLocalZoneEditorView: View {
     }
   }
 
-  @ViewBuilder
   private var mapPreviewSection: some View {
-    if let coordinate = viewModel.geocodedCoordinate {
-      Section("Preview") {
-        ZoneMapPreview(
-          centre: coordinate,
-          radiusMetres: viewModel.selectedRadiusMetres,
-          strokeWidth: 2
-        )
-        .frame(height: 220)
-        .clipShape(RoundedRectangle(cornerRadius: TCCornerRadius.medium))
-        .listRowInsets(
-          EdgeInsets(
-            top: TCSpacing.small,
-            leading: TCSpacing.medium,
-            bottom: TCSpacing.small,
-            trailing: TCSpacing.medium
-          ))
-      }
+    Section("Preview") {
+      ZoneMapPreview(
+        centre: viewModel.geocodedCoordinate,
+        radiusMetres: viewModel.selectedRadiusMetres,
+        strokeWidth: 2
+      )
+      .frame(height: 220)
+      .clipShape(RoundedRectangle(cornerRadius: TCCornerRadius.medium))
+      .listRowInsets(
+        EdgeInsets(
+          top: TCSpacing.small,
+          leading: TCSpacing.medium,
+          bottom: TCSpacing.small,
+          trailing: TCSpacing.medium
+        ))
     }
   }
 
