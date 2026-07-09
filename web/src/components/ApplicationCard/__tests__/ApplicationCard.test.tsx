@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect } from 'vitest';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
@@ -69,6 +69,27 @@ describe('ApplicationCard', () => {
 
     const badge = screen.getByText('Undecided');
     expect(badge).toBeInTheDocument();
+  });
+
+  it('pairs the status badge with an icon glyph (colour is never the sole indicator)', () => {
+    renderCard();
+
+    const badge = screen.getByTestId('application-status-badge');
+    expect(within(badge).getByTestId('status-icon')).toBeInTheDocument();
+  });
+
+  it('renders the reference inside the mono document-header strip', () => {
+    renderCard();
+
+    expect(screen.getByTestId('application-reference')).toHaveTextContent('2026/0042/FUL');
+  });
+
+  it('renders the address as a level-3 heading (filed-notice title)', () => {
+    renderCard();
+
+    expect(
+      screen.getByRole('heading', { level: 3, name: '12 Mill Road, Cambridge, CB1 2AD' }),
+    ).toBeInTheDocument();
   });
 
   it('renders the area name', () => {
@@ -209,8 +230,11 @@ describe('ApplicationCard — open callback', () => {
   });
 });
 
-describe('ApplicationCard — leading unread dot', () => {
-  it('renders a visible unread dot when latestUnreadEvent is non-null', () => {
+describe('ApplicationCard — unread top rule', () => {
+  // Public Notice filed-notice spec: the 2px top rule is the unread signal
+  // now (replaces the former leading dot) — text-primary when read, amber
+  // when unread. Reuses the same latestUnreadEvent signal the dot used to.
+  it('applies the amber top-rule modifier class when latestUnreadEvent is non-null', () => {
     const app = undecidedApplication({
       latestUnreadEvent: {
         type: 'NewApplication',
@@ -224,12 +248,11 @@ describe('ApplicationCard — leading unread dot', () => {
       </MemoryRouter>,
     );
 
-    const dot = screen.getByLabelText('Unread');
-    expect(dot).toBeInTheDocument();
-    expect(dot).toBeVisible();
+    const card = screen.getByTestId('application-card');
+    expect(card.className).toMatch(/cardUnread/);
   });
 
-  it('keeps the unread dot in the DOM but hidden when latestUnreadEvent is null', () => {
+  it('applies the neutral top-rule modifier class when latestUnreadEvent is null', () => {
     const app = permittedApplication({ latestUnreadEvent: null });
     render(
       <MemoryRouter>
@@ -237,9 +260,8 @@ describe('ApplicationCard — leading unread dot', () => {
       </MemoryRouter>,
     );
 
-    const dot = screen.getByTestId('application-unread-dot');
-    expect(dot).toBeInTheDocument();
-    expect(dot).not.toBeVisible();
+    const card = screen.getByTestId('application-card');
+    expect(card.className).toMatch(/cardRead/);
   });
 
   it('marks the application card unread when latestUnreadEvent is non-null', () => {
