@@ -155,6 +155,17 @@ input, textarea, select {
   color: inherit;
 }
 
+/* ---------- Mono metadata utility ----------
+   Shared across features for planning refs, dates, and distances — anywhere a
+   short piece of tabular/identifier-like metadata needs to sit apart from body
+   copy. Not a CSS Module class (deliberately global) so any component's own
+   .module.css can compose it via a plain className alongside its own scoped
+   classes, the same way box-sizing/reset rules above apply app-wide. */
+.tc-mono-meta {
+  font-family: var(--tc-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---------- Reduced motion ---------- */
 @media (prefers-reduced-motion: reduce) {
   *,
