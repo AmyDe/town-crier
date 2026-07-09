@@ -90,51 +90,68 @@ internal fun SavedListScreen(
             )
         },
     ) { contentPadding ->
-        Column(modifier = Modifier.padding(contentPadding).fillMaxSize()) {
-            Masthead(title = stringResource(R.string.saved_title))
-            SavedFilterChipsRow(
-                filter = state.filter,
-                onFilterSelected = onFilterSelected,
-                modifier = Modifier.padding(vertical = TownCrierSpacing.sm),
-            )
-            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                val displayed = state.displayed
-                when {
-                    state.isLoading && displayed.isEmpty() -> {
-                        CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-                    }
+        SavedListContent(
+            state = state,
+            onFilterSelected = onFilterSelected,
+            onApplicationClick = onApplicationClick,
+            modifier = Modifier.padding(contentPadding).fillMaxSize(),
+        )
+    }
+}
 
-                    displayed.isEmpty() -> {
-                        SavedEmptyState(modifier = Modifier.align(Alignment.Center))
-                    }
+/** [SavedListScreen]'s content column, split out to keep that composable under detekt's LongMethod budget. */
+@Composable
+private fun SavedListContent(
+    state: SavedListUiState,
+    onFilterSelected: (ApplicationStatus?) -> Unit,
+    onApplicationClick: (PlanningApplication) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier) {
+        Masthead(title = stringResource(R.string.saved_title))
+        SavedFilterChipsRow(
+            filter = state.filter,
+            onFilterSelected = onFilterSelected,
+            modifier = Modifier.padding(vertical = TownCrierSpacing.sm),
+        )
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            val displayed = state.displayed
+            when {
+                state.isLoading && displayed.isEmpty() -> {
+                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                }
 
-                    else -> {
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            verticalArrangement = Arrangement.spacedBy(TownCrierSpacing.sm),
-                            contentPadding = PaddingValues(horizontal = TownCrierSpacing.md, vertical = TownCrierSpacing.sm),
-                        ) {
-                            items(displayed, key = { it.applicationUid.value }) { saved ->
-                                val application = saved.application
-                                if (application != null) {
-                                    ApplicationRow(
-                                        application = application,
-                                        onClick = { onApplicationClick(application) },
-                                    )
-                                }
+                displayed.isEmpty() -> {
+                    SavedEmptyState(modifier = Modifier.align(Alignment.Center))
+                }
+
+                else -> {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(TownCrierSpacing.sm),
+                        contentPadding =
+                            PaddingValues(
+                                horizontal = TownCrierSpacing.md,
+                                vertical = TownCrierSpacing.sm,
+                            ),
+                    ) {
+                        items(displayed, key = { it.applicationUid.value }) { saved ->
+                            val application = saved.application
+                            if (application != null) {
+                                ApplicationRow(application = application, onClick = { onApplicationClick(application) })
                             }
                         }
                     }
                 }
             }
-            state.error?.let { error ->
-                Text(
-                    text = stringResource(applicationErrorMessageRes(error)),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(TownCrierSpacing.md),
-                )
-            }
+        }
+        state.error?.let { error ->
+            Text(
+                text = stringResource(applicationErrorMessageRes(error)),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(TownCrierSpacing.md),
+            )
         }
     }
 }
