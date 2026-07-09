@@ -147,4 +147,55 @@ struct WatchZoneSummaryDTOTests {
     #expect(!dto.pushEnabled)
     #expect(!dto.emailInstantEnabled)
   }
+
+  // MARK: - Paused zones (GH#889 P2)
+
+  @Test("toDomain carries paused to domain model")
+  func toDomain_carriesPausedFlag() throws {
+    let dto = WatchZoneSummaryDTO(
+      id: "zone-ok",
+      name: "CB1 2AD",
+      latitude: 52.2053,
+      longitude: 0.1218,
+      radiusMetres: 2000,
+      authorityId: 123,
+      paused: true
+    )
+
+    let zone = try dto.toDomain()
+    #expect(zone.paused)
+  }
+
+  @Test("decoding DTO without paused defaults to false (back-compat)")
+  func decoding_missingPaused_defaultsToFalse() throws {
+    let json = """
+      {
+          "id": "zone-001",
+          "name": "CB1 2AD",
+          "latitude": 52.2053,
+          "longitude": 0.1218,
+          "radiusMetres": 2000,
+          "authorityId": 123
+      }
+      """
+    let dto = try JSONDecoder().decode(WatchZoneSummaryDTO.self, from: Data(json.utf8))
+    #expect(!dto.paused)
+  }
+
+  @Test("decoding DTO with explicit paused: true preserves it")
+  func decoding_explicitPausedTrue_isPreserved() throws {
+    let json = """
+      {
+          "id": "zone-001",
+          "name": "CB1 2AD",
+          "latitude": 52.2053,
+          "longitude": 0.1218,
+          "radiusMetres": 2000,
+          "authorityId": 123,
+          "paused": true
+      }
+      """
+    let dto = try JSONDecoder().decode(WatchZoneSummaryDTO.self, from: Data(json.utf8))
+    #expect(dto.paused)
+  }
 }

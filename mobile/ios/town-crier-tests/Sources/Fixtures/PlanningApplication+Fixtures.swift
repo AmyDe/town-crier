@@ -119,6 +119,17 @@ extension WatchZone {
     radiusMetres: 1500,
     authorityId: 456
   )
+
+  /// A zone paused because a subscription downgrade left the user over their
+  /// tier's quota (GH#889 P1/P2) — never deleted, purely a display flag.
+  static let cambridgePaused = try! WatchZone(
+    id: WatchZoneId("zone-003"),
+    postcode: .cambridge,
+    centre: .cambridge,
+    radiusMetres: 2000,
+    authorityId: 123,
+    paused: true
+  )
 }
 
 extension MapCluster {
