@@ -86,7 +86,7 @@
 }
 
 .chip:hover {
-  border-color: var(--tc-amber);
+  border-color: var(--tc-text-secondary);
   color: var(--tc-text-primary);
 }
 
@@ -131,9 +131,9 @@
   font: inherit;
   font-size: var(--tc-text-caption);
   font-weight: var(--tc-weight-medium);
-  color: var(--tc-amber);
+  color: var(--tc-text-primary);
   background: transparent;
-  border: 1px solid var(--tc-amber);
+  border: 1px solid var(--tc-border);
   border-radius: var(--tc-radius-full);
   padding: var(--tc-space-xs) var(--tc-space-sm);
   cursor: pointer;
@@ -142,8 +142,8 @@
 }
 
 .markAllReadButton:hover {
-  background: var(--tc-amber);
-  color: var(--tc-text-on-accent);
+  background: var(--tc-surface-elevated);
+  border-color: var(--tc-text-secondary);
 }
 
 .markAllReadButton:focus-visible {
@@ -184,7 +184,7 @@
 }
 
 .loadMoreButton:hover:not(:disabled) {
-  border-color: var(--tc-amber);
+  border-color: var(--tc-text-secondary);
 }
 
 .loadMoreButton:focus-visible {

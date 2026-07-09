@@ -90,8 +90,8 @@
   flex-direction: column;
   gap: var(--tc-space-sm);
   padding: var(--tc-space-md);
-  background: var(--tc-amber-muted);
-  border: 1px solid var(--tc-amber);
+  background: color-mix(in srgb, var(--tc-status-permitted) 15%, transparent);
+  border: 1px solid var(--tc-status-permitted);
   border-radius: var(--tc-radius-md);
 }
 
@@ -122,5 +122,5 @@
 }
 
 .resetButton:hover {
-  border-color: var(--tc-amber);
+  border-color: var(--tc-text-secondary);
 }

@@ -79,13 +79,13 @@
 }
 
 .hamburger:hover {
-  background: var(--tc-amber-muted);
+  background: color-mix(in srgb, var(--tc-text-secondary) 10%, transparent);
 }
 
 .mobileTitle {
   font-size: var(--tc-text-headline);
   font-weight: var(--tc-weight-bold);
-  color: var(--tc-amber);
+  color: var(--tc-text-primary);
 }
 
 /* ---------- Content ---------- */
