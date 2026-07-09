@@ -195,7 +195,7 @@ function townsIndexStyles() {
     .townsIndex__list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--tc-space-sm); }
     .townsIndex__item a { color: var(--tc-text-primary); font-weight: 600; text-decoration: none; }
     .townsIndex__item a:hover { color: var(--tc-amber); text-decoration: underline; }
-    .townsIndex__authority { color: var(--tc-text-secondary); font-size: 0.875rem; }`;
+    .townsIndex__authority { font-family: var(--tc-font-mono); color: var(--tc-text-secondary); font-size: 0.875rem; }`;
 }
 
 /**
@@ -251,11 +251,12 @@ ${townsIndexStyles()}
   <body>
     <div class="wrap">
       <header class="siteHeader">
-        <a href="/">Town Crier</a>
-        <nav class="siteHeader__nav">
-          <a href="/">Home</a>
+        <div class="siteHeader__inner">
+          <a href="/" class="siteHeader__wordmark">Town Crier</a>
           <a class="siteHeader__cta" href="${cta}" rel="noopener" target="_blank">Get the app</a>
-        </nav>
+        </div>
+        <div class="siteHeader__ruleHeavy"></div>
+        <div class="siteHeader__ruleHairline"></div>
       </header>
       <nav class="breadcrumb" aria-label="Breadcrumb">
         <ol>
@@ -271,7 +272,7 @@ ${renderInlineCta('your town', cta)}
 ${body}
 
         <section class="cta">
-          <h2>Get push alerts for your town</h2>
+          <h2 class="cta__heading">Get push alerts for your town</h2>
           <p>
             Draw a circle on the map and Town Crier will notify you the moment a new
             planning application is submitted or decided inside it.
