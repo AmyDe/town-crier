@@ -40,14 +40,48 @@ const (
 )
 
 var (
-	pinFill    = designtokens.AmberDark  // amber pin body
-	pinOutline = designtokens.White      // white pin border
-	fallbackBg = designtokens.AmberLight // brand amber field
-	textWhite  = designtokens.White
+	pinFill = designtokens.AmberDark // amber pin body: brand contrast over any map tile
+	// pinOutline is the paper SurfaceLight rather than a hand-rolled pure
+	// white, so the pin's border consumes the same token as every other
+	// Public Notice surface (tc-fmrx3, #855).
+	pinOutline = designtokens.SurfaceLight
+	// fallbackBg is the v2 paper field (was the flat brand-amber poster) —
+	// the no-map card now reads as a filed notice, not a brand advert.
+	fallbackBg = designtokens.BackgroundLight
+	// fallbackText is the ink wordmark colour on the paper fallbackBg field
+	// (was white-on-amber).
+	fallbackText = designtokens.TextPrimaryLight
+	// mastheadInk is the masthead band's rule + wordmark colour, burned over
+	// the paper mastheadBg strip.
+	mastheadInk = designtokens.TextPrimaryLight
+	// mastheadBg is the paper band colour behind the masthead wordmark.
+	mastheadBg = designtokens.SurfaceLight
+	// textWhite renders the OSM attribution credit: it MUST stay white
+	// regardless of theme/palette changes elsewhere — legibility over the
+	// dark attribShade strip is an OSM-attribution requirement, not a brand
+	// choice, so this is deliberately untouched by the v2 restyle.
+	textWhite = designtokens.White
 	// attribShade is a half-opaque black strip behind the OSM credit so it stays
 	// legible over any tile. color.RGBA is alpha-premultiplied, so a black tint at
 	// alpha 0xA0 darkens whatever it composites over via draw.Over.
 	attribShade = color.RGBA{R: 0x00, G: 0x00, B: 0x00, A: 0xA0}
+)
+
+// Masthead geometry: the paper band burned across the top of the map card,
+// mirroring the web masthead's double-rule language (SPA Navbar / SEO
+// render-shared.mjs — small-caps wordmark over a heavy rule) in the raster OG
+// image. It overlays the already-composited tiles rather than reserving a gap
+// in the map projection, so mapCard's centring math and OSM tile budget are
+// untouched by its addition.
+const (
+	mastheadHeight = 56
+	mastheadRuleH  = 2
+	mastheadFontPx = 22
+
+	// mastheadWordmark is tracked via trackedText before drawing — see its
+	// doc comment for why (no small-caps/letter-spacing support in
+	// golang.org/x/image/font).
+	mastheadWordmark = "TOWN CRIER"
 )
 
 // The Go fonts are embedded, compile-time-constant assets; parsing them can only
@@ -130,6 +164,7 @@ func mapCard(ctx context.Context, tiles tileClient, lat, lng float64) ([]byte, e
 	}
 
 	drawPin(canvas, cardWidth/2, cardHeight/2)
+	drawMasthead(canvas)
 	drawAttribution(canvas)
 
 	return encodePNG(canvas)
@@ -142,10 +177,10 @@ func fallbackCard() ([]byte, error) {
 	canvas := image.NewRGBA(image.Rect(0, 0, cardWidth, cardHeight))
 	draw.Draw(canvas, canvas.Bounds(), image.NewUniform(fallbackBg), image.Point{}, draw.Src)
 
-	if err := drawCentredText(canvas, boldFont, "Town Crier", 72, cardHeight/2-16); err != nil {
+	if err := drawCentredText(canvas, boldFont, "Town Crier", 72, cardHeight/2-16, fallbackText); err != nil {
 		return nil, err
 	}
-	if err := drawCentredText(canvas, regularFont, "Planning alerts for your area", 30, cardHeight/2+52); err != nil {
+	if err := drawCentredText(canvas, regularFont, "Planning alerts for your area", 30, cardHeight/2+52, fallbackText); err != nil {
 		return nil, err
 	}
 	return encodePNG(canvas)
@@ -200,6 +235,60 @@ func setPixel(img *image.RGBA, x, y int, col color.RGBA) {
 	}
 }
 
+// trackedText approximates a tracked, small-caps-style wordmark using the
+// embedded (non-small-caps) Go fonts: golang.org/x/image/font has no
+// small-caps glyph substitution or letter-spacing/tracking support, so this
+// inserts a thin space (U+2009) between the runes of an already-uppercase
+// string. It produces the same widely tracked, formal read as the web
+// masthead's `font-variant:small-caps; letter-spacing` treatment (SPA Navbar,
+// SEO render-shared.mjs) without embedding a new font — a deliberate
+// stdlib-only approximation, not the real small-caps feature.
+func trackedText(s string) string {
+	runes := []rune(s)
+	out := make([]rune, 0, len(runes)*2)
+	for i, r := range runes {
+		if i > 0 {
+			out = append(out, ' ')
+		}
+		out = append(out, r)
+	}
+	return string(out)
+}
+
+// drawMasthead burns the Public Notice masthead band across the top of the
+// map card: a paper strip holding the tracked "TOWN CRIER" wordmark, over a
+// 2px ink rule — the same wordmark-over-double-rule language as the web
+// masthead, rendered here with the existing embedded Go fonts (no new font
+// embedding). It draws directly onto the already-composited tile canvas
+// rather than reserving a gap in the map projection, so the map + brass pin
+// stay the hero visual below the strip and mapCard's centring math / OSM
+// tile budget are untouched. Best-effort like drawAttribution: a font-face
+// build failure must not sink the whole card.
+func drawMasthead(img *image.RGBA) {
+	draw.Draw(img, image.Rect(0, 0, cardWidth, mastheadHeight), image.NewUniform(mastheadBg), image.Point{}, draw.Src)
+	draw.Draw(img, image.Rect(0, mastheadHeight, cardWidth, mastheadHeight+mastheadRuleH), image.NewUniform(mastheadInk), image.Point{}, draw.Src)
+
+	face, err := newFace(boldFont, mastheadFontPx)
+	if err != nil {
+		return
+	}
+	defer func() { _ = face.Close() }()
+
+	text := trackedText(mastheadWordmark)
+	width := font.MeasureString(face, text).Ceil()
+	metrics := face.Metrics()
+	textH := metrics.Ascent.Ceil() + metrics.Descent.Ceil()
+	baselineY := (mastheadHeight-textH)/2 + metrics.Ascent.Ceil()
+
+	drawer := &font.Drawer{
+		Dst:  img,
+		Src:  image.NewUniform(mastheadInk),
+		Face: face,
+		Dot:  fixed.P((cardWidth-width)/2, baselineY),
+	}
+	drawer.DrawString(text)
+}
+
 // drawAttribution burns the OSM credit into the bottom-right corner over a
 // semi-transparent dark strip sized from the measured string. Attribution is
 // best-effort: a face-construction failure must not sink the whole card, so it
@@ -241,9 +330,9 @@ func drawAttribution(img *image.RGBA) {
 	drawer.DrawString(osmAttribution)
 }
 
-// drawCentredText draws text in white, horizontally centred, with its baseline at
+// drawCentredText draws text in col, horizontally centred, with its baseline at
 // baselineY, using font f at sizePx pixels.
-func drawCentredText(img *image.RGBA, f *opentype.Font, text string, sizePx float64, baselineY int) error {
+func drawCentredText(img *image.RGBA, f *opentype.Font, text string, sizePx float64, baselineY int, col color.RGBA) error {
 	face, err := newFace(f, sizePx)
 	if err != nil {
 		return fmt.Errorf("build font face: %w", err)
@@ -253,7 +342,7 @@ func drawCentredText(img *image.RGBA, f *opentype.Font, text string, sizePx floa
 	width := font.MeasureString(face, text).Ceil()
 	drawer := &font.Drawer{
 		Dst:  img,
-		Src:  image.NewUniform(textWhite),
+		Src:  image.NewUniform(col),
 		Face: face,
 		Dot:  fixed.P((cardWidth-width)/2, baselineY),
 	}
