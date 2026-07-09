@@ -39,24 +39,24 @@ function application(overrides = {}) {
   };
 }
 
-describe('renderApplicationsList card structure (decision 5: address is the human hook)', () => {
+describe('renderApplicationsList ledger row structure (decision 5: address is the human hook)', () => {
   it('renders the address as the <h3> headline', () => {
     const html = renderApplicationsList([application()], SLUG);
     expect(html).toContain(
-      '<h3 class="appCard__address">12 Mill Road, Basingstoke, RG21 1AA</h3>',
+      '<h3 class="ledgerRow__address">12 Mill Road, Basingstoke, RG21 1AA</h3>',
     );
   });
 
   it('demotes the council reference to small metadata text, not a heading', () => {
     const html = renderApplicationsList([application()], SLUG);
-    expect(html).toContain('<p class="appCard__ref">26/0001/FUL</p>');
-    expect(html).not.toContain('<h3 class="appCard__ref">');
-    expect(html).not.toContain('appCard__refLink');
+    expect(html).toContain('<p class="ledgerRow__ref">26/0001/FUL</p>');
+    expect(html).not.toContain('<h3 class="ledgerRow__ref">');
+    expect(html).not.toContain('ledgerRow__refLink');
   });
 
   it('omits the reference metadata line entirely when the app carries no ref', () => {
     const html = renderApplicationsList([application({ name: '' })], SLUG);
-    expect(html).not.toContain('appCard__ref');
+    expect(html).not.toContain('ledgerRow__ref');
   });
 
   it('HTML-escapes the address', () => {
@@ -77,7 +77,7 @@ describe('renderApplicationsList description truncation (word boundary)', () => 
       [application({ description: longDescription })],
       SLUG,
     );
-    const match = html.match(/<p class="appCard__desc">([^<]*)<\/p>/);
+    const match = html.match(/<p class="ledgerRow__desc">([^<]*)<\/p>/);
     expect(match).not.toBeNull();
     const rendered = match[1];
     expect(rendered.endsWith('…')).toBe(true);
@@ -93,20 +93,20 @@ describe('renderApplicationsList description truncation (word boundary)', () => 
   it('leaves a short description unchanged with no ellipsis', () => {
     const html = renderApplicationsList([application()], SLUG);
     expect(html).toContain(
-      '<p class="appCard__desc">Erection of two-storey rear extension</p>',
+      '<p class="ledgerRow__desc">Erection of two-storey rear extension</p>',
     );
   });
 });
 
 describe('renderApplicationsList share-page affordance (decision 6)', () => {
-  it('wraps the whole card in a real anchor pointing at the share page', () => {
+  it('wraps the whole row in a real anchor pointing at the share page', () => {
     const html = renderApplicationsList([application()], SLUG);
-    expect(html).toContain(`<a class="appCard__link" href="${SHARE_HREF}">`);
+    expect(html).toContain(`<a class="ledgerRow__link" href="${SHARE_HREF}">`);
   });
 
-  it('includes a visible "View details" affordance inside the card link', () => {
+  it('includes a visible "View details" affordance inside the row link', () => {
     const html = renderApplicationsList([application()], SLUG);
-    expect(html).toContain('<span class="appCard__cta">View details →</span>');
+    expect(html).toContain('<span class="ledgerRow__cta">View details →</span>');
   });
 
   it('never relies on a JS-only click handler for the share-page target', () => {
@@ -125,23 +125,23 @@ describe('renderApplicationsList share-page affordance (decision 6)', () => {
     );
   });
 
-  it('falls back to a non-linked card when no share URL can be built (no slug supplied)', () => {
+  it('falls back to a non-linked row when no share URL can be built (no slug supplied)', () => {
     const html = renderApplicationsList([application()]);
-    expect(html).not.toContain('appCard__link');
+    expect(html).not.toContain('ledgerRow__link');
     expect(html).not.toContain('View details');
     expect(html).not.toContain('share.towncrierapp.uk');
   });
 
-  it('falls back to a non-linked card when the app carries no ref', () => {
+  it('falls back to a non-linked row when the app carries no ref', () => {
     const html = renderApplicationsList([application({ name: '' })], SLUG);
-    expect(html).not.toContain('appCard__link');
+    expect(html).not.toContain('ledgerRow__link');
     expect(html).not.toContain('View details');
     expect(html).not.toContain('share.towncrierapp.uk');
   });
 });
 
 describe('renderApplicationsList external link removal (decision 6)', () => {
-  it('renders no per-card links to PlanIt or the council website', () => {
+  it('renders no per-row links to PlanIt or the council website', () => {
     const html = renderApplicationsList([application()], SLUG);
     expect(html).not.toContain(PLANIT_CAPTION);
     expect(html).not.toContain(COUNCIL_CAPTION);
@@ -159,23 +159,25 @@ describe('renderApplicationsList external link removal (decision 6)', () => {
   });
 });
 
-describe('renderApplicationsList status chip vocabulary (decision 4: shared vocabulary)', () => {
-  it('colours a Granted (Permitted) application with the granted chip', () => {
+describe('renderApplicationsList status stamp vocabulary (decision 4: shared vocabulary; Public Notice stamp language)', () => {
+  it('colours a Granted (Permitted) application with the granted stamp and pairs an icon with the label (accessibility invariant)', () => {
     const html = renderApplicationsList(
       [application({ appState: 'Permitted' })],
       SLUG,
     );
-    expect(html).toContain('class="status status--granted"');
-    expect(html).toContain('>Granted<');
+    expect(html).toContain('class="stamp stamp--granted"');
+    expect(html).toContain('<span class="stamp__label">Granted</span>');
+    expect(html).toContain('class="stamp__icon"');
+    expect(html).toMatch(/class="stamp__icon"[^>]*aria-hidden="true"/);
   });
 
-  it('colours a Refused (Rejected) application with the refused chip', () => {
+  it('colours a Refused (Rejected) application with the refused stamp', () => {
     const html = renderApplicationsList(
       [application({ appState: 'Rejected' })],
       SLUG,
     );
-    expect(html).toContain('class="status status--refused"');
-    expect(html).toContain('>Refused<');
+    expect(html).toContain('class="stamp stamp--refused"');
+    expect(html).toContain('<span class="stamp__label">Refused</span>');
   });
 
   it.each([
@@ -185,18 +187,18 @@ describe('renderApplicationsList status chip vocabulary (decision 4: shared voca
     ['Undecided', 'Undecided'],
     [null, 'Unknown'],
   ])(
-    'buckets the long-tail / undecided state %s under the shared neutral chip',
+    'buckets the long-tail / undecided state %s under the shared neutral stamp',
     (appState, label) => {
       const html = renderApplicationsList(
         [application({ appState })],
         SLUG,
       );
-      expect(html).toContain('class="status status--neutral"');
-      expect(html).toContain(`>${label}<`);
+      expect(html).toContain('class="stamp stamp--neutral"');
+      expect(html).toContain(`<span class="stamp__label">${label}</span>`);
     },
   );
 
-  it('only ever emits the three canonical chip modifiers, never the old per-state ones', () => {
+  it('only ever emits the three canonical stamp modifiers, never the old per-state ones', () => {
     const states = [
       'Permitted',
       'Rejected',
@@ -210,10 +212,16 @@ describe('renderApplicationsList status chip vocabulary (decision 4: shared voca
       states.map((appState) => application({ appState })),
       SLUG,
     );
-    const modifiers = [...html.matchAll(/class="status status--(\w+)"/g)].map(
+    const modifiers = [...html.matchAll(/class="stamp stamp--(\w+)"/g)].map(
       (m) => m[1],
     );
     expect(new Set(modifiers)).toEqual(new Set(['granted', 'refused', 'neutral']));
+  });
+
+  it('never emits the old filled-chip class names', () => {
+    const html = renderApplicationsList([application()], SLUG);
+    expect(html).not.toContain('class="status status--');
+    expect(html).not.toContain('appCard');
   });
 });
 
@@ -223,7 +231,7 @@ describe('renderApplicationsList Started/Decided date line (tc-s0yf, GH #819)', 
       [application({ startDate: '2021-05-28', decidedDate: '2021-07-09' })],
       SLUG,
     );
-    expect(html).toContain('<p class="appCard__dates">Decided 9 Jul 2021</p>');
+    expect(html).toContain('<p class="ledgerRow__date">Decided 9 Jul 2021</p>');
     expect(html).not.toContain('Started 28 May 2021');
   });
 
@@ -233,7 +241,7 @@ describe('renderApplicationsList Started/Decided date line (tc-s0yf, GH #819)', 
       SLUG,
     );
     expect(html).toContain(
-      '<p class="appCard__dates">Started 4 Jul 2026 · Awaiting decision</p>',
+      '<p class="ledgerRow__date">Started 4 Jul 2026 · Awaiting decision</p>',
     );
   });
 
@@ -242,7 +250,7 @@ describe('renderApplicationsList Started/Decided date line (tc-s0yf, GH #819)', 
       [application({ startDate: null, decidedDate: '2021-07-09' })],
       SLUG,
     );
-    expect(html).toContain('<p class="appCard__dates">Decided 9 Jul 2021</p>');
+    expect(html).toContain('<p class="ledgerRow__date">Decided 9 Jul 2021</p>');
   });
 
   it('renders no date line at all when neither date is present, without crashing or emitting "undefined"/"Invalid Date"', () => {
@@ -250,7 +258,7 @@ describe('renderApplicationsList Started/Decided date line (tc-s0yf, GH #819)', 
       [application({ startDate: null, decidedDate: null })],
       SLUG,
     );
-    expect(html).not.toContain('appCard__dates');
+    expect(html).not.toContain('ledgerRow__date');
     expect(html).not.toContain('undefined');
     expect(html).not.toContain('Invalid Date');
   });
@@ -260,13 +268,13 @@ describe('renderApplicationsList Started/Decided date line (tc-s0yf, GH #819)', 
     delete app.decidedDate;
     const html = renderApplicationsList([app], SLUG);
     expect(html).toContain(
-      '<p class="appCard__dates">Started 15 Jan 2026 · Awaiting decision</p>',
+      '<p class="ledgerRow__date">Started 15 Jan 2026 · Awaiting decision</p>',
     );
     expect(html).not.toContain('undefined');
   });
 });
 
-describe('renderStatusSummary (tc-r4n9.3: compact Granted/Refused/Undecided strip)', () => {
+describe('renderStatusSummary (tc-r4n9.3: compact Granted/Refused/Undecided strip, Public Notice stamp language)', () => {
   const BREAKDOWN = [
     { appState: 'Permitted', count: 20 },
     { appState: 'Rejected', count: 12 },
@@ -283,11 +291,12 @@ describe('renderStatusSummary (tc-r4n9.3: compact Granted/Refused/Undecided stri
     expect(html).toMatch(/42[\s\S]{0,20}total/);
   });
 
-  it('reuses the shared per-card status chip vocabulary/colours for the strip items', () => {
+  it('reuses the shared stamp vocabulary/colours for the strip items, with icon + label', () => {
     const html = renderStatusSummary(BREAKDOWN);
-    expect(html).toContain('status--granted');
-    expect(html).toContain('status--refused');
-    expect(html).toContain('status--neutral');
+    expect(html).toContain('stamp--granted');
+    expect(html).toContain('stamp--refused');
+    expect(html).toContain('stamp--neutral');
+    expect((html.match(/class="stamp__icon"/g) ?? []).length).toBeGreaterThanOrEqual(3);
   });
 
   it('does not enumerate every top-level status as its own row (compact, not a wall of lines)', () => {
@@ -307,8 +316,8 @@ describe('renderStatusSummary (tc-r4n9.3: compact Granted/Refused/Undecided stri
     expect(html).toContain('<summary>Other (8)</summary>');
     expect(html).toContain('Granted with conditions');
     expect(html).toContain('Withdrawn');
-    // The long-tail states are inside the disclosure, not top-level chips.
-    expect(html).not.toMatch(/status--\w+">\s*5 Granted with conditions/);
+    // The long-tail states are inside the disclosure, not top-level stamps.
+    expect(html).not.toMatch(/stamp--\w+">\s*5 Granted with conditions/);
   });
 
   it('omits the Other disclosure entirely when there is no long tail', () => {
@@ -384,26 +393,128 @@ describe('renderAttributionList', () => {
   });
 });
 
-describe('pageStyles appCard__link (whole-card share-page affordance)', () => {
-  it('styles the whole-card link to inherit colour with no underline', () => {
+describe('pageStyles masthead (double rule, small-caps wordmark, brass text CTA)', () => {
+  it('gives the wordmark a small-caps, letterspaced treatment', () => {
     const css = pageStyles();
-    expect(css).toContain('.appCard__link');
-    expect(css).toMatch(/\.appCard__link \{[^}]*color: inherit/);
-    expect(css).toMatch(/\.appCard__link \{[^}]*text-decoration: none/);
+    expect(css).toContain('.siteHeader__wordmark');
+    expect(css).toMatch(/\.siteHeader__wordmark \{[^}]*font-variant: small-caps/);
+  });
+
+  it('restyles the header CTA as a plain brass text link, not a filled button', () => {
+    const css = pageStyles();
+    expect(css).toMatch(/a\.siteHeader__cta \{[^}]*color: var\(--tc-amber\)/);
+    // No filled-pill chrome left on the header CTA.
+    expect(css).not.toMatch(/a\.siteHeader__cta \{[^}]*background: var\(--tc-amber\)/);
+  });
+
+  it('renders a double rule beneath the masthead — a 2.5px heavy rule over a 1px hairline', () => {
+    const css = pageStyles();
+    expect(css).toMatch(/\.siteHeader__ruleHeavy \{[^}]*height: 2\.5px/);
+    expect(css).toMatch(/\.siteHeader__ruleHeavy \{[^}]*var\(--tc-text-primary\)/);
+    expect(css).toMatch(/\.siteHeader__ruleHairline \{[^}]*height: 1px/);
+    expect(css).toMatch(/\.siteHeader__ruleHairline \{[^}]*var\(--tc-border\)/);
+  });
+});
+
+describe('pageStyles breadcrumb (mono small-caps dateline)', () => {
+  it('sets the breadcrumb in the mono font role, small-caps, letterspaced', () => {
+    const css = pageStyles();
+    expect(css).toMatch(/\.breadcrumb \{[^}]*font-family: var\(--tc-font-mono\)/);
+    expect(css).toMatch(/\.breadcrumb \{[^}]*font-variant: small-caps/);
+  });
+
+  it('separates dateline segments with a right-pointing angle quote, not a slash', () => {
+    const css = pageStyles();
+    expect(css).toMatch(/\.breadcrumb li::after \{[^}]*content: '›'/);
+  });
+});
+
+describe('pageStyles H1 (Fraunces display face)', () => {
+  it('sets h1 to the display font token, whose fallback stack keeps it readable if Fraunces 404s', () => {
+    const css = pageStyles();
+    expect(css).toMatch(/^\s*h1 \{[^}]*font-family: var\(--tc-font-display\)/m);
+  });
+});
+
+describe('pageStyles Fraunces self-hosting (zero external font requests)', () => {
+  it('declares 400 and 600 weight @font-face blocks pointing at same-origin woff2 files', () => {
+    const css = pageStyles();
+    expect(css).toMatch(
+      /@font-face \{[^}]*font-family: 'Fraunces';[^}]*font-weight: 400;[^}]*src: url\('\/fonts\/fraunces-latin-400-normal\.woff2'\) format\('woff2'\);/,
+    );
+    expect(css).toMatch(
+      /@font-face \{[^}]*font-family: 'Fraunces';[^}]*font-weight: 600;[^}]*src: url\('\/fonts\/fraunces-latin-600-normal\.woff2'\) format\('woff2'\);/,
+    );
+  });
+
+  it('uses font-display: swap on every @font-face block', () => {
+    const css = pageStyles();
+    const blocks = css.match(/@font-face \{[^}]*\}/g) ?? [];
+    expect(blocks.length).toBeGreaterThan(0);
+    for (const block of blocks) {
+      expect(block).toContain('font-display: swap');
+    }
+  });
+
+  it('never references a third-party font host', () => {
+    const css = pageStyles();
+    expect(css).not.toContain('https://fonts');
+    expect(css).not.toContain('fonts.googleapis.com');
+    expect(css).not.toContain('fonts.gstatic.com');
+  });
+});
+
+describe('pageStyles ledger (section heading, rows, stamps)', () => {
+  it('opens the ledger with a small-caps brass label over a heavy 2px rule', () => {
+    const css = pageStyles();
+    expect(css).toMatch(/\.ledger__heading \{[^}]*font-variant: small-caps/);
+    expect(css).toMatch(/\.ledger__heading \{[^}]*color: var\(--tc-amber\)/);
+    expect(css).toMatch(/\.ledger__heading \{[^}]*border-top: 2px solid var\(--tc-text-primary\)/);
+  });
+
+  it('separates ledger rows with a hairline rule, not a boxed card border', () => {
+    const css = pageStyles();
+    expect(css).toMatch(/\.ledgerRow \{[^}]*border-bottom: 1px solid var\(--tc-border\)/);
+    expect(css).not.toMatch(/\.ledgerRow \{[^}]*border: 1px solid var\(--tc-border\);\s*border-radius/);
+  });
+
+  it('sets the ledger row address in the Fraunces 600 display face', () => {
+    const css = pageStyles();
+    expect(css).toMatch(/\.ledgerRow__address \{[^}]*font-family: var\(--tc-font-display\)/);
+    expect(css).toMatch(/\.ledgerRow__address \{[^}]*font-weight: 600/);
+  });
+
+  it('sets the ledger row meta column (ref + date) in the mono font role', () => {
+    const css = pageStyles();
+    expect(css).toMatch(/\.ledgerRow__meta \{[^}]*font-family: var\(--tc-font-mono\)/);
+  });
+
+  it('styles the whole-row link to inherit colour with no underline', () => {
+    const css = pageStyles();
+    expect(css).toContain('.ledgerRow__link');
+    expect(css).toMatch(/\.ledgerRow__link \{[^}]*color: inherit/);
+    expect(css).toMatch(/\.ledgerRow__link \{[^}]*text-decoration: none/);
   });
 
   it('styles the "View details" affordance in the amber accent colour', () => {
     const css = pageStyles();
-    expect(css).toContain('.appCard__cta');
-    expect(css).toMatch(/\.appCard__cta \{[^}]*var\(--tc-amber\)/);
+    expect(css).toContain('.ledgerRow__cta');
+    expect(css).toMatch(/\.ledgerRow__cta \{[^}]*var\(--tc-amber\)/);
   });
-});
 
-describe('pageStyles appCard__dates (Started/Decided date line, tc-s0yf)', () => {
-  it('styles the date line as secondary metadata text using design tokens', () => {
+  it('styles the stamp outlined (currentColor border, no fill) with an uppercase letterspaced label', () => {
     const css = pageStyles();
-    expect(css).toContain('.appCard__dates');
-    expect(css).toMatch(/\.appCard__dates \{[^}]*var\(--tc-text-secondary\)/);
+    expect(css).toMatch(/\.stamp \{[^}]*border: 1\.5px solid currentColor/);
+    expect(css).toMatch(/\.stamp \{[^}]*background: transparent/);
+    expect(css).toMatch(/\.stamp__label \{[^}]*text-transform: uppercase/);
+    expect(css).toMatch(/\.stamp__label \{[^}]*letter-spacing: 0\.12em/);
+  });
+
+  it('keeps the three canonical stamp colour modifiers', () => {
+    const css = pageStyles();
+    expect(css).toMatch(/\.stamp--granted \{[^}]*color: var\(--tc-status-granted\)/);
+    expect(css).toMatch(/\.stamp--refused \{[^}]*color: var\(--tc-status-refused\)/);
+    expect(css).toMatch(/\.stamp--neutral \{[^}]*color: var\(--tc-status-neutral\)/);
   });
 });
 
@@ -417,7 +528,7 @@ describe('pageStyles townLinks', () => {
   });
 });
 
-describe('pageStyles status chip vocabulary (decision 4: shared palette, filled style)', () => {
+describe('pageStyles status colour tokens (decision 4: shared palette, light-first)', () => {
   /**
    * @param {string} css
    * @returns {string} the declarations inside the top-level `:root { ... }`
@@ -440,14 +551,11 @@ describe('pageStyles status chip vocabulary (decision 4: shared palette, filled 
     return match ? match[1] : '';
   }
 
-  it('defines the three canonical status colour tokens, light-first, plus their fill backgrounds', () => {
+  it('defines the three canonical status colour tokens, light-first', () => {
     const root = rootDeclarations(pageStyles());
     expect(root).toMatch(/--tc-status-granted: #1A7D37;/);
     expect(root).toMatch(/--tc-status-refused: #C42B2B;/);
     expect(root).toMatch(/--tc-status-neutral: #6D665C;/);
-    expect(root).toMatch(/--tc-status-granted-bg:/);
-    expect(root).toMatch(/--tc-status-refused-bg:/);
-    expect(root).toMatch(/--tc-status-neutral-bg:/);
   });
 
   it('moves the dark variants of the status tokens into the dark media query', () => {
@@ -465,24 +573,6 @@ describe('pageStyles status chip vocabulary (decision 4: shared palette, filled 
     expect(css).not.toContain('--tc-status-withdrawn');
     expect(css).not.toContain('--tc-status-appealed');
     expect(css).not.toContain('--tc-status-default');
-  });
-
-  it('styles each chip as a filled badge (background fill + full-opacity text) per design-language, not outlined', () => {
-    const css = pageStyles();
-    expect(css).toMatch(
-      /\.status--granted \{[^}]*background: var\(--tc-status-granted-bg\)/,
-    );
-    expect(css).toMatch(
-      /\.status--granted \{[^}]*color: var\(--tc-status-granted\)/,
-    );
-    expect(css).toMatch(
-      /\.status--refused \{[^}]*background: var\(--tc-status-refused-bg\)/,
-    );
-    expect(css).toMatch(
-      /\.status--neutral \{[^}]*background: var\(--tc-status-neutral-bg\)/,
-    );
-    // The base .status rule no longer draws the old outlined-chip border.
-    expect(css).not.toMatch(/\.status \{[^}]*border: 1px solid currentColor/);
   });
 });
 
@@ -557,9 +647,9 @@ describe('pageStyles light-first token flip (tc-r4n9.1)', () => {
   });
 });
 
-describe('renderMidListCta and mid-list injection (tc-fgoyj)', () => {
+describe('renderMidListCta and mid-list injection (tc-fgoyj, filed-notice CTA band)', () => {
   const STORE_HREF = 'https://apps.apple.com/x?pt=1&ct=seo-lpa-mid&mt=8';
-  const MID_CARD = 'class="appCard appCard--cta"';
+  const MID_CARD = 'class="ledgerCta"';
 
   /** @param {number} count */
   function manyApplications(count) {
@@ -572,7 +662,7 @@ describe('renderMidListCta and mid-list injection (tc-fgoyj)', () => {
     );
   }
 
-  it('renders a card-shaped CTA naming the area, never disguised as an application', () => {
+  it('renders a filed-notice card CTA naming the area, never disguised as an application', () => {
     const html = renderMidListCta('Basingstoke and Deane', STORE_HREF);
     expect(html).toContain(MID_CARD);
     expect(html).toContain('Get told when the next one lands');
@@ -582,8 +672,8 @@ describe('renderMidListCta and mid-list injection (tc-fgoyj)', () => {
     expect(html).toContain(`href="${STORE_HREF}"`);
     expect(html).toContain('rel="noopener"');
     expect(html).toContain('target="_blank"');
-    // A pitch card must not carry application-card furniture.
-    expect(html).not.toContain('appCard__address');
+    // A pitch card must not carry ledger-row furniture.
+    expect(html).not.toContain('ledgerRow__address');
     expect(html).not.toContain('View details');
   });
 
@@ -611,6 +701,20 @@ describe('renderMidListCta and mid-list injection (tc-fgoyj)', () => {
     expect(withCta).not.toContain(MID_CARD);
     const withoutArg = renderApplicationsList(manyApplications(12), SLUG);
     expect(withoutArg).not.toContain(MID_CARD);
+  });
+});
+
+describe('pageStyles CTA bands (filed-notice card shape, 2px brass top rule, Fraunces headline)', () => {
+  it('gives the mid-list CTA card a 2px brass top rule and a Fraunces headline', () => {
+    const css = pageStyles();
+    expect(css).toMatch(/\.ledgerCta \{[^}]*border-top: 2px solid var\(--tc-amber\)/);
+    expect(css).toMatch(/\.ledgerCta__heading \{[^}]*font-family: var\(--tc-font-display\)/);
+  });
+
+  it('gives the bottom CTA banner the same 2px brass top rule and Fraunces headline treatment', () => {
+    const css = pageStyles();
+    expect(css).toMatch(/\.cta \{[^}]*border-top: 2px solid var\(--tc-amber\)/);
+    expect(css).toMatch(/\.cta__heading \{[^}]*font-family: var\(--tc-font-display\)/);
   });
 });
 

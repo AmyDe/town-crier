@@ -217,4 +217,21 @@ describe('renderTownsIndexPage', () => {
     const html = renderTownsIndexPage([entry(), entry({ townName: 'Adur', townSlug: 'adur' })]);
     expect(html).toContain('2 towns');
   });
+
+  describe('masthead (double rule, small-caps wordmark) — Public Notice broadsheet, consistent with the authority/town pages', () => {
+    it('renders the double rule beneath the masthead, inside the site header', () => {
+      const html = renderTownsIndexPage([entry()]);
+      const header = html.match(/<header class="siteHeader">[\s\S]*?<\/header>/);
+      expect(header).not.toBeNull();
+      const [headerHtml] = header;
+      expect(headerHtml).toContain('class="siteHeader__ruleHeavy"');
+      expect(headerHtml).toContain('class="siteHeader__ruleHairline"');
+    });
+
+    it('gives the wordmark its own small-caps class and keeps the brass header CTA', () => {
+      const html = renderTownsIndexPage([entry()]);
+      expect(html).toContain('<a href="/" class="siteHeader__wordmark">Town Crier</a>');
+      expect(html).toContain('siteHeader__cta');
+    });
+  });
 });

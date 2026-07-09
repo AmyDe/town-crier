@@ -217,11 +217,12 @@ ${pageStyles()}
   <body>
     <div class="wrap">
       <header class="siteHeader">
-        <a href="/">Town Crier</a>
-        <nav class="siteHeader__nav">
-          <a href="/">Home</a>
+        <div class="siteHeader__inner">
+          <a href="/" class="siteHeader__wordmark">Town Crier</a>
           <a class="siteHeader__cta" href="${storeHref}" rel="noopener" target="_blank">Get the app</a>
-        </nav>
+        </div>
+        <div class="siteHeader__ruleHeavy"></div>
+        <div class="siteHeader__ruleHairline"></div>
       </header>
       <nav class="breadcrumb" aria-label="Breadcrumb">
         <ol>
@@ -237,7 +238,7 @@ ${letterNav}
 ${letterSections}
 
         <section class="cta">
-          <h2>Get push alerts for your area</h2>
+          <h2 class="cta__heading">Get push alerts for your area</h2>
           <p>
             Draw a circle on the map and Town Crier will notify you the moment a new
             planning application is submitted or decided inside it.
