@@ -11,6 +11,7 @@ import (
 	"math"
 
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
+	"github.com/AmyDe/town-crier/api-go/internal/designtokens"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/gofont/gobold"
 	"golang.org/x/image/font/gofont/goregular"
@@ -39,10 +40,10 @@ const (
 )
 
 var (
-	pinFill    = color.RGBA{R: 0xE9, G: 0xA6, B: 0x20, A: 0xFF} // amber pin body
-	pinOutline = color.RGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0xFF} // white pin border
-	fallbackBg = color.RGBA{R: 0xD4, G: 0x91, B: 0x0A, A: 0xFF} // brand amber field
-	textWhite  = color.RGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0xFF}
+	pinFill    = designtokens.AmberDark  // amber pin body
+	pinOutline = designtokens.White      // white pin border
+	fallbackBg = designtokens.AmberLight // brand amber field
+	textWhite  = designtokens.White
 	// attribShade is a half-opaque black strip behind the OSM credit so it stays
 	// legible over any tile. color.RGBA is alpha-premultiplied, so a black tint at
 	// alpha 0xA0 darkens whatever it composites over via draw.Over.

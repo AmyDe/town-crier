@@ -12,6 +12,8 @@ on:
       - 'scripts/check-design-token-drift.sh'
       - 'web/src/styles/tokens.css'
       - 'web/scripts/lib/tokens.generated.mjs'
+      - 'api-go/internal/designtokens/tokens_gen.go'
+      - 'api-go/internal/sharepage/templates/tokens.gohtml'
       - '.github/workflows/design-token-drift-check.yml'
 
 permissions:
