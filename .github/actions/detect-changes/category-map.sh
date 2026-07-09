@@ -30,6 +30,11 @@ declare -A CATEGORY_PREFIXES=(
 # IGNORE_ALLOWLIST_*: top-level paths that legitimately need no pr-gate lane
 # (docs, repo tooling, repo metadata) — changes here don't flip any category
 # and don't trip the fail-closed catch-all in "Detect changed paths".
-IGNORE_ALLOWLIST_DIRS=(docs .beads .claude scripts)
+#
+# design/ holds design/tokens.json, the single source of truth for the design
+# tokens (ADR 0040). It needs no pr-gate stack lane of its own: the dedicated
+# design-token-drift-check.yml workflow gates it, and any real token change also
+# lands regenerated files under web/ (which trips the web lane).
+IGNORE_ALLOWLIST_DIRS=(docs .beads .claude scripts design)
 IGNORE_ALLOWLIST_FILES=(LICENSE .gitignore .gitattributes)
 IGNORE_ALLOWLIST_GLOBS=("*.md")

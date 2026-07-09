@@ -1,0 +1,33 @@
+# Third-party actions pinned to commit SHA for supply-chain safety
+# (tj-actions CVE-2025-30066 rationale — issue #835 slice 4, repo policy #843).
+
+name: Design token drift check
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'design/**'
+      - 'scripts/design-tokens/**'
+      - 'scripts/check-design-token-drift.sh'
+      - 'web/src/styles/tokens.css'
+      - 'web/scripts/lib/tokens.generated.mjs'
+      - '.github/workflows/design-token-drift-check.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Verify generated design tokens match design/tokens.json
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 22
+      - run: bash scripts/check-design-token-drift.sh
+      - run: node --test scripts/design-tokens/*.test.mjs
