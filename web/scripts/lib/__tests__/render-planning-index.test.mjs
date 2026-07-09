@@ -224,4 +224,21 @@ describe('renderPlanningIndexPage', () => {
     expect(html).toContain('Ordnance Survey');
     expect(html).toContain('OpenStreetMap');
   });
+
+  describe('masthead (double rule, small-caps wordmark) — Public Notice broadsheet, consistent with the authority/town pages', () => {
+    it('renders the double rule beneath the masthead, inside the site header', () => {
+      const html = renderPlanningIndexPage(indexData());
+      const header = html.match(/<header class="siteHeader">[\s\S]*?<\/header>/);
+      expect(header).not.toBeNull();
+      const [headerHtml] = header;
+      expect(headerHtml).toContain('class="siteHeader__ruleHeavy"');
+      expect(headerHtml).toContain('class="siteHeader__ruleHairline"');
+    });
+
+    it('gives the wordmark its own small-caps class and keeps the brass header CTA', () => {
+      const html = renderPlanningIndexPage(indexData());
+      expect(html).toContain('<a href="/" class="siteHeader__wordmark">Town Crier</a>');
+      expect(html).toContain('siteHeader__cta');
+    });
+  });
 });
