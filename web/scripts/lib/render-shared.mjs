@@ -2,7 +2,7 @@
  * Building blocks shared by the authority-page renderer (`render-page.mjs`) and
  * the town-page renderer (`render-town-page.mjs`). Both pages are the same
  * hydration-free static template — only the title, canonical URL, breadcrumb and
- * a little evergreen copy differ — so the application cards, status stats,
+ * a little evergreen copy differ — so the application ledger rows, status stats,
  * attribution footer and the inline stylesheet live here once.
  *
  * Everything emitted here is destined for raw HTML, so data-derived strings are
@@ -30,13 +30,13 @@ import { SEO_TOKEN_CSS } from './tokens.generated.mjs';
  * @property {string | null} appState
  * @property {string | null} startDate      yyyy-MM-dd
  * @property {string | null} [decidedDate]  yyyy-MM-dd; when present, takes precedence over
- *   `startDate` for the card's Started/Decided line (tc-s0yf, GH #819) — the more final,
+ *   `startDate` for the row's Started/Decided line (tc-s0yf, GH #819) — the more final,
  *   informative lifecycle event. Optional/nullable: absent on an undecided application.
  * @property {string} lastDifferent         ISO-8601 with offset; the DESC sort key
  * @property {string | null} link           PlanIt permalink (always a reliable per-application record). No longer rendered
- *   as a per-card link (decision 6); kept only as a JSON-LD `url` fallback when no share URL can be built.
+ *   as a per-row link (decision 6); kept only as a JSON-LD `url` fallback when no share URL can be built.
  * @property {string | null} url            council website (may be a generic portal page, not always a per-application deep link). No longer
- *   rendered as a per-card link (decision 6); kept only as a JSON-LD `url` fallback when no share URL can be built.
+ *   rendered as a per-row link (decision 6); kept only as a JSON-LD `url` fallback when no share URL can be built.
  */
 
 const MAX_DESCRIPTION_LENGTH = 160;
@@ -69,7 +69,7 @@ function statusColorModifier(appState) {
 }
 
 /**
- * Build the card's Started/Decided date line (tc-s0yf, GH #819 acceptance).
+ * Build the row's Started/Decided date line (tc-s0yf, GH #819 acceptance).
  * `decidedDate` is the more final, informative lifecycle event, so it takes
  * precedence over `startDate` when both are present ("Decided 9 Jul 2021").
  * With only a `startDate`, the application is still awaiting a decision
@@ -225,13 +225,13 @@ export function renderMidListCta(area, storeHref) {
 }
 
 /**
- * Render the recent-applications list body (the `<li>` cards joined by newlines).
+ * Render the recent-applications ledger body (the `<li>` rows joined by newlines).
  *
  * @param {PlanningApplicationItem[]} applications
  * @param {string} [authoritySlug] the page's authority slug, threaded through so
- *   each card can link to its share page. Omitted (or no ref on the app) -> the
- *   card renders without a link at all (decision 6 retired the external
- *   PlanIt/council per-card links, so there is no other href to fall back to).
+ *   each row can link to its share page. Omitted (or no ref on the app) -> the
+ *   row renders without a link at all (decision 6 retired the external
+ *   PlanIt/council per-row links, so there is no other href to fall back to).
  * @param {{ area: string, storeHref: string }} [midCta] when present and the
  *   list is long enough, a mid-list CTA card is slotted in after the
  *   {@link MID_LIST_CTA_AFTER}th application.
