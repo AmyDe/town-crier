@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
+	"github.com/AmyDe/town-crier/api-go/internal/designtokens"
 )
 
 // fakeTiles is a hand-written double for the tile client. Every tile is a single
@@ -138,6 +139,61 @@ func TestMapCard_RendersMapWithPinAndAttribution(t *testing.T) {
 	}
 }
 
+// TestMapCard_RendersMastheadStripWithInkRule pins the Public Notice masthead
+// band (tc-fmrx3, #855): a paper-coloured strip burned across the top of the
+// map card, with a 2px ink rule beneath it, so the card carries the same
+// wordmark-over-double-rule language as the web masthead (#853/#854) even
+// though it composites onto a raster PNG rather than CSS. The band overlays
+// the already-composited tiles rather than reserving a gap in the map
+// projection, so this only changes THIS function's pixels — the map centring
+// math and OSM tile budget are untouched.
+func TestMapCard_RendersMastheadStripWithInkRule(t *testing.T) {
+	t.Parallel()
+	fill := color.RGBA{0x88, 0xCC, 0xFF, 0xFF}
+	tiles := &fakeTiles{fill: fill}
+
+	data, err := mapCard(t.Context(), tiles, 51.5074, -0.1278)
+	if err != nil {
+		t.Fatalf("mapCard: %v", err)
+	}
+	img := decodePNG(t, data)
+
+	if !hasPixelUnlike(img, image.Rect(0, 0, cardWidth, mastheadHeight), fill) {
+		t.Error("masthead band region still shows the raw tile fill")
+	}
+	// Away from the centred wordmark, the band is flat paper.
+	if !sameRGB(t, img, 1100, 10, designtokens.SurfaceLight) {
+		t.Error("masthead band is not the paper SurfaceLight colour")
+	}
+	// The ink rule beneath the band spans the full card width.
+	if !sameRGB(t, img, 50, mastheadHeight, designtokens.TextPrimaryLight) {
+		t.Error("masthead ink rule missing at its expected row (left)")
+	}
+	if !sameRGB(t, img, 1150, mastheadHeight, designtokens.TextPrimaryLight) {
+		t.Error("masthead ink rule missing at its expected row (right)")
+	}
+}
+
+// TestMapCard_PinOutlineIsPaperNotWhite pins the pin-outline token swap
+// (tc-fmrx3, #855): the outline goes from pure white to the paper
+// designtokens.SurfaceLight, consuming the token package rather than a
+// hand-rolled white. (600,277) sits 14px from the pin head's centre (291),
+// inside the outline ring (13px fill radius < 14 <= 16px outline radius).
+func TestMapCard_PinOutlineIsPaperNotWhite(t *testing.T) {
+	t.Parallel()
+	tiles := &fakeTiles{fill: color.RGBA{0x88, 0xCC, 0xFF, 0xFF}}
+
+	data, err := mapCard(t.Context(), tiles, 51.5074, -0.1278)
+	if err != nil {
+		t.Fatalf("mapCard: %v", err)
+	}
+	img := decodePNG(t, data)
+
+	if !sameRGB(t, img, 600, 277, designtokens.SurfaceLight) {
+		t.Error("pin outline is not the paper SurfaceLight colour")
+	}
+}
+
 // TestMapCard_TileFetchError propagates a tile-client failure as an error rather
 // than serving a half-painted card.
 func TestMapCard_TileFetchError(t *testing.T) {
@@ -168,6 +224,26 @@ func TestFallbackCard_BrandedNoTiles(t *testing.T) {
 	// The centred wordmark drew white text over the amber field.
 	if !hasPixelUnlike(img, image.Rect(400, 260, 800, 360), fallbackBg) {
 		t.Error("no wordmark drawn: centre band is still the flat background")
+	}
+}
+
+// TestFallbackCard_PaperFieldWithInkText pins the v2 fallback restyle
+// (tc-fmrx3, #855): the flat brand-amber field becomes the paper
+// designtokens.BackgroundLight, with ink (not white) wordmark text — the
+// no-map card now reads as a filed notice rather than a brand-amber poster.
+func TestFallbackCard_PaperFieldWithInkText(t *testing.T) {
+	t.Parallel()
+	data, err := fallbackCard()
+	if err != nil {
+		t.Fatalf("fallbackCard: %v", err)
+	}
+	img := decodePNG(t, data)
+
+	if !sameRGB(t, img, 4, 4, designtokens.BackgroundLight) {
+		t.Error("fallback corner is not the paper BackgroundLight field")
+	}
+	if sameRGB(t, img, 4, 4, designtokens.AmberLight) {
+		t.Error("fallback corner is still the old flat brand-amber field")
 	}
 }
 

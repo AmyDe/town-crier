@@ -23,15 +23,18 @@
 <body>
 <header class="site-header">
 <a class="brand-link" href="{{.HomeURL}}">Town Crier</a>
+<div class="rule-heavy"></div>
+<div class="rule-hairline"></div>
 </header>
 <main class="page">
 <img class="hero" src="{{.OGImage}}" alt="Map showing the approximate location of {{if .Address}}{{.Address}}{{else}}this planning application{{end}}" width="1200" height="630" loading="eager">
 <article class="card">
-<div class="meta-list">
-<div class="meta-row"><span class="meta-label">Reference</span><span class="meta-value">{{.Ref}}</span></div>
-{{if .AppType}}<div class="meta-row"><span class="meta-label">Type</span><span class="meta-value">{{.AppType}}</span></div>{{end}}
+<div class="doc-header">
+<span class="doc-header-ref">No. {{.Ref}}</span>
+{{if .AuthorityName}}<span class="doc-header-authority">{{.AuthorityName}}</span>{{end}}
 </div>
-{{if .StatusLabel}}<span class="chip chip--{{.StatusModifier}}">{{.StatusLabel}}</span>{{end}}
+{{if .AppType}}<div class="meta-list"><div class="meta-row"><span class="meta-label">Type</span><span class="meta-value">{{.AppType}}</span></div></div>{{end}}
+{{if .StatusLabel}}<span class="stamp stamp--{{.StatusModifier}}">{{if eq .StatusModifier "granted"}}<svg class="stamp-icon" width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5 6.5 11.5 12.5 4.5"/></svg>{{else if eq .StatusModifier "refused"}}<svg class="stamp-icon" width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4 12 12"/><path d="M12 4 4 12"/></svg>{{else}}<svg class="stamp-icon" width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8H12"/></svg>{{end}}<span class="stamp-label">{{.StatusLabel}}</span></span>{{end}}
 <h1 class="address">{{.Address}}{{if .Postcode}}, {{.Postcode}}{{end}}</h1>
 {{if .Description}}<h2>Proposal</h2><p class="proposal">{{.Description}}</p>{{end}}
 {{if .Dates}}<h2>Key dates</h2><ol class="timeline">{{range .Dates}}<li><span class="date-label">{{.Label}}</span><span class="date-value">{{.Value}}</span></li>{{end}}</ol>{{end}}
