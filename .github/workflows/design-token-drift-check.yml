@@ -14,6 +14,9 @@ on:
       - 'web/scripts/lib/tokens.generated.mjs'
       - 'api-go/internal/designtokens/tokens_gen.go'
       - 'api-go/internal/sharepage/templates/tokens.gohtml'
+      - 'mobile/ios/packages/town-crier-presentation/Sources/DesignSystem/Colors/Color+TownCrier.swift'
+      - 'mobile/android/presentation/src/main/kotlin/uk/towncrierapp/presentation/designsystem/Color.kt'
+      - '.claude/skills/design-language/references/tokens.md'
       - '.github/workflows/design-token-drift-check.yml'
 
 permissions:
