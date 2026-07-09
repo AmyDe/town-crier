@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, beforeEach } from 'vitest';
@@ -106,6 +106,27 @@ describe('WatchZoneListPage', () => {
     renderWithRouter(<WatchZoneListPage repository={spy} />);
 
     expect(await screen.findByText('Paused')).toBeInTheDocument();
+  });
+
+  it('pairs the Paused badge with a pause icon (colour is never the sole indicator)', async () => {
+    spy.listResult = [aWatchZone({ paused: true })];
+
+    renderWithRouter(<WatchZoneListPage repository={spy} />);
+
+    const badge = await screen.findByTestId('zone-paused-badge');
+    expect(within(badge).getByTestId('pause-icon')).toBeInTheDocument();
+  });
+
+  it('keeps the data-testid and tooltip copy unchanged on the Paused badge', async () => {
+    spy.listResult = [aWatchZone({ paused: true })];
+
+    renderWithRouter(<WatchZoneListPage repository={spy} />);
+
+    const badge = await screen.findByTestId('zone-paused-badge');
+    expect(badge).toHaveAttribute(
+      'title',
+      "This area is paused because it's over your plan's zone limit. Upgrade for more zones.",
+    );
   });
 
   it('does not render a Paused badge when a zone is not paused', async () => {
