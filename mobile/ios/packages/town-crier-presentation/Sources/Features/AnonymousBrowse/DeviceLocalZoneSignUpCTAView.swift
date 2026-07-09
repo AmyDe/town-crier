@@ -8,8 +8,16 @@ import SwiftUI
 /// ``AccountCTABanner``'s rationale: pitches the account, never promises
 /// more on-device areas (the free tier is one server zone), and never says
 /// "instant" — instant alerts are a paid, server-enforced entitlement.
+///
+/// Public Notice (GH#857/#896): this sheet is one of the two anonymous-mode
+/// surfaces that gets the upsell-card treatment (the other is
+/// ``DeviceLocalZoneListView``'s sign-up pitch section) — a brass small-caps
+/// eyebrow plus a 1.5pt amber border. Amber rationing still holds: the
+/// border + eyebrow are the sheet's only accent besides the "Create free
+/// account" `PrimaryButton`, its one filled-amber container.
 public struct DeviceLocalZoneSignUpCTAView: View {
   public enum Copy {
+    public static let eyebrow = "Free Account"
     public static let headline = "Create a free account"
     public static let subline =
       "Get notified when things change in your areas, and keep them saved beyond this device."
@@ -38,7 +46,14 @@ public struct DeviceLocalZoneSignUpCTAView: View {
         .frame(height: TCSpacing.medium)
 
       Image(systemName: "bell.badge")
-        .font(.system(.largeTitle))
+        .font(TCTypography.displayLarge)
+        .foregroundStyle(Color.tcAmber)
+
+      // Brass small-caps eyebrow (upsell treatment, GH#857/#896).
+      Text(Copy.eyebrow)
+        .font(TCTypography.captionEmphasis)
+        .textCase(.uppercase)
+        .kerning(1.2)
         .foregroundStyle(Color.tcAmber)
 
       Text(Copy.headline)
@@ -76,6 +91,13 @@ public struct DeviceLocalZoneSignUpCTAView: View {
     }
     .padding(.horizontal, TCSpacing.medium)
     .background(Color.tcSurfaceElevated)
+    .clipShape(RoundedRectangle(cornerRadius: TCCornerRadius.large))
+    .overlay(
+      // Upsell treatment border (GH#857/#896) — no fill, matching the
+      // design language's "outline carries the accent" rule.
+      RoundedRectangle(cornerRadius: TCCornerRadius.large)
+        .strokeBorder(Color.tcAmber, lineWidth: 1.5)
+    )
   }
 
   // MARK: - Test Helpers
