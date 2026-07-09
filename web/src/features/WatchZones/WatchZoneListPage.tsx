@@ -68,6 +68,20 @@ export function WatchZoneListPage({ repository }: Props) {
                       data-testid="zone-paused-badge"
                       title="This area is paused because it's over your plan's zone limit. Upgrade for more zones."
                     >
+                      <svg
+                        data-testid="pause-icon"
+                        width="12"
+                        height="12"
+                        viewBox="0 0 16 16"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M5.5 3.5V12.5" />
+                        <path d="M10.5 3.5V12.5" />
+                      </svg>
                       Paused
                     </span>
                   )}

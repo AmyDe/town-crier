@@ -73,20 +73,24 @@
 }
 
 /*
- * Paused status pill — mirrors the ApplicationCard statusBadge pattern
- * (design-language "Status Badges": capsule shape, status color at 15%
- * background / full opacity text, caption-emphasis weight). Uses the
- * withdrawn token since a paused zone is inactive, not an error or warning.
+ * Paused status stamp — outlined "stamp" pattern (Public Notice component
+ * language): uppercase, letterspaced, 1.5px currentColor border, icon +
+ * label always. Uses the withdrawn hue since a paused zone is inactive, not
+ * an error or warning.
  */
 .pausedBadge {
   display: inline-flex;
   align-items: center;
+  gap: var(--tc-space-xs);
   padding: var(--tc-space-xs) var(--tc-space-sm);
-  border-radius: var(--tc-radius-full);
-  background: color-mix(in srgb, var(--tc-status-withdrawn) 15%, transparent);
+  border: 1.5px solid currentColor;
+  border-radius: var(--tc-radius-sm);
+  background: transparent;
   color: var(--tc-status-withdrawn);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
   font-size: var(--tc-text-caption);
-  font-weight: var(--tc-weight-medium);
+  font-weight: var(--tc-weight-semibold);
   line-height: var(--tc-leading-normal);
   white-space: nowrap;
   flex-shrink: 0;
@@ -106,7 +110,7 @@
 
 .editLink {
   padding: var(--tc-space-xs) var(--tc-space-sm);
-  color: var(--tc-amber);
+  color: var(--tc-text-primary);
   font-weight: var(--tc-font-semibold);
   font-size: var(--tc-text-caption);
   text-decoration: none;
@@ -115,7 +119,7 @@
 }
 
 .editLink:hover {
-  background: var(--tc-amber-muted);
+  background: color-mix(in srgb, var(--tc-text-secondary) 10%, transparent);
 }
 
 .deleteButton {
@@ -131,7 +135,7 @@
 }
 
 .deleteButton:hover {
-  background: rgba(196, 43, 43, 0.1);
+  background: color-mix(in srgb, var(--tc-status-rejected) 10%, transparent);
 }
 
 .error {
