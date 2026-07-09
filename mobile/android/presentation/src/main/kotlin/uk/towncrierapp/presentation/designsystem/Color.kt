@@ -38,42 +38,40 @@ internal data class TcPalette(
     val overlay: Color,
 )
 
-private fun muted(amber: Color) = amber.copy(alpha = 0.15f)
-
 internal val LightPalette =
     TcPalette(
-        amber = Color(0xFFD4910A),
-        amberMuted = muted(Color(0xFFD4910A)),
-        amberHover = Color(0xFFB87A08),
-        background = Color(0xFFFAF8F5),
-        surface = Color(0xFFFFFFFF),
-        surfaceElevated = Color(0xFFFFFFFF),
-        textPrimary = Color(0xFF1C1917),
-        textSecondary = Color(0xFF6B6560),
-        textTertiary = Color(0xFFA39E98),
-        textOnAccent = Color(0xFFFFFFFF),
+        amber = Color(0xFF9E6709),
+        amberMuted = Color(0xFF9E6709).copy(alpha = 0.12f),
+        amberHover = Color(0xFF8A5F06),
+        background = Color(0xFFF5F0E6),
+        surface = Color(0xFFFFFDF6),
+        surfaceElevated = Color(0xFFFFFDF6),
+        textPrimary = Color(0xFF24201A),
+        textSecondary = Color(0xFF6D665C),
+        textTertiary = Color(0xFFA79E90),
+        textOnAccent = Color(0xFFFFFDF8),
         statusPermitted = Color(0xFF1A7D37),
         statusConditions = Color(0xFFB85C00),
         statusRejected = Color(0xFFC42B2B),
         statusPending = Color(0xFFC27A0A),
         statusWithdrawn = Color(0xFF7A7570),
         statusAppealed = Color(0xFF7C3AED),
-        border = Color(0xFFE8E4DF),
-        borderFocused = Color(0xFFD4910A),
+        border = Color(0xFFDAD2C2),
+        borderFocused = Color(0xFF9E6709),
         overlay = Color.Black.copy(alpha = 0.40f),
     )
 
 internal val DarkPalette =
     TcPalette(
         amber = Color(0xFFE9A620),
-        amberMuted = muted(Color(0xFFE9A620)),
+        amberMuted = Color(0xFFE9A620).copy(alpha = 0.15f),
         amberHover = Color(0xFFF0B83A),
-        background = Color(0xFF1A1A1E),
-        surface = Color(0xFF242428),
-        surfaceElevated = Color(0xFF2E2E33),
-        textPrimary = Color(0xFFF1EFE9),
-        textSecondary = Color(0xFF9B9590),
-        textTertiary = Color(0xFF5C5852),
+        background = Color(0xFF191713),
+        surface = Color(0xFF23201A),
+        surfaceElevated = Color(0xFF2B2822),
+        textPrimary = Color(0xFFEFE9DC),
+        textSecondary = Color(0xFFA69E8F),
+        textTertiary = Color(0xFF6E675B),
         textOnAccent = Color(0xFF1C1917),
         statusPermitted = Color(0xFF34C759),
         statusConditions = Color(0xFFFF9F0A),
@@ -81,7 +79,7 @@ internal val DarkPalette =
         statusPending = Color(0xFFFFB340),
         statusWithdrawn = Color(0xFF8E8A85),
         statusAppealed = Color(0xFFA78BFA),
-        border = Color(0xFF3A3A3F),
+        border = Color(0xFF3A352B),
         borderFocused = Color(0xFFE9A620),
         overlay = Color.Black.copy(alpha = 0.50f),
     )
@@ -92,7 +90,7 @@ internal val DarkPalette =
 internal val OledPalette =
     DarkPalette.copy(
         background = Color(0xFF000000),
-        surface = Color(0xFF0A0A0A),
-        surfaceElevated = Color(0xFF161616),
-        border = Color(0xFF1E1E22),
+        surface = Color(0xFF0A0908),
+        surfaceElevated = Color(0xFF151310),
+        border = Color(0xFF26221A),
     )

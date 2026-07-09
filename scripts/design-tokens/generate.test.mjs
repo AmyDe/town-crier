@@ -45,7 +45,7 @@ const SKILL_BEGIN = '<!-- tokens:generated:begin -->';
 const SKILL_END = '<!-- tokens:generated:end -->';
 
 test('resolveColor returns the direct per-theme value', () => {
-  assert.equal(resolveColor(tokens.color, 'amber', 'light'), '#D4910A');
+  assert.equal(resolveColor(tokens.color, 'amber', 'light'), '#9E6709');
   assert.equal(resolveColor(tokens.color, 'amber', 'dark'), '#E9A620');
   assert.equal(resolveColor(tokens.color, 'amber', 'oled'), '#E9A620');
   assert.equal(resolveColor(tokens.color, 'background', 'oled'), '#000000');
@@ -60,9 +60,10 @@ test('resolveColor follows a base reference with no alpha (per theme)', () => {
   assert.equal(resolveColor(tokens.color, 'border-focused', 'dark'), '#E9A620');
 });
 
-test('resolveColor emits rgba() for a scalar alpha over a token base', () => {
-  // amber-muted: { base: "amber", alpha: 0.15 } -> rgba of amber, 15%.
-  assert.equal(resolveColor(tokens.color, 'amber-muted', 'light'), 'rgba(212, 145, 10, 0.15)');
+test('resolveColor emits rgba() for a per-theme alpha over a token base', () => {
+  // amber-muted: { base: "amber", alpha: { light: 0.12, dark: 0.15, oled: 0.15 } }
+  // -> rgba of amber at the per-theme alpha.
+  assert.equal(resolveColor(tokens.color, 'amber-muted', 'light'), 'rgba(158, 103, 9, 0.12)');
   assert.equal(resolveColor(tokens.color, 'amber-muted', 'dark'), 'rgba(233, 166, 32, 0.15)');
   assert.equal(resolveColor(tokens.color, 'amber-muted', 'oled'), 'rgba(233, 166, 32, 0.15)');
 });
@@ -121,10 +122,10 @@ test('emitGoTokens emits the generated-code marker, package clause, and import',
 
 test('emitGoTokens emits hex-string consts per theme, light+dark only (no OLED)', () => {
   const go = emitGoTokens(tokens);
-  assert.match(go, /AmberLightHex\s+= "#D4910A"/);
+  assert.match(go, /AmberLightHex\s+= "#9E6709"/);
   assert.match(go, /AmberDarkHex\s+= "#E9A620"/);
   // A base-ref token (border-focused -> amber) still resolves to a concrete hex.
-  assert.match(go, /BorderFocusedLightHex\s+= "#D4910A"/);
+  assert.match(go, /BorderFocusedLightHex\s+= "#9E6709"/);
   // Symbols are PascalCase (…OledHex); the doc's all-caps "OLED" must not match,
   // so this stays case-sensitive.
   assert.ok(!/Oled/.test(go), 'no Go-rendered surface implements OLED — no Oled symbol should be emitted');
@@ -132,8 +133,8 @@ test('emitGoTokens emits hex-string consts per theme, light+dark only (no OLED)'
 
 test('emitGoTokens converts hex to color.RGBA correctly (incl. zero-padded low byte)', () => {
   const go = emitGoTokens(tokens);
-  // #D4910A -> R:0xD4 G:0x91 B:0x0A — the 0x0A verifies two-digit padding.
-  assert.match(go, /AmberLight\s+= color\.RGBA\{R: 0xD4, G: 0x91, B: 0x0A, A: 0xFF\}/);
+  // #9E6709 -> R:0x9E G:0x67 B:0x09 — the 0x09 verifies two-digit padding.
+  assert.match(go, /AmberLight\s+= color\.RGBA\{R: 0x9E, G: 0x67, B: 0x09, A: 0xFF\}/);
   assert.match(go, /AmberDark\s+= color\.RGBA\{R: 0xE9, G: 0xA6, B: 0x20, A: 0xFF\}/);
   // White is an emitted image-renderer primitive, not a token.
   assert.match(go, /var White = color\.RGBA\{R: 0xFF, G: 0xFF, B: 0xFF, A: 0xFF\}/);
@@ -185,7 +186,7 @@ test('emitSharepageTokensGohtml uses the true neutral bucket (withdrawn), unlike
 test('emitSharepageTokensGohtml emits compact rgba() fills at 15% (share-page style)', () => {
   const html = emitSharepageTokensGohtml(tokens);
   assert.match(html, /--status-granted-bg:rgba\(26,125,55,0\.15\);/); // #1A7D37 @ 15%
-  assert.match(html, /--amber-muted:rgba\(212,145,10,0\.15\);/); // amber light @ 15%
+  assert.match(html, /--amber-muted:rgba\(158,103,9,0\.12\);/); // amber light @ 12%
   assert.ok(!/rgba\(26, 125, 55/.test(html), 'share-page rgba() has no spaces after commas');
 });
 
@@ -260,7 +261,7 @@ test('emitIosColors skips amber-hover (per-platform skip list)', () => {
 
 test('emitIosColors renders derived tokens in their iOS forms', () => {
   const out = emitIosColors(tokens);
-  assert.ok(out.includes('public static let tcAmberMuted = tcAmber.opacity(0.15)'));
+  assert.ok(out.includes('public static let tcAmberMuted = tcAmber.opacity(0.12)'));
   assert.ok(out.includes('public static let tcBorderFocused = tcAmber\n'));
   // overlay is a flat scrim using the light-theme alpha, not a themed colour.
   assert.ok(out.includes('public static let tcOverlay = Color.black.opacity(0.4)'));
@@ -278,10 +279,13 @@ test('emitAndroidColors reproduces the committed Color.kt byte-for-byte', () => 
 
 test('emitAndroidColors keeps amber-hover and formats overlay alpha per theme', () => {
   const out = emitAndroidColors(tokens);
-  assert.ok(out.includes('amberHover = Color(0xFFB87A08)'));
+  assert.ok(out.includes('amberHover = Color(0xFF8A5F06)'));
   assert.ok(out.includes('overlay = Color.Black.copy(alpha = 0.40f)'), 'light overlay alpha');
   assert.ok(out.includes('overlay = Color.Black.copy(alpha = 0.50f)'), 'dark overlay alpha');
-  assert.ok(out.includes('amberMuted = muted(Color(0xFFD4910A))'), 'amber-muted uses the muted() helper');
+  assert.ok(
+    out.includes('amberMuted = Color(0xFF9E6709).copy(alpha = 0.12f)'),
+    'amber-muted is amber at the per-theme light alpha (0.12)',
+  );
 });
 
 test('emitAndroidColors OledPalette overrides exactly the four differing fields', () => {

@@ -261,6 +261,8 @@ function spaInvariantVars(tokens) {
     ``,
     `  /* Typography — Inter via Google Fonts */`,
     `  --tc-font-family: ${t['font-family']};`,
+    `  --tc-font-display: ${t['font-display']};`,
+    `  --tc-font-mono: ${t['font-mono']};`,
     ``,
     `  --tc-text-hero: ${t.sizes.hero};`,
     `  --tc-text-display-large: ${t.sizes['display-large']};`,
@@ -404,10 +406,10 @@ function seoThemedVars(tokens, theme, indent, withComments) {
          previous five-way ad-hoc per-appState palette. The *-bg tokens are the
          foreground colour at 15% opacity, for the filled badge style. */`;
   const bgIntro = `      /* Background scale converged with the share-page family (see
-         api-go/internal/sharepage/templates/styles.gohtml): a warm cream field
-         (--tc-background: #FAF8F5) behind a white card (--tc-surface:
-         #FFFFFF) in light mode, so SEO pages and share pages read as one
-         product rather than two differently-themed properties. */`;
+         api-go/internal/sharepage/templates/styles.gohtml): a warm paper field
+         (--tc-background) behind a warmer off-white card (--tc-surface) in light
+         mode, so SEO pages and share pages read as one product rather than two
+         differently-themed properties. */`;
 
   const lines = [];
   if (withComments) lines.push(bgIntro);
@@ -442,6 +444,8 @@ function seoThemedVars(tokens, theme, indent, withComments) {
       `      --tc-space-xl: ${px(tokens.spacing.xl)};`,
       `      --tc-space-xxl: ${px(tokens.spacing.xxl)};`,
       `      --tc-font-family: ${tokens.typography['font-family']};`,
+      `      --tc-font-display: ${tokens.typography['font-display']};`,
+      `      --tc-font-mono: ${tokens.typography['font-mono']};`,
       // SEO reading width — narrower than the SPA's --tc-content-max-width
       // (1120px); a page-local literal, not a shared token.
       `      --tc-content-max-width: 760px;`,
@@ -593,6 +597,7 @@ function sharepageThemeBlock(tokens, theme, indent, withInvariants) {
     lines.push(
       `${pad}--radius-sm:${px(tokens.radius.sm)};--radius-md:${px(tokens.radius.md)};`,
       `${pad}--space-xs:${px(tokens.spacing.xs)};--space-sm:${px(tokens.spacing.sm)};--space-md:${px(tokens.spacing.md)};--space-lg:${px(tokens.spacing.lg)};--space-xl:${px(tokens.spacing.xl)};`,
+      `${pad}--font-display:${tokens.typography['font-display']};--font-mono:${tokens.typography['font-mono']};`,
       `${pad}/* Shared status vocabulary (tc-r4n9 decision 4): three colour buckets, not a`,
       `${pad}   five-way traffic light — granted (green), refused (red), neutral for`,
       `${pad}   "Undecided" and every long-tail state. Mirrors web/scripts/lib/render-shared.mjs. */`,
@@ -725,7 +730,11 @@ function iosColorExpr(colors, name) {
     // Token-reference base (amber-muted, border-focused) -> the iOS member.
     const baseName = iosTokenName(entry.base);
     if ('alpha' in entry) {
-      return { expr: `${baseName}.opacity(${entry.alpha})`, wrappable: false };
+      // iOS applies a single flat .opacity() to a theme-aware base — there is no
+      // per-theme-opacity helper — so a per-theme alpha collapses to the light
+      // value, the same rule the overlay scrim already uses above.
+      const alpha = typeof entry.alpha === 'object' ? entry.alpha.light : entry.alpha;
+      return { expr: `${baseName}.opacity(${alpha})`, wrappable: false };
     }
     return { expr: baseName, wrappable: false };
   }
@@ -844,14 +853,14 @@ function androidColorExpr(colors, name, theme) {
       const alpha = typeof entry.alpha === 'object' ? entry.alpha[theme] : entry.alpha;
       return `${baseExpr}.copy(alpha = ${kotlinAlpha(alpha)})`;
     }
-    // Token-reference base. amber-muted uses the muted() helper, which bakes in
-    // alpha 0.15; any other alpha would need a helper that doesn't exist.
+    // Token-reference base. A per-theme (or scalar) alpha applies .copy(alpha=)
+    // per theme, matching the overlay scrim style; Android emits one field per
+    // theme, so it carries the per-theme alpha natively (unlike iOS's single
+    // flat value).
     const baseHex = bareHex(resolveColor(colors, entry.base, theme));
     if ('alpha' in entry) {
-      if (entry.alpha !== 0.15) {
-        throw new Error(`Android muted() encodes alpha 0.15 only, not ${entry.alpha} (token "${name}")`);
-      }
-      return `muted(Color(0xFF${baseHex}))`;
+      const alpha = typeof entry.alpha === 'object' ? entry.alpha[theme] : entry.alpha;
+      return `Color(0xFF${baseHex}).copy(alpha = ${kotlinAlpha(alpha)})`;
     }
     return `Color(0xFF${baseHex})`;
   }
@@ -919,8 +928,6 @@ import androidx.compose.ui.graphics.Color
 internal data class TcPalette(
 ${fields}
 )
-
-private fun muted(amber: Color) = amber.copy(alpha = 0.15f)
 
 internal val LightPalette =
     TcPalette(

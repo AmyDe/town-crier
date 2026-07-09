@@ -6,40 +6,40 @@ import SwiftUI
 
 extension Color {
   /// Primary accent. Warm gold evoking town crier bells.
-  public static let tcAmber = Color.themed(light: 0xD4910A, dark: 0xE9A620, oled: 0xE9A620)
+  public static let tcAmber = Color.themed(light: 0x9E6709, dark: 0xE9A620, oled: 0xE9A620)
 
   /// Lower-emphasis accent for secondary buttons and tags.
-  public static let tcAmberMuted = tcAmber.opacity(0.15)
+  public static let tcAmberMuted = tcAmber.opacity(0.12)
 }
 
 // MARK: - Surfaces
 
 extension Color {
   /// Page-level background.
-  public static let tcBackground = Color.themed(light: 0xFAF8F5, dark: 0x1A1A1E, oled: 0x000000)
+  public static let tcBackground = Color.themed(light: 0xF5F0E6, dark: 0x191713, oled: 0x000000)
 
   /// Card and component background.
-  public static let tcSurface = Color.themed(light: 0xFFFFFF, dark: 0x242428, oled: 0x0A0A0A)
+  public static let tcSurface = Color.themed(light: 0xFFFDF6, dark: 0x23201A, oled: 0x0A0908)
 
   /// Modals, bottom sheets, popovers.
   public static let tcSurfaceElevated = Color.themed(
-    light: 0xFFFFFF, dark: 0x2E2E33, oled: 0x161616)
+    light: 0xFFFDF6, dark: 0x2B2822, oled: 0x151310)
 }
 
 // MARK: - Text
 
 extension Color {
   /// Body text and headings.
-  public static let tcTextPrimary = Color.themed(light: 0x1C1917, dark: 0xF1EFE9, oled: 0xF1EFE9)
+  public static let tcTextPrimary = Color.themed(light: 0x24201A, dark: 0xEFE9DC, oled: 0xEFE9DC)
 
   /// Captions, metadata, timestamps.
-  public static let tcTextSecondary = Color.themed(light: 0x6B6560, dark: 0x9B9590, oled: 0x9B9590)
+  public static let tcTextSecondary = Color.themed(light: 0x6D665C, dark: 0xA69E8F, oled: 0xA69E8F)
 
   /// Placeholder text, disabled labels.
-  public static let tcTextTertiary = Color.themed(light: 0xA39E98, dark: 0x5C5852, oled: 0x5C5852)
+  public static let tcTextTertiary = Color.themed(light: 0xA79E90, dark: 0x6E675B, oled: 0x6E675B)
 
   /// Text rendered on tcAmber backgrounds.
-  public static let tcTextOnAccent = Color.themed(light: 0xFFFFFF, dark: 0x1C1917, oled: 0x1C1917)
+  public static let tcTextOnAccent = Color.themed(light: 0xFFFDF8, dark: 0x1C1917, oled: 0x1C1917)
 }
 
 // MARK: - Status
@@ -73,7 +73,7 @@ extension Color {
 
 extension Color {
   /// Subtle dividers and card outlines.
-  public static let tcBorder = Color.themed(light: 0xE8E4DF, dark: 0x3A3A3F, oled: 0x1E1E22)
+  public static let tcBorder = Color.themed(light: 0xDAD2C2, dark: 0x3A352B, oled: 0x26221A)
 
   /// Focus rings and active input borders.
   public static let tcBorderFocused = tcAmber
