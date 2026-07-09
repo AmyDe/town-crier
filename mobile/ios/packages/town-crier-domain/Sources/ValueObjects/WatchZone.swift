@@ -9,6 +9,13 @@ public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
   public let authorityId: Int
   public let pushEnabled: Bool
   public let emailInstantEnabled: Bool
+  /// Whether this zone currently exceeds the user's effective tier quota and
+  /// has stopped generating new notifications (GH#889 P1/P2). Purely a
+  /// server-derived display flag — never computed or mutated by the client.
+  /// A paused zone remains fully listed, editable, and deletable; it is
+  /// automatically revived (server-side, with no client action) once the
+  /// user upgrades or deletes older zones.
+  public let paused: Bool
 
   public init(
     id: WatchZoneId = WatchZoneId(),
@@ -17,7 +24,8 @@ public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
     radiusMetres: Double,
     authorityId: Int = 0,
     pushEnabled: Bool = true,
-    emailInstantEnabled: Bool = true
+    emailInstantEnabled: Bool = true,
+    paused: Bool = false
   ) throws {
     let trimmed = name.trimmingCharacters(in: .whitespaces)
     guard !trimmed.isEmpty else {
@@ -33,6 +41,7 @@ public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
     self.authorityId = authorityId
     self.pushEnabled = pushEnabled
     self.emailInstantEnabled = emailInstantEnabled
+    self.paused = paused
   }
 
   /// Convenience initializer that derives the zone name from a validated postcode.
@@ -43,7 +52,8 @@ public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
     radiusMetres: Double,
     authorityId: Int = 0,
     pushEnabled: Bool = true,
-    emailInstantEnabled: Bool = true
+    emailInstantEnabled: Bool = true,
+    paused: Bool = false
   ) throws {
     try self.init(
       id: id,
@@ -52,7 +62,8 @@ public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
       radiusMetres: radiusMetres,
       authorityId: authorityId,
       pushEnabled: pushEnabled,
-      emailInstantEnabled: emailInstantEnabled
+      emailInstantEnabled: emailInstantEnabled,
+      paused: paused
     )
   }
 

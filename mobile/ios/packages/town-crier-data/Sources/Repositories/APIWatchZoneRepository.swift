@@ -143,6 +143,12 @@ struct WatchZoneSummaryDTO: Decodable, Sendable {
   let authorityId: Int
   let pushEnabled: Bool
   let emailInstantEnabled: Bool
+  /// Server-derived: true when this zone currently exceeds the user's
+  /// effective tier quota and has stopped generating notifications (GH#889
+  /// P1/P2). Absent on responses predating this field, so it hydrates to
+  /// `false` (an unpaused zone) — same forward/back-compat treatment as
+  /// `pushEnabled`/`emailInstantEnabled` above.
+  let paused: Bool
 
   init(
     id: String,
@@ -152,7 +158,8 @@ struct WatchZoneSummaryDTO: Decodable, Sendable {
     radiusMetres: Double,
     authorityId: Int,
     pushEnabled: Bool = true,
-    emailInstantEnabled: Bool = true
+    emailInstantEnabled: Bool = true,
+    paused: Bool = false
   ) {
     self.id = id
     self.name = name
@@ -162,6 +169,7 @@ struct WatchZoneSummaryDTO: Decodable, Sendable {
     self.authorityId = authorityId
     self.pushEnabled = pushEnabled
     self.emailInstantEnabled = emailInstantEnabled
+    self.paused = paused
   }
 
   init(from decoder: Decoder) throws {
@@ -176,11 +184,13 @@ struct WatchZoneSummaryDTO: Decodable, Sendable {
     self.pushEnabled = try container.decodeIfPresent(Bool.self, forKey: .pushEnabled) ?? true
     self.emailInstantEnabled =
       try container.decodeIfPresent(Bool.self, forKey: .emailInstantEnabled) ?? true
+    // GH#889 P2: absent (older API/back-compat) hydrates to false (not paused).
+    self.paused = try container.decodeIfPresent(Bool.self, forKey: .paused) ?? false
   }
 
   private enum CodingKeys: String, CodingKey {
     case id, name, latitude, longitude, radiusMetres, authorityId
-    case pushEnabled, emailInstantEnabled
+    case pushEnabled, emailInstantEnabled, paused
   }
 
   func toDomain() throws -> WatchZone {
@@ -192,7 +202,8 @@ struct WatchZoneSummaryDTO: Decodable, Sendable {
       radiusMetres: radiusMetres,
       authorityId: authorityId,
       pushEnabled: pushEnabled,
-      emailInstantEnabled: emailInstantEnabled
+      emailInstantEnabled: emailInstantEnabled,
+      paused: paused
     )
   }
 }
