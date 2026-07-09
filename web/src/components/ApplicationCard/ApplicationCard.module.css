@@ -1,36 +1,37 @@
+/*
+ * "Filed notice" card (Public Notice component language). The 2px top rule
+ * is the unread signal: text-primary when read, amber when unread (replaces
+ * the former leading dot — .cardUnread/.cardRead toggle the rule colour).
+ */
 .card {
   display: block;
   position: relative;
   background: var(--tc-surface);
   border: 1px solid var(--tc-border);
+  border-top: 2px solid var(--tc-text-primary);
   border-radius: var(--tc-radius-md);
   padding: var(--tc-space-md);
-  padding-left: calc(var(--tc-space-md) + var(--tc-space-md));
   box-shadow: var(--tc-shadow-card);
   text-decoration: none;
   color: inherit;
   transition: border-color var(--tc-duration-fast) ease;
 }
 
+.cardUnread {
+  border-top-color: var(--tc-amber);
+}
+
 /*
- * Leading unread dot — placeholder always occupies space (visibility: hidden
- * when read) so layout stays stable between unread and read rows. The
- * visibility toggle is applied inline so tests can verify it through the
- * computed style; colour and shape come from design tokens here.
+ * Read-state knob — unread rows render at full saturation; read rows recede
+ * slightly via card opacity. The top rule above is the canonical read/unread
+ * affordance.
  */
-.unreadDot {
-  position: absolute;
-  left: var(--tc-space-sm);
-  top: var(--tc-space-md);
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--tc-amber);
-  flex-shrink: 0;
+.cardRead {
+  opacity: 0.7;
 }
 
 .card:hover {
-  border-color: var(--tc-amber);
+  border-color: var(--tc-text-secondary);
 }
 
 .card:focus-visible {
@@ -38,7 +39,29 @@
   outline-offset: 2px;
 }
 
-.header {
+/* ---------- Mono document-header strip: ref left, distance/date right ---------- */
+.docHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--tc-space-sm);
+  padding-bottom: var(--tc-space-sm);
+  margin-bottom: var(--tc-space-sm);
+  border-bottom: 1px solid var(--tc-border);
+  font-size: var(--tc-text-caption);
+}
+
+.reference {
+  color: var(--tc-text-secondary);
+  font-weight: var(--tc-weight-medium);
+}
+
+.metaDate {
+  color: var(--tc-text-secondary);
+  flex-shrink: 0;
+}
+
+.body {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -46,7 +69,9 @@
   margin-bottom: var(--tc-space-sm);
 }
 
-.reference {
+/* Filed-notice title — Fraunces 600, the card's one display-face element. */
+.address {
+  font-family: var(--tc-font-display);
   font-size: var(--tc-text-headline);
   font-weight: var(--tc-weight-semibold);
   line-height: var(--tc-leading-normal);
@@ -54,86 +79,62 @@
   margin: 0;
 }
 
-/*
- * Read-state knob — unread rows render at full saturation; read rows recede
- * slightly via card opacity. The status pill itself is no longer muted —
- * the leading unread dot is the canonical read/unread affordance.
- */
-.cardUnread {
-  /* Saturated rendering uses the default tokens — no additional rules. */
-}
-
-.cardRead {
-  opacity: 0.7;
-}
-
+/* ---------- Status stamp: outlined, uppercase, icon + label always ---------- */
 .statusBadge {
   display: inline-flex;
   align-items: center;
   gap: var(--tc-space-xs);
   padding: var(--tc-space-xs) var(--tc-space-sm);
-  border-radius: var(--tc-radius-full);
+  border: 1.5px solid currentColor;
+  border-radius: var(--tc-radius-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
   font-size: var(--tc-text-caption);
-  font-weight: var(--tc-weight-medium);
+  font-weight: var(--tc-weight-semibold);
   line-height: var(--tc-leading-normal);
   white-space: nowrap;
   flex-shrink: 0;
+  background: transparent;
 }
 
 .statusUndecided {
-  background: color-mix(in srgb, var(--tc-status-pending) 15%, transparent);
   color: var(--tc-status-pending);
 }
 
 .statusPermitted {
-  background: color-mix(in srgb, var(--tc-status-permitted) 15%, transparent);
   color: var(--tc-status-permitted);
 }
 
 .statusConditions {
-  background: color-mix(in srgb, var(--tc-status-conditions) 15%, transparent);
   color: var(--tc-status-conditions);
 }
 
 .statusRejected {
-  background: color-mix(in srgb, var(--tc-status-rejected) 15%, transparent);
   color: var(--tc-status-rejected);
 }
 
 .statusWithdrawn {
-  background: color-mix(in srgb, var(--tc-status-withdrawn) 15%, transparent);
   color: var(--tc-status-withdrawn);
 }
 
 .statusAppealed {
-  background: color-mix(in srgb, var(--tc-status-appealed) 15%, transparent);
   color: var(--tc-status-appealed);
 }
 
 .statusUnresolved {
-  background: color-mix(in srgb, var(--tc-text-secondary) 15%, transparent);
   color: var(--tc-text-secondary);
 }
 
 .statusReferred {
-  background: color-mix(in srgb, var(--tc-status-appealed) 15%, transparent);
   color: var(--tc-status-appealed);
 }
 
 .statusNotAvailable {
-  background: color-mix(in srgb, var(--tc-status-withdrawn) 15%, transparent);
   color: var(--tc-status-withdrawn);
 }
 
 .statusDefault {
-  background: color-mix(in srgb, var(--tc-text-secondary) 15%, transparent);
   color: var(--tc-text-secondary);
-}
-
-.address {
-  font-size: var(--tc-text-body);
-  color: var(--tc-text-primary);
-  margin: 0 0 var(--tc-space-xs);
 }
 
 .description {

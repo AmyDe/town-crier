@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import type { PlanningApplicationSummary } from '../../domain/types';
 import { formatDate, statusClassName, statusDisplayLabel } from '../../utils/formatting';
+import { StatusIcon } from '../StatusIcon/StatusIcon';
 import styles from './ApplicationCard.module.css';
 
 interface Props {
@@ -23,6 +24,15 @@ function truncate(text: string | null, maxLength: number): string {
   return text.slice(0, maxLength) + '...';
 }
 
+/**
+ * "Filed notice" card (Public Notice component language, epic #848 R1): a
+ * mono document-header strip (reference left, date right) over a 1px rule,
+ * a Fraunces-set address as the card's title, an outlined status stamp
+ * (icon + label — never colour alone), and a 2px top rule that is the
+ * card's unread signal — text-primary when read, amber when unread. The top
+ * rule replaces the former leading unread dot; it reuses the same
+ * `latestUnreadEvent` signal.
+ */
 export function ApplicationCard({ application, onOpen }: Props) {
   const isUnread = application.latestUnreadEvent !== null;
   const statusClass = statusClassName(application.appState, styles);
@@ -40,23 +50,33 @@ export function ApplicationCard({ application, onOpen }: Props) {
       data-unread={isUnread ? 'true' : 'false'}
       onClick={handleClick}
     >
-      <span
-        className={styles.unreadDot}
-        style={{ visibility: isUnread ? 'visible' : 'hidden' }}
-        data-testid="application-unread-dot"
-        {...(isUnread ? { 'aria-label': 'Unread' } : { 'aria-hidden': true })}
-      />
-      <div className={styles.header}>
-        <h3 className={styles.reference}>{application.name}</h3>
+      <div className={styles.docHeader}>
+        <span
+          className={`${styles.reference} tc-mono-meta`}
+          data-testid="application-reference"
+        >
+          {application.name}
+        </span>
+        {application.startDate !== null && (
+          <span
+            className={`${styles.metaDate} tc-mono-meta`}
+            data-testid="application-start-date"
+          >
+            {formatDate(application.startDate)}
+          </span>
+        )}
+      </div>
+
+      <div className={styles.body}>
+        <h3 className={styles.address}>{application.address}</h3>
         <span
           className={`${styles.statusBadge} ${statusClass}`}
           data-testid="application-status-badge"
         >
+          <StatusIcon appState={application.appState} />
           {statusDisplayLabel(application.appState)}
         </span>
       </div>
-
-      <p className={styles.address}>{application.address}</p>
 
       <p className={styles.description} data-testid="application-description">
         {truncate(application.description, MAX_DESCRIPTION_LENGTH)}
@@ -65,11 +85,6 @@ export function ApplicationCard({ application, onOpen }: Props) {
       <div className={styles.meta}>
         <span className={styles.metaItem}>{application.appType}</span>
         <span className={styles.metaItem}>{application.areaName}</span>
-        {application.startDate !== null && (
-          <span className={styles.metaItem} data-testid="application-start-date">
-            {formatDate(application.startDate)}
-          </span>
-        )}
       </div>
     </Link>
   );
