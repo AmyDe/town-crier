@@ -31,6 +31,12 @@ struct ApplicationListRow: View {
       unreadIndicator
 
       VStack(alignment: .leading, spacing: TCSpacing.small) {
+        // Mono header strip: the planning reference as a monospaced
+        // metadata line, ahead of the status/date row (GH#857).
+        Text(application.reference.value)
+          .font(TCTypography.mono)
+          .foregroundStyle(Color.tcTextSecondary)
+
         HStack {
           statusPill
           Spacer()
@@ -50,7 +56,8 @@ struct ApplicationListRow: View {
           .lineLimit(1)
       }
     }
-    .padding(.vertical, TCSpacing.small)
+    .padding(TCSpacing.medium)
+    .noticeCardStyle(isUnread: hasUnreadDot)
   }
 
   @ViewBuilder

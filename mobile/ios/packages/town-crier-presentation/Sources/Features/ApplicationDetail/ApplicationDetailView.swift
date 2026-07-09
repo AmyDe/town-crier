@@ -106,18 +106,25 @@ public struct ApplicationDetailView: View {
     VStack(alignment: .leading, spacing: TCSpacing.medium) {
       detailRow(icon: "mappin.and.ellipse", label: "Address", value: viewModel.address)
       Divider().foregroundStyle(Color.tcBorder)
-      detailRow(icon: "doc.text", label: "Reference", value: viewModel.reference)
+      // The planning reference is the card's mono header-strip metadata
+      // (GH#857) — every other row stays plain body text.
+      detailRow(
+        icon: "doc.text", label: "Reference", value: viewModel.reference,
+        valueFont: TCTypography.monoEmphasis)
       Divider().foregroundStyle(Color.tcBorder)
       detailRow(icon: "building.2", label: "Authority", value: viewModel.authorityName)
       Divider().foregroundStyle(Color.tcBorder)
-      detailRow(icon: "calendar", label: "Received", value: viewModel.receivedDateFormatted)
+      detailRow(
+        icon: "calendar", label: "Received", value: viewModel.receivedDateFormatted,
+        valueFont: TCTypography.mono)
     }
     .padding(TCSpacing.medium)
-    .background(Color.tcSurface)
-    .clipShape(RoundedRectangle(cornerRadius: TCCornerRadius.medium))
+    .noticeCardStyle()
   }
 
-  private func detailRow(icon: String, label: String, value: String) -> some View {
+  private func detailRow(
+    icon: String, label: String, value: String, valueFont: Font = TCTypography.body
+  ) -> some View {
     HStack(alignment: .top, spacing: TCSpacing.small) {
       Image(systemName: icon)
         .font(TCTypography.body)
@@ -129,7 +136,7 @@ public struct ApplicationDetailView: View {
           .font(TCTypography.caption)
           .foregroundStyle(Color.tcTextTertiary)
         Text(value)
-          .font(TCTypography.body)
+          .font(valueFont)
           .foregroundStyle(Color.tcTextPrimary)
       }
     }

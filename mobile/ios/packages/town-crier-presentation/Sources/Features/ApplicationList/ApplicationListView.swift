@@ -192,7 +192,7 @@ public struct ApplicationListView: View {
     } else {
       ForEach(viewModel.filteredApplications) { application in
         ApplicationListRow(application: application)
-          .listRowBackground(Color.tcSurface)
+          .cardRowInsets()
           .contentShape(Rectangle())
           .onTapGesture {
             viewModel.selectApplication(application.id)

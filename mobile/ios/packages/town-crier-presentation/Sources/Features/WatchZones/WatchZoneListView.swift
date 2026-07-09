@@ -23,6 +23,7 @@ public struct WatchZoneListView: View {
       } else {
         ForEach(viewModel.zones) { zone in
           WatchZoneRow(zone: zone) { viewModel.viewPlans() }
+            .cardRowInsets()
             .contentShape(Rectangle())
             .onTapGesture { viewModel.editZone(zone) }
         }
@@ -146,11 +147,14 @@ private struct WatchZoneRow: View {
         .clipShape(RoundedRectangle(cornerRadius: TCCornerRadius.small))
 
       VStack(alignment: .leading, spacing: TCSpacing.extraSmall) {
-        Text(zone.name)
-          .font(.system(.headline).weight(.semibold))
+        // Mono header strip: radius reads as the zone's metadata line,
+        // ahead of its name (GH#857) — mirrors the planning-reference strip
+        // on ApplicationListRow.
         Text(formatRadius(zone.radiusMetres))
-          .font(.system(.caption))
+          .font(TCTypography.mono)
           .foregroundStyle(Color.tcTextSecondary)
+        Text(zone.name)
+          .font(TCTypography.headline)
         if zone.paused {
           PausedZoneBadge(onUpgrade: onUpgrade)
         }
@@ -159,10 +163,11 @@ private struct WatchZoneRow: View {
       Spacer()
 
       Image(systemName: "chevron.right")
-        .font(.system(.caption))
+        .font(TCTypography.caption)
         .foregroundStyle(Color.tcTextTertiary)
     }
-    .padding(.vertical, TCSpacing.extraSmall)
+    .padding(TCSpacing.medium)
+    .noticeCardStyle()
   }
 
 }
