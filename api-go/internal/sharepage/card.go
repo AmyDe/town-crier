@@ -238,17 +238,20 @@ func setPixel(img *image.RGBA, x, y int, col color.RGBA) {
 // trackedText approximates a tracked, small-caps-style wordmark using the
 // embedded (non-small-caps) Go fonts: golang.org/x/image/font has no
 // small-caps glyph substitution or letter-spacing/tracking support, so this
-// inserts a thin space (U+2009) between the runes of an already-uppercase
-// string. It produces the same widely tracked, formal read as the web
+// inserts a plain ASCII space between the runes of an already-uppercase
+// string. It produces a similarly widely tracked, formal read to the web
 // masthead's `font-variant:small-caps; letter-spacing` treatment (SPA Navbar,
 // SEO render-shared.mjs) without embedding a new font — a deliberate
-// stdlib-only approximation, not the real small-caps feature.
+// stdlib-only approximation, not the real small-caps feature. A typographic
+// thin space (U+2009) would track more tightly, but neither embedded Go font
+// (goregular/gobold) carries a glyph for it, so it renders as .notdef —
+// the plain ASCII space is a deliberate, font-safe substitute.
 func trackedText(s string) string {
 	runes := []rune(s)
 	out := make([]rune, 0, len(runes)*2)
 	for i, r := range runes {
 		if i > 0 {
-			out = append(out, ' ')
+			out = append(out, '\x20')
 		}
 		out = append(out, r)
 	}
