@@ -100,30 +100,30 @@ describe('renderTownPage', () => {
   it('renders each application address as the headline and status label', () => {
     const html = renderTownPage(townData());
     expect(html).toContain(
-      '<h3 class="appCard__address">Lemon Quay, Truro, TR1 2LW</h3>',
+      '<h3 class="ledgerRow__address">Lemon Quay, Truro, TR1 2LW</h3>',
     );
     expect(html).toContain('Change of use of ground floor from retail to café');
     expect(html).toContain('Granted'); // Permitted -> Granted
     expect(html).toContain('Refused'); // Rejected -> Refused
   });
 
-  it('demotes the reference to small card metadata and removes per-card external links (decisions 5 & 6)', () => {
+  it('demotes the reference to small ledger-row metadata and removes per-row external links (decisions 5 & 6)', () => {
     const html = renderTownPage(townData());
-    expect(html).toContain('<p class="appCard__ref">26/0001</p>');
-    expect(html).not.toContain('<h3 class="appCard__ref">');
+    expect(html).toContain('<p class="ledgerRow__ref">26/0001</p>');
+    expect(html).not.toContain('<h3 class="ledgerRow__ref">');
     expect(html).not.toContain('https://planning.cornwall.gov.uk/26-0001');
     expect(html).not.toContain('https://planit.org.uk/planapplic/CW-26-0001');
     expect(html).not.toContain('class="appLink"');
   });
 
-  it('makes the whole card a real anchor to its share page, with a visible "View details" affordance', () => {
+  it('makes the whole row a real anchor to its share page, with a visible "View details" affordance', () => {
     const html = renderTownPage(townData());
     // Town-page apps are scoped to the town's own authority, so authoritySlug is
-    // correct for every card.
+    // correct for every row.
     expect(html).toContain(
-      '<a class="appCard__link" href="https://share.towncrierapp.uk/a/cornwall/26/0001">',
+      '<a class="ledgerRow__link" href="https://share.towncrierapp.uk/a/cornwall/26/0001">',
     );
-    expect(html).toContain('<span class="appCard__cta">View details →</span>');
+    expect(html).toContain('<span class="ledgerRow__cta">View details →</span>');
     expect(html).toContain(
       '"url":"https://share.towncrierapp.uk/a/cornwall/26/0001"',
     );
@@ -151,17 +151,17 @@ describe('renderTownPage', () => {
       expect(html).not.toContain('Last updated');
     });
 
-    // tc-s0yf (GH #819) deliberately reintroduces a per-card date line — under a
-    // NEW class (`appCard__dates`) and format (Started/Decided, sourced from the
-    // application's own real-world dates, not a re-index marker) — distinct from
-    // the old "Last updated" line this describe block's title refers to.
-    it('renders the Started/Decided date line once per card (tc-s0yf)', () => {
+    // tc-s0yf (GH #819) deliberately reintroduces a per-row date line — under a
+    // NEW class (`ledgerRow__date`) and format (Started/Decided, sourced from
+    // the application's own real-world dates, not a re-index marker) — distinct
+    // from the old "Last updated" line this describe block's title refers to.
+    it('renders the Started/Decided date line once per row (tc-s0yf)', () => {
       const html = renderTownPage(townData());
       expect(html).toContain(
-        '<p class="appCard__dates">Started 12 Jan 2026 · Awaiting decision</p>',
+        '<p class="ledgerRow__date">Started 12 Jan 2026 · Awaiting decision</p>',
       );
       expect(html).toContain(
-        '<p class="appCard__dates">Started 1 Feb 2026 · Awaiting decision</p>',
+        '<p class="ledgerRow__date">Started 1 Feb 2026 · Awaiting decision</p>',
       );
     });
   });
@@ -242,7 +242,7 @@ describe('renderTownPage', () => {
 
     // The bare class name also appears in the inline stylesheet, so assertions
     // target the rendered card markup.
-    const MID_CARD = 'class="appCard appCard--cta"';
+    const MID_CARD = 'class="ledgerCta"';
 
     it('slots a CTA card naming the town into a long list, after the eighth application', () => {
       const html = renderTownPage(townData({ applications: manyApplications(12) }));
@@ -251,7 +251,7 @@ describe('renderTownPage', () => {
       expect(html).toContain('Town Crier watches Truro');
       // After the 8th card, before the 9th. Scoped to the rendered list —
       // the JSON-LD in <head> repeats the addresses much earlier in the page.
-      const list = html.slice(html.indexOf('<ul class="appList">'));
+      const list = html.slice(html.indexOf('<ul class="ledger">'));
       expect(list.indexOf('8 Lemon Quay')).toBeLessThan(list.indexOf(MID_CARD));
       expect(list.indexOf(MID_CARD)).toBeLessThan(list.indexOf('9 Lemon Quay'));
     });
@@ -286,13 +286,13 @@ describe('renderTownPage', () => {
       const html = renderTownPage(townData());
       expect(html).toContain('class="ctaInline"');
       expect(html.indexOf('class="lead"')).toBeLessThan(html.indexOf('class="ctaInline"'));
-      expect(html.indexOf('class="ctaInline"')).toBeLessThan(html.indexOf('class="appList"'));
+      expect(html.indexOf('class="ctaInline"')).toBeLessThan(html.indexOf('class="ledger"'));
     });
 
     it('keeps the existing bottom banner CTA in addition to the inline one (not a replacement)', () => {
       const html = renderTownPage(townData());
       expect(html).toContain('<section class="cta">');
-      expect(html.indexOf('class="appList"')).toBeLessThan(html.indexOf('<section class="cta">'));
+      expect(html.indexOf('class="ledger"')).toBeLessThan(html.indexOf('<section class="cta">'));
     });
   });
 
@@ -315,6 +315,27 @@ describe('renderTownPage', () => {
     expect(headerHtml).toContain('target="_blank"');
     // The brand link stays on the left.
     expect(headerHtml).toContain('>Town Crier</a>');
+  });
+
+  describe('masthead (double rule, small-caps wordmark)', () => {
+    it('renders the double rule beneath the masthead, inside the site header', () => {
+      const html = renderTownPage(townData());
+      const header = html.match(/<header class="siteHeader">[\s\S]*?<\/header>/);
+      expect(header).not.toBeNull();
+      const [headerHtml] = header;
+      expect(headerHtml).toContain('class="siteHeader__ruleHeavy"');
+      expect(headerHtml).toContain('class="siteHeader__ruleHairline"');
+    });
+
+    it('gives the wordmark its own small-caps class', () => {
+      const html = renderTownPage(townData());
+      expect(html).toContain('<a href="/" class="siteHeader__wordmark">Town Crier</a>');
+    });
+  });
+
+  it('opens the applications ledger with a small-caps brass section label', () => {
+    const html = renderTownPage(townData());
+    expect(html).toContain('<h2 class="ledger__heading">Latest notices</h2>');
   });
 
   it('keeps the rich bottom CTA block when the header CTA is present', () => {
