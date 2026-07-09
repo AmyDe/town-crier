@@ -7,11 +7,18 @@ body{
   font-size:17px;line-height:1.4;
 }
 .site-header{max-width:600px;margin:0 auto;padding:var(--space-md) var(--space-md) 0;}
+/* Masthead (tc-fmrx3, issue 855): small-caps tracked wordmark over a double
+   rule — a 2.5px heavy rule over a 1px hairline, 3px gap — the same Public
+   Notice masthead language as the SPA Navbar / SEO broadsheet restyle
+   (issues 853/854). */
 .brand-link{
-  display:inline-block;font-size:19px;font-weight:700;color:var(--text-primary);
-  text-decoration:none;letter-spacing:-0.01em;
+  display:inline-block;margin-bottom:var(--space-sm);font-size:19px;font-weight:700;
+  color:var(--text-primary);text-decoration:none;
+  font-variant:small-caps;letter-spacing:0.08em;
 }
 .brand-link:hover{color:var(--text-primary);}
+.rule-heavy{height:2.5px;background:var(--text-primary);}
+.rule-hairline{height:1px;background:var(--border);margin-top:3px;}
 .page{max-width:600px;margin:0 auto;padding:var(--space-lg) var(--space-md) 148px;}
 /* Hero (tc-r4n9.7): this reuses the SAME cached OSM map-card PNG served as
    og:image (card.go bakes it once per application; ogimage.go caches it) — this
@@ -31,11 +38,23 @@ body{
   color:var(--text-secondary);letter-spacing:0.01em;
 }
 .brand .dot{width:10px;height:10px;border-radius:9999px;background:var(--amber);}
+/* Filed notice (tc-fmrx3, issue 855): the card's border-top switches to a
+   2px ink rule (not the amber rule used elsewhere) — a document, not a
+   pitch. */
 .card{
   background:var(--surface);border:1px solid var(--border);
+  border-top:2px solid var(--text-primary);
   border-radius:var(--radius-md);padding:var(--space-md);
   box-shadow:0 2px 8px rgba(0,0,0,0.05);
 }
+/* Monospace document-header strip: "No. {ref}" left, authority right, above
+   the address H1. */
+.doc-header{
+  display:flex;align-items:baseline;justify-content:space-between;gap:var(--space-sm);
+  font-family:var(--font-mono);font-size:12px;letter-spacing:0.02em;
+  color:var(--text-secondary);margin-bottom:var(--space-sm);
+}
+.doc-header-authority{text-transform:uppercase;letter-spacing:0.06em;}
 @media (prefers-color-scheme:dark){.card{box-shadow:none;}}
 /* Standard OSM tiles render on a near-white/cream basemap, so the raw hero PNG
    would sit as a jarring bright rectangle on the dark canvas. invert+hue-rotate
@@ -54,14 +73,21 @@ body{
 }
 .meta-label{color:var(--text-secondary);font-weight:500;}
 .meta-value{color:var(--text-primary);font-weight:500;}
-.chip{
-  display:inline-block;margin-bottom:var(--space-md);padding:4px 12px;
-  border-radius:9999px;font-size:13px;font-weight:600;
+/* Status stamp (tc-fmrx3, issue 855): outlined, uppercase, letterspaced,
+   icon + label ALWAYS — colour is never the sole indicator (accessibility
+   invariant). Same three-bucket vocabulary/colours as before, no longer a
+   filled pill. */
+.stamp{
+  display:inline-flex;align-items:center;gap:4px;margin-bottom:var(--space-md);
+  padding:2px var(--space-sm);border:1.5px solid currentColor;border-radius:var(--radius-sm);
+  background:transparent;font-size:11px;font-weight:700;
 }
-.chip--granted{background:var(--status-granted-bg);color:var(--status-granted);}
-.chip--refused{background:var(--status-refused-bg);color:var(--status-refused);}
-.chip--neutral{background:var(--status-neutral-bg);color:var(--status-neutral);}
-h1.address{font-size:24px;line-height:1.25;font-weight:700;margin:0 0 var(--space-md);}
+.stamp-label{text-transform:uppercase;letter-spacing:0.12em;}
+.stamp-icon{flex-shrink:0;}
+.stamp--granted{color:var(--status-granted);}
+.stamp--refused{color:var(--status-refused);}
+.stamp--neutral{color:var(--status-neutral);}
+h1.address{font-family:var(--font-display);font-weight:600;font-size:24px;line-height:1.25;margin:0 0 var(--space-md);}
 .card h2{
   margin:var(--space-lg) 0 var(--space-sm);font-size:13px;font-weight:600;
   text-transform:uppercase;letter-spacing:0.04em;color:var(--text-secondary);
@@ -74,7 +100,7 @@ h1.address{font-size:24px;line-height:1.25;font-weight:700;margin:0 0 var(--spac
 }
 .timeline li:last-child{border-bottom:none;}
 .date-label{color:var(--text-secondary);flex:0 0 auto;}
-.date-value{font-weight:600;}
+.date-value{font-weight:600;font-family:var(--font-mono);}
 .app-cta{margin-top:var(--space-lg);text-align:center;}
 .btn-primary{
   display:block;width:100%;box-sizing:border-box;padding:14px var(--space-md);
