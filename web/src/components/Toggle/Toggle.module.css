@@ -4,9 +4,9 @@
   align-items: center;
   width: 44px;
   height: 24px;
-  padding: 2px;
+  padding: calc(var(--tc-space-xs) / 2);
   border: 1px solid var(--tc-border);
-  border-radius: 12px;
+  border-radius: var(--tc-radius-lg);
   background: var(--tc-surface);
   cursor: pointer;
   transition: background-color var(--tc-duration-fast) ease,
