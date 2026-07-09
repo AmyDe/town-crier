@@ -68,9 +68,13 @@ public struct AnonymousSettingsView: View {
       Button {
         onCreateAccount()
       } label: {
+        // Amber rationing (GH#857/#896): this row is a List navigation
+        // action, not a filled CTA container, so it takes the same
+        // tcTextPrimary treatment as the authed SettingsView's "Manage
+        // Subscription" row rather than amber.
         Text("Create free account")
           .font(TCTypography.bodyEmphasis)
-          .foregroundStyle(Color.tcAmber)
+          .foregroundStyle(Color.tcTextPrimary)
       }
       Button {
         onSignIn()
@@ -80,8 +84,7 @@ public struct AnonymousSettingsView: View {
           .foregroundStyle(Color.tcTextPrimary)
       }
     } header: {
-      Text("Account")
-        .font(TCTypography.captionEmphasis)
+      sectionHeader("Account")
     } footer: {
       Text(
         "Create a free account to save applications, set up alerts, and manage watch zones."
@@ -105,8 +108,7 @@ public struct AnonymousSettingsView: View {
           .foregroundStyle(Color.tcTextPrimary)
       }
     } header: {
-      Text("Appearance")
-        .font(TCTypography.captionEmphasis)
+      sectionHeader("Appearance")
     }
   }
 
@@ -123,8 +125,7 @@ public struct AnonymousSettingsView: View {
         }
       }
     } header: {
-      Text("Data Attribution")
-        .font(TCTypography.captionEmphasis)
+      sectionHeader("Data Attribution")
     }
   }
 
@@ -139,8 +140,7 @@ public struct AnonymousSettingsView: View {
         onTermsOfService()
       }
     } header: {
-      Text("Legal")
-        .font(TCTypography.captionEmphasis)
+      sectionHeader("Legal")
     }
   }
 
@@ -157,8 +157,22 @@ public struct AnonymousSettingsView: View {
         SettingsRowStyling.settingCaption(viewModel.appVersion)
       }
     } header: {
-      Text("About")
-        .font(TCTypography.captionEmphasis)
+      sectionHeader("About")
     }
+  }
+
+  // MARK: - Section header styling (GH#857/#896)
+
+  /// Small-caps kerned section label — the same eyebrow/stamp text
+  /// treatment used elsewhere in the design language (``MastheadView``,
+  /// ``StatusBadgeView``), applied here to plain `List` section headers.
+  /// Scoped to this file only: the authenticated `SettingsView` shares row
+  /// chrome via `SettingsRowStyling`, but its section headers are untouched
+  /// by this bead (out of scope — that surface was #857's).
+  private func sectionHeader(_ title: String) -> some View {
+    Text(title)
+      .font(TCTypography.captionEmphasis)
+      .textCase(.uppercase)
+      .kerning(0.6)
   }
 }
