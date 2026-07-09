@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { SearchResult } from '../../../domain/types';
 import { buildShareUrl } from '../../../domain/share-link';
 import { formatDate, statusClassName, statusDisplayLabel } from '../../../utils/formatting';
+import { StatusIcon } from '../../../components/StatusIcon/StatusIcon';
 import styles from './SearchResultCard.module.css';
 
 interface Props {
@@ -34,6 +35,7 @@ export function SearchResultCard({ result }: Props) {
         <h3 className={styles.reference}>{result.reference}</h3>
         {result.appState !== null && (
           <span className={`${styles.statusBadge} ${statusClassName(result.appState, styles)}`}>
+            <StatusIcon appState={result.appState} />
             {statusDisplayLabel(result.appState)}
           </span>
         )}

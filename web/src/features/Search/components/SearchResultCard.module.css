@@ -23,66 +23,61 @@
   margin: 0;
 }
 
+/* ---------- Status stamp: outlined, uppercase, icon + label always ---------- */
 .statusBadge {
   display: inline-flex;
   align-items: center;
   gap: var(--tc-space-xs);
   padding: var(--tc-space-xs) var(--tc-space-sm);
-  border-radius: var(--tc-radius-full);
+  border: 1.5px solid currentColor;
+  border-radius: var(--tc-radius-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
   font-size: var(--tc-text-caption);
-  font-weight: var(--tc-weight-medium);
+  font-weight: var(--tc-weight-semibold);
   line-height: var(--tc-leading-normal);
   white-space: nowrap;
   flex-shrink: 0;
+  background: transparent;
 }
 
 .statusUndecided {
-  background: color-mix(in srgb, var(--tc-status-pending) 15%, transparent);
   color: var(--tc-status-pending);
 }
 
 .statusPermitted {
-  background: color-mix(in srgb, var(--tc-status-permitted) 15%, transparent);
   color: var(--tc-status-permitted);
 }
 
 .statusConditions {
-  background: color-mix(in srgb, var(--tc-status-conditions) 15%, transparent);
   color: var(--tc-status-conditions);
 }
 
 .statusRejected {
-  background: color-mix(in srgb, var(--tc-status-rejected) 15%, transparent);
   color: var(--tc-status-rejected);
 }
 
 .statusWithdrawn {
-  background: color-mix(in srgb, var(--tc-status-withdrawn) 15%, transparent);
   color: var(--tc-status-withdrawn);
 }
 
 .statusAppealed {
-  background: color-mix(in srgb, var(--tc-status-appealed) 15%, transparent);
   color: var(--tc-status-appealed);
 }
 
 .statusUnresolved {
-  background: color-mix(in srgb, var(--tc-text-secondary) 15%, transparent);
   color: var(--tc-text-secondary);
 }
 
 .statusReferred {
-  background: color-mix(in srgb, var(--tc-status-appealed) 15%, transparent);
   color: var(--tc-status-appealed);
 }
 
 .statusNotAvailable {
-  background: color-mix(in srgb, var(--tc-status-withdrawn) 15%, transparent);
   color: var(--tc-status-withdrawn);
 }
 
 .statusDefault {
-  background: color-mix(in srgb, var(--tc-text-secondary) 15%, transparent);
   color: var(--tc-text-secondary);
 }
 
@@ -118,7 +113,7 @@
 .shareLink {
   font-size: var(--tc-text-caption);
   font-weight: var(--tc-weight-medium);
-  color: var(--tc-amber);
+  color: var(--tc-text-primary);
   text-decoration: none;
 }
 
@@ -140,7 +135,7 @@
 }
 
 .copyButton:hover {
-  border-color: var(--tc-amber);
+  border-color: var(--tc-text-secondary);
 }
 
 .copyStatus {
