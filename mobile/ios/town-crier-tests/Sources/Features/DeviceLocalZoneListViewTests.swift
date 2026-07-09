@@ -49,4 +49,10 @@ struct DeviceLocalZoneListViewTests {
     let sut = DeviceLocalZoneListView(viewModel: vm)
     _ = sut.body
   }
+
+  // MARK: - Sign-up pitch upsell treatment (GH#896)
+
+  @Test func copy_eyebrowMatchesApprovedText() {
+    #expect(DeviceLocalZoneListView.Copy.eyebrow == "Free Account")
+  }
 }

@@ -11,6 +11,15 @@ import TownCrierDomain
 /// "instant", since instant alerts are a paid, server-enforced entitlement
 /// (#868/#879 precedent).
 public struct DeviceLocalZoneListView: View {
+  /// Sign-up pitch copy not otherwise covered by an existing shared `Copy`
+  /// enum. The eyebrow is new microcopy introduced by the upsell-card
+  /// treatment (GH#857/#896); exposed here (rather than left inline) so it's
+  /// unit-testable, matching this codebase's convention for CTA-bearing
+  /// views (``AccountCTABanner/Copy``, ``DeviceLocalZoneSignUpCTAView/Copy``).
+  enum Copy {
+    static let eyebrow = "Free Account"
+  }
+
   @StateObject private var viewModel: DeviceLocalZoneListViewModel
 
   public init(viewModel: DeviceLocalZoneListViewModel) {
@@ -21,6 +30,7 @@ public struct DeviceLocalZoneListView: View {
     List {
       if let zone = viewModel.zones.first {
         DeviceLocalZoneRow(zone: zone) { viewModel.requestAlertsSignUp() }
+          .cardRowInsets()
           .contentShape(Rectangle())
           .onTapGesture { viewModel.editZone(zone) }
         signUpPitchSection
@@ -49,17 +59,30 @@ public struct DeviceLocalZoneListView: View {
 
   /// Load-bearing sign-up pitch (GH#888): this is the only remaining route to
   /// another area now the cap is one.
+  ///
+  /// Public Notice (GH#857/#896): styled as the anonymous-mode analogue of
+  /// ``WatchZoneInlineUpsellCard`` — a brass small-caps eyebrow and a 1.5pt
+  /// amber border, no fill. The "Create free account" `PrimaryButton` stays
+  /// the only filled-amber container on this screen (amber-rationing rule).
   private var signUpPitchSection: some View {
     Section {
-      VStack(alignment: .leading, spacing: TCSpacing.small) {
-        Text("Want more areas or alerts?")
-          .font(TCTypography.headline)
-          .foregroundStyle(Color.tcTextPrimary)
-        Text(
-          "Create a free account to save more areas and get notified when things change."
-        )
-        .font(TCTypography.body)
-        .foregroundStyle(Color.tcTextSecondary)
+      VStack(alignment: .leading, spacing: TCSpacing.medium) {
+        VStack(alignment: .leading, spacing: TCSpacing.small) {
+          Text(Copy.eyebrow)
+            .font(TCTypography.captionEmphasis)
+            .textCase(.uppercase)
+            .kerning(1.2)
+            .foregroundStyle(Color.tcAmber)
+
+          Text("Want more areas or alerts?")
+            .font(TCTypography.headline)
+            .foregroundStyle(Color.tcTextPrimary)
+          Text(
+            "Create a free account to save more areas and get notified when things change."
+          )
+          .font(TCTypography.body)
+          .foregroundStyle(Color.tcTextSecondary)
+        }
 
         HStack(spacing: TCSpacing.medium) {
           PrimaryButton("Create free account") { viewModel.requestSignUpFromPitch() }
@@ -69,21 +92,27 @@ public struct DeviceLocalZoneListView: View {
             .foregroundStyle(Color.tcTextSecondary)
         }
       }
-      .padding(.vertical, TCSpacing.small)
+      .padding(TCSpacing.medium)
+      .background(Color.tcSurfaceElevated)
+      .clipShape(RoundedRectangle(cornerRadius: TCCornerRadius.medium))
+      .overlay(
+        RoundedRectangle(cornerRadius: TCCornerRadius.medium)
+          .strokeBorder(Color.tcAmber, lineWidth: 1.5)
+      )
     }
-    .listRowBackground(Color.tcSurface)
+    .cardRowInsets()
   }
 
   private var emptyState: some View {
     Section {
       VStack(spacing: TCSpacing.medium) {
         Image(systemName: "mappin.and.ellipse")
-          .font(.system(.largeTitle))
+          .font(TCTypography.displayLarge)
           .foregroundStyle(Color.tcTextTertiary)
         Text("No Area Set Up")
-          .font(.system(.headline).weight(.semibold))
+          .font(TCTypography.headline)
         Text("Complete onboarding to set up your area.")
-          .font(.system(.body))
+          .font(TCTypography.body)
           .foregroundStyle(Color.tcTextSecondary)
           .multilineTextAlignment(.center)
       }
@@ -104,11 +133,14 @@ private struct DeviceLocalZoneRow: View {
         .clipShape(RoundedRectangle(cornerRadius: TCCornerRadius.small))
 
       VStack(alignment: .leading, spacing: TCSpacing.extraSmall) {
-        Text(zone.name)
-          .font(.system(.headline).weight(.semibold))
+        // Mono header strip: radius reads as the zone's metadata line, ahead
+        // of its name (GH#857/#896) — mirrors the authed `WatchZoneRow`'s
+        // own strip.
         Text(formatRadius(zone.radiusMetres))
-          .font(.system(.caption))
+          .font(TCTypography.mono)
           .foregroundStyle(Color.tcTextSecondary)
+        Text(zone.name)
+          .font(TCTypography.headline)
       }
 
       Spacer()
@@ -123,10 +155,10 @@ private struct DeviceLocalZoneRow: View {
       .accessibilityLabel("Alerts require a free account")
 
       Image(systemName: "chevron.right")
-        .font(.system(.caption))
+        .font(TCTypography.caption)
         .foregroundStyle(Color.tcTextTertiary)
     }
-    .padding(.vertical, TCSpacing.extraSmall)
-    .listRowBackground(Color.tcSurface)
+    .padding(TCSpacing.medium)
+    .noticeCardStyle()
   }
 }

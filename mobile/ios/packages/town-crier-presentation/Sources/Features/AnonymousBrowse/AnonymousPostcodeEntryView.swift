@@ -31,6 +31,7 @@ struct AnonymousPostcodeEntryView: View {
         .multilineTextAlignment(.center)
 
       TextField(Copy.placeholder, text: $viewModel.postcodeInput)
+        .font(TCTypography.mono)
         .textFieldStyle(.roundedBorder)
         .autocorrectionDisabled()
         #if os(iOS)

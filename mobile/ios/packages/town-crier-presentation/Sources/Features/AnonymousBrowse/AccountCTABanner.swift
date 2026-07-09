@@ -7,6 +7,13 @@ import SwiftUI
 /// say "instant": that's a paid-tier word (free accounts get the weekly
 /// digest only; instant alerts are a paid, server-enforced entitlement
 /// pitched on the wizard's own upsell step, not here).
+///
+/// Public Notice (GH#857/#896): a plain notice-card container (1px
+/// `tcBorder`, `TCCornerRadius.medium`, `tcSurface` background) with a
+/// Fraunces headline — NOT the upsell treatment (no amber border/eyebrow).
+/// On every screen this banner appears on, its own `PrimaryButton` is
+/// already that screen's one filled-amber container (amber-rationing rule);
+/// see the epic's pre-resolved decision on this in GH#896.
 public struct AccountCTABanner: View {
   public enum Copy {
     public static let headline = "Want to know when something changes here?"
@@ -42,8 +49,12 @@ public struct AccountCTABanner: View {
       }
     }
     .padding(TCSpacing.medium)
-    .background(Color.tcSurfaceElevated)
-    .clipShape(RoundedRectangle(cornerRadius: TCCornerRadius.large))
+    .background(Color.tcSurface)
+    .clipShape(RoundedRectangle(cornerRadius: TCCornerRadius.medium))
+    .overlay(
+      RoundedRectangle(cornerRadius: TCCornerRadius.medium)
+        .strokeBorder(Color.tcBorder, lineWidth: 1)
+    )
     .padding(.horizontal, TCSpacing.medium)
     .padding(.bottom, TCSpacing.small)
   }

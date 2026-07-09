@@ -20,7 +20,7 @@ public struct WelcomeView: View {
       Spacer()
 
       Image(systemName: "bell.badge")
-        .font(.system(.largeTitle))
+        .font(TCTypography.displayLarge)
         .foregroundStyle(Color.tcAmber)
 
       Text("Town Crier")
@@ -69,7 +69,7 @@ public struct WelcomeView: View {
       }
     } label: {
       Image(systemName: "circle.lefthalf.filled")
-        .font(.system(.body))
+        .font(TCTypography.body)
         .foregroundStyle(Color.tcTextSecondary)
         // Apple HIG minimum tap target, matching the Buttons component spec.
         .frame(width: 44, height: 44)

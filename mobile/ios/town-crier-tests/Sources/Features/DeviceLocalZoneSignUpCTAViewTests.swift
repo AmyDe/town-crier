@@ -12,6 +12,12 @@ struct DeviceLocalZoneSignUpCTAViewTests {
     _ = sut.body
   }
 
+  // MARK: - Upsell treatment (GH#896)
+
+  @Test func copy_eyebrowMatchesApprovedText() {
+    #expect(DeviceLocalZoneSignUpCTAView.Copy.eyebrow == "Free Account")
+  }
+
   @Test func onCreateAccount_isCalled_whenCreateAccountTapped() {
     var called = false
     let sut = DeviceLocalZoneSignUpCTAView(
