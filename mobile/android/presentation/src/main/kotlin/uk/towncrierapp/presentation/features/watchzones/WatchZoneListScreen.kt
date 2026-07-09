@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -21,7 +22,6 @@ import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -43,8 +43,10 @@ import uk.towncrierapp.domain.watchzones.WatchZoneId
 import uk.towncrierapp.presentation.R
 import uk.towncrierapp.presentation.designsystem.TownCrierSpacing
 import uk.towncrierapp.presentation.designsystem.TownCrierTheme
+import uk.towncrierapp.presentation.designsystem.components.Masthead
 import uk.towncrierapp.presentation.designsystem.components.PrimaryButton
 import uk.towncrierapp.presentation.designsystem.components.UpgradeBadge
+import uk.towncrierapp.presentation.designsystem.noticeCard
 
 /**
  * The watch-zones tab: list, swipe-to-delete, tap-to-edit, "+" to add (badged
@@ -97,33 +99,42 @@ internal fun WatchZoneListScreen(
             )
         },
     ) { contentPadding ->
-        Box(modifier = Modifier.padding(contentPadding).fillMaxSize()) {
-            if (state.zones.isEmpty() && !state.isLoading) {
-                EmptyState(onAddZoneClick = onAddZoneClick, modifier = Modifier.align(Alignment.Center))
-            } else {
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    items(state.zones, key = { it.id.value }) { zone ->
-                        SwipeToDeleteRow(onDelete = { onDeleteZone(zone) }) {
-                            WatchZoneRow(
-                                zone = zone,
-                                onClick = { onZoneSelected(zone) },
-                                onPreferencesClick = { onZonePreferencesSelected(zone) },
-                            )
+        Column(modifier = Modifier.padding(contentPadding).fillMaxSize()) {
+            Masthead(title = stringResource(R.string.watch_zones_title))
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                if (state.zones.isEmpty() && !state.isLoading) {
+                    EmptyState(onAddZoneClick = onAddZoneClick, modifier = Modifier.align(Alignment.Center))
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(TownCrierSpacing.sm),
+                        contentPadding = PaddingValues(vertical = TownCrierSpacing.sm),
+                    ) {
+                        items(state.zones, key = { it.id.value }) { zone ->
+                            SwipeToDeleteRow(
+                                onDelete = { onDeleteZone(zone) },
+                                modifier = Modifier.padding(horizontal = TownCrierSpacing.md),
+                            ) {
+                                WatchZoneRow(
+                                    zone = zone,
+                                    onClick = { onZoneSelected(zone) },
+                                    onPreferencesClick = { onZonePreferencesSelected(zone) },
+                                )
+                            }
                         }
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    }
-                    if (state.showsFreeTierUpsell) {
-                        item {
-                            WatchZoneInlineUpsellCard(
-                                onViewPlans = onViewPlansClick,
-                                modifier = Modifier.padding(TownCrierSpacing.md),
-                            )
+                        if (state.showsFreeTierUpsell) {
+                            item {
+                                WatchZoneInlineUpsellCard(
+                                    onViewPlans = onViewPlansClick,
+                                    modifier = Modifier.padding(horizontal = TownCrierSpacing.md),
+                                )
+                            }
                         }
                     }
                 }
-            }
-            if (state.isLoading) {
-                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                if (state.isLoading) {
+                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                }
             }
         }
     }
@@ -209,6 +220,13 @@ private fun SwipeToDeleteRow(
     )
 }
 
+/**
+ * A single watch-zone row, styled as a Public Notice "filed notice" card
+ * ([noticeCard], epic #848 R5). The radius reads as the row's mono metadata
+ * line ahead of the zone's name — mirrors the planning-reference strip on
+ * [uk.towncrierapp.presentation.designsystem.components.ApplicationRow] and
+ * iOS `WatchZoneRow`.
+ */
 @Composable
 private fun WatchZoneRow(
     zone: WatchZone,
@@ -220,6 +238,7 @@ private fun WatchZoneRow(
         modifier =
             modifier
                 .fillMaxWidth()
+                .noticeCard()
                 .clickable(onClick = onClick)
                 .padding(horizontal = TownCrierSpacing.md, vertical = TownCrierSpacing.sm),
         verticalAlignment = Alignment.CenterVertically,
@@ -227,12 +246,12 @@ private fun WatchZoneRow(
     ) {
         ZoneMapPlaceholder(modifier = Modifier.size(56.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(text = zone.name, style = MaterialTheme.typography.titleMedium)
             Text(
                 text = RadiusFormatter.format(zone.radiusMetres),
-                style = MaterialTheme.typography.bodySmall,
+                style = TownCrierTheme.mono,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            Text(text = zone.name, style = MaterialTheme.typography.titleMedium)
         }
         IconButton(onClick = onPreferencesClick) {
             Icon(

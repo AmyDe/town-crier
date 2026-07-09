@@ -17,7 +17,6 @@ import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -39,6 +38,7 @@ import uk.towncrierapp.presentation.designsystem.TownCrierSpacing
 import uk.towncrierapp.presentation.designsystem.TownCrierTheme
 import uk.towncrierapp.presentation.designsystem.components.ApplicationRow
 import uk.towncrierapp.presentation.designsystem.components.CapsuleChip
+import uk.towncrierapp.presentation.designsystem.components.Masthead
 import uk.towncrierapp.presentation.features.applicationlist.applicationErrorMessageRes
 
 /**
@@ -91,6 +91,7 @@ internal fun SavedListScreen(
         },
     ) { contentPadding ->
         Column(modifier = Modifier.padding(contentPadding).fillMaxSize()) {
+            Masthead(title = stringResource(R.string.saved_title))
             SavedFilterChipsRow(
                 filter = state.filter,
                 onFilterSelected = onFilterSelected,
@@ -108,7 +109,11 @@ internal fun SavedListScreen(
                     }
 
                     else -> {
-                        LazyColumn(modifier = Modifier.fillMaxSize()) {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.spacedBy(TownCrierSpacing.sm),
+                            contentPadding = PaddingValues(horizontal = TownCrierSpacing.md, vertical = TownCrierSpacing.sm),
+                        ) {
                             items(displayed, key = { it.applicationUid.value }) { saved ->
                                 val application = saved.application
                                 if (application != null) {
@@ -116,7 +121,6 @@ internal fun SavedListScreen(
                                         application = application,
                                         onClick = { onApplicationClick(application) },
                                     )
-                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                                 }
                             }
                         }

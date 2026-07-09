@@ -24,17 +24,23 @@ import uk.towncrierapp.domain.applications.LatestUnreadEvent
 import uk.towncrierapp.domain.applications.LocalAuthority
 import uk.towncrierapp.domain.applications.PlanningApplication
 import uk.towncrierapp.domain.applications.PlanningApplicationId
+import uk.towncrierapp.presentation.designsystem.DateDisplayFormatter
 import uk.towncrierapp.presentation.designsystem.TownCrierSpacing
 import uk.towncrierapp.presentation.designsystem.TownCrierTheme
+import uk.towncrierapp.presentation.designsystem.noticeCard
 import java.time.LocalDate
 import java.time.OffsetDateTime
 
 /**
- * A single applications-list row: status badge, address/description, and an
- * 8dp leading unread dot in `tcAmber` when
- * [PlanningApplication.latestUnreadEvent] is present (design-language skill —
- * status is never color-alone, so [StatusBadge] always pairs its color with
- * an icon and label too). Port of iOS `ApplicationRow` (GH#775).
+ * A single applications-list row, styled as a Public Notice "filed notice"
+ * card ([noticeCard], epic #848 R5): a mono document-header strip (reference
+ * left, received date right), status stamp, address/description, and an 8dp
+ * leading unread dot in `tcAmber` when [PlanningApplication.latestUnreadEvent]
+ * is present — the card's top rule doubles as the same unread signal
+ * ([noticeCard]'s `isNew`), mirroring iOS `ApplicationListRow`'s dot +
+ * `noticeCardStyle` combination. Status is never color-alone: [StatusBadge]
+ * always pairs its color with an icon and label too. Port of iOS
+ * `ApplicationRow` (GH#775).
  */
 @Composable
 public fun ApplicationRow(
@@ -42,16 +48,19 @@ public fun ApplicationRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val isUnread = application.latestUnreadEvent != null
     Row(
         modifier =
             modifier
                 .fillMaxWidth()
+                .noticeCard(isNew = isUnread)
                 .clickable(onClick = onClick)
                 .padding(horizontal = TownCrierSpacing.md, vertical = TownCrierSpacing.sm),
         horizontalArrangement = Arrangement.spacedBy(TownCrierSpacing.sm),
     ) {
-        UnreadDot(isUnread = application.latestUnreadEvent != null, modifier = Modifier.padding(top = 6.dp))
+        UnreadDot(isUnread = isUnread, modifier = Modifier.padding(top = 6.dp))
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(TownCrierSpacing.xs)) {
+            DocHeaderStrip(reference = application.reference, receivedDate = application.receivedDate)
             val display = statusDisplay(application.status)
             StatusBadge(label = display.label, color = display.color, icon = display.icon)
             Text(text = application.address, style = MaterialTheme.typography.titleMedium)
@@ -63,6 +72,23 @@ public fun ApplicationRow(
                 overflow = TextOverflow.Ellipsis,
             )
         }
+    }
+}
+
+/** Mono document-header strip: reference left, received date right — see [ApplicationRow] doc. */
+@Composable
+private fun DocHeaderStrip(
+    reference: String,
+    receivedDate: LocalDate,
+    modifier: Modifier = Modifier,
+) {
+    Row(modifier = modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(text = reference, style = TownCrierTheme.mono, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            text = DateDisplayFormatter.format(receivedDate),
+            style = TownCrierTheme.mono,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
