@@ -109,4 +109,10 @@ describe('Amber rationing sweep — non-CTA/active/focus/unread/upsell uses conv
     const css = readCss('features/Dashboard/DashboardPage.module.css');
     expect(block(css, '.quickLink:hover')).not.toContain('var(--tc-amber)');
   });
+
+  it('WatchZoneEditPage: back link no longer uses amber (save CTA and focus ring keep it)', () => {
+    const css = readCss('features/WatchZones/WatchZoneEditPage.module.css');
+    expect(block(css, '.backLink')).not.toContain('var(--tc-amber)');
+    expect(block(css, '.saveButton')).toContain('var(--tc-amber)');
+  });
 });
