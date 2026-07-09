@@ -17,7 +17,6 @@ import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -39,6 +38,7 @@ import uk.towncrierapp.presentation.designsystem.TownCrierSpacing
 import uk.towncrierapp.presentation.designsystem.TownCrierTheme
 import uk.towncrierapp.presentation.designsystem.components.ApplicationRow
 import uk.towncrierapp.presentation.designsystem.components.CapsuleChip
+import uk.towncrierapp.presentation.designsystem.components.Masthead
 import uk.towncrierapp.presentation.features.applicationlist.applicationErrorMessageRes
 
 /**
@@ -90,47 +90,68 @@ internal fun SavedListScreen(
             )
         },
     ) { contentPadding ->
-        Column(modifier = Modifier.padding(contentPadding).fillMaxSize()) {
-            SavedFilterChipsRow(
-                filter = state.filter,
-                onFilterSelected = onFilterSelected,
-                modifier = Modifier.padding(vertical = TownCrierSpacing.sm),
-            )
-            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                val displayed = state.displayed
-                when {
-                    state.isLoading && displayed.isEmpty() -> {
-                        CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-                    }
+        SavedListContent(
+            state = state,
+            onFilterSelected = onFilterSelected,
+            onApplicationClick = onApplicationClick,
+            modifier = Modifier.padding(contentPadding).fillMaxSize(),
+        )
+    }
+}
 
-                    displayed.isEmpty() -> {
-                        SavedEmptyState(modifier = Modifier.align(Alignment.Center))
-                    }
+/** [SavedListScreen]'s content column, split out to keep that composable under detekt's LongMethod budget. */
+@Composable
+private fun SavedListContent(
+    state: SavedListUiState,
+    onFilterSelected: (ApplicationStatus?) -> Unit,
+    onApplicationClick: (PlanningApplication) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier) {
+        Masthead(title = stringResource(R.string.saved_title))
+        SavedFilterChipsRow(
+            filter = state.filter,
+            onFilterSelected = onFilterSelected,
+            modifier = Modifier.padding(vertical = TownCrierSpacing.sm),
+        )
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            val displayed = state.displayed
+            when {
+                state.isLoading && displayed.isEmpty() -> {
+                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                }
 
-                    else -> {
-                        LazyColumn(modifier = Modifier.fillMaxSize()) {
-                            items(displayed, key = { it.applicationUid.value }) { saved ->
-                                val application = saved.application
-                                if (application != null) {
-                                    ApplicationRow(
-                                        application = application,
-                                        onClick = { onApplicationClick(application) },
-                                    )
-                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                                }
+                displayed.isEmpty() -> {
+                    SavedEmptyState(modifier = Modifier.align(Alignment.Center))
+                }
+
+                else -> {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(TownCrierSpacing.sm),
+                        contentPadding =
+                            PaddingValues(
+                                horizontal = TownCrierSpacing.md,
+                                vertical = TownCrierSpacing.sm,
+                            ),
+                    ) {
+                        items(displayed, key = { it.applicationUid.value }) { saved ->
+                            val application = saved.application
+                            if (application != null) {
+                                ApplicationRow(application = application, onClick = { onApplicationClick(application) })
                             }
                         }
                     }
                 }
             }
-            state.error?.let { error ->
-                Text(
-                    text = stringResource(applicationErrorMessageRes(error)),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(TownCrierSpacing.md),
-                )
-            }
+        }
+        state.error?.let { error ->
+            Text(
+                text = stringResource(applicationErrorMessageRes(error)),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(TownCrierSpacing.md),
+            )
         }
     }
 }

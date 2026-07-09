@@ -21,7 +21,6 @@ import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -48,6 +47,7 @@ import uk.towncrierapp.presentation.designsystem.TownCrierSpacing
 import uk.towncrierapp.presentation.designsystem.TownCrierTheme
 import uk.towncrierapp.presentation.designsystem.components.ApplicationRow
 import uk.towncrierapp.presentation.designsystem.components.CapsuleChip
+import uk.towncrierapp.presentation.designsystem.components.Masthead
 import uk.towncrierapp.presentation.designsystem.components.PrimaryButton
 
 /**
@@ -109,6 +109,7 @@ internal fun ApplicationListScreen(
         },
     ) { contentPadding ->
         Column(modifier = Modifier.padding(contentPadding).fillMaxSize()) {
+            Masthead(title = stringResource(R.string.applications_title))
             if (state.zones.isEmpty() && !state.isLoading) {
                 NoZonesEmptyState(onAddZoneClick = onAddZoneClick, modifier = Modifier.fillMaxSize())
             } else {
@@ -191,14 +192,17 @@ private fun ApplicationsList(
     onApplicationClick: (PlanningApplication) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    LazyColumn(modifier = modifier.fillMaxSize()) {
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(TownCrierSpacing.sm),
+        contentPadding = PaddingValues(horizontal = TownCrierSpacing.md, vertical = TownCrierSpacing.sm),
+    ) {
         itemsIndexed(applications, key = { _, application -> application.id.value }) { index, application ->
             // Hand-rolled prefetch trigger (no Paging 3): firing once per row
             // as it enters composition is enough for the ~40-line cursor
             // loop this app deliberately keeps simple.
             LaunchedEffect(index) { onItemVisible(index) }
             ApplicationRow(application = application, onClick = { onApplicationClick(application) })
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         }
         if (isLoadingMore) {
             item {
