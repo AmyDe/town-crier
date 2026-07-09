@@ -152,6 +152,32 @@ func TestImageServe_CacheOnce_SecondRequestSkipsTiles(t *testing.T) {
 	}
 }
 
+// TestImageServe_NilCache_RendersByteIdenticalPNGAcrossTwoRequests is a
+// characterisation guard for the v2 restyle (tc-fmrx3, #855): the masthead
+// strip and pin-outline token swap must stay fully deterministic, and the
+// og:image route's caching mechanism must still produce byte-stable output
+// across two renders of the same application, exactly as it did before the
+// restyle. A nil cache regenerates on every request (Slice 2, pre-Blob), so
+// this drives the rendering path twice and asserts the bytes match, without
+// touching ogimage.go's caching/routing logic at all.
+func TestImageServe_NilCache_RendersByteIdenticalPNGAcrossTwoRequests(t *testing.T) {
+	t.Parallel()
+	store := &fakeStore{app: coordApp(t), found: true}
+	resolver := &fakeResolver{slugs: map[string]int{"croydon": 165}}
+	tiles := &fakeTiles{fill: color.RGBA{R: 0x88, G: 0xCC, B: 0xFF, A: 0xFF}}
+	mux := wireOG(t, store, resolver, tiles, nil)
+
+	first := serveOG(t, mux, "/og/croydon/23/03456/FUL.png")
+	second := serveOG(t, mux, "/og/croydon/23/03456/FUL.png")
+
+	if first.Code != http.StatusOK || second.Code != http.StatusOK {
+		t.Fatalf("statuses = %d, %d, want 200, 200", first.Code, second.Code)
+	}
+	if !bytes.Equal(first.Body.Bytes(), second.Body.Bytes()) {
+		t.Error("regenerated PNG bytes differ across two renders of the same application; the restyle must stay deterministic")
+	}
+}
+
 func TestImageServe_NoCoordinates_FallbackWithoutTiles(t *testing.T) {
 	t.Parallel()
 	store := &fakeStore{app: fullApp(t), found: true} // fullApp has no coordinates
