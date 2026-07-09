@@ -69,7 +69,7 @@ public struct DeviceLocalZoneEditorView: View {
       Text("Area Name")
     } footer: {
       Text("A friendly name to identify this area.")
-        .font(.system(.caption))
+        .font(TCTypography.caption)
         .foregroundStyle(Color.tcTextSecondary)
     }
   }
@@ -78,6 +78,7 @@ public struct DeviceLocalZoneEditorView: View {
     Section {
       HStack {
         TextField("Postcode", text: $viewModel.postcodeInput)
+          .font(TCTypography.mono)
           .textContentType(.postalCode)
           .autocorrectionDisabled()
           #if os(iOS)
@@ -97,7 +98,7 @@ public struct DeviceLocalZoneEditorView: View {
       Text("Postcode")
     } footer: {
       Text("Enter a UK postcode to centre this area.")
-        .font(.system(.caption))
+        .font(TCTypography.caption)
         .foregroundStyle(Color.tcTextSecondary)
     }
   }
@@ -105,8 +106,10 @@ public struct DeviceLocalZoneEditorView: View {
   private var radiusSection: some View {
     Section("Radius") {
       VStack(alignment: .leading, spacing: TCSpacing.small) {
+        // Radius values render in mono (GH#857/#896), matching every other
+        // metadata value (postcodes, refs, dates, distances).
         Text(formatRadius(viewModel.selectedRadiusMetres))
-          .font(TCTypography.bodyEmphasis)
+          .font(TCTypography.monoEmphasis)
           .foregroundStyle(Color.tcTextPrimary)
 
         Slider(
@@ -123,7 +126,7 @@ public struct DeviceLocalZoneEditorView: View {
           Spacer()
           Text(formatRadius(viewModel.maxRadiusMetres))
         }
-        .font(TCTypography.caption)
+        .font(TCTypography.mono)
         .foregroundStyle(Color.tcTextSecondary)
       }
     }
@@ -152,7 +155,7 @@ public struct DeviceLocalZoneEditorView: View {
     Section {
       Label {
         Text(error.userMessage)
-          .font(.system(.body))
+          .font(TCTypography.body)
           .foregroundStyle(Color.tcStatusRejected)
       } icon: {
         Image(systemName: "exclamationmark.triangle.fill")
