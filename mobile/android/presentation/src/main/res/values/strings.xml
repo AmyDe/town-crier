@@ -37,6 +37,7 @@
     <string name="watch_zones_empty_cta">Add Watch Zone</string>
 
     <!-- Watch zone free-tier inline upsell card (tc-t8hc / tc-z95t, copy verbatim from iOS) -->
+    <string name="watch_zone_upsell_eyebrow">Upgrade</string>
     <string name="watch_zone_upsell_title">Do more with a plan</string>
     <string name="watch_zone_upsell_bigger_zones">Bigger watch zones, up to 10 km</string>
     <string name="watch_zone_upsell_more_than_one_zone">More than one watch zone</string>
