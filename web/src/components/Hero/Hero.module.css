@@ -15,8 +15,9 @@
 }
 
 .headline {
+  font-family: var(--tc-font-display);
   font-size: var(--tc-text-hero);
-  font-weight: var(--tc-weight-bold);
+  font-weight: var(--tc-weight-semibold);
   line-height: var(--tc-leading-tight);
   color: var(--tc-text-primary);
   max-width: 800px;

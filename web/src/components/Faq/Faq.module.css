@@ -1,5 +1,6 @@
 .section {
   background: var(--tc-surface);
+  border-top: 2.5px solid var(--tc-text-primary);
   padding: var(--tc-space-xxl) var(--tc-space-md);
 }
 
@@ -11,18 +12,20 @@
   margin-bottom: var(--tc-space-xl);
 }
 
+/* Ledger rows: a flat list separated by hairline rules, not boxed cards. */
 .list {
   max-width: 720px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: var(--tc-space-sm);
 }
 
 .details {
-  border: 1px solid var(--tc-border);
-  border-radius: var(--tc-radius-md);
-  overflow: hidden;
+  border-bottom: 1px solid var(--tc-border);
+}
+
+.details:last-child {
+  border-bottom: none;
 }
 
 .summary {
@@ -47,14 +50,14 @@
   content: '';
 }
 
-/* Custom +/− marker in amber */
+/* Custom +/− marker */
 .summary::after {
   content: '+';
   flex-shrink: 0;
   margin-left: var(--tc-space-md);
   font-size: var(--tc-text-display-small);
   font-weight: var(--tc-weight-bold);
-  color: var(--tc-amber);
+  color: var(--tc-text-secondary);
   line-height: 1;
 }
 

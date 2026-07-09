@@ -23,10 +23,12 @@
 }
 
 .value {
+  font-family: var(--tc-font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: var(--tc-text-display-small);
   font-weight: var(--tc-weight-bold);
   line-height: var(--tc-leading-snug);
-  color: var(--tc-amber);
+  color: var(--tc-text-primary);
 }
 
 .label {
