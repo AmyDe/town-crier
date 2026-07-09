@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -97,6 +97,16 @@ describe('ApplicationDetailPage', () => {
     renderPage(appRepo);
 
     expect(await screen.findByText('Undecided')).toBeInTheDocument();
+  });
+
+  it('pairs the status badge with an icon glyph (colour is never the sole indicator)', async () => {
+    const appRepo = new SpyApplicationRepository();
+    appRepo.fetchApplicationResult = fullApplication();
+
+    renderPage(appRepo);
+
+    const badge = await screen.findByRole('status');
+    expect(within(badge).getByTestId('status-icon')).toBeInTheDocument();
   });
 
   it('renders the application type', async () => {
