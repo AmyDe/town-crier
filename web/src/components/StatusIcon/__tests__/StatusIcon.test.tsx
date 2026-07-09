@@ -42,6 +42,6 @@ describe('StatusIcon', () => {
   it('accepts an additional className for layout composition by the caller', () => {
     render(<StatusIcon appState="Permitted" className="extra-class" />);
 
-    expect(screen.getByTestId('status-icon').className).toMatch(/extra-class/);
+    expect(screen.getByTestId('status-icon')).toHaveClass('extra-class');
   });
 });
