@@ -1,27 +1,4 @@
-{{define "styles"}}<style>
-:root{
-  --bg:#FAF8F5;--surface:#FFFFFF;--text-primary:#1C1917;--text-secondary:#6B6560;
-  --text-tertiary:#A39E98;--border:#E8E4DF;--amber:#D4910A;--amber-hover:#B87A08;
-  --text-on-accent:#FFFFFF;--amber-muted:rgba(212,145,10,0.15);
-  --radius-sm:8px;--radius-md:12px;
-  --space-xs:4px;--space-sm:8px;--space-md:16px;--space-lg:24px;--space-xl:32px;
-  /* Shared status vocabulary (tc-r4n9 decision 4): three colour buckets, not a
-     five-way traffic light — granted (green), refused (red), neutral for
-     "Undecided" and every long-tail state. Mirrors web/scripts/lib/render-shared.mjs. */
-  --status-granted:#1A7D37;--status-granted-bg:rgba(26,125,55,0.15);
-  --status-refused:#C42B2B;--status-refused-bg:rgba(196,43,43,0.15);
-  --status-neutral:#7A7570;--status-neutral-bg:rgba(122,117,112,0.15);
-}
-@media (prefers-color-scheme:dark){
-  :root{
-    --bg:#1A1A1E;--surface:#242428;--text-primary:#F1EFE9;--text-secondary:#9B9590;
-    --text-tertiary:#5C5852;--border:#3A3A3F;--amber:#E9A620;--amber-hover:#F0B83A;
-    --text-on-accent:#1C1917;--amber-muted:rgba(233,166,32,0.15);
-    --status-granted:#34C759;--status-granted-bg:rgba(52,199,89,0.15);
-    --status-refused:#FF453A;--status-refused-bg:rgba(255,69,58,0.15);
-    --status-neutral:#8E8A85;--status-neutral-bg:rgba(142,138,133,0.15);
-  }
-}
+{{define "styles"}}<style>{{template "tokenVars"}}
 *{box-sizing:border-box;}
 html{-webkit-text-size-adjust:100%;}
 body{
