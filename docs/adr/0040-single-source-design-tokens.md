@@ -83,3 +83,21 @@ values were the drift).
   records `status-withdrawn`. Keeping the SEO neutral on `text-secondary` is what
   makes this slice zero-visual-change; reconciling the two is future work for the
   mobile/share emitters, not this slice.
+
+### Update — T3 (#851): mobile colours + skill doc
+
+The generator now also emits the two mobile colour files
+(`mobile/ios/.../Colors/Color+TownCrier.swift`, `mobile/android/.../designsystem/Color.kt`)
+and regenerates the value tables in the design-language skill doc
+(`.claude/skills/design-language/references/tokens.md`, between the
+`<!-- tokens:generated -->` markers — prose outside them is hand-written and
+survives). **Mobile generation is colours only:** `TCSpacing`/`TCCornerRadius`/
+`TCTypography` (iOS) and `Spacing.kt`/`Type.kt` (Android) stay hand-maintained,
+because those stable single-file scales don't drift the way the three-theme
+colour matrix provably does. Two additions to `tokens.json` support this: a
+per-colour `doc` string (so the generated Swift keeps its doc comments) and a
+per-token `platforms` skip list (so iOS can omit the web/Android-only
+`amber-hover` without introducing a new iOS token). Both colour files are
+whole-file generated and were byte-identical to the hand-written originals on
+first generation apart from the generated-file header — the proof the emitters
+are faithful and the conversion is zero visual change.

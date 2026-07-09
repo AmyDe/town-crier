@@ -16,10 +16,12 @@
  * The `--check` mode mirrors scripts/check-legal-drift.sh semantics: a PR that
  * edits tokens.json (or a generated file) without regenerating fails the gate.
  *
- * This slice (T1) emits the two web surfaces only. Mobile (Swift/Kotlin) and Go
- * emitters land in follow-up slices (T2/T3); they will read the SAME tokens.json
- * and the SAME statusBuckets map, which is why the generator lives at the repo
- * root rather than under web/.
+ * T1 (#849) emitted the two web surfaces. T3 (#851) adds the two mobile colour
+ * files (iOS Swift, Android Kotlin) and regenerates the value tables in the
+ * design-language skill doc; all read the SAME tokens.json. Mobile generation is
+ * colours only — spacing/radius/typography stay hand-maintained on each platform
+ * (ADR 0040). The generator lives at the repo root, not under web/, so every
+ * surface can share it.
  */
 
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
@@ -32,6 +34,21 @@ const REPO_ROOT = join(HERE, '..', '..');
 
 export const TOKENS_PATH = join(REPO_ROOT, 'design', 'tokens.json');
 export const THEMES = ['light', 'dark', 'oled'];
+
+const IOS_COLORS_PATH = join(
+  REPO_ROOT,
+  'mobile', 'ios', 'packages', 'town-crier-presentation',
+  'Sources', 'DesignSystem', 'Colors', 'Color+TownCrier.swift',
+);
+const ANDROID_COLORS_PATH = join(
+  REPO_ROOT,
+  'mobile', 'android', 'presentation', 'src', 'main', 'kotlin',
+  'uk', 'towncrierapp', 'presentation', 'designsystem', 'Color.kt',
+);
+const SKILL_DOC_PATH = join(
+  REPO_ROOT,
+  '.claude', 'skills', 'design-language', 'references', 'tokens.md',
+);
 
 // --------------------------------------------------------------------------
 // Loading + resolution
@@ -420,6 +437,479 @@ export const SEO_TOKEN_CSS = \`${css}\`;
 }
 
 // --------------------------------------------------------------------------
+// Shared helpers for the mobile + skill-doc emitters (T3, issue #851)
+// --------------------------------------------------------------------------
+
+/** Every platform a token targets unless it declares a narrower `platforms`. */
+const ALL_PLATFORMS = ['web', 'ios', 'android'];
+
+/** @param {Record<string, any>} entry @returns {string[]} */
+function tokenPlatforms(entry) {
+  return Array.isArray(entry.platforms) ? entry.platforms : ALL_PLATFORMS;
+}
+
+/** `#RRGGBB` (or `RRGGBB`) -> upper-case `RRGGBB` (no `#`). */
+function bareHex(hex) {
+  return hex.replace(/^#/, '').toUpperCase();
+}
+
+/** kebab-case -> PascalCase (`status-conditions` -> `StatusConditions`). */
+function pascalCase(kebab) {
+  return kebab
+    .split('-')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join('');
+}
+
+/** kebab-case -> camelCase (`status-conditions` -> `statusConditions`). */
+function camelCase(kebab) {
+  const p = pascalCase(kebab);
+  return p.charAt(0).toLowerCase() + p.slice(1);
+}
+
+/** iOS `Color` extension member for a colour token (`amber` -> `tcAmber`). */
+function iosTokenName(name) {
+  return `tc${pascalCase(name)}`;
+}
+
+// --------------------------------------------------------------------------
+// Emitter: mobile/ios/.../Colors/Color+TownCrier.swift
+// --------------------------------------------------------------------------
+
+/**
+ * iOS `Color` extension, section by section. These lists are the source of
+ * truth for iOS token *order* and double as the per-platform skip list: iOS has
+ * no `amber-hover`, so it simply never appears here. emitIosColors() asserts
+ * these sections exactly cover the colour tokens whose `platforms` include
+ * `ios`, so a token added to tokens.json can't silently go missing (nor a
+ * skipped token silently reappear).
+ */
+const IOS_SECTIONS = [
+  { title: 'Brand', tokens: ['amber', 'amber-muted'] },
+  { title: 'Surfaces', tokens: ['background', 'surface', 'surface-elevated'] },
+  { title: 'Text', tokens: ['text-primary', 'text-secondary', 'text-tertiary', 'text-on-accent'] },
+  {
+    title: 'Status',
+    tokens: [
+      'status-permitted',
+      'status-conditions',
+      'status-rejected',
+      'status-pending',
+      'status-withdrawn',
+      'status-appealed',
+    ],
+  },
+  { title: 'Utility', tokens: ['border', 'border-focused', 'overlay'] },
+];
+
+/** Column limit above which a `Color.themed(...)` declaration wraps. */
+const IOS_MAX_COLUMNS = 100;
+
+/**
+ * `status-rejected` is hand-wrapped in the committed file at exactly 100
+ * columns — one tighter than every other token follows. Preserving it keeps the
+ * first generation byte-identical (issue #851 acceptance). Safe to drop from
+ * this set if that declaration is ever reflowed onto a single line.
+ */
+const IOS_FORCE_WRAP = new Set(['status-rejected']);
+
+/**
+ * The Swift value expression for one colour token, and whether it's a
+ * `Color.themed(...)` call eligible for line wrapping.
+ *
+ * @param {Record<string, any>} colors
+ * @param {string} name
+ * @returns {{ expr: string, wrappable: boolean }}
+ */
+function iosColorExpr(colors, name) {
+  const entry = colors[name];
+  if ('base' in entry) {
+    if (entry.base.startsWith('#')) {
+      // Literal base (overlay). iOS renders a single flat scrim, not a
+      // theme-aware one, so it takes the light-theme alpha — the hand-written
+      // value. `#000000` is Color.black; nothing else uses a literal base today.
+      const baseExpr = entry.base === '#000000' ? 'Color.black' : `Color(hex: 0x${bareHex(entry.base)})`;
+      const alpha = typeof entry.alpha === 'object' ? entry.alpha.light : entry.alpha;
+      return { expr: `${baseExpr}.opacity(${alpha})`, wrappable: false };
+    }
+    // Token-reference base (amber-muted, border-focused) -> the iOS member.
+    const baseName = iosTokenName(entry.base);
+    if ('alpha' in entry) {
+      return { expr: `${baseName}.opacity(${entry.alpha})`, wrappable: false };
+    }
+    return { expr: baseName, wrappable: false };
+  }
+  const call = `Color.themed(light: 0x${bareHex(entry.light)}, dark: 0x${bareHex(entry.dark)}, oled: 0x${bareHex(entry.oled)})`;
+  return { expr: call, wrappable: true };
+}
+
+/** The `public static let …` declaration line(s) for one iOS colour token. */
+function iosDecl(colors, name) {
+  const { expr, wrappable } = iosColorExpr(colors, name);
+  const line = `  public static let ${iosTokenName(name)} = ${expr}`;
+  if (wrappable && (line.length > IOS_MAX_COLUMNS || IOS_FORCE_WRAP.has(name))) {
+    const args = expr.slice('Color.themed('.length); // "light: 0x…, dark: 0x…, oled: 0x…)"
+    return `  public static let ${iosTokenName(name)} = Color.themed(\n    ${args}`;
+  }
+  return line;
+}
+
+/** Doc comment + declaration for one iOS colour token. */
+function iosTokenBlock(colors, name) {
+  const doc = colors[name].doc
+    .split('\n')
+    .map((l) => `  /// ${l}`)
+    .join('\n');
+  return `${doc}\n${iosDecl(colors, name)}`;
+}
+
+/**
+ * Emit `mobile/ios/.../Colors/Color+TownCrier.swift`: a whole generated file of
+ * `Color` extension sections. Colours only — TCSpacing/TCCornerRadius/
+ * TCTypography stay hand-maintained (ADR 0040). Byte-identical to the
+ * hand-written original apart from the generated-file header.
+ *
+ * @param {any} tokens
+ * @returns {string}
+ */
+export function emitIosColors(tokens) {
+  const colors = tokens.color;
+
+  const emitted = new Set(IOS_SECTIONS.flatMap((s) => s.tokens));
+  const expected = new Set(Object.keys(colors).filter((n) => tokenPlatforms(colors[n]).includes('ios')));
+  for (const name of emitted) {
+    if (!expected.has(name)) {
+      throw new Error(`iOS sections list "${name}", which isn't an ios-platform colour token`);
+    }
+  }
+  for (const name of expected) {
+    if (!emitted.has(name)) {
+      throw new Error(`ios-platform colour token "${name}" is missing from the iOS sections`);
+    }
+  }
+
+  const sections = IOS_SECTIONS.map((section) => {
+    const blocks = section.tokens.map((name) => iosTokenBlock(colors, name)).join('\n\n');
+    return `// MARK: - ${section.title}\n\nextension Color {\n${blocks}\n}`;
+  }).join('\n\n');
+
+  return `// Code generated by scripts/design-tokens/generate.mjs. DO NOT EDIT.
+
+import SwiftUI
+
+${sections}
+`;
+}
+
+// --------------------------------------------------------------------------
+// Emitter: mobile/android/.../designsystem/Color.kt
+// --------------------------------------------------------------------------
+
+/**
+ * Android palette field order. Differs from tokens.json order (amberMuted
+ * precedes amberHover) and from iOS (Android keeps amberHover), so it's its own
+ * list. emitAndroidColors() cross-checks it against the android-platform tokens.
+ */
+const ANDROID_ORDER = [
+  'amber',
+  'amber-muted',
+  'amber-hover',
+  'background',
+  'surface',
+  'surface-elevated',
+  'text-primary',
+  'text-secondary',
+  'text-tertiary',
+  'text-on-accent',
+  'status-permitted',
+  'status-conditions',
+  'status-rejected',
+  'status-pending',
+  'status-withdrawn',
+  'status-appealed',
+  'border',
+  'border-focused',
+  'overlay',
+];
+
+/** Compose alpha literal: `0.4` -> `0.40f`. */
+function kotlinAlpha(alpha) {
+  return `${alpha.toFixed(2)}f`;
+}
+
+/**
+ * The Kotlin `Color` expression for one token in one theme.
+ *
+ * @param {Record<string, any>} colors
+ * @param {string} name
+ * @param {string} theme one of THEMES
+ * @returns {string}
+ */
+function androidColorExpr(colors, name, theme) {
+  const entry = colors[name];
+  if ('base' in entry) {
+    if (entry.base.startsWith('#')) {
+      // Literal base (overlay) -> Color.Black.copy(alpha = …) per theme.
+      const baseExpr = entry.base === '#000000' ? 'Color.Black' : `Color(0xFF${bareHex(entry.base)})`;
+      const alpha = typeof entry.alpha === 'object' ? entry.alpha[theme] : entry.alpha;
+      return `${baseExpr}.copy(alpha = ${kotlinAlpha(alpha)})`;
+    }
+    // Token-reference base. amber-muted uses the muted() helper, which bakes in
+    // alpha 0.15; any other alpha would need a helper that doesn't exist.
+    const baseHex = bareHex(resolveColor(colors, entry.base, theme));
+    if ('alpha' in entry) {
+      if (entry.alpha !== 0.15) {
+        throw new Error(`Android muted() encodes alpha 0.15 only, not ${entry.alpha} (token "${name}")`);
+      }
+      return `muted(Color(0xFF${baseHex}))`;
+    }
+    return `Color(0xFF${baseHex})`;
+  }
+  return `Color(0xFF${bareHex(entry[theme])})`;
+}
+
+/** One `field = expr,` line at 8-space indent inside a TcPalette(...) block. */
+function androidField(colors, name, theme) {
+  return `        ${camelCase(name)} = ${androidColorExpr(colors, name, theme)},`;
+}
+
+/**
+ * Emit `mobile/android/.../designsystem/Color.kt`: a whole generated file. The
+ * TcPalette data class, muted() helper and doc comments are template constants;
+ * only the three palette `val` bodies come from tokens.json. OledPalette is a
+ * DarkPalette.copy(...) overriding exactly the fields whose oled value differs
+ * from dark. Byte-identical to the hand-written original apart from the header.
+ *
+ * @param {any} tokens
+ * @returns {string}
+ */
+export function emitAndroidColors(tokens) {
+  const colors = tokens.color;
+
+  const expected = new Set(Object.keys(colors).filter((n) => tokenPlatforms(colors[n]).includes('android')));
+  const listed = new Set(ANDROID_ORDER);
+  for (const name of ANDROID_ORDER) {
+    if (!expected.has(name)) {
+      throw new Error(`ANDROID_ORDER lists "${name}", which isn't an android-platform colour token`);
+    }
+  }
+  for (const name of expected) {
+    if (!listed.has(name)) {
+      throw new Error(`android-platform colour token "${name}" is missing from ANDROID_ORDER`);
+    }
+  }
+
+  const fields = ANDROID_ORDER.map((name) => `    val ${camelCase(name)}: Color,`).join('\n');
+  const light = ANDROID_ORDER.map((name) => androidField(colors, name, 'light')).join('\n');
+  const dark = ANDROID_ORDER.map((name) => androidField(colors, name, 'dark')).join('\n');
+  const oled = ANDROID_ORDER.filter(
+    (name) => androidColorExpr(colors, name, 'oled') !== androidColorExpr(colors, name, 'dark'),
+  )
+    .map((name) => androidField(colors, name, 'oled'))
+    .join('\n');
+
+  return `// Code generated by scripts/design-tokens/generate.mjs. DO NOT EDIT.
+
+// Color.kt is the bead-mandated file name for the whole token file (epic
+// #770): TcPalette below is a supporting type alongside the Light/Dark/
+// OledPalette vals that follow it, not the file's sole declaration in spirit.
+@file:Suppress("MatchingDeclarationName")
+
+package uk.towncrierapp.presentation.designsystem
+
+import androidx.compose.ui.graphics.Color
+
+/**
+ * One resolved set of Town Crier color tokens — exact hex values from epic
+ * #770 / the design-language skill's token table. [TcPalette] never appears
+ * in feature code directly: [TownCrierTheme] maps it onto a Material 3
+ * \`ColorScheme\` (see [colorScheme]) and the extended [TownCrierColors]
+ * CompositionLocal (see [extendedColors]) for tokens with no Material role.
+ */
+internal data class TcPalette(
+${fields}
+)
+
+private fun muted(amber: Color) = amber.copy(alpha = 0.15f)
+
+internal val LightPalette =
+    TcPalette(
+${light}
+    )
+
+internal val DarkPalette =
+    TcPalette(
+${dark}
+    )
+
+// OLED is a dark sub-variant, not a fourth palette: every token matches Dark
+// except the three surfaces (and border, which steps darker with them) that
+// go true-black. See design-language skill / epic #770.
+internal val OledPalette =
+    DarkPalette.copy(
+${oled}
+    )
+`;
+}
+
+// --------------------------------------------------------------------------
+// Emitter: .claude/skills/design-language/references/tokens.md (value tables)
+// --------------------------------------------------------------------------
+
+const SKILL_BEGIN = '<!-- tokens:generated:begin -->';
+const SKILL_END = '<!-- tokens:generated:end -->';
+
+/** Human labels for the platforms column. */
+const PLATFORM_LABEL = { web: 'Web', ios: 'iOS', android: 'Android' };
+
+/** Colour-token doc groups, in doc order (includes web/android-only tokens). */
+const DOC_COLOR_GROUPS = [
+  { title: 'Brand', tokens: ['amber', 'amber-muted', 'amber-hover'] },
+  { title: 'Surface', tokens: ['background', 'surface', 'surface-elevated'] },
+  { title: 'Text', tokens: ['text-primary', 'text-secondary', 'text-tertiary', 'text-on-accent'] },
+  {
+    title: 'Status',
+    tokens: [
+      'status-permitted',
+      'status-conditions',
+      'status-rejected',
+      'status-pending',
+      'status-withdrawn',
+      'status-appealed',
+    ],
+  },
+  { title: 'Utility', tokens: ['border', 'border-focused', 'overlay'] },
+];
+
+/** iOS TCSpacing member per spacing key. */
+const IOS_SPACING = {
+  xs: 'extraSmall', sm: 'small', md: 'medium', lg: 'large', xl: 'extraLarge', xxl: 'extraExtraLarge',
+};
+/** iOS TCCornerRadius member per radius key (no `full` — iOS uses Capsule()). */
+const IOS_RADIUS = { sm: 'small', md: 'medium', lg: 'large' };
+
+/** Render a colour value for one theme as doc text (`#D4910A`, `#000000 @ 40%`). */
+function describeColor(colors, name, theme) {
+  const entry = colors[name];
+  if ('base' in entry) {
+    const baseHex = entry.base.startsWith('#') ? entry.base : resolveColor(colors, entry.base, theme);
+    if ('alpha' in entry) {
+      const alpha = typeof entry.alpha === 'object' ? entry.alpha[theme] : entry.alpha;
+      return `${baseHex} @ ${Math.round(alpha * 100)}%`;
+    }
+    return baseHex;
+  }
+  return entry[theme];
+}
+
+/** "Web, iOS, Android" style platform list for a set of platform keys. */
+function platformList(keys) {
+  return keys.map((k) => PLATFORM_LABEL[k]).join(', ');
+}
+
+/** Markdown table from a header row and body rows (arrays of cell strings). */
+function mdTable(header, rows) {
+  const line = (cells) => `| ${cells.join(' | ')} |`;
+  const sep = `| ${header.map(() => '---').join(' | ')} |`;
+  return [line(header), sep, ...rows.map(line)].join('\n');
+}
+
+/** Generate the value-table block that lives between the tokens.md markers. */
+function skillTables(tokens) {
+  const colors = tokens.color;
+  const parts = [];
+
+  for (const group of DOC_COLOR_GROUPS) {
+    const rows = group.tokens.map((name) => {
+      const plats = tokenPlatforms(colors[name]);
+      const ios = plats.includes('ios') ? `\`Color.${iosTokenName(name)}\`` : '—';
+      return [
+        `\`${name}\``,
+        `\`--tc-${name}\``,
+        ios,
+        `\`TcPalette.${camelCase(name)}\``,
+        `\`${describeColor(colors, name, 'light')}\``,
+        `\`${describeColor(colors, name, 'dark')}\``,
+        `\`${describeColor(colors, name, 'oled')}\``,
+        platformList(plats),
+      ];
+    });
+    parts.push(
+      `### ${group.title}\n\n` +
+        mdTable(['Token', 'Web', 'iOS', 'Android', 'Light', 'Dark', 'OLED', 'Platforms'], rows),
+    );
+  }
+
+  const spacingRows = Object.keys(tokens.spacing).map((key) => [
+    `\`${key}\``,
+    `\`--tc-space-${key}\``,
+    `\`TCSpacing.${IOS_SPACING[key]}\``,
+    `\`TownCrierSpacing.${key}\``,
+    `${tokens.spacing[key]}pt`,
+    'Web, iOS, Android',
+  ]);
+  parts.push(`### Spacing\n\n` + mdTable(['Token', 'Web', 'iOS', 'Android', 'Value', 'Platforms'], spacingRows));
+
+  const radiusRows = Object.keys(tokens.radius).map((key) => {
+    const ios = IOS_RADIUS[key] ? `\`TCCornerRadius.${IOS_RADIUS[key]}\`` : '—';
+    const value = key === 'full' ? 'capsule' : `${tokens.radius[key]}pt`;
+    const plats = key === 'full' ? 'Web, Android' : 'Web, iOS, Android';
+    return [`\`${key}\``, `\`--tc-radius-${key}\``, ios, `\`TownCrierRadius.${key}\``, value, plats];
+  });
+  parts.push(
+    `### Corner radius\n\n` + mdTable(['Token', 'Web', 'iOS', 'Android', 'Value', 'Platforms'], radiusRows),
+  );
+
+  const shadowRows = Object.keys(tokens.shadow).map((key) => [
+    `\`${key}\``,
+    `\`--tc-shadow-${key}\``,
+    `\`${tokens.shadow[key].light}\``,
+    `\`${tokens.shadow[key].dark}\``,
+    'Web',
+  ]);
+  parts.push(
+    `### Shadows\n\nWeb only. Dark and OLED communicate elevation through surface stepping, not shadow.\n\n` +
+      mdTable(['Token', 'Web', 'Light', 'Dark / OLED', 'Platforms'], shadowRows),
+  );
+
+  const durationRows = Object.keys(tokens.duration).map((key) => [
+    `\`${key}\``,
+    `\`--tc-duration-${key}\``,
+    tokens.duration[key],
+    'Web',
+  ]);
+  parts.push(`### Motion durations\n\nWeb only.\n\n` + mdTable(['Token', 'Web', 'Value', 'Platforms'], durationRows));
+
+  return parts.join('\n\n');
+}
+
+/** Splice freshly-generated tables between the markers, preserving all prose. */
+function spliceSkillDoc(current, generated) {
+  const begin = current.indexOf(SKILL_BEGIN);
+  const end = current.indexOf(SKILL_END);
+  if (begin === -1 || end === -1 || end < begin) {
+    throw new Error(`tokens.md is missing the ${SKILL_BEGIN} / ${SKILL_END} markers`);
+  }
+  const before = current.slice(0, begin + SKILL_BEGIN.length);
+  const after = current.slice(end);
+  return `${before}\n${generated}\n${after}`;
+}
+
+/**
+ * Emit `.claude/skills/design-language/references/tokens.md`: regenerate only
+ * the value tables between the markers; hand-written prose outside them
+ * survives. Reads the current file for that prose, so it isn't a pure function
+ * of tokens.json alone.
+ *
+ * @param {any} tokens
+ * @param {string} path
+ * @returns {string}
+ */
+export function emitSkillDoc(tokens, path = SKILL_DOC_PATH) {
+  return spliceSkillDoc(readFileSync(path, 'utf8'), skillTables(tokens));
+}
+
+// --------------------------------------------------------------------------
 // Output registry + write/check driver
 // --------------------------------------------------------------------------
 
@@ -431,6 +921,9 @@ export function buildOutputs(tokens) {
   return [
     { path: join(REPO_ROOT, 'web', 'src', 'styles', 'tokens.css'), content: emitSpaTokensCss(tokens) },
     { path: join(REPO_ROOT, 'web', 'scripts', 'lib', 'tokens.generated.mjs'), content: emitSeoTokensMjs(tokens) },
+    { path: IOS_COLORS_PATH, content: emitIosColors(tokens) },
+    { path: ANDROID_COLORS_PATH, content: emitAndroidColors(tokens) },
+    { path: SKILL_DOC_PATH, content: emitSkillDoc(tokens, SKILL_DOC_PATH) },
   ];
 }
 
