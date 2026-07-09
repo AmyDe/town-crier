@@ -147,11 +147,16 @@ func TestServe_KnownApplication_RendersMetaAndVisibleContent(t *testing.T) {
 		"Erection of a two-storey rear extension.",
 		// Reference and application type each get their own explicit metadata row
 		// (tc-r4n9.6) — no longer squashed into a cryptic "Reference … · Type" line.
-		`<span class="meta-label">Reference</span><span class="meta-value">23/03456/FUL</span>`,
+		// The reference now leads the mono document-header strip ("No. {ref}"),
+		// with the authority name on the right (tc-fmrx3, #855 filed-notice
+		// restyle) -- Reference is no longer a meta-list row.
+		`<span class="doc-header-ref">No. 23/03456/FUL</span>`,
+		`<span class="doc-header-authority">Croydon</span>`,
 		`<span class="meta-label">Type</span><span class="meta-value">Full planning permission</span>`,
 		// "Under Consideration" is not in the shared status vocabulary, so it passes
 		// through as its own label with the neutral colour bucket — never dropped.
-		`class="chip chip--neutral">Under Consideration</span>`,
+		`class="stamp stamp--neutral">`,
+		`<span class="stamp-label">Under Consideration</span>`,
 		// Key-dates timeline (doubles as status history): the heading and every
 		// row's LABEL and human-formatted VALUE. fullApp sets all three dates, so a
 		// missing timeline or a mis-formatted date is caught here.
@@ -317,6 +322,95 @@ func TestServe_RendersHeaderAboveHeroWithBrandLockup(t *testing.T) {
 	}
 	if headerIdx > heroIdx {
 		t.Error("header must render above the hero image, not below it")
+	}
+}
+
+// TestServe_MastheadIsSmallCapsWithDoubleRule pins the Public Notice masthead
+// restyle (tc-fmrx3, #855): the brand lockup reads in small-caps with tracked
+// letter-spacing, and a double rule (2.5px heavy rule over a 1px hairline)
+// sits beneath it — the same visual language as the web masthead (SPA
+// Navbar, #853/#854 broadsheet restyle), consuming the generated token vars
+// rather than any hand-added hex.
+func TestServe_MastheadIsSmallCapsWithDoubleRule(t *testing.T) {
+	t.Parallel()
+	store := &fakeStore{app: fullApp(t), found: true}
+	resolver := &fakeResolver{slugs: map[string]int{"croydon": 165}}
+
+	rec := serve(t, store, resolver, "/a/croydon/23/03456/FUL")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+
+	if !strings.Contains(body, `<div class="rule-heavy">`) {
+		t.Error(`body missing the masthead's heavy rule <div class="rule-heavy">`)
+	}
+	if !strings.Contains(body, `<div class="rule-hairline">`) {
+		t.Error(`body missing the masthead's hairline rule <div class="rule-hairline">`)
+	}
+	if !strings.Contains(body, `.rule-heavy{height:2.5px;background:var(--text-primary);}`) {
+		t.Error("heavy-rule CSS missing or not consuming var(--text-primary)")
+	}
+	if !strings.Contains(body, `font-variant:small-caps`) {
+		t.Error("brand-link CSS missing the small-caps treatment")
+	}
+}
+
+// TestServe_CardIsFiledNoticeWithDocHeaderStrip pins the filed-notice card
+// restyle (tc-fmrx3, #855): the card carries a 2px ink top rule (not the
+// amber rule used elsewhere), and a monospace document-header strip — "No.
+// {ref}" left, authority name right — renders ABOVE the address H1, whose
+// own font switches to the display-serif stack.
+func TestServe_CardIsFiledNoticeWithDocHeaderStrip(t *testing.T) {
+	t.Parallel()
+	store := &fakeStore{app: fullApp(t), found: true}
+	resolver := &fakeResolver{slugs: map[string]int{"croydon": 165}}
+
+	rec := serve(t, store, resolver, "/a/croydon/23/03456/FUL")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+
+	if !strings.Contains(body, `border-top:2px solid var(--text-primary)`) {
+		t.Error(".card CSS missing the 2px ink top rule")
+	}
+
+	docHeaderIdx := strings.Index(body, `<div class="doc-header">`)
+	if docHeaderIdx == -1 {
+		t.Fatal(`body missing <div class="doc-header">`)
+	}
+	addressIdx := strings.Index(body, `<h1 class="address">`)
+	if addressIdx == -1 {
+		t.Fatal(`body missing <h1 class="address">`)
+	}
+	if docHeaderIdx > addressIdx {
+		t.Error("doc-header strip must render above the address H1, not below it")
+	}
+	if !strings.Contains(body, `h1.address{font-family:var(--font-display)`) {
+		t.Error("h1.address CSS missing the display-serif font-family")
+	}
+}
+
+// TestServe_KeyDatesValuesUseMonospace pins the key-dates timeline restyle
+// (tc-fmrx3, #855): labels stay in the sans body font, but values render in
+// the monospace stack.
+func TestServe_KeyDatesValuesUseMonospace(t *testing.T) {
+	t.Parallel()
+	store := &fakeStore{app: fullApp(t), found: true}
+	resolver := &fakeResolver{slugs: map[string]int{"croydon": 165}}
+
+	rec := serve(t, store, resolver, "/a/croydon/23/03456/FUL")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+
+	if !strings.Contains(body, `.date-value{font-weight:600;font-family:var(--font-mono);}`) {
+		t.Error(".date-value CSS missing font-family:var(--font-mono)")
 	}
 }
 
@@ -584,8 +678,8 @@ func TestServe_NilOptionalFields_Renders200WithoutPanic(t *testing.T) {
 		t.Error("ref missing")
 	}
 	// Omitted sections must be absent.
-	if strings.Contains(body, `class="chip"`) {
-		t.Error("status chip rendered despite nil AppState")
+	if strings.Contains(body, `class="stamp stamp--`) {
+		t.Error("status stamp rendered despite nil AppState")
 	}
 	if strings.Contains(body, `rel="nofollow noopener noreferrer"`) {
 		t.Error("official-record link rendered despite nil URL/Link")
