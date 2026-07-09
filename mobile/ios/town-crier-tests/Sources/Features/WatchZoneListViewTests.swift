@@ -71,6 +71,19 @@ struct WatchZoneListViewTests {
     _ = sut.body
   }
 
+  // MARK: - Paused zones (GH#889 P2)
+
+  @Test func body_renders_whenZonePaused() async {
+    let (vm, spy) = makeViewModel()
+    spy.loadAllResult = .success([.cambridgePaused])
+    await vm.load()
+
+    #expect(vm.zones[0].paused)
+
+    let sut = WatchZoneListView(viewModel: vm)
+    _ = sut.body
+  }
+
   // MARK: - Unconverted device-local zones row (GH#879 Phase 5)
 
   @Test func body_renders_whenLocalZoneRowShown() async throws {

@@ -328,6 +328,17 @@ struct WatchZoneListViewModelTests {
     #expect(!sut.isUpgradePromptPresented)
   }
 
+  // MARK: - Paused zones (GH#889 P2)
+
+  @Test func load_exposesPausedFlagPerZone() async {
+    spyRepository.loadAllResult = .success([.cambridge, .cambridgePaused])
+
+    await sut.load()
+
+    #expect(sut.zones[0].paused == false)
+    #expect(sut.zones[1].paused == true)
+  }
+
   @Test func upgradeValueProposition_returnsNonEmptyString() async {
     let sut = WatchZoneListViewModel(
       repository: spyRepository,
