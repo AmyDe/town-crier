@@ -29,6 +29,7 @@ public struct ApplicationListView: View {
 
   public var body: some View {
     List {
+      mastheadRow
       chipRows
       contentRows
     }
@@ -113,6 +114,18 @@ public struct ApplicationListView: View {
     )
   }
 
+  // MARK: - Masthead
+
+  private var mastheadRow: some View {
+    MastheadView(title: "Applications")
+      .padding(.horizontal, TCSpacing.medium)
+      .padding(.top, TCSpacing.small)
+      .padding(.bottom, TCSpacing.extraSmall)
+      .listRowSeparator(.hidden)
+      .listRowInsets(EdgeInsets())
+      .listRowBackground(Color.tcBackground)
+  }
+
   // MARK: - Chip Rows
 
   @ViewBuilder
@@ -192,7 +205,7 @@ public struct ApplicationListView: View {
     } else {
       ForEach(viewModel.filteredApplications) { application in
         ApplicationListRow(application: application)
-          .listRowBackground(Color.tcSurface)
+          .cardRowInsets()
           .contentShape(Rectangle())
           .onTapGesture {
             viewModel.selectApplication(application.id)

@@ -36,7 +36,7 @@ public struct LoginView: View {
   private var brandingSection: some View {
     VStack(spacing: TCSpacing.medium) {
       Image(systemName: "bell.badge")
-        .font(.system(.largeTitle))
+        .font(TCTypography.displayLarge)
         .foregroundStyle(Color.tcAmber)
         .imageScale(.large)
 

@@ -22,7 +22,7 @@ public struct LargeRadiusWarningView: View {
   public var body: some View {
     HStack(alignment: .top, spacing: TCSpacing.small) {
       Image(systemName: "exclamationmark.triangle.fill")
-        .font(.system(.body))
+        .font(TCTypography.body)
         .foregroundStyle(Color.tcAmber)
         .accessibilityHidden(true)
 

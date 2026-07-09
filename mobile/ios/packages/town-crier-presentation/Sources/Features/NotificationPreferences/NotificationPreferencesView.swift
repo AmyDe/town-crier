@@ -225,7 +225,7 @@ public struct NotificationPreferencesView: View {
               .accessibilityLabel("Loading watch-zone count")
           }
           Image(systemName: "chevron.right")
-            .font(.system(.caption))
+            .font(TCTypography.caption)
             .foregroundStyle(Color.tcTextTertiary)
         }
       }
@@ -251,7 +251,7 @@ public struct NotificationPreferencesView: View {
             .foregroundStyle(Color.tcTextPrimary)
           Spacer()
           Image(systemName: "arrow.up.right.square")
-            .font(.system(.caption))
+            .font(TCTypography.caption)
             .foregroundStyle(Color.tcTextTertiary)
         }
       }

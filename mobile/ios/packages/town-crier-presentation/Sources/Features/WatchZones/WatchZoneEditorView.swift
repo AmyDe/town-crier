@@ -67,7 +67,7 @@ public struct WatchZoneEditorView: View {
       Text("Zone Name")
     } footer: {
       Text("A friendly name to identify this watch zone.")
-        .font(.system(.caption))
+        .font(TCTypography.caption)
         .foregroundStyle(Color.tcTextSecondary)
     }
   }
@@ -95,7 +95,7 @@ public struct WatchZoneEditorView: View {
       Text("Postcode")
     } footer: {
       Text("Enter a UK postcode to centre your watch zone.")
-        .font(.system(.caption))
+        .font(TCTypography.caption)
         .foregroundStyle(Color.tcTextSecondary)
     }
   }
@@ -165,7 +165,7 @@ public struct WatchZoneEditorView: View {
       Text("Notifications")
     } footer: {
       Text(notificationsFooterText)
-        .font(.system(.caption))
+        .font(TCTypography.caption)
         .foregroundStyle(Color.tcTextSecondary)
     }
   }
@@ -204,7 +204,7 @@ public struct WatchZoneEditorView: View {
     Section {
       Label {
         Text(error.userMessage)
-          .font(.system(.body))
+          .font(TCTypography.body)
           .foregroundStyle(Color.tcStatusRejected)
       } icon: {
         Image(systemName: "exclamationmark.triangle.fill")

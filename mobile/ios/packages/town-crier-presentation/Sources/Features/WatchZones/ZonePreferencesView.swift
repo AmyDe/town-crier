@@ -65,7 +65,7 @@ public struct ZonePreferencesView: View {
       Text("New applications")
     } footer: {
       Text("Get notified when a new planning application is submitted in this zone.")
-        .font(.system(.caption))
+        .font(TCTypography.caption)
         .foregroundStyle(Color.tcTextSecondary)
     }
   }
@@ -83,7 +83,7 @@ public struct ZonePreferencesView: View {
       Text("Decision updates")
     } footer: {
       Text("Get notified when a decision is made on an application in this zone.")
-        .font(.system(.caption))
+        .font(TCTypography.caption)
         .foregroundStyle(Color.tcTextSecondary)
     }
   }
@@ -92,7 +92,7 @@ public struct ZonePreferencesView: View {
     Section {
       Label {
         Text(error.userMessage)
-          .font(.system(.body))
+          .font(TCTypography.body)
           .foregroundStyle(Color.tcStatusRejected)
       } icon: {
         Image(systemName: "exclamationmark.triangle.fill")

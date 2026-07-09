@@ -54,7 +54,7 @@ public struct RedeemOfferCodeView: View {
   private var codeSection: some View {
     Section {
       TextField("XXXX-XXXX-XXXX", text: $viewModel.code)
-        .font(.system(.body, design: .monospaced))
+        .font(TCTypography.mono)
         .autocorrectionDisabled()
         #if os(iOS)
           .textInputAutocapitalization(.characters)

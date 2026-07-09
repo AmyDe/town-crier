@@ -18,11 +18,13 @@ public struct WatchZoneListView: View {
 
   public var body: some View {
     List {
+      mastheadRow
       if viewModel.zones.isEmpty && !viewModel.isLoading {
         emptyState
       } else {
         ForEach(viewModel.zones) { zone in
           WatchZoneRow(zone: zone) { viewModel.viewPlans() }
+            .cardRowInsets()
             .contentShape(Rectangle())
             .onTapGesture { viewModel.editZone(zone) }
         }
@@ -87,25 +89,37 @@ public struct WatchZoneListView: View {
     }
   }
 
+  // MARK: - Masthead
+
+  private var mastheadRow: some View {
+    MastheadView(title: "Watch Zones")
+      .padding(.horizontal, TCSpacing.medium)
+      .padding(.top, TCSpacing.small)
+      .padding(.bottom, TCSpacing.extraSmall)
+      .listRowSeparator(.hidden)
+      .listRowInsets(EdgeInsets())
+      .listRowBackground(Color.tcBackground)
+  }
+
   private var emptyState: some View {
     Section {
       VStack(spacing: TCSpacing.medium) {
         Image(systemName: "mappin.and.ellipse")
-          .font(.system(.largeTitle))
+          .font(TCTypography.displayLarge)
           .foregroundStyle(Color.tcTextTertiary)
         Text("No Watch Zones")
-          .font(.system(.headline).weight(.semibold))
+          .font(TCTypography.headline)
         Text(
           "Add a watch zone to start monitoring planning applications in your area."
         )
-        .font(.system(.body))
+        .font(TCTypography.body)
         .foregroundStyle(Color.tcTextSecondary)
         .multilineTextAlignment(.center)
         Button {
           viewModel.addZone()
         } label: {
           Text("Add Watch Zone")
-            .font(.system(.body).weight(.semibold))
+            .font(TCTypography.bodyEmphasis)
             .frame(maxWidth: .infinity)
         }
         .buttonStyle(.borderedProminent)
@@ -146,11 +160,14 @@ private struct WatchZoneRow: View {
         .clipShape(RoundedRectangle(cornerRadius: TCCornerRadius.small))
 
       VStack(alignment: .leading, spacing: TCSpacing.extraSmall) {
-        Text(zone.name)
-          .font(.system(.headline).weight(.semibold))
+        // Mono header strip: radius reads as the zone's metadata line,
+        // ahead of its name (GH#857) — mirrors the planning-reference strip
+        // on ApplicationListRow.
         Text(formatRadius(zone.radiusMetres))
-          .font(.system(.caption))
+          .font(TCTypography.mono)
           .foregroundStyle(Color.tcTextSecondary)
+        Text(zone.name)
+          .font(TCTypography.headline)
         if zone.paused {
           PausedZoneBadge(onUpgrade: onUpgrade)
         }
@@ -159,10 +176,11 @@ private struct WatchZoneRow: View {
       Spacer()
 
       Image(systemName: "chevron.right")
-        .font(.system(.caption))
+        .font(TCTypography.caption)
         .foregroundStyle(Color.tcTextTertiary)
     }
-    .padding(.vertical, TCSpacing.extraSmall)
+    .padding(TCSpacing.medium)
+    .noticeCardStyle()
   }
 
 }
@@ -184,7 +202,7 @@ private struct UnconvertedLocalZoneRow: View {
   var body: some View {
     HStack(alignment: .top, spacing: TCSpacing.medium) {
       Image(systemName: "mappin.and.ellipse")
-        .font(.system(.title3))
+        .font(TCTypography.headline)
         .foregroundStyle(Color.tcAmber)
         .accessibilityHidden(true)
 
@@ -205,7 +223,7 @@ private struct UnconvertedLocalZoneRow: View {
 
       Button(action: onDismiss) {
         Image(systemName: "xmark")
-          .font(.system(.caption))
+          .font(TCTypography.caption)
           .foregroundStyle(Color.tcTextTertiary)
       }
       .buttonStyle(.plain)

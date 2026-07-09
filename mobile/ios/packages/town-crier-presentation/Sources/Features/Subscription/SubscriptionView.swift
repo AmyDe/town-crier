@@ -47,7 +47,7 @@ public struct SubscriptionView: View {
   private var headerSection: some View {
     VStack(spacing: TCSpacing.small) {
       Image(systemName: "bell.badge.fill")
-        .font(.system(.largeTitle))
+        .font(TCTypography.displayLarge)
         .foregroundStyle(Color.tcAmber)
 
       Text("Upgrade Town Crier")
@@ -214,7 +214,7 @@ public struct SubscriptionView: View {
   private func errorSection(_ error: DomainError) -> some View {
     VStack(spacing: TCSpacing.medium) {
       Image(systemName: "exclamationmark.triangle")
-        .font(.system(.largeTitle))
+        .font(TCTypography.displayLarge)
         .foregroundStyle(Color.tcTextTertiary)
 
       Text("Something went wrong")

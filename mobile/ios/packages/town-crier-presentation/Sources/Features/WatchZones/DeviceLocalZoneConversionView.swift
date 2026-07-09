@@ -86,11 +86,13 @@ private struct ConversionZoneRow: View {
         .clipShape(RoundedRectangle(cornerRadius: TCCornerRadius.small))
 
       VStack(alignment: .leading, spacing: TCSpacing.extraSmall) {
-        Text(zone.name)
-          .font(.system(.headline).weight(.semibold))
+        // Mono metadata line ahead of the name (GH#857), matching the
+        // header-strip pattern on WatchZoneRow.
         Text(formatRadius(zone.radiusMetres))
-          .font(.system(.caption))
+          .font(TCTypography.mono)
           .foregroundStyle(Color.tcTextSecondary)
+        Text(zone.name)
+          .font(TCTypography.headline)
       }
 
       Spacer()

@@ -30,7 +30,7 @@ public struct WatchZoneUpsellView: View {
 
       // Icon
       Image(systemName: "mappin.and.ellipse")
-        .font(.system(.largeTitle))
+        .font(TCTypography.displayLarge)
         .foregroundStyle(Color.tcAmber)
 
       // Title

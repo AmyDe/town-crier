@@ -223,7 +223,7 @@ public struct MapView: View {
     private func pinView(for cluster: MapCluster) -> some View {
       if cluster.count > 1 {
         Text(cluster.count > 999 ? "999+" : "\(cluster.count)")
-          .font(.system(.caption, weight: .semibold))
+          .font(TCTypography.captionEmphasis)
           .foregroundStyle(Color.tcTextOnAccent)
           .padding(TCSpacing.small)
           .background(Circle().fill(Color.tcAmber))
@@ -231,7 +231,7 @@ public struct MapView: View {
       } else {
         let status = cluster.memberStatus ?? .unknown
         Image(systemName: "mappin.circle.fill")
-          .font(.system(.title2))
+          .font(TCTypography.displaySmall)
           .foregroundStyle(status.displayColor)
           .background(
             Circle()

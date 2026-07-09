@@ -22,7 +22,7 @@ struct ZoneMapPreview: View {
     Map(initialPosition: .region(region)) {
       MapCircle(center: clLocation, radius: radiusMetres)
         .foregroundStyle(Color.tcAmber.opacity(0.2))
-        .stroke(Color.tcAmber, lineWidth: strokeWidth)
+        .stroke(Color.tcAmber, style: StrokeStyle(lineWidth: strokeWidth, dash: [6, 4]))
     }
     .mapStyle(.standard(elevation: .flat))
     .allowsHitTesting(false)

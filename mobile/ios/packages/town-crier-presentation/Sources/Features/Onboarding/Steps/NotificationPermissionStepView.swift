@@ -31,7 +31,7 @@ struct NotificationPermissionStepView: View {
   @ViewBuilder
   private var instantAlertsContent: some View {
     Image(systemName: "bell.badge")
-      .font(.system(.largeTitle))
+      .font(TCTypography.displayLarge)
       .foregroundStyle(Color.tcAmber)
 
     Text("Stay updated")
@@ -61,7 +61,7 @@ struct NotificationPermissionStepView: View {
   @ViewBuilder
   private var weeklyDigestContent: some View {
     Image(systemName: "envelope")
-      .font(.system(.largeTitle))
+      .font(TCTypography.displayLarge)
       .foregroundStyle(Color.tcAmber)
 
     Text("Stay updated")

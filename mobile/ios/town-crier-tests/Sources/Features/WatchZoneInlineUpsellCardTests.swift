@@ -14,6 +14,13 @@ struct WatchZoneInlineUpsellCardTests {
 
   // MARK: - Heading
 
+  @Test func eyebrow_readsUpgrade() {
+    // The brass small-caps eyebrow (GH#857) — the only filled-amber
+    // container on this screen is the CTA button below; the card itself
+    // stays bordered, not filled (amber-rationing rule).
+    #expect(WatchZoneInlineUpsellCard.Copy.eyebrow == "Upgrade")
+  }
+
   @Test func title_invitesAnUpgrade() {
     #expect(WatchZoneInlineUpsellCard.Copy.title == "Do more with a plan")
   }
