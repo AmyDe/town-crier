@@ -4,6 +4,7 @@ import type { ApplicationRepository } from '../../domain/ports/application-repos
 import type { DesignationRepository } from '../../domain/ports/designation-repository';
 import type { SavedApplicationRepository } from '../../domain/ports/saved-application-repository';
 import { formatDate, statusClassName, statusDisplayLabel } from '../../utils/formatting';
+import { StatusIcon } from '../../components/StatusIcon/StatusIcon';
 import { useApplication } from './useApplication';
 import { useDesignations } from './useDesignations';
 import { useSavedApplication } from './useSavedApplication';
@@ -75,6 +76,7 @@ export function ApplicationDetailPage({
             className={`${styles.badge ?? ''} ${statusClassName(application.appState, styles)}`}
             role="status"
           >
+            <StatusIcon appState={application.appState} />
             {statusDisplayLabel(application.appState)}
           </span>
         </div>

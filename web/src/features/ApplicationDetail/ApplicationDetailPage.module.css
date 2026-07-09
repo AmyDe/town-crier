@@ -58,59 +58,55 @@
   margin: 0 0 var(--tc-space-sm) 0;
 }
 
+/* ---------- Status stamp: outlined, uppercase, icon + label always ---------- */
 .badge {
   display: inline-flex;
   align-items: center;
   gap: var(--tc-space-xs);
   padding: var(--tc-space-xs) var(--tc-space-sm);
-  border-radius: var(--tc-radius-full);
+  border: 1.5px solid currentColor;
+  border-radius: var(--tc-radius-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
   font-size: var(--tc-text-caption);
-  font-weight: var(--tc-weight-medium);
+  font-weight: var(--tc-weight-semibold);
   white-space: nowrap;
+  background: transparent;
 }
 
 .statusUndecided {
-  background: color-mix(in srgb, var(--tc-status-pending) 15%, transparent);
   color: var(--tc-status-pending);
 }
 
 .statusPermitted {
-  background: color-mix(in srgb, var(--tc-status-permitted) 15%, transparent);
   color: var(--tc-status-permitted);
 }
 
 .statusConditions {
-  background: color-mix(in srgb, var(--tc-status-conditions) 15%, transparent);
   color: var(--tc-status-conditions);
 }
 
 .statusRejected {
-  background: color-mix(in srgb, var(--tc-status-rejected) 15%, transparent);
   color: var(--tc-status-rejected);
 }
 
 .statusWithdrawn {
-  background: color-mix(in srgb, var(--tc-status-withdrawn) 15%, transparent);
   color: var(--tc-status-withdrawn);
 }
 
 .statusAppealed {
-  background: color-mix(in srgb, var(--tc-status-appealed) 15%, transparent);
   color: var(--tc-status-appealed);
 }
 
 .statusUnresolved {
-  background: color-mix(in srgb, var(--tc-text-secondary) 15%, transparent);
   color: var(--tc-text-secondary);
 }
 
 .statusReferred {
-  background: color-mix(in srgb, var(--tc-status-appealed) 15%, transparent);
   color: var(--tc-status-appealed);
 }
 
 .statusNotAvailable {
-  background: color-mix(in srgb, var(--tc-status-withdrawn) 15%, transparent);
   color: var(--tc-status-withdrawn);
 }
 
@@ -197,13 +193,13 @@
 }
 
 .saveButton:hover {
-  border-color: var(--tc-amber);
+  border-color: var(--tc-text-secondary);
 }
 
 .saved {
-  background: color-mix(in srgb, var(--tc-amber) 15%, transparent);
-  border-color: var(--tc-amber);
-  color: var(--tc-amber);
+  background: color-mix(in srgb, var(--tc-text-primary) 10%, transparent);
+  border-color: var(--tc-text-primary);
+  color: var(--tc-text-primary);
 }
 
 .portalLink {
