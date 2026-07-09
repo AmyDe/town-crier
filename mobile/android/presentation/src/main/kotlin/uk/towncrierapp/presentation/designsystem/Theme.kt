@@ -140,8 +140,10 @@ public fun TownCrierTheme(
 
 /**
  * Mirrors `MaterialTheme.colorScheme`/`.typography` for tokens Material 3 has
- * no slot for: `TownCrierTheme.colors.*` (status colors, amberMuted, overlay)
- * and `TownCrierTheme.bodyEmphasis` (tcBodyEmphasis — bodyLarge at SemiBold).
+ * no slot for: `TownCrierTheme.colors.*` (status colors, amberMuted, overlay),
+ * `TownCrierTheme.bodyEmphasis` (tcBodyEmphasis — bodyLarge at SemiBold), and
+ * `TownCrierTheme.mono` (the Public Notice mono metadata role — references,
+ * dates, distances — epic #848 R5).
  */
 public object TownCrierTheme {
     public val colors: TownCrierColors
@@ -150,4 +152,7 @@ public object TownCrierTheme {
 
     public val bodyEmphasis: TextStyle
         get() = bodyEmphasisTextStyle
+
+    public val mono: TextStyle
+        get() = monoTextStyle
 }
