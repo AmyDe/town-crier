@@ -3,7 +3,18 @@
   top: 0;
   z-index: 100;
   background-color: var(--tc-background);
-  border-bottom: 1px solid var(--tc-border);
+}
+
+/* Masthead double rule — a 2.5px heavy rule over a 1px hairline, replacing a
+   plain single border-bottom (Public Notice component language). */
+.ruleHeavy {
+  height: 2.5px;
+  background-color: var(--tc-text-primary);
+}
+
+.ruleHairline {
+  height: 1px;
+  background-color: var(--tc-border);
 }
 
 .inner {
@@ -20,6 +31,8 @@
   font-weight: var(--tc-weight-bold);
   color: var(--tc-text-primary);
   text-decoration: none;
+  font-variant: small-caps;
+  letter-spacing: 0.06em;
 }
 
 .logo:hover {
@@ -119,7 +132,7 @@
 }
 
 .hamburger:hover {
-  background-color: var(--tc-amber-muted);
+  background-color: color-mix(in srgb, var(--tc-text-secondary) 10%, transparent);
 }
 
 /* Tablet and above: show links inline, hide hamburger */
