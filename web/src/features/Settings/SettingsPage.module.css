@@ -84,7 +84,7 @@
 }
 
 .secondaryButton:hover {
-  border-color: var(--tc-amber);
+  border-color: var(--tc-text-secondary);
 }
 
 .secondaryButton:disabled {
@@ -151,7 +151,7 @@
 
 .legalLink {
   font-size: var(--tc-text-body);
-  color: var(--tc-amber);
+  color: var(--tc-text-primary);
   text-decoration: none;
   padding: var(--tc-space-xs) 0;
 }
@@ -205,5 +205,5 @@
 }
 
 .select:hover {
-  border-color: var(--tc-amber);
+  border-color: var(--tc-text-secondary);
 }

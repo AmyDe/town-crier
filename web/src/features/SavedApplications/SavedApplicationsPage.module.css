@@ -51,7 +51,7 @@
 }
 
 .chip:hover {
-  border-color: var(--tc-amber);
+  border-color: var(--tc-text-secondary);
   color: var(--tc-text-primary);
 }
 

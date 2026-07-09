@@ -1,9 +1,12 @@
+/* A caution callout, not a brand moment — uses the "conditions" status hue
+   instead of the brand accent token, keeping that token rationed to
+   CTA/active/focus/unread/upsell roles. */
 .callout {
   display: flex;
   align-items: flex-start;
   gap: var(--tc-space-sm);
   padding: var(--tc-space-md);
-  background: var(--tc-amber-muted);
+  background: color-mix(in srgb, var(--tc-status-conditions) 15%, transparent);
   border-radius: var(--tc-radius-md);
 }
 
@@ -15,7 +18,7 @@
   width: 24px;
   height: 24px;
   border-radius: var(--tc-radius-full);
-  background: var(--tc-amber);
+  background: var(--tc-status-conditions);
   color: var(--tc-text-on-accent);
   font-size: var(--tc-text-caption);
   font-weight: var(--tc-weight-bold);

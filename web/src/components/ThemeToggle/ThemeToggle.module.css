@@ -10,5 +10,5 @@
 }
 
 .button:hover {
-  background-color: var(--tc-amber-muted);
+  background-color: color-mix(in srgb, var(--tc-text-secondary) 10%, transparent);
 }

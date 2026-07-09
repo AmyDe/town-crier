@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { SearchResultCard } from '../SearchResultCard';
@@ -56,6 +56,14 @@ describe('SearchResultCard', () => {
     render(<SearchResultCard result={anotherSearchResult({ appState: null })} />);
 
     expect(screen.queryByText(/granted|refused|permitted|rejected/i)).not.toBeInTheDocument();
+  });
+
+  it('pairs the status badge with an icon glyph (colour is never the sole indicator)', () => {
+    render(<SearchResultCard result={aSearchResult({ appState: 'Permitted' })} />);
+
+    const badge = screen.getByText('Granted').closest('span');
+    expect(badge).not.toBeNull();
+    expect(within(badge!).getByTestId('status-icon')).toBeInTheDocument();
   });
 
   it('renders received and decided dates when present', () => {

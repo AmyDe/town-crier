@@ -101,4 +101,29 @@ describe('Pricing', () => {
       screen.getByRole('heading', { name: /pricing/i }),
     ).toBeInTheDocument();
   });
+
+  it('renders a filled amber CTA only on the recommended (paid) tier card', () => {
+    render(<Pricing />);
+
+    const cards = screen.getAllByRole('article');
+    const ctas = screen.getAllByRole('link', { name: /start.*trial/i });
+    expect(ctas).toHaveLength(1);
+
+    const personalCard = cards.find((card) => within(card).queryByText('Personal'));
+    expect(personalCard).toBeDefined();
+    expect(within(personalCard!).getByRole('link', { name: /start.*trial/i })).toBeInTheDocument();
+  });
+
+  it('does not render a CTA on the Free or Pro tier cards', () => {
+    render(<Pricing />);
+
+    const cards = screen.getAllByRole('article');
+    const freeCard = cards.find((card) => within(card).queryByText('Free'));
+    const proCard = cards.find((card) => within(card).queryByText('Pro'));
+    expect(freeCard).toBeDefined();
+    expect(proCard).toBeDefined();
+
+    expect(within(freeCard!).queryByRole('link')).not.toBeInTheDocument();
+    expect(within(proCard!).queryByRole('link')).not.toBeInTheDocument();
+  });
 });

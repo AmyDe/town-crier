@@ -102,7 +102,7 @@
 }
 
 .quickLink:hover {
-  border-color: var(--tc-amber);
+  border-color: var(--tc-text-secondary);
 }
 
 .quickLink:focus-visible {

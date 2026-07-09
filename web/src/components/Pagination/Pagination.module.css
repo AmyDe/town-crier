@@ -28,7 +28,7 @@
 }
 
 .button:hover:not(:disabled) {
-  border-color: var(--tc-amber);
+  border-color: var(--tc-text-secondary);
 }
 
 .button:focus-visible {

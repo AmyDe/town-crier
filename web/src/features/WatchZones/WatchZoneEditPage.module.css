@@ -9,7 +9,7 @@
 }
 
 .backLink {
-  color: var(--tc-amber);
+  color: var(--tc-text-primary);
   text-decoration: none;
   font-weight: var(--tc-font-semibold);
   font-size: var(--tc-text-caption);

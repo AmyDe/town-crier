@@ -12,7 +12,7 @@
 .appName {
   font-size: var(--tc-text-headline);
   font-weight: var(--tc-weight-bold);
-  color: var(--tc-amber);
+  color: var(--tc-text-primary);
   text-decoration: none;
   padding: var(--tc-space-sm) var(--tc-space-sm);
   margin-bottom: var(--tc-space-md);
@@ -20,7 +20,7 @@
 
 .appName:hover {
   text-decoration: none;
-  color: var(--tc-amber-hover);
+  color: var(--tc-text-primary);
 }
 
 .navList {
@@ -42,7 +42,7 @@
 }
 
 .navLink:hover {
-  background: var(--tc-amber-muted);
+  background: color-mix(in srgb, var(--tc-text-secondary) 10%, transparent);
   color: var(--tc-text-primary);
   text-decoration: none;
 }

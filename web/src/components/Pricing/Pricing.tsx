@@ -1,3 +1,4 @@
+import { appStoreUrl } from '../../config/links';
 import styles from './Pricing.module.css';
 
 interface Feature {
@@ -40,7 +41,7 @@ export function Pricing() {
             className={`${styles.card} ${tier.recommended ? styles.recommended : ''}`}
           >
             {tier.recommended && (
-              <span className={styles.badge}>Recommended</span>
+              <span className={styles.eyebrow}>Recommended</span>
             )}
             <h3 className={styles.tierName}>{tier.name}</h3>
             <p className={styles.price}>
@@ -66,6 +67,16 @@ export function Pricing() {
                 );
               })}
             </ul>
+            {tier.recommended && (
+              <a
+                className={styles.cta}
+                href={appStoreUrl('web-pricing')}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Start your trial
+              </a>
+            )}
           </article>
         ))}
       </div>

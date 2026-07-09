@@ -25,6 +25,26 @@
   unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 
+/* ---------- Self-hosted Fraunces font (Public Notice display face) ----------
+   Served from /public/fonts, same self-hosting rationale as Inter above.
+   Display/headline roles only (regular for body-adjacent display copy, 600 for
+   semibold headlines) — body text never uses Fraunces. Latin subset only. */
+@font-face {
+  font-family: 'Fraunces';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/fraunces-latin-400-normal.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Fraunces';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/fraunces-latin-600-normal.woff2') format('woff2');
+}
+
 /* ---------- Box-sizing reset ---------- */
 *,
 *::before,
@@ -133,6 +153,17 @@ input, textarea, select {
   font-family: inherit;
   font-size: inherit;
   color: inherit;
+}
+
+/* ---------- Mono metadata utility ----------
+   Shared across features for planning refs, dates, and distances — anywhere a
+   short piece of tabular/identifier-like metadata needs to sit apart from body
+   copy. Not a CSS Module class (deliberately global) so any component's own
+   .module.css can compose it via a plain className alongside its own scoped
+   classes, the same way box-sizing/reset rules above apply app-wide. */
+.tc-mono-meta {
+  font-family: var(--tc-font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---------- Reduced motion ---------- */
