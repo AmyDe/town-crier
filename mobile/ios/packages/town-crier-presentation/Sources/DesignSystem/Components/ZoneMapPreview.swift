@@ -12,6 +12,7 @@ struct ZoneMapPreview: View {
   let radiusMetres: Double
   let strokeWidth: CGFloat
 
+  // swiftlint:disable:next discouraged_default_parameter
   init(centre: Coordinate, radiusMetres: Double, strokeWidth: CGFloat = 1) {
     self.centre = centre
     self.radiusMetres = radiusMetres
@@ -22,7 +23,7 @@ struct ZoneMapPreview: View {
     Map(initialPosition: .region(region)) {
       MapCircle(center: clLocation, radius: radiusMetres)
         .foregroundStyle(Color.tcAmber.opacity(0.2))
-        .stroke(Color.tcAmber, lineWidth: strokeWidth)
+        .stroke(Color.tcAmber, style: StrokeStyle(lineWidth: strokeWidth, dash: [6, 4]))
     }
     .mapStyle(.standard(elevation: .flat))
     .allowsHitTesting(false)
