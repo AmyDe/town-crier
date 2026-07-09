@@ -12,7 +12,6 @@ struct ZoneMapPreview: View {
   let radiusMetres: Double
   let strokeWidth: CGFloat
 
-  // swiftlint:disable:next discouraged_default_parameter
   init(centre: Coordinate, radiusMetres: Double, strokeWidth: CGFloat = 1) {
     self.centre = centre
     self.radiusMetres = radiusMetres
