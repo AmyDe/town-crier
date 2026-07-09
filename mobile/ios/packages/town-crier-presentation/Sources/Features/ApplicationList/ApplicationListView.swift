@@ -29,6 +29,7 @@ public struct ApplicationListView: View {
 
   public var body: some View {
     List {
+      mastheadRow
       chipRows
       contentRows
     }
@@ -111,6 +112,18 @@ public struct ApplicationListView: View {
       get: { viewModel.sort },
       set: { viewModel.sort = $0 }
     )
+  }
+
+  // MARK: - Masthead
+
+  private var mastheadRow: some View {
+    MastheadView(title: "Applications")
+      .padding(.horizontal, TCSpacing.medium)
+      .padding(.top, TCSpacing.small)
+      .padding(.bottom, TCSpacing.extraSmall)
+      .listRowSeparator(.hidden)
+      .listRowInsets(EdgeInsets())
+      .listRowBackground(Color.tcBackground)
   }
 
   // MARK: - Chip Rows

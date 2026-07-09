@@ -18,6 +18,7 @@ public struct WatchZoneListView: View {
 
   public var body: some View {
     List {
+      mastheadRow
       if viewModel.zones.isEmpty && !viewModel.isLoading {
         emptyState
       } else {
@@ -86,6 +87,18 @@ public struct WatchZoneListView: View {
       )
       .selfSizingSheet()
     }
+  }
+
+  // MARK: - Masthead
+
+  private var mastheadRow: some View {
+    MastheadView(title: "Watch Zones")
+      .padding(.horizontal, TCSpacing.medium)
+      .padding(.top, TCSpacing.small)
+      .padding(.bottom, TCSpacing.extraSmall)
+      .listRowSeparator(.hidden)
+      .listRowInsets(EdgeInsets())
+      .listRowBackground(Color.tcBackground)
   }
 
   private var emptyState: some View {
