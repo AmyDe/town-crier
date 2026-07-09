@@ -2,6 +2,8 @@
 
 import PackageDescription
 
+// SPM requires this exact top-level constant name.
+// swiftlint:disable:next prefixed_toplevel_constant
 let package = Package(
   name: "TownCrier",
   platforms: [
@@ -33,7 +35,10 @@ let package = Package(
       name: "TownCrierPresentation",
       dependencies: ["TownCrierDomain"],
       path: "packages/town-crier-presentation/Sources",
-      resources: [.process("Resources/legal")]
+      resources: [
+        .process("Resources/legal"),
+        .process("DesignSystem/Resources/Fonts"),
+      ]
     ),
     .testTarget(
       name: "TownCrierTests",
