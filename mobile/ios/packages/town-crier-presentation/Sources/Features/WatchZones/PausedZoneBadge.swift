@@ -12,11 +12,14 @@ import SwiftUI
 /// free-tier inline upsell card, so every "upgrade" entry point on the Watch
 /// Zones screen converges on one paywall presentation path.
 ///
-/// Follows the design language's status-badge shape (capsule, paired icon,
-/// 15% opacity background) using `tcStatusWithdrawn` — the same "no longer
-/// active" grey used for withdrawn applications — since a paused zone is, in
-/// the same sense, currently dormant. The zone itself is never deleted,
-/// edited, or hidden while paused; only new notifications stop.
+/// Follows the design language's stamp treatment (GH#857): uppercase kerned
+/// label, 1.5pt outline, no fill, paired icon — using `tcStatusWithdrawn`,
+/// the same "no longer active" grey used for withdrawn applications, since a
+/// paused zone is, in the same sense, currently dormant. The zone itself is
+/// never deleted, edited, or hidden while paused; only new notifications
+/// stop. The amber "upgrade" glyph a paused stamp previously carried is
+/// dropped deliberately (amber-rationing rule) — upgrade emphasis belongs on
+/// the paywall screen this badge opens, not inside the stamp itself.
 struct PausedZoneBadge: View {
   /// User-facing copy, kept in one place so it can be unit-tested directly.
   enum Copy {
@@ -35,17 +38,19 @@ struct PausedZoneBadge: View {
   var body: some View {
     Button(action: onUpgrade) {
       HStack(spacing: TCSpacing.extraSmall) {
-        Image(systemName: "pause.circle.fill")
+        Image(systemName: "pause.circle")
         Text(Copy.label)
-        Image(systemName: "arrow.up.circle.fill")
-          .foregroundStyle(Color.tcAmber)
+          .textCase(.uppercase)
+          .kerning(0.6)
       }
       .font(TCTypography.captionEmphasis)
       .foregroundStyle(Color.tcStatusWithdrawn)
       .padding(.horizontal, TCSpacing.small)
       .padding(.vertical, TCSpacing.extraSmall)
-      .background(Color.tcStatusWithdrawn.opacity(0.15))
-      .clipShape(Capsule())
+      .overlay(
+        RoundedRectangle(cornerRadius: TCCornerRadius.small)
+          .stroke(Color.tcStatusWithdrawn, lineWidth: 1.5)
+      )
     }
     .buttonStyle(.plain)
     .accessibilityLabel(Copy.accessibilityLabel)

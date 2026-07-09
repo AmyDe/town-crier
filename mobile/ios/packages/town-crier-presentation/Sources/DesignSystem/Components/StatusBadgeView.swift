@@ -1,10 +1,13 @@
 import SwiftUI
 import TownCrierDomain
 
-/// A compact capsule badge showing the icon, label, and color for a planning application status.
+/// A compact "stamp" badge showing the icon, label, and color for a planning
+/// application status.
 ///
-/// Uses the design system's `tcCaptionEmphasis` typography and the semantic `tcStatus*` colors
-/// with a 15% opacity background, following the design language specification for status badges.
+/// Public Notice (GH#857): status indicators read as an official stamp
+/// rather than a filled pill — uppercase kerned text, a 1.5pt outline in
+/// `status.displayColor`, and no fill. The SF Symbol icon is always paired
+/// with the text label (never colour alone) for colour-blind accessibility.
 struct StatusBadgeView: View {
   let status: ApplicationStatus
 
@@ -12,12 +15,16 @@ struct StatusBadgeView: View {
     HStack(spacing: TCSpacing.extraSmall) {
       Image(systemName: status.displayIcon)
       Text(status.displayLabel)
+        .textCase(.uppercase)
+        .kerning(0.6)
     }
     .font(TCTypography.captionEmphasis)
     .foregroundStyle(status.displayColor)
     .padding(.horizontal, TCSpacing.small)
     .padding(.vertical, TCSpacing.extraSmall)
-    .background(status.displayColor.opacity(0.15))
-    .clipShape(Capsule())
+    .overlay(
+      RoundedRectangle(cornerRadius: TCCornerRadius.small)
+        .stroke(status.displayColor, lineWidth: 1.5)
+    )
   }
 }

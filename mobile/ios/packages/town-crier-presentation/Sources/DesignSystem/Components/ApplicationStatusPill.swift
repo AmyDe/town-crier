@@ -1,13 +1,14 @@
 import SwiftUI
 import TownCrierDomain
 
-/// A capsule pill rendering a planning application's status.
+/// A "stamp" rendering of a planning application's status.
 ///
-/// The pill follows the design language's status-badge specification (capsule
-/// shape, status colour at 15% opacity background, paired SF Symbol icon for
-/// colour-blind accessibility) and delegates all label / icon / colour
-/// decisions to ``ApplicationStatus`` display extensions so there is a single
-/// source of truth for the UK planning vocabulary.
+/// Public Notice (GH#857): the pill follows the design language's stamp
+/// specification (uppercase kerned label, 1.5pt outline in `status.displayColor`,
+/// no fill, paired SF Symbol icon for colour-blind accessibility) and
+/// delegates all label / icon / colour decisions to ``ApplicationStatus``
+/// display extensions so there is a single source of truth for the UK
+/// planning vocabulary.
 ///
 /// Read/unread state is signalled by the leading accent dot on
 /// ``ApplicationListRow``, not by mutating the pill's saturation. Keeping the
@@ -28,13 +29,17 @@ struct ApplicationStatusPill: View {
     HStack(spacing: TCSpacing.extraSmall) {
       Image(systemName: iconName)
       Text(label)
+        .textCase(.uppercase)
+        .kerning(0.6)
     }
     .font(TCTypography.captionEmphasis)
     .foregroundStyle(status.displayColor)
     .padding(.horizontal, TCSpacing.small)
     .padding(.vertical, TCSpacing.extraSmall)
-    .background(status.displayColor.opacity(0.15))
-    .clipShape(Capsule())
+    .overlay(
+      RoundedRectangle(cornerRadius: TCCornerRadius.small)
+        .stroke(status.displayColor, lineWidth: 1.5)
+    )
     .accessibilityElement(children: .combine)
     .accessibilityLabel("Status: \(label)")
   }
