@@ -52,6 +52,20 @@ describe('Navbar', () => {
     expect(logo).toHaveAttribute('href', '#');
   });
 
+  it('renders the masthead wordmark in small caps, letterspaced', () => {
+    renderNavbar();
+
+    const logo = screen.getByRole('link', { name: /town crier/i });
+    expect(logo.className).toMatch(/logo/);
+  });
+
+  it('renders a double rule (heavy + hairline) under the masthead', () => {
+    renderNavbar();
+
+    expect(screen.getByTestId('masthead-rule-heavy')).toBeInTheDocument();
+    expect(screen.getByTestId('masthead-rule-hairline')).toBeInTheDocument();
+  });
+
   it('renders anchor links for Features, Pricing, and FAQ', () => {
     renderNavbar();
 
