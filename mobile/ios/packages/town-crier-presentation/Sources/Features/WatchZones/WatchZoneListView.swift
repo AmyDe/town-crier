@@ -5,6 +5,10 @@ import TownCrierDomain
 ///
 /// When the user has reached their tier's zone limit, the add button is replaced
 /// with an ``UpgradeBadgeView`` and tapping it triggers the upgrade flow.
+///
+/// A zone paused by a subscription downgrade (GH#889 P1/P2) shows a
+/// ``PausedZoneBadge`` on its row; tapping the badge routes to the same
+/// subscription paywall via ``WatchZoneListViewModel/viewPlans()``.
 public struct WatchZoneListView: View {
   @StateObject private var viewModel: WatchZoneListViewModel
 
@@ -18,7 +22,7 @@ public struct WatchZoneListView: View {
         emptyState
       } else {
         ForEach(viewModel.zones) { zone in
-          WatchZoneRow(zone: zone)
+          WatchZoneRow(zone: zone) { viewModel.viewPlans() }
             .contentShape(Rectangle())
             .onTapGesture { viewModel.editZone(zone) }
         }
@@ -133,6 +137,7 @@ extension View {
 
 private struct WatchZoneRow: View {
   let zone: WatchZone
+  let onUpgrade: () -> Void
 
   var body: some View {
     HStack(spacing: TCSpacing.medium) {
@@ -146,6 +151,9 @@ private struct WatchZoneRow: View {
         Text(formatRadius(zone.radiusMetres))
           .font(.system(.caption))
           .foregroundStyle(Color.tcTextSecondary)
+        if zone.paused {
+          PausedZoneBadge(onUpgrade: onUpgrade)
+        }
       }
 
       Spacer()
