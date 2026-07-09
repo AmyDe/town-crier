@@ -13,30 +13,30 @@ describe('Design tokens (tokens.css)', () => {
   const css = readCss(tokensPath);
 
   it('defines dark theme colour tokens on :root (default)', () => {
-    expect(css).toContain('--tc-background: #1A1A1E');
-    expect(css).toContain('--tc-surface: #242428');
-    expect(css).toContain('--tc-surface-elevated: #2E2E33');
+    expect(css).toContain('--tc-background: #191713');
+    expect(css).toContain('--tc-surface: #23201A');
+    expect(css).toContain('--tc-surface-elevated: #2B2822');
     expect(css).toContain('--tc-amber: #E9A620');
-    expect(css).toContain('--tc-text-primary: #F1EFE9');
-    expect(css).toContain('--tc-text-secondary: #9B9590');
-    expect(css).toContain('--tc-text-tertiary: #5C5852');
+    expect(css).toContain('--tc-text-primary: #EFE9DC');
+    expect(css).toContain('--tc-text-secondary: #A69E8F');
+    expect(css).toContain('--tc-text-tertiary: #6E675B');
     expect(css).toContain('--tc-text-on-accent: #1C1917');
   });
 
   it('defines light theme tokens under [data-theme="light"]', () => {
     expect(css).toContain('[data-theme="light"]');
-    expect(css).toContain('--tc-background: #FAF8F5');
-    expect(css).toContain('--tc-surface: #FFFFFF');
-    expect(css).toContain('--tc-amber: #D4910A');
-    expect(css).toContain('--tc-text-primary: #1C1917');
-    expect(css).toContain('--tc-text-secondary: #6B6560');
+    expect(css).toContain('--tc-background: #F5F0E6');
+    expect(css).toContain('--tc-surface: #FFFDF6');
+    expect(css).toContain('--tc-amber: #9E6709');
+    expect(css).toContain('--tc-text-primary: #24201A');
+    expect(css).toContain('--tc-text-secondary: #6D665C');
   });
 
   it('defines OLED dark tokens under [data-theme="oled-dark"]', () => {
     expect(css).toContain('[data-theme="oled-dark"]');
     expect(css).toContain('--tc-background: #000000');
-    expect(css).toContain('--tc-surface: #0A0A0A');
-    expect(css).toContain('--tc-surface-elevated: #161616');
+    expect(css).toContain('--tc-surface: #0A0908');
+    expect(css).toContain('--tc-surface-elevated: #151310');
   });
 
   it('defines status tokens for all PlanIt application states', () => {
@@ -64,14 +64,16 @@ describe('Design tokens (tokens.css)', () => {
   });
 
   it('defines corner radius tokens', () => {
-    expect(css).toContain('--tc-radius-sm: 8px');
-    expect(css).toContain('--tc-radius-md: 12px');
-    expect(css).toContain('--tc-radius-lg: 16px');
+    expect(css).toContain('--tc-radius-sm: 3px');
+    expect(css).toContain('--tc-radius-md: 6px');
+    expect(css).toContain('--tc-radius-lg: 12px');
     expect(css).toContain('--tc-radius-full: 9999px');
   });
 
   it('defines typography tokens', () => {
     expect(css).toContain('--tc-font-family');
+    expect(css).toContain("--tc-font-display: 'Fraunces', 'Iowan Old Style', Georgia, serif");
+    expect(css).toContain("--tc-font-mono: ui-monospace, 'SF Mono', Menlo, 'Roboto Mono', monospace");
     expect(css).toContain('--tc-text-display-large');
     expect(css).toContain('--tc-text-display-small');
     expect(css).toContain('--tc-text-headline');

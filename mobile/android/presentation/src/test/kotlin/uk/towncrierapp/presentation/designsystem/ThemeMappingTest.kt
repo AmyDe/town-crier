@@ -19,19 +19,19 @@ class ThemeMappingTest {
 
         @Test
         fun `light Material role mapping matches the epic token table`() {
-            assertEquals(Color(0xFFD4910A), scheme.primary) // tcAmber
-            assertEquals(Color(0xFFFFFFFF), scheme.onPrimary) // tcTextOnAccent
-            assertEquals(Color(0xFF1C1917), scheme.onPrimaryContainer) // tcTextPrimary
-            assertEquals(Color(0xFFFAF8F5), scheme.background) // tcBackground
-            assertEquals(Color(0xFF1C1917), scheme.onBackground) // tcTextPrimary
-            assertEquals(Color(0xFFFFFFFF), scheme.surface) // tcSurface
-            assertEquals(Color(0xFF1C1917), scheme.onSurface) // tcTextPrimary
-            assertEquals(Color(0xFFFFFFFF), scheme.surfaceContainerHigh) // tcSurfaceElevated
-            assertEquals(Color(0xFF6B6560), scheme.onSurfaceVariant) // tcTextSecondary
-            assertEquals(Color(0xFFE8E4DF), scheme.outline) // tcBorder
-            assertEquals(Color(0xFFE8E4DF), scheme.outlineVariant) // tcBorder
+            assertEquals(Color(0xFF9E6709), scheme.primary) // tcAmber
+            assertEquals(Color(0xFFFFFDF8), scheme.onPrimary) // tcTextOnAccent
+            assertEquals(Color(0xFF24201A), scheme.onPrimaryContainer) // tcTextPrimary
+            assertEquals(Color(0xFFF5F0E6), scheme.background) // tcBackground
+            assertEquals(Color(0xFF24201A), scheme.onBackground) // tcTextPrimary
+            assertEquals(Color(0xFFFFFDF6), scheme.surface) // tcSurface
+            assertEquals(Color(0xFF24201A), scheme.onSurface) // tcTextPrimary
+            assertEquals(Color(0xFFFFFDF6), scheme.surfaceContainerHigh) // tcSurfaceElevated
+            assertEquals(Color(0xFF6D665C), scheme.onSurfaceVariant) // tcTextSecondary
+            assertEquals(Color(0xFFDAD2C2), scheme.outline) // tcBorder
+            assertEquals(Color(0xFFDAD2C2), scheme.outlineVariant) // tcBorder
             assertEquals(Color(0xFFC42B2B), scheme.error) // tcStatusRejected
-            assertEquals(Color(0xFFFFFFFF), scheme.onError) // tcTextOnAccent
+            assertEquals(Color(0xFFFFFDF8), scheme.onError) // tcTextOnAccent
             assertEquals(Color.Black.copy(alpha = 0.40f), scheme.scrim) // tcOverlay @40%
         }
 
@@ -43,7 +43,7 @@ class ThemeMappingTest {
             assertEquals(Color(0xFFC27A0A), extended.statusPending)
             assertEquals(Color(0xFF7A7570), extended.statusWithdrawn)
             assertEquals(Color(0xFF7C3AED), extended.statusAppealed)
-            assertEquals(Color(0xFFD4910A).copy(alpha = 0.15f), extended.amberMuted)
+            assertEquals(Color(0xFF9E6709).copy(alpha = 0.12f), extended.amberMuted)
             assertEquals(Color.Black.copy(alpha = 0.40f), extended.overlay)
         }
     }
@@ -57,15 +57,15 @@ class ThemeMappingTest {
         fun `dark Material role mapping matches the epic token table`() {
             assertEquals(Color(0xFFE9A620), scheme.primary) // tcAmber
             assertEquals(Color(0xFF1C1917), scheme.onPrimary) // tcTextOnAccent
-            assertEquals(Color(0xFFF1EFE9), scheme.onPrimaryContainer) // tcTextPrimary
-            assertEquals(Color(0xFF1A1A1E), scheme.background) // tcBackground
-            assertEquals(Color(0xFFF1EFE9), scheme.onBackground) // tcTextPrimary
-            assertEquals(Color(0xFF242428), scheme.surface) // tcSurface
-            assertEquals(Color(0xFFF1EFE9), scheme.onSurface) // tcTextPrimary
-            assertEquals(Color(0xFF2E2E33), scheme.surfaceContainerHigh) // tcSurfaceElevated
-            assertEquals(Color(0xFF9B9590), scheme.onSurfaceVariant) // tcTextSecondary
-            assertEquals(Color(0xFF3A3A3F), scheme.outline) // tcBorder
-            assertEquals(Color(0xFF3A3A3F), scheme.outlineVariant) // tcBorder
+            assertEquals(Color(0xFFEFE9DC), scheme.onPrimaryContainer) // tcTextPrimary
+            assertEquals(Color(0xFF191713), scheme.background) // tcBackground
+            assertEquals(Color(0xFFEFE9DC), scheme.onBackground) // tcTextPrimary
+            assertEquals(Color(0xFF23201A), scheme.surface) // tcSurface
+            assertEquals(Color(0xFFEFE9DC), scheme.onSurface) // tcTextPrimary
+            assertEquals(Color(0xFF2B2822), scheme.surfaceContainerHigh) // tcSurfaceElevated
+            assertEquals(Color(0xFFA69E8F), scheme.onSurfaceVariant) // tcTextSecondary
+            assertEquals(Color(0xFF3A352B), scheme.outline) // tcBorder
+            assertEquals(Color(0xFF3A352B), scheme.outlineVariant) // tcBorder
             assertEquals(Color(0xFFFF453A), scheme.error) // tcStatusRejected
             assertEquals(Color(0xFF1C1917), scheme.onError) // tcTextOnAccent
             assertEquals(Color.Black.copy(alpha = 0.50f), scheme.scrim) // tcOverlay @50%
@@ -94,13 +94,13 @@ class ThemeMappingTest {
             assertEquals(Color(0xFFE9A620), scheme.primary) // tcAmber (same as dark)
             assertEquals(Color(0xFF1C1917), scheme.onPrimary) // tcTextOnAccent
             assertEquals(Color(0xFF000000), scheme.background) // tcBackground — true black
-            assertEquals(Color(0xFFF1EFE9), scheme.onBackground) // tcTextPrimary
-            assertEquals(Color(0xFF0A0A0A), scheme.surface) // tcSurface
-            assertEquals(Color(0xFFF1EFE9), scheme.onSurface) // tcTextPrimary
-            assertEquals(Color(0xFF161616), scheme.surfaceContainerHigh) // tcSurfaceElevated
-            assertEquals(Color(0xFF9B9590), scheme.onSurfaceVariant) // tcTextSecondary
-            assertEquals(Color(0xFF1E1E22), scheme.outline) // tcBorder
-            assertEquals(Color(0xFF1E1E22), scheme.outlineVariant) // tcBorder
+            assertEquals(Color(0xFFEFE9DC), scheme.onBackground) // tcTextPrimary
+            assertEquals(Color(0xFF0A0908), scheme.surface) // tcSurface
+            assertEquals(Color(0xFFEFE9DC), scheme.onSurface) // tcTextPrimary
+            assertEquals(Color(0xFF151310), scheme.surfaceContainerHigh) // tcSurfaceElevated
+            assertEquals(Color(0xFFA69E8F), scheme.onSurfaceVariant) // tcTextSecondary
+            assertEquals(Color(0xFF26221A), scheme.outline) // tcBorder
+            assertEquals(Color(0xFF26221A), scheme.outlineVariant) // tcBorder
             assertEquals(Color(0xFFFF453A), scheme.error) // tcStatusRejected (same as dark)
             assertEquals(Color.Black.copy(alpha = 0.50f), scheme.scrim) // tcOverlay @50% (same as dark)
         }

@@ -14,14 +14,14 @@
   --tc-amber-hover: #F0B83A;
 
   /* Surfaces */
-  --tc-background: #1A1A1E;
-  --tc-surface: #242428;
-  --tc-surface-elevated: #2E2E33;
+  --tc-background: #191713;
+  --tc-surface: #23201A;
+  --tc-surface-elevated: #2B2822;
 
   /* Text */
-  --tc-text-primary: #F1EFE9;
-  --tc-text-secondary: #9B9590;
-  --tc-text-tertiary: #5C5852;
+  --tc-text-primary: #EFE9DC;
+  --tc-text-secondary: #A69E8F;
+  --tc-text-tertiary: #6E675B;
   --tc-text-on-accent: #1C1917;
 
   /* Status (PlanIt vocabulary: Permitted / Conditions / Rejected) */
@@ -33,7 +33,7 @@
   --tc-status-appealed: #A78BFA;
 
   /* Utility */
-  --tc-border: #3A3A3F;
+  --tc-border: #3A352B;
   --tc-border-focused: #E9A620;
   --tc-overlay: rgba(0, 0, 0, 0.5);
 
@@ -50,13 +50,15 @@
   --tc-space-xxl: 48px;
 
   /* Corner radius */
-  --tc-radius-sm: 8px;
-  --tc-radius-md: 12px;
-  --tc-radius-lg: 16px;
+  --tc-radius-sm: 3px;
+  --tc-radius-md: 6px;
+  --tc-radius-lg: 12px;
   --tc-radius-full: 9999px;
 
   /* Typography — Inter via Google Fonts */
   --tc-font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  --tc-font-display: 'Fraunces', 'Iowan Old Style', Georgia, serif;
+  --tc-font-mono: ui-monospace, 'SF Mono', Menlo, 'Roboto Mono', monospace;
 
   --tc-text-hero: 3.5rem;
   --tc-text-display-large: 2rem;
@@ -88,20 +90,20 @@
 /* ---------- Light theme ---------- */
 [data-theme="light"] {
   /* Brand */
-  --tc-amber: #D4910A;
-  --tc-amber-muted: rgba(212, 145, 10, 0.15);
-  --tc-amber-hover: #B87A08;
+  --tc-amber: #9E6709;
+  --tc-amber-muted: rgba(158, 103, 9, 0.12);
+  --tc-amber-hover: #8A5F06;
 
   /* Surfaces */
-  --tc-background: #FAF8F5;
-  --tc-surface: #FFFFFF;
-  --tc-surface-elevated: #FFFFFF;
+  --tc-background: #F5F0E6;
+  --tc-surface: #FFFDF6;
+  --tc-surface-elevated: #FFFDF6;
 
   /* Text */
-  --tc-text-primary: #1C1917;
-  --tc-text-secondary: #6B6560;
-  --tc-text-tertiary: #A39E98;
-  --tc-text-on-accent: #FFFFFF;
+  --tc-text-primary: #24201A;
+  --tc-text-secondary: #6D665C;
+  --tc-text-tertiary: #A79E90;
+  --tc-text-on-accent: #FFFDF8;
 
   /* Status (PlanIt vocabulary: Permitted / Conditions / Rejected) */
   --tc-status-permitted: #1A7D37;
@@ -112,12 +114,12 @@
   --tc-status-appealed: #7C3AED;
 
   /* Utility */
-  --tc-border: #E8E4DF;
-  --tc-border-focused: #D4910A;
+  --tc-border: #DAD2C2;
+  --tc-border-focused: #9E6709;
   --tc-overlay: rgba(0, 0, 0, 0.4);
 
   /* Shadows (light mode only) */
-  --tc-shadow-card: 0 2px 8px rgba(0, 0, 0, 0.05);
+  --tc-shadow-card: 0 1px 3px rgba(0, 0, 0, 0.06);
   --tc-shadow-elevated: 0 4px 16px rgba(0, 0, 0, 0.08);
 }
 
@@ -130,13 +132,13 @@
 
   /* Surfaces */
   --tc-background: #000000;
-  --tc-surface: #0A0A0A;
-  --tc-surface-elevated: #161616;
+  --tc-surface: #0A0908;
+  --tc-surface-elevated: #151310;
 
   /* Text — same as dark */
-  --tc-text-primary: #F1EFE9;
-  --tc-text-secondary: #9B9590;
-  --tc-text-tertiary: #5C5852;
+  --tc-text-primary: #EFE9DC;
+  --tc-text-secondary: #A69E8F;
+  --tc-text-tertiary: #6E675B;
   --tc-text-on-accent: #1C1917;
 
   /* Status — same as dark (PlanIt vocabulary) */
@@ -148,7 +150,7 @@
   --tc-status-appealed: #A78BFA;
 
   /* Utility */
-  --tc-border: #1E1E22;
+  --tc-border: #26221A;
   --tc-border-focused: #E9A620;
   --tc-overlay: rgba(0, 0, 0, 0.5);
 
@@ -161,20 +163,20 @@
 @media (prefers-color-scheme: light) {
   :root:not([data-theme]) {
     /* Brand */
-    --tc-amber: #D4910A;
-    --tc-amber-muted: rgba(212, 145, 10, 0.15);
-    --tc-amber-hover: #B87A08;
+    --tc-amber: #9E6709;
+    --tc-amber-muted: rgba(158, 103, 9, 0.12);
+    --tc-amber-hover: #8A5F06;
 
     /* Surfaces */
-    --tc-background: #FAF8F5;
-    --tc-surface: #FFFFFF;
-    --tc-surface-elevated: #FFFFFF;
+    --tc-background: #F5F0E6;
+    --tc-surface: #FFFDF6;
+    --tc-surface-elevated: #FFFDF6;
 
     /* Text */
-    --tc-text-primary: #1C1917;
-    --tc-text-secondary: #6B6560;
-    --tc-text-tertiary: #A39E98;
-    --tc-text-on-accent: #FFFFFF;
+    --tc-text-primary: #24201A;
+    --tc-text-secondary: #6D665C;
+    --tc-text-tertiary: #A79E90;
+    --tc-text-on-accent: #FFFDF8;
 
     /* Status (PlanIt vocabulary) */
     --tc-status-permitted: #1A7D37;
@@ -185,12 +187,12 @@
     --tc-status-appealed: #7C3AED;
 
     /* Utility */
-    --tc-border: #E8E4DF;
-    --tc-border-focused: #D4910A;
+    --tc-border: #DAD2C2;
+    --tc-border-focused: #9E6709;
     --tc-overlay: rgba(0, 0, 0, 0.4);
 
     /* Shadows (light mode only) */
-    --tc-shadow-card: 0 2px 8px rgba(0, 0, 0, 0.05);
+    --tc-shadow-card: 0 1px 3px rgba(0, 0, 0, 0.06);
     --tc-shadow-elevated: 0 4px 16px rgba(0, 0, 0, 0.08);
   }
 }

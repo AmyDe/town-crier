@@ -15,26 +15,26 @@ Status colours follow the PlanIt vocabulary (Permitted / Conditions / Rejected).
 
 | Token | Web | iOS | Android | Light | Dark | OLED | Platforms |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `amber` | `--tc-amber` | `Color.tcAmber` | `TcPalette.amber` | `#D4910A` | `#E9A620` | `#E9A620` | Web, iOS, Android |
-| `amber-muted` | `--tc-amber-muted` | `Color.tcAmberMuted` | `TcPalette.amberMuted` | `#D4910A @ 15%` | `#E9A620 @ 15%` | `#E9A620 @ 15%` | Web, iOS, Android |
-| `amber-hover` | `--tc-amber-hover` | — | `TcPalette.amberHover` | `#B87A08` | `#F0B83A` | `#F0B83A` | Web, Android |
+| `amber` | `--tc-amber` | `Color.tcAmber` | `TcPalette.amber` | `#9E6709` | `#E9A620` | `#E9A620` | Web, iOS, Android |
+| `amber-muted` | `--tc-amber-muted` | `Color.tcAmberMuted` | `TcPalette.amberMuted` | `#9E6709 @ 12%` | `#E9A620 @ 15%` | `#E9A620 @ 15%` | Web, iOS, Android |
+| `amber-hover` | `--tc-amber-hover` | — | `TcPalette.amberHover` | `#8A5F06` | `#F0B83A` | `#F0B83A` | Web, Android |
 
 ### Surface
 
 | Token | Web | iOS | Android | Light | Dark | OLED | Platforms |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `background` | `--tc-background` | `Color.tcBackground` | `TcPalette.background` | `#FAF8F5` | `#1A1A1E` | `#000000` | Web, iOS, Android |
-| `surface` | `--tc-surface` | `Color.tcSurface` | `TcPalette.surface` | `#FFFFFF` | `#242428` | `#0A0A0A` | Web, iOS, Android |
-| `surface-elevated` | `--tc-surface-elevated` | `Color.tcSurfaceElevated` | `TcPalette.surfaceElevated` | `#FFFFFF` | `#2E2E33` | `#161616` | Web, iOS, Android |
+| `background` | `--tc-background` | `Color.tcBackground` | `TcPalette.background` | `#F5F0E6` | `#191713` | `#000000` | Web, iOS, Android |
+| `surface` | `--tc-surface` | `Color.tcSurface` | `TcPalette.surface` | `#FFFDF6` | `#23201A` | `#0A0908` | Web, iOS, Android |
+| `surface-elevated` | `--tc-surface-elevated` | `Color.tcSurfaceElevated` | `TcPalette.surfaceElevated` | `#FFFDF6` | `#2B2822` | `#151310` | Web, iOS, Android |
 
 ### Text
 
 | Token | Web | iOS | Android | Light | Dark | OLED | Platforms |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `text-primary` | `--tc-text-primary` | `Color.tcTextPrimary` | `TcPalette.textPrimary` | `#1C1917` | `#F1EFE9` | `#F1EFE9` | Web, iOS, Android |
-| `text-secondary` | `--tc-text-secondary` | `Color.tcTextSecondary` | `TcPalette.textSecondary` | `#6B6560` | `#9B9590` | `#9B9590` | Web, iOS, Android |
-| `text-tertiary` | `--tc-text-tertiary` | `Color.tcTextTertiary` | `TcPalette.textTertiary` | `#A39E98` | `#5C5852` | `#5C5852` | Web, iOS, Android |
-| `text-on-accent` | `--tc-text-on-accent` | `Color.tcTextOnAccent` | `TcPalette.textOnAccent` | `#FFFFFF` | `#1C1917` | `#1C1917` | Web, iOS, Android |
+| `text-primary` | `--tc-text-primary` | `Color.tcTextPrimary` | `TcPalette.textPrimary` | `#24201A` | `#EFE9DC` | `#EFE9DC` | Web, iOS, Android |
+| `text-secondary` | `--tc-text-secondary` | `Color.tcTextSecondary` | `TcPalette.textSecondary` | `#6D665C` | `#A69E8F` | `#A69E8F` | Web, iOS, Android |
+| `text-tertiary` | `--tc-text-tertiary` | `Color.tcTextTertiary` | `TcPalette.textTertiary` | `#A79E90` | `#6E675B` | `#6E675B` | Web, iOS, Android |
+| `text-on-accent` | `--tc-text-on-accent` | `Color.tcTextOnAccent` | `TcPalette.textOnAccent` | `#FFFDF8` | `#1C1917` | `#1C1917` | Web, iOS, Android |
 
 ### Status
 
@@ -51,8 +51,8 @@ Status colours follow the PlanIt vocabulary (Permitted / Conditions / Rejected).
 
 | Token | Web | iOS | Android | Light | Dark | OLED | Platforms |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `border` | `--tc-border` | `Color.tcBorder` | `TcPalette.border` | `#E8E4DF` | `#3A3A3F` | `#1E1E22` | Web, iOS, Android |
-| `border-focused` | `--tc-border-focused` | `Color.tcBorderFocused` | `TcPalette.borderFocused` | `#D4910A` | `#E9A620` | `#E9A620` | Web, iOS, Android |
+| `border` | `--tc-border` | `Color.tcBorder` | `TcPalette.border` | `#DAD2C2` | `#3A352B` | `#26221A` | Web, iOS, Android |
+| `border-focused` | `--tc-border-focused` | `Color.tcBorderFocused` | `TcPalette.borderFocused` | `#9E6709` | `#E9A620` | `#E9A620` | Web, iOS, Android |
 | `overlay` | `--tc-overlay` | `Color.tcOverlay` | `TcPalette.overlay` | `#000000 @ 40%` | `#000000 @ 50%` | `#000000 @ 50%` | Web, iOS, Android |
 
 ### Spacing
@@ -70,9 +70,9 @@ Status colours follow the PlanIt vocabulary (Permitted / Conditions / Rejected).
 
 | Token | Web | iOS | Android | Value | Platforms |
 | --- | --- | --- | --- | --- | --- |
-| `sm` | `--tc-radius-sm` | `TCCornerRadius.small` | `TownCrierRadius.sm` | 8pt | Web, iOS, Android |
-| `md` | `--tc-radius-md` | `TCCornerRadius.medium` | `TownCrierRadius.md` | 12pt | Web, iOS, Android |
-| `lg` | `--tc-radius-lg` | `TCCornerRadius.large` | `TownCrierRadius.lg` | 16pt | Web, iOS, Android |
+| `sm` | `--tc-radius-sm` | `TCCornerRadius.small` | `TownCrierRadius.sm` | 3pt | Web, iOS, Android |
+| `md` | `--tc-radius-md` | `TCCornerRadius.medium` | `TownCrierRadius.md` | 6pt | Web, iOS, Android |
+| `lg` | `--tc-radius-lg` | `TCCornerRadius.large` | `TownCrierRadius.lg` | 12pt | Web, iOS, Android |
 | `full` | `--tc-radius-full` | — | `TownCrierRadius.full` | capsule | Web, Android |
 
 ### Shadows
@@ -81,7 +81,7 @@ Web only. Dark and OLED communicate elevation through surface stepping, not shad
 
 | Token | Web | Light | Dark / OLED | Platforms |
 | --- | --- | --- | --- | --- |
-| `card` | `--tc-shadow-card` | `0 2px 8px rgba(0, 0, 0, 0.05)` | `none` | Web |
+| `card` | `--tc-shadow-card` | `0 1px 3px rgba(0, 0, 0, 0.06)` | `none` | Web |
 | `elevated` | `--tc-shadow-elevated` | `0 4px 16px rgba(0, 0, 0, 0.08)` | `none` | Web |
 
 ### Motion durations

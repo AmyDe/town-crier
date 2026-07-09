@@ -444,7 +444,7 @@ describe('pageStyles status chip vocabulary (decision 4: shared palette, filled 
     const root = rootDeclarations(pageStyles());
     expect(root).toMatch(/--tc-status-granted: #1A7D37;/);
     expect(root).toMatch(/--tc-status-refused: #C42B2B;/);
-    expect(root).toMatch(/--tc-status-neutral: #6B6560;/);
+    expect(root).toMatch(/--tc-status-neutral: #6D665C;/);
     expect(root).toMatch(/--tc-status-granted-bg:/);
     expect(root).toMatch(/--tc-status-refused-bg:/);
     expect(root).toMatch(/--tc-status-neutral-bg:/);
@@ -454,7 +454,7 @@ describe('pageStyles status chip vocabulary (decision 4: shared palette, filled 
     const dark = darkMediaDeclarations(pageStyles());
     expect(dark).toMatch(/--tc-status-granted: #34C759;/);
     expect(dark).toMatch(/--tc-status-refused: #FF453A;/);
-    expect(dark).toMatch(/--tc-status-neutral: #9B9590;/);
+    expect(dark).toMatch(/--tc-status-neutral: #A69E8F;/);
   });
 
   it('no longer defines the old ad-hoc per-state status tokens', () => {
@@ -511,26 +511,26 @@ describe('pageStyles light-first token flip (tc-r4n9.1)', () => {
 
   it('defaults :root to the light-mode values directly (no query needed)', () => {
     const root = rootDeclarations(pageStyles());
-    expect(root).toMatch(/--tc-amber: #D4910A;/);
-    expect(root).toMatch(/--tc-amber-hover: #B87A08;/);
-    expect(root).toMatch(/--tc-background: #FAF8F5;/);
-    expect(root).toMatch(/--tc-surface: #FFFFFF;/);
-    expect(root).toMatch(/--tc-text-primary: #1C1917;/);
-    expect(root).toMatch(/--tc-text-secondary: #6B6560;/);
-    expect(root).toMatch(/--tc-text-on-accent: #FFFFFF;/);
-    expect(root).toMatch(/--tc-border: #E8E4DF;/);
+    expect(root).toMatch(/--tc-amber: #9E6709;/);
+    expect(root).toMatch(/--tc-amber-hover: #8A5F06;/);
+    expect(root).toMatch(/--tc-background: #F5F0E6;/);
+    expect(root).toMatch(/--tc-surface: #FFFDF6;/);
+    expect(root).toMatch(/--tc-text-primary: #24201A;/);
+    expect(root).toMatch(/--tc-text-secondary: #6D665C;/);
+    expect(root).toMatch(/--tc-text-on-accent: #FFFDF8;/);
+    expect(root).toMatch(/--tc-border: #DAD2C2;/);
   });
 
   it('moves the former dark defaults, byte-for-byte, into @media (prefers-color-scheme: dark)', () => {
     const dark = darkMediaDeclarations(pageStyles());
     expect(dark).toMatch(/--tc-amber: #E9A620;/);
     expect(dark).toMatch(/--tc-amber-hover: #F0B83A;/);
-    expect(dark).toMatch(/--tc-background: #1A1A1E;/);
-    expect(dark).toMatch(/--tc-surface: #242428;/);
-    expect(dark).toMatch(/--tc-text-primary: #F1EFE9;/);
-    expect(dark).toMatch(/--tc-text-secondary: #9B9590;/);
+    expect(dark).toMatch(/--tc-background: #191713;/);
+    expect(dark).toMatch(/--tc-surface: #23201A;/);
+    expect(dark).toMatch(/--tc-text-primary: #EFE9DC;/);
+    expect(dark).toMatch(/--tc-text-secondary: #A69E8F;/);
     expect(dark).toMatch(/--tc-text-on-accent: #1C1917;/);
-    expect(dark).toMatch(/--tc-border: #3A3A3F;/);
+    expect(dark).toMatch(/--tc-border: #3A352B;/);
   });
 
   it('no longer gates light values behind a prefers-color-scheme: light query', () => {
@@ -550,7 +550,10 @@ describe('pageStyles light-first token flip (tc-r4n9.1)', () => {
     // :root token block itself (not just JSDoc above the function), so it is
     // visible to anyone reading the generated page source.
     expect(root).toMatch(/\/\*[^]*share page[^]*\*\//i);
-    expect(root.toLowerCase()).toContain('faf8f5');
+    // Value-agnostic on purpose: the comment references the token names, not the
+    // hexes, so a palette flip (e.g. Public Notice v2) can't leave it stale.
+    expect(root.toLowerCase()).toContain('background scale');
+    expect(root).toContain('--tc-background');
   });
 });
 

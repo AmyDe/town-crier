@@ -15,23 +15,23 @@ import "image/color"
 
 // Hex strings per theme (leading '#'), for HTML/CSS template consumers.
 const (
-	AmberLightHex            = "#D4910A"
+	AmberLightHex            = "#9E6709"
 	AmberDarkHex             = "#E9A620"
-	AmberHoverLightHex       = "#B87A08"
+	AmberHoverLightHex       = "#8A5F06"
 	AmberHoverDarkHex        = "#F0B83A"
-	BackgroundLightHex       = "#FAF8F5"
-	BackgroundDarkHex        = "#1A1A1E"
-	SurfaceLightHex          = "#FFFFFF"
-	SurfaceDarkHex           = "#242428"
-	SurfaceElevatedLightHex  = "#FFFFFF"
-	SurfaceElevatedDarkHex   = "#2E2E33"
-	TextPrimaryLightHex      = "#1C1917"
-	TextPrimaryDarkHex       = "#F1EFE9"
-	TextSecondaryLightHex    = "#6B6560"
-	TextSecondaryDarkHex     = "#9B9590"
-	TextTertiaryLightHex     = "#A39E98"
-	TextTertiaryDarkHex      = "#5C5852"
-	TextOnAccentLightHex     = "#FFFFFF"
+	BackgroundLightHex       = "#F5F0E6"
+	BackgroundDarkHex        = "#191713"
+	SurfaceLightHex          = "#FFFDF6"
+	SurfaceDarkHex           = "#23201A"
+	SurfaceElevatedLightHex  = "#FFFDF6"
+	SurfaceElevatedDarkHex   = "#2B2822"
+	TextPrimaryLightHex      = "#24201A"
+	TextPrimaryDarkHex       = "#EFE9DC"
+	TextSecondaryLightHex    = "#6D665C"
+	TextSecondaryDarkHex     = "#A69E8F"
+	TextTertiaryLightHex     = "#A79E90"
+	TextTertiaryDarkHex      = "#6E675B"
+	TextOnAccentLightHex     = "#FFFDF8"
 	TextOnAccentDarkHex      = "#1C1917"
 	StatusPermittedLightHex  = "#1A7D37"
 	StatusPermittedDarkHex   = "#34C759"
@@ -45,32 +45,32 @@ const (
 	StatusWithdrawnDarkHex   = "#8E8A85"
 	StatusAppealedLightHex   = "#7C3AED"
 	StatusAppealedDarkHex    = "#A78BFA"
-	BorderLightHex           = "#E8E4DF"
-	BorderDarkHex            = "#3A3A3F"
-	BorderFocusedLightHex    = "#D4910A"
+	BorderLightHex           = "#DAD2C2"
+	BorderDarkHex            = "#3A352B"
+	BorderFocusedLightHex    = "#9E6709"
 	BorderFocusedDarkHex     = "#E9A620"
 )
 
 // RGBA values for image renderers. color.RGBA is alpha-premultiplied; every
 // brand colour here is fully opaque (A: 0xFF), so R/G/B are the raw channels.
 var (
-	AmberLight            = color.RGBA{R: 0xD4, G: 0x91, B: 0x0A, A: 0xFF}
+	AmberLight            = color.RGBA{R: 0x9E, G: 0x67, B: 0x09, A: 0xFF}
 	AmberDark             = color.RGBA{R: 0xE9, G: 0xA6, B: 0x20, A: 0xFF}
-	AmberHoverLight       = color.RGBA{R: 0xB8, G: 0x7A, B: 0x08, A: 0xFF}
+	AmberHoverLight       = color.RGBA{R: 0x8A, G: 0x5F, B: 0x06, A: 0xFF}
 	AmberHoverDark        = color.RGBA{R: 0xF0, G: 0xB8, B: 0x3A, A: 0xFF}
-	BackgroundLight       = color.RGBA{R: 0xFA, G: 0xF8, B: 0xF5, A: 0xFF}
-	BackgroundDark        = color.RGBA{R: 0x1A, G: 0x1A, B: 0x1E, A: 0xFF}
-	SurfaceLight          = color.RGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0xFF}
-	SurfaceDark           = color.RGBA{R: 0x24, G: 0x24, B: 0x28, A: 0xFF}
-	SurfaceElevatedLight  = color.RGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0xFF}
-	SurfaceElevatedDark   = color.RGBA{R: 0x2E, G: 0x2E, B: 0x33, A: 0xFF}
-	TextPrimaryLight      = color.RGBA{R: 0x1C, G: 0x19, B: 0x17, A: 0xFF}
-	TextPrimaryDark       = color.RGBA{R: 0xF1, G: 0xEF, B: 0xE9, A: 0xFF}
-	TextSecondaryLight    = color.RGBA{R: 0x6B, G: 0x65, B: 0x60, A: 0xFF}
-	TextSecondaryDark     = color.RGBA{R: 0x9B, G: 0x95, B: 0x90, A: 0xFF}
-	TextTertiaryLight     = color.RGBA{R: 0xA3, G: 0x9E, B: 0x98, A: 0xFF}
-	TextTertiaryDark      = color.RGBA{R: 0x5C, G: 0x58, B: 0x52, A: 0xFF}
-	TextOnAccentLight     = color.RGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0xFF}
+	BackgroundLight       = color.RGBA{R: 0xF5, G: 0xF0, B: 0xE6, A: 0xFF}
+	BackgroundDark        = color.RGBA{R: 0x19, G: 0x17, B: 0x13, A: 0xFF}
+	SurfaceLight          = color.RGBA{R: 0xFF, G: 0xFD, B: 0xF6, A: 0xFF}
+	SurfaceDark           = color.RGBA{R: 0x23, G: 0x20, B: 0x1A, A: 0xFF}
+	SurfaceElevatedLight  = color.RGBA{R: 0xFF, G: 0xFD, B: 0xF6, A: 0xFF}
+	SurfaceElevatedDark   = color.RGBA{R: 0x2B, G: 0x28, B: 0x22, A: 0xFF}
+	TextPrimaryLight      = color.RGBA{R: 0x24, G: 0x20, B: 0x1A, A: 0xFF}
+	TextPrimaryDark       = color.RGBA{R: 0xEF, G: 0xE9, B: 0xDC, A: 0xFF}
+	TextSecondaryLight    = color.RGBA{R: 0x6D, G: 0x66, B: 0x5C, A: 0xFF}
+	TextSecondaryDark     = color.RGBA{R: 0xA6, G: 0x9E, B: 0x8F, A: 0xFF}
+	TextTertiaryLight     = color.RGBA{R: 0xA7, G: 0x9E, B: 0x90, A: 0xFF}
+	TextTertiaryDark      = color.RGBA{R: 0x6E, G: 0x67, B: 0x5B, A: 0xFF}
+	TextOnAccentLight     = color.RGBA{R: 0xFF, G: 0xFD, B: 0xF8, A: 0xFF}
 	TextOnAccentDark      = color.RGBA{R: 0x1C, G: 0x19, B: 0x17, A: 0xFF}
 	StatusPermittedLight  = color.RGBA{R: 0x1A, G: 0x7D, B: 0x37, A: 0xFF}
 	StatusPermittedDark   = color.RGBA{R: 0x34, G: 0xC7, B: 0x59, A: 0xFF}
@@ -84,9 +84,9 @@ var (
 	StatusWithdrawnDark   = color.RGBA{R: 0x8E, G: 0x8A, B: 0x85, A: 0xFF}
 	StatusAppealedLight   = color.RGBA{R: 0x7C, G: 0x3A, B: 0xED, A: 0xFF}
 	StatusAppealedDark    = color.RGBA{R: 0xA7, G: 0x8B, B: 0xFA, A: 0xFF}
-	BorderLight           = color.RGBA{R: 0xE8, G: 0xE4, B: 0xDF, A: 0xFF}
-	BorderDark            = color.RGBA{R: 0x3A, G: 0x3A, B: 0x3F, A: 0xFF}
-	BorderFocusedLight    = color.RGBA{R: 0xD4, G: 0x91, B: 0x0A, A: 0xFF}
+	BorderLight           = color.RGBA{R: 0xDA, G: 0xD2, B: 0xC2, A: 0xFF}
+	BorderDark            = color.RGBA{R: 0x3A, G: 0x35, B: 0x2B, A: 0xFF}
+	BorderFocusedLight    = color.RGBA{R: 0x9E, G: 0x67, B: 0x09, A: 0xFF}
 	BorderFocusedDark     = color.RGBA{R: 0xE9, G: 0xA6, B: 0x20, A: 0xFF}
 )
 
