@@ -197,7 +197,7 @@ public struct AnonymousMapView: View {
 
     private func pin(for application: PlanningApplication) -> some View {
       Image(systemName: "mappin.circle.fill")
-        .font(.system(.title2))
+        .font(TCTypography.displaySmall)
         .foregroundStyle(application.status.displayColor)
         .background(
           Circle()

@@ -13,25 +13,7 @@ struct AnonymousApplicationSummaryView: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: TCSpacing.medium) {
-      HStack {
-        StatusBadgeView(status: application.status)
-        Spacer()
-        Text(application.reference.value)
-          .font(.system(.caption))
-          .foregroundStyle(Color.tcTextSecondary)
-      }
-
-      Text(application.description)
-        .font(.system(.headline, weight: .semibold))
-        .foregroundStyle(Color.tcTextPrimary)
-
-      Label(application.address, systemImage: "mappin.and.ellipse")
-        .font(.system(.body))
-        .foregroundStyle(Color.tcTextSecondary)
-
-      Text("Received \(application.receivedDate.formatted(date: .abbreviated, time: .omitted))")
-        .font(.system(.caption))
-        .foregroundStyle(Color.tcTextTertiary)
+      noticeCard
 
       PrimaryButton {
         onViewFullDetails()
@@ -48,5 +30,37 @@ struct AnonymousApplicationSummaryView: View {
     .background(Color.tcSurfaceElevated)
     .presentationDetents([.medium, .fraction(0.3)])
     .presentationDragIndicator(.visible)
+  }
+
+  // MARK: - Filed-notice card (GH#857/#896)
+
+  private var noticeCard: some View {
+    VStack(alignment: .leading, spacing: TCSpacing.small) {
+      // Mono document-header strip: reference leading, received date
+      // trailing — mirrors `ApplicationListRow`'s mono metadata line.
+      HStack(alignment: .top) {
+        Text(application.reference.value)
+          .font(TCTypography.monoEmphasis)
+        Spacer()
+        Text("Received \(application.receivedDate.formatted(date: .abbreviated, time: .omitted))")
+          .font(TCTypography.mono)
+          .multilineTextAlignment(.trailing)
+      }
+      .foregroundStyle(Color.tcTextSecondary)
+
+      // Stamp status (GH#857) — the same `StatusBadgeView` the R4 restyle
+      // built, never a forked copy.
+      StatusBadgeView(status: application.status)
+
+      Text(application.description)
+        .font(TCTypography.headline)
+        .foregroundStyle(Color.tcTextPrimary)
+
+      Label(application.address, systemImage: "mappin.and.ellipse")
+        .font(TCTypography.body)
+        .foregroundStyle(Color.tcTextSecondary)
+    }
+    .padding(TCSpacing.medium)
+    .noticeCardStyle()
   }
 }

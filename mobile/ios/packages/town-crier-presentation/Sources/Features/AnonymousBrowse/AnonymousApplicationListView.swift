@@ -113,8 +113,13 @@ public struct AnonymousApplicationListView: View {
       .listRowBackground(Color.tcBackground)
     } else {
       ForEach(viewModel.applications) { application in
+        // Filed-notice card (GH#857/#896): `ApplicationListRow` already
+        // applies `NoticeCardStyle` internally — `cardRowInsets()` clears
+        // the List's own row padding/background/separator so the card's
+        // rounded corners and border actually show, mirroring the authed
+        // `ApplicationListView`.
         ApplicationListRow(application: application)
-          .listRowBackground(Color.tcSurface)
+          .cardRowInsets()
           .contentShape(Rectangle())
           .onTapGesture {
             viewModel.selectApplication(application)
