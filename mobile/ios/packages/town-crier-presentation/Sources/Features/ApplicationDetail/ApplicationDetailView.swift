@@ -109,14 +109,20 @@ public struct ApplicationDetailView: View {
       // The planning reference is the card's mono header-strip metadata
       // (GH#857) — every other row stays plain body text.
       detailRow(
-        icon: "doc.text", label: "Reference", value: viewModel.reference,
-        valueFont: TCTypography.monoEmphasis)
+        icon: "doc.text",
+        label: "Reference",
+        value: viewModel.reference,
+        valueFont: TCTypography.monoEmphasis
+      )
       Divider().foregroundStyle(Color.tcBorder)
       detailRow(icon: "building.2", label: "Authority", value: viewModel.authorityName)
       Divider().foregroundStyle(Color.tcBorder)
       detailRow(
-        icon: "calendar", label: "Received", value: viewModel.receivedDateFormatted,
-        valueFont: TCTypography.mono)
+        icon: "calendar",
+        label: "Received",
+        value: viewModel.receivedDateFormatted,
+        valueFont: TCTypography.mono
+      )
     }
     .padding(TCSpacing.medium)
     .noticeCardStyle()
