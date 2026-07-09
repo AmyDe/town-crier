@@ -94,13 +94,48 @@ function applicationDateLine(app) {
 }
 
 /**
+ * Inline SVG glyph for one status-stamp bucket, paired with every stamp's
+ * text label (icon + label is an accessibility invariant across the Public
+ * Notice component language — status must never be conveyed by colour alone;
+ * ~8% of men have some form of colour vision deficiency). Decorative only
+ * (`aria-hidden`); the accessible label is the adjacent `.stamp__label` text.
+ * Mirrors the stroke-based glyph style of the SPA's `StatusIcon` component
+ * (`web/src/components/StatusIcon/StatusIcon.tsx`), collapsed to the three
+ * canonical SEO/share-page buckets (decision 4).
+ *
+ * @type {Record<'granted' | 'refused' | 'neutral', string>}
+ */
+const STATUS_STAMP_ICON = {
+  granted:
+    '<svg class="stamp__icon" width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5 6.5 11.5 12.5 4.5" /></svg>',
+  refused:
+    '<svg class="stamp__icon" width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4 12 12" /><path d="M12 4 4 12" /></svg>',
+  neutral:
+    '<svg class="stamp__icon" width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8H12" /></svg>',
+};
+
+/**
+ * Render one outlined status "stamp" (Public Notice component language):
+ * uppercase, letterspaced label plus its paired icon, in the given bucket's
+ * colour, no fill. `label` is expected to already be HTML-escaped by the
+ * caller (matches every other data-derived string in this module).
+ *
+ * @param {'granted' | 'refused' | 'neutral'} modifier
+ * @param {string} label already-escaped resident-facing label text
+ * @returns {string}
+ */
+function renderStamp(modifier, label) {
+  return `<span class="stamp stamp--${modifier}">${STATUS_STAMP_ICON[modifier]}<span class="stamp__label">${label}</span></span>`;
+}
+
+/**
  * @param {PlanningApplicationItem} app
  * @param {string} [authoritySlug] the page's authority slug; when present (and
- *   the app carries a ref), the whole card becomes a do-follow link to our own
+ *   the app carries a ref), the whole row becomes a do-follow link to our own
  *   public share page for the application (decision 6). Every application on a
  *   page belongs to this one authority (authority pages read one partition;
  *   town pages scope the near query to a single authority), so the slug is
- *   correct for every card.
+ *   correct for every row.
  * @returns {string}
  */
 function renderApplication(app, authoritySlug) {
@@ -108,7 +143,7 @@ function renderApplication(app, authoritySlug) {
   const modifier = statusColorModifier(app.appState);
   const description = escapeHtml(truncate(app.description, MAX_DESCRIPTION_LENGTH));
 
-  // Address is the human hook (decision 5): it is the card's heading. The
+  // Address is the human hook (decision 5): it is the row's heading. The
   // council reference is demoted to small metadata underneath, and omitted
   // entirely when the app carries none.
   const address = escapeHtml(app.address);
@@ -119,33 +154,39 @@ function renderApplication(app, authoritySlug) {
   // every other data-derived string in this function.
   const dateLine = escapeHtml(applicationDateLine(app));
 
-  // Per-card external links to PlanIt/the council are retired (decision 6):
-  // the card's one click target is our own share page, surfaced as a real,
-  // crawlable <a href> around the whole card plus a visible "View details"
+  // Per-row external links to PlanIt/the council are retired (decision 6):
+  // the row's one click target is our own share page, surfaced as a real,
+  // crawlable <a href> around the whole row plus a visible "View details"
   // affordance — never a JS-only click handler. Falls back to a plain,
-  // non-linked card when no share URL can be built (no slug, or no ref).
+  // non-linked row when no share URL can be built (no slug, or no ref).
   const share = shareUrl(authoritySlug, app.name);
+  const stamp = renderStamp(modifier, label);
 
-  const body = `        <div class="appCard__head">
-          <h3 class="appCard__address">${address}</h3>
-          <span class="status status--${modifier}">${label}</span>
-        </div>
-        ${ref ? `<p class="appCard__ref">${ref}</p>` : ''}
-        ${dateLine ? `<p class="appCard__dates">${dateLine}</p>` : ''}
-        <p class="appCard__desc">${description}</p>
-        <div class="appCard__meta">
-          ${share ? `<span class="appCard__cta">View details →</span>` : ''}
+  // Fixed-width mono ref+date column (Public Notice ledger row).
+  const meta = `        <div class="ledgerRow__meta">
+          ${ref ? `<p class="ledgerRow__ref">${ref}</p>` : ''}
+          ${dateLine ? `<p class="ledgerRow__date">${dateLine}</p>` : ''}
+        </div>`;
+  const body = `        <div class="ledgerRow__body">
+          <div class="ledgerRow__head">
+            <h3 class="ledgerRow__address">${address}</h3>
+            ${stamp}
+          </div>
+          <p class="ledgerRow__desc">${description}</p>
+          ${share ? `<span class="ledgerRow__cta">View details →</span>` : ''}
         </div>`;
 
   if (share) {
-    return `      <li class="appCard">
-        <a class="appCard__link" href="${escapeHtml(share)}">
+    return `      <li class="ledgerRow">
+        <a class="ledgerRow__link" href="${escapeHtml(share)}">
+${meta}
 ${body}
         </a>
       </li>`;
   }
 
-  return `      <li class="appCard">
+  return `      <li class="ledgerRow">
+${meta}
 ${body}
       </li>`;
 }
@@ -160,11 +201,13 @@ const MID_LIST_CTA_AFTER = 8;
 const MID_LIST_CTA_MIN_APPLICATIONS = 12;
 
 /**
- * Render the mid-list CTA card (tc-fgoyj): a card-shaped `<li>` slotted into
- * the applications list itself, because on a full 30-card page the inline pill
- * above the list and the banner below it are separated by a very long scroll
- * with no ask in between. Styled as a card so it reads as part of the list,
- * but visibly a Town Crier pitch — never disguised as an application.
+ * Render the mid-list CTA card (tc-fgoyj): a filed-notice-shaped `<li>`
+ * slotted into the ledger itself, because on a full 30-row page the inline
+ * pill above the list and the banner below it are separated by a very long
+ * scroll with no ask in between. Styled as a card (2px brass top rule,
+ * Fraunces headline — see the `.ledgerCta*` rules in {@link pageStyles}) so it
+ * visibly breaks the ledger's row rhythm as a Town Crier pitch, never
+ * disguised as an application.
  *
  * @param {string} area   the resident-facing area name (authority or town)
  * @param {string} storeHref   the campaign-tagged App Store link for this
@@ -174,10 +217,10 @@ const MID_LIST_CTA_MIN_APPLICATIONS = 12;
  * @returns {string}
  */
 export function renderMidListCta(area, storeHref) {
-  return `      <li class="appCard appCard--cta">
-        <h3 class="appCard__ctaHeading">Get told when the next one lands</h3>
-        <p class="appCard__ctaBody">Town Crier watches ${escapeHtml(area)} and alerts you when a new application is submitted or decided. Free to download.</p>
-        <a class="ctaInline__button" href="${storeHref}" rel="noopener" target="_blank">Get the app</a>
+  return `      <li class="ledgerCta">
+        <h3 class="ledgerCta__heading">Get told when the next one lands</h3>
+        <p class="ledgerCta__body">Town Crier watches ${escapeHtml(area)} and alerts you when a new application is submitted or decided. Free to download.</p>
+        <a class="ledgerCta__button" href="${storeHref}" rel="noopener" target="_blank">Get the app</a>
       </li>`;
 }
 
@@ -205,10 +248,10 @@ export function renderApplicationsList(applications, authoritySlug, midCta) {
 /**
  * Render the compact "Status breakdown" strip (tc-r4n9.3, punch-list #794
  * Phase 3): one line of three headline buckets (Granted / Refused /
- * Undecided) plus the total, using the SAME `.status--granted` /
- * `.status--refused` / `.status--neutral` chip vocabulary and colours as the
- * per-card chips (decision 4) for visual consistency between the aggregate
- * summary and the individual cards. Replaces the old one-row-per-appState
+ * Undecided) plus the total, using the SAME `.stamp--granted` /
+ * `.stamp--refused` / `.stamp--neutral` stamp vocabulary and colours as the
+ * per-row stamps (decision 4) for visual consistency between the aggregate
+ * summary and the individual rows. Replaces the old one-row-per-appState
  * `renderStats` list, which advertised every long-tail state as its own
  * top-level row.
  *
@@ -242,9 +285,9 @@ ${other
   return `    <section class="statusSummary" aria-label="Application status summary">
       <h2 class="statusSummary__heading">Status breakdown</h2>
       <div class="statusSummary__strip">
-        <span class="statusSummary__item status status--granted">${granted} Granted</span>
-        <span class="statusSummary__item status status--refused">${refused} Refused</span>
-        <span class="statusSummary__item status status--neutral">${undecided} Undecided</span>
+        <span class="statusSummary__item stamp stamp--granted">${STATUS_STAMP_ICON.granted}<span class="stamp__label">${granted} Granted</span></span>
+        <span class="statusSummary__item stamp stamp--refused">${STATUS_STAMP_ICON.refused}<span class="stamp__label">${refused} Refused</span></span>
+        <span class="statusSummary__item stamp stamp--neutral">${STATUS_STAMP_ICON.neutral}<span class="stamp__label">${undecided} Undecided</span></span>
         <span class="statusSummary__total">${total} total</span>
       </div>${otherDisclosure}
     </section>`;
@@ -343,6 +386,29 @@ export function renderAttributionList(lines = ATTRIBUTION_LINES) {
  */
 export function pageStyles() {
   return `${SEO_TOKEN_CSS}
+    /* ---------- Self-hosted Fraunces (Public Notice display face) ----------
+       Same self-hosting rationale as the SPA (web/src/styles/global.css):
+       served from /public/fonts (committed by #853), so the page makes zero
+       third-party font requests. Display roles only (H1, ledger addresses,
+       CTA headlines) — body text stays on --tc-font-family (Inter).
+       font-display: swap means a slow font fetch never blocks text from
+       painting, and --tc-font-display's serif fallback stack ('Iowan Old
+       Style', Georgia, serif) keeps every heading fully readable even if the
+       woff2 request 404s. */
+    @font-face {
+      font-family: 'Fraunces';
+      font-style: normal;
+      font-weight: 400;
+      font-display: swap;
+      src: url('/fonts/fraunces-latin-400-normal.woff2') format('woff2');
+    }
+    @font-face {
+      font-family: 'Fraunces';
+      font-style: normal;
+      font-weight: 600;
+      font-display: swap;
+      src: url('/fonts/fraunces-latin-600-normal.woff2') format('woff2');
+    }
     @font-face {
       font-family: 'Inter';
       font-style: normal;
@@ -364,86 +430,133 @@ export function pageStyles() {
       margin: 0 auto;
       padding: var(--tc-space-md);
     }
-    .siteHeader {
+    /* ---------- Masthead: small-caps wordmark, brass text CTA, double rule
+       (Public Notice component language, mirrors the SPA Navbar). ---------- */
+    .siteHeader { padding-top: var(--tc-space-md); }
+    .siteHeader__inner {
       display: flex;
       align-items: center;
       justify-content: space-between;
       flex-wrap: wrap;
       gap: var(--tc-space-sm);
-      padding: var(--tc-space-md) 0;
-      border-bottom: 1px solid var(--tc-border);
+      padding-bottom: var(--tc-space-md);
     }
-    .siteHeader a { color: var(--tc-text-primary); text-decoration: none; font-weight: 700; }
-    .siteHeader__nav { display: flex; align-items: center; gap: var(--tc-space-md); }
-    .siteHeader a.siteHeader__cta {
-      padding: var(--tc-space-sm) var(--tc-space-md);
-      background: var(--tc-amber);
-      color: var(--tc-text-on-accent);
-      border-radius: var(--tc-radius-md);
+    .siteHeader a { text-decoration: none; }
+    .siteHeader__wordmark {
+      color: var(--tc-text-primary);
+      font-weight: 700;
+      font-variant: small-caps;
+      letter-spacing: 0.08em;
     }
-    .siteHeader a.siteHeader__cta:hover { background: var(--tc-amber-hover); }
-    .breadcrumb { margin: var(--tc-space-md) 0 0; font-size: 0.875rem; color: var(--tc-text-secondary); }
+    /* "Get the app" is a plain brass text link, not a filled pill — the
+       header keeps the click-through, only the shape changes. */
+    a.siteHeader__cta { color: var(--tc-amber); font-weight: 700; }
+    a.siteHeader__cta:hover { color: var(--tc-amber-hover); text-decoration: underline; }
+    /* Double rule beneath the masthead: a 2.5px heavy rule over a 1px
+       hairline, 3px gap. */
+    .siteHeader__ruleHeavy { height: 2.5px; background: var(--tc-text-primary); }
+    .siteHeader__ruleHairline { height: 1px; background: var(--tc-border); margin-top: 3px; }
+    /* ---------- Breadcrumb -> mono small-caps dateline ---------- */
+    .breadcrumb {
+      margin: var(--tc-space-md) 0 0;
+      font-family: var(--tc-font-mono);
+      font-size: 0.75rem;
+      color: var(--tc-text-secondary);
+      font-variant: small-caps;
+      letter-spacing: 0.04em;
+    }
     .breadcrumb ol { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--tc-space-sm); }
-    .breadcrumb li::after { content: '/'; margin-left: var(--tc-space-sm); color: var(--tc-text-secondary); }
+    .breadcrumb li::after { content: '›'; margin-left: var(--tc-space-sm); color: var(--tc-text-secondary); }
     .breadcrumb li:last-child::after { content: ''; margin: 0; }
     .breadcrumb a { color: var(--tc-text-secondary); text-decoration: none; }
     .breadcrumb a:hover { color: var(--tc-amber); text-decoration: underline; }
-    h1 { font-size: 2rem; line-height: 1.2; margin: var(--tc-space-xl) 0 var(--tc-space-sm); }
+    /* H1 moves to the Fraunces display face; the token's own fallback stack
+       keeps it fully readable if the woff2 request above 404s. */
+    h1 { font-family: var(--tc-font-display); font-weight: 600; font-size: 2rem; line-height: 1.2; margin: var(--tc-space-xl) 0 var(--tc-space-sm); }
     h2 { font-size: 1.5rem; margin: var(--tc-space-xl) 0 var(--tc-space-md); }
     h3 { font-size: 1.125rem; margin: 0; }
     /* Single freshness line (tc-r4n9.3), placed near the H1. */
     .dataUpdated { margin: 0 0 var(--tc-space-sm); font-size: 0.875rem; color: var(--tc-text-secondary); }
     .lead { font-size: 1.125rem; color: var(--tc-text-secondary); margin: 0 0 var(--tc-space-lg); }
-    .appList { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--tc-space-md); }
-    .appCard {
-      background: var(--tc-surface);
-      border: 1px solid var(--tc-border);
-      border-radius: var(--tc-radius-md);
-      padding: var(--tc-space-md);
+    /* ---------- Ledger: a flat, full-width list of hairline-ruled rows
+       instead of boxed cards — reads better over a long crawlable page. Opens
+       with a small-caps brass label over a heavy 2px rule. ---------- */
+    .ledger__heading {
+      font-variant: small-caps;
+      letter-spacing: 0.08em;
+      font-weight: 700;
+      font-size: 0.9375rem;
+      color: var(--tc-amber);
+      margin: var(--tc-space-xl) 0 0;
+      padding-top: var(--tc-space-md);
+      border-top: 2px solid var(--tc-text-primary);
     }
-    /* The whole card is the share-page click target (decision 6): a real,
-       crawlable <a href> wraps every card that has a share URL, styled to
-       read as plain card content rather than a traditional blue link. */
-    .appCard__link { display: block; color: inherit; text-decoration: none; }
-    .appCard__link:focus-visible {
+    .ledger { list-style: none; margin: var(--tc-space-sm) 0 0; padding: 0; }
+    .ledgerRow { border-bottom: 1px solid var(--tc-border); }
+    .ledgerRow__link {
+      display: flex;
+      flex-direction: column;
+      gap: var(--tc-space-xs, 4px);
+      padding: var(--tc-space-md) 0;
+      color: inherit;
+      text-decoration: none;
+    }
+    .ledgerRow__link:focus-visible {
       outline: 2px solid var(--tc-amber);
       outline-offset: 2px;
-      border-radius: var(--tc-radius-md);
     }
-    .appCard__link:hover .appCard__address { color: var(--tc-amber); }
-    .appCard__link:hover .appCard__cta { color: var(--tc-amber-hover); text-decoration: underline; }
-    .appCard__head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--tc-space-sm); }
-    /* Address is the human hook (decision 5): the card headline. */
-    .appCard__address { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
-    /* The council reference is demoted to small metadata under the headline. */
-    .appCard__ref { margin: var(--tc-space-sm) 0; font-size: 0.8125rem; color: var(--tc-text-secondary); overflow-wrap: anywhere; }
-    /* Started/Decided real-world date line (tc-s0yf, GH #819) — same secondary
-       metadata treatment as the reference line above it. */
-    .appCard__dates { margin: 0 0 var(--tc-space-sm); font-size: 0.8125rem; color: var(--tc-text-secondary); }
-    .appCard__desc { margin: 0 0 var(--tc-space-sm); color: var(--tc-text-secondary); }
-    .appCard__meta { display: flex; flex-wrap: wrap; gap: var(--tc-space-md); align-items: center; font-size: 0.875rem; }
+    .ledgerRow__link:hover .ledgerRow__address { color: var(--tc-amber); }
+    .ledgerRow__link:hover .ledgerRow__cta { color: var(--tc-amber-hover); text-decoration: underline; }
+    /* Fixed-width mono ref+date column, set alongside the body from tablet up. */
+    .ledgerRow__meta {
+      font-family: var(--tc-font-mono);
+      font-size: 0.75rem;
+      color: var(--tc-text-secondary);
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .ledgerRow__ref, .ledgerRow__date { margin: 0; }
+    .ledgerRow__body { min-width: 0; }
+    .ledgerRow__head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--tc-space-sm); }
+    /* Address is the human hook (decision 5): Fraunces 600, the row's one
+       display-face element. */
+    .ledgerRow__address { font-family: var(--tc-font-display); font-weight: 600; margin: 0; overflow-wrap: anywhere; }
+    .ledgerRow__desc { margin: var(--tc-space-xs, 4px) 0 0; color: var(--tc-text-secondary); }
     /* Visible share-page affordance (decision 6) — a real anchor, not a
-       JS-only click handler; this is the text cue, the href is the whole card. */
-    .appCard__cta { color: var(--tc-amber); font-weight: 600; }
-    .status {
+       JS-only click handler; this is the text cue, the href is the whole row. */
+    .ledgerRow__cta { display: inline-block; margin-top: var(--tc-space-xs, 4px); color: var(--tc-amber); font-weight: 600; }
+    @media (min-width: 640px) {
+      .ledgerRow__link { flex-direction: row; align-items: flex-start; gap: var(--tc-space-md); }
+      .ledgerRow__meta { flex: 0 0 108px; }
+      .ledgerRow__body { flex: 1 1 auto; }
+    }
+    /* ---------- Status stamp: outlined, uppercase, letterspaced, icon +
+       label always (accessibility invariant — colour is never the sole
+       indicator). Same three-bucket vocabulary/colours as before (decision
+       4), no longer filled. ---------- */
+    .stamp {
       display: inline-flex;
       align-items: center;
-      border-radius: var(--tc-radius-full);
+      gap: 4px;
       padding: 2px var(--tc-space-sm);
-      font-size: 0.8125rem;
-      font-weight: 600;
+      border: 1.5px solid currentColor;
+      border-radius: 3px;
+      background: transparent;
+      font-size: 0.6875rem;
+      font-weight: 700;
       white-space: nowrap;
+      flex-shrink: 0;
     }
-    /* Shared filled-chip vocabulary (decision 4): three canonical buckets,
-       background = foreground colour at 15% opacity, converged with the
-       design-language Status Badge pattern. */
-    .status--granted { color: var(--tc-status-granted); background: var(--tc-status-granted-bg); }
-    .status--refused { color: var(--tc-status-refused); background: var(--tc-status-refused-bg); }
-    .status--neutral { color: var(--tc-status-neutral); background: var(--tc-status-neutral-bg); }
-    /* Compact "Status breakdown" strip (tc-r4n9.3): one row of chip-style
-       headline buckets (reusing the .status--granted/refused/neutral chip
-       vocabulary above) plus the total, with any long tail folded behind the
-       .statusSummary__other <details> instead of a one-row-per-state list. */
+    .stamp__label { text-transform: uppercase; letter-spacing: 0.12em; }
+    .stamp__icon { flex-shrink: 0; }
+    .stamp--granted { color: var(--tc-status-granted); }
+    .stamp--refused { color: var(--tc-status-refused); }
+    .stamp--neutral { color: var(--tc-status-neutral); }
+    /* Compact "Status breakdown" strip (tc-r4n9.3): one row of the same
+       .stamp--granted/refused/neutral vocabulary and colours above, plus the
+       total, with any long tail folded behind the .statusSummary__other
+       <details> instead of a one-row-per-state list. */
     .statusSummary__strip { display: flex; flex-wrap: wrap; align-items: center; gap: var(--tc-space-sm); }
     .statusSummary__total { color: var(--tc-text-secondary); font-size: 0.875rem; }
     .statusSummary__other { margin-top: var(--tc-space-sm); color: var(--tc-text-secondary); font-size: 0.875rem; }
@@ -465,11 +578,13 @@ export function pageStyles() {
     .townLinks__list a:hover { color: var(--tc-amber-hover); border-color: var(--tc-amber); }
     /* /planning/ authority hub (tc-geq7h.1): an A-Z jump nav plus one
        <section> per letter, each holding a flat list of authority links with
-       a small metadata line (application/town counts). */
+       a small mono metadata line (application/town counts) — the same
+       hairline-ruled ledger rhythm as the applications list. */
     .azNav { display: flex; flex-wrap: wrap; gap: var(--tc-space-sm); margin: 0 0 var(--tc-space-lg); font-weight: 600; }
     .azNav a { color: var(--tc-amber); text-decoration: none; }
     .azNav a:hover { color: var(--tc-amber-hover); text-decoration: underline; }
     .hubGroup { scroll-margin-top: var(--tc-space-md); }
+    .hubGroup h2 { border-bottom: 1px solid var(--tc-border); padding-bottom: var(--tc-space-sm); }
     .hubList { list-style: none; margin: 0 0 var(--tc-space-lg); padding: 0; display: grid; gap: var(--tc-space-sm); }
     .hubList__item {
       display: flex;
@@ -482,7 +597,7 @@ export function pageStyles() {
     }
     .hubList__link { color: var(--tc-text-primary); font-weight: 600; text-decoration: none; }
     .hubList__link:hover { color: var(--tc-amber); text-decoration: underline; }
-    .hubList__meta { color: var(--tc-text-secondary); font-size: 0.875rem; white-space: nowrap; }
+    .hubList__meta { font-family: var(--tc-font-mono); color: var(--tc-text-secondary); font-size: 0.8125rem; white-space: nowrap; }
     .explainer p { color: var(--tc-text-secondary); }
     /* Inline alerts CTA pulled above the list (tc-r4n9.3): a lighter pill,
        visually distinct from the rectangular bottom banner button below. */
@@ -497,20 +612,41 @@ export function pageStyles() {
       font-weight: 700;
     }
     .ctaInline__button:hover { background: var(--tc-amber-hover); }
-    /* Mid-list CTA card (tc-fgoyj): shares the card chrome so it sits
-       naturally in the list, with centred copy and the pill button so it is
-       unmistakably a Town Crier pitch rather than an application. */
-    .appCard--cta { text-align: center; padding: var(--tc-space-lg); }
-    .appCard__ctaHeading { margin: 0 0 var(--tc-space-sm); }
-    .appCard__ctaBody { margin: 0 0 var(--tc-space-md); color: var(--tc-text-secondary); }
+    /* ---------- CTA bands: filed-notice card shape, 2px brass top rule,
+       Fraunces headline, one brass button — mid-list pitch (tc-fgoyj) and
+       bottom banner both use this treatment. ---------- */
+    .ledgerCta {
+      list-style: none;
+      margin-top: var(--tc-space-md);
+      padding: var(--tc-space-lg);
+      background: var(--tc-surface);
+      border: 1px solid var(--tc-border);
+      border-top: 2px solid var(--tc-amber);
+      border-radius: var(--tc-radius-md);
+      text-align: center;
+    }
+    .ledgerCta__heading { font-family: var(--tc-font-display); font-weight: 600; margin: 0 0 var(--tc-space-sm); }
+    .ledgerCta__body { margin: 0 0 var(--tc-space-md); color: var(--tc-text-secondary); }
+    .ledgerCta__button {
+      display: inline-block;
+      padding: var(--tc-space-sm) var(--tc-space-lg);
+      background: var(--tc-amber);
+      color: var(--tc-text-on-accent);
+      border-radius: var(--tc-radius-full);
+      text-decoration: none;
+      font-weight: 700;
+    }
+    .ledgerCta__button:hover { background: var(--tc-amber-hover); }
     .cta {
       margin: var(--tc-space-xl) 0;
       padding: var(--tc-space-lg);
       background: var(--tc-surface);
       border: 1px solid var(--tc-border);
+      border-top: 2px solid var(--tc-amber);
       border-radius: var(--tc-radius-md);
       text-align: center;
     }
+    .cta__heading { font-family: var(--tc-font-display); font-weight: 600; }
     /* Desktop-only QR (tc-fgoyj): pointer/hover media queries approximate
        "no App Store on this device" without any UA sniffing or JS. The SVG's
        own colours stay dark-on-light in dark mode (see qr.mjs) — only the
