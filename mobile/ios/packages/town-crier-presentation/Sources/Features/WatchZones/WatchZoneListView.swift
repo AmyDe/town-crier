@@ -105,21 +105,21 @@ public struct WatchZoneListView: View {
     Section {
       VStack(spacing: TCSpacing.medium) {
         Image(systemName: "mappin.and.ellipse")
-          .font(.system(.largeTitle))
+          .font(TCTypography.displayLarge)
           .foregroundStyle(Color.tcTextTertiary)
         Text("No Watch Zones")
-          .font(.system(.headline).weight(.semibold))
+          .font(TCTypography.headline)
         Text(
           "Add a watch zone to start monitoring planning applications in your area."
         )
-        .font(.system(.body))
+        .font(TCTypography.body)
         .foregroundStyle(Color.tcTextSecondary)
         .multilineTextAlignment(.center)
         Button {
           viewModel.addZone()
         } label: {
           Text("Add Watch Zone")
-            .font(.system(.body).weight(.semibold))
+            .font(TCTypography.bodyEmphasis)
             .frame(maxWidth: .infinity)
         }
         .buttonStyle(.borderedProminent)
@@ -202,7 +202,7 @@ private struct UnconvertedLocalZoneRow: View {
   var body: some View {
     HStack(alignment: .top, spacing: TCSpacing.medium) {
       Image(systemName: "mappin.and.ellipse")
-        .font(.system(.title3))
+        .font(TCTypography.headline)
         .foregroundStyle(Color.tcAmber)
         .accessibilityHidden(true)
 
@@ -223,7 +223,7 @@ private struct UnconvertedLocalZoneRow: View {
 
       Button(action: onDismiss) {
         Image(systemName: "xmark")
-          .font(.system(.caption))
+          .font(TCTypography.caption)
           .foregroundStyle(Color.tcTextTertiary)
       }
       .buttonStyle(.plain)

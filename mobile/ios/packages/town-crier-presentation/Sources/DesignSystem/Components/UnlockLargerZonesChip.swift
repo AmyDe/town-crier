@@ -37,7 +37,7 @@ public struct UnlockLargerZonesChip: View {
     Button(action: action) {
       HStack(alignment: .top, spacing: TCSpacing.small) {
         Image(systemName: "lock.fill")
-          .font(.system(.caption))
+          .font(TCTypography.caption)
           .foregroundStyle(Color.tcAmber)
           .accessibilityHidden(true)
 
@@ -55,7 +55,7 @@ public struct UnlockLargerZonesChip: View {
         Spacer(minLength: 0)
 
         Image(systemName: "chevron.right")
-          .font(.system(.caption))
+          .font(TCTypography.caption)
           .foregroundStyle(Color.tcTextSecondary)
           .accessibilityHidden(true)
       }

@@ -21,25 +21,27 @@ struct ApplicationSummarySheet: View {
             .foregroundStyle(
               viewModel.isSelectedApplicationSaved ? Color.tcAmber : Color.tcTextSecondary
             )
-            .font(.system(.body))
+            .font(TCTypography.body)
           }
           .accessibilityLabel(viewModel.isSelectedApplicationSaved ? "Unsave" : "Save")
         }
+        // Mono metadata (GH#857): the planning reference, previously plain
+        // body text.
         Text(application.reference.value)
-          .font(.system(.caption))
+          .font(TCTypography.mono)
           .foregroundStyle(Color.tcTextSecondary)
       }
 
       Text(application.description)
-        .font(.system(.headline, weight: .semibold))
+        .font(TCTypography.headline)
         .foregroundStyle(Color.tcTextPrimary)
 
       Label(application.address, systemImage: "mappin.and.ellipse")
-        .font(.system(.body))
+        .font(TCTypography.body)
         .foregroundStyle(Color.tcTextSecondary)
 
       Text("Received \(application.receivedDate.formatted(date: .abbreviated, time: .omitted))")
-        .font(.system(.caption))
+        .font(TCTypography.mono)
         .foregroundStyle(Color.tcTextTertiary)
 
       PrimaryButton {

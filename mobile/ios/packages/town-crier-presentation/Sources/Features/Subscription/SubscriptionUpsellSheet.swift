@@ -33,7 +33,7 @@ public struct SubscriptionUpsellSheet: View {
 
       // Icon
       Image(systemName: "lock.fill")
-        .font(.system(.largeTitle))
+        .font(TCTypography.displayLarge)
         .foregroundStyle(Color.tcAmber)
 
       // Title

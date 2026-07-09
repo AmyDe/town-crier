@@ -36,7 +36,7 @@ public struct PushNudgeBanner: View {
   private var banner: some View {
     HStack(alignment: .top, spacing: TCSpacing.medium) {
       Image(systemName: "bell.badge")
-        .font(.system(.title3))
+        .font(TCTypography.headline)
         .foregroundStyle(Color.tcAmber)
         .accessibilityHidden(true)
 

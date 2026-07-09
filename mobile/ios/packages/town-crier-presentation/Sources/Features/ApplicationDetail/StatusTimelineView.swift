@@ -29,7 +29,7 @@ struct StatusTimelineView: View {
           .frame(width: 32, height: 32)
 
         Image(systemName: item.icon)
-          .font(.system(.caption))
+          .font(TCTypography.caption)
           .foregroundStyle(statusColor(for: item.status))
       }
 

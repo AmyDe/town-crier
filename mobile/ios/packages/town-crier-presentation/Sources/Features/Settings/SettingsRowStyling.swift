@@ -59,7 +59,7 @@ enum SettingsRowStyling {
   /// Trailing chevron indicator for navigation rows.
   static var settingChevron: some View {
     Image(systemName: "chevron.right")
-      .font(.system(.caption))
+      .font(TCTypography.caption)
       .foregroundStyle(Color.tcTextTertiary)
   }
 }

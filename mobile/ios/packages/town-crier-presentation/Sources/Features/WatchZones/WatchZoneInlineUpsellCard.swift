@@ -90,7 +90,7 @@ public struct WatchZoneInlineUpsellCard: View {
   private func benefitRow(icon: String, text: String) -> some View {
     HStack(alignment: .firstTextBaseline, spacing: TCSpacing.small) {
       Image(systemName: icon)
-        .font(.system(.body))
+        .font(TCTypography.body)
         .foregroundStyle(Color.tcAmber)
         .accessibilityHidden(true)
       Text(text)

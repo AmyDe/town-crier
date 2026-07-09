@@ -15,7 +15,7 @@ public struct ErrorStateView: View {
   public var body: some View {
     VStack(spacing: TCSpacing.medium) {
       Image(systemName: iconName)
-        .font(.system(.largeTitle))
+        .font(TCTypography.displayLarge)
         .foregroundStyle(iconColor)
 
       Text(error.userTitle)

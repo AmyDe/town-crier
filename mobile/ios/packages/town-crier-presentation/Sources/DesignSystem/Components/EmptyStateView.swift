@@ -26,7 +26,7 @@ public struct EmptyStateView: View {
   public var body: some View {
     VStack(spacing: TCSpacing.medium) {
       Image(systemName: icon)
-        .font(.system(.largeTitle))
+        .font(TCTypography.displayLarge)
         .foregroundStyle(Color.tcTextTertiary)
 
       Text(title)

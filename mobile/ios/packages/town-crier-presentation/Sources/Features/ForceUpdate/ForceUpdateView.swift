@@ -16,7 +16,7 @@ public struct ForceUpdateView: View {
       Spacer()
 
       Image(systemName: "arrow.up.circle")
-        .font(.system(.largeTitle))
+        .font(TCTypography.displayLarge)
         .foregroundStyle(Color.tcAmber)
 
       Text("Update Required")

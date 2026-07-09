@@ -7,7 +7,7 @@ struct WelcomeStepView: View {
   var body: some View {
     VStack(spacing: TCSpacing.large) {
       Image(systemName: "bell.badge")
-        .font(.system(.largeTitle))
+        .font(TCTypography.displayLarge)
         .foregroundStyle(Color.tcAmber)
 
       Text("Welcome to Town Crier")
