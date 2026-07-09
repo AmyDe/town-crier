@@ -75,6 +75,13 @@ describe('Footer', () => {
     expect(links).toHaveLength(2);
   });
 
+  it('renders small-caps section labels for Explore and Legal', () => {
+    render(<Footer />);
+
+    expect(screen.getByText('Explore')).toBeInTheDocument();
+    expect(screen.getByText('Legal')).toBeInTheDocument();
+  });
+
   it('renders an Explore nav linking to the planning authority and town indexes plus search', () => {
     render(<Footer />);
 
