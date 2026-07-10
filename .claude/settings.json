@@ -78,7 +78,7 @@
             "type": "command"
           },
           {
-            "command": "jq -r '.tool_input.command' | grep -qE '^git\\s+commit' || exit 0; root=$(git rev-parse --show-toplevel); staged=$(git diff --cached --name-only -- '*.swift' | grep '^mobile/ios/' | sed \"s|^|$root/|\" || true); [ -z \"$staged\" ] \u0026\u0026 exit 0; lint=$(cd \"$root/mobile/ios\" \u0026\u0026 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swiftlint lint $staged --quiet 2\u003e/dev/null | grep -E ':[0-9]+:[0-9]+: (error|warning):'); [ -z \"$lint\" ] \u0026\u0026 exit 0; jq -n --arg reason \"SwiftLint violations in staged files — fix before committing:\\n$lint\" '{\"decision\":\"block\",\"reason\":$reason}'",
+            "command": "jq -r '.tool_input.command' | grep -qE '^git\\s+commit' || exit 0; root=$(git rev-parse --show-toplevel); staged=$(git diff --cached --name-only --diff-filter=d -- '*.swift' | grep '^mobile/ios/' | sed \"s|^|$root/|\" || true); [ -z \"$staged\" ] \u0026\u0026 exit 0; lint=$(cd \"$root/mobile/ios\" \u0026\u0026 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swiftlint lint $staged --quiet 2\u003e/dev/null | grep -E ':[0-9]+:[0-9]+: (error|warning):'); [ -z \"$lint\" ] \u0026\u0026 exit 0; jq -n --arg reason \"SwiftLint violations in staged files — fix before committing:\\n$lint\" '{\"decision\":\"block\",\"reason\":$reason}'",
             "statusMessage": "SwiftLint pre-commit check...",
             "timeout": 30,
             "type": "command"
