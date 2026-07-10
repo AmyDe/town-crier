@@ -548,6 +548,60 @@ func TestPostgresStore_FindNearbyPage(t *testing.T) {
 	// APP-FAR (50 km) is excluded by the 6 km radius.
 }
 
+// TestPostgresStore_RecentNearPoint_OrdersByRealDateDescNullsLast proves
+// RecentNearPoint (GH#912 Phase 2, ?sort=recent) orders by recentRealDateOrder —
+// most-recently-decided, falling back to most-recently-submitted, with NULLS
+// LAST on both — while still applying the ST_DWithin radius filter, mirroring
+// TestPostgresStore_RecentByAuthority_OrdersByRealDateDescNullsLast but
+// authority-agnostic and spatially bounded instead of authority-scoped.
+func TestPostgresStore_RecentNearPoint_OrdersByRealDateDescNullsLast(t *testing.T) {
+	ctx := context.Background()
+	store := newAppPGStore(t)
+
+	decidedRecent := at(pgApp("DECIDED-RECENT", 100), 100)
+	decidedRecent.StartDate = pgPtr(time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC))
+	decidedRecent.DecidedDate = pgPtr(time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC))
+	decidedRecent.LastDifferent = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) // NOT the sort key
+
+	startedOnly := at(pgApp("STARTED-ONLY", 100), 200)
+	startedOnly.StartDate = pgPtr(time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC))
+
+	// Decided but never dated by PlanIt's own re-index marker: must sort on its
+	// real decided_date, not float via LastDifferent (the #819 bug this
+	// ordering exists to avoid).
+	staleReindexed := at(pgApp("STALE-REINDEXED", 100), 300)
+	staleReindexed.StartDate = pgPtr(time.Date(2021, 5, 28, 0, 0, 0, 0, time.UTC))
+	staleReindexed.DecidedDate = pgPtr(time.Date(2021, 7, 9, 0, 0, 0, 0, time.UTC))
+	staleReindexed.LastDifferent = time.Date(2026, 6, 30, 0, 0, 0, 0, time.UTC) // bumped "now"
+
+	noDates := at(pgApp("NO-DATES", 100), 400) // neither start nor decided set: NULLS LAST tail
+
+	farOutsideRadius := at(pgApp("APP-FAR", 100), 50000)
+	farOutsideRadius.DecidedDate = pgPtr(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)) // would sort first if not excluded
+
+	for _, a := range []PlanningApplication{decidedRecent, startedOnly, staleReindexed, noDates, farOutsideRadius} {
+		if err := store.Upsert(ctx, a); err != nil {
+			t.Fatalf("Upsert %s: %v", a.Name, err)
+		}
+	}
+
+	got, err := store.RecentNearPoint(ctx, pgCentreLat, pgCentreLon, 6000, 10)
+	if err != nil {
+		t.Fatalf("RecentNearPoint: %v", err)
+	}
+	// DECIDED-RECENT (2026-05-01) > STARTED-ONLY (2026-02-01) > STALE-REINDEXED
+	// (2021-07-09, despite the "now" LastDifferent) > NO-DATES (NULL, NULLS
+	// LAST). APP-FAR is excluded by the 6 km radius despite its 2026-06-01
+	// decided_date, which would otherwise sort it first.
+	assertNames(t, appNames(got), []string{"DECIDED-RECENT", "STARTED-ONLY", "STALE-REINDEXED", "NO-DATES"})
+
+	capped, err := store.RecentNearPoint(ctx, pgCentreLat, pgCentreLon, 6000, 2)
+	if err != nil {
+		t.Fatalf("RecentNearPoint capped: %v", err)
+	}
+	assertNames(t, appNames(capped), []string{"DECIDED-RECENT", "STARTED-ONLY"})
+}
+
 // TestPostgresStore_FindNearbyPage_TieBreak proves the planit_name tie-break
 // keeps keyset pagination correct when two applications share an exact distance.
 func TestPostgresStore_FindNearbyPage_TieBreak(t *testing.T) {
