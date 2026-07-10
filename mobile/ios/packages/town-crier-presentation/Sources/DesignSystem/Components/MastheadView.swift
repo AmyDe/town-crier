@@ -2,14 +2,14 @@ import SwiftUI
 
 /// The Public Notice masthead (GH#857): a small-caps wordmark title set over
 /// a double rule, echoing a printed notice's banner. Used on top-level
-/// screen titles — the Applications feed and Watch Zones screens
-/// definitely; other screens adopt it on a case-by-case basis.
+/// screen titles — Applications, Saved, and Watch Zones.
 ///
 /// Rendered as ordinary scrollable content (not a toolbar principal item) so
 /// it composes with the existing `List`-based screens without disturbing
 /// their `.navigationTitle` (still present for VoiceOver/back-button
-/// correctness) or, on the Applications screen, the large-title collapse
-/// animation that a single unambiguous scroll view depends on.
+/// correctness). The system nav bar's own rendered title text is separately
+/// suppressed on each of those screens via `View.mastheadNavigationBar()`
+/// (GH#912 Phase 1), so this masthead row is the single VISIBLE title.
 public struct MastheadView: View {
   public let title: String
 

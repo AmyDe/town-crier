@@ -53,7 +53,11 @@ public struct WatchZoneListView: View {
         }
       }
     }
+    .listStyle(.plain)
+    .scrollContentBackground(.hidden)
+    .background(Color.tcBackground)
     .navigationTitle("Watch Zones")
+    .mastheadNavigationBar()
     .toolbar {
       ToolbarItem(placement: .primaryAction) {
         if viewModel.showUpgradeBadge {
