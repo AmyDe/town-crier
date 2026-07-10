@@ -94,7 +94,8 @@ public final class AnonymousMapViewModel: ObservableObject, ErrorHandlingViewMod
   /// map's `.task` on first appearance.
   public func loadInitial() async {
     await fetch(
-      latitude: anchorCoordinate.latitude, longitude: anchorCoordinate.longitude,
+      latitude: anchorCoordinate.latitude,
+      longitude: anchorCoordinate.longitude,
       radiusMetres: radiusMetres)
   }
 

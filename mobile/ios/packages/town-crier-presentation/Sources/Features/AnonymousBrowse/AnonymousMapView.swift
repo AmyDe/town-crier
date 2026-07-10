@@ -62,31 +62,31 @@ public struct AnonymousMapView: View {
         }
       #endif
       .sheet(
-      item: Binding(
-        get: { viewModel.selectedApplication },
-        set: { _ in viewModel.clearSelection() }
-      ),
-      onDismiss: { viewModel.presentPendingDetailIfNeeded() },
-      content: { application in
-        AnonymousApplicationSummaryView(application: application) {
-          viewModel.requestFullDetail()
+        item: Binding(
+          get: { viewModel.selectedApplication },
+          set: { _ in viewModel.clearSelection() }
+        ),
+        onDismiss: { viewModel.presentPendingDetailIfNeeded() },
+        content: { application in
+          AnonymousApplicationSummaryView(application: application) {
+            viewModel.requestFullDetail()
+          }
         }
-      }
-    )
-    // Disambiguation list for a coincident ("stacked") cluster tap (GH#877).
-    // Its `onDismiss` presents the chosen row's summary, so the list always
-    // finishes dismissing before the summary appears — the two `.sheet`s are
-    // never both up (mirrors `MapView.swift`).
-    .sheet(
-      item: Binding(
-        get: { viewModel.stackedApplications },
-        set: { _ in viewModel.clearStack() }
-      ),
-      onDismiss: { viewModel.presentPendingSummaryIfNeeded() },
-      content: { stacked in
-        StackedApplicationsSheet(stacked: stacked, onSelect: viewModel.selectFromStack)
-      }
-    )
+      )
+      // Disambiguation list for a coincident ("stacked") cluster tap (GH#877).
+      // Its `onDismiss` presents the chosen row's summary, so the list always
+      // finishes dismissing before the summary appears — the two `.sheet`s are
+      // never both up (mirrors `MapView.swift`).
+      .sheet(
+        item: Binding(
+          get: { viewModel.stackedApplications },
+          set: { _ in viewModel.clearStack() }
+        ),
+        onDismiss: { viewModel.presentPendingSummaryIfNeeded() },
+        content: { stacked in
+          StackedApplicationsSheet(stacked: stacked, onSelect: viewModel.selectFromStack)
+        }
+      )
   }
 
   // MARK: - Map body
