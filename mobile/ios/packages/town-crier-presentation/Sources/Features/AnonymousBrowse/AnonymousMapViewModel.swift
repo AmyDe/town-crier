@@ -65,12 +65,12 @@ public final class AnonymousMapViewModel: ObservableObject, ErrorHandlingViewMod
   /// must show its true radius, not a falsely small preview.
   @Published public private(set) var radiusMetres: Double
 
-  /// Mirrors `AnonymousApplicationListViewModel.defaultLimit`'s source: the
-  /// `near-point` cap the anonymous LIST view still uses (GH#924 Phase 2
-  /// moved the MAP off `near-point` entirely, onto server-side clusters — see
-  /// this type's header — but the constant stays here as the value the list
-  /// view model's own `defaultLimit` derives from, so that call site needs no
-  /// change).
+  /// The `near-point` page cap the anonymous LIST view still uses (GH#924
+  /// Phase 2 moved the MAP off `near-point` entirely, onto server-side
+  /// clusters — see this type's header). Kept here because
+  /// `AnonymousApplicationListViewModel.defaultLimit` derives from this
+  /// constant; moving it would be a needless, out-of-scope edit to that
+  /// call site for a Phase 2 change that never touches the list.
   public static let defaultLimit = 200
 
   private let repository: AnonymousApplicationsRepository
