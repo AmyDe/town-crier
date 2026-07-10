@@ -36,6 +36,7 @@ type Store interface {
 	RecentByAuthority(ctx context.Context, authorityCode string, cap int) ([]PlanningApplication, error)
 	BreakdownByAuthority(ctx context.Context, authorityCode string) ([]StateCount, error)
 	FindNearbyPage(ctx context.Context, latitude, longitude, radiusMetres float64, limit int, cursor string) ([]PlanningApplication, string, error)
+	RecentNearPoint(ctx context.Context, latitude, longitude, radiusMetres float64, limit int) ([]PlanningApplication, error)
 	FindInZonePage(ctx context.Context, q InZoneQuery) ([]PlanningApplication, string, error)
 	FindClustersInZone(ctx context.Context, q ClusterQuery) ([]Cluster, error)
 	RecentNearestTown(ctx context.Context, authorityCode string, lat, lng, radiusMetres float64, siblings []TownCentroid, cap int) ([]PlanningApplication, error)
@@ -328,6 +329,43 @@ func (s *PostgresStore) FindNearbyPage(ctx context.Context, latitude, longitude,
 			return enc, nil
 		},
 		limit, wrap)
+}
+
+// pgRecentNearPointQuery mirrors pgRecentByAuthorityQuery's recentRealDateOrder
+// but is authority-agnostic and radius-bounded (ST_DWithin over nearbyPoint,
+// exactly like findNearbyFirstPageQuery) instead of authority-scoped — the
+// public near-point browse endpoint's ?sort=recent (GH#912 Phase 2). It returns
+// a single ordered page with NO keyset continuation, unlike FindNearbyPage:
+// recentRealDateOrder's primary key, GREATEST(decided_date, start_date), and its
+// secondary key, start_date, are each independently nullable, so a correct
+// keyset predicate needs a per-NULL-combination branch (see statusKeysetQuery
+// and its three siblings in zonepage.go for the shape that takes) for an
+// ordering nothing has needed to paginate before now — RecentByAuthority and
+// RecentNearestTown, the two other recentRealDateOrder call sites, are both
+// single-page cap-only reads too. The near-point recent sort's only consumer
+// (the anonymous browse list, GH#912 Phase 3) fetches one bounded page
+// (<= nearPointMaxLimit), so this mirrors that existing single-page shape
+// rather than building an unused continuation.
+const pgRecentNearPointQuery = "SELECT " + appColumns +
+	" FROM applications WHERE ST_DWithin(location, " + nearbyPoint + ", $3) " +
+	"ORDER BY " + recentRealDateOrder + " LIMIT $4"
+
+// RecentNearPoint returns up to limit applications within radiusMetres of
+// (latitude, longitude), ordered by recentRealDateOrder (most-recently-decided,
+// falling back to most-recently-submitted, NULLS LAST) — the near-point browse
+// endpoint's ?sort=recent (GH#912 Phase 2). It is authority-agnostic like
+// FindNearbyPage, which remains the sole paginated (?sort=distance) path; see
+// pgRecentNearPointQuery for why this one does not paginate.
+func (s *PostgresStore) RecentNearPoint(ctx context.Context, latitude, longitude, radiusMetres float64, limit int) ([]PlanningApplication, error) {
+	rows, err := s.db.Query(ctx, pgRecentNearPointQuery, longitude, latitude, radiusMetres, limit)
+	if err != nil {
+		return nil, fmt.Errorf("recent applications near (%v, %v): %w", latitude, longitude, err)
+	}
+	apps, err := pgx.CollectRows(rows, scanAppRow)
+	if err != nil {
+		return nil, fmt.Errorf("recent applications near (%v, %v): %w", latitude, longitude, err)
+	}
+	return apps, nil
 }
 
 // seoNearbyPoint is the query point for the authority-scoped SEO spatial reads,
