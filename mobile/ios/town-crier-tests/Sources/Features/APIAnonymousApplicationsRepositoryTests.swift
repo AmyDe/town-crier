@@ -158,4 +158,45 @@ struct APIAnonymousApplicationsRepositoryTests {
         latitude: 52.2053, longitude: 0.1218, radiusMetres: 2000, limit: 200)
     }
   }
+
+  // MARK: - sort (GH#912 Phase 3)
+
+  @Test("fetchNearby sends sort=recent when explicitly requested")
+  func fetchNearby_sortRecent_sendsSortQueryParam() async throws {
+    let (sut, transport) = makeSUT(responses: [(Data("[]".utf8), httpResponse(statusCode: 200))])
+
+    _ = try await sut.fetchNearby(
+      latitude: 52.2053, longitude: 0.1218, radiusMetres: 2000, limit: 200, sort: .recent)
+
+    let url = try #require(transport.requests[0].url)
+    let components = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false))
+    let queryItems = try #require(components.queryItems)
+    #expect(queryItems.contains(URLQueryItem(name: "sort", value: "recent")))
+  }
+
+  @Test("fetchNearby sends sort=distance when explicitly requested")
+  func fetchNearby_sortDistance_sendsSortQueryParam() async throws {
+    let (sut, transport) = makeSUT(responses: [(Data("[]".utf8), httpResponse(statusCode: 200))])
+
+    _ = try await sut.fetchNearby(
+      latitude: 52.2053, longitude: 0.1218, radiusMetres: 2000, limit: 200, sort: .distance)
+
+    let url = try #require(transport.requests[0].url)
+    let components = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false))
+    let queryItems = try #require(components.queryItems)
+    #expect(queryItems.contains(URLQueryItem(name: "sort", value: "distance")))
+  }
+
+  @Test("fetchNearby without an explicit sort defaults to distance (map-path compatibility)")
+  func fetchNearby_noExplicitSort_defaultsToDistance() async throws {
+    let (sut, transport) = makeSUT(responses: [(Data("[]".utf8), httpResponse(statusCode: 200))])
+
+    _ = try await sut.fetchNearby(
+      latitude: 52.2053, longitude: 0.1218, radiusMetres: 2000, limit: 200)
+
+    let url = try #require(transport.requests[0].url)
+    let components = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false))
+    let queryItems = try #require(components.queryItems)
+    #expect(queryItems.contains(URLQueryItem(name: "sort", value: "distance")))
+  }
 }
