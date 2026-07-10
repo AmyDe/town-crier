@@ -321,13 +321,20 @@ func markSent(n notifications.DigestNotification) notifications.DigestNotificati
 	return n
 }
 
-// sendDigestEmail groups the notifications by watch zone (with a saved-only
-// section for zone-less notifications), renders the email body, and hands it to
-// the transport-only email sender. It logs and returns any failure so the caller
-// can decide whether to proceed: the hourly cycle must NOT flip emailSent when the
-// send fails (otherwise the email is silently lost and never retried — tc-qvds),
-// while the weekly cycle simply moves on to the next user. A failed email never
-// aborts the rest of the cycle either way.
+// sendDigestEmail collapses duplicate per-application records (see
+// dedupByApplication — an application can legitimately have both a
+// NewApplication and a DecisionUpdate record for the in-app feed, but the
+// email must render each application once), groups the survivors by watch
+// zone (with a saved-only section for zone-less notifications), renders the
+// email body, and hands it to the transport-only email sender. Callers pass
+// the full pre-dedup slice (RunHourly's MarkEmailSent loop relies on that: it
+// walks its own pre-dedup `included` slice after this call returns, so the
+// duplicate this function suppresses from the render is still marked sent and
+// never resurfaces in a later cycle). It logs and returns any failure so the
+// caller can decide whether to proceed: the hourly cycle must NOT flip
+// emailSent when the send fails (otherwise the email is silently lost and
+// never retried — tc-qvds), while the weekly cycle simply moves on to the next
+// user. A failed email never aborts the rest of the cycle either way.
 func (h *Handler) sendDigestEmail(ctx context.Context, userID, email string, notifs []notifications.DigestNotification) error {
 	zones, err := h.zones.GetByUserID(ctx, userID)
 	if err != nil {
@@ -339,7 +346,8 @@ func (h *Handler) sendDigestEmail(ctx context.Context, userID, email string, not
 		zoneName[z.ID] = z.Name
 	}
 
-	sections, saved, total := groupByZone(notifs, zoneName)
+	deduped := dedupByApplication(notifs)
+	sections, saved, total := groupByZone(deduped, zoneName)
 
 	msg := acsemail.Message{
 		Sender:    senderAddress,
