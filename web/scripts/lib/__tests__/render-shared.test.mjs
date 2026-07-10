@@ -429,21 +429,23 @@ describe('pageStyles breadcrumb (mono small-caps dateline)', () => {
   });
 });
 
-describe('pageStyles H1 (Fraunces display face)', () => {
-  it('sets h1 to the display font token, whose fallback stack keeps it readable if Fraunces 404s', () => {
+describe('pageStyles H1 (display font token)', () => {
+  it('sets h1 to the display font token (sans stack, no self-hosted display face)', () => {
     const css = pageStyles();
     expect(css).toMatch(/^\s*h1 \{[^}]*font-family: var\(--tc-font-display\)/m);
   });
 });
 
-describe('pageStyles Fraunces self-hosting (zero external font requests)', () => {
-  it('declares 400 and 600 weight @font-face blocks pointing at same-origin woff2 files', () => {
+describe('pageStyles font self-hosting (zero external font requests, no Fraunces, tc-b3nki.7)', () => {
+  it('declares no @font-face block for Fraunces', () => {
+    const css = pageStyles();
+    expect(css).not.toMatch(/font-family: 'Fraunces'/);
+  });
+
+  it('still declares the Inter @font-face block, same-origin woff2', () => {
     const css = pageStyles();
     expect(css).toMatch(
-      /@font-face \{[^}]*font-family: 'Fraunces';[^}]*font-weight: 400;[^}]*src: url\('\/fonts\/fraunces-latin-400-normal\.woff2'\) format\('woff2'\);/,
-    );
-    expect(css).toMatch(
-      /@font-face \{[^}]*font-family: 'Fraunces';[^}]*font-weight: 600;[^}]*src: url\('\/fonts\/fraunces-latin-600-normal\.woff2'\) format\('woff2'\);/,
+      /@font-face \{[^}]*font-family: 'Inter';[^}]*src: url\('\/fonts\/inter-latin\.woff2'\) format\('woff2'\);/,
     );
   });
 
@@ -478,7 +480,7 @@ describe('pageStyles ledger (section heading, rows, stamps)', () => {
     expect(css).not.toMatch(/\.ledgerRow \{[^}]*border: 1px solid var\(--tc-border\);\s*border-radius/);
   });
 
-  it('sets the ledger row address in the Fraunces 600 display face', () => {
+  it('sets the ledger row address in the display font token, weight 600', () => {
     const css = pageStyles();
     expect(css).toMatch(/\.ledgerRow__address \{[^}]*font-family: var\(--tc-font-display\)/);
     expect(css).toMatch(/\.ledgerRow__address \{[^}]*font-weight: 600/);
@@ -704,14 +706,14 @@ describe('renderMidListCta and mid-list injection (tc-fgoyj, filed-notice CTA ba
   });
 });
 
-describe('pageStyles CTA bands (filed-notice card shape, 2px brass top rule, Fraunces headline)', () => {
-  it('gives the mid-list CTA card a 2px brass top rule and a Fraunces headline', () => {
+describe('pageStyles CTA bands (filed-notice card shape, 2px brass top rule, display-font heading)', () => {
+  it('gives the mid-list CTA card a 2px brass top rule and a display-font heading', () => {
     const css = pageStyles();
     expect(css).toMatch(/\.ledgerCta \{[^}]*border-top: 2px solid var\(--tc-amber\)/);
     expect(css).toMatch(/\.ledgerCta__heading \{[^}]*font-family: var\(--tc-font-display\)/);
   });
 
-  it('gives the bottom CTA banner the same 2px brass top rule and Fraunces headline treatment', () => {
+  it('gives the bottom CTA banner the same 2px brass top rule and display-font heading treatment', () => {
     const css = pageStyles();
     expect(css).toMatch(/\.cta \{[^}]*border-top: 2px solid var\(--tc-amber\)/);
     expect(css).toMatch(/\.cta__heading \{[^}]*font-family: var\(--tc-font-display\)/);
