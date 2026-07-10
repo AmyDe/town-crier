@@ -2,10 +2,16 @@ import Foundation
 import TownCrierDomain
 
 /// Drives the anonymous (pre-signup) Applications tab (GH#879 Phase 3): a
-/// single nearest-first page of planning applications, reusing the same
+/// single page of planning applications, reusing the same
 /// ``ApplicationListRow`` the authenticated Applications tab uses. No
-/// sort/filter chips — matching the pre-resolved v1 scope decision
-/// (nearest-first only; parity can follow if anonymous usage justifies it).
+/// sort/filter chips — matching the pre-resolved v1 scope decision (parity
+/// can follow if anonymous usage justifies it).
+///
+/// GH#912 Phase 3: the fetch requests ``NearbyApplicationSortOrder/recent``
+/// (most-recently-updated-first) rather than the repository's default
+/// `.distance` — a fixed, silent default with no user-facing control (the
+/// anonymous map keeps `.distance`; see ``AnonymousMapViewModel``, which
+/// this change deliberately leaves untouched).
 ///
 /// GH#879 Phase 4: the query is now zone-driven. The persisted active
 /// ``DeviceLocalZone`` supplies the coordinate/radius; a zone picker mirrors
@@ -97,7 +103,8 @@ public final class AnonymousApplicationListViewModel: ObservableObject, ErrorHan
         latitude: latitude,
         longitude: longitude,
         radiusMetres: radiusMetres,
-        limit: Self.defaultLimit
+        limit: Self.defaultLimit,
+        sort: .recent
       )
     } catch {
       applications = []
@@ -121,7 +128,8 @@ public final class AnonymousApplicationListViewModel: ObservableObject, ErrorHan
         latitude: zone.centre.latitude,
         longitude: zone.centre.longitude,
         radiusMetres: zone.radiusMetres,
-        limit: Self.defaultLimit
+        limit: Self.defaultLimit,
+        sort: .recent
       )
     } catch {
       applications = []
