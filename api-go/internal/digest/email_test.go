@@ -1,6 +1,7 @@
 package digest
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -208,14 +209,19 @@ func TestBuildDigestHTML_CTAIsVerbFirstAmber(t *testing.T) {
 	}
 }
 
-func TestBuildDigestHTML_HeadlinesUseSerifFallback(t *testing.T) {
+func TestBuildDigestHTML_HeadlinesUseSansStack(t *testing.T) {
 	t.Parallel()
+
+	if headlineFontStack != bodyFontStack {
+		t.Errorf("headlineFontStack should equal bodyFontStack, got headlineFontStack=%q bodyFontStack=%q", headlineFontStack, bodyFontStack)
+	}
+
 	n := testNotification("19/00123/FUL", "zone-1", "10 High St", "Householder", "Rear extension")
 	zones := []watchZoneDigest{{name: "Home", notifications: []notifications.DigestNotification{n}}}
 	html := buildDigestHTML(zones, nil, 1)
 
-	if !strings.Contains(html, "Georgia, 'Times New Roman', serif") {
-		t.Errorf("headlines should use the email-safe serif fallback stack, got:\n%s", html)
+	if !strings.Contains(html, fmt.Sprintf(`font-family:%s;font-weight:700`, bodyFontStack)) {
+		t.Errorf("headlines should render with the sans stack, got:\n%s", html)
 	}
 }
 
