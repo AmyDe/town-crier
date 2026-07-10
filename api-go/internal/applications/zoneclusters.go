@@ -14,9 +14,17 @@ import (
 // PlanningApplicationId off exactly these two fields, so a single-member cluster
 // can route a map-pin tap straight to the application summary sheet with no
 // re-fetch.
+//
+// AuthoritySlug (GH#924 Phase 1) is populated ONLY by the anonymous clusters
+// handler (anonclusters.go): the anonymous client's only point-read is the
+// by-slug endpoint, and cluster members otherwise carry only the authority
+// area id, not its slug. omitempty keeps the authed watch-zone clusters
+// response byte-identical (that handler never sets it) — a parallel response
+// type would duplicate the whole Cluster shape for one field.
 type PlanningApplicationID struct {
-	Authority string `json:"authority"`
-	Name      string `json:"name"`
+	Authority     string `json:"authority"`
+	Name          string `json:"name"`
+	AuthoritySlug string `json:"authoritySlug,omitempty"`
 }
 
 // Cluster is one grid-aggregated bucket of in-zone, in-viewport applications, as

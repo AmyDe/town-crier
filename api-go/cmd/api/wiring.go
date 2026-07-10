@@ -75,6 +75,16 @@ var anonymousPatterns = map[string]struct{}{
 	// point+radius read is a far more attractive whole-table scraping target
 	// than the text search below).
 	"GET /v1/applications/near-point": {},
+	// The anonymous clusters endpoint (GH#924 Phase 1) is anonymous to Auth0: it
+	// backs the iOS anonymous browse map with the same PostGIS grid-aggregated
+	// clusters the authed watch-zone map renders (applications.FindClustersInZone,
+	// issue #698), so a fresh install sees the fully clustered set across its
+	// radius circle instead of a client-side cluster over the near-point route's
+	// truncated 200-row page. Grid aggregates are LESS granular than near-point's
+	// raw rows, so this is no new scraping surface; it is metered solely by the
+	// per-IP AnonRateLimit (GH#868 Phase 1) plus its own radius clamp, identical
+	// to near-point's.
+	"GET /v1/applications/clusters": {},
 	// The by-slug application read is anonymous (public planning data only, no
 	// user/subscriber data, no refresh-on-tap): it resolves an authority slug to
 	// its area id and point-reads the application, feeding the public share page
@@ -328,6 +338,14 @@ func newRouter(
 		// metered by the per-IP AnonRateLimit (GH#868 Phase 1) plus its own
 		// radius/limit clamps.
 		applications.NearPointRoutes(mux, appStore, authorities.NewLookup(), logger)
+		// The public anonymous clusters endpoint (GH#924 Phase 1) reads from the same
+		// store: it calls the same FindClustersInZone grid-aggregation primitive as
+		// the authed watch-zone clusters route (watchzones.NearbyRoutes above), with
+		// the centre/radius/viewport supplied by the caller instead of a stored zone.
+		// It is anonymous to Auth0 (see anonymousPatterns) and, like every other
+		// anonymous route, metered by the per-IP AnonRateLimit (GH#868 Phase 1) plus
+		// its own radius clamp (identical to near-point's).
+		applications.ClustersRoutes(mux, appStore, authorities.NewLookup(), logger)
 		// The public share page (#738): an anonymous, server-rendered HTML page for a
 		// single application at GET /a/{authoritySlug}/{ref...}. It point-reads the
 		// same applications store and resolves the authority slug via the static

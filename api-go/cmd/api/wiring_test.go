@@ -169,6 +169,22 @@ func (f foundAppStore) FindNearbyPage(context.Context, float64, float64, float64
 	return []applications.PlanningApplication{f.app}, "", nil
 }
 
+// FindClustersInZone unconditionally returns one single-member cluster carrying
+// the fixture application's identity, ignoring the query args — this fake
+// exists only to give the anonymous clusters route's end-to-end wiring test
+// (GH#924 Phase 1) a real record to render, serialise, and slug-enrich.
+func (f foundAppStore) FindClustersInZone(context.Context, applications.ClusterQuery) ([]applications.Cluster, error) {
+	return []applications.Cluster{
+		{
+			Latitude:     51.5,
+			Longitude:    -0.1,
+			Count:        1,
+			StatusCounts: map[string]int{"Permitted": 1},
+			Member:       &applications.PlanningApplicationID{Authority: "301", Name: f.app.Name},
+		},
+	}, nil
+}
+
 // fakeSavedStore is a savedapplications.Store returning the empty path.
 type fakeSavedStore struct{}
 
@@ -471,6 +487,50 @@ func TestRouter_NearPointAnonymous(t *testing.T) {
 	badReq := serveReq(t, h, http.MethodGet, "/v1/applications/near-point", "", "")
 	if badReq.Code != http.StatusBadRequest {
 		t.Fatalf("GET /v1/applications/near-point (no lat/lng) status = %d, want 400", badReq.Code)
+	}
+}
+
+// GET /v1/applications/clusters serves anonymously (no token, 200
+// application/json) with a bare-array body of PostGIS grid-aggregated clusters
+// (GH#924 Phase 1), each member identity carrying a resolved authoritySlug so
+// the anonymous map can point-read a tapped pin by slug, mirroring
+// TestRouter_NearPointAnonymous. The pattern string match is a drift guard: a
+// rename here without updating anonymousPatterns would silently 401 the route.
+func TestRouter_ClustersAnonymous(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.DiscardHandler)
+	app := applications.PlanningApplication{
+		Name:     "23/03456/FUL",
+		UID:      "croydon-23-03456-FUL",
+		AreaName: "Croydon",
+		AreaID:   301, // the real Croydon id, so SlugForAreaID(301) == "croydon"
+		Address:  "10 Downing Street, London",
+	}
+	appStore := foundAppStore{app: app}
+	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, appStore, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "", nil, nil, "", nil, nil, nil, 60, 60, logger)
+
+	url := "/v1/applications/clusters?lat=51.5&lng=-0.1&bbox=-0.2,51.4,-0.05,51.6&zoom=14"
+	rec := serveReq(t, h, http.MethodGet, url, "", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /v1/applications/clusters status = %d, want 200 (anonymous); body = %s", rec.Code, rec.Body.String())
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		t.Errorf("Content-Type = %q, want application/json", ct)
+	}
+	if !strings.Contains(rec.Body.String(), `"name":"23/03456/FUL"`) {
+		t.Errorf("body missing planit_name 23/03456/FUL; body = %s", rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"authoritySlug":"croydon"`) {
+		t.Errorf("body missing authoritySlug croydon; body = %s", rec.Body.String())
+	}
+	if !strings.HasPrefix(strings.TrimSpace(rec.Body.String()), "[") {
+		t.Errorf("body must be a bare JSON array, got: %s", rec.Body.String())
+	}
+
+	badReq := serveReq(t, h, http.MethodGet, "/v1/applications/clusters", "", "")
+	if badReq.Code != http.StatusBadRequest {
+		t.Fatalf("GET /v1/applications/clusters (no params) status = %d, want 400", badReq.Code)
 	}
 }
 
