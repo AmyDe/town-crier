@@ -16,10 +16,14 @@ import TownCrierDomain
 /// A second live-simulator-verified defect (crash) followed: switching
 /// zones rapidly could SIGABRT inside MapKit's own deferred clustering pass.
 /// `updateActiveZone(_:)`'s fetch (and therefore the annotation-set swap it
-/// drives) is now debounced the same way `regionDidChange` debounces a
-/// pan/zoom — proven here; the MapKit-internal timing itself is
+/// drives) is debounced — proven here; the MapKit-internal timing itself is
 /// UIKit/on-sim-only and covered separately (see
 /// `AnonymousClusteredMapView`'s file header).
+///
+/// GH#912 Phase 4: panning no longer drives a fetch at all (the fetch radius
+/// IS the zone radius now, matching the drawn circle exactly), so the old
+/// pan/zone-switch mutual-cancellation test that lived here is gone along
+/// with `regionDidChange` itself.
 @Suite("AnonymousMapViewModel — active-zone re-centring in place (GH#879 Phase 4)")
 @MainActor
 struct AnonymousMapViewModelActiveZoneTests {
@@ -48,14 +52,12 @@ struct AnonymousMapViewModelActiveZoneTests {
 
   // MARK: - Immediate (non-debounced) state
 
-  @Test func updateActiveZone_updatesCentreAndAnchorToZoneCentreImmediately() throws {
+  @Test func updateActiveZone_updatesAnchorToZoneCentreImmediately() throws {
     let (sut, _) = makeSUT(coordinate: .cambridge)
     let zone = try makeZone()
 
     sut.updateActiveZone(zone)
 
-    #expect(sut.centreLat == zone.centre.latitude)
-    #expect(sut.centreLon == zone.centre.longitude)
     #expect(sut.anchorCoordinate == zone.centre)
   }
 
@@ -68,13 +70,17 @@ struct AnonymousMapViewModelActiveZoneTests {
     #expect(sut.radiusMetres == 4000)
   }
 
-  @Test func updateActiveZone_clampsSelectedRadiusToFreeTierPreviewCapImmediately() throws {
+  /// GH#912 Phase 4 (honest anon map): the drawn circle/fetch radius takes
+  /// the zone's ACTUAL radius, never clamped to the free-tier preview cap —
+  /// otherwise pins between the cap and the zone's real radius would render
+  /// outside the drawn circle, exactly the bug this phase fixes.
+  @Test func updateActiveZone_setsRadiusToZonesActualRadius_evenAboveFreeTierCap() throws {
     let (sut, _) = makeSUT()
     let zone = try makeZone(radiusMetres: 5000)
 
     sut.updateActiveZone(zone)
 
-    #expect(sut.selectedRadiusMetres == AnonymousMapViewModel.maxSelectedRadiusMetres)
+    #expect(sut.radiusMetres == 5000)
   }
 
   @Test func updateActiveZone_clearsAnyPendingSelectionStateImmediately() throws {
@@ -121,22 +127,5 @@ struct AnonymousMapViewModelActiveZoneTests {
     // The final state reflects zone B throughout, not a stale zone A value.
     #expect(sut.radiusMetres == 4000)
     #expect(sut.anchorCoordinate == zoneB.centre)
-  }
-
-  @Test func updateActiveZone_cancelsAnInFlightRegionChangeFetch() async throws {
-    let (sut, repository) = makeSUT()
-    repository.fetchNearbyResult = .success([.permitted])
-    sut.regionDidChange(centreLat: 10, centreLon: 10, radiusMetres: 2000)
-    let zone = try makeZone(radiusMetres: 4000)
-
-    sut.updateActiveZone(zone)
-    await sut.waitForPendingRegionChangeRefetch()
-    await sut.waitForPendingActiveZoneUpdate()
-
-    // Only the zone update's fetch should have landed — the pan/zoom fetch
-    // was cancelled, so its `latitude: 10, longitude: 10` never overwrites
-    // the zone's coordinate.
-    #expect(repository.fetchNearbyCalls.count == 1)
-    #expect(repository.fetchNearbyCalls[0].radiusMetres == 4000)
   }
 }

@@ -24,12 +24,22 @@ struct AnonymousMapViewModelTests {
 
   // MARK: - Initial state
 
-  @Test func init_seedsCentreAndRadiusFromCoordinate() {
+  @Test func init_seedsAnchorAndRadiusFromCoordinate() {
     let (sut, _) = makeSUT(coordinate: .cambridge, radiusMetres: 2000)
 
-    #expect(sut.centreLat == Coordinate.cambridge.latitude)
-    #expect(sut.centreLon == Coordinate.cambridge.longitude)
+    #expect(sut.anchorCoordinate == .cambridge)
     #expect(sut.radiusMetres == 2000)
+  }
+
+  /// GH#912 Phase 4: the map no longer previews a free-tier-capped radius —
+  /// the drawn circle and fetch boundary are always the zone's actual
+  /// radius, even above the 2km free-tier cap (reachable via
+  /// `DeviceLocalZoneEditorView`, whose bound is `DeviceLocalZone.maxRadiusMetres`
+  /// = 5000m).
+  @Test func init_seedsRadiusUnclamped_evenAboveFreeTierCap() {
+    let (sut, _) = makeSUT(radiusMetres: 5000)
+
+    #expect(sut.radiusMetres == 5000)
   }
 
   // MARK: - loadInitial
@@ -66,63 +76,6 @@ struct AnonymousMapViewModelTests {
     #expect(sut.applications.isEmpty)
   }
 
-  // MARK: - regionDidChange
-
-  @Test func regionDidChange_clampsRadiusToServerMax() async {
-    let (sut, repository) = makeSUT()
-    repository.fetchNearbyResult = .success([])
-
-    sut.regionDidChange(centreLat: 51.5, centreLon: -0.1, radiusMetres: 9000)
-    await sut.waitForPendingRegionChangeRefetch()
-
-    #expect(sut.radiusMetres == 5000)
-    #expect(repository.fetchNearbyCalls.last?.radiusMetres == 5000)
-  }
-
-  @Test func regionDidChange_clampsRadiusToServerMin() async {
-    let (sut, repository) = makeSUT()
-    repository.fetchNearbyResult = .success([])
-
-    sut.regionDidChange(centreLat: 51.5, centreLon: -0.1, radiusMetres: 10)
-    await sut.waitForPendingRegionChangeRefetch()
-
-    #expect(sut.radiusMetres == 100)
-    #expect(repository.fetchNearbyCalls.last?.radiusMetres == 100)
-  }
-
-  @Test func regionDidChange_updatesCentre() async {
-    let (sut, _) = makeSUT()
-
-    sut.regionDidChange(centreLat: 51.5, centreLon: -0.1, radiusMetres: 2000)
-    await sut.waitForPendingRegionChangeRefetch()
-
-    #expect(sut.centreLat == 51.5)
-    #expect(sut.centreLon == -0.1)
-  }
-
-  @Test func regionDidChange_debounces_rapidCallsIssueOneRefetch() async {
-    let (sut, repository) = makeSUT()
-    repository.fetchNearbyResult = .success([])
-
-    sut.regionDidChange(centreLat: 51.0, centreLon: -0.1, radiusMetres: 2000)
-    sut.regionDidChange(centreLat: 52.0, centreLon: -0.2, radiusMetres: 3000)
-    await sut.waitForPendingRegionChangeRefetch()
-
-    #expect(repository.fetchNearbyCalls.count == 1)
-    #expect(repository.fetchNearbyCalls[0].latitude == 52.0)
-    #expect(repository.fetchNearbyCalls[0].radiusMetres == 3000)
-  }
-
-  @Test func regionDidChange_populatesApplicationsAfterDebounce() async {
-    let (sut, repository) = makeSUT()
-    repository.fetchNearbyResult = .success([.permitted])
-
-    sut.regionDidChange(centreLat: 51.5, centreLon: -0.1, radiusMetres: 2000)
-    await sut.waitForPendingRegionChangeRefetch()
-
-    #expect(sut.applications == [.permitted])
-  }
-
   // MARK: - Selection
 
   @Test func selectApplication_setsSelectedApplication() {
@@ -152,74 +105,6 @@ struct AnonymousMapViewModelTests {
     sut.requestSignUp()
 
     #expect(invoked)
-  }
-
-  // MARK: - Live radius picker (GH#868 Phase 3 refinement)
-
-  @Test func selectedRadiusMetres_seedsFromInitialRadius() {
-    let (sut, _) = makeSUT(radiusMetres: 1500)
-
-    #expect(sut.selectedRadiusMetres == 1500)
-  }
-
-  @Test func selectedRadiusMetres_clampsToFreeTierMaxWhenInitialRadiusIsLarger() {
-    // The fetch radius (server clamp: [100, 5000]) can exceed the free-tier
-    // cap the live picker is bounded to — the seeded picker value must never
-    // preview a zone bigger than a free account can actually have.
-    let (sut, _) = makeSUT(radiusMetres: 5000)
-
-    #expect(sut.selectedRadiusMetres == 2000)
-  }
-
-  @Test func maxSelectedRadiusMetres_matchesFreeTierCap() {
-    #expect(AnonymousMapViewModel.maxSelectedRadiusMetres == 2000)
-  }
-
-  @Test func updateSelectedRadius_updatesValue() {
-    let (sut, _) = makeSUT()
-
-    sut.updateSelectedRadius(750)
-
-    #expect(sut.selectedRadiusMetres == 750)
-  }
-
-  @Test func updateSelectedRadius_clampsAboveFreeTierMax() {
-    let (sut, _) = makeSUT()
-
-    sut.updateSelectedRadius(3000)
-
-    #expect(sut.selectedRadiusMetres == 2000)
-  }
-
-  @Test func updateSelectedRadius_clampsBelowMinimum() {
-    let (sut, _) = makeSUT()
-
-    sut.updateSelectedRadius(10)
-
-    #expect(sut.selectedRadiusMetres == 100)
-  }
-
-  @Test func updateSelectedRadius_invokesOnRadiusChangedWithClampedValue() {
-    let (sut, _) = makeSUT()
-    var received: Double?
-    sut.onRadiusChanged = { received = $0 }
-
-    sut.updateSelectedRadius(9000)
-
-    #expect(received == 2000)
-  }
-
-  @Test func anchorCoordinate_staysFixedAcrossRegionChanges() async {
-    let (sut, repository) = makeSUT(coordinate: .cambridge)
-    repository.fetchNearbyResult = .success([])
-
-    sut.regionDidChange(centreLat: 10, centreLon: 10, radiusMetres: 2000)
-    await sut.waitForPendingRegionChangeRefetch()
-
-    #expect(sut.anchorCoordinate == .cambridge)
-    // The viewport-following centre moved, but the anchor the radius circle
-    // is drawn around did not — the two are deliberately decoupled.
-    #expect(sut.centreLat == 10)
   }
 
   // MARK: - Stacked (same-address) cluster disambiguation (GH#877)
