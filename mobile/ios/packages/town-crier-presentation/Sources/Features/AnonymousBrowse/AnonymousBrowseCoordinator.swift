@@ -48,10 +48,9 @@ public final class AnonymousBrowseCoordinator: ObservableObject {
   /// `DeviceLocalZoneRepository`'s own docs for the migration relationship
   /// between the two.
   private let deviceLocalZoneRepository: DeviceLocalZoneRepository
-  /// The state backing the current map session, kept in sync with the live
-  /// radius picker so a slider drag re-persists the postcode/coordinate
-  /// alongside the newly chosen radius (GH#868 Phase 3 refinement). Also the
-  /// source for the Applications tab's list view model (GH#879 Phase 3).
+  /// The state backing the current map session — postcode, coordinate, and
+  /// the radius chosen on the postcode-entry screen (GH#912 Phase 4). Also
+  /// the source for the Applications tab's list view model (GH#879 Phase 3).
   private var currentState: AnonymousBrowseState?
   /// The live Applications list view model, cached the first time
   /// ``makeApplicationListViewModel()`` builds one, and returned unchanged on
@@ -276,32 +275,21 @@ public final class AnonymousBrowseCoordinator: ObservableObject {
     onRateApp?()
   }
 
+  /// Seeds the map from `state.radiusMetres` (GH#912 Phase 4: chosen once on
+  /// the postcode-entry screen, no longer re-persisted from a map-slider
+  /// change — the map has no radius control of its own any more; the only
+  /// way to change it afterwards is `DeviceLocalZoneEditorView` on the Zones
+  /// tab, which flows through ``AnonymousMapViewModel/updateActiveZone(_:)``
+  /// instead, via `onZonesChanged` below).
   private func makeMapViewModel(state: AnonymousBrowseState) -> AnonymousMapViewModel {
     let viewModel = AnonymousMapViewModel(
       repository: applicationsRepository,
       coordinate: state.coordinate,
       radiusMetres: state.radiusMetres)
     viewModel.onRequestSignUp = { [weak self] in self?.onRequestSignIn?() }
-    viewModel.onRadiusChanged = { [weak self] radius in self?.persistRadius(radius) }
     viewModel.onShowApplicationDetail = { [weak self] application in
       self?.onShowApplicationDetail?(application)
     }
     return viewModel
-  }
-
-  /// Re-saves the current session's postcode/coordinate with a newly chosen
-  /// radius (GH#868 Phase 3 refinement) so the post-signup handoff into
-  /// onboarding carries whatever the user last picked. No-op if called
-  /// before any state exists (shouldn't happen: the radius picker only shows
-  /// once the map — and therefore `currentState` — exists).
-  private func persistRadius(_ radiusMetres: Double) {
-    guard let state = currentState else { return }
-    let updated = AnonymousBrowseState(
-      postcode: state.postcode,
-      coordinate: state.coordinate,
-      radiusMetres: radiusMetres,
-      createdAt: state.createdAt)
-    currentState = updated
-    stateRepository.save(updated)
   }
 }

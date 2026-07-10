@@ -49,7 +49,7 @@ struct AnonymousBrowseCoordinatorTests {
 
     #expect(sut.screen == .tabs)
     #expect(sut.mapViewModel != nil)
-    #expect(sut.mapViewModel?.centreLat == Coordinate.cambridge.latitude)
+    #expect(sut.mapViewModel?.anchorCoordinate == .cambridge)
   }
 
   // MARK: - Welcome -> postcode entry
@@ -126,30 +126,13 @@ struct AnonymousBrowseCoordinatorTests {
     #expect(captured == [.pendingReview])
   }
 
-  // MARK: - Live radius picker persistence (GH#868 Phase 3 refinement)
+  // MARK: - Postcode-entry radius seeding (GH#912 Phase 4)
 
-  @Test func mapViewModel_radiusChange_persistsUpdatedStateWithSamePostcodeAndCoordinate() {
-    let (sut, _, stateRepository, _, _) = makeSUT(persistedState: testState)
-
-    sut.mapViewModel?.updateSelectedRadius(1500)
-
-    #expect(stateRepository.saveCalls.last?.radiusMetres == 1500)
-    #expect(stateRepository.saveCalls.last?.postcode == testState.postcode)
-    #expect(stateRepository.saveCalls.last?.coordinate == testState.coordinate)
-  }
-
-  @Test func postcodeEntryViewModel_onResolved_thenRadiusChange_persistsAgainstResolvedState() {
-    let (sut, _, stateRepository, _, _) = makeSUT()
-    let postcodeVM = sut.makePostcodeEntryViewModel()
-    postcodeVM.onResolved?(testState)
-
-    sut.mapViewModel?.updateSelectedRadius(500)
-
-    #expect(stateRepository.saveCalls.last?.radiusMetres == 500)
-    #expect(stateRepository.saveCalls.last?.postcode == testState.postcode)
-  }
-
-  @Test func init_withPersistedState_seedsMapViewModelSelectedRadiusFromPersistedRadius() {
+  /// The map has no radius control of its own any more — its radius comes
+  /// entirely from the persisted `AnonymousBrowseState`, which the
+  /// postcode-entry screen's own radius picker now sets (see
+  /// `AnonymousPostcodeEntryViewModelTests`).
+  @Test func init_withPersistedState_seedsMapViewModelRadiusFromPersistedRadius() {
     let stateWithRadius = AnonymousBrowseState(
       postcode: testState.postcode,
       coordinate: testState.coordinate,
@@ -159,7 +142,22 @@ struct AnonymousBrowseCoordinatorTests {
 
     let (sut, _, _, _, _) = makeSUT(persistedState: stateWithRadius)
 
-    #expect(sut.mapViewModel?.selectedRadiusMetres == 1500)
+    #expect(sut.mapViewModel?.radiusMetres == 1500)
+  }
+
+  @Test func postcodeEntryViewModel_onResolved_seedsMapViewModelRadiusFromResolvedState() {
+    let (sut, _, _, _, _) = makeSUT()
+    let postcodeVM = sut.makePostcodeEntryViewModel()
+    let resolvedState = AnonymousBrowseState(
+      postcode: testState.postcode,
+      coordinate: testState.coordinate,
+      radiusMetres: 500,
+      createdAt: testState.createdAt
+    )
+
+    postcodeVM.onResolved?(resolvedState)
+
+    #expect(sut.mapViewModel?.radiusMetres == 500)
   }
 
   // MARK: - Appearance (GH#878)
@@ -335,7 +333,6 @@ struct AnonymousBrowseCoordinatorTests {
     await listViewModel?.selectZone(zoneB)
 
     #expect(sut.mapViewModel === originalMapViewModel)
-    #expect(sut.mapViewModel?.centreLat == zoneB.centre.latitude)
     #expect(sut.mapViewModel?.anchorCoordinate == zoneB.centre)
     #expect(sut.mapViewModel?.radiusMetres == zoneB.radiusMetres)
   }
@@ -358,7 +355,6 @@ struct AnonymousBrowseCoordinatorTests {
     zonesVM.onZonesChanged?(editedZone)
 
     #expect(sut.mapViewModel === originalMapViewModel)
-    #expect(sut.mapViewModel?.centreLat == editedZone.centre.latitude)
     #expect(sut.mapViewModel?.anchorCoordinate == editedZone.centre)
     #expect(sut.mapViewModel?.radiusMetres == editedZone.radiusMetres)
   }
