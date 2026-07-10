@@ -72,34 +72,41 @@ For the full token table with hex values and usage notes, read `references/token
 
 ## Typography
 
+All four surfaces — iOS, Android, web, and the digest email — use one sans-serif family for every role, including headings. A display-serif treatment (Fraunces) shipped briefly with the Public Notice rebrand (GH#857) and was removed everywhere on 2026-07-10 after TestFlight tester feedback favoured the clarity and consistency of a single typeface (GH#912). Don't reintroduce a second font family without raising that as a design decision again.
+
 ### iOS
-Use **SF Pro** (the system font) via SwiftUI's `.system()` modifier. This ensures Dynamic Type support, proper optical sizing, and platform consistency.
+Use **SF Pro** (the system font) via SwiftUI's `.system()` modifier. This ensures Dynamic Type support, proper optical sizing, and platform consistency. The three display roles (`displayLarge`, `displaySmall`, `headline`) build on a Dynamic Type text style with a `.weight()` override rather than a fixed point size, so accessibility scaling is never broken.
 
-### Android (future)
-Use **Inter** — a geometric sans-serif designed for screens, with optical sizing and a large x-height that pairs naturally with SF Pro.
+### Android
+Use **Inter** — a geometric sans-serif designed for screens, with optical sizing and a large x-height that pairs naturally with SF Pro. Every Material 3 role, including the three display/headline roles, uses `InterFontFamily`.
 
-### Web (future)
-Use **Inter** via Google Fonts or self-hosted.
+### Web
+Use **Inter**, self-hosted, via the `--tc-font-family` / `--tc-font-display` custom properties — both hold the same sans stack.
+
+### Email (digest)
+The digest is inline-styled HTML with no webfonts (email clients can't load them). Headline and body share one system-sans stack; a separate monospace stack covers references and dates.
 
 ### Type Scale
 
-The scale uses a consistent set of semantic roles. Sizes are specified as iOS Dynamic Type styles — these automatically scale with the user's accessibility settings.
+The scale uses a consistent set of semantic roles. Sizes are specified as iOS Dynamic Type styles — these automatically scale with the user's accessibility settings. Android and web map the same roles onto their own type systems (see `references/tokens.md` for the full per-platform mapping).
 
 | Token | iOS Style | Weight | Usage |
 |-------|----------|--------|-------|
-| `tcDisplayLarge` | `.largeTitle` | Bold | Screen titles, hero numbers |
+| `tcDisplayLarge` | `.largeTitle` | Semibold | Screen titles, hero numbers |
 | `tcDisplaySmall` | `.title2` | Semibold | Section headers |
 | `tcHeadline` | `.headline` | Semibold | Card titles, list row primary text |
 | `tcBody` | `.body` | Regular | Body text, descriptions |
 | `tcBodyEmphasis` | `.body` | Semibold | Inline emphasis, key values |
 | `tcCaption` | `.caption` | Regular | Timestamps, metadata, secondary info |
 | `tcCaptionEmphasis` | `.caption` | Medium | Status labels, badges |
+| `tcMono` | `.caption`, monospaced design | Regular | Planning references, dates, distances |
+| `tcMonoEmphasis` | `.caption`, monospaced design | Medium | Emphasised mono metadata (e.g. a card's leading reference) |
 
 Never use `.font(.system(size:))` with a numeric point size — this creates text that ignores the user's accessibility settings. Every piece of text, including icons used as decorative elements and placeholder labels, must use a Dynamic Type text style (`.largeTitle`, `.title`, `.headline`, `.body`, `.caption`, etc.). If you need a large decorative icon, use `.font(.system(.largeTitle))` or `.imageScale(.large)` rather than a fixed point size.
 
 ### Typographic Hierarchy
 
-Each screen should use at most 3 levels of the type scale. Hierarchy is achieved through weight contrast (bold vs regular) and size contrast, not through color variation or decoration. Bold for the hero element, regular for supporting text, caption for metadata.
+Each screen should use at most 3 levels of the type scale. Hierarchy is achieved through weight contrast (semibold vs regular) and size contrast, not through color variation or decoration. Semibold for the hero element, regular for supporting text, caption for metadata.
 
 ## Spacing & Layout
 
