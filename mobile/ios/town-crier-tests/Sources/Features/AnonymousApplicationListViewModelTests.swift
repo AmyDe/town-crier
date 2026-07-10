@@ -66,6 +66,18 @@ struct AnonymousApplicationListViewModelTests {
     #expect(sut.applications == [.pendingReview, .permitted])
   }
 
+  /// GH#912 Phase 3: the anon list reads most-recent-first, unlike the anon
+  /// map (which stays distance-ordered — see `AnonymousMapViewModelTests`,
+  /// deliberately untouched by this bead).
+  @Test func loadApplications_requestsRecentSort() async {
+    let (sut, repository, _) = makeSUT()
+    repository.fetchNearbyResult = .success([])
+
+    await sut.loadApplications()
+
+    #expect(repository.fetchNearbyCalls.last?.sort == .recent)
+  }
+
   @Test func loadApplications_setsIsLoadingFalseAfterCompletion() async {
     let (sut, _, _) = makeSUT()
 
@@ -244,6 +256,7 @@ struct AnonymousApplicationListViewModelTests {
     #expect(sut.selectedZone == zoneB)
     #expect(zoneRepository.setActiveZoneIdCalls.last == zoneB.id)
     #expect(repository.fetchNearbyCalls.last?.radiusMetres == 4000)
+    #expect(repository.fetchNearbyCalls.last?.sort == .recent)
     #expect(sut.applications == [.pendingReview])
   }
 
