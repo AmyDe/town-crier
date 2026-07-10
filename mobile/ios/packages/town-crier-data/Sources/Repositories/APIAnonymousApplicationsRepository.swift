@@ -21,7 +21,8 @@ public final class APIAnonymousApplicationsRepository: AnonymousApplicationsRepo
     latitude: Double,
     longitude: Double,
     radiusMetres: Double,
-    limit: Int
+    limit: Int,
+    sort: NearbyApplicationSortOrder
   ) async throws -> [PlanningApplication] {
     let dtos: [PlanningApplicationDTO]
     do {
@@ -36,6 +37,7 @@ public final class APIAnonymousApplicationsRepository: AnonymousApplicationsRepo
             URLQueryItem(name: "lng", value: String(longitude)),
             URLQueryItem(name: "radius", value: String(radiusMetres)),
             URLQueryItem(name: "limit", value: String(limit)),
+            URLQueryItem(name: "sort", value: sort.rawValue),
           ])
       )
     } catch let domainError as DomainError {
