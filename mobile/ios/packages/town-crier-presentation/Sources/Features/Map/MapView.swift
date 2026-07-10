@@ -3,8 +3,18 @@ import SwiftUI
 import TownCrierDomain
 
 /// Map view displaying planning application pins colour-coded by status.
+///
+/// tc-3b1hj: the screen is full-bleed — no `.navigationTitle`/nav bar (the
+/// tab bar already says "Map"; the caller hides the bar and this view's map
+/// layer ignores the safe area on every edge). The Settings entry point that
+/// used to live in the nav bar's trailing toolbar item is now a floating
+/// circular button this view owns directly, wired via `onSettingsTapped` —
+/// mirrors the callback-closure pattern already used elsewhere (e.g.
+/// `AnonymousApplicationListView`'s CTA banner) rather than reaching for the
+/// Coordinator directly, which would break the MVVM-C dependency rule.
 public struct MapView: View {
   @StateObject private var viewModel: MapViewModel
+  private let onSettingsTapped: () -> Void
   // mapPosition and updateMapPosition are only needed on macOS, where
   // ClusteredMapView (UIViewRepresentable) is unavailable and the SwiftUI
   // Map(position:) fallback handles camera framing.
@@ -12,8 +22,9 @@ public struct MapView: View {
     @State private var mapPosition: MapCameraPosition = .automatic
   #endif
 
-  public init(viewModel: MapViewModel) {
+  public init(viewModel: MapViewModel, onSettingsTapped: @escaping () -> Void) {
     _viewModel = StateObject(wrappedValue: viewModel)
+    self.onSettingsTapped = onSettingsTapped
   }
 
   public var body: some View {
@@ -34,14 +45,12 @@ public struct MapView: View {
   // MARK: - Shared content
 
   private var contentStack: some View {
-    VStack(spacing: 0) {
-      if viewModel.showZonePicker {
-        zonePickerSection
-      }
-      if viewModel.showStatusFilters {
-        filterHeader
-      }
+    ZStack(alignment: .topTrailing) {
       mapBody
+      floatingSettingsButton
+    }
+    .safeAreaInset(edge: .top, spacing: 0) {
+      headerSection
     }
     .background(Color.tcBackground)
     .task {
@@ -73,6 +82,49 @@ public struct MapView: View {
         StackedApplicationsSheet(stacked: stacked, onSelect: viewModel.selectFromStack)
       }
     )
+  }
+
+  // MARK: - Header (zone picker + status filters)
+
+  /// Donated as a `safeAreaInset` rather than a leading `VStack` sibling so
+  /// the map layer below keeps its full-bleed frame — edge to edge, behind
+  /// this header — instead of being squeezed down to whatever height
+  /// remains (tc-3b1hj: "the map gains real height"). A `VStack` with two
+  /// `if`-gated children that are both absent collapses to zero size, so an
+  /// empty header reserves no dead space either.
+  @ViewBuilder
+  private var headerSection: some View {
+    VStack(spacing: 0) {
+      if viewModel.showZonePicker {
+        zonePickerSection
+      }
+      if viewModel.showStatusFilters {
+        filterHeader
+      }
+    }
+  }
+
+  // MARK: - Floating Settings Button
+
+  /// Replaces the nav-bar gear (`.settingsToolbar`) now the nav bar is
+  /// hidden on this screen (tc-3b1hj). A `ZStack` sibling of the (safe-
+  /// area-ignoring) map, rather than an `.overlay` on top of it, so it
+  /// keeps the ordinary safe-area layout the map opts out of — it lands
+  /// below the status bar/notch, and below `headerSection` when that's
+  /// showing, with no manual geometry math. `.ultraThinMaterial` mirrors
+  /// the look of MapKit's own floating HUD controls (e.g. the compass).
+  private var floatingSettingsButton: some View {
+    Button(action: onSettingsTapped) {
+      Image(systemName: "gearshape")
+        .font(TCTypography.headline)
+        .foregroundStyle(Color.tcTextPrimary)
+        .frame(width: 44, height: 44)
+        .background(.ultraThinMaterial, in: Circle())
+        .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 2)
+    }
+    .accessibilityLabel("Settings")
+    .padding(.top, TCSpacing.small)
+    .padding(.trailing, TCSpacing.medium)
   }
 
   // MARK: - Zone Picker
@@ -148,8 +200,14 @@ public struct MapView: View {
         // macOS (SPM compile target): fall back to SwiftUI Map so the package
         // still compiles for swift test without UIKit.
         #if canImport(UIKit)
+          // Full-bleed (tc-3b1hj): the nav bar is hidden on this screen, so
+          // the map extends to every physical edge, including under the
+          // status bar/notch at the top — `headerSection` and
+          // `floatingSettingsButton` still land in the ordinary safe area
+          // via `.safeAreaInset`, they just no longer force the map itself
+          // to stop short of the top edge.
           ClusteredMapView(viewModel: viewModel)
-            .ignoresSafeArea(edges: .bottom)
+            .ignoresSafeArea()
         #else
           mapContent
         #endif

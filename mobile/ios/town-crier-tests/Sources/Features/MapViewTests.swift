@@ -20,7 +20,7 @@ struct MapViewTests {
     let watchZoneSpy = SpyWatchZoneRepository()
     watchZoneSpy.loadAllResult = .success(zones)
     let viewModel = MapViewModel(repository: spy, watchZoneRepository: watchZoneSpy)
-    let sut = MapView(viewModel: viewModel, onSettingsTapped: {})
+    let sut = MapView(viewModel: viewModel) {}
     return (sut, spy)
   }
 
@@ -54,7 +54,7 @@ struct MapViewTests {
     watchZoneSpy.loadAllResult = .success([.cambridge])
     let viewModel = MapViewModel(repository: spy, watchZoneRepository: watchZoneSpy)
     var didFire = false
-    let sut = MapView(viewModel: viewModel, onSettingsTapped: { didFire = true })
+    let sut = MapView(viewModel: viewModel) { didFire = true }
 
     _ = sut.body
 
