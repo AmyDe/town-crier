@@ -88,14 +88,14 @@
         coordinator.applyRadiusOverlay(
           to: mapView,
           anchor: currentViewModel.anchorCoordinate,
-          radius: currentViewModel.selectedRadiusMetres)
-        // Reframe only when the selected radius actually changed, so a pin
-        // refetch (pan/zoom exploring) never yanks the user's current
-        // viewport back — mirrors `ClusteredMapView.frameCameraIfZoneChanged`.
+          radius: currentViewModel.radiusMetres)
+        // Reframe only when the radius actually changed (an active-zone
+        // switch), so a pin refetch never yanks the user's current viewport
+        // back — mirrors `ClusteredMapView.frameCameraIfZoneChanged`.
         coordinator.reframeIfRadiusChanged(
           on: mapView,
           centre: Self.coordinate(for: currentViewModel.anchorCoordinate),
-          radius: currentViewModel.selectedRadiusMetres)
+          radius: currentViewModel.radiusMetres)
       }
     }
 
