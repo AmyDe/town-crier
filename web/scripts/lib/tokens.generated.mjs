@@ -36,7 +36,7 @@ export const SEO_TOKEN_CSS = `    /* GENERATED — design tokens from design/tok
       --tc-space-xl: 32px;
       --tc-space-xxl: 48px;
       --tc-font-family: 'Inter', system-ui, -apple-system, sans-serif;
-      --tc-font-display: 'Fraunces', 'Iowan Old Style', Georgia, serif;
+      --tc-font-display: 'Inter', system-ui, -apple-system, sans-serif;
       --tc-font-mono: ui-monospace, 'SF Mono', Menlo, 'Roboto Mono', monospace;
       --tc-content-max-width: 760px;
     }
