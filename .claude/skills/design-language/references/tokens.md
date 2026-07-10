@@ -97,30 +97,59 @@ Web only.
 
 ## Typography
 
+All four surfaces use one sans-serif family for every role, including headings. A Fraunces display-serif treatment shipped briefly with the Public Notice rebrand (GH#857) and was removed everywhere on 2026-07-10 after TestFlight tester feedback favoured the consistency of a single typeface over the serif's character (GH#912).
+
 Typography is hand-maintained per platform — it is **not** generated from `tokens.json` (the scales are stable single files; only the colour matrix drifts in practice, ADR 0040). Web uses the `--tc-text-*` / `--tc-weight-*` / `--tc-leading-*` custom properties; the two mobile platforms map named roles onto the system type stack so text respects the user's Dynamic Type / font-size setting.
 
 ### iOS (`TCTypography`)
 
+All roles build on a Dynamic Type text style — `displayLarge`/`displaySmall`/`headline` add a `.weight()` override rather than pointing at a custom font, so Dynamic Type scaling is never broken.
+
 | Token | Dynamic Type role | Weight |
 |-------|-------------------|--------|
-| `TCTypography.displayLarge` | `.largeTitle` | `.bold` |
+| `TCTypography.displayLarge` | `.largeTitle` | `.semibold` |
 | `TCTypography.displaySmall` | `.title2` | `.semibold` |
 | `TCTypography.headline` | `.headline` | `.semibold` |
 | `TCTypography.body` | `.body` | `.regular` |
 | `TCTypography.bodyEmphasis` | `.body` | `.semibold` |
 | `TCTypography.caption` | `.caption` | `.regular` |
 | `TCTypography.captionEmphasis` | `.caption` | `.medium` |
+| `TCTypography.mono` | `.caption`, monospaced design | `.regular` |
+| `TCTypography.monoEmphasis` | `.caption`, monospaced design | `.medium` |
 
 ### Android (`TownCrierTypography`)
 
-Town Crier's type scale maps each tc token onto a Material 3 role (font family Inter, weight per row); sizes and line-heights stay at the M3 role defaults.
+Town Crier's type scale maps each tc token onto a Material 3 role; every role — including the three display/headline roles — uses `InterFontFamily`. Sizes and line-heights stay at the M3 role defaults.
 
 | tc token | Material 3 role | Weight |
 |----------|-----------------|--------|
-| `tcDisplayLarge` | `headlineLarge` | `Bold` |
+| `tcDisplayLarge` | `headlineLarge` | `SemiBold` |
 | `tcDisplaySmall` | `titleLarge` | `SemiBold` |
 | `tcHeadline` | `titleMedium` | `SemiBold` |
 | `tcBody` | `bodyLarge` | `Regular` |
 | `tcBodyEmphasis` | `bodyLarge` | `SemiBold` |
 | `tcCaption` | `bodySmall` | `Regular` |
 | `tcCaptionEmphasis` | `labelMedium` | `Medium` |
+| `tcMono` (`TownCrierTheme.mono`) | — (built off `bodySmall`) | `Regular` |
+
+`TownCrierTheme.mono` has no dedicated M3 role — it copies `bodySmall`'s metrics with the system monospace family and tabular figures (`fontFeatureSettings = "tnum"`).
+
+### Web (CSS custom properties)
+
+| Custom property | Value | Used by |
+|------------------|-------|---------|
+| `--tc-font-family` | `'Inter', system-ui, -apple-system, sans-serif` | Body copy (default) |
+| `--tc-font-display` | `'Inter', system-ui, -apple-system, sans-serif` (same stack as `--tc-font-family`) | `Hero` title, `ApplicationCard`'s filed-notice title |
+| `--tc-font-mono` | `ui-monospace, 'SF Mono', Menlo, 'Roboto Mono', monospace` | `.tc-mono-meta` utility class (`global.css`) — references, dates, distances |
+
+Before 2026-07-10, `--tc-font-display` held a self-hosted Fraunces stack; it now duplicates `--tc-font-family` since the display role is sans everywhere. The `--tc-text-*` / `--tc-weight-*` size and weight scale is unaffected by the font-family change.
+
+### Email (digest, Go)
+
+`api-go/internal/digest/email.go` inlines font stacks directly — email clients can't load the self-hosted webfonts the other surfaces use.
+
+| Constant | Value |
+|----------|-------|
+| `bodyFontStack` | `-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif` |
+| `headlineFontStack` | alias of `bodyFontStack` (previously its own `Georgia, 'Times New Roman', serif` stand-in for Fraunces) |
+| `monoFontStack` | `'Courier New', monospace` — unchanged |
