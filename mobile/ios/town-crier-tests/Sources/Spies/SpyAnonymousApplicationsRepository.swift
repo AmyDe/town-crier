@@ -1,8 +1,7 @@
 import Foundation
 import TownCrierDomain
 
-final class SpyAnonymousApplicationsRepository: AnonymousApplicationsRepository, @unchecked Sendable
-{
+final class SpyAnonymousApplicationsRepository: AnonymousApplicationsRepository, @unchecked Sendable {
   struct FetchNearbyCall: Equatable {
     let latitude: Double
     let longitude: Double
@@ -15,12 +14,18 @@ final class SpyAnonymousApplicationsRepository: AnonymousApplicationsRepository,
   var fetchNearbyResult: Result<[PlanningApplication], Error> = .success([])
 
   func fetchNearby(
-    latitude: Double, longitude: Double, radiusMetres: Double, limit: Int,
+    latitude: Double,
+    longitude: Double,
+    radiusMetres: Double,
+    limit: Int,
     sort: NearbyApplicationSortOrder
   ) async throws -> [PlanningApplication] {
     fetchNearbyCalls.append(
       FetchNearbyCall(
-        latitude: latitude, longitude: longitude, radiusMetres: radiusMetres, limit: limit,
+        latitude: latitude,
+        longitude: longitude,
+        radiusMetres: radiusMetres,
+        limit: limit,
         sort: sort))
     return try fetchNearbyResult.get()
   }
