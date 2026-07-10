@@ -7,17 +7,26 @@ final class SpyAnonymousApplicationsRepository: AnonymousApplicationsRepository,
     let longitude: Double
     let radiusMetres: Double
     let limit: Int
+    let sort: NearbyApplicationSortOrder
   }
 
   private(set) var fetchNearbyCalls: [FetchNearbyCall] = []
   var fetchNearbyResult: Result<[PlanningApplication], Error> = .success([])
 
   func fetchNearby(
-    latitude: Double, longitude: Double, radiusMetres: Double, limit: Int
+    latitude: Double,
+    longitude: Double,
+    radiusMetres: Double,
+    limit: Int,
+    sort: NearbyApplicationSortOrder
   ) async throws -> [PlanningApplication] {
     fetchNearbyCalls.append(
       FetchNearbyCall(
-        latitude: latitude, longitude: longitude, radiusMetres: radiusMetres, limit: limit))
+        latitude: latitude,
+        longitude: longitude,
+        radiusMetres: radiusMetres,
+        limit: limit,
+        sort: sort))
     return try fetchNearbyResult.get()
   }
 }
