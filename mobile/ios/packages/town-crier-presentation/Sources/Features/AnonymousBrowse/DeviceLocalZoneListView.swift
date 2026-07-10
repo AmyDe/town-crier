@@ -28,6 +28,7 @@ public struct DeviceLocalZoneListView: View {
 
   public var body: some View {
     List {
+      mastheadRow
       if let zone = viewModel.zones.first {
         DeviceLocalZoneRow(zone: zone) { viewModel.requestAlertsSignUp() }
           .cardRowInsets()
@@ -41,6 +42,7 @@ public struct DeviceLocalZoneListView: View {
     .scrollContentBackground(.hidden)
     .background(Color.tcBackground)
     .navigationTitle("Zones")
+    .mastheadNavigationBar()
     .task {
       viewModel.load()
     }
@@ -55,6 +57,18 @@ public struct DeviceLocalZoneListView: View {
       )
       .selfSizingSheet()
     }
+  }
+
+  // MARK: - Masthead
+
+  private var mastheadRow: some View {
+    MastheadView(title: "Zones")
+      .padding(.horizontal, TCSpacing.medium)
+      .padding(.top, TCSpacing.small)
+      .padding(.bottom, TCSpacing.extraSmall)
+      .listRowSeparator(.hidden)
+      .listRowInsets(EdgeInsets())
+      .listRowBackground(Color.tcBackground)
   }
 
   /// Load-bearing sign-up pitch (GH#888): this is the only remaining route to

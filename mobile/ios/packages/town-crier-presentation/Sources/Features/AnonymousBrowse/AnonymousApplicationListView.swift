@@ -24,6 +24,7 @@ public struct AnonymousApplicationListView: View {
 
   public var body: some View {
     List {
+      mastheadRow
       zonePickerRow
       contentRows
     }
@@ -31,9 +32,7 @@ public struct AnonymousApplicationListView: View {
     .scrollContentBackground(.hidden)
     .background(Color.tcBackground)
     .navigationTitle("Applications")
-    #if os(iOS)
-      .navigationBarTitleDisplayMode(.large)
-    #endif
+    .mastheadNavigationBar()
     .task {
       await viewModel.loadApplications()
     }
@@ -48,6 +47,18 @@ public struct AnonymousApplicationListView: View {
       )
       .selfSizingSheet()
     }
+  }
+
+  // MARK: - Masthead
+
+  private var mastheadRow: some View {
+    MastheadView(title: "Applications")
+      .padding(.horizontal, TCSpacing.medium)
+      .padding(.top, TCSpacing.small)
+      .padding(.bottom, TCSpacing.extraSmall)
+      .listRowSeparator(.hidden)
+      .listRowInsets(EdgeInsets())
+      .listRowBackground(Color.tcBackground)
   }
 
   // MARK: - Zone picker (GH#879 Phase 4)
