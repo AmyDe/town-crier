@@ -25,11 +25,6 @@
          in src/styles/global.css. Preload the Latin subset so first paint uses
          the intended typeface without a third-party round-trip. -->
     <link rel="preload" href="/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin />
-    <!-- Fraunces (Public Notice display face) is self-hosted the same way.
-         Only the 600 weight is preloaded — display/headline roles render
-         semibold; body copy never uses Fraunces, so the 400 weight loads
-         lazily on first use instead of blocking first paint. -->
-    <link rel="preload" href="/fonts/fraunces-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin />
   </head>
   <body>
     <div id="root"></div>

@@ -27,11 +27,10 @@ function truncate(text: string | null, maxLength: number): string {
 /**
  * "Filed notice" card (Public Notice component language, epic #848 R1): a
  * mono document-header strip (reference left, date right) over a 1px rule,
- * a Fraunces-set address as the card's title, an outlined status stamp
- * (icon + label — never colour alone), and a 2px top rule that is the
- * card's unread signal — text-primary when read, amber when unread. The top
- * rule replaces the former leading unread dot; it reuses the same
- * `latestUnreadEvent` signal.
+ * the address as the card's title, an outlined status stamp (icon + label —
+ * never colour alone), and a 2px top rule that is the card's unread signal —
+ * text-primary when read, amber when unread. The top rule replaces the
+ * former leading unread dot; it reuses the same `latestUnreadEvent` signal.
  */
 export function ApplicationCard({ application, onOpen }: Props) {
   const isUnread = application.latestUnreadEvent !== null;
