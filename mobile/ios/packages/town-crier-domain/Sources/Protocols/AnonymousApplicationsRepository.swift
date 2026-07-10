@@ -14,6 +14,23 @@ public protocol AnonymousApplicationsRepository: Sendable {
     limit: Int,
     sort: NearbyApplicationSortOrder
   ) async throws -> [PlanningApplication]
+
+  /// Fetches the server-computed cluster aggregates for the anonymous map's
+  /// visible viewport within `radiusMetres` of (`latitude`, `longitude`) at a
+  /// given slippy zoom (GH#924 Phase 2) — the anonymous mirror of
+  /// `PlanningApplicationRepository.fetchClusters`, backed by the public
+  /// `GET /v1/applications/clusters` endpoint. The map renders these
+  /// aggregates across the whole radius circle instead of a truncated
+  /// nearest-N page, refetching on debounced pan/zoom. No `status` param —
+  /// the anonymous map has no filter chips (GH#879 scoped anonymous as a
+  /// deliberately reduced surface).
+  func fetchClusters(
+    latitude: Double,
+    longitude: Double,
+    radiusMetres: Double,
+    viewport: MapViewport,
+    zoom: Int
+  ) async throws -> [AnonymousMapCluster]
 }
 
 extension AnonymousApplicationsRepository {

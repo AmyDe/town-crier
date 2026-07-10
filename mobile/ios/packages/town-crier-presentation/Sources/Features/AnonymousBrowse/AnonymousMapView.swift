@@ -102,10 +102,10 @@ public struct AnonymousMapView: View {
       #else
         macOSMapContent
       #endif
-      if viewModel.isLoading && viewModel.applications.isEmpty {
+      if viewModel.isLoading && viewModel.clusters.isEmpty {
         ProgressView()
       }
-      if let error = viewModel.error, viewModel.applications.isEmpty {
+      if let error = viewModel.error, viewModel.clusters.isEmpty {
         ErrorStateView(error: error) {
           await viewModel.loadInitial()
         }
@@ -120,17 +120,28 @@ public struct AnonymousMapView: View {
     @ViewBuilder
     private var macOSMapContent: some View {
       Map(position: $cameraPosition) {
-        ForEach(viewModel.applications) { application in
-          if let location = application.location {
-            Annotation(
-              application.reference.value,
-              coordinate: CLLocationCoordinate2D(
-                latitude: location.latitude, longitude: location.longitude),
-              anchor: .bottom
-            ) {
-              pin(for: application)
-                .onTapGesture { viewModel.selectApplication(application) }
-            }
+        ForEach(viewModel.clusters) { cluster in
+          Annotation(
+            Self.annotationLabel(for: cluster),
+            coordinate: CLLocationCoordinate2D(
+              latitude: cluster.coordinate.latitude,
+              longitude: cluster.coordinate.longitude
+            ),
+            anchor: .bottom
+          ) {
+            pinView(for: cluster)
+              .onTapGesture {
+                // Mirror the UIKit didSelect routing: a stacked (unsplittable)
+                // cell opens the disambiguation list; everything else
+                // point-reads its single member by slug. Splittable bubbles
+                // have no zoom-in affordance in this macOS fallback, so they
+                // no-op as before (mirrors `MapView.mapContent`).
+                if cluster.isStacked {
+                  Task { await viewModel.selectStack(cluster) }
+                } else {
+                  Task { await viewModel.selectCluster(cluster) }
+                }
+              }
           }
         }
 
@@ -147,16 +158,33 @@ public struct AnonymousMapView: View {
       .mapStyle(.standard(elevation: .flat))
     }
 
-    private func pin(for application: PlanningApplication) -> some View {
-      Image(systemName: "mappin.circle.fill")
-        .font(TCTypography.displaySmall)
-        .foregroundStyle(application.status.displayColor)
-        .background(
-          Circle()
-            .fill(Color.tcSurface)
-            .frame(width: 20, height: 20)
-        )
-        .accessibilityLabel(application.status.displayLabel)
+    private static func annotationLabel(for cluster: AnonymousMapCluster) -> String {
+      cluster.count > 1
+        ? "\(cluster.count) applications"
+        : (cluster.memberStatus ?? .unknown).displayLabel
+    }
+
+    @ViewBuilder
+    private func pinView(for cluster: AnonymousMapCluster) -> some View {
+      if cluster.count > 1 {
+        Text(cluster.count > 999 ? "999+" : "\(cluster.count)")
+          .font(TCTypography.captionEmphasis)
+          .foregroundStyle(Color.tcTextOnAccent)
+          .padding(TCSpacing.small)
+          .background(Circle().fill(Color.tcAmber))
+          .accessibilityLabel("\(cluster.count) applications")
+      } else {
+        let status = cluster.memberStatus ?? .unknown
+        Image(systemName: "mappin.circle.fill")
+          .font(TCTypography.displaySmall)
+          .foregroundStyle(status.displayColor)
+          .background(
+            Circle()
+              .fill(Color.tcSurface)
+              .frame(width: 20, height: 20)
+          )
+          .accessibilityLabel(status.displayLabel)
+      }
     }
 
     private func updateCameraPosition() {

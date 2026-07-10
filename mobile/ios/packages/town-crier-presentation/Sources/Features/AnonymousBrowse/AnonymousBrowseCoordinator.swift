@@ -43,6 +43,11 @@ public final class AnonymousBrowseCoordinator: ObservableObject {
   private let geocoder: PostcodeGeocoder
   private let stateRepository: AnonymousBrowseStateRepository
   private let applicationsRepository: AnonymousApplicationsRepository
+  /// Backs the anonymous map's cluster-tap point-reads (GH#924 Phase 2) and
+  /// (via `AppCoordinator`) the anonymous detail screen / inbound share
+  /// Universal Link — the SAME instance the composition root constructs for
+  /// both, reused here rather than duplicated.
+  private let detailRepository: AnonymousApplicationDetailRepository
   /// Backs the Zones tab (GH#879 Phase 4) and the Applications tab's
   /// zone-driven query/picker. A distinct store from `stateRepository` — see
   /// `DeviceLocalZoneRepository`'s own docs for the migration relationship
@@ -111,6 +116,7 @@ public final class AnonymousBrowseCoordinator: ObservableObject {
     geocoder: PostcodeGeocoder,
     stateRepository: AnonymousBrowseStateRepository,
     applicationsRepository: AnonymousApplicationsRepository,
+    detailRepository: AnonymousApplicationDetailRepository,
     deviceLocalZoneRepository: DeviceLocalZoneRepository,
     appearanceStore: AppearanceStore? = nil,
     appVersionProvider: AppVersionProvider
@@ -118,6 +124,7 @@ public final class AnonymousBrowseCoordinator: ObservableObject {
     self.geocoder = geocoder
     self.stateRepository = stateRepository
     self.applicationsRepository = applicationsRepository
+    self.detailRepository = detailRepository
     self.deviceLocalZoneRepository = deviceLocalZoneRepository
     self.appearanceStore = appearanceStore ?? AppearanceStore()
     self.appVersionProvider = appVersionProvider
@@ -284,6 +291,7 @@ public final class AnonymousBrowseCoordinator: ObservableObject {
   private func makeMapViewModel(state: AnonymousBrowseState) -> AnonymousMapViewModel {
     let viewModel = AnonymousMapViewModel(
       repository: applicationsRepository,
+      detailRepository: detailRepository,
       coordinate: state.coordinate,
       radiusMetres: state.radiusMetres)
     viewModel.onRequestSignUp = { [weak self] in self?.onRequestSignIn?() }

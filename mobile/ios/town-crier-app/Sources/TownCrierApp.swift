@@ -153,6 +153,7 @@ struct TownCrierApp: App {
       geocoder: anonymousGeocoder,
       stateRepository: anonymousBrowseStateRepository,
       applicationsRepository: anonymousApplicationsRepository,
+      detailRepository: anonymousApplicationDetailRepository,
       deviceLocalZoneRepository: deviceLocalZoneRepository,
       appearanceStore: sharedAppearanceStore,
       appVersionProvider: appVersionProvider

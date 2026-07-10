@@ -23,6 +23,7 @@ struct AnonymousBrowseCoordinatorTests {
       geocoder: geocoder,
       stateRepository: stateRepository,
       applicationsRepository: applicationsRepository,
+      detailRepository: SpyAnonymousApplicationDetailRepository(),
       deviceLocalZoneRepository: deviceLocalZoneRepository,
       appearanceStore: appearanceStore,
       appVersionProvider: SpyAppVersionProvider()

@@ -11,21 +11,26 @@ struct AnonymousMapViewModelTests {
     coordinate: Coordinate = .cambridge,
     radiusMetres: Double = 2000,
     debounceNanoseconds: UInt64 = 5_000_000
-  ) -> (AnonymousMapViewModel, SpyAnonymousApplicationsRepository) {
+  ) -> (
+    AnonymousMapViewModel, SpyAnonymousApplicationsRepository,
+    SpyAnonymousApplicationDetailRepository
+  ) {
     let repository = SpyAnonymousApplicationsRepository()
+    let detailRepository = SpyAnonymousApplicationDetailRepository()
     let sut = AnonymousMapViewModel(
       repository: repository,
+      detailRepository: detailRepository,
       coordinate: coordinate,
       radiusMetres: radiusMetres,
       debounceNanoseconds: debounceNanoseconds
     )
-    return (sut, repository)
+    return (sut, repository, detailRepository)
   }
 
   // MARK: - Initial state
 
   @Test func init_seedsAnchorAndRadiusFromCoordinate() {
-    let (sut, _) = makeSUT(coordinate: .cambridge, radiusMetres: 2000)
+    let (sut, _, _) = makeSUT(coordinate: .cambridge, radiusMetres: 2000)
 
     #expect(sut.anchorCoordinate == .cambridge)
     #expect(sut.radiusMetres == 2000)
@@ -37,49 +42,82 @@ struct AnonymousMapViewModelTests {
   /// `DeviceLocalZoneEditorView`, whose bound is `DeviceLocalZone.maxRadiusMetres`
   /// = 5000m).
   @Test func init_seedsRadiusUnclamped_evenAboveFreeTierCap() {
-    let (sut, _) = makeSUT(radiusMetres: 5000)
+    let (sut, _, _) = makeSUT(radiusMetres: 5000)
 
     #expect(sut.radiusMetres == 5000)
   }
 
-  // MARK: - loadInitial
+  // MARK: - loadInitial / loadClusters (GH#924 Phase 2)
 
-  @Test func loadInitial_fetchesAtSeededCoordinateAndRadius() async {
-    let (sut, repository) = makeSUT(coordinate: .cambridge, radiusMetres: 2000)
-    repository.fetchNearbyResult = .success([.pendingReview])
+  @Test func loadInitial_fetchesClustersForTheAnchorDerivedViewport() async {
+    let (sut, repository, _) = makeSUT(coordinate: .cambridge, radiusMetres: 2000)
+    repository.fetchClustersResult = .success([.bubble(count: 5)])
+    let (expectedViewport, expectedZoom) = MapViewModel.initialViewport(
+      centre: .cambridge, radiusMetres: 2000)
 
     await sut.loadInitial()
 
-    #expect(repository.fetchNearbyCalls.count == 1)
-    let call = repository.fetchNearbyCalls[0]
+    #expect(repository.fetchClustersCalls.count == 1)
+    let call = repository.fetchClustersCalls[0]
     #expect(call.latitude == Coordinate.cambridge.latitude)
     #expect(call.longitude == Coordinate.cambridge.longitude)
     #expect(call.radiusMetres == 2000)
-    #expect(sut.applications == [.pendingReview])
+    #expect(call.viewport == expectedViewport)
+    #expect(call.zoom == expectedZoom)
+    #expect(sut.clusters == [.bubble(count: 5)])
   }
 
   @Test func loadInitial_setsIsLoadingFalseAfterCompletion() async {
-    let (sut, _) = makeSUT()
+    let (sut, _, _) = makeSUT()
 
     #expect(!sut.isLoading)
     await sut.loadInitial()
     #expect(!sut.isLoading)
   }
 
-  @Test func loadInitial_failure_setsErrorWhenApplicationsEmpty() async {
-    let (sut, repository) = makeSUT()
-    repository.fetchNearbyResult = .failure(DomainError.networkUnavailable)
+  @Test func loadInitial_failure_setsErrorWhenClustersEmpty() async {
+    let (sut, repository, _) = makeSUT()
+    repository.fetchClustersResult = .failure(DomainError.networkUnavailable)
 
     await sut.loadInitial()
 
     #expect(sut.error == .networkUnavailable)
-    #expect(sut.applications.isEmpty)
+    #expect(sut.clusters.isEmpty)
+  }
+
+  @Test func loadClusters_fetchesAndPublishesTheGivenViewport() async {
+    let (sut, repository, _) = makeSUT()
+    let viewport = MapViewport.test
+    repository.fetchClustersResult = .success([.bubble(count: 9)])
+
+    await sut.loadClusters(viewport: viewport, zoom: 14)
+
+    let call = repository.fetchClustersCalls.last
+    #expect(call?.viewport == viewport)
+    #expect(call?.zoom == 14)
+    // The anchor/radius still drive the fetch, independent of the viewport
+    // the caller supplies (mirrors `MapViewModel.loadClusters`).
+    #expect(call?.latitude == sut.anchorCoordinate.latitude)
+    #expect(call?.radiusMetres == sut.radiusMetres)
+    #expect(sut.clusters == [.bubble(count: 9)])
+  }
+
+  @Test func loadClusters_transientFailure_keepsLastGoodClustersAndNoError() async {
+    let (sut, repository, _) = makeSUT()
+    repository.fetchClustersResult = .success([.bubble(count: 2)])
+    await sut.loadInitial()
+    repository.fetchClustersResult = .failure(DomainError.networkUnavailable)
+
+    await sut.loadClusters(viewport: .test, zoom: 12)
+
+    #expect(sut.clusters == [.bubble(count: 2)])
+    #expect(sut.error == nil)
   }
 
   // MARK: - Selection
 
   @Test func selectApplication_setsSelectedApplication() {
-    let (sut, _) = makeSUT()
+    let (sut, _, _) = makeSUT()
 
     sut.selectApplication(.pendingReview)
 
@@ -87,7 +125,7 @@ struct AnonymousMapViewModelTests {
   }
 
   @Test func clearSelection_clearsSelectedApplication() {
-    let (sut, _) = makeSUT()
+    let (sut, _, _) = makeSUT()
     sut.selectApplication(.pendingReview)
 
     sut.clearSelection()
@@ -98,7 +136,7 @@ struct AnonymousMapViewModelTests {
   // MARK: - Sign-up handoff
 
   @Test func requestSignUp_invokesCallback() {
-    let (sut, _) = makeSUT()
+    let (sut, _, _) = makeSUT()
     var invoked = false
     sut.onRequestSignUp = { invoked = true }
 
@@ -107,31 +145,136 @@ struct AnonymousMapViewModelTests {
     #expect(invoked)
   }
 
-  // MARK: - Stacked (same-address) cluster disambiguation (GH#877)
+  // MARK: - Single-member cluster tap (by-slug point-read, GH#924)
 
-  @Test func selectStack_publishesStackedApplicationsWithAllMembersInOrder() {
-    let (sut, _) = makeSUT()
-    let members = [PlanningApplication.pendingReview, .permitted, .rejected]
+  @Test func selectCluster_singleMember_pointReadsBySlugAndPresentsSummary() async {
+    let (sut, _, detailRepository) = makeSUT()
+    let member = AnonymousClusterMember.kingstonOne
+    detailRepository.fetchApplicationBySlugResult = .success(.permitted)
 
-    sut.selectStack(members)
+    await sut.selectCluster(.single(member: member))
 
-    #expect(sut.stackedApplications?.applications == members)
+    #expect(
+      detailRepository.fetchApplicationBySlugCalls == [
+        SpyAnonymousApplicationDetailRepository.RecordedBySlugRequest(
+          authoritySlug: member.authoritySlug, ref: member.name)
+      ])
+    #expect(sut.selectedApplication == .permitted)
   }
 
-  @Test func selectStack_makesNoRepositoryCall() {
-    // Unlike the authenticated map's `MapViewModel.selectStack(_:)`, the
-    // anonymous map already holds full `PlanningApplication` objects from the
-    // `near-point` fetch — no point read is needed.
-    let (sut, repository) = makeSUT()
+  /// Regression: `ref` must be the BARE PlanIt name (`member.name`), never
+  /// authority-id-prefixed (`member.value`) — the by-slug endpoint resolves
+  /// the authority from the slug itself. Verified live against dev:
+  /// `by-slug/kingston/Kingston/26/01332/CPU` → 200,
+  /// `by-slug/kingston/314/Kingston/26/01332/CPU` → 404. Once got this wrong
+  /// (GH#924 review), so it's pinned explicitly here rather than only
+  /// implicitly via the equality check above.
+  @Test func selectCluster_refIsTheBareNameNotTheAuthorityPrefixedValue() async {
+    let (sut, _, detailRepository) = makeSUT()
+    let member = AnonymousClusterMember.kingstonOne
+    detailRepository.fetchApplicationBySlugResult = .success(.permitted)
 
-    sut.selectStack([.pendingReview, .permitted])
+    await sut.selectCluster(.single(member: member))
 
-    #expect(repository.fetchNearbyCalls.isEmpty)
+    let ref = detailRepository.fetchApplicationBySlugCalls.first?.ref
+    #expect(ref == member.name)
+    #expect(ref != member.value)
+    #expect(ref?.hasPrefix("\(member.authority)/") == false)
   }
 
-  @Test func selectFromStack_clearsStackedApplicationsWithoutImmediatelySelecting() {
-    let (sut, _) = makeSUT()
-    sut.selectStack([.pendingReview, .permitted])
+  @Test func selectCluster_bubble_doesNothing() async {
+    let (sut, _, detailRepository) = makeSUT()
+
+    await sut.selectCluster(.bubble(count: 5))
+
+    #expect(detailRepository.fetchApplicationBySlugCalls.isEmpty)
+    #expect(sut.selectedApplication == nil)
+  }
+
+  @Test func selectCluster_pointReadFailure_leavesMapUntouched() async {
+    let (sut, _, detailRepository) = makeSUT()
+    detailRepository.fetchApplicationBySlugResult = .failure(DomainError.networkUnavailable)
+
+    await sut.selectCluster(.single(member: .kingstonOne))
+
+    #expect(sut.selectedApplication == nil)
+    #expect(sut.error == nil)
+  }
+
+  @Test func selectCluster_missingSlug_ignoresTapSilently() async {
+    let (sut, _, detailRepository) = makeSUT()
+
+    await sut.selectCluster(.single(member: .missingSlug))
+
+    #expect(detailRepository.fetchApplicationBySlugCalls.isEmpty)
+    #expect(sut.selectedApplication == nil)
+  }
+
+  // MARK: - Stacked cluster tap (all-or-nothing point-reads, GH#924)
+
+  @Test func selectStack_fetchesEachMemberBySlugAndPublishesOrderedList() async {
+    let (sut, _, detailRepository) = makeSUT()
+    let members = [
+      AnonymousClusterMember.kingstonOne, .kingstonTwo, .kingstonThree,
+    ]
+    detailRepository.fetchApplicationBySlugResultsByRef = [
+      AnonymousClusterMember.kingstonOne.name: .success(.pendingReview),
+      AnonymousClusterMember.kingstonTwo.name: .success(.permitted),
+      AnonymousClusterMember.kingstonThree.name: .success(.rejected),
+    ]
+
+    await sut.selectStack(.stacked(members: members))
+
+    // Publishes one application per member, in the cluster's member order (a
+    // TaskGroup completes out of order, so the result must be reindexed).
+    #expect(sut.stackedApplications?.applications == [.pendingReview, .permitted, .rejected])
+    #expect(detailRepository.fetchApplicationBySlugCalls.count == 3)
+    #expect(sut.selectedApplication == nil)
+  }
+
+  @Test func selectStack_leavesMapUntouched_whenAMemberReadFails() async {
+    let (sut, _, detailRepository) = makeSUT()
+    let members = [AnonymousClusterMember.kingstonOne, .kingstonTwo]
+    detailRepository.fetchApplicationBySlugResultsByRef = [
+      AnonymousClusterMember.kingstonOne.name: .success(.pendingReview),
+      AnonymousClusterMember.kingstonTwo.name: .failure(DomainError.networkUnavailable),
+    ]
+
+    await sut.selectStack(.stacked(members: members))
+
+    // All-or-nothing: one failed member publishes no list and never blanks
+    // the map with an error — the user can tap again.
+    #expect(sut.stackedApplications == nil)
+    #expect(sut.error == nil)
+  }
+
+  @Test func selectStack_missingSlugOnAnyMember_ignoresTapSilently() async {
+    let (sut, _, detailRepository) = makeSUT()
+    let members = [AnonymousClusterMember.kingstonOne, .missingSlug]
+
+    await sut.selectStack(.stacked(members: members))
+
+    #expect(detailRepository.fetchApplicationBySlugCalls.isEmpty)
+    #expect(sut.stackedApplications == nil)
+  }
+
+  @Test func selectStack_nonStackedCluster_doesNothing() async {
+    let (sut, _, detailRepository) = makeSUT()
+
+    await sut.selectStack(.bubble(count: 42))
+
+    #expect(sut.stackedApplications == nil)
+    #expect(detailRepository.fetchApplicationBySlugCalls.isEmpty)
+  }
+
+  @Test func selectFromStack_clearsStackedApplicationsWithoutImmediatelySelecting() async {
+    let (sut, _, detailRepository) = makeSUT()
+    let members = [AnonymousClusterMember.kingstonOne, .kingstonTwo]
+    detailRepository.fetchApplicationBySlugResultsByRef = [
+      AnonymousClusterMember.kingstonOne.name: .success(.pendingReview),
+      AnonymousClusterMember.kingstonTwo.name: .success(.permitted),
+    ]
+    await sut.selectStack(.stacked(members: members))
 
     sut.selectFromStack(.permitted)
 
@@ -141,9 +284,14 @@ struct AnonymousMapViewModelTests {
     #expect(sut.selectedApplication == nil)
   }
 
-  @Test func presentPendingSummaryIfNeeded_presentsTheChosenApplicationAfterListDismisses() {
-    let (sut, _) = makeSUT()
-    sut.selectStack([.pendingReview, .permitted])
+  @Test func presentPendingSummaryIfNeeded_presentsTheChosenApplicationAfterListDismisses() async {
+    let (sut, _, detailRepository) = makeSUT()
+    let members = [AnonymousClusterMember.kingstonOne, .kingstonTwo]
+    detailRepository.fetchApplicationBySlugResultsByRef = [
+      AnonymousClusterMember.kingstonOne.name: .success(.pendingReview),
+      AnonymousClusterMember.kingstonTwo.name: .success(.permitted),
+    ]
+    await sut.selectStack(.stacked(members: members))
     sut.selectFromStack(.permitted)
 
     sut.presentPendingSummaryIfNeeded()
@@ -152,16 +300,21 @@ struct AnonymousMapViewModelTests {
   }
 
   @Test func presentPendingSummaryIfNeeded_noOpWhenNothingPending() {
-    let (sut, _) = makeSUT()
+    let (sut, _, _) = makeSUT()
 
     sut.presentPendingSummaryIfNeeded()
 
     #expect(sut.selectedApplication == nil)
   }
 
-  @Test func clearStack_clearsStackedApplications() {
-    let (sut, _) = makeSUT()
-    sut.selectStack([.pendingReview, .permitted])
+  @Test func clearStack_clearsStackedApplications() async {
+    let (sut, _, detailRepository) = makeSUT()
+    let members = [AnonymousClusterMember.kingstonOne, .kingstonTwo]
+    detailRepository.fetchApplicationBySlugResultsByRef = [
+      AnonymousClusterMember.kingstonOne.name: .success(.pendingReview),
+      AnonymousClusterMember.kingstonTwo.name: .success(.permitted),
+    ]
+    await sut.selectStack(.stacked(members: members))
 
     sut.clearStack()
 
@@ -171,7 +324,7 @@ struct AnonymousMapViewModelTests {
   // MARK: - View full details (GH#879 Phase 2)
 
   @Test func requestFullDetail_stashesSelectionAsPendingAndClearsSelection() {
-    let (sut, _) = makeSUT()
+    let (sut, _, _) = makeSUT()
     sut.selectApplication(.pendingReview)
 
     sut.requestFullDetail()
@@ -181,7 +334,7 @@ struct AnonymousMapViewModelTests {
   }
 
   @Test func requestFullDetail_isNoOp_whenNothingSelected() {
-    let (sut, _) = makeSUT()
+    let (sut, _, _) = makeSUT()
 
     sut.requestFullDetail()
 
@@ -189,7 +342,7 @@ struct AnonymousMapViewModelTests {
   }
 
   @Test func presentPendingDetailIfNeeded_firesCallbackOnceWithPendingApplication() {
-    let (sut, _) = makeSUT()
+    let (sut, _, _) = makeSUT()
     sut.selectApplication(.pendingReview)
     sut.requestFullDetail()
 
@@ -204,7 +357,7 @@ struct AnonymousMapViewModelTests {
   }
 
   @Test func presentPendingDetailIfNeeded_noOpWhenNothingPending() {
-    let (sut, _) = makeSUT()
+    let (sut, _, _) = makeSUT()
     var captured: [PlanningApplication] = []
     sut.onShowApplicationDetail = { captured.append($0) }
 
