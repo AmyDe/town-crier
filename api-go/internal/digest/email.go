@@ -15,15 +15,18 @@ import (
 // senderAddress is the verified ACS sender address all digest emails are sent from.
 const senderAddress = "hello@towncrierapp.uk"
 
-// Email-safe font stacks (Public Notice, issue 859). Email clients cannot
-// fetch the self-hosted webfonts the rest of the brand uses (Fraunces,
-// Inter), so the digest renders the type system's email-safe fallbacks
-// directly rather than pointing at a font the client will never load:
-// Georgia for headlines (the same fallback `--tc-font-display` names before
-// Fraunces on web), the existing system-sans stack for body copy, and
-// Courier New for the mono reference/date strip.
+// Email-safe font stacks (Public Notice, issue 859; sans standardisation,
+// issue 912 phase 5). Email clients cannot fetch the self-hosted webfonts
+// the rest of the brand uses, so the digest renders the type system's
+// email-safe fallbacks directly rather than pointing at a font the client
+// will never load. Headlines and body share one system-sans stack — this
+// surface never rendered the brand's display webfont itself, only a
+// deliberate email-safe serif stand-in, which the 2026-07-10
+// sans-everywhere decision retired along with every other display-serif
+// treatment across the app — and Courier New covers the mono
+// reference/date strip.
 const (
-	headlineFontStack = "Georgia, 'Times New Roman', serif"
+	headlineFontStack = bodyFontStack
 	bodyFontStack     = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif"
 	monoFontStack     = "'Courier New', monospace"
 )
@@ -185,7 +188,7 @@ func decisionChipHex(label string) string {
 }
 
 // buildNotificationCard renders one application card for the digest body: a
-// mono reference/date strip, a serif headline (the address, optionally
+// mono reference/date strip, a sans headline (the address, optionally
 // prefixed by the outlined decision-label stamp and suffixed by the outlined
 // "saved" stamp), the application type, and a truncated description. Each
 // line links to the application detail page so iOS Universal Links open the
