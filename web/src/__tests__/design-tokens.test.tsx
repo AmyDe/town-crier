@@ -72,7 +72,6 @@ describe('Design tokens (tokens.css)', () => {
 
   it('defines typography tokens', () => {
     expect(css).toContain('--tc-font-family');
-    expect(css).toContain("--tc-font-display: 'Fraunces', 'Iowan Old Style', Georgia, serif");
     expect(css).toContain("--tc-font-mono: ui-monospace, 'SF Mono', Menlo, 'Roboto Mono', monospace");
     expect(css).toContain('--tc-text-display-large');
     expect(css).toContain('--tc-text-display-small');
@@ -82,6 +81,15 @@ describe('Design tokens (tokens.css)', () => {
     expect(css).toContain('--tc-weight-regular');
     expect(css).toContain('--tc-weight-semibold');
     expect(css).toContain('--tc-weight-bold');
+  });
+
+  it('sets the display font to the same sans stack as the body font (Fraunces removed, tc-b3nki.7)', () => {
+    const familyMatch = css.match(/--tc-font-family:\s*([^;]+);/);
+    const displayMatch = css.match(/--tc-font-display:\s*([^;]+);/);
+    expect(familyMatch).not.toBeNull();
+    expect(displayMatch).not.toBeNull();
+    expect(displayMatch?.[1]).toBe(familyMatch?.[1]);
+    expect(css).not.toMatch(/--tc-font-display:[^;]*Fraunces/);
   });
 
   it('defines shadow tokens', () => {
