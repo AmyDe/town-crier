@@ -469,7 +469,7 @@ func (h *handler) clusters(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	box, ok := parseBBox(r.URL.Query().Get("bbox"))
+	box, ok := applications.ParseBBox(r.URL.Query().Get("bbox"))
 	if !ok {
 		h.writeError(w, r, http.StatusBadRequest, invalidBBoxMessage)
 		return
@@ -493,18 +493,18 @@ func (h *handler) clusters(w http.ResponseWriter, r *http.Request) {
 		Latitude:        zone.Latitude,
 		Longitude:       zone.Longitude,
 		RadiusMetres:    zone.RadiusMetres,
-		West:            box.west,
-		South:           box.south,
-		East:            box.east,
-		North:           box.north,
+		West:            box.West,
+		South:           box.South,
+		East:            box.East,
+		North:           box.North,
 		GridSizeDegrees: gridSize,
 		Status:          status,
 		// The coalesce threshold is the finest (zoom-20) grid cell size, not the
 		// request's own grid: a multi-member cell whose member points already span
 		// less than this can never be split by zooming, so the store attaches an
-		// applicationIds member list. Deriving it from the same zoomGridDegrees
-		// table keeps it tracking the zoom -> grid policy with no separate constant.
-		CoalesceThresholdDegrees: zoomGridDegrees[maxZoom],
+		// applicationIds member list. applications.FinestGridDegrees() keeps it
+		// tracking the shared zoom -> grid policy (GH#924) with no separate constant.
+		CoalesceThresholdDegrees: applications.FinestGridDegrees(),
 	})
 	if err != nil {
 		h.serverError(w, r, "find clusters in zone", err)
@@ -517,79 +517,20 @@ func (h *handler) clusters(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, r, http.StatusOK, clusters)
 }
 
-// viewport is the parsed ?bbox= rectangle in WGS84 decimal degrees.
-type viewport struct {
-	west, south, east, north float64
-}
-
-// parseBBox resolves ?bbox=west,south,east,north into a viewport. It rejects
-// (ok == false) anything that is not exactly four finite decimal degrees, with
-// coordinates in range (lng [-180,180], lat [-90,90]) and strictly ordered
-// (west < east, south < north), so a malformed viewport is a clean 400 rather
-// than a degenerate or world-spanning query.
-func parseBBox(raw string) (viewport, bool) {
-	if raw == "" {
-		return viewport{}, false
-	}
-	parts := strings.Split(raw, ",")
-	if len(parts) != 4 {
-		return viewport{}, false
-	}
-	vals := make([]float64, 4)
-	for i, p := range parts {
-		v, err := strconv.ParseFloat(strings.TrimSpace(p), 64)
-		if err != nil || math.IsNaN(v) || math.IsInf(v, 0) {
-			return viewport{}, false
-		}
-		vals[i] = v
-	}
-	box := viewport{west: vals[0], south: vals[1], east: vals[2], north: vals[3]}
-	if box.west < -180 || box.west > 180 || box.east < -180 || box.east > 180 {
-		return viewport{}, false
-	}
-	if box.south < -90 || box.south > 90 || box.north < -90 || box.north > 90 {
-		return viewport{}, false
-	}
-	if box.west >= box.east || box.south >= box.north {
-		return viewport{}, false
-	}
-	return box, true
-}
-
-// maxZoom is the inclusive upper bound on the standard slippy-map zoom range a
-// client may request; baseGridDegrees is the grid cell size (in degrees) at zoom
-// 0. Each cell is 1/8 of a zoom tile (a tile is 360/2^z degrees wide), so a
-// screenful of a few tiles yields a bounded handful of cluster cells.
-const (
-	maxZoom         = 20
-	baseGridDegrees = 45.0 // 360 / 2^3 (eight cells per tile at zoom 0)
-)
-
-// zoomGridDegrees is the server-owned zoom -> grid-cell-size lookup. Index z holds
-// the cell size in degrees for slippy zoom z: baseGridDegrees / 2^z, so the cell
-// halves with every zoom level (45 deg at z=0 down to ~4.8e-5 deg at z=20, where
-// each application is effectively its own cell). Keeping this table in the handler
-// lets us retune density without touching the store or shipping a client release.
-var zoomGridDegrees = func() [maxZoom + 1]float64 {
-	var table [maxZoom + 1]float64
-	for z := range table {
-		table[z] = baseGridDegrees / float64(uint64(1)<<uint(z))
-	}
-	return table
-}()
-
-// parseZoom resolves ?zoom= to a grid cell size via zoomGridDegrees. An absent,
-// non-integer, or out-of-range (outside 0..maxZoom) value is rejected
-// (ok == false) so a garbage zoom is a clean 400, never a silent default.
+// parseZoom resolves ?zoom= to a grid cell size via applications.GridDegreesForZoom
+// (GH#924 — the zoom -> grid table moved to applications/gridzoom.go, shared with
+// the anonymous clusters endpoint). An absent or non-integer value is rejected
+// locally; an out-of-range one is rejected by GridDegreesForZoom — either way a
+// garbage zoom is a clean 400, never a silent default.
 func parseZoom(raw string) (float64, bool) {
 	if raw == "" {
 		return 0, false
 	}
 	z, err := strconv.Atoi(raw)
-	if err != nil || z < 0 || z > maxZoom {
+	if err != nil {
 		return 0, false
 	}
-	return zoomGridDegrees[z], true
+	return applications.GridDegreesForZoom(z)
 }
 
 // parseLimit resolves ?limit= to a bounded page size: absent, non-numeric, or
