@@ -10,7 +10,8 @@ import SwiftUI
 ///
 /// Public Notice (GH#857/#896): a plain notice-card container (1px
 /// `tcBorder`, `TCCornerRadius.medium`, `tcSurface` background) with a
-/// Fraunces headline — NOT the upsell treatment (no amber border/eyebrow).
+/// sans headline (GH#912 Phase 5 — display-serif dropped everywhere) — NOT
+/// the upsell treatment (no amber border/eyebrow).
 /// On every screen this banner appears on, its own `PrimaryButton` is
 /// already that screen's one filled-amber container (amber-rationing rule);
 /// see the epic's pre-resolved decision on this in GH#896.

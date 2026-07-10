@@ -27,13 +27,6 @@ struct TownCrierApp: App {
   private let pushRegistrar: PushNotificationRegistrar
 
   init() {
-    // Public Notice (GH#857): register the bundled Fraunces static instances
-    // before any view can render a TCTypography display role. Runtime
-    // registration from the presentation package's Bundle.module — no
-    // UIAppFonts/project.yml entry, so adding a font never touches the
-    // generated .xcodeproj.
-    FontRegistrar.registerAll()
-
     let auth0Config = Auth0Config(
       clientId: "a9O67fPgvXtqiWqwowhYjK0tvHF4hCMZ",
       domain: "towncrierapp.uk.auth0.com",
