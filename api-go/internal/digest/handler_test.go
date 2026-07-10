@@ -620,3 +620,169 @@ func TestRunHourly_NoOpSenderDropsEmailButStillMarksSent(t *testing.T) {
 func contains(haystack, needle string) bool {
 	return strings.Contains(haystack, needle)
 }
+
+// ---- duplicate-card dedup tests (tc-txkm1) ----
+
+func TestRunHourly_DuplicateNewApplicationAndDecisionUpdate_RendersOnceAndMarksBothSent(t *testing.T) {
+	t.Parallel()
+	// Root cause: the poll cycle can dispatch BOTH a NewApplication and a
+	// DecisionUpdate record for the same application in one cycle (an
+	// already-decided application seen for the first time). The rendered email
+	// must collapse them to one card carrying the decision stamp, but BOTH
+	// pre-dedup records must still be marked emailSent — otherwise the
+	// suppressed NewApplication row resurfaces in a later hourly cycle.
+	prefs := profiles.DefaultPreferences()
+	prefs.EmailDigestEnabled = true
+	p := mkProfile(t, profiles.TierPro, prefs)
+
+	newApp := zoneNotif("uid-A", "zone-1")
+	decision := decisionNotif("zone-1")
+
+	fp := &fakeProfiles{byID: map[string]*profiles.UserProfile{"user-1": p}}
+	fn := &fakeNotifications{
+		unsentUserIDs: []string{"user-1"},
+		unsentByUser:  map[string][]notifications.DigestNotification{"user-1": {newApp, decision}},
+	}
+	fz := &fakeZones{byUser: map[string][]watchzones.WatchZone{
+		"user-1": {mkZone(t, "zone-1", "Home", true)},
+	}}
+	email := &spyEmail{}
+	h := newHandler(fp, fn, fz, &fakeState{}, &fakeDevices{}, email, &spyPush{})
+
+	if err := h.RunHourly(context.Background()); err != nil {
+		t.Fatalf("RunHourly: %v", err)
+	}
+	if len(email.sent) != 1 {
+		t.Fatalf("emails sent: got %d, want 1", len(email.sent))
+	}
+	body := email.sent[0].HTMLBody
+	if got := strings.Count(body, "addr uid-A"); got != 1 {
+		t.Errorf("address should render exactly once, got %d occurrences in:\n%s", got, body)
+	}
+	if !contains(body, "[Approved]") {
+		t.Errorf("surviving card should carry the decision stamp:\n%s", body)
+	}
+	// CRITICAL regression guard: both pre-dedup records must be marked sent, or
+	// the suppressed NewApplication resurfaces next cycle.
+	if len(fn.marked) != 2 {
+		t.Fatalf("marked email-sent: got %v, want both records marked", fn.marked)
+	}
+}
+
+func TestRunWeekly_DuplicateNewApplicationAndDecisionUpdate_RendersOnceWithUniqueCount(t *testing.T) {
+	t.Parallel()
+	prefs := profiles.DefaultPreferences()
+	prefs.EmailDigestEnabled = true
+	prefs.PushEnabled = false
+	p := mkProfile(t, profiles.TierFree, prefs)
+
+	newApp := zoneNotif("uid-A", "zone-1")
+	decision := decisionNotif("zone-1")
+
+	fp := &fakeProfiles{byDay: map[time.Weekday][]*profiles.UserProfile{time.Wednesday: {p}}}
+	fn := &fakeNotifications{sinceByUser: map[string][]notifications.DigestNotification{
+		"user-1": {newApp, decision},
+	}}
+	fz := &fakeZones{byUser: map[string][]watchzones.WatchZone{
+		"user-1": {mkZone(t, "zone-1", "Home", true)},
+	}}
+	email := &spyEmail{}
+	push := &spyPush{}
+	h := newHandler(fp, fn, fz, &fakeState{}, &fakeDevices{}, email, push)
+
+	if err := h.RunWeekly(context.Background()); err != nil {
+		t.Fatalf("RunWeekly: %v", err)
+	}
+	if len(email.sent) != 1 {
+		t.Fatalf("emails sent: got %d, want 1", len(email.sent))
+	}
+	msg := email.sent[0]
+	if got := strings.Count(msg.HTMLBody, "addr uid-A"); got != 1 {
+		t.Errorf("address should render exactly once, got %d occurrences in:\n%s", got, msg.HTMLBody)
+	}
+	if want := buildDigestSubject(1); msg.Subject != want {
+		t.Errorf("subject should count unique applications: got %q, want %q", msg.Subject, want)
+	}
+	if !contains(msg.HTMLBody, "1 new application ") {
+		t.Errorf("footer should count unique applications (singular), got:\n%s", msg.HTMLBody)
+	}
+}
+
+func TestRunWeekly_DuplicatePairCollapsesPushCountToUniqueApplications(t *testing.T) {
+	t.Parallel()
+	// The weekly PUSH body count must match the deduped email application
+	// count: a NewApplication+DecisionUpdate pair for the same application is
+	// ONE application, not two (tc-txkm1).
+	prefs := profiles.DefaultPreferences()
+	prefs.EmailDigestEnabled = false
+	prefs.PushEnabled = true
+	p := mkProfile(t, profiles.TierPro, prefs)
+
+	newApp := zoneNotif("uid-A", "zone-1")
+	decision := decisionNotif("zone-1")
+
+	fp := &fakeProfiles{byDay: map[time.Weekday][]*profiles.UserProfile{time.Wednesday: {p}}}
+	fn := &fakeNotifications{sinceByUser: map[string][]notifications.DigestNotification{
+		"user-1": {newApp, decision},
+	}}
+	devices := &fakeDevices{byUser: map[string][]devicetokens.DeviceRegistration{
+		"user-1": {{UserID: "user-1", Token: "tok-1", Platform: devicetokens.PlatformIos}},
+	}}
+	email := &spyEmail{}
+	push := &spyPush{}
+	h := newHandler(fp, fn, &fakeZones{}, &fakeState{}, devices, email, push)
+
+	if err := h.RunWeekly(context.Background()); err != nil {
+		t.Fatalf("RunWeekly: %v", err)
+	}
+	if push.calls != 1 {
+		t.Fatalf("push calls: got %d, want 1", push.calls)
+	}
+	var parsed struct {
+		Aps struct {
+			Alert struct {
+				Body string `json:"body"`
+			} `json:"alert"`
+		} `json:"aps"`
+	}
+	if err := json.Unmarshal(push.payload, &parsed); err != nil {
+		t.Fatalf("payload unmarshal: %v", err)
+	}
+	if want := "1 new application this week"; parsed.Aps.Alert.Body != want {
+		t.Errorf("push body: got %q, want %q (unique application count, singular)", parsed.Aps.Alert.Body, want)
+	}
+}
+
+func TestRunHourly_DistinctApplicationsStillBothRenderAndBothMarkSent(t *testing.T) {
+	t.Parallel()
+	// Regression guard: dedup must only collapse genuine duplicates. Two
+	// distinct applications must both render and both be marked sent.
+	prefs := profiles.DefaultPreferences()
+	prefs.EmailDigestEnabled = true
+	p := mkProfile(t, profiles.TierPro, prefs)
+
+	a := zoneNotif("uid-A", "zone-1")
+	b := zoneNotif("uid-B", "zone-1")
+
+	fp := &fakeProfiles{byID: map[string]*profiles.UserProfile{"user-1": p}}
+	fn := &fakeNotifications{
+		unsentUserIDs: []string{"user-1"},
+		unsentByUser:  map[string][]notifications.DigestNotification{"user-1": {a, b}},
+	}
+	fz := &fakeZones{byUser: map[string][]watchzones.WatchZone{
+		"user-1": {mkZone(t, "zone-1", "Home", true)},
+	}}
+	email := &spyEmail{}
+	h := newHandler(fp, fn, fz, &fakeState{}, &fakeDevices{}, email, &spyPush{})
+
+	if err := h.RunHourly(context.Background()); err != nil {
+		t.Fatalf("RunHourly: %v", err)
+	}
+	body := email.sent[0].HTMLBody
+	if !contains(body, "addr uid-A") || !contains(body, "addr uid-B") {
+		t.Errorf("both distinct applications should render:\n%s", body)
+	}
+	if len(fn.marked) != 2 {
+		t.Errorf("marked email-sent: got %v, want both distinct records marked", fn.marked)
+	}
+}
