@@ -7,13 +7,12 @@ import kotlin.test.assertEquals
 
 /**
  * Sans standardisation (issue #912 Phase 5): the display/headline M3 roles
- * that previously used the Public Notice display serif (Fraunces) now use
- * the same Inter family as body/caption — the serif treatment is dropped
- * everywhere, per the 2026-07-10 owner decision. Every other Public Notice
- * element (mono role, stamps, filed-notice cards, kerned uppercase) is
- * unaffected. These are pure-JVM assertions against the
- * `TextStyle`/`FontFamily` values — no Robolectric, no device
- * (android-coding-standards skill, testing.md).
+ * that previously used a bundled display serif now use the same Inter
+ * family as body/caption — the serif treatment is dropped everywhere, per
+ * the 2026-07-10 owner decision. Every other Public Notice element (mono
+ * role, stamps, filed-notice cards, kerned uppercase) is unaffected. These
+ * are pure-JVM assertions against the `TextStyle`/`FontFamily` values — no
+ * Robolectric, no device (android-coding-standards skill, testing.md).
  */
 class TypeTest {
     @Test
