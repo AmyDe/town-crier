@@ -636,7 +636,7 @@ func TestRunHourly_DuplicateNewApplicationAndDecisionUpdate_RendersOnceAndMarksB
 	p := mkProfile(t, profiles.TierPro, prefs)
 
 	newApp := zoneNotif("uid-A", "zone-1")
-	decision := decisionNotif("uid-A", "zone-1", "Permitted")
+	decision := decisionNotif("zone-1")
 
 	fp := &fakeProfiles{byID: map[string]*profiles.UserProfile{"user-1": p}}
 	fn := &fakeNotifications{
@@ -677,7 +677,7 @@ func TestRunWeekly_DuplicateNewApplicationAndDecisionUpdate_RendersOnceWithUniqu
 	p := mkProfile(t, profiles.TierFree, prefs)
 
 	newApp := zoneNotif("uid-A", "zone-1")
-	decision := decisionNotif("uid-A", "zone-1", "Permitted")
+	decision := decisionNotif("zone-1")
 
 	fp := &fakeProfiles{byDay: map[time.Weekday][]*profiles.UserProfile{time.Wednesday: {p}}}
 	fn := &fakeNotifications{sinceByUser: map[string][]notifications.DigestNotification{

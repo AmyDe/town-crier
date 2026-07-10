@@ -8,16 +8,17 @@ import (
 )
 
 // decisionNotif returns a DecisionUpdate record for the same application as
-// zoneNotif(uid, zoneID), with its own record ID and a UK-displayable
-// decision. This mirrors the real duplicate the polling ingester can produce
-// when an application is first seen already-decided (tc-txkm1 root cause):
-// both a NewApplication and a DecisionUpdate record land for one
-// (ApplicationUID, AuthorityID) pair.
-func decisionNotif(uid, zoneID, decision string) notifications.DigestNotification {
+// zoneNotif("uid-A", zoneID), with its own record ID and a UK-displayable
+// "Permitted" decision (renders as the "[Approved]" stamp). This mirrors the
+// real duplicate the polling ingester can produce when an application is
+// first seen already-decided (tc-txkm1 root cause): both a NewApplication and
+// a DecisionUpdate record land for one (ApplicationUID, AuthorityID) pair.
+func decisionNotif(zoneID string) notifications.DigestNotification {
+	const uid = "uid-A"
 	n := zoneNotif(uid, zoneID)
 	n.ID = "n-" + uid + "-decision"
 	n.EventType = notifications.EventDecisionUpdate
-	n.Decision = strptr(decision)
+	n.Decision = strptr("Permitted")
 	n.CreatedAt = n.CreatedAt.Add(time.Hour) // decision arrives after the new-application record
 	return n
 }
@@ -25,7 +26,7 @@ func decisionNotif(uid, zoneID, decision string) notifications.DigestNotificatio
 func TestDedupByApplication_DecisionUpdateWinsOverNewApplication(t *testing.T) {
 	t.Parallel()
 	newApp := zoneNotif("uid-A", "zone-1")
-	decision := decisionNotif("uid-A", "zone-1", "Permitted")
+	decision := decisionNotif("zone-1")
 
 	got := dedupByApplication([]notifications.DigestNotification{newApp, decision})
 
@@ -90,7 +91,7 @@ func TestDedupByApplication_DecisionUpdateWinsRegardlessOfZoneAttribution(t *tes
 	// preference. The winner keeps its own WatchZoneID (nil here), it does not
 	// borrow the loser's zone.
 	zoneAttributedNew := zoneNotif("uid-A", "zone-1")
-	savedOnlyDecision := decisionNotif("uid-A", "", "Permitted")
+	savedOnlyDecision := decisionNotif("")
 	savedOnlyDecision.WatchZoneID = nil
 
 	got := dedupByApplication([]notifications.DigestNotification{zoneAttributedNew, savedOnlyDecision})
@@ -129,7 +130,7 @@ func TestDedupByApplication_PreservesFirstAppearanceOrderForSections(t *testing.
 	// stable sequence; dedup must not reorder surviving applications.
 	first := zoneNotif("uid-A", "zone-1")
 	second := zoneNotif("uid-B", "zone-2")
-	decisionForFirst := decisionNotif("uid-A", "zone-1", "Permitted")
+	decisionForFirst := decisionNotif("zone-1")
 
 	got := dedupByApplication([]notifications.DigestNotification{first, second, decisionForFirst})
 
