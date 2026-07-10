@@ -23,4 +23,14 @@ struct AnonymousPostcodeEntryViewTests {
     let sut = AnonymousPostcodeEntryView(viewModel: viewModel)
     _ = sut.body
   }
+
+  /// GH#912 Phase 4: the radius picker moved here from the (now-removed)
+  /// anonymous map slider — a render smoke test with a non-default radius
+  /// selected.
+  @Test func body_renders_withSelectedRadius() {
+    let viewModel = makeViewModel()
+    viewModel.selectedRadiusMetres = 1500
+    let sut = AnonymousPostcodeEntryView(viewModel: viewModel)
+    _ = sut.body
+  }
 }
