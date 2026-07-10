@@ -17,12 +17,12 @@ private struct MastheadNavigationBarModifier: ViewModifier {
   func body(content: Content) -> some View {
     content
       #if os(iOS)
-      .navigationBarTitleDisplayMode(.inline)
-      .toolbar {
-        ToolbarItem(placement: .principal) {
-          Color.clear.frame(width: 0, height: 0)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+          ToolbarItem(placement: .principal) {
+            Color.clear.frame(width: 0, height: 0)
+          }
         }
-      }
       #endif
   }
 }
