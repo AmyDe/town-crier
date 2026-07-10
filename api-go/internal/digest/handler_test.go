@@ -708,6 +708,51 @@ func TestRunWeekly_DuplicateNewApplicationAndDecisionUpdate_RendersOnceWithUniqu
 	}
 }
 
+func TestRunWeekly_DuplicatePairCollapsesPushCountToUniqueApplications(t *testing.T) {
+	t.Parallel()
+	// The weekly PUSH body count must match the deduped email application
+	// count: a NewApplication+DecisionUpdate pair for the same application is
+	// ONE application, not two (tc-txkm1).
+	prefs := profiles.DefaultPreferences()
+	prefs.EmailDigestEnabled = false
+	prefs.PushEnabled = true
+	p := mkProfile(t, profiles.TierPro, prefs)
+
+	newApp := zoneNotif("uid-A", "zone-1")
+	decision := decisionNotif("zone-1")
+
+	fp := &fakeProfiles{byDay: map[time.Weekday][]*profiles.UserProfile{time.Wednesday: {p}}}
+	fn := &fakeNotifications{sinceByUser: map[string][]notifications.DigestNotification{
+		"user-1": {newApp, decision},
+	}}
+	devices := &fakeDevices{byUser: map[string][]devicetokens.DeviceRegistration{
+		"user-1": {{UserID: "user-1", Token: "tok-1", Platform: devicetokens.PlatformIos}},
+	}}
+	email := &spyEmail{}
+	push := &spyPush{}
+	h := newHandler(fp, fn, &fakeZones{}, &fakeState{}, devices, email, push)
+
+	if err := h.RunWeekly(context.Background()); err != nil {
+		t.Fatalf("RunWeekly: %v", err)
+	}
+	if push.calls != 1 {
+		t.Fatalf("push calls: got %d, want 1", push.calls)
+	}
+	var parsed struct {
+		Aps struct {
+			Alert struct {
+				Body string `json:"body"`
+			} `json:"alert"`
+		} `json:"aps"`
+	}
+	if err := json.Unmarshal(push.payload, &parsed); err != nil {
+		t.Fatalf("payload unmarshal: %v", err)
+	}
+	if want := "1 new application this week"; parsed.Aps.Alert.Body != want {
+		t.Errorf("push body: got %q, want %q (unique application count, singular)", parsed.Aps.Alert.Body, want)
+	}
+}
+
 func TestRunHourly_DistinctApplicationsStillBothRenderAndBothMarkSent(t *testing.T) {
 	t.Parallel()
 	// Regression guard: dedup must only collapse genuine duplicates. Two
