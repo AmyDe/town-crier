@@ -150,8 +150,14 @@ public final class AnonymousMapViewModel: ObservableObject, ErrorHandlingViewMod
 
   /// Routes a single-member cluster tap: point-reads the full application by
   /// its public by-slug identity via ``AnonymousApplicationDetailRepository``
-  /// (the `ref` is the area-prefixed ``AnonymousClusterMember/value``, the
-  /// same identity contract the deep-link flow uses), then presents the
+  /// (the `ref` is the bare ``AnonymousClusterMember/name`` — the by-slug
+  /// endpoint resolves the authority from the slug itself, so `ref` must NOT
+  /// carry the authority-id prefix ``AnonymousClusterMember/value`` adds;
+  /// verified live against dev: `by-slug/kingston/Kingston/26/01332/CPU` →
+  /// 200, `by-slug/kingston/314/Kingston/26/01332/CPU` → 404. Same contract
+  /// the authed by-slug call site uses — see
+  /// `APIPlanningApplicationRepository.fetchApplication(bySlug:ref:)`'s
+  /// "ref interpolates raw exactly like id.name" comment), then presents the
   /// summary sheet. No-op for a multi-member cell (the map view zooms into
   /// it or opens the disambiguation list instead — see ``selectStack(_:)``).
   /// A missing slug (should never happen — the server resolves one for every
@@ -162,7 +168,7 @@ public final class AnonymousMapViewModel: ObservableObject, ErrorHandlingViewMod
     else { return }
     do {
       let application = try await detailRepository.fetchApplication(
-        bySlug: member.authoritySlug, ref: member.value)
+        bySlug: member.authoritySlug, ref: member.name)
       selectApplication(application)
     } catch {
       // A transient point-read failure leaves the map untouched; the user
@@ -174,8 +180,10 @@ public final class AnonymousMapViewModel: ObservableObject, ErrorHandlingViewMod
   /// members are coincident or closer than the finest grid cell, so zoom can
   /// never split them. Point-reads every carried member's application
   /// concurrently by slug (one read each, via the same
-  /// `fetchApplication(bySlug:ref:)` a single-pin tap uses) and publishes
-  /// them as the disambiguation list, preserving the cluster's
+  /// `fetchApplication(bySlug:ref:)` a single-pin tap uses — see
+  /// ``selectCluster(_:)``'s docs for why `ref` is the bare
+  /// ``AnonymousClusterMember/name``, never ``AnonymousClusterMember/value``)
+  /// and publishes them as the disambiguation list, preserving the cluster's
   /// ``AnonymousMapCluster/members`` order — a `TaskGroup` completes out of
   /// order, so the results are tagged with their index and reindexed.
   /// Mirrors `MapViewModel.selectStack(_:)`.
@@ -195,7 +203,7 @@ public final class AnonymousMapViewModel: ObservableObject, ErrorHandlingViewMod
         for (index, member) in members.enumerated() {
           group.addTask { [detailRepository] in
             let application = try await detailRepository.fetchApplication(
-              bySlug: member.authoritySlug, ref: member.value)
+              bySlug: member.authoritySlug, ref: member.name)
             return (index, application)
           }
         }

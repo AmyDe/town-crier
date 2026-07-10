@@ -22,8 +22,8 @@ struct AnonymousMapViewTests {
     let detailRepository = SpyAnonymousApplicationDetailRepository()
     let members = [AnonymousClusterMember.kingstonOne, .kingstonTwo]
     detailRepository.fetchApplicationBySlugResultsByRef = [
-      AnonymousClusterMember.kingstonOne.value: .success(.pendingReview),
-      AnonymousClusterMember.kingstonTwo.value: .success(.permitted),
+      AnonymousClusterMember.kingstonOne.name: .success(.pendingReview),
+      AnonymousClusterMember.kingstonTwo.name: .success(.permitted),
     ]
     let viewModel = AnonymousMapViewModel(
       repository: SpyAnonymousApplicationsRepository(),

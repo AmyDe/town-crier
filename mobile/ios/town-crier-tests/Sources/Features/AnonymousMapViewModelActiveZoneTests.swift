@@ -31,7 +31,10 @@ struct AnonymousMapViewModelActiveZoneTests {
     coordinate: Coordinate = .cambridge,
     radiusMetres: Double = 2000,
     debounceNanoseconds: UInt64 = 5_000_000
-  ) -> (AnonymousMapViewModel, SpyAnonymousApplicationsRepository, SpyAnonymousApplicationDetailRepository) {
+  ) -> (
+    AnonymousMapViewModel, SpyAnonymousApplicationsRepository,
+    SpyAnonymousApplicationDetailRepository
+  ) {
     let repository = SpyAnonymousApplicationsRepository()
     let detailRepository = SpyAnonymousApplicationDetailRepository()
     let sut = AnonymousMapViewModel(
@@ -90,8 +93,8 @@ struct AnonymousMapViewModelActiveZoneTests {
     sut.selectApplication(.pendingReview)
     let members = [AnonymousClusterMember.kingstonOne, .kingstonTwo]
     detailRepository.fetchApplicationBySlugResultsByRef = [
-      AnonymousClusterMember.kingstonOne.value: .success(.pendingReview),
-      AnonymousClusterMember.kingstonTwo.value: .success(.permitted),
+      AnonymousClusterMember.kingstonOne.name: .success(.pendingReview),
+      AnonymousClusterMember.kingstonTwo.name: .success(.permitted),
     ]
     await sut.selectStack(.stacked(members: members))
     #expect(sut.stackedApplications != nil)

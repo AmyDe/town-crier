@@ -11,7 +11,10 @@ struct AnonymousMapViewModelTests {
     coordinate: Coordinate = .cambridge,
     radiusMetres: Double = 2000,
     debounceNanoseconds: UInt64 = 5_000_000
-  ) -> (AnonymousMapViewModel, SpyAnonymousApplicationsRepository, SpyAnonymousApplicationDetailRepository) {
+  ) -> (
+    AnonymousMapViewModel, SpyAnonymousApplicationsRepository,
+    SpyAnonymousApplicationDetailRepository
+  ) {
     let repository = SpyAnonymousApplicationsRepository()
     let detailRepository = SpyAnonymousApplicationDetailRepository()
     let sut = AnonymousMapViewModel(
@@ -154,9 +157,29 @@ struct AnonymousMapViewModelTests {
     #expect(
       detailRepository.fetchApplicationBySlugCalls == [
         SpyAnonymousApplicationDetailRepository.RecordedBySlugRequest(
-          authoritySlug: member.authoritySlug, ref: member.value)
+          authoritySlug: member.authoritySlug, ref: member.name)
       ])
     #expect(sut.selectedApplication == .permitted)
+  }
+
+  /// Regression: `ref` must be the BARE PlanIt name (`member.name`), never
+  /// authority-id-prefixed (`member.value`) — the by-slug endpoint resolves
+  /// the authority from the slug itself. Verified live against dev:
+  /// `by-slug/kingston/Kingston/26/01332/CPU` → 200,
+  /// `by-slug/kingston/314/Kingston/26/01332/CPU` → 404. Once got this wrong
+  /// (GH#924 review), so it's pinned explicitly here rather than only
+  /// implicitly via the equality check above.
+  @Test func selectCluster_refIsTheBareNameNotTheAuthorityPrefixedValue() async {
+    let (sut, _, detailRepository) = makeSUT()
+    let member = AnonymousClusterMember.kingstonOne
+    detailRepository.fetchApplicationBySlugResult = .success(.permitted)
+
+    await sut.selectCluster(.single(member: member))
+
+    let ref = detailRepository.fetchApplicationBySlugCalls.first?.ref
+    #expect(ref == member.name)
+    #expect(ref != member.value)
+    #expect(ref?.hasPrefix("\(member.authority)/") == false)
   }
 
   @Test func selectCluster_bubble_doesNothing() async {
@@ -195,9 +218,9 @@ struct AnonymousMapViewModelTests {
       AnonymousClusterMember.kingstonOne, .kingstonTwo, .kingstonThree,
     ]
     detailRepository.fetchApplicationBySlugResultsByRef = [
-      AnonymousClusterMember.kingstonOne.value: .success(.pendingReview),
-      AnonymousClusterMember.kingstonTwo.value: .success(.permitted),
-      AnonymousClusterMember.kingstonThree.value: .success(.rejected),
+      AnonymousClusterMember.kingstonOne.name: .success(.pendingReview),
+      AnonymousClusterMember.kingstonTwo.name: .success(.permitted),
+      AnonymousClusterMember.kingstonThree.name: .success(.rejected),
     ]
 
     await sut.selectStack(.stacked(members: members))
@@ -213,8 +236,8 @@ struct AnonymousMapViewModelTests {
     let (sut, _, detailRepository) = makeSUT()
     let members = [AnonymousClusterMember.kingstonOne, .kingstonTwo]
     detailRepository.fetchApplicationBySlugResultsByRef = [
-      AnonymousClusterMember.kingstonOne.value: .success(.pendingReview),
-      AnonymousClusterMember.kingstonTwo.value: .failure(DomainError.networkUnavailable),
+      AnonymousClusterMember.kingstonOne.name: .success(.pendingReview),
+      AnonymousClusterMember.kingstonTwo.name: .failure(DomainError.networkUnavailable),
     ]
 
     await sut.selectStack(.stacked(members: members))
@@ -248,8 +271,8 @@ struct AnonymousMapViewModelTests {
     let (sut, _, detailRepository) = makeSUT()
     let members = [AnonymousClusterMember.kingstonOne, .kingstonTwo]
     detailRepository.fetchApplicationBySlugResultsByRef = [
-      AnonymousClusterMember.kingstonOne.value: .success(.pendingReview),
-      AnonymousClusterMember.kingstonTwo.value: .success(.permitted),
+      AnonymousClusterMember.kingstonOne.name: .success(.pendingReview),
+      AnonymousClusterMember.kingstonTwo.name: .success(.permitted),
     ]
     await sut.selectStack(.stacked(members: members))
 
@@ -265,8 +288,8 @@ struct AnonymousMapViewModelTests {
     let (sut, _, detailRepository) = makeSUT()
     let members = [AnonymousClusterMember.kingstonOne, .kingstonTwo]
     detailRepository.fetchApplicationBySlugResultsByRef = [
-      AnonymousClusterMember.kingstonOne.value: .success(.pendingReview),
-      AnonymousClusterMember.kingstonTwo.value: .success(.permitted),
+      AnonymousClusterMember.kingstonOne.name: .success(.pendingReview),
+      AnonymousClusterMember.kingstonTwo.name: .success(.permitted),
     ]
     await sut.selectStack(.stacked(members: members))
     sut.selectFromStack(.permitted)
@@ -288,8 +311,8 @@ struct AnonymousMapViewModelTests {
     let (sut, _, detailRepository) = makeSUT()
     let members = [AnonymousClusterMember.kingstonOne, .kingstonTwo]
     detailRepository.fetchApplicationBySlugResultsByRef = [
-      AnonymousClusterMember.kingstonOne.value: .success(.pendingReview),
-      AnonymousClusterMember.kingstonTwo.value: .success(.permitted),
+      AnonymousClusterMember.kingstonOne.name: .success(.pendingReview),
+      AnonymousClusterMember.kingstonTwo.name: .success(.permitted),
     ]
     await sut.selectStack(.stacked(members: members))
 

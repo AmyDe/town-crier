@@ -86,7 +86,16 @@ public struct AnonymousMapCluster: Identifiable, Equatable, Sendable {
 public struct AnonymousClusterMember: Equatable, Hashable, Sendable {
   /// The local authority area ID, expressed as a decimal string (e.g. `"314"`).
   public let authority: String
-  /// The PlanIt case reference (e.g. `"Kingston/22/1234/FUL"`).
+  /// The PlanIt case reference (e.g. `"Kingston/22/1234/FUL"`). This is the
+  /// `ref` a stacked-cell or single-pin tap passes to
+  /// `AnonymousApplicationDetailRepository.fetchApplication(bySlug:ref:)` —
+  /// the by-slug endpoint resolves the authority from the slug itself, so
+  /// `ref` must be bare, with NO authority-id prefix (verified live against
+  /// dev: `by-slug/kingston/Kingston/26/01332/CPU` → 200,
+  /// `by-slug/kingston/314/Kingston/26/01332/CPU` → 404). Same contract the
+  /// authed by-slug call site uses — see
+  /// `APIPlanningApplicationRepository.fetchApplication(bySlug:ref:)`'s "ref
+  /// interpolates raw exactly like id.name" comment.
   public let name: String
   /// The URL-safe authority slug for the by-slug point read. Empty when the
   /// server could not resolve one (should never happen in practice — the
@@ -101,8 +110,8 @@ public struct AnonymousClusterMember: Equatable, Hashable, Sendable {
 
   /// The canonical slash-joined string form of the identifier
   /// (e.g. `"314/Kingston/22/1234/FUL"`) — the same identity contract
-  /// ``PlanningApplicationId/value`` uses, and the `ref` a stacked-cell or
-  /// single-pin tap passes to `fetchApplication(bySlug:ref:)`.
+  /// ``PlanningApplicationId/value`` uses. NOT the by-slug `ref` (that's the
+  /// bare ``name`` — see its docs); this is for display/logging/diffing only.
   public var value: String {
     "\(authority)/\(name)"
   }
