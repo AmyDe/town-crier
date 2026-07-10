@@ -58,6 +58,21 @@ func TestAnonymousPatterns_IncludesNearPoint(t *testing.T) {
 	}
 }
 
+// TestAnonymousPatterns_IncludesClusters pins the anonymity of the public
+// anonymous clusters endpoint (GH#924 Phase 1): a resident browsing the map
+// before creating an account sees the fully clustered set, mirroring
+// TestAnonymousPatterns_IncludesNearPoint. The middleware keys on the exact
+// registered pattern string, so this must match the route wired in
+// applications byte-for-byte.
+func TestAnonymousPatterns_IncludesClusters(t *testing.T) {
+	t.Parallel()
+
+	const clusters = "GET /v1/applications/clusters"
+	if _, ok := anonymousPatterns[clusters]; !ok {
+		t.Errorf("anonymousPatterns must include %q", clusters)
+	}
+}
+
 // TestAnonymousPatterns_IncludesSharePage pins the anonymity of the public
 // server-rendered share page (#738). The auth middleware keys on the exact
 // registered pattern string, so this must match the route wired in sharepage
