@@ -97,7 +97,7 @@ public struct SavedApplicationListView: View {
     } else {
       ForEach(viewModel.filteredApplications) { application in
         ApplicationListRow(application: application)
-          .listRowBackground(Color.tcSurface)
+          .cardRowInsets()
           .contentShape(Rectangle())
           .onTapGesture {
             // Pass the full payload so the detail sheet opens instantly from
