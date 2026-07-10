@@ -17,7 +17,7 @@ struct CompositionRootTests {
     let authService = Auth0AuthenticationService(config: makeTestAuth0Config())
     let subscriptionService = StoreKitSubscriptionService()
     let appVersionProvider = BundleAppVersionProvider()
-    let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
+    let apiBaseURL = testAPIBaseURL()
     let versionConfigService = APIVersionConfigService(baseURL: apiBaseURL)
     let onboardingRepository = UserDefaultsOnboardingRepository()
     let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
@@ -62,15 +62,16 @@ struct CompositionRootTests {
 
   @Test func coordinatorReportsOnboardingStateFromConcreteRepository() {
     let suiteName = "test-onboarding-\(UUID().uuidString)"
-    // swiftlint:disable:next force_unwrapping
-    let defaults = UserDefaults(suiteName: suiteName)!
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+      fatalError("Invalid literal test UserDefaults suite name")
+    }
     defer { UserDefaults.standard.removePersistentDomain(forName: suiteName) }
 
     defaults.set(true, forKey: "isOnboardingComplete")
     let onboardingRepo = UserDefaultsOnboardingRepository(defaults: defaults)
 
     let authService = Auth0AuthenticationService(config: makeTestAuth0Config())
-    let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
+    let apiBaseURL = testAPIBaseURL()
     let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
 
     let coordinator = AppCoordinator(
@@ -120,7 +121,7 @@ struct CompositionRootTests {
 
   @Test func coordinatorCreatesMapViewModelWithZoneRepository() async {
     let authService = Auth0AuthenticationService(config: makeTestAuth0Config())
-    let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
+    let apiBaseURL = testAPIBaseURL()
     let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
 
     let watchZoneRepository = APIWatchZoneRepository(apiClient: apiClient)
@@ -146,7 +147,7 @@ struct CompositionRootTests {
 
   @Test func coordinatorCreatesApplicationListViewModelWithPlaceholderZone() async {
     let authService = Auth0AuthenticationService(config: makeTestAuth0Config())
-    let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
+    let apiBaseURL = testAPIBaseURL()
     let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
     let authorityRepository = APIApplicationAuthorityRepository(apiClient: apiClient)
 
@@ -185,7 +186,7 @@ struct CompositionRootTests {
     // Mirrors TownCrierApp.init()'s anonymous-browse wiring with real
     // concrete types, exactly as the rest of this suite does for the
     // authenticated graph above.
-    let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
+    let apiBaseURL = testAPIBaseURL()
     let anonymousGeocoder = PostcodesIOGeocoder()
     let anonymousApiClient = AnonymousURLSessionAPIClient(baseURL: apiBaseURL)
     let anonymousApplicationsRepository = APIAnonymousApplicationsRepository(
@@ -213,7 +214,7 @@ struct CompositionRootTests {
   @Test func anonymousApplicationDetailRepositoryInitialises() {
     // Mirrors TownCrierApp.init()'s anonymous-detail wiring with real
     // concrete types.
-    let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
+    let apiBaseURL = testAPIBaseURL()
     let anonymousApiClient = AnonymousURLSessionAPIClient(baseURL: apiBaseURL)
     let repository = APIAnonymousApplicationDetailRepository(apiClient: anonymousApiClient)
 
@@ -222,7 +223,7 @@ struct CompositionRootTests {
 
   @Test func coordinatorAcceptsAnonymousApplicationDetailRepository() {
     let authService = Auth0AuthenticationService(config: makeTestAuth0Config())
-    let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
+    let apiBaseURL = testAPIBaseURL()
     let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
     let anonymousApiClient = AnonymousURLSessionAPIClient(baseURL: apiBaseURL)
 
@@ -249,7 +250,7 @@ struct CompositionRootTests {
 
   @Test func coordinatorAcceptsAnonymousBrowseStateRepository() {
     let authService = Auth0AuthenticationService(config: makeTestAuth0Config())
-    let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
+    let apiBaseURL = testAPIBaseURL()
     let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
 
     let coordinator = AppCoordinator(
@@ -275,6 +276,20 @@ struct CompositionRootTests {
 
   // MARK: - Helpers
 
+  /// Every composition-root test wires against this literal, well-formed
+  /// URL. A `guard`/`fatalError` — not `URL(string:)!` — keeps the pattern
+  /// free of `force_unwrapping` regardless of which SwiftLint version is
+  /// enforcing the rule: local and CI swiftlint have drifted on whether this
+  /// exact `!` pattern triggers it (tc-2wu29 PR review), so this sidesteps
+  /// the disagreement entirely rather than chasing a disable comment that
+  /// only one version agrees is needed.
+  private func testAPIBaseURL() -> URL {
+    guard let url = URL(string: "https://api.towncrierapp.uk") else {
+      fatalError("Invalid literal test API base URL")
+    }
+    return url
+  }
+
   private func makeTestAuth0Config() -> Auth0Config {
     Auth0Config(
       clientId: "test-client-id",
@@ -285,7 +300,7 @@ struct CompositionRootTests {
 
   private func makeCoordinator() -> AppCoordinator {
     let authService = Auth0AuthenticationService(config: makeTestAuth0Config())
-    let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
+    let apiBaseURL = testAPIBaseURL()
     let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
     return AppCoordinator(
       repository: APIPlanningApplicationRepository(apiClient: apiClient),
@@ -306,7 +321,7 @@ struct CompositionRootTests {
 
   private func makeCoordinatorWithSavedRepository() -> AppCoordinator {
     let authService = Auth0AuthenticationService(config: makeTestAuth0Config())
-    let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
+    let apiBaseURL = testAPIBaseURL()
     let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
     return AppCoordinator(
       repository: APIPlanningApplicationRepository(apiClient: apiClient),
@@ -328,7 +343,7 @@ struct CompositionRootTests {
 
   private func makeCoordinatorWithGeocoder() -> AppCoordinator {
     let authService = Auth0AuthenticationService(config: makeTestAuth0Config())
-    let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
+    let apiBaseURL = testAPIBaseURL()
     let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
     return AppCoordinator(
       repository: APIPlanningApplicationRepository(apiClient: apiClient),

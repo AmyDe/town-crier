@@ -11,7 +11,17 @@ import TownCrierDomain
 /// an ``AnonymousMapCluster``. Mirrors `APIPlanningApplicationRepositoryClustersTests`.
 @Suite("APIAnonymousApplicationsRepository — clusters fetch")
 struct APIAnonymousApplicationsRepositoryClustersTests {
-  private let baseURL = URL(string: "https://api-dev.towncrierapp.uk")!
+  /// A `guard`/`fatalError` — not `URL(string:)!` — keeps this literal,
+  /// well-formed URL free of `force_unwrapping` regardless of which
+  /// SwiftLint version is enforcing the rule: local and CI swiftlint have
+  /// drifted on whether this exact `!` pattern triggers it (tc-2wu29 PR
+  /// review).
+  private var baseURL: URL {
+    guard let url = URL(string: "https://api-dev.towncrierapp.uk") else {
+      fatalError("Invalid literal test API base URL")
+    }
+    return url
+  }
 
   private let viewport = MapViewport(west: -0.32, south: 51.40, east: -0.26, north: 51.43)
 
