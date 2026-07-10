@@ -47,15 +47,19 @@ struct MainTabView: View {
       }
       .tag(MainTab.saved)
 
-      // 3. Map
+      // 3. Map — full-bleed (tc-3b1hj): no nav title, no nav bar. The tab
+      // bar already says "Map", so the title row was dead space; the
+      // Settings entry point moves from the (now-hidden) nav bar's gear
+      // into a floating circular button MapView owns, wired the same as
+      // every other tab's `coordinator.showSettings()`.
       NavigationStack {
-        MapView(viewModel: coordinator.makeMapViewModel())
-          .id(coordinator.subscriptionTier)
-          .navigationTitle("Map")
-          #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-          #endif
-          .settingsToolbar { coordinator.showSettings() }
+        MapView(viewModel: coordinator.makeMapViewModel()) {
+          coordinator.showSettings()
+        }
+        .id(coordinator.subscriptionTier)
+        #if os(iOS)
+          .toolbar(.hidden, for: .navigationBar)
+        #endif
       }
       .tabItem {
         Label("Map", systemImage: "map")

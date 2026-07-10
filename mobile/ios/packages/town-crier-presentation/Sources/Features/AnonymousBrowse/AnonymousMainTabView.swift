@@ -61,12 +61,15 @@ public struct AnonymousMainTabView: View {
 
   @ViewBuilder
   private var mapTab: some View {
+    // Full-bleed (tc-3b1hj): no nav title, no nav bar — the tab bar already
+    // says "Map". Nothing else is nav-bar-anchored on this screen; the CTA
+    // banner is a bottom `safeAreaInset` applied inside `AnonymousMapView`'s
+    // own content, unaffected by hiding the bar above it.
     NavigationStack {
       if let mapViewModel = coordinator.mapViewModel {
         AnonymousMapView(viewModel: mapViewModel)
-          .navigationTitle("Map")
           #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .navigationBar)
           #endif
           .accountCTABanner(
             onCreateAccount: { coordinator.requestSignIn() },

@@ -94,8 +94,11 @@ public struct AnonymousMapView: View {
   private var mapBody: some View {
     ZStack {
       #if canImport(UIKit)
+        // Full-bleed (tc-3b1hj): the caller (`AnonymousMainTabView`) hides
+        // the nav bar on this screen, so the map extends to every physical
+        // edge, including under the status bar/notch at the top.
         AnonymousClusteredMapView(viewModel: viewModel)
-          .ignoresSafeArea(edges: .bottom)
+          .ignoresSafeArea()
       #else
         macOSMapContent
       #endif
