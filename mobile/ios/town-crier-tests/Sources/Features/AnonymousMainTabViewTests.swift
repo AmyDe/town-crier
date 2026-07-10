@@ -19,6 +19,7 @@ struct AnonymousMainTabViewTests {
       geocoder: SpyPostcodeGeocoder(),
       stateRepository: stateRepository,
       applicationsRepository: SpyAnonymousApplicationsRepository(),
+      detailRepository: SpyAnonymousApplicationDetailRepository(),
       deviceLocalZoneRepository: SpyDeviceLocalZoneRepository(),
       appVersionProvider: SpyAppVersionProvider()
     )
@@ -66,6 +67,7 @@ struct AnonymousMainTabViewTests {
       geocoder: SpyPostcodeGeocoder(),
       stateRepository: stateRepository,
       applicationsRepository: SpyAnonymousApplicationsRepository(),
+      detailRepository: SpyAnonymousApplicationDetailRepository(),
       deviceLocalZoneRepository: SpyDeviceLocalZoneRepository(),
       appVersionProvider: SpyAppVersionProvider()
     )

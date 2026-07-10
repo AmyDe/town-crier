@@ -17,7 +17,6 @@ struct CompositionRootTests {
     let authService = Auth0AuthenticationService(config: makeTestAuth0Config())
     let subscriptionService = StoreKitSubscriptionService()
     let appVersionProvider = BundleAppVersionProvider()
-    // swiftlint:disable:next force_unwrapping
     let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
     let versionConfigService = APIVersionConfigService(baseURL: apiBaseURL)
     let onboardingRepository = UserDefaultsOnboardingRepository()
@@ -71,7 +70,6 @@ struct CompositionRootTests {
     let onboardingRepo = UserDefaultsOnboardingRepository(defaults: defaults)
 
     let authService = Auth0AuthenticationService(config: makeTestAuth0Config())
-    // swiftlint:disable:next force_unwrapping
     let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
     let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
 
@@ -122,7 +120,6 @@ struct CompositionRootTests {
 
   @Test func coordinatorCreatesMapViewModelWithZoneRepository() async {
     let authService = Auth0AuthenticationService(config: makeTestAuth0Config())
-    // swiftlint:disable:next force_unwrapping
     let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
     let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
 
@@ -149,7 +146,6 @@ struct CompositionRootTests {
 
   @Test func coordinatorCreatesApplicationListViewModelWithPlaceholderZone() async {
     let authService = Auth0AuthenticationService(config: makeTestAuth0Config())
-    // swiftlint:disable:next force_unwrapping
     let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
     let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
     let authorityRepository = APIApplicationAuthorityRepository(apiClient: apiClient)
@@ -189,11 +185,12 @@ struct CompositionRootTests {
     // Mirrors TownCrierApp.init()'s anonymous-browse wiring with real
     // concrete types, exactly as the rest of this suite does for the
     // authenticated graph above.
-    // swiftlint:disable:next force_unwrapping
     let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
     let anonymousGeocoder = PostcodesIOGeocoder()
     let anonymousApiClient = AnonymousURLSessionAPIClient(baseURL: apiBaseURL)
     let anonymousApplicationsRepository = APIAnonymousApplicationsRepository(
+      apiClient: anonymousApiClient)
+    let anonymousApplicationDetailRepository = APIAnonymousApplicationDetailRepository(
       apiClient: anonymousApiClient)
     let anonymousBrowseStateRepository = UserDefaultsAnonymousBrowseStateRepository()
     let deviceLocalZoneRepository = UserDefaultsDeviceLocalZoneRepository(
@@ -203,6 +200,7 @@ struct CompositionRootTests {
       geocoder: anonymousGeocoder,
       stateRepository: anonymousBrowseStateRepository,
       applicationsRepository: anonymousApplicationsRepository,
+      detailRepository: anonymousApplicationDetailRepository,
       deviceLocalZoneRepository: deviceLocalZoneRepository,
       appVersionProvider: BundleAppVersionProvider()
     )
@@ -215,7 +213,6 @@ struct CompositionRootTests {
   @Test func anonymousApplicationDetailRepositoryInitialises() {
     // Mirrors TownCrierApp.init()'s anonymous-detail wiring with real
     // concrete types.
-    // swiftlint:disable:next force_unwrapping
     let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
     let anonymousApiClient = AnonymousURLSessionAPIClient(baseURL: apiBaseURL)
     let repository = APIAnonymousApplicationDetailRepository(apiClient: anonymousApiClient)
@@ -225,7 +222,6 @@ struct CompositionRootTests {
 
   @Test func coordinatorAcceptsAnonymousApplicationDetailRepository() {
     let authService = Auth0AuthenticationService(config: makeTestAuth0Config())
-    // swiftlint:disable:next force_unwrapping
     let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
     let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
     let anonymousApiClient = AnonymousURLSessionAPIClient(baseURL: apiBaseURL)
@@ -253,7 +249,6 @@ struct CompositionRootTests {
 
   @Test func coordinatorAcceptsAnonymousBrowseStateRepository() {
     let authService = Auth0AuthenticationService(config: makeTestAuth0Config())
-    // swiftlint:disable:next force_unwrapping
     let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
     let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
 
@@ -290,7 +285,6 @@ struct CompositionRootTests {
 
   private func makeCoordinator() -> AppCoordinator {
     let authService = Auth0AuthenticationService(config: makeTestAuth0Config())
-    // swiftlint:disable:next force_unwrapping
     let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
     let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
     return AppCoordinator(
@@ -312,7 +306,6 @@ struct CompositionRootTests {
 
   private func makeCoordinatorWithSavedRepository() -> AppCoordinator {
     let authService = Auth0AuthenticationService(config: makeTestAuth0Config())
-    // swiftlint:disable:next force_unwrapping
     let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
     let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
     return AppCoordinator(
@@ -335,7 +328,6 @@ struct CompositionRootTests {
 
   private func makeCoordinatorWithGeocoder() -> AppCoordinator {
     let authService = Auth0AuthenticationService(config: makeTestAuth0Config())
-    // swiftlint:disable:next force_unwrapping
     let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
     let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
     return AppCoordinator(
