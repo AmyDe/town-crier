@@ -36,8 +36,7 @@ let package = Package(
       dependencies: ["TownCrierDomain"],
       path: "packages/town-crier-presentation/Sources",
       resources: [
-        .process("Resources/legal"),
-        .process("DesignSystem/Resources/Fonts"),
+        .process("Resources/legal")
       ]
     ),
     .testTarget(
