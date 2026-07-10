@@ -20,23 +20,6 @@ internal val InterFontFamily =
         Font(R.font.inter_bold, FontWeight.Bold),
     )
 
-/**
- * Fraunces — the Public Notice display serif (epic #848 R5). The two static
- * instances (Regular 400, SemiBold 600; non-italic, standard optical size)
- * are reused byte-for-byte from the iOS bundle
- * (`town-crier-presentation/Sources/DesignSystem/Resources/Fonts`) rather
- * than re-derived from Google Fonts' upstream — Fraunces ships only a single
- * variable-font source there (no `static/` directory as most families have),
- * and sharing the exact instances the iOS review already passed guarantees
- * both platforms render identical metrics. See
- * `presentation/licenses/Fraunces-OFL.txt`.
- */
-internal val FrauncesFontFamily =
-    FontFamily(
-        Font(R.font.fraunces_regular, FontWeight.Normal),
-        Font(R.font.fraunces_semibold, FontWeight.SemiBold),
-    )
-
 private val baseTypography = Typography()
 
 /**
@@ -45,16 +28,17 @@ private val baseTypography = Typography()
  * only the font family and weight are Town Crier's; text always renders in
  * sp, never a raw dp, so it respects the user's font-size setting.
  *
- * Public Notice (epic #848 R5) moves the three display/headline roles to
- * Fraunces, all at SemiBold — mirrors iOS `TCTypography`'s uniform semibold
- * treatment, since only Regular/SemiBold are bundled (no Bold face to back
- * the previous headlineLarge weight). Body/caption stay Inter, unchanged.
+ * Sans standardisation (issue #912 Phase 5): all roles use Inter, including
+ * the three display/headline roles that previously used a bundled display
+ * serif — dropped everywhere per the 2026-07-10 owner-approved decision.
+ * They stay at SemiBold (mirrors iOS `TCTypography`'s unchanged weight
+ * treatment for those roles).
  *
  * | tc token             | M3 role      | Family   | Weight   |
  * |-----------------------|--------------|----------|----------|
- * | tcDisplayLarge         | headlineLarge| Fraunces | SemiBold |
- * | tcDisplaySmall         | titleLarge   | Fraunces | SemiBold |
- * | tcHeadline             | titleMedium  | Fraunces | SemiBold |
+ * | tcDisplayLarge         | headlineLarge| Inter    | SemiBold |
+ * | tcDisplaySmall         | titleLarge   | Inter    | SemiBold |
+ * | tcHeadline             | titleMedium  | Inter    | SemiBold |
  * | tcBody                 | bodyLarge    | Inter    | Regular  |
  * | tcCaption               | bodySmall    | Inter    | Regular  |
  * | tcCaptionEmphasis       | labelMedium  | Inter    | Medium   |
@@ -68,10 +52,10 @@ private val baseTypography = Typography()
 internal val TownCrierTypography =
     Typography(
         headlineLarge =
-            baseTypography.headlineLarge.copy(fontFamily = FrauncesFontFamily, fontWeight = FontWeight.SemiBold),
-        titleLarge = baseTypography.titleLarge.copy(fontFamily = FrauncesFontFamily, fontWeight = FontWeight.SemiBold),
+            baseTypography.headlineLarge.copy(fontFamily = InterFontFamily, fontWeight = FontWeight.SemiBold),
+        titleLarge = baseTypography.titleLarge.copy(fontFamily = InterFontFamily, fontWeight = FontWeight.SemiBold),
         titleMedium =
-            baseTypography.titleMedium.copy(fontFamily = FrauncesFontFamily, fontWeight = FontWeight.SemiBold),
+            baseTypography.titleMedium.copy(fontFamily = InterFontFamily, fontWeight = FontWeight.SemiBold),
         bodyLarge = baseTypography.bodyLarge.copy(fontFamily = InterFontFamily, fontWeight = FontWeight.Normal),
         bodyMedium = baseTypography.bodyMedium.copy(fontFamily = InterFontFamily),
         bodySmall = baseTypography.bodySmall.copy(fontFamily = InterFontFamily, fontWeight = FontWeight.Normal),
