@@ -96,6 +96,51 @@ func TestScanClusterRow_Members(t *testing.T) {
 	})
 }
 
+// TestPlanningApplicationID_AuthoritySlugJSONShape pins the wire contract for
+// the GH#924 AuthoritySlug addition: omitted when empty (byte-identical to the
+// pre-GH#924 authed zone-clusters response, which never populates it) and
+// present when the anonymous handler has set it.
+func TestPlanningApplicationID_AuthoritySlugJSONShape(t *testing.T) {
+	t.Parallel()
+
+	t.Run("empty slug is omitted", func(t *testing.T) {
+		t.Parallel()
+		id := PlanningApplicationID{Authority: "100", Name: "24/001"}
+		raw, err := json.Marshal(id)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		var got map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &got); err != nil {
+			t.Fatalf("unmarshal: %v; raw=%s", err, raw)
+		}
+		if _, ok := got["authoritySlug"]; ok {
+			t.Errorf("authoritySlug must be omitted when empty, got %s", raw)
+		}
+	})
+
+	t.Run("present slug is serialised", func(t *testing.T) {
+		t.Parallel()
+		id := PlanningApplicationID{Authority: "100", Name: "24/001", AuthoritySlug: "testshire"}
+		raw, err := json.Marshal(id)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		var got map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &got); err != nil {
+			t.Fatalf("unmarshal: %v; raw=%s", err, raw)
+		}
+		slug, ok := got["authoritySlug"]
+		if !ok {
+			t.Fatalf("authoritySlug missing from %s", raw)
+		}
+		var s string
+		if err := json.Unmarshal(slug, &s); err != nil || s != "testshire" {
+			t.Errorf("authoritySlug: got %s, want \"testshire\"", slug)
+		}
+	})
+}
+
 // TestCluster_MembersJSONShape pins the wire contract for the new member list:
 // applicationIds is present (an array) when Members is populated, and is omitted
 // entirely (omitempty) for a splittable cell whose Members is nil.
