@@ -205,7 +205,7 @@ const MID_LIST_CTA_MIN_APPLICATIONS = 12;
  * slotted into the ledger itself, because on a full 30-row page the inline
  * pill above the list and the banner below it are separated by a very long
  * scroll with no ask in between. Styled as a card (2px brass top rule,
- * Fraunces headline — see the `.ledgerCta*` rules in {@link pageStyles}) so it
+ * display-font heading — see the `.ledgerCta*` rules in {@link pageStyles}) so it
  * visibly breaks the ledger's row rhythm as a Town Crier pitch, never
  * disguised as an application.
  *
@@ -386,29 +386,14 @@ export function renderAttributionList(lines = ATTRIBUTION_LINES) {
  */
 export function pageStyles() {
   return `${SEO_TOKEN_CSS}
-    /* ---------- Self-hosted Fraunces (Public Notice display face) ----------
+    /* ---------- Self-hosted Inter (Public Notice sans, all roles) ----------
        Same self-hosting rationale as the SPA (web/src/styles/global.css):
        served from /public/fonts (committed by #853), so the page makes zero
-       third-party font requests. Display roles only (H1, ledger addresses,
-       CTA headlines) — body text stays on --tc-font-family (Inter).
-       font-display: swap means a slow font fetch never blocks text from
-       painting, and --tc-font-display's serif fallback stack ('Iowan Old
-       Style', Georgia, serif) keeps every heading fully readable even if the
-       woff2 request 404s. */
-    @font-face {
-      font-family: 'Fraunces';
-      font-style: normal;
-      font-weight: 400;
-      font-display: swap;
-      src: url('/fonts/fraunces-latin-400-normal.woff2') format('woff2');
-    }
-    @font-face {
-      font-family: 'Fraunces';
-      font-style: normal;
-      font-weight: 600;
-      font-display: swap;
-      src: url('/fonts/fraunces-latin-600-normal.woff2') format('woff2');
-    }
+       third-party font requests. Sans standardisation (tc-b3nki.7, GH #912,
+       2026-07-10) dropped the separate self-hosted display face — every role,
+       including H1/ledger addresses/CTA headlines via --tc-font-display, now
+       renders in this same Inter face. font-display: swap means a slow font
+       fetch never blocks text from painting. */
     @font-face {
       font-family: 'Inter';
       font-style: normal;
@@ -470,8 +455,7 @@ export function pageStyles() {
     .breadcrumb li:last-child::after { content: ''; margin: 0; }
     .breadcrumb a { color: var(--tc-text-secondary); text-decoration: none; }
     .breadcrumb a:hover { color: var(--tc-amber); text-decoration: underline; }
-    /* H1 moves to the Fraunces display face; the token's own fallback stack
-       keeps it fully readable if the woff2 request above 404s. */
+    /* H1 uses the display font token (sans stack — see tc-b3nki.7). */
     h1 { font-family: var(--tc-font-display); font-weight: 600; font-size: 2rem; line-height: 1.2; margin: var(--tc-space-xl) 0 var(--tc-space-sm); }
     h2 { font-size: 1.5rem; margin: var(--tc-space-xl) 0 var(--tc-space-md); }
     h3 { font-size: 1.125rem; margin: 0; }
@@ -519,8 +503,8 @@ export function pageStyles() {
     .ledgerRow__ref, .ledgerRow__date { margin: 0; }
     .ledgerRow__body { min-width: 0; }
     .ledgerRow__head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--tc-space-sm); }
-    /* Address is the human hook (decision 5): Fraunces 600, the row's one
-       display-face element. */
+    /* Address is the human hook (decision 5): the display font token at
+       weight 600, the row's one display-face element. */
     .ledgerRow__address { font-family: var(--tc-font-display); font-weight: 600; margin: 0; overflow-wrap: anywhere; }
     .ledgerRow__desc { margin: var(--tc-space-xs, 4px) 0 0; color: var(--tc-text-secondary); }
     /* Visible share-page affordance (decision 6) — a real anchor, not a
@@ -613,7 +597,7 @@ export function pageStyles() {
     }
     .ctaInline__button:hover { background: var(--tc-amber-hover); }
     /* ---------- CTA bands: filed-notice card shape, 2px brass top rule,
-       Fraunces headline, one brass button — mid-list pitch (tc-fgoyj) and
+       display-font heading, one brass button — mid-list pitch (tc-fgoyj) and
        bottom banner both use this treatment. ---------- */
     .ledgerCta {
       list-style: none;

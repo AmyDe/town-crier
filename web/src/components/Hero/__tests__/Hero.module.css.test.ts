@@ -7,7 +7,7 @@ const cssPath = resolve(__dirname, '../Hero.module.css');
 describe('Hero.module.css (Public Notice display type)', () => {
   const css = readFileSync(cssPath, 'utf-8');
 
-  it('sets the headline in the Fraunces display face', () => {
+  it('sets the headline in the display font token (sans stack, tc-b3nki.7)', () => {
     const block = css.match(/\.headline\s*\{[^}]*\}/s)?.[0] ?? '';
     expect(block).toContain('font-family: var(--tc-font-display)');
   });

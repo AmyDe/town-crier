@@ -57,7 +57,7 @@
 
   /* Typography — Inter via Google Fonts */
   --tc-font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  --tc-font-display: 'Fraunces', 'Iowan Old Style', Georgia, serif;
+  --tc-font-display: 'Inter', system-ui, -apple-system, sans-serif;
   --tc-font-mono: ui-monospace, 'SF Mono', Menlo, 'Roboto Mono', monospace;
 
   --tc-text-hero: 3.5rem;
