@@ -147,7 +147,10 @@ func (h *Handler) RunWeekly(ctx context.Context) error {
 		}
 
 		if wantsPush {
-			h.sendWeeklyPush(ctx, profile, len(notifs))
+			// Dedup before counting: a NewApplication+DecisionUpdate pair for the same
+			// application is ONE application, so the push body count must match the
+			// deduped email application count, not the raw record count (tc-txkm1).
+			h.sendWeeklyPush(ctx, profile, len(dedupByApplication(notifs)))
 		}
 		if wantsEmail {
 			// The weekly cycle does not track emailSent (it re-derives the digest from
