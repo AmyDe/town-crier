@@ -9,6 +9,18 @@ import TownCrierDomain
 /// the same same-address disambiguation list (GH#877) via ``selectStack(_:)``
 /// / ``selectFromStack(_:)``, reusing ``StackedApplications`` and
 /// ``StackedApplicationsSheet`` from the Map feature.
+///
+/// GH#912 Phase 4 ("honest anon map"): previously tracked TWO decoupled
+/// radii — a viewport-following `radiusMetres` driving the actual fetch as
+/// the user panned, and a free-tier-capped `selectedRadiusMetres` driving
+/// the drawn preview circle. That let the fetch boundary silently exceed the
+/// drawn circle, so pins could render outside it. This version mirrors the
+/// authenticated ``MapViewModel``'s pattern instead: ``anchorCoordinate`` and
+/// ``radiusMetres`` are zone-anchored and fixed — set once at init and again
+/// only by ``updateActiveZone(_:)`` — never by panning. The fetch radius IS
+/// the drawn circle's radius, always exactly, so a pin can never render
+/// outside the circle. Panning the map is now a pure MapKit camera gesture
+/// with no ViewModel involvement at all.
 @MainActor
 public final class AnonymousMapViewModel: ObservableObject, ErrorHandlingViewModel {
   @Published public private(set) var applications: [PlanningApplication] = []
@@ -33,45 +45,27 @@ public final class AnonymousMapViewModel: ObservableObject, ErrorHandlingViewMod
   /// sheet are never on screen at once — mirrors ``MapViewModel``'s
   /// `pendingDetailApplication` handoff.
   @Published public private(set) var pendingDetailApplication: PlanningApplication?
-  @Published public private(set) var centreLat: Double
-  @Published public private(set) var centreLon: Double
-  @Published public private(set) var radiusMetres: Double
-  /// The user-chosen live monitoring radius (GH#868 Phase 3 refinement),
-  /// decoupled from `radiusMetres`: this one drives the drawn preview circle
-  /// and is carried into onboarding, while `radiusMetres` drives the
-  /// viewport-following near-point fetch as the user pans/zooms — mirrors
-  /// the authenticated map, where the zone circle is fixed while pins follow
-  /// the viewport.
-  @Published public private(set) var selectedRadiusMetres: Double
-
-  /// Mirrors the near-point endpoint's own [100, 5000]m clamp client-side
-  /// (GH#868 Phase 2), so a pan/zoom gesture never requests a radius the
-  /// server would silently reject anyway.
-  public static let minRadiusMetres: Double = 100
-  public static let maxRadiusMetres: Double = 5000
-  public static let defaultLimit = 200
-
-  /// The live radius picker's bounds. The upper bound mirrors the free
-  /// tier's cap (`WatchZoneLimits(tier: .free).maxRadiusMetres`), so the
-  /// radius an anonymous user picks here is exactly what a free account gets
-  /// after signup — never a false preview of a bigger zone than they can
-  /// actually have.
-  public static let minSelectedRadiusMetres: Double = 100
-  public static let maxSelectedRadiusMetres: Double = WatchZoneLimits(tier: .free).maxRadiusMetres
-
-  /// The point the radius preview circle is drawn around and the camera
-  /// reframes to. Fixed across a `regionDidChange` pan/zoom (unlike
-  /// `centreLat`/`centreLon`, which follow the viewport) — but IS updated by
-  /// ``updateActiveZone(_:)`` when the active device-local zone changes
-  /// (GH#879 Phase 4), so it is `@Published private(set)`, not `let`.
+  /// The point the radius circle is drawn around, the camera reframes to,
+  /// and pins are fetched around. Fixed except when ``updateActiveZone(_:)``
+  /// changes the active device-local zone (GH#879 Phase 4) — never by
+  /// panning (GH#912 Phase 4), so it is `@Published private(set)`, not `let`.
   @Published public private(set) var anchorCoordinate: Coordinate
+  /// The zone's actual radius — drives both the drawn circle and the
+  /// `near-point` fetch boundary, always exactly the same value, so a pin
+  /// can never render outside the circle (GH#912 Phase 4). Deliberately NOT
+  /// clamped to the free-tier cap: the postcode-entry screen already bounds
+  /// the FIRST zone to that cap, but a zone subsequently edited larger via
+  /// `DeviceLocalZoneEditorView` (bound up to `DeviceLocalZone.maxRadiusMetres`)
+  /// must show its true radius, not a falsely small preview.
+  @Published public private(set) var radiusMetres: Double
+
+  public static let defaultLimit = 200
 
   private let repository: AnonymousApplicationsRepository
   private let debounceNanoseconds: UInt64
-  private var pendingRegionChangeTask: Task<Void, Never>?
-  /// Debounces ``updateActiveZone(_:)``'s fetch the same way
-  /// `pendingRegionChangeTask` debounces `regionDidChange` (GH#879 Phase 4
-  /// crash fix — see that method's docs).
+  /// Debounces ``updateActiveZone(_:)``'s fetch so a rapid run of zone
+  /// switches collapses to a single pin swap (GH#879 Phase 4 crash fix — see
+  /// that method's docs).
   private var pendingActiveZoneTask: Task<Void, Never>?
 
   /// Fired by the persistent CTA banner's "Create account"/"Sign in" buttons
@@ -84,11 +78,6 @@ public final class AnonymousMapViewModel: ObservableObject, ErrorHandlingViewMod
   /// already holds the full `PlanningApplication` from `near-point`.
   public var onShowApplicationDetail: ((PlanningApplication) -> Void)?
 
-  /// Fired whenever the live radius picker changes, so the coordinator can
-  /// persist the chosen radius into `AnonymousBrowseState` ahead of the
-  /// post-signup handoff into onboarding (GH#868 Phase 3 refinement).
-  public var onRadiusChanged: ((Double) -> Void)?
-
   public init(
     repository: AnonymousApplicationsRepository,
     coordinate: Coordinate,
@@ -96,48 +85,18 @@ public final class AnonymousMapViewModel: ObservableObject, ErrorHandlingViewMod
     debounceNanoseconds: UInt64 = 500_000_000
   ) {
     self.repository = repository
-    self.centreLat = coordinate.latitude
-    self.centreLon = coordinate.longitude
     self.anchorCoordinate = coordinate
     self.radiusMetres = radiusMetres
-    self.selectedRadiusMetres = Self.clampSelectedRadius(radiusMetres)
     self.debounceNanoseconds = debounceNanoseconds
   }
 
   /// Fetches pins for the seeded coordinate/radius. Called once from the
   /// map's `.task` on first appearance.
   public func loadInitial() async {
-    await fetch(latitude: centreLat, longitude: centreLon, radiusMetres: radiusMetres)
-  }
-
-  /// Called on a significant map-region change (pan/zoom settling). Clamps
-  /// the reported radius to the server's bound and debounces the refetch so a
-  /// continuous gesture issues a single fetch once it settles, not one per
-  /// frame.
-  public func regionDidChange(centreLat: Double, centreLon: Double, radiusMetres: Double) {
-    let clampedRadius = min(max(radiusMetres, Self.minRadiusMetres), Self.maxRadiusMetres)
-    self.centreLat = centreLat
-    self.centreLon = centreLon
-    self.radiusMetres = clampedRadius
-
-    pendingRegionChangeTask?.cancel()
-    // Mutual exclusion with an in-flight active-zone update (GH#879 Phase
-    // 4): a pan/zoom and a zone switch racing each other must never both
-    // land — "last request wins" — see `updateActiveZone(_:)`'s docs.
-    pendingActiveZoneTask?.cancel()
-    let debounceDuration = debounceNanoseconds
-    pendingRegionChangeTask = Task { [weak self] in
-      try? await Task.sleep(nanoseconds: debounceDuration)
-      guard !Task.isCancelled else { return }
-      await self?.fetch(latitude: centreLat, longitude: centreLon, radiusMetres: clampedRadius)
-    }
-  }
-
-  /// Test-only synchronisation: await the most recently scheduled debounced
-  /// region-change refetch, mirroring
-  /// `AppCoordinator.waitForPendingPostPurchasePrompt()`.
-  public func waitForPendingRegionChangeRefetch() async {
-    await pendingRegionChangeTask?.value
+    await fetch(
+      latitude: anchorCoordinate.latitude,
+      longitude: anchorCoordinate.longitude,
+      radiusMetres: radiusMetres)
   }
 
   private func fetch(latitude: Double, longitude: Double, radiusMetres: Double) async {
@@ -151,9 +110,10 @@ public final class AnonymousMapViewModel: ObservableObject, ErrorHandlingViewMod
       )
       error = nil
     } catch {
-      // A transient refetch failure (pan/zoom) keeps the last good pins rather
-      // than blanking the map; a screen-level error is surfaced only when
-      // there is nothing to show yet — mirrors MapViewModel.loadClusters.
+      // A transient refetch failure (e.g. an active-zone switch) keeps the
+      // last good pins rather than blanking the map; a screen-level error is
+      // surfaced only when there is nothing to show yet — mirrors
+      // MapViewModel.loadClusters.
       if applications.isEmpty {
         handleError(error)
       }
@@ -236,39 +196,26 @@ public final class AnonymousMapViewModel: ObservableObject, ErrorHandlingViewMod
     onShowApplicationDetail?(pending)
   }
 
-  /// Updates the live radius picker, clamping to
-  /// `[minSelectedRadiusMetres, maxSelectedRadiusMetres]` and notifying
-  /// `onRadiusChanged` so the coordinator can persist it. Called from the
-  /// map's radius `Slider` (GH#868 Phase 3 refinement).
-  public func updateSelectedRadius(_ metres: Double) {
-    selectedRadiusMetres = Self.clampSelectedRadius(metres)
-    onRadiusChanged?(selectedRadiusMetres)
-  }
-
-  private static func clampSelectedRadius(_ metres: Double) -> Double {
-    min(max(metres, minSelectedRadiusMetres), maxSelectedRadiusMetres)
-  }
-
   /// Re-centres this SAME view model on `zone` (GH#879 Phase 4 defect fix)
   /// when the active device-local zone changes — e.g. a zone-picker chip tap
-  /// on the Applications tab. Deliberately mutates in place rather than the
-  /// coordinator replacing the whole `AnonymousMapViewModel` instance:
-  /// `AnonymousMapView` holds this object in a `@StateObject`, which SwiftUI
-  /// keeps bound to the FIRST instance passed to it — a same-position
-  /// `AnonymousMapView(viewModel:)` re-init with a NEW instance is silently
-  /// ignored, which is exactly what live simulator verification caught (the
-  /// map stayed on the previous zone until a full relaunch). Mutating
-  /// `@Published` state on the existing instance instead triggers a normal
-  /// SwiftUI re-render, and preserves any live pan/zoom camera state rather
-  /// than tearing the map view down.
+  /// on the Applications tab, or a save in `DeviceLocalZoneEditorView`.
+  /// Deliberately mutates in place rather than the coordinator replacing the
+  /// whole `AnonymousMapViewModel` instance: `AnonymousMapView` holds this
+  /// object in a `@StateObject`, which SwiftUI keeps bound to the FIRST
+  /// instance passed to it — a same-position `AnonymousMapView(viewModel:)`
+  /// re-init with a NEW instance is silently ignored, which is exactly what
+  /// live simulator verification caught (the map stayed on the previous zone
+  /// until a full relaunch). Mutating `@Published` state on the existing
+  /// instance instead triggers a normal SwiftUI re-render, and preserves any
+  /// live pan/zoom camera state rather than tearing the map view down.
   ///
-  /// Centre/anchor/radius update IMMEDIATELY (synchronously) so the camera
-  /// and radius overlay reframe as soon as the zone switches. The FETCH —
-  /// and therefore the full pin/annotation-set swap it produces — is
-  /// debounced the same way `regionDidChange` debounces a pan/zoom, and
-  /// mutually cancels any in-flight `regionDidChange`/`updateActiveZone`
-  /// fetch of the other kind. This is a crash fix (GH#879 Phase 4): live
-  /// simulator verification hit a MapKit-internal SIGABRT
+  /// Anchor/radius update IMMEDIATELY (synchronously) so the camera and
+  /// radius overlay reframe as soon as the zone switches, to the zone's
+  /// ACTUAL radius (GH#912 Phase 4 — never clamped to any preview cap, so
+  /// the drawn circle always matches the fetch boundary exactly). The FETCH
+  /// — and therefore the full pin/annotation-set swap it produces — is
+  /// debounced. This is a crash fix (GH#879 Phase 4): live simulator
+  /// verification hit a MapKit-internal SIGABRT
   /// (`-[MKMapView annotationContainer:requestAddingClusterForAnnotationViews:]`
   /// → `doesNotRecognizeSelector:`) reproducibly when the active zone was
   /// switched rapidly — MapKit's own deferred clustering pass cannot
@@ -281,8 +228,6 @@ public final class AnonymousMapViewModel: ObservableObject, ErrorHandlingViewMod
   /// leaving a stale summary/disambiguation sheet open over a map that has
   /// already moved to a new area would be its own bug.
   public func updateActiveZone(_ zone: DeviceLocalZone) {
-    pendingRegionChangeTask?.cancel()
-    pendingRegionChangeTask = nil
     pendingActiveZoneTask?.cancel()
 
     selectedApplication = nil
@@ -290,11 +235,8 @@ public final class AnonymousMapViewModel: ObservableObject, ErrorHandlingViewMod
     pendingSummaryApplication = nil
     pendingDetailApplication = nil
 
-    centreLat = zone.centre.latitude
-    centreLon = zone.centre.longitude
     anchorCoordinate = zone.centre
     radiusMetres = zone.radiusMetres
-    selectedRadiusMetres = Self.clampSelectedRadius(zone.radiusMetres)
 
     let debounceDuration = debounceNanoseconds
     pendingActiveZoneTask = Task { [weak self] in
@@ -308,7 +250,7 @@ public final class AnonymousMapViewModel: ObservableObject, ErrorHandlingViewMod
   }
 
   /// Test-only synchronisation: await the most recently scheduled debounced
-  /// active-zone refetch, mirroring ``waitForPendingRegionChangeRefetch()``.
+  /// active-zone refetch.
   public func waitForPendingActiveZoneUpdate() async {
     await pendingActiveZoneTask?.value
   }

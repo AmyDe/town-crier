@@ -10,8 +10,21 @@ import TownCrierDomain
 @MainActor
 public final class AnonymousPostcodeEntryViewModel: ObservableObject, ErrorHandlingViewModel {
   @Published public var postcodeInput: String = ""
+  /// The monitoring radius chosen on this screen (GH#912 Phase 4), persisted
+  /// into ``AnonymousBrowseState`` on submit and seeding both the first
+  /// ``DeviceLocalZone`` and the anonymous map's fetch/drawn-circle radius —
+  /// replacing the removed map-slider as the sole way to set the initial
+  /// radius pre-signup. Defaults to the free tier's cap, matching the
+  /// eventual real limit a fresh account would get.
+  @Published public var selectedRadiusMetres: Double = 2000
   @Published public private(set) var isLoading = false
   @Published public internal(set) var error: DomainError?
+
+  public let minRadiusMetres: Double = 100
+  /// The free tier's radius cap — the anonymous flow has no session to
+  /// resolve a real subscription tier against, so it always bounds the
+  /// picker to what a brand-new free account would get.
+  public let maxRadiusMetres: Double = WatchZoneLimits(tier: .free).maxRadiusMetres
 
   private let geocoder: PostcodeGeocoder
   private let stateRepository: AnonymousBrowseStateRepository
@@ -44,7 +57,10 @@ public final class AnonymousPostcodeEntryViewModel: ObservableObject, ErrorHandl
     do {
       let coordinate = try await geocoder.geocode(postcode)
       let state = AnonymousBrowseState(
-        postcode: postcode, coordinate: coordinate, createdAt: Date())
+        postcode: postcode,
+        coordinate: coordinate,
+        radiusMetres: selectedRadiusMetres,
+        createdAt: Date())
       stateRepository.save(state)
       onResolved?(state)
     } catch {

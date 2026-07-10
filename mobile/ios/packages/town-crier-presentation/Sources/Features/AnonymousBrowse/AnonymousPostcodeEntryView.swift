@@ -38,6 +38,8 @@ struct AnonymousPostcodeEntryView: View {
           .textInputAutocapitalization(.characters)
         #endif
 
+      radiusControl
+
       if let error = viewModel.error {
         Text(error.userMessage)
           .font(TCTypography.caption)
@@ -62,5 +64,38 @@ struct AnonymousPostcodeEntryView: View {
     .padding(TCSpacing.extraLarge)
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Color.tcBackground)
+  }
+
+  // MARK: - Radius picker (GH#912 Phase 4)
+
+  /// Mirrors the onboarding wizard's `RadiusPickerStepView.radiusControl` —
+  /// same label/slider/min-max layout — so choosing a radius feels identical
+  /// whether it happens here (pre-signup) or in the wizard (post-signup).
+  /// Replaces the anonymous map's removed live slider as the sole way to set
+  /// the initial monitoring radius.
+  private var radiusControl: some View {
+    VStack(alignment: .leading, spacing: TCSpacing.small) {
+      Text(formatRadius(viewModel.selectedRadiusMetres))
+        .font(TCTypography.bodyEmphasis)
+        .foregroundStyle(Color.tcTextPrimary)
+        .frame(maxWidth: .infinity, alignment: .center)
+
+      Slider(
+        value: $viewModel.selectedRadiusMetres,
+        in: viewModel.minRadiusMetres...viewModel.maxRadiusMetres,
+        step: 100
+      )
+      .tint(Color.tcAmber)
+      .accessibilityLabel("Search radius")
+      .accessibilityValue(formatRadius(viewModel.selectedRadiusMetres))
+
+      HStack {
+        Text(formatRadius(viewModel.minRadiusMetres))
+        Spacer()
+        Text(formatRadius(viewModel.maxRadiusMetres))
+      }
+      .font(TCTypography.caption)
+      .foregroundStyle(Color.tcTextSecondary)
+    }
   }
 }

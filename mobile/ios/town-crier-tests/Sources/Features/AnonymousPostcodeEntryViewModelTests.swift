@@ -74,4 +74,28 @@ struct AnonymousPostcodeEntryViewModelTests {
 
     #expect(invoked)
   }
+
+  // MARK: - Radius picker (GH#912 Phase 4)
+
+  @Test func init_defaultsSelectedRadiusToFreeTierMax() {
+    let (sut, _, _) = makeSUT()
+
+    #expect(sut.selectedRadiusMetres == 2000)
+    #expect(sut.maxRadiusMetres == 2000)
+    #expect(sut.minRadiusMetres == 100)
+  }
+
+  @Test func submitPostcode_persistsStateWithTheSelectedRadius() async {
+    let (sut, geocoder, stateRepository) = makeSUT()
+    geocoder.geocodeResult = .success(.cambridge)
+    sut.postcodeInput = "CB1 2AD"
+    sut.selectedRadiusMetres = 1500
+    var resolved: AnonymousBrowseState?
+    sut.onResolved = { resolved = $0 }
+
+    await sut.submitPostcode()
+
+    #expect(stateRepository.saveCalls.last?.radiusMetres == 1500)
+    #expect(resolved?.radiusMetres == 1500)
+  }
 }

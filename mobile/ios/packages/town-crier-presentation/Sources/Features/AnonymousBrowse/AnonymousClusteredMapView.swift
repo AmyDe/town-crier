@@ -65,13 +65,13 @@
       coordinator.frameCamera(
         on: mapView,
         centre: Self.coordinate(for: viewModel.anchorCoordinate),
-        radius: viewModel.selectedRadiusMetres,
+        radius: viewModel.radiusMetres,
         animated: false)
       coordinator.syncAnnotations(on: mapView, desired: viewModel.applications)
       coordinator.applyRadiusOverlay(
         to: mapView,
         anchor: viewModel.anchorCoordinate,
-        radius: viewModel.selectedRadiusMetres)
+        radius: viewModel.radiusMetres)
       return mapView
     }
 
@@ -88,14 +88,14 @@
         coordinator.applyRadiusOverlay(
           to: mapView,
           anchor: currentViewModel.anchorCoordinate,
-          radius: currentViewModel.selectedRadiusMetres)
-        // Reframe only when the selected radius actually changed, so a pin
-        // refetch (pan/zoom exploring) never yanks the user's current
-        // viewport back — mirrors `ClusteredMapView.frameCameraIfZoneChanged`.
+          radius: currentViewModel.radiusMetres)
+        // Reframe only when the radius actually changed (an active-zone
+        // switch), so a pin refetch never yanks the user's current viewport
+        // back — mirrors `ClusteredMapView.frameCameraIfZoneChanged`.
         coordinator.reframeIfRadiusChanged(
           on: mapView,
           centre: Self.coordinate(for: currentViewModel.anchorCoordinate),
-          radius: currentViewModel.selectedRadiusMetres)
+          radius: currentViewModel.radiusMetres)
       }
     }
 
@@ -113,10 +113,10 @@
     /// members coincident (or the region is already at its zoom floor), to
     /// ``AnonymousMapViewModel/selectStack(_:)`` — there is no server-side
     /// "stacked/unsplittable" signal here, so the decision is made on-device
-    /// (GH#877). Also renders the radius preview circle and forwards viewport
-    /// changes to
-    /// ``AnonymousMapViewModel/regionDidChange(centreLat:centreLon:radiusMetres:)``,
-    /// which debounces internally.
+    /// (GH#877). Also renders the radius circle. GH#912 Phase 4: panning is
+    /// no longer forwarded to the ViewModel at all — the fetch radius is the
+    /// zone's fixed radius, so a pan/zoom gesture is purely a MapKit camera
+    /// move with no data or overlay side effect.
     @MainActor
     final class Coordinator: NSObject, MKMapViewDelegate {
       private let viewModel: AnonymousMapViewModel
@@ -286,19 +286,6 @@
         } else if let point = annotation as? AnonymousApplicationAnnotation {
           viewModel.selectApplication(point.application)
         }
-      }
-
-      func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
-        // `AnonymousMapViewModel.regionDidChange` debounces internally
-        // (cancels/reschedules its own pending fetch), so forwarding every
-        // intermediate `regionDidChangeAnimated` call here still collapses to
-        // one fetch once a pan/zoom gesture settles.
-        let region = mapView.region
-        let span = max(region.span.latitudeDelta, region.span.longitudeDelta)
-        viewModel.regionDidChange(
-          centreLat: region.center.latitude,
-          centreLon: region.center.longitude,
-          radiusMetres: span * 111_320 / 2)
       }
 
       func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
