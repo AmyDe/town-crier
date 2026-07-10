@@ -3,13 +3,15 @@ import TownCrierDomain
 
 /// Filterable list of planning applications within a watch zone.
 ///
-/// Uses a single `List` as the sole scroll container so that
-/// `.navigationBarTitleDisplayMode(.large)` has one unambiguous
-/// scroll view to track. Previous designs stacked horizontal
-/// `ScrollView`s in a `VStack` above the `List`; the large-title
-/// navigation bar hijacked the first one for its collapse
-/// animation, corrupting its rendering (chips invisible but
-/// still tappable).
+/// Uses a single `List` as the sole scroll container. Previous designs
+/// stacked horizontal `ScrollView`s in a `VStack` above the `List`; back when
+/// this screen used `.navigationBarTitleDisplayMode(.large)`, the large-title
+/// navigation bar hijacked the first scroll view for its collapse animation,
+/// corrupting its rendering (chips invisible but still tappable). The
+/// single-`List` architecture avoids that regardless of title mode, and the
+/// screen now renders `.inline` with the system title suppressed — see
+/// `mastheadNavigationBar()` — so the `MastheadView` row is the single
+/// visible title (GH#912 Phase 1).
 ///
 /// The unread-watermark UI (tc-1nsa.8) layers on:
 /// - an Unread filter chip (visible only when `hasUnread`) that mirrors the
@@ -37,9 +39,7 @@ public struct ApplicationListView: View {
     .scrollContentBackground(.hidden)
     .background(Color.tcBackground)
     .navigationTitle("Applications")
-    #if os(iOS)
-      .navigationBarTitleDisplayMode(.large)
-    #endif
+    .mastheadNavigationBar()
     .toolbar {
       sortToolbarItem
       markAllReadToolbarItem

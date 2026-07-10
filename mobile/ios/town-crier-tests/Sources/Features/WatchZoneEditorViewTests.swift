@@ -98,17 +98,17 @@ struct WatchZoneEditorViewTests {
     let vm = makeViewModel()
     vm.selectedRadiusMetres = 1500
     // The live label above the slider renders formatRadius(selectedRadiusMetres).
-    #expect(formatRadius(vm.selectedRadiusMetres) == "1.5 km")
+    #expect(formatRadius(vm.selectedRadiusMetres) == "1.5km")
 
     vm.selectedRadiusMetres = 750
-    #expect(formatRadius(vm.selectedRadiusMetres) == "750 m")
+    #expect(formatRadius(vm.selectedRadiusMetres) == "750m")
   }
 
   @Test func endLabelsFormatTierRange() {
     let vm = makeViewModel(tier: .pro)
     // Min label is fixed at the UI floor (100 m); max label tracks tier.
-    #expect(formatRadius(100) == "100 m")
-    #expect(formatRadius(vm.maxRadiusMetres) == "10 km")
+    #expect(formatRadius(100) == "100m")
+    #expect(formatRadius(vm.maxRadiusMetres) == "10km")
   }
 
   // MARK: - Per-zone notification toggles (tc-kh1s)

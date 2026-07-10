@@ -13,6 +13,7 @@ public struct SavedApplicationListView: View {
 
   public var body: some View {
     List {
+      mastheadRow
       filterRow
       contentRows
     }
@@ -20,15 +21,25 @@ public struct SavedApplicationListView: View {
     .scrollContentBackground(.hidden)
     .background(Color.tcBackground)
     .navigationTitle("Saved")
-    #if os(iOS)
-      .navigationBarTitleDisplayMode(.large)
-    #endif
+    .mastheadNavigationBar()
     .task {
       await viewModel.loadAll()
     }
     .refreshable {
       await viewModel.loadAll()
     }
+  }
+
+  // MARK: - Masthead
+
+  private var mastheadRow: some View {
+    MastheadView(title: "Saved")
+      .padding(.horizontal, TCSpacing.medium)
+      .padding(.top, TCSpacing.small)
+      .padding(.bottom, TCSpacing.extraSmall)
+      .listRowSeparator(.hidden)
+      .listRowInsets(EdgeInsets())
+      .listRowBackground(Color.tcBackground)
   }
 
   // MARK: - Filter Row
