@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    ICON-ONLY colour resource. This is deliberately the ONLY entry in this file.
+
+    The app's UI palette is NOT defined here: Compose reads its colours from the
+    generated design-token file (presentation/.../designsystem/Color.kt, emitted
+    by scripts/design-tokens/generate.mjs from design/tokens.json — ADR 0040).
+    Do NOT add UI colours here; add them to design/tokens.json and regenerate.
+
+    ic_launcher_background is the adaptive launcher icon's background layer
+    (res/mipmap-anydpi-v26/ic_launcher.xml). Its value is the Public Notice
+    "paper" background token (design/tokens.json -> color.background.light,
+    #F5F0E6), matched so the launcher-mask reveal blends with the opaque,
+    full-bleed foreground bitmap (which carries the same paper background).
+-->
+<resources>
+    <color name="ic_launcher_background">#F5F0E6</color>
+</resources>

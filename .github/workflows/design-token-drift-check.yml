@@ -17,6 +17,9 @@ on:
       - 'mobile/ios/packages/town-crier-presentation/Sources/DesignSystem/Colors/Color+TownCrier.swift'
       - 'mobile/android/presentation/src/main/kotlin/uk/towncrierapp/presentation/designsystem/Color.kt'
       - '.claude/skills/design-language/references/tokens.md'
+      # Android launcher-icon foregrounds + their master source (issue #860, R7).
+      - 'mobile/ios/town-crier-app/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png'
+      - 'mobile/android/app/src/main/res/mipmap-**'
       - '.github/workflows/design-token-drift-check.yml'
 
 permissions:

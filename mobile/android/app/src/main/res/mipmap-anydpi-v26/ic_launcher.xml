@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Adaptive launcher icon (API 26+; minSdk is 26 so every device gets this).
+
+    Faithful port of the existing iOS app icon (the navy line-art house-with-
+    hanging-bell on paper). There is no vector source for that artwork, only the
+    1024x1024 master raster
+    (mobile/ios/.../AppIcon.appiconset/AppIcon.png), so the foreground is a
+    density-bucketed bitmap generated from it by
+    scripts/design-tokens/generate-android-icon.mjs — NOT a hand-drawn vector,
+    which would risk drifting from the approved artwork.
+
+    The foreground is the full-bleed master (paper background + house + bell);
+    the artwork sits in the central ~50% of the canvas, well inside the adaptive
+    safe zone, so no launcher mask clips it. The background layer is the same
+    paper colour so any parallax reveal blends seamlessly.
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+</adaptive-icon>
