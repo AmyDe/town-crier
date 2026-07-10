@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Round variant of the adaptive launcher icon. Identical layers to
+    ic_launcher.xml: the adaptive-icon system applies the round mask itself, so
+    the round icon is the same paper background + full-bleed house-and-bell
+    foreground. See ic_launcher.xml for the full rationale.
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+</adaptive-icon>
