@@ -98,4 +98,17 @@ struct AnonymousPostcodeEntryViewModelTests {
     #expect(stateRepository.saveCalls.last?.radiusMetres == 1500)
     #expect(resolved?.radiusMetres == 1500)
   }
+
+  // MARK: - Live preview (GH#931)
+
+  @Test func refreshPreview_validPostcode_setsPreviewCoordinate() async {
+    let (sut, geocoder, _) = makeSUT()
+    geocoder.geocodeResult = .success(.cambridge)
+    sut.postcodeInput = "CB1 2AD"
+
+    await sut.refreshPreview()
+
+    #expect(geocoder.geocodeCalls.count == 1)
+    #expect(sut.previewCoordinate == .cambridge)
+  }
 }
