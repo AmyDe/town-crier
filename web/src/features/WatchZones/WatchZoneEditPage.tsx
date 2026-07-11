@@ -141,7 +141,7 @@ export function WatchZoneEditPage({ repository, zone, tier = 'Free' }: Props) {
               type="checkbox"
               checked={preferences.newApplicationPush}
               onChange={() => handleToggle('newApplicationPush')}
-              aria-label="New applications — push"
+              aria-label="New applications, push"
             />
             <span className={styles.toggleLabel}>Push</span>
           </label>
@@ -151,7 +151,7 @@ export function WatchZoneEditPage({ repository, zone, tier = 'Free' }: Props) {
               type="checkbox"
               checked={preferences.newApplicationEmail}
               onChange={() => handleToggle('newApplicationEmail')}
-              aria-label="New applications — email"
+              aria-label="New applications, email"
             />
             <span className={styles.toggleLabel}>Email</span>
           </label>
@@ -162,7 +162,7 @@ export function WatchZoneEditPage({ repository, zone, tier = 'Free' }: Props) {
               type="checkbox"
               checked={preferences.decisionPush}
               onChange={() => handleToggle('decisionPush')}
-              aria-label="Decision updates — push"
+              aria-label="Decision updates, push"
             />
             <span className={styles.toggleLabel}>Push</span>
           </label>
@@ -172,7 +172,7 @@ export function WatchZoneEditPage({ repository, zone, tier = 'Free' }: Props) {
               type="checkbox"
               checked={preferences.decisionEmail}
               onChange={() => handleToggle('decisionEmail')}
-              aria-label="Decision updates — email"
+              aria-label="Decision updates, email"
             />
             <span className={styles.toggleLabel}>Email</span>
           </label>

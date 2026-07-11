@@ -140,7 +140,7 @@ export function SettingsPage({ repository, redeemOfferCodeClient, onRedeemSucces
             <Toggle
               checked={profile?.savedDecisionPush ?? true}
               onChange={(checked) => updatePreferences({ savedDecisionPush: checked })}
-              label="Saved applications — push"
+              label="Saved applications, push"
             />
           </div>
           <div className={styles.toggleRow}>
@@ -148,7 +148,7 @@ export function SettingsPage({ repository, redeemOfferCodeClient, onRedeemSucces
             <Toggle
               checked={profile?.savedDecisionEmail ?? true}
               onChange={(checked) => updatePreferences({ savedDecisionEmail: checked })}
-              label="Saved applications — email"
+              label="Saved applications, email"
             />
           </div>
         </div>

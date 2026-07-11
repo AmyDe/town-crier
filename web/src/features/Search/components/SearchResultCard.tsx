@@ -60,7 +60,7 @@ export function SearchResultCard({ result }: Props) {
         </button>
         <span aria-live="polite" className={styles.copyStatus}>
           {copyState === 'copied' && 'Share link copied to clipboard'}
-          {copyState === 'error' && "Couldn't copy link — try selecting it from the address bar."}
+          {copyState === 'error' && "Couldn't copy the link. Try selecting it from the address bar."}
         </span>
       </div>
     </li>

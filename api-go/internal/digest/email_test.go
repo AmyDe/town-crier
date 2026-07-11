@@ -36,7 +36,7 @@ func testNotification(uid, zoneID, address, appType, desc string) notifications.
 func TestBuildDigestSubject(t *testing.T) {
 	t.Parallel()
 	got := buildDigestSubject(3)
-	want := "Planning update — 3 new applications near you"
+	want := "Planning update: 3 new applications near you"
 	if got != want {
 		t.Errorf("subject: got %q, want %q", got, want)
 	}
