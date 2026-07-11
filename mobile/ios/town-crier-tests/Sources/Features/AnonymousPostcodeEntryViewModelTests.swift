@@ -162,4 +162,21 @@ struct AnonymousPostcodeEntryViewModelTests {
     await sut.refreshPreview()
     #expect(!sut.isLoading)
   }
+
+  @Test func submitPostcode_afterSuccessfulPreview_reusesCoordinateWithoutSecondGeocode() async {
+    let (sut, geocoder, stateRepository) = makeSUT()
+    geocoder.geocodeResult = .success(.cambridge)
+    sut.postcodeInput = "CB1 2AD"
+    await sut.refreshPreview()
+    var resolved: AnonymousBrowseState?
+    sut.onResolved = { resolved = $0 }
+
+    await sut.submitPostcode()
+
+    #expect(geocoder.geocodeCalls.count == 1)
+    #expect(stateRepository.saveCalls.count == 1)
+    #expect(stateRepository.saveCalls.first?.coordinate == .cambridge)
+    #expect(resolved?.coordinate == .cambridge)
+    #expect(resolved?.radiusMetres == sut.selectedRadiusMetres)
+  }
 }
