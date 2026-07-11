@@ -16,7 +16,7 @@ struct AnonymousPostcodeEntryView: View {
   enum Copy {
     static let title = "Where should we look?"
     static let helper =
-      "Enter any UK postcode. We'll show planning applications nearby — no account needed."
+      "Enter any UK postcode. We'll show planning applications nearby. No account needed."
     static let placeholder = "e.g. CB1 2AD"
   }
 
