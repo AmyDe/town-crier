@@ -144,7 +144,7 @@ public struct NotificationPreferencesView: View {
         )
       )
       .tint(Color.tcAmber)
-      .accessibilityLabel("Saved applications — push")
+      .accessibilityLabel("Saved applications, push")
 
       Toggle(
         "Email",
@@ -156,7 +156,7 @@ public struct NotificationPreferencesView: View {
         )
       )
       .tint(Color.tcAmber)
-      .accessibilityLabel("Saved applications — email")
+      .accessibilityLabel("Saved applications, email")
     } header: {
       Text("Saved applications")
         .font(TCTypography.captionEmphasis)

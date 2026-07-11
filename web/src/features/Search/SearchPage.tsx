@@ -91,7 +91,7 @@ export function SearchPage({ port }: Props) {
       {error !== null && <p className={styles.error}>{error}</p>}
       {refineQuery && (
         <p className={styles.notice}>
-          Showing the first 20 matches — try a more specific search to narrow the results.
+          Showing the first 20 matches. Try a more specific search to narrow the results.
         </p>
       )}
       {showEmptyState && <p className={styles.status}>No applications matched your search.</p>}

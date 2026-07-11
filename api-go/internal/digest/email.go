@@ -115,7 +115,7 @@ type watchZoneDigest struct {
 
 // buildDigestSubject renders the digest email subject line.
 func buildDigestSubject(totalCount int) string {
-	return fmt.Sprintf("Planning update — %d new applications near you", totalCount)
+	return fmt.Sprintf("Planning update: %d new applications near you", totalCount)
 }
 
 // buildDigestHTML renders the full digest email body as a Public Notice

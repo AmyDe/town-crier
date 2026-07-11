@@ -4,8 +4,8 @@ import TownCrierDomain
 /// Per-zone notification preferences screen with four per-channel toggles
 /// (push/email × new-application/decision) grouped under two semantic sections.
 ///
-/// Mirrors the web counterpart's accessibility shape — each toggle exposes an
-/// em-dash-separated accessibility label (e.g. "New applications — push") so
+/// Mirrors the web counterpart's accessibility shape — each toggle exposes a
+/// comma-separated accessibility label (e.g. "New applications, push") so
 /// VoiceOver and UI tests can address each control unambiguously.
 public struct ZonePreferencesView: View {
   @StateObject private var viewModel: ZonePreferencesViewModel
@@ -56,11 +56,11 @@ public struct ZonePreferencesView: View {
     Section {
       Toggle("Push", isOn: $viewModel.newApplicationPush)
         .tint(Color.tcAmber)
-        .accessibilityLabel("New applications — push")
+        .accessibilityLabel("New applications, push")
 
       Toggle("Email", isOn: $viewModel.newApplicationEmail)
         .tint(Color.tcAmber)
-        .accessibilityLabel("New applications — email")
+        .accessibilityLabel("New applications, email")
     } header: {
       Text("New applications")
     } footer: {
@@ -74,11 +74,11 @@ public struct ZonePreferencesView: View {
     Section {
       Toggle("Push", isOn: $viewModel.decisionPush)
         .tint(Color.tcAmber)
-        .accessibilityLabel("Decision updates — push")
+        .accessibilityLabel("Decision updates, push")
 
       Toggle("Email", isOn: $viewModel.decisionEmail)
         .tint(Color.tcAmber)
-        .accessibilityLabel("Decision updates — email")
+        .accessibilityLabel("Decision updates, email")
     } header: {
       Text("Decision updates")
     } footer: {
