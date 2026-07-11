@@ -35,6 +35,11 @@ public final class AnonymousPostcodeEntryViewModel: ObservableObject, ErrorHandl
 
   private let geocoder: PostcodeGeocoder
   private let stateRepository: AnonymousBrowseStateRepository
+  /// The last postcode successfully previewed — lets ``refreshPreview()``
+  /// skip a duplicate geocode while the input is unchanged, and lets
+  /// ``submitPostcode()`` reuse the coordinate instead of a second call
+  /// (GH#931).
+  private var lastPreviewedPostcode: Postcode?
 
   /// Fired when the user taps "Back" — the coordinator returns to welcome.
   public var onBack: (() -> Void)?
@@ -89,8 +94,12 @@ public final class AnonymousPostcodeEntryViewModel: ObservableObject, ErrorHandl
       previewCoordinate = nil
       return
     }
+    if postcode == lastPreviewedPostcode, previewCoordinate != nil {
+      return
+    }
     if let coordinate = try? await geocoder.geocode(postcode) {
       previewCoordinate = coordinate
+      lastPreviewedPostcode = postcode
     }
   }
 }
