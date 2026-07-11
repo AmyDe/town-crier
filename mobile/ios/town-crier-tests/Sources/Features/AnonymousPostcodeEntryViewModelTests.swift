@@ -111,4 +111,18 @@ struct AnonymousPostcodeEntryViewModelTests {
     #expect(geocoder.geocodeCalls.count == 1)
     #expect(sut.previewCoordinate == .cambridge)
   }
+
+  @Test func refreshPreview_invalidInput_clearsPreviewWithoutGeocoding() async {
+    let (sut, geocoder, _) = makeSUT()
+    geocoder.geocodeResult = .success(.cambridge)
+    sut.postcodeInput = "CB1 2AD"
+    await sut.refreshPreview()
+    #expect(sut.previewCoordinate == .cambridge)
+
+    sut.postcodeInput = "INVALID"
+    await sut.refreshPreview()
+
+    #expect(sut.previewCoordinate == nil)
+    #expect(geocoder.geocodeCalls.count == 1)
+  }
 }
