@@ -67,7 +67,15 @@ public final class AnonymousPostcodeEntryViewModel: ObservableObject, ErrorHandl
     }
 
     do {
-      let coordinate = try await geocoder.geocode(postcode)
+      // Reuse a coordinate the live preview already resolved for this exact
+      // postcode (GH#931) — politeness to postcodes.io, a free third-party
+      // service, and a zero-cost cache hit.
+      let coordinate: Coordinate
+      if postcode == lastPreviewedPostcode, let previewedCoordinate = previewCoordinate {
+        coordinate = previewedCoordinate
+      } else {
+        coordinate = try await geocoder.geocode(postcode)
+      }
       let state = AnonymousBrowseState(
         postcode: postcode,
         coordinate: coordinate,
