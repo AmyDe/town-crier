@@ -137,4 +137,19 @@ struct AnonymousPostcodeEntryViewModelTests {
     #expect(geocoder.geocodeCalls.count == 1)
     #expect(sut.previewCoordinate == .cambridge)
   }
+
+  @Test func refreshPreview_geocodeFailure_clearsPreviewAndSetsNoError() async {
+    let (sut, geocoder, _) = makeSUT()
+    geocoder.geocodeResult = .success(.cambridge)
+    sut.postcodeInput = "CB1 2AD"
+    await sut.refreshPreview()
+    #expect(sut.previewCoordinate == .cambridge)
+
+    geocoder.geocodeResult = .failure(DomainError.geocodingFailed("SW1A 1AA"))
+    sut.postcodeInput = "SW1A 1AA"
+    await sut.refreshPreview()
+
+    #expect(sut.previewCoordinate == nil)
+    #expect(sut.error == nil)
+  }
 }
