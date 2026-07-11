@@ -152,4 +152,14 @@ struct AnonymousPostcodeEntryViewModelTests {
     #expect(sut.previewCoordinate == nil)
     #expect(sut.error == nil)
   }
+
+  @Test func refreshPreview_doesNotChangeIsLoading() async {
+    let (sut, geocoder, _) = makeSUT()
+    geocoder.geocodeResult = .success(.cambridge)
+    sut.postcodeInput = "CB1 2AD"
+
+    #expect(!sut.isLoading)
+    await sut.refreshPreview()
+    #expect(!sut.isLoading)
+  }
 }
