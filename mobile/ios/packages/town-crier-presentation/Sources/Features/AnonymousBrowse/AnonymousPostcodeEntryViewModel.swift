@@ -92,14 +92,21 @@ public final class AnonymousPostcodeEntryViewModel: ObservableObject, ErrorHandl
   public func refreshPreview() async {
     guard let postcode = try? Postcode(postcodeInput) else {
       previewCoordinate = nil
+      lastPreviewedPostcode = nil
       return
     }
     if postcode == lastPreviewedPostcode, previewCoordinate != nil {
       return
     }
-    if let coordinate = try? await geocoder.geocode(postcode) {
-      previewCoordinate = coordinate
+    do {
+      previewCoordinate = try await geocoder.geocode(postcode)
       lastPreviewedPostcode = postcode
+    } catch {
+      // Preview geocode failures are silent (GH#931) — `error` stays the
+      // exclusive domain of `submitPostcode()`; a transient failure here
+      // must not flash a misleading error while the user is still typing.
+      previewCoordinate = nil
+      lastPreviewedPostcode = nil
     }
   }
 }
