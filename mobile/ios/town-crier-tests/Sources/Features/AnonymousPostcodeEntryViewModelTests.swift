@@ -125,4 +125,16 @@ struct AnonymousPostcodeEntryViewModelTests {
     #expect(sut.previewCoordinate == nil)
     #expect(geocoder.geocodeCalls.count == 1)
   }
+
+  @Test func refreshPreview_samePostcodeTwice_geocodesOnlyOnce() async {
+    let (sut, geocoder, _) = makeSUT()
+    geocoder.geocodeResult = .success(.cambridge)
+    sut.postcodeInput = "CB1 2AD"
+
+    await sut.refreshPreview()
+    await sut.refreshPreview()
+
+    #expect(geocoder.geocodeCalls.count == 1)
+    #expect(sut.previewCoordinate == .cambridge)
+  }
 }
