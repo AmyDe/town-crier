@@ -4,6 +4,7 @@ package applications
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"reflect"
 	"testing"
@@ -91,6 +92,25 @@ func assertAppEqual(t *testing.T, got, want PlanningApplication) {
 	g.ConsultedDate, w.ConsultedDate = nil, nil
 	if !reflect.DeepEqual(g, w) {
 		t.Errorf("application mismatch:\n got = %+v\nwant = %+v", g, w)
+	}
+}
+
+// assertJSONSemanticallyEqual compares two raw-JSON byte slices by decoded
+// value rather than by exact bytes. jsonb is a canonical, reparsed storage
+// format (Postgres reformats the text it stores, e.g. inserting a space after
+// each comma), so a round-tripped Altid/AssociatedID is not byte-identical to
+// what was written even when it is the same JSON value.
+func assertJSONSemanticallyEqual(t *testing.T, field string, got, want []byte) {
+	t.Helper()
+	var gotVal, wantVal any
+	if err := json.Unmarshal(got, &gotVal); err != nil {
+		t.Fatalf("%s: unmarshal got %s: %v", field, got, err)
+	}
+	if err := json.Unmarshal(want, &wantVal); err != nil {
+		t.Fatalf("%s: unmarshal want %s: %v", field, want, err)
+	}
+	if !reflect.DeepEqual(gotVal, wantVal) {
+		t.Errorf("%s: got %s, want %s", field, got, want)
 	}
 }
 
@@ -325,12 +345,12 @@ func TestPostgresStore_Upsert_GetByUID_RoundTripsFullFields(t *testing.T) {
 	if got.Reference == nil || *got.Reference != "REF-100" {
 		t.Errorf("Reference: got %v, want REF-100", got.Reference)
 	}
-	if string(got.Altid) != `["A","B"]` {
-		t.Errorf("Altid: got %s, want [\"A\",\"B\"]", got.Altid)
-	}
-	if string(got.AssociatedID) != `"single-id"` {
-		t.Errorf("AssociatedID: got %s, want \"single-id\"", got.AssociatedID)
-	}
+	// jsonb is a canonical, reparsed storage format: Postgres reformats the
+	// text it stores (e.g. inserts a space after each comma), so the bytes
+	// read back are not byte-identical to what was written even though they
+	// are the same JSON value. Compare semantically, not byte-for-byte.
+	assertJSONSemanticallyEqual(t, "Altid", got.Altid, []byte(`["A","B"]`))
+	assertJSONSemanticallyEqual(t, "AssociatedID", got.AssociatedID, []byte(`"single-id"`))
 	if got.LastChanged == nil || !got.LastChanged.Equal(lastChanged) {
 		t.Errorf("LastChanged: got %v, want %v", got.LastChanged, lastChanged)
 	}
@@ -340,8 +360,8 @@ func TestPostgresStore_Upsert_GetByUID_RoundTripsFullFields(t *testing.T) {
 	if got.ScraperName == nil || *got.ScraperName != "Richmondshire" {
 		t.Errorf("ScraperName: got %v, want Richmondshire", got.ScraperName)
 	}
-	if !a.HasSameSilentFieldsAs(got) {
-		t.Errorf("round-tripped other_fields differ: got %+v, want %+v", got.OtherFields, a.OtherFields)
+	if !reflect.DeepEqual(got.OtherFields, a.OtherFields) {
+		t.Errorf("OtherFields: got %+v, want %+v", got.OtherFields, a.OtherFields)
 	}
 }
 
