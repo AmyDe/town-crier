@@ -869,7 +869,7 @@ func TestRouter_AdminStatsGate(t *testing.T) {
 	}
 	want := `{` +
 		`"users":{"total":0,"byTier":{"Free":0,"Personal":0,"Pro":0}},` +
-		`"paying":{"effectivePaid":0,"appStore":0,"comped":0,"lapsed":0,"inGrace":0},` +
+		`"paying":{"effectivePaid":0,"appStore":0,"comped":0,"lapsed":0,"inGrace":0,"appStoreByTier":{"Personal":0,"Pro":0}},` +
 		`"signups":{"last24h":0,"last7d":0,"last30d":0,"mostRecent":null},` +
 		`"activity":{"active24h":0,"active7d":0,"zeroWatchZones":0,"noEmail":0},` +
 		`"reach":{"watchZones":0,"savedApplications":0,"deviceRegistrations":0,"notificationsSent":0,"notificationsUnread":0}` +
