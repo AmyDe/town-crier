@@ -17,11 +17,12 @@ func sampleStats() *statsResponse {
 			ByTier: statsByTier{Free: 30, Personal: 8, Pro: 4},
 		},
 		Paying: statsPaying{
-			EffectivePaid: 12,
-			AppStore:      9,
-			Comped:        3,
-			Lapsed:        2,
-			InGrace:       1,
+			EffectivePaid:  12,
+			AppStore:       9,
+			Comped:         3,
+			Lapsed:         2,
+			InGrace:        1,
+			AppStoreByTier: &statsAppStoreByTier{Personal: 3, Pro: 6},
 		},
 		Signups: statsSignups{
 			Last24h:    3,
@@ -58,8 +59,11 @@ func TestRenderStats_ContainsAggregates(t *testing.T) {
 		"Users", "Paying", "Signups", "Activity", "Reach",
 		// Users.
 		"Total: 42", "Free 30, Personal 8, Pro 4",
-		// Paying.
-		"Effective paid: 12", "App Store: 9", "Comped: 3", "Lapsed: 2", "In grace: 1",
+		// Paying: App Store headline with tier split, estimated MRR, then the
+		// non-App-Store buckets. "Effective paid" is gone — the headline paying
+		// number is App Store only.
+		"Paying (App Store): 9 (Personal 3, Pro 6)", "Est. MRR: £35.91/mo",
+		"Comped (offer/admin): 3", "Lapsed: 2", "In grace: 1",
 		// Signups.
 		"Last 24h: 3", "Last 7d: 11", "Last 30d: 28",
 		"auth0|u1 (alice@example.com) at 2026-07-01T09:00:00Z",
@@ -103,18 +107,124 @@ func TestRenderStats_NullMostRecentAndEmail(t *testing.T) {
 	})
 }
 
+// TestRenderStats_NilAppStoreByTier_Degrades covers an older API build that
+// predates the tier split: the Paying block must still render the App
+// Store-only headline (no parenthesised split) and "Est. MRR: -", never
+// panic on the nil pointer.
+func TestRenderStats_NilAppStoreByTier_Degrades(t *testing.T) {
+	t.Parallel()
+	s := sampleStats()
+	s.Paying.AppStoreByTier = nil
+	var sb strings.Builder
+	renderStats(&sb, s)
+	out := sb.String()
+	if !strings.Contains(out, "Paying (App Store): 9\n") {
+		t.Errorf("nil AppStoreByTier should render the bare App Store count:\n%s", out)
+	}
+	if strings.Contains(out, "(Personal") {
+		t.Errorf("nil AppStoreByTier must not render a tier split:\n%s", out)
+	}
+	if !strings.Contains(out, "Est. MRR: -") {
+		t.Errorf("nil AppStoreByTier should render Est. MRR: -:\n%s", out)
+	}
+}
+
+// TestRenderStats_ZeroPayers covers a populated-but-empty AppStoreByTier (a
+// real API response with no App Store payers yet): the MRR line must still
+// render a concrete amount, £0.00/mo, not the nil-degradation dash.
+func TestRenderStats_ZeroPayers(t *testing.T) {
+	t.Parallel()
+	s := sampleStats()
+	s.Paying.AppStore = 0
+	s.Paying.AppStoreByTier = &statsAppStoreByTier{Personal: 0, Pro: 0}
+	var sb strings.Builder
+	renderStats(&sb, s)
+	out := sb.String()
+	if !strings.Contains(out, "Paying (App Store): 0 (Personal 0, Pro 0)") {
+		t.Errorf("zero payers should still render the tier split:\n%s", out)
+	}
+	if !strings.Contains(out, "Est. MRR: £0.00/mo") {
+		t.Errorf("zero payers should render Est. MRR: £0.00/mo:\n%s", out)
+	}
+}
+
+// TestMRRPence covers the integer-pence MRR arithmetic directly: Pro payers at
+// 499p/mo, Personal payers at 199p/mo, no floats anywhere near the money.
+func TestMRRPence(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		tier *statsAppStoreByTier
+		want int
+	}{
+		{"nil tier", nil, 0},
+		{"zero payers", &statsAppStoreByTier{Personal: 0, Pro: 0}, 0},
+		{"2 pro + 3 personal", &statsAppStoreByTier{Personal: 3, Pro: 2}, 2*499 + 3*199},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := mrrPence(tc.tier); got != tc.want {
+				t.Errorf("mrrPence(%+v) = %d, want %d", tc.tier, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestFormatMRR covers the pence-to-"£X.YY/mo" rendering, including the
+// zero-payer case (a real, formatted £0.00/mo — not the nil-degradation dash).
+func TestFormatMRR(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		tier *statsAppStoreByTier
+		want string
+	}{
+		{"zero payers", &statsAppStoreByTier{}, "£0.00/mo"},
+		{"2 pro + 3 personal", &statsAppStoreByTier{Personal: 3, Pro: 2}, "£15.95/mo"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := formatMRR(tc.tier); got != tc.want {
+				t.Errorf("formatMRR(%+v) = %q, want %q", tc.tier, got, tc.want)
+			}
+		})
+	}
+}
+
 // TestStatsSummaryLine renders the one-line list-users header from the aggregate.
 func TestStatsSummaryLine(t *testing.T) {
 	t.Parallel()
 	got := statsSummaryLine(sampleStats())
 	for _, want := range []string{
 		"42 users", "Free 30", "Personal 8", "Pro 4",
-		"paying 12", "App Store 9", "comped 3", "lapsed 2",
+		"paying 9", "MRR £35.91/mo", "comped 3", "lapsed 2",
 		"new 24h 3", "active 24h 5",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("summary line missing %q:\n%s", want, got)
 		}
+	}
+}
+
+// TestStatsSummaryLine_NilAppStoreByTier_Degrades covers the same older-API
+// nil case for the one-line list-users header: the paying (App Store) count
+// is unaffected (it was never part of the split), but the MRR segment
+// degrades to "MRR -" rather than computing a wrong figure from no data.
+func TestStatsSummaryLine_NilAppStoreByTier_Degrades(t *testing.T) {
+	t.Parallel()
+	s := sampleStats()
+	s.Paying.AppStoreByTier = nil
+	got := statsSummaryLine(s)
+	if !strings.Contains(got, "paying 9") {
+		t.Errorf("summary line missing paying 9:\n%s", got)
+	}
+	if !strings.Contains(got, "MRR -") {
+		t.Errorf("summary line should degrade to MRR -:\n%s", got)
+	}
+	if strings.Contains(got, "£") {
+		t.Errorf("summary line must not render a computed amount when nil:\n%s", got)
 	}
 }
 
