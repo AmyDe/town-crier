@@ -11,8 +11,12 @@ import Testing
 @MainActor
 @Suite("WatchZoneListViewModel -- Device-Local Zone Row")
 struct WatchZoneListViewModelDeviceLocalZoneRowTests {
-  private func makeLocalZone(name: String = "Home") throws -> DeviceLocalZone {
-    try DeviceLocalZone(name: name, centre: .cambridge, radiusMetres: 1000)
+  private func makeLocalZone(
+    name: String = "Home",
+    centre: Coordinate = .cambridge,
+    radiusMetres: Double = 1000
+  ) throws -> DeviceLocalZone {
+    try DeviceLocalZone(name: name, centre: centre, radiusMetres: radiusMetres)
   }
 
   @Test func load_withNoDeviceLocalZoneRepository_neverShowsRow() async {
@@ -122,5 +126,105 @@ struct WatchZoneListViewModelDeviceLocalZoneRowTests {
     sut.convertLocalZones()
 
     #expect(invoked)
+  }
+
+  // MARK: - Explicit delete (tc-luq4u)
+
+  @Test func presentDiscardConfirmation_setsIsDiscardConfirmationPresented() {
+    let sut = WatchZoneListViewModel(
+      repository: SpyWatchZoneRepository(),
+      featureGate: FeatureGate(tier: .free)
+    )
+    #expect(!sut.isDiscardConfirmationPresented)
+
+    sut.presentDiscardConfirmation()
+
+    #expect(sut.isDiscardConfirmationPresented)
+  }
+
+  @Test func discardLocalZones_deletesAllFromRepositoryAndClearsList() async throws {
+    let localRepo = SpyDeviceLocalZoneRepository()
+    let zone = try makeLocalZone()
+    localRepo.loadAllResult = [zone]
+    let sut = WatchZoneListViewModel(
+      repository: SpyWatchZoneRepository(),
+      featureGate: FeatureGate(tier: .free),
+      deviceLocalZoneRepository: localRepo
+    )
+    await sut.load()
+    sut.presentDiscardConfirmation()
+    #expect(sut.showsLocalZoneRow)
+
+    sut.discardLocalZones()
+
+    #expect(localRepo.deleteCalls == [zone.id])
+    #expect(sut.unconvertedLocalZones.isEmpty)
+    #expect(!sut.showsLocalZoneRow)
+    #expect(!sut.isDiscardConfirmationPresented)
+  }
+
+  @Test func discardLocalZones_thenReload_staysHidden() async throws {
+    let localRepo = SpyDeviceLocalZoneRepository()
+    localRepo.loadAllResult = [try makeLocalZone()]
+    let sut = WatchZoneListViewModel(
+      repository: SpyWatchZoneRepository(),
+      featureGate: FeatureGate(tier: .free),
+      deviceLocalZoneRepository: localRepo
+    )
+    await sut.load()
+
+    sut.discardLocalZones()
+    // Mirrors what a real repository would report post-delete — the spy
+    // records calls but does not mutate its own stubbed result.
+    localRepo.loadAllResult = []
+    await sut.load()
+
+    #expect(!sut.showsLocalZoneRow)
+    #expect(sut.unconvertedLocalZones.isEmpty)
+  }
+
+  @Test func load_deduplicatesLocalZoneMatchingServerZone() async throws {
+    let localRepo = SpyDeviceLocalZoneRepository()
+    let serverZone = try WatchZone(
+      name: "Home", centre: .cambridge, radiusMetres: 1000, authorityId: 1)
+    let duplicateCentre = try Coordinate(
+      latitude: Coordinate.cambridge.latitude + 0.00005,
+      longitude: Coordinate.cambridge.longitude - 0.00005
+    )
+    let duplicate = try makeLocalZone(
+      name: "Home", centre: duplicateCentre, radiusMetres: 1000)
+    let distinct = try makeLocalZone(
+      name: "Allotment", centre: .cambridge, radiusMetres: 2000)
+    localRepo.loadAllResult = [duplicate, distinct]
+    let watchRepo = SpyWatchZoneRepository()
+    watchRepo.loadAllResult = .success([serverZone])
+    let sut = WatchZoneListViewModel(
+      repository: watchRepo,
+      featureGate: FeatureGate(tier: .free),
+      deviceLocalZoneRepository: localRepo
+    )
+
+    await sut.load()
+
+    #expect(localRepo.deleteCalls == [duplicate.id])
+    #expect(sut.unconvertedLocalZones == [distinct])
+  }
+
+  @Test func load_withServerLoadFailure_doesNotDeduplicate() async throws {
+    let localRepo = SpyDeviceLocalZoneRepository()
+    let duplicate = try makeLocalZone(name: "Home", centre: .cambridge, radiusMetres: 1000)
+    localRepo.loadAllResult = [duplicate]
+    let watchRepo = SpyWatchZoneRepository()
+    watchRepo.loadAllResult = .failure(DomainError.networkUnavailable)
+    let sut = WatchZoneListViewModel(
+      repository: watchRepo,
+      featureGate: FeatureGate(tier: .free),
+      deviceLocalZoneRepository: localRepo
+    )
+
+    await sut.load()
+
+    #expect(localRepo.deleteCalls.isEmpty)
+    #expect(sut.unconvertedLocalZones == [duplicate])
   }
 }
