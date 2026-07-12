@@ -42,6 +42,44 @@ func TestNewClient_RequiresNamespaceAndQueue(t *testing.T) {
 	}
 }
 
+// TestQueueDepth_IsEmpty proves the fork-guard's emptiness/threshold semantics
+// (GH#938 PR2): a queue is "empty" only when it has no live (active+scheduled)
+// trigger. Dead-lettered messages are corpses, not live triggers, so a queue
+// holding only dead letters still counts as empty of live triggers.
+func TestQueueDepth_IsEmpty(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		depth QueueDepth
+		want  bool
+	}{
+		{"all zero", QueueDepth{}, true},
+		{"active present", QueueDepth{ActiveMessageCount: 1}, false},
+		{"scheduled present", QueueDepth{ScheduledMessageCount: 1}, false},
+		{"dead letters only", QueueDepth{DeadLetterMessageCount: 4}, true},
+		{"active and dead letters", QueueDepth{ActiveMessageCount: 1, DeadLetterMessageCount: 4}, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := tc.depth.IsEmpty(); got != tc.want {
+				t.Errorf("IsEmpty(): got %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestQueueDepth_TriggerCount proves TriggerCount sums only the live
+// (active+scheduled) counts, excluding dead letters — the threshold the
+// bootstrap reconciler uses to detect a fork (>1).
+func TestQueueDepth_TriggerCount(t *testing.T) {
+	t.Parallel()
+	depth := QueueDepth{ActiveMessageCount: 2, ScheduledMessageCount: 3, DeadLetterMessageCount: 10}
+	if got, want := depth.TriggerCount(), int64(5); got != want {
+		t.Errorf("TriggerCount(): got %d, want %d (dead letters must not count)", got, want)
+	}
+}
+
 func TestNormalizeFQDN(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
