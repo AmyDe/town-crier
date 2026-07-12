@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"slices"
 	"testing"
 	"time"
 
@@ -22,6 +23,31 @@ type fakeTriggerQueue struct {
 	publishCalls int
 	publishedAt  time.Time
 	publishedBig []byte
+
+	// peeked/peekErr prime PeekMessages, used by the reconciler to decide which
+	// trigger to keep when the queue has forked (GH#938 PR2).
+	peeked    []servicebus.PeekedMessage
+	peekErr   error
+	peekCalls int
+
+	// cancelErr primes CancelScheduled; cancelledSeqs records every sequence
+	// number the reconciler asked to cancel, across all calls.
+	cancelErr     error
+	cancelCalls   int
+	cancelledSeqs []int64
+
+	// receiveResult/receiveErr prime ReceiveTrigger for the reconciler's
+	// discard-surplus-active loop. The loop's iteration count is bounded by the
+	// peeked snapshot, not by this fake counting down, so a fixed result per
+	// call is enough to drive the tests.
+	receiveResult bool
+	receiveErr    error
+	receiveCalls  int
+
+	// dlqDrained/dlqErr prime DrainDeadLetters.
+	dlqDrained int
+	dlqErr     error
+	dlqCalls   int
 }
 
 func (f *fakeTriggerQueue) QueueDepth(context.Context) (servicebus.QueueDepth, error) {
@@ -36,6 +62,33 @@ func (f *fakeTriggerQueue) PublishAt(_ context.Context, at time.Time, body []byt
 	f.publishedAt = at
 	f.publishedBig = body
 	return f.publishErr
+}
+
+func (f *fakeTriggerQueue) PeekMessages(context.Context) ([]servicebus.PeekedMessage, error) {
+	f.peekCalls++
+	if f.peekErr != nil {
+		return nil, f.peekErr
+	}
+	return f.peeked, nil
+}
+
+func (f *fakeTriggerQueue) CancelScheduled(_ context.Context, sequenceNumbers []int64) error {
+	f.cancelCalls++
+	f.cancelledSeqs = append(f.cancelledSeqs, sequenceNumbers...)
+	return f.cancelErr
+}
+
+func (f *fakeTriggerQueue) ReceiveTrigger(context.Context) (bool, error) {
+	f.receiveCalls++
+	if f.receiveErr != nil {
+		return false, f.receiveErr
+	}
+	return f.receiveResult, nil
+}
+
+func (f *fakeTriggerQueue) DrainDeadLetters(context.Context) (int, error) {
+	f.dlqCalls++
+	return f.dlqDrained, f.dlqErr
 }
 
 // fakeLeaseAccess is a hand-written double for the bootstrapper's consumer-side
@@ -253,6 +306,165 @@ func TestBootstrapper_PublishFailureIsAbsorbed(t *testing.T) {
 	}
 	if !res.ProbeFailed {
 		t.Error("ProbeFailed: got false, want true (a failed publish is recorded as a probe failure for telemetry parity)")
+	}
+}
+
+// TestTryBootstrap_ReconcilesForkToSingleTrigger proves the GH#938 PR2
+// reconciler: when the queue holds more than one live (active+scheduled)
+// trigger, TryBootstrap collapses it back to exactly one, preferring the
+// latest-activating scheduled message (Pre-Resolved Design Decision — it
+// carries the most recent Retry-After knowledge), cancelling every other
+// scheduled message and destructively discarding every surplus active one. It
+// must never publish a new seed while reconciling a live fork.
+func TestTryBootstrap_ReconcilesForkToSingleTrigger(t *testing.T) {
+	t.Parallel()
+	earlier := time.Date(2026, 7, 12, 9, 0, 0, 0, time.UTC)
+	latest := time.Date(2026, 7, 12, 9, 5, 0, 0, time.UTC)
+	q := &fakeTriggerQueue{
+		depth: servicebus.QueueDepth{ActiveMessageCount: 1, ScheduledMessageCount: 2},
+		peeked: []servicebus.PeekedMessage{
+			{SequenceNumber: 10, State: servicebus.MessageStateActive},
+			{SequenceNumber: 20, State: servicebus.MessageStateScheduled, ScheduledEnqueueTime: earlier},
+			{SequenceNumber: 21, State: servicebus.MessageStateScheduled, ScheduledEnqueueTime: latest},
+		},
+		receiveResult: true,
+	}
+	b := newTestBootstrapper(t, q)
+
+	res, err := b.TryBootstrap(context.Background())
+	if err != nil {
+		t.Fatalf("TryBootstrap: %v", err)
+	}
+	if !res.Reconciled {
+		t.Error("Reconciled: got false, want true (queue held 3 live triggers)")
+	}
+	if res.Published {
+		t.Error("Published: got true, want false (must never seed while reconciling a live fork)")
+	}
+	if q.publishCalls != 0 {
+		t.Errorf("publish calls: got %d, want 0", q.publishCalls)
+	}
+	if res.ScheduledCancelled != 1 {
+		t.Errorf("ScheduledCancelled: got %d, want 1 (the earlier of the two scheduled triggers)", res.ScheduledCancelled)
+	}
+	if len(q.cancelledSeqs) != 1 || q.cancelledSeqs[0] != 20 {
+		t.Errorf("cancelledSeqs: got %v, want [20] (the earlier-activating scheduled message)", q.cancelledSeqs)
+	}
+	if res.ActiveDiscarded != 1 {
+		t.Errorf("ActiveDiscarded: got %d, want 1 (the sole active message)", res.ActiveDiscarded)
+	}
+	if q.receiveCalls != 1 {
+		t.Errorf("ReceiveTrigger calls: got %d, want 1", q.receiveCalls)
+	}
+}
+
+// TestTryBootstrap_DrainsDeadLetterQueue proves TryBootstrap drains the
+// trigger queue's dead-letter sub-queue on every cycle it runs (lease held),
+// regardless of the active/scheduled outcome — dead-lettered corpses never
+// self-clear (GH#938 PR2).
+func TestTryBootstrap_DrainsDeadLetterQueue(t *testing.T) {
+	t.Parallel()
+	q := &fakeTriggerQueue{
+		depth:      servicebus.QueueDepth{ActiveMessageCount: 1}, // healthy single trigger: no reseed, no reconcile
+		dlqDrained: 4,
+	}
+	b := newTestBootstrapper(t, q)
+
+	res, err := b.TryBootstrap(context.Background())
+	if err != nil {
+		t.Fatalf("TryBootstrap: %v", err)
+	}
+	if res.DeadLettered != 4 {
+		t.Errorf("DeadLettered: got %d, want 4", res.DeadLettered)
+	}
+	if q.dlqCalls != 1 {
+		t.Errorf("DrainDeadLetters calls: got %d, want 1", q.dlqCalls)
+	}
+	if res.Published || res.Reconciled {
+		t.Errorf("a healthy single-trigger queue must not seed or reconcile, got %+v", res)
+	}
+}
+
+// TestTryBootstrap_DeadLetterDrainFailureIsAbsorbed proves a DLQ drain failure
+// never escalates to a caller-visible error — the next cron tick retries, same
+// as every other absorbed failure in TryBootstrap.
+func TestTryBootstrap_DeadLetterDrainFailureIsAbsorbed(t *testing.T) {
+	t.Parallel()
+	q := &fakeTriggerQueue{
+		depth:  servicebus.QueueDepth{ActiveMessageCount: 1},
+		dlqErr: errors.New("dlq receive failed"),
+	}
+	b := newTestBootstrapper(t, q)
+
+	res, err := b.TryBootstrap(context.Background())
+	if err != nil {
+		t.Fatalf("TryBootstrap should absorb dead-letter drain failures, got err=%v", err)
+	}
+	if res.DeadLettered != 0 {
+		t.Errorf("DeadLettered: got %d, want 0 (drain failed)", res.DeadLettered)
+	}
+}
+
+// TestPickKeeper covers the pure reconciliation decision — which trigger
+// survives a fork — in isolation from the queue and lease plumbing.
+func TestPickKeeper(t *testing.T) {
+	t.Parallel()
+	earlier := time.Date(2026, 7, 12, 9, 0, 0, 0, time.UTC)
+	latest := time.Date(2026, 7, 12, 9, 5, 0, 0, time.UTC)
+
+	tests := []struct {
+		name             string
+		peeked           []servicebus.PeekedMessage
+		wantKeepSeq      int64
+		wantCancelSeqs   []int64
+		wantDiscardCount int
+	}{
+		{
+			name: "two scheduled plus one active: keeps latest-activating scheduled",
+			peeked: []servicebus.PeekedMessage{
+				{SequenceNumber: 10, State: servicebus.MessageStateActive},
+				{SequenceNumber: 20, State: servicebus.MessageStateScheduled, ScheduledEnqueueTime: earlier},
+				{SequenceNumber: 21, State: servicebus.MessageStateScheduled, ScheduledEnqueueTime: latest},
+			},
+			wantKeepSeq:      21,
+			wantCancelSeqs:   []int64{20},
+			wantDiscardCount: 1,
+		},
+		{
+			name: "no scheduled: keeps the lowest-sequence active, discards the rest",
+			peeked: []servicebus.PeekedMessage{
+				{SequenceNumber: 30, State: servicebus.MessageStateActive},
+				{SequenceNumber: 15, State: servicebus.MessageStateActive},
+				{SequenceNumber: 22, State: servicebus.MessageStateActive},
+			},
+			wantKeepSeq:      15,
+			wantCancelSeqs:   nil,
+			wantDiscardCount: 2,
+		},
+		{
+			name: "single scheduled: kept outright, nothing to cancel or discard",
+			peeked: []servicebus.PeekedMessage{
+				{SequenceNumber: 5, State: servicebus.MessageStateScheduled, ScheduledEnqueueTime: earlier},
+			},
+			wantKeepSeq:      5,
+			wantCancelSeqs:   nil,
+			wantDiscardCount: 0,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			keep, cancelSeqs, discardCount := pickKeeper(tc.peeked)
+			if keep.SequenceNumber != tc.wantKeepSeq {
+				t.Errorf("keep.SequenceNumber: got %d, want %d", keep.SequenceNumber, tc.wantKeepSeq)
+			}
+			if !slices.Equal(cancelSeqs, tc.wantCancelSeqs) {
+				t.Errorf("cancelSeqs: got %v, want %v", cancelSeqs, tc.wantCancelSeqs)
+			}
+			if discardCount != tc.wantDiscardCount {
+				t.Errorf("discardCount: got %d, want %d", discardCount, tc.wantDiscardCount)
+			}
+		})
 	}
 }
 
