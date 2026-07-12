@@ -1,6 +1,8 @@
 package planit
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -38,6 +40,77 @@ type planItRecord struct {
 	URL           *string  `json:"url"`
 	Link          *string  `json:"link"`
 	LastDifferent string   `json:"last_different"`
+
+	// The fields below are the PlanIt full-field widening (GH#935). All are
+	// carried into applications.PlanningApplication's silent fields verbatim
+	// (minus the three DP-restricted OtherFields keys); the top-level
+	// "location" GeoJSON object PlanIt also returns is deliberately absent
+	// here (no json tag) so it is ignored — location_x/location_y already
+	// build the geography point, so it is redundant.
+	Reference    *string         `json:"reference"`
+	Altid        json.RawMessage `json:"altid"`         // may be a JSON string OR array depending on scraper
+	AssociatedID json.RawMessage `json:"associated_id"` // same string-or-array shape as Altid
+	LastChanged  *string         `json:"last_changed"`  // same naive-UTC format as LastDifferent; bookkeeping
+	LastScraped  *string         `json:"last_scraped"`  // same naive-UTC format as LastDifferent; bookkeeping
+	ScraperName  *string         `json:"scraper_name"`
+	OtherFields  map[string]any  `json:"other_fields"`
+}
+
+// restrictedOtherFieldsKeys are the three PlanIt other_fields keys carrying
+// Data-Protection-restricted values (PlanIt itself returns the literal
+// placeholder "See source" for each). Owner decision 2026-07-12: strip
+// exactly these three keys — nothing else — verbatim-minus-three has zero
+// ambiguity, and every other other_fields key (including applicant_address,
+// agent company/address/tel fields, and coordinate duplicates) is kept.
+var restrictedOtherFieldsKeys = [...]string{"applicant_name", "agent_name", "case_officer"}
+
+// stripRestrictedOtherFields returns a copy of fields with
+// restrictedOtherFieldsKeys removed. An absent or empty (post-strip) map maps
+// to nil, matching PlanningApplication.OtherFields' "absent means nil" contract.
+func stripRestrictedOtherFields(fields map[string]any) map[string]any {
+	if len(fields) == 0 {
+		return nil
+	}
+	out := make(map[string]any, len(fields))
+	for k, v := range fields {
+		out[k] = v
+	}
+	for _, restricted := range restrictedOtherFieldsKeys {
+		delete(out, restricted)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// rawJSONOrNil returns raw's bytes, or nil when raw is absent or its value is
+// the JSON literal null — so an explicit "altid": null (PlanIt's real shape
+// when the field is unset) maps to a nil domain pointer rather than the
+// 4-byte literal "null". json.RawMessage always captures a JSON value's exact
+// matched token with no surrounding whitespace, so a plain byte comparison is
+// sufficient here.
+func rawJSONOrNil(raw json.RawMessage) []byte {
+	if len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
+		return nil
+	}
+	return append([]byte(nil), raw...)
+}
+
+// parsePlanItInstantLenient parses an optional PlanIt bookkeeping timestamp
+// (LastChanged/LastScraped), tolerating an absent, empty, or unparseable
+// value by mapping it to nil rather than failing the whole record — unlike
+// LastDifferent, these fields are pure PlanIt bookkeeping (GH#935) and must
+// never cause a real application to be dropped.
+func parsePlanItInstantLenient(value *string) *time.Time {
+	if value == nil || *value == "" {
+		return nil
+	}
+	t, err := parsePlanItInstant(*value)
+	if err != nil {
+		return nil
+	}
+	return &t
 }
 
 // toDomain maps a PlanIt record to the applications.PlanningApplication snapshot:
@@ -85,6 +158,14 @@ func (r planItRecord) toDomain() (applications.PlanningApplication, error) {
 		URL:           r.URL,
 		Link:          r.Link,
 		LastDifferent: lastDifferent,
+
+		Reference:    r.Reference,
+		Altid:        rawJSONOrNil(r.Altid),
+		AssociatedID: rawJSONOrNil(r.AssociatedID),
+		LastChanged:  parsePlanItInstantLenient(r.LastChanged),
+		LastScraped:  parsePlanItInstantLenient(r.LastScraped),
+		ScraperName:  r.ScraperName,
+		OtherFields:  stripRestrictedOtherFields(r.OtherFields),
 	}, nil
 }
 
