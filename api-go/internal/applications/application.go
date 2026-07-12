@@ -118,13 +118,42 @@ func (a PlanningApplication) HasSameSilentFieldsAs(other PlanningApplication) bo
 		eqOtherFields(a.OtherFields, other.OtherFields)
 }
 
-// eqRawJSON reports whether two raw-JSON byte slices are equal, treating nil
-// and empty as equal (an absent Altid/AssociatedID either way).
+// eqRawJSON reports whether two raw-JSON byte slices represent the same JSON
+// value, treating nil and empty as equal (an absent Altid/AssociatedID either
+// way). This MUST be a semantic comparison, not bytes.Equal: PlanIt's API
+// returns pretty-printed JSON, which json.RawMessage preserves verbatim, while
+// Postgres jsonb canonicalises text on storage (e.g. reformatting
+// ["a","b"] to ["a", "b"]). A byte comparison between a freshly-parsed
+// incoming value and the same value read back from Postgres would therefore
+// find them unequal on every re-fetch for any record with an array-valued
+// altid/associated_id — permanently defeating the silent-change
+// write-suppression guard for that subset of records, which is exactly the
+// reindex-storm write amplification the three-bucket ingester design exists
+// to prevent. Do not "simplify" this back to bytes.Equal.
+//
+// Comparison unmarshals both sides then re-marshals: encoding/json's output
+// is deterministic (sorted map keys, canonical number formatting), so two
+// byte slices are compared after passing through the same normalisation on
+// both sides. Unparseable JSON on either side (never expected in practice —
+// both sides always originate from a prior successful json.Unmarshal) is
+// treated as not-equal, the safe direction — mirrors eqOtherFields.
 func eqRawJSON(a, b []byte) bool {
 	if len(a) == 0 && len(b) == 0 {
 		return true
 	}
-	return bytes.Equal(a, b)
+	var aVal, bVal any
+	if err := json.Unmarshal(a, &aVal); err != nil {
+		return false
+	}
+	if err := json.Unmarshal(b, &bVal); err != nil {
+		return false
+	}
+	aBytes, aErr := json.Marshal(aVal)
+	bBytes, bErr := json.Marshal(bVal)
+	if aErr != nil || bErr != nil {
+		return false
+	}
+	return bytes.Equal(aBytes, bBytes)
 }
 
 // eqOtherFields reports whether two other_fields maps are equal, treating nil

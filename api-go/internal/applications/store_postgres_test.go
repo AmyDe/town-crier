@@ -363,6 +363,14 @@ func TestPostgresStore_Upsert_GetByUID_RoundTripsFullFields(t *testing.T) {
 	if !reflect.DeepEqual(got.OtherFields, a.OtherFields) {
 		t.Errorf("OtherFields: got %+v, want %+v", got.OtherFields, a.OtherFields)
 	}
+	// The domain-level regression proof: a semantically-unchanged Altid must
+	// compare equal even after a round trip through Postgres's jsonb
+	// canonicalisation, or the ingester's silent-change write-suppression
+	// guard is defeated on every re-fetch for any record with an array-valued
+	// altid/associated_id (see eqRawJSON's doc comment).
+	if !a.HasSameSilentFieldsAs(got) {
+		t.Errorf("a jsonb-reformatted-but-semantically-unchanged round trip must still compare equal via HasSameSilentFieldsAs")
+	}
 }
 
 // TestPostgresStore_Upsert_OverwritesOtherFieldsOnSecondUpsert proves a second
