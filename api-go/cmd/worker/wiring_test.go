@@ -100,3 +100,19 @@ func TestEnqueuer_FindZonesContainingFlowsThroughInterface(t *testing.T) {
 			spy.lastFindLat, spy.lastFindLng, lat, lng)
 	}
 }
+
+// TestLeaseTTLFor_AddsFiveMinuteMargin pins the honest-TTL derivation (GH#938
+// PR1): the polling lease TTL is the handler budget plus a 5-minute margin,
+// covering soft-budget overshoot (the budget is checked between authorities, not
+// preemptive) plus container cold-start before the lease is even acquired. The
+// previous +30s margin was observed to be too tight: a cycle overran to ~4.9m
+// against a 4.5m TTL, letting a peer take over mid-cycle and fork the trigger
+// chain.
+func TestLeaseTTLFor_AddsFiveMinuteMargin(t *testing.T) {
+	t.Parallel()
+	got := leaseTTLFor(240 * time.Second) // PollingHandlerBudgetSeconds default
+	want := 240*time.Second + 5*time.Minute
+	if got != want {
+		t.Errorf("leaseTTLFor(240s): got %v, want %v", got, want)
+	}
+}
