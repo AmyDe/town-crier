@@ -166,7 +166,13 @@ func run() int {
 				logger.Error("service bus client close", "error", err)
 			}
 		}()
-		bootstrapper = worker.NewBootstrapper(sbClient, logger, time.Now)
+		// The bootstrapper shares the same Postgres polling lease the poll-sb
+		// orchestrator uses (built into st.lease below) — this is what closes the
+		// unleased-bootstrap fork mechanism (GH#938 PR1): only the current lease
+		// holder may mutate the trigger queue. WithLeaseMetrics records
+		// towncrier.polling.lease.acquired with caller "bootstrap" (registry.go:264,
+		// designed for but never wired until now).
+		bootstrapper = worker.NewBootstrapper(sbClient, st.lease, logger, time.Now).WithLeaseMetrics(registry)
 	}
 
 	// The digest, dormant-cleanup, subscription-sweep and pg-purge handlers build
@@ -285,9 +291,15 @@ func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, reg
 	scheduler := polling.NewNextRunScheduler(polling.DefaultSchedulerOptions(), polling.NewRandomJitter())
 
 	// Lease TTL must exceed the handler's worst-case runtime so the lease cannot
-	// expire mid-handler (which would let a peer start a duplicate cycle). Size it
-	// at the handler budget plus a 30s margin.
-	leaseTTL := secondsToDuration(float64(cfg.PollingHandlerBudgetSeconds)) + 30*time.Second
+	// expire mid-handler (which would let a peer start a duplicate cycle, forking
+	// the trigger chain). leaseTTLFor's +5m margin (GH#938 PR1) replaces a +30s
+	// margin that was observed too tight: the 4-minute handler budget is soft
+	// (checked between authorities, not preemptive), and an in-flight timeout plus
+	// container startup (acquire happens before receive) overran the old slack —
+	// a cycle ran ~4.9m against a 4.5m TTL during the 2026-07-12 PlanIt outage.
+	// RunOnce's Confirm-before-publish CAS is the second, TOCTOU-safe layer that
+	// still catches any residual overrun.
+	leaseTTL := leaseTTLFor(secondsToDuration(float64(cfg.PollingHandlerBudgetSeconds)))
 
 	orchestrator := polling.NewOrchestrator(
 		handler,
@@ -475,6 +487,14 @@ func (a *pollOrchestratorAdapter) RunOnce(ctx context.Context) (worker.PollRunRe
 // secondsToDuration converts a fractional-seconds config value to a Duration.
 func secondsToDuration(s float64) time.Duration {
 	return time.Duration(s * float64(time.Second))
+}
+
+// leaseTTLFor derives the polling lease TTL from the handler budget: budget
+// plus a 5-minute margin, covering soft-budget overshoot (the budget is checked
+// between authorities, not preemptive) plus container cold-start before the
+// lease is even acquired (GH#938 PR1's "honest TTL").
+func leaseTTLFor(handlerBudget time.Duration) time.Duration {
+	return handlerBudget + 5*time.Minute
 }
 
 // maxInt returns the larger of a and b.
