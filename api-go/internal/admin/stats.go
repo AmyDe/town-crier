@@ -33,11 +33,21 @@ type statsByTier struct {
 }
 
 type statsPaying struct {
-	EffectivePaid int `json:"effectivePaid"`
-	AppStore      int `json:"appStore"`
-	Comped        int `json:"comped"`
-	Lapsed        int `json:"lapsed"`
-	InGrace       int `json:"inGrace"`
+	EffectivePaid  int                 `json:"effectivePaid"`
+	AppStore       int                 `json:"appStore"`
+	Comped         int                 `json:"comped"`
+	Lapsed         int                 `json:"lapsed"`
+	InGrace        int                 `json:"inGrace"`
+	AppStoreByTier statsAppStoreByTier `json:"appStoreByTier"`
+}
+
+// statsAppStoreByTier is an explicit struct (not a map) so the two paid tier
+// keys always render, in a fixed order, even when a tier has zero App
+// Store-backed payers. It is a subset of statsByTier: Free is never a paid
+// tier, so it has no place here.
+type statsAppStoreByTier struct {
+	Personal int `json:"Personal"`
+	Pro      int `json:"Pro"`
 }
 
 type statsSignups struct {
@@ -145,6 +155,8 @@ func (h *handler) stats(w http.ResponseWriter, r *http.Request) {
 // mirroring the domain's lazy-expiry rule rather than the raw stored tier:
 //   - effectivePaid: EffectiveTier(now) is still paid.
 //   - appStore: effective-paid AND backed by an Apple original transaction id.
+//   - appStoreByTier: appStore, additionally bucketed by EffectiveTier(now);
+//     Personal+Pro always sums to appStore.
 //   - comped: effective-paid with no original transaction id (offer/admin grant).
 //   - lapsed: stored tier paid but EffectiveTier(now) has collapsed to Free.
 //   - inGrace: effective-paid held alive ONLY by a live grace period (expiry
@@ -158,6 +170,12 @@ func classifyPaying(candidates []*profiles.UserProfile, now time.Time) statsPayi
 			p.EffectivePaid++
 			if c.OriginalTransactionID != nil {
 				p.AppStore++
+				switch effective {
+				case profiles.TierPersonal:
+					p.AppStoreByTier.Personal++
+				case profiles.TierPro:
+					p.AppStoreByTier.Pro++
+				}
 			} else {
 				p.Comped++
 			}
