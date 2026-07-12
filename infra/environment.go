@@ -856,8 +856,13 @@ func createServiceBusPollingInfra(ctx *pulumi.Context, env string, resourceGroup
 func createPollQueueDepthAlert(ctx *pulumi.Context, env string, resourceGroupName pulumi.StringOutput, pollingBus *serviceBusPollingInfra, actionGroupID pulumi.StringOutput, tags pulumi.StringMap) error {
 	name := fmt.Sprintf("alert-poll-queue-depth-%s", env)
 	_, err := monitor.NewMetricAlert(ctx, name, &monitor.MetricAlertArgs{
-		RuleName:            pulumi.String(name),
-		ResourceGroupName:   resourceGroupName,
+		RuleName:          pulumi.String(name),
+		ResourceGroupName: resourceGroupName,
+		// Platform-metric alert rules must be "global" — Azure rejects a regional
+		// location on anything but a custom metric ("A Regional alert rule can only
+		// be created on a custom metric", broke the v0.19.3 deploy). Without this
+		// the provider defaults to the resource group's region.
+		Location:            pulumi.String("global"),
 		Description:         pulumi.String("Poll Service Bus queue holds more than 1 message (active + scheduled + dead-lettered); steady state is exactly 1. Indicates a forked trigger chain or dead-letter accumulation. See GH #938."),
 		Severity:            pulumi.Int(2),
 		Enabled:             pulumi.Bool(true),
