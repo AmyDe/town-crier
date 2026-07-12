@@ -202,10 +202,10 @@ func (b *Bootstrapper) TryBootstrap(ctx context.Context) (BootstrapResult, error
 // PR2; a queue already carrying exactly one trigger is left untouched; a
 // forked queue (TriggerCount > 1) is collapsed to one via reconcileFork.
 func (b *Bootstrapper) reconcileToSingleTrigger(ctx context.Context, depth servicebus.QueueDepth) BootstrapResult {
-	switch triggerCount := depth.TriggerCount(); {
-	case triggerCount == 0:
+	switch triggerCount := depth.TriggerCount(); triggerCount {
+	case 0:
 		return b.seed(ctx)
-	case triggerCount == 1:
+	case 1:
 		b.logger.InfoContext(ctx, "poll-bootstrap skipped; trigger queue already seeded",
 			"active", depth.ActiveMessageCount,
 			"scheduled", depth.ScheduledMessageCount,
