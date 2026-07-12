@@ -25,6 +25,7 @@ type triggerPublisher interface {
 type leaseStore interface {
 	TryAcquire(ctx context.Context, ttl time.Duration) (LeaseAcquireResult, error)
 	Release(ctx context.Context, handle LeaseHandle) LeaseReleaseOutcome
+	Confirm(ctx context.Context, handle LeaseHandle, extend time.Duration) bool
 }
 
 // cycleHandler runs one ingestion cycle. *PollPlanItHandler satisfies it.
@@ -189,6 +190,18 @@ func (o *Orchestrator) RunOnce(ctx context.Context) (OrchestratorRunResult, erro
 		// malformed trigger.
 		return OrchestratorRunResult{MessageReceived: true, PollResult: &result}, err
 	}
+
+	// Confirm-and-extend immediately before publish closes the TOCTOU window
+	// between the acquire at the top of RunOnce and this point: if the lease
+	// expired mid-cycle and a peer took it over, publishing here would fork the
+	// trigger chain (two live chains double-poll PlanIt). Skipping the publish
+	// instead is safe — the safety-net bootstrap reseeds within its window
+	// (Pre-Resolved Design Decision, GH#938).
+	if !o.lease.Confirm(ctx, acquire.Handle, o.opts.LeaseTTL) {
+		o.logger.WarnContext(ctx, "polling lease lost before publish; skipping next-trigger publish (bootstrap will reseed)")
+		return OrchestratorRunResult{MessageReceived: true, PollResult: &result}, nil
+	}
+
 	if err := o.publisher.PublishAt(ctx, nextRun, body); err != nil {
 		return OrchestratorRunResult{MessageReceived: true, PollResult: &result}, err
 	}

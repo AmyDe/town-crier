@@ -20,6 +20,11 @@ type fakeLease struct {
 	acquireCt int
 	releaseCt int
 	released  bool
+
+	// confirmDenied makes Confirm report false (lease lost before publish); the
+	// zero value confirms, matching held/transient's "zero value = success" style.
+	confirmDenied bool
+	confirmCt     int
 }
 
 func (f *fakeLease) TryAcquire(_ context.Context, _ time.Duration) (LeaseAcquireResult, error) {
@@ -39,6 +44,15 @@ func (f *fakeLease) Release(_ context.Context, _ LeaseHandle) LeaseReleaseOutcom
 	f.released = true
 	f.log.add("release")
 	return LeaseReleased
+}
+
+func (f *fakeLease) Confirm(_ context.Context, _ LeaseHandle, _ time.Duration) bool {
+	f.confirmCt++
+	if f.confirmDenied {
+		return false
+	}
+	f.log.add("confirm")
+	return true
 }
 
 // fakeReceiver hands out one trigger (or none) in receive-and-delete mode. There
@@ -128,8 +142,8 @@ func TestOrchestrator_HappyPath_AcquireReceiveHandlePublishRelease(t *testing.T)
 	if !res.MessageReceived || !res.PublishedNext {
 		t.Errorf("result: %+v", res)
 	}
-	// Ordering MUST be acquire -> receive -> handle -> publish -> release.
-	want := []string{"acquire", "receive", "handle", "publish", "release"}
+	// Ordering MUST be acquire -> receive -> handle -> confirm -> publish -> release.
+	want := []string{"acquire", "receive", "handle", "confirm", "publish", "release"}
 	if got := log.events; !equalStrings(got, want) {
 		t.Errorf("call order: got %v, want %v", got, want)
 	}
@@ -252,6 +266,65 @@ func TestOrchestrator_ReleasesLeaseEvenWhenHandlerFails(t *testing.T) {
 	// a failed cycle) — the bootstrap recovers the chain.
 	if pub.publishCt != 0 {
 		t.Errorf("must not publish after a handler failure: publish=%d", pub.publishCt)
+	}
+}
+
+// TestRunOnce_SkipsPublishWhenLeaseLost proves the fork-guard (GH#938 PR1): when
+// Confirm reports the lease is no longer held (expired mid-cycle and taken by a
+// peer), RunOnce must never call PublishAt — publishing here would fork the
+// trigger chain. Losing the chain instead is safe (the bootstrap reseeds).
+func TestRunOnce_SkipsPublishWhenLeaseLost(t *testing.T) {
+	t.Parallel()
+	log, lease, recv, pub, handler := newWiredFakes()
+	lease.confirmDenied = true
+	o := newOrchestrator(t, lease, recv, pub, handler)
+
+	res, err := o.RunOnce(context.Background())
+	if err != nil {
+		t.Fatalf("RunOnce must not error when the lease is lost before publish: %v", err)
+	}
+	if res.PublishedNext {
+		t.Error("PublishedNext: got true, want false (lease lost; must not publish)")
+	}
+	if !res.MessageReceived {
+		t.Error("MessageReceived: got false, want true (the trigger was still consumed)")
+	}
+	if pub.publishCt != 0 {
+		t.Errorf("publish calls: got %d, want 0 (a lost lease must skip publish entirely)", pub.publishCt)
+	}
+	if lease.confirmCt != 1 {
+		t.Errorf("confirm calls: got %d, want 1", lease.confirmCt)
+	}
+	if idx := indexOf(log.events, "publish"); idx != -1 {
+		t.Errorf("publish must not appear in the call log: %v", log.events)
+	}
+	// The lease is still released even though publish was skipped — TTL is a
+	// backstop, not the only release path.
+	if !lease.released {
+		t.Error("lease must still be released after a skipped publish")
+	}
+}
+
+// TestRunOnce_PublishesWhenLeaseConfirmed proves the companion happy path: when
+// Confirm reports the lease is still held (and extends it), RunOnce publishes
+// the next trigger exactly once.
+func TestRunOnce_PublishesWhenLeaseConfirmed(t *testing.T) {
+	t.Parallel()
+	_, lease, recv, pub, handler := newWiredFakes()
+	o := newOrchestrator(t, lease, recv, pub, handler)
+
+	res, err := o.RunOnce(context.Background())
+	if err != nil {
+		t.Fatalf("RunOnce: %v", err)
+	}
+	if !res.PublishedNext {
+		t.Error("PublishedNext: got false, want true (lease confirmed)")
+	}
+	if pub.publishCt != 1 {
+		t.Errorf("publish calls: got %d, want exactly 1", pub.publishCt)
+	}
+	if lease.confirmCt != 1 {
+		t.Errorf("confirm calls: got %d, want 1", lease.confirmCt)
 	}
 }
 

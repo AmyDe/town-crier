@@ -293,6 +293,77 @@ func TestPostgresLeaseStore_ReleaseOutcomes(t *testing.T) {
 	})
 }
 
+// TestPostgresLeaseStore_Confirm covers the three CAS outcomes the orchestrator's
+// lease-confirmed publish (GH#938 PR1) depends on against a real database: still
+// held by us and live -> true with the expiry extended; expired -> false; held by
+// a different holder -> false. This is additive real-DB coverage (ADR 0032) for
+// SQL behaviour the fake querier in TestPostgresLeaseStore_ConfirmCAS cannot
+// honestly prove — that the UPDATE ... WHERE ... RETURNING actually extends
+// expires_at in Postgres.
+func TestPostgresLeaseStore_Confirm(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("held by us and live: confirms and extends expiry", func(t *testing.T) {
+		store := newPGLeaseStore2(t)
+		res, err := store.TryAcquire(ctx, 1*time.Minute)
+		if err != nil || !res.Acquired {
+			t.Fatalf("TryAcquire: acquired=%v err=%v", res.Acquired, err)
+		}
+
+		if ok := store.Confirm(ctx, res.Handle, 10*time.Minute); !ok {
+			t.Fatal("Confirm: got false, want true (live lease held by us)")
+		}
+
+		// The extend must have taken effect: a peer's TryAcquire, evaluated against
+		// a clock only 1 minute in the future (the original TTL would already have
+		// expired by then absent the extend), must still see it as live.
+		peer := NewPostgresLeaseStore(store.db, func() time.Time { return time.Now().UTC().Add(1 * time.Minute) })
+		peerRes, err := peer.TryAcquire(ctx, 1*time.Minute)
+		if err != nil {
+			t.Fatalf("peer TryAcquire: %v", err)
+		}
+		if peerRes.Acquired {
+			t.Error("peer acquired the lease; Confirm's extend did not take effect")
+		}
+		if !peerRes.Held {
+			t.Error("expected peer to see the lease as still held (extended)")
+		}
+	})
+
+	t.Run("expired: does not confirm", func(t *testing.T) {
+		past := time.Now().UTC().Add(-10 * time.Minute)
+		expiredClock := func() time.Time { return past }
+		pool := pgtest.New(t)
+		pgtest.Truncate(t, pool, "poll_state", "leases")
+
+		store := NewPostgresLeaseStore(pool, expiredClock)
+		res, err := store.TryAcquire(ctx, 1*time.Second) // TTL already in the past
+		if err != nil || !res.Acquired {
+			t.Fatalf("TryAcquire: acquired=%v err=%v", res.Acquired, err)
+		}
+
+		// Confirm from the real clock: the row's expires_at is long past, so the
+		// liveness predicate (expires_at > now) is false regardless of holder_id.
+		realClockStore := NewPostgresLeaseStore(pool, time.Now)
+		if ok := realClockStore.Confirm(ctx, res.Handle, 10*time.Minute); ok {
+			t.Error("Confirm: got true, want false (lease already expired)")
+		}
+	})
+
+	t.Run("held by a different holder: does not confirm", func(t *testing.T) {
+		store := newPGLeaseStore2(t)
+		res, err := store.TryAcquire(ctx, 4*time.Minute)
+		if err != nil || !res.Acquired {
+			t.Fatalf("TryAcquire: acquired=%v err=%v", res.Acquired, err)
+		}
+
+		peer := NewPostgresLeaseStore(store.db, time.Now)
+		if ok := peer.Confirm(ctx, LeaseHandle{ETag: peer.holderID}, 10*time.Minute); ok {
+			t.Error("Confirm: got true, want false (handle belongs to a different holder)")
+		}
+	})
+}
+
 // TestPostgresLeaseStore_RaceProof is the required acceptance-criterion test:
 // two concurrent goroutines both call TryAcquire; exactly one must win
 // (Acquired=true) and the other must be told the lease is unavailable

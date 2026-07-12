@@ -108,6 +108,54 @@ func newPGLeaseStore(q querier) *PostgresLeaseStore {
 	return NewPostgresLeaseStore(q, clock)
 }
 
+// fakeConfirmQuerier is a hand-written double isolated to the Confirm CAS's
+// single QueryRow round-trip. Confirm never calls Exec or Query, so those panic
+// to catch a wiring mistake rather than silently doing the wrong thing; this
+// keeps Confirm's test isolated from fakeLeaseQuerier's TryAcquire/Release
+// call-count routing.
+type fakeConfirmQuerier struct {
+	row pgx.Row
+}
+
+func (f *fakeConfirmQuerier) Exec(context.Context, string, ...any) (pgconn.CommandTag, error) {
+	panic("Confirm must not call Exec")
+}
+
+func (f *fakeConfirmQuerier) Query(context.Context, string, ...any) (pgx.Rows, error) {
+	panic("Confirm must not call Query")
+}
+
+func (f *fakeConfirmQuerier) QueryRow(context.Context, string, ...any) pgx.Row {
+	return f.row
+}
+
+// TestPostgresLeaseStore_ConfirmCAS covers Confirm's two SQL outcomes at the
+// querier level: a returned row (still ours, live) confirms; ErrNoRows (expired,
+// held by a peer, or already gone) and any other query error both report false —
+// Confirm never hard-errors, mirroring TryAcquire/Release's absorption contract.
+func TestPostgresLeaseStore_ConfirmCAS(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		row  pgx.Row
+		want bool
+	}{
+		{"row returned: still held by us and live", &fakeLeaseRow{holderID: "h1"}, true},
+		{"no rows: expired or held by a peer", &fakeLeaseRow{err: pgx.ErrNoRows}, false},
+		{"query error: transient failure absorbed as not confirmed", &fakeLeaseRow{err: errors.New("connection refused")}, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			store := newPGLeaseStore(&fakeConfirmQuerier{row: tc.row})
+			got := store.Confirm(context.Background(), LeaseHandle{ETag: "h1"}, 4*time.Minute)
+			if got != tc.want {
+				t.Errorf("Confirm: got %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 // TestPostgresLeaseStore_TryAcquireHeldWhenNoRow confirms that when the atomic
 // INSERT/UPDATE does not return a row (live lease held by a peer), TryAcquire
 // reports Held=true and does not set Acquired.
