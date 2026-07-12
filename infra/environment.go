@@ -7,6 +7,7 @@ import (
 	"github.com/pulumi/pulumi-azure-native-sdk/app/v3"
 	"github.com/pulumi/pulumi-azure-native-sdk/authorization/v3"
 	"github.com/pulumi/pulumi-azure-native-sdk/dbforpostgresql/v3"
+	"github.com/pulumi/pulumi-azure-native-sdk/monitor/v3"
 	"github.com/pulumi/pulumi-azure-native-sdk/resources/v3"
 	"github.com/pulumi/pulumi-azure-native-sdk/servicebus/v3"
 	"github.com/pulumi/pulumi-azure-native-sdk/storage/v3"
@@ -81,6 +82,8 @@ func cloudflareIngressIPRestrictions() app.IpSecurityRestrictionRuleArray {
 // serviceBusPollingInfra captures the Service Bus resources used by the adaptive polling
 // trigger: namespace (short name + FQDN) and queue name.
 type serviceBusPollingInfra struct {
+	// namespaceID scopes the poll-queue-depth metric alert (tc-ttjor / GH #938 PR3).
+	namespaceID        pulumi.IDOutput
 	namespaceShortName pulumi.StringOutput
 	namespaceFqdn      pulumi.StringOutput
 	queueName          pulumi.StringOutput
@@ -441,6 +444,14 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 		pollingBus, err = createServiceBusPollingInfra(ctx, env, resourceGroup.Name,
 			shared.GetStringOutput(pulumi.String("cosmosDataIdentityPrincipalId")), tags)
 		if err != nil {
+			return err
+		}
+
+		// Poll-queue-depth metric alert (tc-ttjor / GH #938 PR3). actionGroupId is exported
+		// by the shared stack (see shared.go) — this is the same shared -> env read direction
+		// every other cross-stack value in this function already uses.
+		if err = createPollQueueDepthAlert(ctx, env, resourceGroup.Name, pollingBus,
+			shared.GetStringOutput(pulumi.String("actionGroupId")), tags); err != nil {
 			return err
 		}
 	}
@@ -829,10 +840,57 @@ func createServiceBusPollingInfra(ctx *pulumi.Context, env string, resourceGroup
 	}).(pulumi.StringOutput)
 
 	return &serviceBusPollingInfra{
+		namespaceID:        namespaceResource.ID(),
 		namespaceShortName: namespaceResource.Name,
 		namespaceFqdn:      fqdn,
 		queueName:          queue.Name,
 	}, nil
+}
+
+// createPollQueueDepthAlert creates the metric alert (prod only) that fires when the poll
+// queue's total Messages (active + scheduled + dead-lettered) exceeds 1 for a sustained 15
+// minutes. Steady state holds exactly one in-flight trigger, so this single threshold catches
+// both a forked trigger chain and dead-letter accumulation without needing separate rules per
+// sub-count (tc-ttjor / GH #938 PR3). Wired to the action group created in the shared stack —
+// see the rationale comment on its creation in shared.go.
+func createPollQueueDepthAlert(ctx *pulumi.Context, env string, resourceGroupName pulumi.StringOutput, pollingBus *serviceBusPollingInfra, actionGroupID pulumi.StringOutput, tags pulumi.StringMap) error {
+	name := fmt.Sprintf("alert-poll-queue-depth-%s", env)
+	_, err := monitor.NewMetricAlert(ctx, name, &monitor.MetricAlertArgs{
+		RuleName:            pulumi.String(name),
+		ResourceGroupName:   resourceGroupName,
+		Description:         pulumi.String("Poll Service Bus queue holds more than 1 message (active + scheduled + dead-lettered); steady state is exactly 1. Indicates a forked trigger chain or dead-letter accumulation. See GH #938."),
+		Severity:            pulumi.Int(2),
+		Enabled:             pulumi.Bool(true),
+		EvaluationFrequency: pulumi.String("PT5M"),
+		WindowSize:          pulumi.String("PT15M"),
+		Scopes:              pulumi.StringArray{pollingBus.namespaceID},
+		Criteria: monitor.MetricAlertSingleResourceMultipleMetricCriteriaArgs{
+			OdataType: pulumi.String("Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria"),
+			AllOf: monitor.MetricCriteriaArray{
+				monitor.MetricCriteriaArgs{
+					CriterionType:   pulumi.String("StaticThresholdCriterion"),
+					Name:            pulumi.String("PollQueueMessagesTotal"),
+					MetricName:      pulumi.String("Messages"),
+					MetricNamespace: pulumi.String("Microsoft.ServiceBus/namespaces"),
+					Dimensions: monitor.MetricDimensionArray{
+						monitor.MetricDimensionArgs{
+							Name:     pulumi.String("EntityName"),
+							Operator: pulumi.String("Include"),
+							Values:   pulumi.StringArray{pulumi.String("poll")},
+						},
+					},
+					Operator:        pulumi.String("GreaterThan"),
+					Threshold:       pulumi.Float64(1),
+					TimeAggregation: pulumi.String("Maximum"),
+				},
+			},
+		},
+		Actions: monitor.MetricAlertActionArray{
+			monitor.MetricAlertActionArgs{ActionGroupId: actionGroupID},
+		},
+		Tags: tags,
+	})
+	return err
 }
 
 // createSeoSnapshotStorage provisions the per-environment Storage Account + seo-snapshot blob

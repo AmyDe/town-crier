@@ -442,6 +442,88 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		return err
 	}
 
+	// Action Group (tc-ttjor / GH #938 PR3) — single email receiver, reused by both alerts
+	// below and by the poll-queue-depth metric alert in the prod env stack (infra/environment.go).
+	// Deliberately created HERE rather than in the prod env stack (as the bead literally asked):
+	// the PlanIt failure-rate log alert below must live in this file (it queries the shared Log
+	// Analytics workspace), and wiring it to an action group owned by the prod stack would need a
+	// StackReference running shared -> prod, inverting the foundational shared -> env dependency
+	// direction every other cross-stack read in this codebase uses. The env stack already reads
+	// shared outputs the normal way round, so the prod metric alert consumes actionGroupId
+	// (exported below) instead.
+	actionGroup, err := monitor.NewActionGroup(ctx, "ag-town-crier-shared", &monitor.ActionGroupArgs{
+		ActionGroupName:   pulumi.String("ag-town-crier-shared"),
+		ResourceGroupName: resourceGroup.Name,
+		Location:          pulumi.String("Global"),
+		GroupShortName:    pulumi.String("tcalerts"),
+		Enabled:           pulumi.Bool(true),
+		EmailReceivers: monitor.EmailReceiverArray{
+			monitor.EmailReceiverArgs{
+				Name:                 pulumi.String("owner"),
+				EmailAddress:         pulumi.String(alertEmail),
+				UseCommonAlertSchema: pulumi.Bool(true),
+			},
+		},
+		Tags: tags,
+	})
+	if err != nil {
+		return err
+	}
+
+	// Scheduled query (log) alert — PlanIt non-429 dependency failure ratio over the last hour,
+	// computed from AppDependencies on this shared Log Analytics workspace (tc-ttjor / GH #938
+	// PR3). Go emits no AppMetrics by design (no Go Azure Monitor metrics exporter), so a
+	// log-based alert is the only option here. The query requires >=20 calls in the window so a
+	// quiet hour with one stray failure can't read as 100%. ResultCode on these dependency spans
+	// is the OTel span status ('0'/'2'), NOT the HTTP status — hence filtering on
+	// Properties['http.response.status_code'] instead, per the issue.
+	//
+	// Location is pinned to uksouth (rather than left to the provider default the way the
+	// workspace above is) because, unlike the Global action group, Log Analytics-based scheduled
+	// query rules are regional and must be explicit — mirrors the same rationale documented on
+	// the Service Bus namespace in environment.go (tc-ds1e).
+	const planitFailureRatioQuery = `AppDependencies
+| where Target has "planit"
+| summarize Total = count(), NonRetryableFailures = countif(Success == false and tostring(Properties["http.response.status_code"]) != "429")
+| where Total >= 20
+| extend FailureRatioPercent = round(100.0 * NonRetryableFailures / Total, 1)
+| where FailureRatioPercent > 30`
+
+	_, err = monitor.NewScheduledQueryRule(ctx, "alert-planit-failure-rate-shared", &monitor.ScheduledQueryRuleArgs{
+		RuleName:            pulumi.String("alert-planit-failure-rate-shared"),
+		ResourceGroupName:   resourceGroup.Name,
+		Location:            pulumi.String("uksouth"),
+		Kind:                pulumi.String("LogAlert"),
+		Description:         pulumi.String("PlanIt non-429 dependency failure ratio exceeded 30% over the last hour (>=20 calls). See GH #938."),
+		DisplayName:         pulumi.String("PlanIt non-429 failure rate"),
+		Severity:            pulumi.Float64(2), // Warning
+		Enabled:             pulumi.Bool(true),
+		EvaluationFrequency: pulumi.String("PT15M"),
+		WindowSize:          pulumi.String("PT1H"),
+		Scopes:              pulumi.StringArray{logAnalytics.ID()},
+		Criteria: monitor.ScheduledQueryRuleCriteriaArgs{
+			AllOf: monitor.ConditionArray{
+				monitor.ConditionArgs{
+					Query: pulumi.String(planitFailureRatioQuery),
+					// The query already filters down to failing windows (FailureRatioPercent >
+					// 30 with >=20 calls); "count of rows produced > 0" is the standard
+					// scheduled-query-rule pattern for "fire when the filtered query returns
+					// anything", so no MetricMeasureColumn is needed.
+					TimeAggregation: pulumi.String("Count"),
+					Operator:        pulumi.String("GreaterThan"),
+					Threshold:       pulumi.Float64(0),
+				},
+			},
+		},
+		Actions: monitor.ActionsArgs{
+			ActionGroups: pulumi.StringArray{actionGroup.ID()},
+		},
+		Tags: tags,
+	})
+	if err != nil {
+		return err
+	}
+
 	// Azure Communication Services (Email) — UK data location.
 	emailServiceUk, err := communication.NewEmailService(ctx, "email-town-crier-uk", &communication.EmailServiceArgs{
 		EmailServiceName:  pulumi.String("email-town-crier-uk"),
@@ -566,6 +648,9 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 	ctx.Export("postgresAdminPassword", postgresAdminPassword.Result)
 	ctx.Export("appInsightsId", appInsights.ID())
 	ctx.Export("appInsightsConnectionString", appInsights.ConnectionString)
+	// Action group (tc-ttjor / GH #938 PR3): consumed by the prod env stack's poll-queue-depth
+	// metric alert (infra/environment.go) so both alerts notify the same email receiver.
+	ctx.Export("actionGroupId", actionGroup.ID())
 	ctx.Export("acsConnectionString", communication.ListCommunicationServiceKeysOutput(ctx, communication.ListCommunicationServiceKeysOutputArgs{
 		ResourceGroupName:        resourceGroup.Name,
 		CommunicationServiceName: communicationServiceUk.Name,
