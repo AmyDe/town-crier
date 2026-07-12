@@ -28,10 +28,21 @@ func NewIngester(apps applicationStore, decision DecisionDispatcher, enqueuer No
 }
 
 // Ingest point-reads the persisted application by uid within its authority
-// partition, and — when a business field changed (the reindex-flood guard; a
-// first-time insert always counts as changed) — upserts it, then runs the
-// notification fan-out: a decision-event dispatch when the app has just
-// transitioned into a decision state, and the watch-zone notification fan-out.
+// partition, then classifies the incoming record into one of three buckets
+// (GH#935, the PlanIt full-field widening):
+//
+//   - bookkeeping-only (neither the notifiable nor the silent field set
+//     changed — e.g. only last_different/last_changed/last_scraped bumped, the
+//     load-bearing reindex-flood guard): no upsert, no fan-out at all.
+//   - silent-only (the silent field set — other_fields, reference, altid,
+//     associated_id, scraper_name — changed but the notifiable set did not):
+//     upsert, but NO decision dispatch and NO watch-zone enqueue.
+//   - notifiable (the existing 17-field business set changed, or this is a
+//     first-time insert): upsert, plus the full fan-out below.
+//
+// The fan-out itself is unchanged: a decision-event dispatch when the app has
+// just transitioned into a decision state, and the watch-zone notification
+// fan-out for any notifiable change.
 //
 // The new-decision check is computed BEFORE the upsert so it compares the
 // PERSISTED state, not the incoming one: a non-decision -> decision transition
@@ -46,7 +57,10 @@ func (i *Ingester) Ingest(ctx context.Context, app applications.PlanningApplicat
 	if err != nil {
 		return err
 	}
-	if found && existing.HasSameBusinessFieldsAs(app) {
+
+	notifiableChanged := !found || !existing.HasSameBusinessFieldsAs(app)
+	silentChanged := !found || !existing.HasSameSilentFieldsAs(app)
+	if !notifiableChanged && !silentChanged {
 		return nil
 	}
 
@@ -65,7 +79,7 @@ func (i *Ingester) Ingest(ctx context.Context, app applications.PlanningApplicat
 			return err
 		}
 	}
-	if i.enqueuer != nil {
+	if notifiableChanged && i.enqueuer != nil {
 		if err := i.enqueuer.EnqueueForApplication(ctx, app); err != nil {
 			return err
 		}
