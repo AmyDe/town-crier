@@ -415,10 +415,17 @@ func runPollBootstrap(ctx context.Context, bootstrapper *Bootstrapper, logger *s
 	}
 
 	// Tag names match the App Insights telemetry schema so existing queries
-	// and dashboards keep working.
+	// and dashboards keep working. lease_unavailable (PR1) and the
+	// reconciliation counts (PR2) are additive: they let an alert fire on a
+	// forked chain or a stuck DLQ without a human happening to look (GH#938).
 	span.SetAttributes(
 		attribute.Bool("polling.safety_net.bootstrap_published", res.Published),
 		attribute.Bool("polling.safety_net.bootstrap_probe_failed", res.ProbeFailed),
+		attribute.Bool("polling.safety_net.lease_unavailable", res.LeaseUnavailable),
+		attribute.Bool("polling.safety_net.reconciled", res.Reconciled),
+		attribute.Int("polling.safety_net.scheduled_cancelled", res.ScheduledCancelled),
+		attribute.Int("polling.safety_net.active_discarded", res.ActiveDiscarded),
+		attribute.Int("polling.safety_net.dead_lettered", res.DeadLettered),
 	)
 	return 0
 }
