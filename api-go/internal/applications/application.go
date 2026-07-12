@@ -130,13 +130,20 @@ func eqRawJSON(a, b []byte) bool {
 // eqOtherFields reports whether two other_fields maps are equal, treating nil
 // and empty as equal. Comparison is via canonical json.Marshal bytes: Go
 // marshals map keys in sorted order, so two maps with the same entries in a
-// different insertion order produce identical bytes.
+// different insertion order produce identical bytes. A marshal failure (never
+// expected: these maps are always sourced from a prior JSON unmarshal, whose
+// output types always re-marshal cleanly) is treated as not-equal — the safe
+// direction, since it only ever causes one extra harmless silent-field upsert
+// rather than masking a real change.
 func eqOtherFields(a, b map[string]any) bool {
 	if len(a) == 0 && len(b) == 0 {
 		return true
 	}
-	aBytes, _ := json.Marshal(a)
-	bBytes, _ := json.Marshal(b)
+	aBytes, aErr := json.Marshal(a)
+	bBytes, bErr := json.Marshal(b)
+	if aErr != nil || bErr != nil {
+		return false
+	}
 	return bytes.Equal(aBytes, bBytes)
 }
 
