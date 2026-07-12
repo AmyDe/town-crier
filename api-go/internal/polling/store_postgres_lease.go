@@ -114,6 +114,39 @@ func (s *PostgresLeaseStore) TryAcquire(ctx context.Context, ttl time.Duration) 
 	return LeaseAcquireResult{Acquired: true, Handle: LeaseHandle{ETag: holderID}}, nil
 }
 
+// confirmLeaseQuery atomically confirms this holder still owns a live lease AND
+// extends its expiry in one statement, eliminating the TOCTOU window between a
+// check and a subsequent publish. Same conditional-holder pattern as
+// releaseLeaseQuery, plus the same liveness check tryAcquireLeaseQuery's ON
+// CONFLICT WHERE clause performs: the row must belong to this holder ($2) and
+// not yet be expired ($3) for the UPDATE to affect it.
+//
+// Parameters: $1=id, $2=holder_id, $3=now (liveness check), $4=new expires_at.
+const confirmLeaseQuery = `
+UPDATE leases SET expires_at = $4
+WHERE id = $1 AND holder_id = $2 AND expires_at > $3
+RETURNING holder_id`
+
+// Confirm reports whether handle's holder still owns a live polling lease, and
+// if so atomically extends its expiry by extend from now. It never returns a
+// hard error — a lost lease (expired, held by a peer, or a database failure) all
+// report false, so a caller's next-trigger publish gate degrades to "skip
+// publish" rather than panicking or exit-coding on a routine race.
+func (s *PostgresLeaseStore) Confirm(ctx context.Context, handle LeaseHandle, extend time.Duration) bool {
+	now := s.now().UTC()
+	newExpiresAt := now.Add(extend)
+
+	var holderID string
+	err := s.db.QueryRow(ctx, confirmLeaseQuery,
+		leaseDocumentID, // $1 = id ("polling")
+		handle.ETag,     // $2 = holder_id
+		now,             // $3 = liveness check (WHERE leases.expires_at > now)
+		newExpiresAt,    // $4 = new expires_at
+	).Scan(&holderID)
+
+	return err == nil
+}
+
 // Release performs a conditional delete using the handle's holder id. It never
 // returns a hard error — failures surface as an outcome, and the lease TTL is
 // the backstop for any non-Released outcome.
