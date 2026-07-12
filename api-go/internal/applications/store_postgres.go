@@ -111,15 +111,21 @@ func scanAppRow(row pgx.CollectableRow) (PlanningApplication, error) {
 // planit_name). location is built from longitude ($15) and latitude ($16): when
 // either is NULL, ST_MakePoint yields NULL, so a coordinate-less application stores
 // a NULL location — matching the Cosmos newGeoPoint both-or-nothing rule.
+// $20-$26 are the PlanIt full-field widening's seven silent columns (GH#935):
+// other_fields ($26) binds a map[string]any natively as jsonb via pgx; a nil
+// map binds as SQL NULL. altid/associated_id ($21/$22) bind raw JSON bytes the
+// same way; a nil slice binds as SQL NULL.
 const upsertQuery = `
 INSERT INTO applications (
 	planit_name, authority_code, uid, area_name, area_id, address, postcode,
 	description, app_type, app_state, app_size, start_date, decided_date,
-	consulted_date, location, url, link, last_different
+	consulted_date, location, url, link, last_different,
+	reference, altid, associated_id, last_changed, last_scraped, scraper_name, other_fields
 ) VALUES (
 	$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
 	ST_SetSRID(ST_MakePoint($15::double precision, $16::double precision), 4326)::geography,
-	$17, $18, $19
+	$17, $18, $19,
+	$20, $21, $22, $23, $24, $25, $26
 )
 ON CONFLICT (authority_code, planit_name) DO UPDATE SET
 	uid = EXCLUDED.uid,
@@ -137,7 +143,14 @@ ON CONFLICT (authority_code, planit_name) DO UPDATE SET
 	location = EXCLUDED.location,
 	url = EXCLUDED.url,
 	link = EXCLUDED.link,
-	last_different = EXCLUDED.last_different`
+	last_different = EXCLUDED.last_different,
+	reference = EXCLUDED.reference,
+	altid = EXCLUDED.altid,
+	associated_id = EXCLUDED.associated_id,
+	last_changed = EXCLUDED.last_changed,
+	last_scraped = EXCLUDED.last_scraped,
+	scraper_name = EXCLUDED.scraper_name,
+	other_fields = EXCLUDED.other_fields`
 
 // Upsert inserts or updates the application. authority_code is the stringified
 // AreaID, matching the Cosmos partition key.
@@ -147,11 +160,32 @@ func (s *PostgresStore) Upsert(ctx context.Context, a PlanningApplication) error
 		a.Postcode, a.Description, a.AppType, a.AppState, a.AppSize,
 		a.StartDate, a.DecidedDate, a.ConsultedDate,
 		a.Longitude, a.Latitude, a.URL, a.Link, a.LastDifferent,
+		a.Reference, nilIfEmptyBytes(a.Altid), nilIfEmptyBytes(a.AssociatedID),
+		a.LastChanged, a.LastScraped, a.ScraperName, nilIfEmptyOtherFields(a.OtherFields),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert application %q: %w", a.Name, err)
 	}
 	return nil
+}
+
+// nilIfEmptyBytes returns b, or an explicit nil when b is empty, so pgx binds
+// SQL NULL rather than an empty jsonb value for an absent Altid/AssociatedID.
+func nilIfEmptyBytes(b []byte) []byte {
+	if len(b) == 0 {
+		return nil
+	}
+	return b
+}
+
+// nilIfEmptyOtherFields returns fields, or an explicit nil when fields is
+// empty, so pgx binds SQL NULL rather than jsonb "{}" for an absent
+// other_fields map.
+func nilIfEmptyOtherFields(fields map[string]any) map[string]any {
+	if len(fields) == 0 {
+		return nil
+	}
+	return fields
 }
 
 const getByAuthorityAndNameQuery = "SELECT " + appColumns +
@@ -170,13 +204,43 @@ func (s *PostgresStore) GetByAuthorityAndName(ctx context.Context, authorityCode
 	return a, true, nil
 }
 
-const getByUIDQuery = "SELECT " + appColumns +
+// fullAppColumns is appColumns plus the seven silent-field columns (GH#935,
+// the PlanIt full-field widening). It is used ONLY by getByUIDQuery: the
+// ingester's read-back needs the silent-field snapshot to evaluate
+// HasSameSilentFieldsAs. Every other read keeps appColumns unchanged, so
+// list/search payloads and every HTTP response DTO are byte-for-byte
+// unaffected — no query path outside GetByUID ever selects these columns.
+const fullAppColumns = appColumns +
+	", reference, altid, associated_id, last_changed, last_scraped, scraper_name, other_fields"
+
+const getByUIDQuery = "SELECT " + fullAppColumns +
 	" FROM applications WHERE authority_code = $1 AND uid = $2 ORDER BY planit_name LIMIT 1"
 
+// scanFullApp hydrates one application from a fullAppColumns single-row read:
+// appScanDest's destinations plus the seven silent fields. other_fields scans
+// into an intermediate []byte (the jsonb wire form) and is then unmarshalled,
+// matching the savedapplications snapshot-column pattern.
+func scanFullApp(row pgx.Row) (PlanningApplication, error) {
+	var a PlanningApplication
+	var otherFieldsJSON []byte
+	dest := append(appScanDest(&a),
+		&a.Reference, &a.Altid, &a.AssociatedID, &a.LastChanged, &a.LastScraped, &a.ScraperName, &otherFieldsJSON)
+	if err := row.Scan(dest...); err != nil {
+		return PlanningApplication{}, err
+	}
+	if len(otherFieldsJSON) > 0 {
+		if err := json.Unmarshal(otherFieldsJSON, &a.OtherFields); err != nil {
+			return PlanningApplication{}, fmt.Errorf("decode other_fields: %w", err)
+		}
+	}
+	return a, nil
+}
+
 // GetByUID looks up an application by its raw PlanIt uid within an authority,
-// for the saved-application lazy snapshot backfill. The boolean reports presence.
+// for the saved-application lazy snapshot backfill and the ingester's
+// silent-field read-back. The boolean reports presence.
 func (s *PostgresStore) GetByUID(ctx context.Context, uid, authorityCode string) (PlanningApplication, bool, error) {
-	a, err := scanApp(s.db.QueryRow(ctx, getByUIDQuery, authorityCode, uid))
+	a, err := scanFullApp(s.db.QueryRow(ctx, getByUIDQuery, authorityCode, uid))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return PlanningApplication{}, false, nil
 	}

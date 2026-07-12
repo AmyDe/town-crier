@@ -9,6 +9,8 @@
 package applications
 
 import (
+	"bytes"
+	"encoding/json"
 	"strconv"
 	"time"
 )
@@ -35,6 +37,19 @@ type PlanningApplication struct {
 	URL           *string
 	Link          *string
 	LastDifferent time.Time
+
+	// The fields below are the PlanIt full-field widening (GH#935): every
+	// remaining top-level core field plus other_fields, minus the three
+	// DP-restricted keys. All are silent — see HasSameSilentFieldsAs — so a
+	// change in only these fields updates the stored row without triggering
+	// notification fan-out (ADR 0021, the reindex-flood guard).
+	Reference    *string    // PlanIt's own "reference" field (distinct from Name/UID)
+	Altid        []byte     // raw JSON: PlanIt's altid may be a string OR an array depending on scraper
+	AssociatedID []byte     // raw JSON: same string-or-array shape as Altid
+	LastChanged  *time.Time // PlanIt bookkeeping timestamp; excluded from both comparison methods
+	LastScraped  *time.Time // PlanIt bookkeeping timestamp; excluded from both comparison methods
+	ScraperName  *string
+	OtherFields  map[string]any // PlanIt's other_fields map, verbatim minus applicant_name/agent_name/case_officer
 }
 
 // TownCentroid is a validated WGS84 point plus its OWN safety radius: one
@@ -84,6 +99,81 @@ func (a PlanningApplication) HasSameBusinessFieldsAs(other PlanningApplication) 
 		eqFloatPtr(a.Latitude, other.Latitude) &&
 		eqStrPtr(a.URL, other.URL) &&
 		eqStrPtr(a.Link, other.Link)
+}
+
+// HasSameSilentFieldsAs reports whether every silent field (the PlanIt
+// full-field widening, GH#935) matches other: Reference, Altid, AssociatedID,
+// ScraperName, and OtherFields. LastChanged and LastScraped are deliberately
+// EXCLUDED — they are bookkeeping, alongside LastDifferent, and bump on
+// effectively every PlanIt re-emission; including them here would make every
+// PlanIt bulk re-index a row write, defeating the reindex-flood guard the
+// ingester relies on. The poll cycle uses this method, alongside
+// HasSameBusinessFieldsAs, to classify a change as silent (upsert, no
+// notification fan-out) vs bookkeeping-only (no write at all).
+func (a PlanningApplication) HasSameSilentFieldsAs(other PlanningApplication) bool {
+	return eqStrPtr(a.Reference, other.Reference) &&
+		eqRawJSON(a.Altid, other.Altid) &&
+		eqRawJSON(a.AssociatedID, other.AssociatedID) &&
+		eqStrPtr(a.ScraperName, other.ScraperName) &&
+		eqOtherFields(a.OtherFields, other.OtherFields)
+}
+
+// eqRawJSON reports whether two raw-JSON byte slices represent the same JSON
+// value, treating nil and empty as equal (an absent Altid/AssociatedID either
+// way). This MUST be a semantic comparison, not bytes.Equal: PlanIt's API
+// returns pretty-printed JSON, which json.RawMessage preserves verbatim, while
+// Postgres jsonb canonicalises text on storage (e.g. reformatting
+// ["a","b"] to ["a", "b"]). A byte comparison between a freshly-parsed
+// incoming value and the same value read back from Postgres would therefore
+// find them unequal on every re-fetch for any record with an array-valued
+// altid/associated_id — permanently defeating the silent-change
+// write-suppression guard for that subset of records, which is exactly the
+// reindex-storm write amplification the three-bucket ingester design exists
+// to prevent. Do not "simplify" this back to bytes.Equal.
+//
+// Comparison unmarshals both sides then re-marshals: encoding/json's output
+// is deterministic (sorted map keys, canonical number formatting), so two
+// byte slices are compared after passing through the same normalisation on
+// both sides. Unparseable JSON on either side (never expected in practice —
+// both sides always originate from a prior successful json.Unmarshal) is
+// treated as not-equal, the safe direction — mirrors eqOtherFields.
+func eqRawJSON(a, b []byte) bool {
+	if len(a) == 0 && len(b) == 0 {
+		return true
+	}
+	var aVal, bVal any
+	if err := json.Unmarshal(a, &aVal); err != nil {
+		return false
+	}
+	if err := json.Unmarshal(b, &bVal); err != nil {
+		return false
+	}
+	aBytes, aErr := json.Marshal(aVal)
+	bBytes, bErr := json.Marshal(bVal)
+	if aErr != nil || bErr != nil {
+		return false
+	}
+	return bytes.Equal(aBytes, bBytes)
+}
+
+// eqOtherFields reports whether two other_fields maps are equal, treating nil
+// and empty as equal. Comparison is via canonical json.Marshal bytes: Go
+// marshals map keys in sorted order, so two maps with the same entries in a
+// different insertion order produce identical bytes. A marshal failure (never
+// expected: these maps are always sourced from a prior JSON unmarshal, whose
+// output types always re-marshal cleanly) is treated as not-equal — the safe
+// direction, since it only ever causes one extra harmless silent-field upsert
+// rather than masking a real change.
+func eqOtherFields(a, b map[string]any) bool {
+	if len(a) == 0 && len(b) == 0 {
+		return true
+	}
+	aBytes, aErr := json.Marshal(a)
+	bBytes, bErr := json.Marshal(b)
+	if aErr != nil || bErr != nil {
+		return false
+	}
+	return bytes.Equal(aBytes, bBytes)
 }
 
 // eqStrPtr reports whether two optional strings are equal (both nil, or both

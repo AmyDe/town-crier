@@ -4,6 +4,7 @@ package applications
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"reflect"
 	"testing"
@@ -91,6 +92,25 @@ func assertAppEqual(t *testing.T, got, want PlanningApplication) {
 	g.ConsultedDate, w.ConsultedDate = nil, nil
 	if !reflect.DeepEqual(g, w) {
 		t.Errorf("application mismatch:\n got = %+v\nwant = %+v", g, w)
+	}
+}
+
+// assertJSONSemanticallyEqual compares two raw-JSON byte slices by decoded
+// value rather than by exact bytes. jsonb is a canonical, reparsed storage
+// format (Postgres reformats the text it stores, e.g. inserting a space after
+// each comma), so a round-tripped Altid/AssociatedID is not byte-identical to
+// what was written even when it is the same JSON value.
+func assertJSONSemanticallyEqual(t *testing.T, field string, got, want []byte) {
+	t.Helper()
+	var gotVal, wantVal any
+	if err := json.Unmarshal(got, &gotVal); err != nil {
+		t.Fatalf("%s: unmarshal got %s: %v", field, got, err)
+	}
+	if err := json.Unmarshal(want, &wantVal); err != nil {
+		t.Fatalf("%s: unmarshal want %s: %v", field, want, err)
+	}
+	if !reflect.DeepEqual(gotVal, wantVal) {
+		t.Errorf("%s: got %s, want %s", field, got, want)
 	}
 }
 
@@ -291,6 +311,164 @@ func TestPostgresStore_GetByUID(t *testing.T) {
 	}
 	if _, found, err := store.GetByUID(ctx, "the-uid", "200"); err != nil || found {
 		t.Errorf("GetByUID wrong-authority: found=%v err=%v", found, err)
+	}
+}
+
+// TestPostgresStore_Upsert_GetByUID_RoundTripsFullFields is the GH#935
+// pgtest acceptance criterion: Upsert -> GetByUID round-trips all seven new
+// silent fields — the jsonb other_fields map, altid in its raw-JSON array
+// form, and the two bookkeeping timestamps.
+func TestPostgresStore_Upsert_GetByUID_RoundTripsFullFields(t *testing.T) {
+	ctx := context.Background()
+	store := newAppPGStore(t)
+
+	lastChanged := time.Date(2026, 7, 11, 21, 4, 14, 856483000, time.UTC)
+	lastScraped := time.Date(2026, 7, 11, 20, 0, 0, 123456000, time.UTC)
+	a := pgApp("24/0005/FUL", 100)
+	a.UID = "full-fields-uid"
+	a.Reference = pgPtr("REF-100")
+	a.Altid = []byte(`["A","B"]`)
+	a.AssociatedID = []byte(`"single-id"`)
+	a.LastChanged = &lastChanged
+	a.LastScraped = &lastScraped
+	a.ScraperName = pgPtr("Richmondshire")
+	a.OtherFields = map[string]any{"comment_url": "https://example.test/comment", "n_comments": float64(3)}
+
+	if err := store.Upsert(ctx, a); err != nil {
+		t.Fatalf("Upsert: %v", err)
+	}
+
+	got, found, err := store.GetByUID(ctx, "full-fields-uid", "100")
+	if err != nil || !found {
+		t.Fatalf("GetByUID: found=%v err=%v", found, err)
+	}
+	if got.Reference == nil || *got.Reference != "REF-100" {
+		t.Errorf("Reference: got %v, want REF-100", got.Reference)
+	}
+	// jsonb is a canonical, reparsed storage format: Postgres reformats the
+	// text it stores (e.g. inserts a space after each comma), so the bytes
+	// read back are not byte-identical to what was written even though they
+	// are the same JSON value. Compare semantically, not byte-for-byte.
+	assertJSONSemanticallyEqual(t, "Altid", got.Altid, []byte(`["A","B"]`))
+	assertJSONSemanticallyEqual(t, "AssociatedID", got.AssociatedID, []byte(`"single-id"`))
+	if got.LastChanged == nil || !got.LastChanged.Equal(lastChanged) {
+		t.Errorf("LastChanged: got %v, want %v", got.LastChanged, lastChanged)
+	}
+	if got.LastScraped == nil || !got.LastScraped.Equal(lastScraped) {
+		t.Errorf("LastScraped: got %v, want %v", got.LastScraped, lastScraped)
+	}
+	if got.ScraperName == nil || *got.ScraperName != "Richmondshire" {
+		t.Errorf("ScraperName: got %v, want Richmondshire", got.ScraperName)
+	}
+	if !reflect.DeepEqual(got.OtherFields, a.OtherFields) {
+		t.Errorf("OtherFields: got %+v, want %+v", got.OtherFields, a.OtherFields)
+	}
+	// The domain-level regression proof: a semantically-unchanged Altid must
+	// compare equal even after a round trip through Postgres's jsonb
+	// canonicalisation, or the ingester's silent-change write-suppression
+	// guard is defeated on every re-fetch for any record with an array-valued
+	// altid/associated_id (see eqRawJSON's doc comment).
+	if !a.HasSameSilentFieldsAs(got) {
+		t.Errorf("a jsonb-reformatted-but-semantically-unchanged round trip must still compare equal via HasSameSilentFieldsAs")
+	}
+}
+
+// TestPostgresStore_Upsert_OverwritesOtherFieldsOnSecondUpsert proves a second
+// Upsert with a changed other_fields map replaces the stored jsonb rather than
+// merging with the first.
+func TestPostgresStore_Upsert_OverwritesOtherFieldsOnSecondUpsert(t *testing.T) {
+	ctx := context.Background()
+	store := newAppPGStore(t)
+
+	first := pgApp("24/0006/FUL", 100)
+	first.UID = "overwrite-uid"
+	first.OtherFields = map[string]any{"comment_url": "https://old", "n_comments": float64(1)}
+	if err := store.Upsert(ctx, first); err != nil {
+		t.Fatalf("Upsert first: %v", err)
+	}
+
+	second := first
+	second.OtherFields = map[string]any{"comment_url": "https://new"}
+	if err := store.Upsert(ctx, second); err != nil {
+		t.Fatalf("Upsert second: %v", err)
+	}
+
+	got, found, err := store.GetByUID(ctx, "overwrite-uid", "100")
+	if err != nil || !found {
+		t.Fatalf("GetByUID: found=%v err=%v", found, err)
+	}
+	if _, stale := got.OtherFields["n_comments"]; stale {
+		t.Errorf("stale key n_comments must not survive an overwriting Upsert: %+v", got.OtherFields)
+	}
+	if got.OtherFields["comment_url"] != "https://new" {
+		t.Errorf("comment_url: got %v, want https://new", got.OtherFields["comment_url"])
+	}
+}
+
+// TestPostgresStore_Upsert_FullFieldsNullRoundTripAsNil proves an application
+// with none of the seven new fields set stores and reads back all of them as
+// nil/empty, not the JSON literal "null" or an empty (non-nil) map.
+func TestPostgresStore_Upsert_FullFieldsNullRoundTripAsNil(t *testing.T) {
+	ctx := context.Background()
+	store := newAppPGStore(t)
+
+	a := pgApp("24/0007/FUL", 100)
+	a.UID = "null-fields-uid"
+	if err := store.Upsert(ctx, a); err != nil {
+		t.Fatalf("Upsert: %v", err)
+	}
+
+	got, found, err := store.GetByUID(ctx, "null-fields-uid", "100")
+	if err != nil || !found {
+		t.Fatalf("GetByUID: found=%v err=%v", found, err)
+	}
+	if got.Reference != nil {
+		t.Errorf("Reference: got %v, want nil", *got.Reference)
+	}
+	if got.Altid != nil {
+		t.Errorf("Altid: got %s, want nil", got.Altid)
+	}
+	if got.AssociatedID != nil {
+		t.Errorf("AssociatedID: got %s, want nil", got.AssociatedID)
+	}
+	if got.LastChanged != nil {
+		t.Errorf("LastChanged: got %v, want nil", got.LastChanged)
+	}
+	if got.LastScraped != nil {
+		t.Errorf("LastScraped: got %v, want nil", got.LastScraped)
+	}
+	if got.ScraperName != nil {
+		t.Errorf("ScraperName: got %v, want nil", *got.ScraperName)
+	}
+	if got.OtherFields != nil {
+		t.Errorf("OtherFields: got %v, want nil", got.OtherFields)
+	}
+}
+
+// TestPostgresStore_GetByAuthorityAndName_DoesNotSurfaceFullFields proves
+// appColumns (used by every read path except GetByUID) is unchanged: even
+// though the row carries populated silent fields, GetByAuthorityAndName's
+// projection never selects them, so its result carries the zero value for
+// every one of the seven new fields — no payload growth, no API leak.
+func TestPostgresStore_GetByAuthorityAndName_DoesNotSurfaceFullFields(t *testing.T) {
+	ctx := context.Background()
+	store := newAppPGStore(t)
+
+	a := pgApp("24/0008/FUL", 100)
+	a.UID = "not-surfaced-uid"
+	a.Reference = pgPtr("REF-999")
+	a.OtherFields = map[string]any{"comment_url": "https://example.test/comment"}
+	if err := store.Upsert(ctx, a); err != nil {
+		t.Fatalf("Upsert: %v", err)
+	}
+
+	got, found, err := store.GetByAuthorityAndName(ctx, "100", "24/0008/FUL")
+	if err != nil || !found {
+		t.Fatalf("GetByAuthorityAndName: found=%v err=%v", found, err)
+	}
+	if got.Reference != nil || got.OtherFields != nil {
+		t.Errorf("GetByAuthorityAndName must not surface full fields, got Reference=%v OtherFields=%v",
+			got.Reference, got.OtherFields)
 	}
 }
 
