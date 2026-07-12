@@ -168,6 +168,64 @@ func TestPlanningApplication_HasSameSilentFieldsAs(t *testing.T) {
 	})
 }
 
+// TestEqRawJSON_SemanticComparison proves eqRawJSON compares by decoded JSON
+// value, not raw bytes: PlanIt's API returns pretty-printed JSON (preserved
+// verbatim in json.RawMessage), while Postgres jsonb canonicalises text on
+// storage (reformats spacing) — so for any record with an array-valued altid
+// or associated_id, a bytes.Equal comparison would find the freshly-parsed
+// incoming bytes and the read-back-from-Postgres bytes ALWAYS unequal, even
+// when semantically identical. That permanently defeats the silent-change
+// write-suppression guard for that subset of records, on every re-fetch —
+// exactly the reindex-storm write amplification the three-bucket ingester
+// design exists to prevent.
+func TestEqRawJSON_SemanticComparison(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		a, b []byte
+		want bool
+	}{
+		{
+			name: "pretty-printed vs Postgres-canonical form of the same array compares equal",
+			a:    []byte("[\"a\",\n  \"b\"]"),
+			b:    []byte(`["a", "b"]`),
+			want: true,
+		},
+		{
+			name: "a string value vs a single-element array compares not-equal",
+			a:    []byte(`"x"`),
+			b:    []byte(`["x"]`),
+			want: false,
+		},
+		{
+			name: "nil vs nil compares equal",
+			a:    nil,
+			b:    nil,
+			want: true,
+		},
+		{
+			name: "genuinely different arrays compare not-equal",
+			a:    []byte(`["a","b"]`),
+			b:    []byte(`["a","c"]`),
+			want: false,
+		},
+		{
+			name: "unparseable bytes on either side compare not-equal (safe direction)",
+			a:    []byte(`not-json`),
+			b:    []byte(`["a"]`),
+			want: false,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := eqRawJSON(tc.a, tc.b); got != tc.want {
+				t.Errorf("eqRawJSON(%s, %s): got %v, want %v", tc.a, tc.b, got, tc.want)
+			}
+		})
+	}
+}
+
 func ptr(s string) *string { return &s }
 
 func timePtr(t time.Time) *time.Time { return &t }
