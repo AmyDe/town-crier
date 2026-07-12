@@ -511,9 +511,11 @@ func paidCandidate(userID string, tier profiles.SubscriptionTier, expiry *time.T
 }
 
 // TestStats_ReturnsPinnedContract exercises the full aggregate: the paying
-// buckets classified via EffectiveTier (an App Store, a comped, a lapsed and an
-// in-grace candidate), the user/tier/signup/activity blocks, and the reach
-// totals — asserting the exact pinned JSON contract the CLI mirror depends on.
+// buckets classified via EffectiveTier (an App Store Pro, an App Store
+// Personal, a comped, a lapsed and an in-grace candidate), the user/tier/
+// signup/activity blocks, and the reach totals — asserting the exact pinned
+// JSON contract the CLI mirror depends on, including the appStoreByTier split
+// (whose Personal+Pro sum must equal appStore).
 func TestStats_ReturnsPinnedContract(t *testing.T) {
 	t.Parallel()
 
@@ -521,6 +523,7 @@ func TestStats_ReturnsPinnedContract(t *testing.T) {
 	future := now.Add(30 * 24 * time.Hour)
 	past := now.Add(-1 * time.Hour)
 	txn := "1000000000000001"
+	txn2 := "1000000000000002"
 
 	recent := time.Date(2026, 6, 30, 9, 0, 0, 0, time.UTC)
 	recentEmail := "new@example.com"
@@ -539,10 +542,11 @@ func TestStats_ReturnsPinnedContract(t *testing.T) {
 			TotalWatchZones: 250,
 		},
 		candidates: []*profiles.UserProfile{
-			paidCandidate("auth0|appstore", profiles.TierPro, &future, nil, &txn),   // effective-paid + appStore
-			paidCandidate("auth0|comped", profiles.TierPersonal, &future, nil, nil), // effective-paid + comped
-			paidCandidate("auth0|lapsed", profiles.TierPro, &past, nil, nil),        // lapsed (expired, no grace)
-			paidCandidate("auth0|grace", profiles.TierPro, &past, &future, nil),     // effective-paid via live grace + comped + inGrace
+			paidCandidate("auth0|appstore", profiles.TierPro, &future, nil, &txn),                // effective-paid + appStore + Pro
+			paidCandidate("auth0|appstore-personal", profiles.TierPersonal, &future, nil, &txn2), // effective-paid + appStore + Personal
+			paidCandidate("auth0|comped", profiles.TierPersonal, &future, nil, nil),              // effective-paid + comped
+			paidCandidate("auth0|lapsed", profiles.TierPro, &past, nil, nil),                     // lapsed (expired, no grace)
+			paidCandidate("auth0|grace", profiles.TierPro, &past, &future, nil),                  // effective-paid via live grace + comped + inGrace
 		},
 	}
 	counts := &fakeNotifCounts{totals: notifications.NotificationTotals{Sent: 9000, Unread: 1200}}
@@ -558,7 +562,7 @@ func TestStats_ReturnsPinnedContract(t *testing.T) {
 	}
 	want := `{` +
 		`"users":{"total":100,"byTier":{"Free":70,"Personal":20,"Pro":10}},` +
-		`"paying":{"effectivePaid":3,"appStore":1,"comped":2,"lapsed":1,"inGrace":1},` +
+		`"paying":{"effectivePaid":4,"appStore":2,"comped":2,"lapsed":1,"inGrace":1,"appStoreByTier":{"Personal":1,"Pro":1}},` +
 		`"signups":{"last24h":5,"last7d":12,"last30d":30,"mostRecent":{"userId":"auth0|new","email":"new@example.com","createdAt":"2026-06-30T09:00:00Z"}},` +
 		`"activity":{"active24h":8,"active7d":20,"zeroWatchZones":15,"noEmail":3},` +
 		`"reach":{"watchZones":250,"savedApplications":500,"deviceRegistrations":300,"notificationsSent":9000,"notificationsUnread":1200}` +
@@ -585,7 +589,7 @@ func TestStats_NoUsers_NullMostRecentAndNilStores(t *testing.T) {
 	}
 	want := `{` +
 		`"users":{"total":0,"byTier":{"Free":0,"Personal":0,"Pro":0}},` +
-		`"paying":{"effectivePaid":0,"appStore":0,"comped":0,"lapsed":0,"inGrace":0},` +
+		`"paying":{"effectivePaid":0,"appStore":0,"comped":0,"lapsed":0,"inGrace":0,"appStoreByTier":{"Personal":0,"Pro":0}},` +
 		`"signups":{"last24h":0,"last7d":0,"last30d":0,"mostRecent":null},` +
 		`"activity":{"active24h":0,"active7d":0,"zeroWatchZones":0,"noEmail":0},` +
 		`"reach":{"watchZones":0,"savedApplications":0,"deviceRegistrations":0,"notificationsSent":0,"notificationsUnread":0}` +

@@ -1,6 +1,10 @@
 package tc
 
 import (
+	"context"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -148,5 +152,57 @@ func TestDatePart(t *testing.T) {
 				t.Errorf("datePart(%v) = %q, want %q", tc.in, got, tc.want)
 			}
 		})
+	}
+}
+
+// TestPrintStatsSummary_RendersPayingMRRLine drives printStatsSummary against
+// a fake /v1/admin/stats endpoint whose body carries the appStoreByTier
+// split, asserting the header above the list-users table shows the App
+// Store-only paying count and the computed MRR (not the old "effectivePaid"
+// figure or comped users).
+func TestPrintStatsSummary_RendersPayingMRRLine(t *testing.T) {
+	t.Parallel()
+	body := `{"users":{"total":2,"byTier":{"Free":1,"Personal":0,"Pro":1}},` +
+		`"paying":{"effectivePaid":2,"appStore":1,"comped":1,"lapsed":0,"inGrace":0,"appStoreByTier":{"Personal":0,"Pro":1}},` +
+		`"signups":{"last24h":0,"last7d":1,"last30d":2,"mostRecent":null},` +
+		`"activity":{"active24h":1,"active7d":2,"zeroWatchZones":0,"noEmail":1},` +
+		`"reach":{"watchZones":3,"savedApplications":5,"deviceRegistrations":2,"notificationsSent":10,"notificationsUnread":4}}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, body)
+	}))
+	defer server.Close()
+
+	var sb strings.Builder
+	printStatsSummary(context.Background(), clientFor(server), &sb)
+	got := sb.String()
+	if !strings.Contains(got, "paying 1") {
+		t.Errorf("summary should headline the App Store count (1), not effectivePaid (2):\n%s", got)
+	}
+	if !strings.Contains(got, "MRR £4.99/mo") {
+		t.Errorf("summary should render the estimated MRR from the one Pro payer:\n%s", got)
+	}
+	if !strings.Contains(got, "comped 1") {
+		t.Errorf("summary should still show comped separately:\n%s", got)
+	}
+}
+
+// TestPrintStatsSummary_NilAppStoreByTier_Degrades covers an older API build
+// whose /v1/admin/stats body predates the tier split: the header must still
+// render, degrading the MRR segment to "MRR -" rather than fabricating a
+// figure from a nil pointer.
+func TestPrintStatsSummary_NilAppStoreByTier_Degrades(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, testStatsJSON)
+	}))
+	defer server.Close()
+
+	var sb strings.Builder
+	printStatsSummary(context.Background(), clientFor(server), &sb)
+	got := sb.String()
+	if !strings.Contains(got, "MRR -") {
+		t.Errorf("nil appStoreByTier should degrade to MRR -:\n%s", got)
 	}
 }

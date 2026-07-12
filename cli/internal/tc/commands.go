@@ -99,6 +99,17 @@ type statsPaying struct {
 	Comped        int `json:"comped"`
 	Lapsed        int `json:"lapsed"`
 	InGrace       int `json:"inGrace"`
+	// AppStoreByTier is a pointer so an older API build that predates the
+	// tier split decodes it as nil, rather than a zeroed-but-present struct
+	// that would silently render a wrong (zero) MRR.
+	AppStoreByTier *statsAppStoreByTier `json:"appStoreByTier"`
+}
+
+// statsAppStoreByTier is an explicit struct (not a map) so the two paid tier
+// keys always render in a fixed order, matching the API's encoding.
+type statsAppStoreByTier struct {
+	Personal int `json:"Personal"`
+	Pro      int `json:"Pro"`
 }
 
 type statsSignups struct {
