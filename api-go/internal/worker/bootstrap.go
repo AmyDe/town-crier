@@ -101,10 +101,12 @@ type BootstrapResult struct {
 	DeadLettered int
 }
 
-// Bootstrapper is the poll-trigger safety net. Under the shared Postgres polling
-// lease, it probes the trigger queue and, only when the queue is completely
-// empty, publishes one jittered seed trigger scheduled for the future. It never
-// invokes the poll handler — that is the orchestrator's job (poll-sb mode).
+// Bootstrapper is the poll-trigger safety net and reconciler. Under the shared
+// Postgres polling lease, it probes the trigger queue and either publishes one
+// jittered seed trigger (queue empty), leaves a healthy single trigger alone,
+// or collapses a fork back to exactly one trigger (GH#938 PR2) — then drains
+// the dead-letter sub-queue. It never invokes the poll handler — that is the
+// orchestrator's job (poll-sb mode).
 type Bootstrapper struct {
 	queue   triggerQueue
 	lease   leaseAccess
