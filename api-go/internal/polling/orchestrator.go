@@ -25,6 +25,7 @@ type triggerPublisher interface {
 type leaseStore interface {
 	TryAcquire(ctx context.Context, ttl time.Duration) (LeaseAcquireResult, error)
 	Release(ctx context.Context, handle LeaseHandle) LeaseReleaseOutcome
+	Confirm(ctx context.Context, handle LeaseHandle, extend time.Duration) bool
 }
 
 // cycleHandler runs one ingestion cycle. *PollPlanItHandler satisfies it.
