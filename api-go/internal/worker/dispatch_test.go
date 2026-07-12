@@ -8,8 +8,62 @@ import (
 	"strings"
 	"testing"
 
+	"go.opentelemetry.io/otel"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+
+	"github.com/AmyDe/town-crier/api-go/internal/polling"
 	"github.com/AmyDe/town-crier/api-go/internal/servicebus"
 )
+
+// recordBootstrapSpan swaps in an in-memory SDK TracerProvider for the
+// duration of one poll-bootstrap Run call, restoring the previous global
+// provider on cleanup, and returns the single "Polling Bootstrap" span
+// recorded. Deliberately not t.Parallel(): mutating the global TracerProvider
+// is safe only while no sibling test's body is concurrently executing (the
+// existing middleware span tests use the same non-parallel convention).
+func recordBootstrapSpan(t *testing.T, run func()) sdktrace.ReadOnlySpan {
+	t.Helper()
+
+	prev := otel.GetTracerProvider()
+	rec := tracetest.NewSpanRecorder()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(rec))
+	otel.SetTracerProvider(tp)
+	t.Cleanup(func() {
+		_ = tp.Shutdown(context.Background())
+		otel.SetTracerProvider(prev)
+	})
+
+	run()
+
+	spans := rec.Ended()
+	if len(spans) != 1 {
+		t.Fatalf("expected 1 recorded span, got %d", len(spans))
+	}
+	return spans[0]
+}
+
+// attrBool returns the bool value of the named attribute on the span and
+// whether it was present.
+func attrBool(span sdktrace.ReadOnlySpan, key string) (bool, bool) {
+	for _, kv := range span.Attributes() {
+		if string(kv.Key) == key {
+			return kv.Value.AsBool(), true
+		}
+	}
+	return false, false
+}
+
+// attrInt returns the int64 value of the named attribute on the span and
+// whether it was present.
+func attrInt(span sdktrace.ReadOnlySpan, key string) (int64, bool) {
+	for _, kv := range span.Attributes() {
+		if string(kv.Key) == key {
+			return kv.Value.AsInt64(), true
+		}
+	}
+	return 0, false
+}
 
 // fakeDigester is a hand-written double for the digestRunner the dispatcher
 // invokes. It records which cycle ran and can be primed with an error.
@@ -436,6 +490,80 @@ func TestRun_PollBootstrapProbeFailureStillExitsZero(t *testing.T) {
 
 	if code != 0 {
 		t.Errorf("exit code: got %d, want 0 (absorbed probe failure is not a job failure)", code)
+	}
+}
+
+// TestRunPollBootstrap_TagsReconciliationAttributes proves the "Polling
+// Bootstrap" span surfaces the GH#938 PR1/PR2 BootstrapResult fields as
+// attributes, so App Insights can alert on a fork without a human happening to
+// look: a forked queue (2 scheduled + 1 active) reconciled down to one trigger
+// tags polling.safety_net.reconciled/scheduled_cancelled/active_discarded, and
+// a non-empty DLQ drain tags dead_lettered — additive telemetry only, no
+// dispatch behaviour change.
+func TestRunPollBootstrap_TagsReconciliationAttributes(t *testing.T) {
+	q := &fakeTriggerQueue{
+		depth: servicebus.QueueDepth{ActiveMessageCount: 1, ScheduledMessageCount: 2},
+		peeked: []servicebus.PeekedMessage{
+			{SequenceNumber: 10, State: servicebus.MessageStateActive},
+			{SequenceNumber: 20, State: servicebus.MessageStateScheduled},
+			{SequenceNumber: 21, State: servicebus.MessageStateScheduled},
+		},
+		receiveResult: true,
+		dlqDrained:    3,
+	}
+	b := newTestBootstrapper(t, q)
+	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
+
+	span := recordBootstrapSpan(t, func() {
+		code := Run(context.Background(), "poll-bootstrap", b, nil, nil, nil, nil, nil, nil, logger)
+		if code != 0 {
+			t.Errorf("exit code: got %d, want 0", code)
+		}
+	})
+
+	if got, ok := attrBool(span, "polling.safety_net.reconciled"); !ok || !got {
+		t.Errorf("polling.safety_net.reconciled: got %v (ok=%v), want true", got, ok)
+	}
+	if got, ok := attrInt(span, "polling.safety_net.scheduled_cancelled"); !ok || got != 1 {
+		t.Errorf("polling.safety_net.scheduled_cancelled: got %d (ok=%v), want 1", got, ok)
+	}
+	if got, ok := attrInt(span, "polling.safety_net.active_discarded"); !ok || got != 1 {
+		t.Errorf("polling.safety_net.active_discarded: got %d (ok=%v), want 1", got, ok)
+	}
+	if got, ok := attrInt(span, "polling.safety_net.dead_lettered"); !ok || got != 3 {
+		t.Errorf("polling.safety_net.dead_lettered: got %d (ok=%v), want 3", got, ok)
+	}
+	if got, ok := attrBool(span, "polling.safety_net.lease_unavailable"); !ok || got {
+		t.Errorf("polling.safety_net.lease_unavailable: got %v (ok=%v), want false", got, ok)
+	}
+}
+
+// TestRunPollBootstrap_TagsLeaseUnavailableAttribute proves the PR1
+// LeaseUnavailable field (never previously surfaced) is now tagged on the
+// span: when a peer holds the polling lease, the span must report
+// lease_unavailable=true and every reconciliation count at its zero value
+// (nothing was probed or touched).
+func TestRunPollBootstrap_TagsLeaseUnavailableAttribute(t *testing.T) {
+	q := &fakeTriggerQueue{depth: servicebus.QueueDepth{}}
+	lease := &fakeLeaseAccess{acquireResult: polling.LeaseAcquireResult{Held: true}}
+	b := newTestBootstrapperWithLease(t, q, lease)
+	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
+
+	span := recordBootstrapSpan(t, func() {
+		code := Run(context.Background(), "poll-bootstrap", b, nil, nil, nil, nil, nil, nil, logger)
+		if code != 0 {
+			t.Errorf("exit code: got %d, want 0", code)
+		}
+	})
+
+	if got, ok := attrBool(span, "polling.safety_net.lease_unavailable"); !ok || !got {
+		t.Errorf("polling.safety_net.lease_unavailable: got %v (ok=%v), want true", got, ok)
+	}
+	if got, ok := attrBool(span, "polling.safety_net.reconciled"); !ok || got {
+		t.Errorf("polling.safety_net.reconciled: got %v (ok=%v), want false", got, ok)
+	}
+	if got, ok := attrInt(span, "polling.safety_net.dead_lettered"); !ok || got != 0 {
+		t.Errorf("polling.safety_net.dead_lettered: got %d (ok=%v), want 0 (lease held; never probed)", got, ok)
 	}
 }
 
