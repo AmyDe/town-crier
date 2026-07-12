@@ -24,6 +24,30 @@ func TestIngester_UpsertsNewApplication(t *testing.T) {
 	}
 }
 
+// TestIngester_NewApplication_UpsertsAndEnqueues is bucket-matrix case (a): a
+// first-time insert (existing absent) always counts as a notifiable change,
+// so it upserts and enqueues for zone fan-out — with real (non-nil) fan-out
+// collaborators, unlike TestIngester_UpsertsNewApplication above.
+func TestIngester_NewApplication_UpsertsAndEnqueues(t *testing.T) {
+	t.Parallel()
+	apps := newFakeApps()
+	ld := time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC)
+	app := testApp("24/0001", 99, ld)
+	disp := &fakeDecisionDispatcher{}
+	enq := &fakeEnqueuer{}
+	ing := NewIngester(apps, disp, enq)
+
+	if err := ing.Ingest(context.Background(), app); err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+	if len(apps.upserts) != 1 {
+		t.Errorf("upserts: got %d, want 1", len(apps.upserts))
+	}
+	if enq.count() != 1 {
+		t.Errorf("a first-time insert must be enqueued for zone fan-out, got %d, want 1", enq.count())
+	}
+}
+
 func TestIngester_SkipsUpsertWhenBusinessFieldsUnchanged(t *testing.T) {
 	t.Parallel()
 	apps := newFakeApps()
