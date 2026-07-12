@@ -32,18 +32,30 @@ var (
 	ErrMissingQueue     = errors.New("service bus queue name is required")
 )
 
-// QueueDepth is a snapshot of the trigger queue's active and scheduled message
-// counts. The bootstrapper seeds a new trigger only when both counts are zero
-// (IsEmpty).
+// QueueDepth is a snapshot of the trigger queue's active, scheduled and
+// dead-lettered message counts. The bootstrapper's fork-guard (GH#938 PR2)
+// thresholds on TriggerCount (active+scheduled): 0 seeds, 1 is a healthy
+// single chain, >1 is a fork that must be collapsed. DeadLetterMessageCount is
+// tracked separately — dead letters are corpses, not live triggers, and are
+// handled by an unconditional drain rather than folded into the fork count.
 type QueueDepth struct {
-	ActiveMessageCount    int64
-	ScheduledMessageCount int64
+	ActiveMessageCount     int64
+	ScheduledMessageCount  int64
+	DeadLetterMessageCount int64
 }
 
-// IsEmpty reports whether the queue has no active and no scheduled messages —
-// the signal the bootstrapper uses to decide a reseed is needed.
+// TriggerCount returns the number of live (active+scheduled) trigger
+// messages, excluding dead letters — the count the bootstrap reconciler
+// thresholds on (GH#938 PR2).
+func (d QueueDepth) TriggerCount() int64 {
+	return d.ActiveMessageCount + d.ScheduledMessageCount
+}
+
+// IsEmpty reports whether the queue has no live (active+scheduled) trigger —
+// the signal the bootstrapper uses to decide a reseed is needed. A queue
+// holding only dead letters still counts as empty of live triggers.
 func (d QueueDepth) IsEmpty() bool {
-	return d.ActiveMessageCount == 0 && d.ScheduledMessageCount == 0
+	return d.TriggerCount() == 0
 }
 
 // Client wraps the azservicebus data-plane and management clients for one
@@ -110,8 +122,9 @@ func (c *Client) QueueDepth(ctx context.Context) (QueueDepth, error) {
 		return QueueDepth{}, fmt.Errorf("queue %q not found", c.queueName)
 	}
 	return QueueDepth{
-		ActiveMessageCount:    int64(resp.ActiveMessageCount),
-		ScheduledMessageCount: int64(resp.ScheduledMessageCount),
+		ActiveMessageCount:     int64(resp.ActiveMessageCount),
+		ScheduledMessageCount:  int64(resp.ScheduledMessageCount),
+		DeadLetterMessageCount: int64(resp.DeadLetterMessageCount),
 	}, nil
 }
 
