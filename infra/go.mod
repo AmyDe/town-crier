@@ -3,6 +3,7 @@ module town-crier-infra
 go 1.26
 
 require (
+	github.com/pulumi/pulumi-azure-native-sdk/alertsmanagement/v3 v3.16.0
 	github.com/pulumi/pulumi-azure-native-sdk/app/v3 v3.16.0
 	github.com/pulumi/pulumi-azure-native-sdk/applicationinsights/v3 v3.16.0
 	github.com/pulumi/pulumi-azure-native-sdk/authorization/v3 v3.16.0

@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/pulumi/pulumi-azure-native-sdk/alertsmanagement/v3"
 	"github.com/pulumi/pulumi-azure-native-sdk/app/v3"
 	appinsights "github.com/pulumi/pulumi-azure-native-sdk/applicationinsights/v3"
 	"github.com/pulumi/pulumi-azure-native-sdk/authorization/v3"
@@ -436,6 +437,16 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 				ContactEmails: pulumi.StringArray{pulumi.String(alertEmail)},
 				Locale:        consumption.CultureCode_En_Gb,
 			},
+			// Forecast notification (GH #943 Phase 5) — warns ahead of the actual-spend
+			// notifications above by firing on Azure's cost *forecast*, not just realised spend.
+			"forecasted_GreaterThan_100_Percent": &consumption.NotificationArgs{
+				Enabled:       pulumi.Bool(true),
+				Operator:      consumption.OperatorTypeGreaterThan,
+				Threshold:     pulumi.Float64(100),
+				ThresholdType: pulumi.String("Forecasted"),
+				ContactEmails: pulumi.StringArray{pulumi.String(alertEmail)},
+				Locale:        consumption.CultureCode_En_Gb,
+			},
 		},
 	})
 	if err != nil {
@@ -462,6 +473,15 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 				Name:                 pulumi.String("owner"),
 				EmailAddress:         pulumi.String(alertEmail),
 				UseCommonAlertSchema: pulumi.Bool(true),
+			},
+		},
+		// Azure mobile app push receiver (GH #943 Phase 1) — the same Azure account
+		// (amy@salter.uk) that already receives Service Health pushes via the auto-created
+		// azureapp-auto group, so alerts fire on-device without needing a dedicated app install.
+		AzureAppPushReceivers: monitor.AzureAppPushReceiverArray{
+			monitor.AzureAppPushReceiverArgs{
+				Name:         pulumi.String("owner-app"),
+				EmailAddress: pulumi.String("amy@salter.uk"),
 			},
 		},
 		Tags: tags,
@@ -572,6 +592,405 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		ResourceGroupName: resourceGroup.Name,
 		Username:          pulumi.String("hello"),
 		DisplayName:       pulumi.String("Town Crier"),
+	})
+	if err != nil {
+		return err
+	}
+
+	// Alert posture (GH #943, tc-97k35.1). The 2026-07-12 audit found the action group and
+	// PlanIt rule above already ported (tc-ttjor, GH #938) but the rest of the P1+P2 posture
+	// unimplemented. This codifies the remainder: availability tests, Postgres/job/ACS metric
+	// alerts, API/webhook/APNs/ACS/Auth0 log alerts, job-absence detection, Service Health,
+	// Failure Anomalies. Everything below scopes prod resources via constructed ID strings
+	// (armSubscriptionID + documented literal names) rather than cross-stack reads, per the
+	// issue's design: alert rules are ARM meta-resources that can live in the shared RG while
+	// pointing at resources in rg-town-crier-prod.
+	//
+	// alert-poll-queue-depth-prod is deliberately NOT duplicated here. It is already
+	// Pulumi-managed by the prod stack (infra/environment.go, createPollQueueDepthAlert) and was
+	// applied there via cd-prod (releases v0.19.3/v0.19.4) — it was never a CLI orphan, so the
+	// issue's Phase 1 item 3 "move it into the shared stack" premise doesn't hold. The prod-stack
+	// copy stays canonical.
+
+	// Phase 2: availability tests. Two standard WebTests against the live prod endpoints, each
+	// with a companion MetricAlert that fires when >=2 of the 3 EMEA probe locations report the
+	// endpoint down.
+	if err = createAvailabilityCheck(ctx, resourceGroup, appInsights, actionGroup, tags,
+		"webtest-api-prod", "https://api.towncrierapp.uk/health"); err != nil {
+		return err
+	}
+	if err = createAvailabilityCheck(ctx, resourceGroup, appInsights, actionGroup, tags,
+		"webtest-web-prod", "https://towncrierapp.uk/"); err != nil {
+		return err
+	}
+
+	// Phase 3: platform metric alerts.
+
+	// Postgres — scoped to the shared Flexible Server provisioned above (B1ms burstable, 32GB,
+	// auto-grow disabled, so storage/CPU-credit exhaustion are real operational risks here).
+	type postgresAlertSpec struct {
+		suffix     string // resource-name suffix, e.g. "storage" -> alert-pg-storage-shared
+		metricName string
+		operator   string
+		threshold  float64
+		windowSize string
+		evalFreq   string
+		severity   int
+	}
+	postgresAlerts := []postgresAlertSpec{
+		{"storage", "storage_percent", "GreaterThan", 80, "PT30M", "PT15M", 2},
+		{"cpu-credits", "cpu_credits_remaining", "LessThan", 30, "PT30M", "PT15M", 2},
+		{"connections", "active_connections", "GreaterThan", 25, "PT30M", "PT15M", 3},
+		{"alive", "is_db_alive", "LessThan", 1, "PT5M", "PT5M", 1},
+	}
+	for _, spec := range postgresAlerts {
+		alertName := fmt.Sprintf("alert-pg-%s-shared", spec.suffix)
+		_, err = monitor.NewMetricAlert(ctx, alertName, &monitor.MetricAlertArgs{
+			RuleName:            pulumi.String(alertName),
+			ResourceGroupName:   resourceGroup.Name,
+			Location:            pulumi.String("global"),
+			Description:         pulumi.String(fmt.Sprintf("Postgres %s %s %v on psql-town-crier-shared.", spec.metricName, strings.ToLower(spec.operator), spec.threshold)),
+			Severity:            pulumi.Int(spec.severity),
+			Enabled:             pulumi.Bool(true),
+			AutoMitigate:        pulumi.Bool(true),
+			EvaluationFrequency: pulumi.String(spec.evalFreq),
+			WindowSize:          pulumi.String(spec.windowSize),
+			Scopes:              pulumi.StringArray{postgresServer.ID()},
+			Criteria: monitor.MetricAlertSingleResourceMultipleMetricCriteriaArgs{
+				OdataType: pulumi.String("Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria"),
+				AllOf: monitor.MetricCriteriaArray{
+					monitor.MetricCriteriaArgs{
+						CriterionType:   pulumi.String("StaticThresholdCriterion"),
+						Name:            pulumi.String(spec.metricName),
+						MetricName:      pulumi.String(spec.metricName),
+						MetricNamespace: pulumi.String("Microsoft.DBforPostgreSQL/flexibleServers"),
+						Operator:        pulumi.String(spec.operator),
+						Threshold:       pulumi.Float64(spec.threshold),
+						TimeAggregation: pulumi.String("Average"),
+					},
+				},
+			},
+			Actions: monitor.MetricAlertActionArray{
+				monitor.MetricAlertActionArgs{ActionGroupId: actionGroup.ID()},
+			},
+			Tags: tags,
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	// Container Apps jobs — one failed-execution alert per prod job, generated via a loop over
+	// the job-name slice (rather than seven copy-pasted blocks). Scopes are constructed ARM IDs:
+	// these jobs live in the prod stack (infra/environment.go, createWorkerJob), named
+	// job-tc-<name>-prod.
+	prodFailedExecutionJobs := []string{
+		"poll",
+		"poll-bootstrap",
+		"digest",
+		"digest-hourly",
+		"dormant-cleanup",
+		"subscription-sweep",
+		"pg-purge",
+	}
+	for _, job := range prodFailedExecutionJobs {
+		alertName := fmt.Sprintf("alert-job-failed-%s-prod", job)
+		jobID := fmt.Sprintf(
+			"/subscriptions/%s/resourceGroups/rg-town-crier-prod/providers/Microsoft.App/jobs/job-tc-%s-prod",
+			armSubscriptionID, job)
+		_, err = monitor.NewMetricAlert(ctx, alertName, &monitor.MetricAlertArgs{
+			RuleName:            pulumi.String(alertName),
+			ResourceGroupName:   resourceGroup.Name,
+			Location:            pulumi.String("global"),
+			Description:         pulumi.String(fmt.Sprintf("Container Apps job job-tc-%s-prod reported a Failed execution.", job)),
+			Severity:            pulumi.Int(2),
+			Enabled:             pulumi.Bool(true),
+			AutoMitigate:        pulumi.Bool(true),
+			EvaluationFrequency: pulumi.String("PT15M"),
+			WindowSize:          pulumi.String("PT30M"),
+			Scopes:              pulumi.StringArray{pulumi.String(jobID)},
+			Criteria: monitor.MetricAlertSingleResourceMultipleMetricCriteriaArgs{
+				OdataType: pulumi.String("Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria"),
+				AllOf: monitor.MetricCriteriaArray{
+					monitor.MetricCriteriaArgs{
+						CriterionType:   pulumi.String("StaticThresholdCriterion"),
+						Name:            pulumi.String("FailedExecutions"),
+						MetricName:      pulumi.String("Executions"),
+						MetricNamespace: pulumi.String("Microsoft.App/jobs"),
+						Dimensions: monitor.MetricDimensionArray{
+							monitor.MetricDimensionArgs{
+								Name:     pulumi.String("state"),
+								Operator: pulumi.String("Include"),
+								Values:   pulumi.StringArray{pulumi.String("Failed")},
+							},
+						},
+						Operator:        pulumi.String("GreaterThan"),
+						Threshold:       pulumi.Float64(0),
+						TimeAggregation: pulumi.String("Total"),
+					},
+				},
+			},
+			Actions: monitor.MetricAlertActionArray{
+				monitor.MetricAlertActionArgs{ActionGroupId: actionGroup.ID()},
+			},
+			Tags: tags,
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	// ACS email delivery — catches post-acceptance bounces/blocks the AppDependencies "ACS
+	// email send" span can't see (that span only covers the synchronous accept call).
+	_, err = monitor.NewMetricAlert(ctx, "alert-acs-email-delivery-shared", &monitor.MetricAlertArgs{
+		RuleName:            pulumi.String("alert-acs-email-delivery-shared"),
+		ResourceGroupName:   resourceGroup.Name,
+		Location:            pulumi.String("global"),
+		Description:         pulumi.String("ACS reported a non-Success terminal delivery status (bounce, block, etc.) for a previously-accepted email send."),
+		Severity:            pulumi.Int(2),
+		Enabled:             pulumi.Bool(true),
+		AutoMitigate:        pulumi.Bool(true),
+		EvaluationFrequency: pulumi.String("PT15M"),
+		WindowSize:          pulumi.String("PT1H"),
+		Scopes:              pulumi.StringArray{communicationServiceUk.ID()},
+		Criteria: monitor.MetricAlertSingleResourceMultipleMetricCriteriaArgs{
+			OdataType: pulumi.String("Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria"),
+			AllOf: monitor.MetricCriteriaArray{
+				monitor.MetricCriteriaArgs{
+					CriterionType:   pulumi.String("StaticThresholdCriterion"),
+					Name:            pulumi.String("NonSuccessDeliveryStatusUpdates"),
+					MetricName:      pulumi.String("DeliveryStatusUpdate"),
+					MetricNamespace: pulumi.String("Microsoft.Communication/CommunicationServices"),
+					Dimensions: monitor.MetricDimensionArray{
+						monitor.MetricDimensionArgs{
+							Name:     pulumi.String("Result"),
+							Operator: pulumi.String("Exclude"),
+							Values:   pulumi.StringArray{pulumi.String("Success")},
+						},
+					},
+					Operator:        pulumi.String("GreaterThan"),
+					Threshold:       pulumi.Float64(0),
+					TimeAggregation: pulumi.String("Count"),
+				},
+			},
+		},
+		Actions: monitor.MetricAlertActionArray{
+			monitor.MetricAlertActionArgs{ActionGroupId: actionGroup.ID()},
+		},
+		Tags: tags,
+	})
+	if err != nil {
+		return err
+	}
+
+	// Phase 4: log query alerts. <prodfilter> throughout comments below refers to
+	// `tostring(Properties["deployment.environment"]) == "prod"`, needed on every query that
+	// could see dev telemetry (dev and prod share this App Insights component). The PlanIt rule
+	// above and the Auth0 rule below are the documented exceptions (PlanIt: only prod polls;
+	// Auth0: an Auth0 outage affects both environments).
+	const apiFiveXXQuery = `AppRequests
+| where AppRoleName has "api-go"
+| where tostring(Properties["deployment.environment"]) == "prod"
+| where toint(ResultCode) >= 500`
+	if err = createLogAlert(ctx, resourceGroup, logAnalytics.ID(), actionGroup, tags, logAlertSpec{
+		name:        "alert-api-5xx-prod",
+		displayName: "API 5xx errors (prod)",
+		description: "More than 10 prod API requests returned a 5xx status in the last 15 minutes.",
+		severity:    1,
+		window:      "PT15M",
+		freq:        "PT5M",
+		query:       apiFiveXXQuery,
+		threshold:   10,
+	}); err != nil {
+		return err
+	}
+
+	const appstoreWebhookFailuresQuery = `AppRequests
+| where Name == "POST /v1/webhooks/appstore"
+| where tostring(Properties["deployment.environment"]) == "prod"
+| where toint(ResultCode) >= 500`
+	if err = createLogAlert(ctx, resourceGroup, logAnalytics.ID(), actionGroup, tags, logAlertSpec{
+		name:        "alert-appstore-webhook-failures-prod",
+		displayName: "App Store webhook failures (prod)",
+		description: "The App Store server-notifications webhook returned a 5xx in prod. Persistent 5xx here permanently loses App Store subscription events once Apple stops retrying.",
+		severity:    2,
+		window:      "PT1H",
+		freq:        "PT15M",
+		query:       appstoreWebhookFailuresQuery,
+		threshold:   0,
+	}); err != nil {
+		return err
+	}
+
+	// Same shape as the PlanIt rule above: the query itself computes the failure ratio and
+	// emits a row only when the >=10-call, >20%-failure threshold is breached, so the alert
+	// condition is just "did the query return anything" (threshold 0, Count aggregation).
+	const apnsFailureRateQuery = `AppDependencies
+| where Name == "APNs push"
+| where tostring(Properties["deployment.environment"]) == "prod"
+| summarize Total = count(), Fails = countif(Success == false)
+| where Total >= 10
+| extend FailureRatioPercent = round(100.0 * Fails / Total, 1)
+| where FailureRatioPercent > 20`
+	if err = createLogAlert(ctx, resourceGroup, logAnalytics.ID(), actionGroup, tags, logAlertSpec{
+		name:        "alert-apns-failure-rate-prod",
+		displayName: "APNs push failure rate (prod)",
+		description: "APNs push failure ratio exceeded 20% over the last hour (>=10 sends). See GH #943.",
+		severity:    2,
+		window:      "PT1H",
+		freq:        "PT15M",
+		query:       apnsFailureRateQuery,
+		threshold:   0,
+	}); err != nil {
+		return err
+	}
+
+	const acsEmailSendFailuresQuery = `AppDependencies
+| where Name == "ACS email send"
+| where tostring(Properties["deployment.environment"]) == "prod"
+| where Success == false`
+	if err = createLogAlert(ctx, resourceGroup, logAnalytics.ID(), actionGroup, tags, logAlertSpec{
+		name:        "alert-acs-email-send-failures-prod",
+		displayName: "ACS email send failures (prod)",
+		description: "More than 2 prod ACS email send calls failed in the last hour.",
+		severity:    2,
+		window:      "PT1H",
+		freq:        "PT15M",
+		query:       acsEmailSendFailuresQuery,
+		threshold:   2,
+	}); err != nil {
+		return err
+	}
+
+	// No <prodfilter> — an Auth0 outage affects both environments, and the token cache masks
+	// blips, so sustained failures here are real regardless of which env saw them.
+	const auth0FailuresQuery = `AppDependencies
+| where Name startswith "Auth0"
+| where Success == false`
+	if err = createLogAlert(ctx, resourceGroup, logAnalytics.ID(), actionGroup, tags, logAlertSpec{
+		name:        "alert-auth0-failures-shared",
+		displayName: "Auth0 dependency failures",
+		description: "More than 2 Auth0 dependency calls failed in the last 30 minutes (either environment).",
+		severity:    2,
+		window:      "PT30M",
+		freq:        "PT15M",
+		query:       auth0FailuresQuery,
+		threshold:   2,
+	}); err != nil {
+		return err
+	}
+
+	// Job-absence alerts. Failed executions are covered by the Phase 3 Container Apps job
+	// metric alerts above (a worker that exits 1 leaves the execution in a Failed state); these
+	// two log alerts instead catch "never ran at all", which a metric alert can't express. The
+	// expected-vs-actual leftouter join guarantees a row (Runs == 0) even when AppDependencies
+	// has zero matching spans, which a plain `| where` filter on an empty result set cannot.
+	const jobAbsenceFrequentQuery = `let expected = datatable(JobSpan:string)["Polling Cycle (SB)", "Polling Bootstrap", "Hourly Digest Cycle"];
+expected
+| join kind=leftouter (
+    AppDependencies
+    | where tostring(Properties["deployment.environment"]) == "prod"
+    | summarize Runs = count() by Name
+) on $left.JobSpan == $right.Name
+| extend Runs = coalesce(Runs, 0)
+| where Runs == 0`
+	if err = createLogAlert(ctx, resourceGroup, logAnalytics.ID(), actionGroup, tags, logAlertSpec{
+		name:        "alert-worker-absence-frequent-prod",
+		displayName: "Frequent worker cycle absent (prod)",
+		description: "A prod job expected to run at least hourly (poll, poll-bootstrap, or hourly-digest) produced no AppDependencies span in the last 3 hours. Dimensioned by JobSpan so the fired alert names the missing job.",
+		severity:    2,
+		window:      "PT3H",
+		freq:        "PT30M",
+		query:       jobAbsenceFrequentQuery,
+		threshold:   0,
+		dimensions: monitor.DimensionArray{
+			monitor.DimensionArgs{
+				Name:     pulumi.String("JobSpan"),
+				Operator: pulumi.String("Include"),
+				Values:   pulumi.StringArray{pulumi.String("*")},
+			},
+		},
+	}); err != nil {
+		return err
+	}
+
+	const jobAbsenceDailyQuery = `let expected = datatable(JobSpan:string)["Digest Cycle", "Dormant Cleanup Cycle", "Subscription Sweep Cycle", "Postgres Purge Cycle"];
+expected
+| join kind=leftouter (
+    AppDependencies
+    | where tostring(Properties["deployment.environment"]) == "prod"
+    | summarize Runs = count() by Name
+) on $left.JobSpan == $right.Name
+| extend Runs = coalesce(Runs, 0)
+| where Runs == 0`
+	if err = createLogAlert(ctx, resourceGroup, logAnalytics.ID(), actionGroup, tags, logAlertSpec{
+		name:        "alert-worker-absence-daily-prod",
+		displayName: "Daily worker cycle absent (prod)",
+		description: "A prod job expected to run at least daily (digest, dormant-cleanup, subscription-sweep, or pg-purge) produced no AppDependencies span in the last 24 hours. Dimensioned by JobSpan so the fired alert names the missing job.",
+		severity:    2,
+		window:      "P1D",
+		freq:        "PT1H",
+		query:       jobAbsenceDailyQuery,
+		threshold:   0,
+		dimensions: monitor.DimensionArray{
+			monitor.DimensionArgs{
+				Name:     pulumi.String("JobSpan"),
+				Operator: pulumi.String("Include"),
+				Values:   pulumi.StringArray{pulumi.String("*")},
+			},
+		},
+	}); err != nil {
+		return err
+	}
+
+	// Phase 5: subscription-level hygiene.
+
+	// Service Health — replaces reliance on the auto-created azureapp-auto action group, which
+	// only pushes to the Azure mobile app and isn't itself managed anywhere.
+	_, err = monitor.NewActivityLogAlert(ctx, "alert-service-health-shared", &monitor.ActivityLogAlertArgs{
+		ActivityLogAlertName: pulumi.String("alert-service-health-shared"),
+		ResourceGroupName:    resourceGroup.Name,
+		Location:             pulumi.String("Global"),
+		Description:          pulumi.String("Azure Service Health event (incident, maintenance, informational, or security advisory) affecting this subscription."),
+		Enabled:              pulumi.Bool(true),
+		Scopes:               pulumi.StringArray{pulumi.String(fmt.Sprintf("/subscriptions/%s", armSubscriptionID))},
+		Condition: monitor.AlertRuleAllOfConditionArgs{
+			AllOf: monitor.AlertRuleAnyOfOrLeafConditionArray{
+				monitor.AlertRuleAnyOfOrLeafConditionArgs{
+					Field:  pulumi.String("category"),
+					Equals: pulumi.String("ServiceHealth"),
+				},
+			},
+		},
+		Actions: monitor.ActionListArgs{
+			ActionGroups: monitor.ActionGroupTypeArray{
+				monitor.ActionGroupTypeArgs{ActionGroupId: actionGroup.ID()},
+			},
+		},
+		Tags: tags,
+	})
+	if err != nil {
+		return err
+	}
+
+	// Failure Anomalies — Application Insights' built-in smart detector for abnormal rises in
+	// failed request rate, wired to the same action group as everything else here.
+	_, err = alertsmanagement.NewSmartDetectorAlertRule(ctx, "alert-failure-anomalies-shared", &alertsmanagement.SmartDetectorAlertRuleArgs{
+		AlertRuleName:     pulumi.String("alert-failure-anomalies-shared"),
+		ResourceGroupName: resourceGroup.Name,
+		Location:          pulumi.String("global"),
+		Description:       pulumi.String("Application Insights Failure Anomalies smart detection on the shared App Insights component."),
+		State:             alertsmanagement.AlertRuleStateEnabled,
+		Severity:          alertsmanagement.SeveritySev3,
+		Frequency:         pulumi.String("PT1M"),
+		Scope:             pulumi.StringArray{appInsights.ID()},
+		Detector: alertsmanagement.DetectorArgs{
+			Id: pulumi.String("FailureAnomaliesDetector"),
+		},
+		ActionGroups: alertsmanagement.ActionGroupsInformationArgs{
+			GroupIds: pulumi.StringArray{actionGroup.ID()},
+		},
+		Tags: tags,
 	})
 	if err != nil {
 		return err
@@ -757,4 +1176,137 @@ func kqlTile(appInsightsID pulumi.StringOutput, query, title string) portal.Dash
 			},
 		},
 	}
+}
+
+// availabilityTestLocations is the standard 3-location EMEA coverage set shared by both
+// availability WebTests below (GH #943 Phase 2).
+var availabilityTestLocations = appinsights.WebTestGeolocationArray{
+	appinsights.WebTestGeolocationArgs{Location: pulumi.String("emea-gb-db3-azr")},
+	appinsights.WebTestGeolocationArgs{Location: pulumi.String("emea-nl-ams-azr")},
+	appinsights.WebTestGeolocationArgs{Location: pulumi.String("emea-fr-pra-edge")},
+}
+
+// webTestTags merges the standard tag set with the "hidden-link:<appInsightsID>": "Resource"
+// tag Azure requires to associate a WebTest with its Application Insights component. The tag
+// KEY embeds the component's resource ID, so the whole map can only be known once appInsightsID
+// resolves — hence building it inside ApplyT rather than as a plain pulumi.StringMap literal.
+// tags values are always literal pulumi.String (see the tags built in main.go), so the type
+// assertion below is safe.
+func webTestTags(appInsightsID pulumi.IDOutput, tags pulumi.StringMap) pulumi.StringMapOutput {
+	return appInsightsID.ApplyT(func(id pulumi.ID) map[string]string {
+		merged := make(map[string]string, len(tags)+1)
+		for k, v := range tags {
+			if s, ok := v.(pulumi.String); ok {
+				merged[k] = string(s)
+			}
+		}
+		merged[fmt.Sprintf("hidden-link:%s", id)] = "Resource"
+		return merged
+	}).(pulumi.StringMapOutput)
+}
+
+// createAvailabilityCheck provisions one Application Insights standard WebTest against url,
+// plus the companion MetricAlert that fires when >=2 of the 3 EMEA probe locations report it
+// down (GH #943 Phase 2). name is used as both the WebTest's logical/Azure resource name (e.g.
+// "webtest-api-prod") and the basis for its alert's name.
+func createAvailabilityCheck(ctx *pulumi.Context, resourceGroup *resources.ResourceGroup, appInsights *appinsights.Component, actionGroup *monitor.ActionGroup, tags pulumi.StringMap, name, url string) error {
+	webTest, err := appinsights.NewWebTest(ctx, name, &appinsights.WebTestArgs{
+		WebTestName:        pulumi.String(name),
+		ResourceGroupName:  resourceGroup.Name,
+		Location:           pulumi.String("uksouth"),
+		Kind:               appinsights.WebTestKindStandard,
+		WebTestKind:        appinsights.WebTestKindStandard,
+		SyntheticMonitorId: pulumi.String(name),
+		Enabled:            pulumi.Bool(true),
+		Frequency:          pulumi.Int(300),
+		Timeout:            pulumi.Int(30),
+		RetryEnabled:       pulumi.Bool(true),
+		Locations:          availabilityTestLocations,
+		Request: &appinsights.WebTestPropertiesRequestArgs{
+			RequestUrl: pulumi.String(url),
+			HttpVerb:   pulumi.String("GET"),
+		},
+		ValidationRules: &appinsights.WebTestPropertiesValidationRulesArgs{
+			ExpectedHttpStatusCode: pulumi.Int(200),
+		},
+		Tags: webTestTags(appInsights.ID(), tags),
+	})
+	if err != nil {
+		return err
+	}
+
+	alertName := fmt.Sprintf("alert-%s-shared", name)
+	_, err = monitor.NewMetricAlert(ctx, alertName, &monitor.MetricAlertArgs{
+		RuleName:            pulumi.String(alertName),
+		ResourceGroupName:   resourceGroup.Name,
+		Location:            pulumi.String("global"),
+		Description:         pulumi.String(fmt.Sprintf("Availability test %s failed from >=2 of 3 EMEA locations.", name)),
+		Severity:            pulumi.Int(1),
+		Enabled:             pulumi.Bool(true),
+		AutoMitigate:        pulumi.Bool(true),
+		EvaluationFrequency: pulumi.String("PT5M"),
+		WindowSize:          pulumi.String("PT15M"),
+		Scopes:              pulumi.StringArray{webTest.ID(), appInsights.ID()},
+		Criteria: monitor.WebtestLocationAvailabilityCriteriaArgs{
+			OdataType:           pulumi.String("Microsoft.Azure.Monitor.WebtestLocationAvailabilityCriteria"),
+			WebTestId:           webTest.ID(),
+			ComponentId:         appInsights.ID(),
+			FailedLocationCount: pulumi.Float64(2),
+		},
+		Actions: monitor.MetricAlertActionArray{
+			monitor.MetricAlertActionArgs{ActionGroupId: actionGroup.ID()},
+		},
+		Tags: tags,
+	})
+	return err
+}
+
+// logAlertSpec describes one ScheduledQueryRule (Phase 4 log query alerts). dimensions is
+// optional (nil for the plain row-count alerts; set for the two job-absence alerts so the
+// fired alert names the missing job via the JobSpan column).
+type logAlertSpec struct {
+	name        string
+	displayName string
+	description string
+	severity    float64
+	window      string
+	freq        string
+	query       string
+	threshold   float64
+	dimensions  monitor.DimensionArray
+}
+
+// createLogAlert provisions one ScheduledQueryRule (Kind LogAlert) scoped to the shared Log
+// Analytics workspace, wired to actionGroup. Every query is expected to already filter itself
+// down to the rows that should fire the alert (mirrors the PlanIt rule above), so the criterion
+// is always "count of returned rows compares against threshold" with Count aggregation.
+func createLogAlert(ctx *pulumi.Context, resourceGroup *resources.ResourceGroup, logAnalyticsID pulumi.IDOutput, actionGroup *monitor.ActionGroup, tags pulumi.StringMap, spec logAlertSpec) error {
+	condition := monitor.ConditionArgs{
+		Query:           pulumi.String(spec.query),
+		TimeAggregation: pulumi.String("Count"),
+		Operator:        pulumi.String("GreaterThan"),
+		Threshold:       pulumi.Float64(spec.threshold),
+		Dimensions:      spec.dimensions,
+	}
+	_, err := monitor.NewScheduledQueryRule(ctx, spec.name, &monitor.ScheduledQueryRuleArgs{
+		RuleName:            pulumi.String(spec.name),
+		ResourceGroupName:   resourceGroup.Name,
+		Location:            pulumi.String("uksouth"),
+		Kind:                pulumi.String("LogAlert"),
+		Description:         pulumi.String(spec.description),
+		DisplayName:         pulumi.String(spec.displayName),
+		Severity:            pulumi.Float64(spec.severity),
+		Enabled:             pulumi.Bool(true),
+		EvaluationFrequency: pulumi.String(spec.freq),
+		WindowSize:          pulumi.String(spec.window),
+		Scopes:              pulumi.StringArray{logAnalyticsID},
+		Criteria: monitor.ScheduledQueryRuleCriteriaArgs{
+			AllOf: monitor.ConditionArray{condition},
+		},
+		Actions: monitor.ActionsArgs{
+			ActionGroups: pulumi.StringArray{actionGroup.ID()},
+		},
+		Tags: tags,
+	})
+	return err
 }
