@@ -50,10 +50,9 @@ public struct WatchZoneListView: View {
             )
             .cardRowInsets()
           }
-          .confirmationDialog(
+          .alert(
             discardConfirmationTitle,
-            isPresented: $viewModel.isDiscardConfirmationPresented,
-            titleVisibility: .visible
+            isPresented: $viewModel.isDiscardConfirmationPresented
           ) {
             Button("Delete", role: .destructive) {
               viewModel.discardLocalZones()
@@ -108,6 +107,14 @@ public struct WatchZoneListView: View {
   }
 
   // MARK: - Discard confirmation (tc-luq4u)
+  //
+  // An `.alert`, not a `.confirmationDialog` — on iOS 26 the dialog renders
+  // as a compact anchored popover next to the "x" button, and popover
+  // presentation drops `.cancel`-role buttons entirely (tap-outside is
+  // treated as the cancel affordance), leaving "Keep for later"
+  // undiscoverable and unreachable by VoiceOver. An alert renders every
+  // button in every presentation style and is the HIG-appropriate container
+  // for a destructive confirmation.
 
   private var discardConfirmationTitle: String {
     viewModel.unconvertedLocalZones.count == 1
@@ -220,7 +227,7 @@ private struct WatchZoneRow: View {
 /// Dismissible row surfaced while device-local zones (GH#879 Phase 4) remain
 /// unconverted after sign-up. Tapping the body reopens the "Add your other
 /// areas" conversion sheet; the trailing "x" opens a delete-confirmation
-/// dialog (tc-luq4u) offering an explicit "Delete" (permanent) or "Keep for
+/// alert (tc-luq4u) offering an explicit "Delete" (permanent) or "Keep for
 /// later" (session-only dismissal, reappears next launch while zones still
 /// remain) — the row previously had no permanent way to decline.
 private struct UnconvertedLocalZoneRow: View {
