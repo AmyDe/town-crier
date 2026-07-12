@@ -120,9 +120,10 @@ public final class WatchZoneListViewModel: ObservableObject, ErrorHandlingViewMo
   }
 
   /// Local-vs-server centre match tolerance for duplicate cleanup (tc-luq4u)
-  /// — 1e-4 degrees is well under one metre at UK latitudes, generous enough
-  /// to absorb floating-point drift from a conversion round-trip while never
-  /// matching two genuinely distinct areas.
+  /// — 1e-4 degrees is roughly 11 m of latitude (~7 m of longitude at UK
+  /// latitudes): generous enough to absorb floating-point drift from a
+  /// conversion round-trip while never matching two genuinely distinct areas,
+  /// which also need an identical radius to count as duplicates.
   private static let duplicateCentreToleranceDegrees: Double = 1e-4
 
   public func load() async {
