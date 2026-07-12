@@ -46,9 +46,23 @@ public struct WatchZoneListView: View {
             UnconvertedLocalZoneRow(
               count: viewModel.unconvertedLocalZones.count,
               onTap: { viewModel.convertLocalZones() },
-              onDismiss: { viewModel.dismissLocalZoneRow() }
+              onDismiss: { viewModel.presentDiscardConfirmation() }
             )
             .cardRowInsets()
+          }
+          .confirmationDialog(
+            discardConfirmationTitle,
+            isPresented: $viewModel.isDiscardConfirmationPresented,
+            titleVisibility: .visible
+          ) {
+            Button("Delete", role: .destructive) {
+              viewModel.discardLocalZones()
+            }
+            Button("Keep for later", role: .cancel) {
+              viewModel.dismissLocalZoneRow()
+            }
+          } message: {
+            Text(discardConfirmationMessage)
           }
         }
       }
@@ -91,6 +105,20 @@ public struct WatchZoneListView: View {
       )
       .selfSizingSheet()
     }
+  }
+
+  // MARK: - Discard confirmation (tc-luq4u)
+
+  private var discardConfirmationTitle: String {
+    viewModel.unconvertedLocalZones.count == 1
+      ? "Delete this saved area?"
+      : "Delete these saved areas?"
+  }
+
+  private var discardConfirmationMessage: String {
+    viewModel.unconvertedLocalZones.count == 1
+      ? "It only exists on this phone and is not being monitored. Delete it, or keep it to add later."
+      : "They only exist on this phone and are not being monitored. Delete them, or keep them to add later."
   }
 
   // MARK: - Masthead
@@ -191,9 +219,10 @@ private struct WatchZoneRow: View {
 
 /// Dismissible row surfaced while device-local zones (GH#879 Phase 4) remain
 /// unconverted after sign-up. Tapping the body reopens the "Add your other
-/// areas" conversion sheet; the trailing "x" dismisses the row for the
-/// session only — it reappears next launch while zones still remain, and
-/// clears entirely once none do (never silently discard user-created data).
+/// areas" conversion sheet; the trailing "x" opens a delete-confirmation
+/// dialog (tc-luq4u) offering an explicit "Delete" (permanent) or "Keep for
+/// later" (session-only dismissal, reappears next launch while zones still
+/// remain) — the row previously had no permanent way to decline.
 private struct UnconvertedLocalZoneRow: View {
   let count: Int
   let onTap: () -> Void
