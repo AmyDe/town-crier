@@ -22,6 +22,11 @@ public final class WatchZoneListViewModel: ObservableObject, ErrorHandlingViewMo
   /// Never persisted — a fresh `WatchZoneListViewModel` (next app launch)
   /// always starts un-dismissed, so the row reappears while zones remain.
   @Published public private(set) var isLocalZoneRowDismissed = false
+  /// Drives the row's delete-confirmation dialog (tc-luq4u) — set by
+  /// ``presentDiscardConfirmation()`` when the user taps the row's "x", and
+  /// cleared by whichever choice they make (``discardLocalZones()`` or
+  /// ``dismissLocalZoneRow()``).
+  @Published public var isDiscardConfirmationPresented = false
 
   /// The proactive feature gate derived from the user's subscription tier.
   public let featureGate: FeatureGate
@@ -57,9 +62,32 @@ public final class WatchZoneListViewModel: ObservableObject, ErrorHandlingViewMo
   /// Hides the unconverted-zones row for the rest of this session. The row
   /// reappears on next launch (a fresh view model) while zones still remain
   /// — local zones are never silently discarded, only converted or
-  /// explicitly deleted.
+  /// explicitly deleted. This is the "keep for later" choice in the
+  /// delete-confirmation dialog (tc-luq4u).
   public func dismissLocalZoneRow() {
     isLocalZoneRowDismissed = true
+    isDiscardConfirmationPresented = false
+  }
+
+  /// Opens the row's delete-confirmation dialog (tc-luq4u) — the "x" button
+  /// no longer dismisses directly, since dismissal alone gave a pre-signup
+  /// user with no onboarding-wizard run no way to ever decline the zones the
+  /// row nags about.
+  public func presentDiscardConfirmation() {
+    isDiscardConfirmationPresented = true
+  }
+
+  /// Permanently deletes every unconverted device-local zone (tc-luq4u) —
+  /// the explicit "no" the row previously lacked. Deletes each from the
+  /// injected repository, then clears the published list so
+  /// ``showsLocalZoneRow`` becomes false immediately and stays false on
+  /// every later ``load()`` (the repository itself is now empty).
+  public func discardLocalZones() {
+    for zone in unconvertedLocalZones {
+      deviceLocalZoneRepository?.delete(zone.id)
+    }
+    unconvertedLocalZones = []
+    isDiscardConfirmationPresented = false
   }
 
   /// Reopens the post-signup conversion sheet from the row's tap target.
@@ -91,18 +119,52 @@ public final class WatchZoneListViewModel: ObservableObject, ErrorHandlingViewMo
     featureGate.tier == .free && !canAddZone
   }
 
+  /// Local-vs-server centre match tolerance for duplicate cleanup (tc-luq4u)
+  /// — 1e-4 degrees is well under one metre at UK latitudes, generous enough
+  /// to absorb floating-point drift from a conversion round-trip while never
+  /// matching two genuinely distinct areas.
+  private static let duplicateCentreToleranceDegrees: Double = 1e-4
+
   public func load() async {
     isLoading = true
     error = nil
 
+    var serverLoadSucceeded = true
     do {
       zones = try await repository.loadAll()
     } catch {
       handleError(error)
+      serverLoadSucceeded = false
     }
-    unconvertedLocalZones = deviceLocalZoneRepository?.loadAll() ?? []
+
+    let localZones = deviceLocalZoneRepository?.loadAll() ?? []
+    unconvertedLocalZones =
+      serverLoadSucceeded
+      ? localZones.filter { !discardIfDuplicatesServerZone($0) }
+      : localZones
 
     isLoading = false
+  }
+
+  /// Deletes `localZone` from the repository and returns true when it
+  /// duplicates an already-converted server zone (same radius, centre
+  /// within ``duplicateCentreToleranceDegrees`` on both latitude and
+  /// longitude) — a redundant leftover from a conversion that saved
+  /// server-side but never cleaned up its local copy. Only ever called
+  /// after a successful server load (tc-luq4u): a local zone is never
+  /// deleted against an unknown server state.
+  private func discardIfDuplicatesServerZone(_ localZone: DeviceLocalZone) -> Bool {
+    let isDuplicate = zones.contains { serverZone in
+      serverZone.radiusMetres == localZone.radiusMetres
+        && abs(serverZone.centre.latitude - localZone.centre.latitude)
+          <= Self.duplicateCentreToleranceDegrees
+        && abs(serverZone.centre.longitude - localZone.centre.longitude)
+          <= Self.duplicateCentreToleranceDegrees
+    }
+    if isDuplicate {
+      deviceLocalZoneRepository?.delete(localZone.id)
+    }
+    return isDuplicate
   }
 
   public func deleteZone(_ zone: WatchZone) async {
