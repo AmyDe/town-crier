@@ -14,6 +14,7 @@ import (
 type LeaseAccess interface {
 	TryAcquire(ctx context.Context, ttl time.Duration) (LeaseAcquireResult, error)
 	Release(ctx context.Context, handle LeaseHandle) LeaseReleaseOutcome
+	Confirm(ctx context.Context, handle LeaseHandle, extend time.Duration) bool
 }
 
 // Compile-time check: the store satisfies the consumer-side interface.
