@@ -115,6 +115,11 @@ type PollRunResult struct {
 	// OldestHWMNeverPolled mirrors polling.PollPlanItResult.OldestHWMNeverPolled.
 	// Meaningless when OldestHWMAgeSeconds is nil.
 	OldestHWMNeverPolled bool
+	// CycleType mirrors polling.PollPlanItResult.CycleType ("Watched" | "Seed"),
+	// stamped on the "Polling Cycle (SB)" span next to polling.termination
+	// (tc-nlvpz / GH#955 PR A). Empty when the cycle produced no PollResult
+	// (e.g. lease unavailable, empty trigger queue).
+	CycleType string
 }
 
 // PollOrchestrator is the consumer-side slice of the poll-sb orchestrator the
@@ -225,6 +230,7 @@ func runPollSB(ctx context.Context, poller PollOrchestrator, logger *slog.Logger
 		attribute.Int("polling.applications_ingested", res.ApplicationCount),
 		attribute.Int("polling.authority_errors", res.AuthorityErrors),
 		attribute.String("polling.termination", res.Termination),
+		attribute.String("polling.cycle_type", res.CycleType),
 	)
 	// Absent (not zero) when the cycle had no candidate authorities to report —
 	// see PollRunResult.OldestHWMAgeSeconds.

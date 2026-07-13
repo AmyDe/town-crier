@@ -10,8 +10,12 @@ type PollCursor struct {
 	// against. The cursor is valid only while the authority's high-water mark
 	// still matches this date; once the HWM advances the cursor is stale.
 	DifferentStart time.Time
-	// NextPage is the next unfetched page number (1-based).
-	NextPage int
+	// NextIndex is the next unfetched record's 0-based offset (PlanIt's index=
+	// parameter). Record-level resume is immune to PlanIt's 1MB response-body
+	// truncation: a truncated fetch still advances NextIndex by the records
+	// actually received, so a resume never skips or re-derives a page boundary
+	// (GH#955). Replaces the old page-granular NextPage.
+	NextIndex int
 	// KnownTotal is the total PlanIt reported on the first page of the cycle that
 	// recorded the cursor, if known. Telemetry only. nil when unknown.
 	KnownTotal *int
