@@ -199,7 +199,12 @@ type adminUserStore interface {
 //	    RecordActivity below, it always wraps dispatch regardless of whether the
 //	    profile store is wired — a store-less boot must not leave anonymous
 //	    routes completely unmetered. GET /health and GET /v1/health are exempt
-//	    (ACA probes; see middleware.AnonRateLimit's doc for the convention).
+//	    (ACA probes; see middleware.AnonRateLimit's doc for the convention), as
+//	    is any request bearing a valid X-Build-Key (GH#872 collateral,
+//	    tc-zod82): the build-key SEO endpoints authenticate inside the handler
+//	    rather than via Auth0, so without this exemption they are wrongly
+//	    metered as anonymous and the CI seo-refresh job's sequential requests
+//	    from one runner IP 429.
 //	  - RateLimit/RecordActivity are no-ops for anonymous routes (no subject),
 //	    the mirror image of AnonRateLimit's no-op for authenticated ones.
 //
@@ -275,8 +280,17 @@ func newRouter(
 	// load that ultimately lands on PlanIt) completely unmetered. It is a no-op
 	// for authenticated requests, so it never interferes with the per-subject
 	// RateLimit it wraps.
+	//
+	// The exemption predicate recognises a valid X-Build-Key via
+	// applications.BuildKeyMatches (GH#872 collateral, tc-zod82): the build-key
+	// SEO endpoints (RecentRoutes/NearRoutes below) authenticate inside the
+	// handler rather than via Auth0, so without this exemption their traffic —
+	// including the CI seo-refresh job's ~418 sequential requests from one
+	// runner IP — is wrongly metered as anonymous. A missing or wrong key still
+	// exempts nothing, preserving the anti-scraping posture for everyone else.
 	anonWindow := time.Duration(anonRateLimitWindowSeconds) * time.Second
-	dispatch = middleware.AnonRateLimit(middleware.NewAnonRateLimitStore(anonWindow), anonRateLimitRequests, logger)(dispatch)
+	buildKeyExempt := func(r *http.Request) bool { return applications.BuildKeyMatches(r, siteBuildKey) }
+	dispatch = middleware.AnonRateLimit(middleware.NewAnonRateLimitStore(anonWindow), anonRateLimitRequests, buildKeyExempt, logger)(dispatch)
 	if deviceStore != nil {
 		devicetokens.Routes(mux, deviceStore, time.Now, logger)
 	}
