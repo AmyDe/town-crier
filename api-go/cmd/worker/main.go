@@ -480,6 +480,8 @@ func (a *pollOrchestratorAdapter) RunOnce(ctx context.Context) (worker.PollRunRe
 		out.AuthoritiesPolled = res.PollResult.AuthoritiesPolled
 		out.AuthorityErrors = res.PollResult.AuthorityErrors
 		out.Termination = res.PollResult.TerminationReason.TelemetryValue()
+		out.OldestHWMAgeSeconds = res.PollResult.OldestHWMAgeSeconds
+		out.OldestHWMNeverPolled = res.PollResult.OldestHWMNeverPolled
 	}
 	return out, nil
 }

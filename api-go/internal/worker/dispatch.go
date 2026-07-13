@@ -107,6 +107,14 @@ type PollRunResult struct {
 	AuthoritiesPolled int
 	AuthorityErrors   int
 	Termination       string
+	// OldestHWMAgeSeconds mirrors polling.PollPlanItResult.OldestHWMAgeSeconds:
+	// the staleness (seconds) of the least-recently-polled candidate
+	// authority's high-water mark at cycle start, nil when the cycle had no
+	// candidates.
+	OldestHWMAgeSeconds *float64
+	// OldestHWMNeverPolled mirrors polling.PollPlanItResult.OldestHWMNeverPolled.
+	// Meaningless when OldestHWMAgeSeconds is nil.
+	OldestHWMNeverPolled bool
 }
 
 // PollOrchestrator is the consumer-side slice of the poll-sb orchestrator the
@@ -218,6 +226,14 @@ func runPollSB(ctx context.Context, poller PollOrchestrator, logger *slog.Logger
 		attribute.Int("polling.authority_errors", res.AuthorityErrors),
 		attribute.String("polling.termination", res.Termination),
 	)
+	// Absent (not zero) when the cycle had no candidate authorities to report —
+	// see PollRunResult.OldestHWMAgeSeconds.
+	if res.OldestHWMAgeSeconds != nil {
+		span.SetAttributes(
+			attribute.Float64("polling.oldest_hwm_age_seconds", *res.OldestHWMAgeSeconds),
+			attribute.Bool("polling.oldest_hwm_never_polled", res.OldestHWMNeverPolled),
+		)
+	}
 
 	logger.InfoContext(ctx, "poll-sb cycle completed",
 		"applicationsIngested", res.ApplicationCount,
