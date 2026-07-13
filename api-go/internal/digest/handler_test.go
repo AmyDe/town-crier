@@ -617,7 +617,7 @@ func TestRunHourly_NoOpSenderDropsEmailButStillMarksSent(t *testing.T) {
 	fz := &fakeZones{byUser: map[string][]watchzones.WatchZone{
 		"user-1": {mkZone(t, "zone-1", "Home", true)},
 	}}
-	h := newHandler(fp, fn, fz, &fakeState{}, &fakeDevices{}, acsemail.NewNoOpSender(), &spyPush{})
+	h := newHandler(fp, fn, fz, &fakeState{}, &fakeDevices{}, acsemail.NewInstrumentedSender(acsemail.NewNoOpSender()), &spyPush{})
 
 	if err := h.RunHourly(context.Background()); err != nil {
 		t.Fatalf("RunHourly: %v", err)

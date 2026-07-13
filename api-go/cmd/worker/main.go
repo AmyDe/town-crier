@@ -518,7 +518,10 @@ func buildDigester(cfg platform.Config, st *stores, logger *slog.Logger) *digest
 		point: st.profile,
 	}
 
-	emailSender := buildEmailSender(cfg, logger)
+	// Wrapped in InstrumentedSender so every digest email gets exactly one
+	// "Email send" span (tagged email.kind) distinct from the underlying "ACS
+	// email send" HTTP client spans (tc-3jx8d).
+	emailSender := acsemail.NewInstrumentedSender(buildEmailSender(cfg, logger))
 	dispatcher := buildPlatformDispatcher(cfg, logger)
 
 	return digest.NewHandler(
