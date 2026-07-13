@@ -996,8 +996,34 @@ expected
 		return err
 	}
 
-	// Operational Dashboard
+	// Operational Dashboard (tc-rvf1a). Rebuilt on telemetry the Go stack actually emits: ACA's
+	// managed OpenTelemetry agent forwards only logs+traces for Go workloads, so every prior
+	// tile's customMetrics/AppMetrics query (towncrier.*) had no data behind it — Go wires no
+	// Azure Monitor metrics exporter (same reason the PlanIt failure-rate alert above is
+	// log-based, not metric-based) — and user_AuthenticatedId is never populated by the Go auth
+	// middleware. All 14 tiles below query the classic requests/dependencies KQL tables
+	// (workspace-based AppRequests/AppDependencies) or the standard availabilityResults metric
+	// from the WebTests above; each was verified against the live App Insights component on
+	// 2026-07-13. Queries with no natural "still exists" guarantee (5xx counts, PlanIt
+	// 429s/errors, dependency/email/APNs failures) use the
+	// `let data = ...; union data, (datatable(...)[])` scaffold so a quiet period renders a flat
+	// zero line instead of Azure's blank "no data" tile.
 	appInsightsID := appInsights.ID().ToStringOutput()
+
+	const dashboardAPIRequestsByStatusQuery = `requests | where customDimensions['deployment.environment'] == 'prod' | where isnotempty(customDimensions['http.response.status_code']) | extend class = strcat(substring(tostring(customDimensions['http.response.status_code']), 0, 1), 'xx') | summarize Value=toreal(count()) by timestamp=bin(timestamp, 1h), class | render timechart`
+	const dashboardAPI5xxQuery = `let data = requests | where customDimensions['deployment.environment'] == 'prod' | where toint(customDimensions['http.response.status_code']) >= 500 | summarize Value=toreal(count()) by timestamp=bin(timestamp, 1h); union data, (datatable(timestamp:datetime, Value:real)[]) | render timechart`
+	const dashboardAPILatencyP95Query = `requests | where customDimensions['deployment.environment'] == 'prod' | summarize Value=percentile(duration, 95) by timestamp=bin(timestamp, 1h) | render timechart`
+	const dashboardUserActionsQuery = `requests | where customDimensions['deployment.environment'] == 'prod' | extend action = case(name == 'POST /v1/me', 'Sign-ins', name == 'POST /v1/me/watch-zones', 'Zones created', name startswith 'GET /v1/applications/near', 'Searches', '') | where action != '' | summarize Value=toreal(count()) by timestamp=bin(timestamp, 1h), action | render timechart`
+	const dashboardDependencyFailuresQuery = `let data = dependencies | where customDimensions['deployment.environment'] == 'prod' | where success == false and target != 'PlanIt search' | summarize Value=toreal(count()) by timestamp=bin(timestamp, 1h), target; union data, (datatable(timestamp:datetime, Value:real, target:string)[]) | render timechart`
+	const dashboardApplicationsIngestedQuery = `dependencies | where customDimensions['deployment.environment'] == 'prod' | where name == 'Polling Cycle (SB)' | summarize Value=sum(todouble(customDimensions['polling.applications_ingested'])) by timestamp=bin(timestamp, 1h) | render timechart`
+	const dashboardAuthoritiesPolledVsErrorsQuery = `union (dependencies | where customDimensions['deployment.environment'] == 'prod' | where name == 'Polling Cycle (SB)' | summarize Value=sum(todouble(customDimensions['polling.authorities_polled'])) by timestamp=bin(timestamp, 1h), series='Polled'), (dependencies | where customDimensions['deployment.environment'] == 'prod' | where name == 'Polling Cycle (SB)' | summarize Value=sum(todouble(customDimensions['polling.authority_errors'])) by timestamp=bin(timestamp, 1h), series='Errors') | render timechart`
+	const dashboardPollingCyclesByOutcomeQuery = `dependencies | where customDimensions['deployment.environment'] == 'prod' | where name == 'Polling Cycle (SB)' | summarize Value=toreal(count()) by timestamp=bin(timestamp, 1h), outcome=iff(success == true, 'Success', 'Failure') | render timechart`
+	const dashboardPlanItCallsQuery = `dependencies | where customDimensions['deployment.environment'] == 'prod' | where target == 'PlanIt search' | summarize Value=toreal(count()) by timestamp=bin(timestamp, 1h) | render timechart`
+	const dashboardPlanIt429sQuery = `let data = dependencies | where customDimensions['deployment.environment'] == 'prod' | where target == 'PlanIt search' | where tostring(customDimensions['http.response.status_code']) == '429' | summarize Value=toreal(count()) by timestamp=bin(timestamp, 1h); union data, (datatable(timestamp:datetime, Value:real)[]) | render timechart`
+	const dashboardPlanItErrorsQuery = `let data = dependencies | where customDimensions['deployment.environment'] == 'prod' | where target == 'PlanIt search' and success == false | extend status = tostring(customDimensions['http.response.status_code']) | where status != '429' | summarize Value=toreal(count()) by timestamp=bin(timestamp, 1h), status; union data, (datatable(timestamp:datetime, Value:real, status:string)[]) | render timechart`
+	const dashboardEmailsSentVsFailedQuery = `let data = dependencies | where customDimensions['deployment.environment'] == 'prod' | where target == 'ACS email send' | summarize Value=toreal(count()) by timestamp=bin(timestamp, 1h), outcome=iff(success == true, 'Sent', 'Failed'); union data, (datatable(timestamp:datetime, Value:real, outcome:string)[]) | render timechart`
+	const dashboardAPNsPushesQuery = `let data = dependencies | where customDimensions['deployment.environment'] == 'prod' | where target == 'APNs push' | summarize Value=toreal(count()) by timestamp=bin(timestamp, 1h), outcome=iff(success == true, 'Sent', 'Failed'); union data, (datatable(timestamp:datetime, Value:real, outcome:string)[]) | render timechart`
+
 	_, err = portal.NewDashboard(ctx, "dash-towncrier-operational", &portal.DashboardArgs{
 		DashboardName:     pulumi.String("dash-towncrier-operational"),
 		ResourceGroupName: resourceGroup.Name,
@@ -1008,32 +1034,25 @@ expected
 				&portal.DashboardLensArgs{
 					Order: pulumi.Int(0),
 					Parts: portal.DashboardPartsArray{
-						// Row 1: Users & Engagement
-						dashboardPart(0, 0, 4, 4, kqlTile(appInsightsID,
-							"let data = requests | where name == 'GET /v1/me' | summarize Value=dcount(user_AuthenticatedId) by timestamp=bin(timestamp, 1h); let empty = datatable(timestamp:datetime, Value:long)[]; union data, empty | render timechart",
-							"Active Users")),
-						dashboardPart(4, 0, 4, 4, metricTile(appInsightsID, "towncrier.users.registered", "Registrations")),
-						dashboardPart(8, 0, 4, 4, metricTile(appInsightsID, "towncrier.search.performed", "Searches")),
-						// Row 2: Watch Zones & Notifications
-						dashboardPart(0, 4, 4, 4, metricTile(appInsightsID, "towncrier.watchzones.created", "Watch Zones Created")),
-						dashboardPart(4, 4, 4, 4, metricTile(appInsightsID, "towncrier.watchzones.deleted", "Watch Zones Deleted")),
-						dashboardPart(8, 4, 4, 4, metricTile(appInsightsID, "towncrier.notifications.sent", "Notifications Sent")),
-						// Row 3: Sync & Infrastructure Health
-						dashboardPart(0, 8, 4, 4, metricChartTile(appInsightsID, "Sync Success vs Failure",
-							metricSpec{name: "towncrier.polling.authorities_polled", label: "Successes"},
-							metricSpec{name: "towncrier.polling.failures", label: "Failures"})),
-						dashboardPart(4, 8, 4, 4, metricTile(appInsightsID, "towncrier.polling.applications_ingested", "Applications Ingested")),
-						dashboardPart(8, 8, 4, 4, metricTile(appInsightsID, "towncrier.api.errors", "API Errors")),
-						// Row 4: PlanIt API Health
-						dashboardPart(0, 12, 6, 4, kqlTile(appInsightsID,
-							"customMetrics | where name == 'towncrier.planit.http_errors' | extend status = tostring(customDimensions['http.response.status_code']) | where status == '429' | summarize Value=sum(value) by timestamp=bin(timestamp, 1h) | render timechart",
-							"PlanIt 429s")),
-						dashboardPart(6, 12, 6, 4, kqlTile(appInsightsID,
-							"customMetrics | where name == 'towncrier.planit.http_errors' | extend status = tostring(customDimensions['http.response.status_code']) | where status != '429' | summarize Value=sum(value) by timestamp=bin(timestamp, 1h), status | render timechart",
-							"PlanIt Errors")),
-						// Row 5: Email
-						dashboardPart(0, 16, 6, 4, metricTile(appInsightsID, "towncrier.emails.sent", "Emails Sent")),
-						dashboardPart(6, 16, 6, 4, metricTile(appInsightsID, "towncrier.emails.failed", "Email Failures")),
+						// Row 1 (y=0): at a glance.
+						dashboardPart(0, 0, 4, 4, availabilityMetricTile(appInsightsID, "Availability %")),
+						dashboardPart(4, 0, 4, 4, kqlTile(appInsightsID, dashboardAPIRequestsByStatusQuery, "API Requests by Status Class", "class")),
+						dashboardPart(8, 0, 4, 4, kqlTile(appInsightsID, dashboardAPI5xxQuery, "API 5xx Errors", "")),
+						// Row 2 (y=4): API.
+						dashboardPart(0, 4, 4, 4, kqlTile(appInsightsID, dashboardAPILatencyP95Query, "API Latency p95 (ms)", "")),
+						dashboardPart(4, 4, 4, 4, kqlTile(appInsightsID, dashboardUserActionsQuery, "User Actions", "action")),
+						dashboardPart(8, 4, 4, 4, kqlTile(appInsightsID, dashboardDependencyFailuresQuery, "Dependency Failures (non-PlanIt)", "target")),
+						// Row 3 (y=8): polling pipeline.
+						dashboardPart(0, 8, 4, 4, kqlTile(appInsightsID, dashboardApplicationsIngestedQuery, "Applications Ingested", "")),
+						dashboardPart(4, 8, 4, 4, kqlTile(appInsightsID, dashboardAuthoritiesPolledVsErrorsQuery, "Authorities Polled vs Errors", "series")),
+						dashboardPart(8, 8, 4, 4, kqlTile(appInsightsID, dashboardPollingCyclesByOutcomeQuery, "Polling Cycles by Outcome", "outcome")),
+						// Row 4 (y=12): PlanIt upstream.
+						dashboardPart(0, 12, 4, 4, kqlTile(appInsightsID, dashboardPlanItCallsQuery, "PlanIt Calls", "")),
+						dashboardPart(4, 12, 4, 4, kqlTile(appInsightsID, dashboardPlanIt429sQuery, "PlanIt 429s", "")),
+						dashboardPart(8, 12, 4, 4, kqlTile(appInsightsID, dashboardPlanItErrorsQuery, "PlanIt Errors (non-429)", "status")),
+						// Row 5 (y=16): notifications.
+						dashboardPart(0, 16, 6, 4, kqlTile(appInsightsID, dashboardEmailsSentVsFailedQuery, "Emails Sent vs Failed", "outcome")),
+						dashboardPart(6, 16, 6, 4, kqlTile(appInsightsID, dashboardAPNsPushesQuery, "APNs Pushes", "outcome")),
 					},
 				},
 			},
@@ -1091,31 +1110,26 @@ func dashboardPart(x, y, colSpan, rowSpan int, metadata portal.DashboardPartMeta
 	}
 }
 
-// metricSpec is one App Insights custom metric series within a chart tile.
-type metricSpec struct {
-	name  string // custom metric name, e.g. "towncrier.users.registered"
-	label string // series display name shown in the chart legend
-}
-
-// metricChartTile renders one or more App Insights custom metrics as a MonitorChartPart.
-func metricChartTile(appInsightsID pulumi.StringOutput, title string, metrics ...metricSpec) portal.DashboardPartMetadataArgs {
-	series := make(pulumi.Array, len(metrics))
-	for i, m := range metrics {
-		series[i] = pulumi.Map{
-			"resourceMetadata":    pulumi.Map{"id": appInsightsID},
-			"name":                pulumi.String(m.name),
-			"aggregationType":     pulumi.Int(1),
-			"namespace":           pulumi.String("azure.applicationinsights"),
-			"metricVisualization": pulumi.Map{"displayName": pulumi.String(m.label)},
-		}
-	}
+// availabilityMetricTile renders the Application Insights standard availabilityPercentage
+// metric — a platform metric under the microsoft.insights/components namespace, not a
+// customMetrics/AppMetrics series (Go emits no custom metrics; see the Operational Dashboard
+// comment above) — as a MonitorChartPart.
+func availabilityMetricTile(appInsightsID pulumi.StringOutput, title string) portal.DashboardPartMetadataArgs {
 	return portal.DashboardPartMetadataArgs{
 		Type: pulumi.String("Extension/HubsExtension/PartType/MonitorChartPart"),
 		Settings: pulumi.Map{
 			"content": pulumi.Map{
 				"options": pulumi.Map{
 					"chart": pulumi.Map{
-						"metrics":       series,
+						"metrics": pulumi.Array{
+							pulumi.Map{
+								"resourceMetadata":    pulumi.Map{"id": appInsightsID},
+								"name":                pulumi.String("availabilityResults/availabilityPercentage"),
+								"aggregationType":     pulumi.Int(4), // Average
+								"namespace":           pulumi.String("microsoft.insights/components"),
+								"metricVisualization": pulumi.Map{"displayName": pulumi.String(title)},
+							},
+						},
 						"title":         pulumi.String(title),
 						"titleKind":     pulumi.Int(1),
 						"visualization": pulumi.Map{"chartType": pulumi.Int(2)},
@@ -1129,13 +1143,10 @@ func metricChartTile(appInsightsID pulumi.StringOutput, title string, metrics ..
 	}
 }
 
-// metricTile renders a single custom metric whose series label matches the chart title.
-func metricTile(appInsightsID pulumi.StringOutput, metricName, title string) portal.DashboardPartMetadataArgs {
-	return metricChartTile(appInsightsID, title, metricSpec{name: metricName, label: title})
-}
-
 // kqlTile renders an Analytics (KQL query) dashboard part bound to the App Insights component.
-func kqlTile(appInsightsID pulumi.StringOutput, query, title string) portal.DashboardPartMetadataArgs {
+// splitBy optionally names a string dimension column (e.g. "class", "outcome") the chart should
+// split its series by; pass "" to render a single series.
+func kqlTile(appInsightsID pulumi.StringOutput, query, title, splitBy string) portal.DashboardPartMetadataArgs {
 	componentID := appInsightsID.ApplyT(func(id string) map[string]interface{} {
 		segments := strings.Split(id, "/")
 		return map[string]interface{}{
@@ -1146,6 +1157,27 @@ func kqlTile(appInsightsID pulumi.StringOutput, query, title string) portal.Dash
 		}
 	})
 
+	dimensions := pulumi.Map{
+		"xAxis": pulumi.Map{
+			"name": pulumi.String("timestamp"),
+			"type": pulumi.String("datetime"),
+		},
+		"yAxis": pulumi.Array{
+			pulumi.Map{
+				"name": pulumi.String("Value"),
+				"type": pulumi.String("real"),
+			},
+		},
+	}
+	if splitBy != "" {
+		dimensions["splitBy"] = pulumi.Array{
+			pulumi.Map{
+				"name": pulumi.String(splitBy),
+				"type": pulumi.String("string"),
+			},
+		}
+	}
+
 	return portal.DashboardPartMetadataArgs{
 		Type: pulumi.String("Extension/AppInsightsExtension/PartType/AnalyticsPart"),
 		Settings: pulumi.Map{
@@ -1155,18 +1187,7 @@ func kqlTile(appInsightsID pulumi.StringOutput, query, title string) portal.Dash
 				"SpecificChart":           pulumi.String("Line"),
 				"PartTitle":               pulumi.String(title),
 				"IsQueryContainTimeRange": pulumi.Bool(false),
-				"Dimensions": pulumi.Map{
-					"xAxis": pulumi.Map{
-						"name": pulumi.String("timestamp"),
-						"type": pulumi.String("datetime"),
-					},
-					"yAxis": pulumi.Array{
-						pulumi.Map{
-							"name": pulumi.String("Value"),
-							"type": pulumi.String("long"),
-						},
-					},
-				},
+				"Dimensions":              dimensions,
 			},
 		},
 		Inputs: pulumi.Array{
