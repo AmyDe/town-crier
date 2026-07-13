@@ -101,11 +101,13 @@ func (f *fakeDevices) Delete(_ context.Context, _ string, token string) error {
 
 type spyEmail struct {
 	sent    []acsemail.Message
-	sendErr error // returned (after recording the attempt) when set
+	kinds   []string // email.kind passed on each Send call, in order
+	sendErr error    // returned (after recording the attempt) when set
 }
 
-func (s *spyEmail) Send(_ context.Context, msg acsemail.Message) error {
+func (s *spyEmail) Send(_ context.Context, kind string, msg acsemail.Message) error {
 	s.sent = append(s.sent, msg)
+	s.kinds = append(s.kinds, kind)
 	return s.sendErr
 }
 
@@ -192,11 +194,11 @@ func zoneNotif(uid, zoneID string) notifications.DigestNotification {
 // spy (the platform the pre-existing weekly tests exercise). The Android sender
 // is a throwaway spy those tests never reach; tests needing the FCM path build
 // their own fakeDispatcher via newHandlerWithDispatcher.
-func newHandler(p *fakeProfiles, n *fakeNotifications, z *fakeZones, st *fakeState, d *fakeDevices, email acsemail.EmailSender, push *spyPush) *Handler {
+func newHandler(p *fakeProfiles, n *fakeNotifications, z *fakeZones, st *fakeState, d *fakeDevices, email emailSender, push *spyPush) *Handler {
 	return newHandlerWithDispatcher(p, n, z, st, d, email, &fakeDispatcher{ios: push, android: &spyPush{}})
 }
 
-func newHandlerWithDispatcher(p *fakeProfiles, n *fakeNotifications, z *fakeZones, st *fakeState, d *fakeDevices, email acsemail.EmailSender, dispatcher pushDispatcher) *Handler {
+func newHandlerWithDispatcher(p *fakeProfiles, n *fakeNotifications, z *fakeZones, st *fakeState, d *fakeDevices, email emailSender, dispatcher pushDispatcher) *Handler {
 	return NewHandler(p, n, z, st, d, email, dispatcher, testLogger(), func() time.Time {
 		// Pin "now" to a Wednesday so weekly tests select the Wednesday digest day.
 		return time.Date(2026, 2, 4, 9, 0, 0, 0, time.UTC) // 2026-02-04 is a Wednesday
@@ -243,6 +245,10 @@ func TestRunWeekly_EmailGroupsByZoneAndSavedSection(t *testing.T) {
 	}
 	if !contains(msg.HTMLBody, "addr uid-A") || !contains(msg.HTMLBody, "addr uid-B") {
 		t.Errorf("body missing notification addresses:\n%s", msg.HTMLBody)
+	}
+	// The weekly cycle must tag its "Email send" span digest-weekly (tc-3jx8d).
+	if len(email.kinds) != 1 || email.kinds[0] != "digest-weekly" {
+		t.Errorf("email kinds: got %v, want [digest-weekly]", email.kinds)
 	}
 	// Email-only profile: no push.
 	if push.calls != 0 {
@@ -418,6 +424,10 @@ func TestRunHourly_PaidTierSendsAndMarksEmailSent(t *testing.T) {
 	}
 	if len(email.sent) != 1 {
 		t.Fatalf("emails sent: got %d, want 1", len(email.sent))
+	}
+	// The hourly cycle must tag its "Email send" span digest-hourly (tc-3jx8d).
+	if len(email.kinds) != 1 || email.kinds[0] != "digest-hourly" {
+		t.Errorf("email kinds: got %v, want [digest-hourly]", email.kinds)
 	}
 	// Both included notifications marked email-sent for dedup.
 	if len(fn.marked) != 2 {
