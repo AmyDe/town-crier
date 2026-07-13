@@ -378,6 +378,77 @@ func TestHandler_NoActiveAuthoritiesIsCleanEmptyCycle(t *testing.T) {
 	}
 }
 
+// TestHandler_RecordsOldestHWMAgeOnResult pins tc-3jx8d: the staleness of the
+// oldest candidate authority's high-water mark must land on the returned
+// result (not just the OTel metrics registry, which never reaches App
+// Insights) so runPollSB can stamp it on the "Polling Cycle (SB)" span.
+func TestHandler_RecordsOldestHWMAgeOnResult(t *testing.T) {
+	t.Parallel()
+	pi := newFakePlanIt()
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	// newHandler pins the clock to 2026-06-14T12:00:00Z; four days earlier.
+	lastPoll := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
+	state.states[99] = PollState{LastPollTime: lastPoll}
+	h := newHandler(t, pi, apps, state, fakeAuthorities{ids: []int{99}}, CycleSeed, defaultHandlerOpts())
+
+	res, err := h.Handle(context.Background())
+	if err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+
+	if res.OldestHWMAgeSeconds == nil {
+		t.Fatal("expected OldestHWMAgeSeconds to be set")
+	}
+	wantAge := 4 * 24 * time.Hour
+	if *res.OldestHWMAgeSeconds != wantAge.Seconds() {
+		t.Errorf("OldestHWMAgeSeconds: got %v, want %v", *res.OldestHWMAgeSeconds, wantAge.Seconds())
+	}
+	if res.OldestHWMNeverPolled {
+		t.Error("OldestHWMNeverPolled: got true, want false (authority has a PollState)")
+	}
+}
+
+// TestHandler_RecordsOldestHWMNeverPolledOnResult covers the never-polled
+// candidate: no PollState means the age is measured from the Unix epoch and
+// the result must flag never_polled so dashboards can distinguish it from a
+// genuinely stale high-water mark.
+func TestHandler_RecordsOldestHWMNeverPolledOnResult(t *testing.T) {
+	t.Parallel()
+	pi := newFakePlanIt()
+	apps := newFakeApps()
+	state := newFakeStateStore() // no PollState for authority 99
+	h := newHandler(t, pi, apps, state, fakeAuthorities{ids: []int{99}}, CycleSeed, defaultHandlerOpts())
+
+	res, err := h.Handle(context.Background())
+	if err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+
+	if res.OldestHWMAgeSeconds == nil {
+		t.Fatal("expected OldestHWMAgeSeconds to be set even when never polled")
+	}
+	if !res.OldestHWMNeverPolled {
+		t.Error("OldestHWMNeverPolled: got false, want true (no PollState)")
+	}
+}
+
+// TestHandler_OmitsOldestHWMWhenNoActiveAuthorities covers the empty
+// candidate set: nothing to report, so the field stays nil rather than
+// reporting a misleading zero.
+func TestHandler_OmitsOldestHWMWhenNoActiveAuthorities(t *testing.T) {
+	t.Parallel()
+	h := newHandler(t, newFakePlanIt(), newFakeApps(), newFakeStateStore(), fakeAuthorities{ids: []int{}}, CycleWatched, defaultHandlerOpts())
+
+	res, err := h.Handle(context.Background())
+	if err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if res.OldestHWMAgeSeconds != nil {
+		t.Errorf("OldestHWMAgeSeconds: got %v, want nil for an empty candidate set", *res.OldestHWMAgeSeconds)
+	}
+}
+
 func TestHandler_CancelledContextTerminatesTimeBounded(t *testing.T) {
 	t.Parallel()
 	pi := newFakePlanIt()
