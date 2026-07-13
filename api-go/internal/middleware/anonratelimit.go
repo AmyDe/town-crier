@@ -44,11 +44,25 @@ var healthCheckPaths = map[string]struct{}{
 // on a throttled one it returns 429 with those headers (Remaining 0) plus
 // Retry-After — the same response contract as the per-subject RateLimit.
 //
+// exempt is an additional per-request bypass alongside the health-check paths
+// above, evaluated only for otherwise-anonymous requests: when it returns
+// true the request passes straight through untouched, exactly like
+// authenticated traffic. nil means no additional exemption. The motivating
+// case (GH#872 collateral, tc-zod82) is the build-time SEO endpoints
+// (GET /v1/authorities/{id}/applications, GET /v1/applications/near): they
+// authenticate via the X-Build-Key header checked inside the handler
+// (applications.requireBuildKey), not via Auth0, so auth.Subject is always
+// empty for them and the CI seo-refresh job's ~418 sequential requests from
+// one runner IP were being metered as anonymous and 429ing. Callers build the
+// predicate from applications.BuildKeyMatches (cmd/api/wiring.go) rather than
+// this package importing internal/applications directly, keeping middleware
+// dependency-free.
+//
 // The client IP itself is never logged, stored, or exported anywhere beyond
 // this in-memory accounting: only the numeric limit/retry values are recorded
 // on a throttle, honouring the clientip package's "in-memory, non-persisted
 // purpose only" constraint.
-func AnonRateLimit(store *anonRateLimitStore, limit int, logger *slog.Logger) func(http.Handler) http.Handler {
+func AnonRateLimit(store *anonRateLimitStore, limit int, exempt func(*http.Request) bool, logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if auth.Subject(r.Context()) != "" {
@@ -56,6 +70,10 @@ func AnonRateLimit(store *anonRateLimitStore, limit int, logger *slog.Logger) fu
 				return
 			}
 			if _, ok := healthCheckPaths[r.URL.Path]; ok {
+				next.ServeHTTP(w, r)
+				return
+			}
+			if exempt != nil && exempt(r) {
 				next.ServeHTTP(w, r)
 				return
 			}

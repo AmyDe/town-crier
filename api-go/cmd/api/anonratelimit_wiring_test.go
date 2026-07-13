@@ -109,3 +109,75 @@ func TestRouter_AnonRateLimitDoesNotThrottleAuthenticatedTraffic(t *testing.T) {
 		t.Fatalf("authenticated request throttled by the anonymous limiter: got %d", rec.Code)
 	}
 }
+
+// TestRouter_AnonRateLimitExemptsValidBuildKeyRequests is the wiring-level
+// acceptance test for the SEO-refresh 429 fix (GH#872 collateral, tc-zod82):
+// wired end to end (not just unit tested against middleware.AnonRateLimit in
+// isolation), a request bearing the correct X-Build-Key on a real
+// build-key-gated route passes even after the tiny anonymous budget has been
+// exhausted by other (keyless) callers sharing its IP.
+func TestRouter_AnonRateLimitExemptsValidBuildKeyRequests(t *testing.T) {
+	t.Parallel()
+
+	const buildKey = "s3cret-build-key"
+	logger := slog.New(slog.DiscardHandler)
+	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, fakeAppStore{}, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", buildKey, nil, nil, "", nil, nil, nil, 1, 60, logger)
+
+	const sameIP = "203.0.113.93:1"
+
+	// Exhaust the tiny anonymous budget with a keyless request on the same IP.
+	exhaust := anonRateLimitRequest(t, h, "/v1/version-config", sameIP)
+	if exhaust.Code != http.StatusOK {
+		t.Fatalf("setup: budget-consuming request got %d, want 200", exhaust.Code)
+	}
+	exhausted := anonRateLimitRequest(t, h, "/v1/version-config", sameIP)
+	if exhausted.Code != http.StatusTooManyRequests {
+		t.Fatalf("setup: expected budget exhausted, got %d", exhausted.Code)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	t.Cleanup(cancel)
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/v1/authorities/471/applications", nil)
+	req.RemoteAddr = sameIP
+	req.Header.Set("X-Build-Key", buildKey)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("valid build-key request: got %d, want 200 (exempt from the exhausted anonymous budget)", rec.Code)
+	}
+}
+
+// TestRouter_AnonRateLimitDoesNotExemptWrongOrMissingBuildKey confirms the
+// exemption above is narrowly scoped: wired end to end, a request to the same
+// build-key-gated route with a wrong (or absent) key is metered exactly like
+// any other anonymous request, not just rejected by requireBuildKey after
+// already burning budget for free.
+func TestRouter_AnonRateLimitDoesNotExemptWrongOrMissingBuildKey(t *testing.T) {
+	t.Parallel()
+
+	const buildKey = "s3cret-build-key"
+	logger := slog.New(slog.DiscardHandler)
+	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, fakeAppStore{}, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", buildKey, nil, nil, "", nil, nil, nil, 1, 60, logger)
+
+	const sameIP = "203.0.113.94:1"
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	t.Cleanup(cancel)
+
+	firstReq := httptest.NewRequestWithContext(ctx, http.MethodGet, "/v1/authorities/471/applications", nil)
+	firstReq.RemoteAddr = sameIP
+	firstReq.Header.Set("X-Build-Key", "wrong-key")
+	first := httptest.NewRecorder()
+	h.ServeHTTP(first, firstReq)
+	if first.Code != http.StatusUnauthorized {
+		t.Fatalf("first (wrong-key) request: got %d, want 401", first.Code)
+	}
+
+	// The wrong-key request above still consumed the size-1 anonymous budget,
+	// so a second request from the same IP — even to an unrelated anonymous
+	// route — is throttled.
+	second := anonRateLimitRequest(t, h, "/v1/version-config", sameIP)
+	if second.Code != http.StatusTooManyRequests {
+		t.Fatalf("second request (unrelated route, same IP): got %d, want 429 (wrong key consumed budget)", second.Code)
+	}
+}
