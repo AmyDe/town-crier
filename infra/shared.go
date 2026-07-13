@@ -1069,20 +1069,30 @@ expected
 	// `auth=<authority id>` and `different_start=<HWM date>` query params, from which this
 	// derives each authority's current high-water mark and how long ago it was last polled — one
 	// row per authority (arg_max de-dupes to the latest url.full seen per AuthorityID within the
-	// last 7 days), oldest HWM first.
+	// last 30 days), oldest HWM first.
 	//
-	// Only Watched-cycle polls count (tc-28k74): the grid is operational, so it lists just the
-	// authorities users actually watch, not the full 485-authority Seed backfill sweep — Seed
-	// rows are dominated by defunct/quiet authorities whose months-old HWMs are noise, never
-	// action items. A poll's cycle type isn't stamped on any span, so the `watched` prefix
-	// classifies each cycle by its ROOT span's start minute — minute%30 < 15 → Watched —
-	// mirroring polling.MinuteCycleSelector (api-go/internal/polling/authorities.go); child
-	// PlanIt spans join to their root on operation_Id, so classification is exact per cycle
-	// with no boundary bleed from cycles that straddle the 15-minute switch. If the selector's
-	// schedule ever changes, this filter must change with it. Validated live against
-	// appi-town-crier-shared on 2026-07-13: 17 watched authorities, vs 39 rows unfiltered with
-	// five ~2000h-old defunct-authority rows (Bromsgrove, Eden, Wellingborough, ...) on top.
-	const dashboardPollHWMByAuthorityQueryBody = `let watched = dependencies | where timestamp > ago(7d) | where customDimensions['deployment.environment'] == 'prod' | where name == 'Polling Cycle (SB)' | where datetime_part('minute', timestamp) % 30 < 15 | project operation_Id; dependencies | where timestamp > ago(7d) | where customDimensions['deployment.environment'] == 'prod' | where target == 'PlanIt search' | join kind=inner watched on operation_Id | extend url = tostring(customDimensions['url.full']) | extend AuthorityID = toint(extract('auth=([0-9]+)', 1, url)) | where isnotnull(AuthorityID) | summarize arg_max(timestamp, url) by AuthorityID | extend HWM = todatetime(extract('different_start=([0-9-]+)', 1, url)) | lookup kind=leftouter names on AuthorityID | project Authority = coalesce(Authority, tostring(AuthorityID)), ['HWM Date'] = format_datetime(HWM, 'yyyy-MM-dd'), ['HWM Age (h)'] = round((now() - HWM) / 1h, 1), ['Last Polled (h ago)'] = round((now() - timestamp) / 1h, 1) | order by ['HWM Age (h)'] desc`
+	// The grid covers the FULL pollable set — both Watched-cycle and Seed-backfill polls
+	// (tc-f2c4m; Seed keeps the whole dataset current so new users see a populated map, and its
+	// lag matters operationally) — minus dead PlanIt feeds: an authority whose HWM is >60 days
+	// old DESPITE being polled within the last 7 days is one PlanIt itself reports nothing new
+	// for (abolished districts like Eden/Wellingborough pinned at the April backfill start, and
+	// long-broken upstream scrapers). Both conditions must hold before a row is hidden: an
+	// ancient HWM with NO recent poll is our own starvation and must stay visible. The filter is
+	// behavioural, not a curated list — areaType can't express it (Broadland/Bromsgrove are
+	// live 'English District' entries with dead feeds) — and self-heals: a revived feed's first
+	// changed application advances its HWM and the row reappears.
+	//
+	// The Watched column marks authorities polled by a Watched cycle in the last 48h (~the
+	// current watch-zone set; a wider window would accumulate zone churn). Cycle type isn't
+	// stamped on any span, so the `watched` prefix classifies each cycle by its ROOT span's
+	// start minute — minute%30 < 15 → Watched — mirroring polling.MinuteCycleSelector
+	// (api-go/internal/polling/authorities.go); child PlanIt spans join to their root on
+	// operation_Id, so classification is exact per cycle with no boundary bleed. If the
+	// selector's schedule ever changes, this filter must change with it. Validated live against
+	// appi-town-crier-shared on 2026-07-13 (with --offset 30d — the az CLI default offset of 1h
+	// silently clips results regardless of the query's own ago() filter): 416 rows of the 461
+	// pollable authorities, 45 dead feeds hidden, 17 flagged Watched.
+	const dashboardPollHWMByAuthorityQueryBody = `let watched = dependencies | where timestamp > ago(48h) | where customDimensions['deployment.environment'] == 'prod' | where name == 'Polling Cycle (SB)' | where datetime_part('minute', timestamp) % 30 < 15 | distinct operation_Id; dependencies | where timestamp > ago(30d) | where customDimensions['deployment.environment'] == 'prod' | where target == 'PlanIt search' | extend url = tostring(customDimensions['url.full']) | extend AuthorityID = toint(extract('auth=([0-9]+)', 1, url)) | where isnotnull(AuthorityID) | join kind=leftouter watched on operation_Id | extend w = iff(isnotempty(operation_Id1), 1, 0) | summarize arg_max(timestamp, url), WatchedN=max(w) by AuthorityID | extend HWM = todatetime(extract('different_start=([0-9-]+)', 1, url)) | extend HWMAgeD = round((now() - HWM) / 1d, 1), LastPolledH = round((now() - timestamp) / 1h, 1) | where not(HWMAgeD > 60 and LastPolledH < 168) | lookup kind=leftouter names on AuthorityID | project Authority = coalesce(Authority, tostring(AuthorityID)), Watched = iff(WatchedN == 1, '✓', ''), ['HWM Date'] = format_datetime(HWM, 'yyyy-MM-dd'), ['HWM Age (d)'] = HWMAgeD, ['Last Polled (h)'] = LastPolledH | order by ['HWM Age (d)'] desc`
 
 	// The names lookup is generated from api-go/internal/authorities/resources/authorities.json
 	// rather than hand-maintained, so it never drifts from the authority dataset the API itself
