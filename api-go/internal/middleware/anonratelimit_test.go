@@ -36,7 +36,7 @@ func TestAnonRateLimit_AllowedRequestSetsHeaders(t *testing.T) {
 
 	clock := &fixedClock{t: time.Unix(2000, 0)}
 	store := newAnonRateLimitStore(clock.now, time.Minute)
-	mw := AnonRateLimit(store, 60, slogDiscard())
+	mw := AnonRateLimit(store, 60, nil, slogDiscard())
 
 	rec := httptest.NewRecorder()
 	mw(okHandler()).ServeHTTP(rec, anonRequest("203.0.113.10:51000"))
@@ -57,7 +57,7 @@ func TestAnonRateLimit_RequestsBelowLimitAreUnaffected(t *testing.T) {
 
 	clock := &fixedClock{t: time.Unix(2000, 0)}
 	store := newAnonRateLimitStore(clock.now, time.Minute)
-	mw := AnonRateLimit(store, 5, slogDiscard())
+	mw := AnonRateLimit(store, 5, nil, slogDiscard())
 	h := mw(okHandler())
 
 	for i := range 5 {
@@ -74,7 +74,7 @@ func TestAnonRateLimit_ExceededReturns429WithHeaders(t *testing.T) {
 
 	clock := &fixedClock{t: time.Unix(2000, 0)}
 	store := newAnonRateLimitStore(clock.now, time.Minute)
-	mw := AnonRateLimit(store, 60, slogDiscard())
+	mw := AnonRateLimit(store, 60, nil, slogDiscard())
 	h := mw(okHandler())
 
 	for i := range 60 {
@@ -110,7 +110,7 @@ func TestAnonRateLimit_AuthenticatedRequestPassesThrough(t *testing.T) {
 
 	clock := &fixedClock{t: time.Unix(2000, 0)}
 	store := newAnonRateLimitStore(clock.now, time.Minute)
-	mw := AnonRateLimit(store, 1, slogDiscard())
+	mw := AnonRateLimit(store, 1, nil, slogDiscard())
 	h := mw(okHandler())
 
 	for i := range 5 {
@@ -136,12 +136,88 @@ func TestAnonRateLimit_AuthenticatedRequestPassesThrough(t *testing.T) {
 	}
 }
 
+// TestAnonRateLimit_ExemptPredicatePassesThroughUnmetered is the acceptance
+// test for the build-key exemption (GH#872 collateral, tc-zod82): a request
+// the exempt predicate recognises must pass straight through even when the
+// per-IP budget is exhausted, with no X-RateLimit headers set and no budget
+// consumed — exactly like authenticated (Auth0-subject) traffic above.
+func TestAnonRateLimit_ExemptPredicatePassesThroughUnmetered(t *testing.T) {
+	t.Parallel()
+
+	clock := &fixedClock{t: time.Unix(2000, 0)}
+	store := newAnonRateLimitStore(clock.now, time.Minute)
+	exempt := func(r *http.Request) bool { return r.Header.Get("X-Build-Key") == "s3cret" }
+	mw := AnonRateLimit(store, 1, exempt, slogDiscard())
+	h := mw(okHandler())
+
+	exemptRequest := func() *http.Request {
+		r := anonRequest("203.0.113.70:51000")
+		r.Header.Set("X-Build-Key", "s3cret")
+		return r
+	}
+
+	for i := range 5 {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, exemptRequest())
+		if rec.Code != http.StatusOK {
+			t.Fatalf("exempt request %d: got %d, want 200", i, rec.Code)
+		}
+		if got := rec.Header().Get("X-RateLimit-Limit"); got != "" {
+			t.Errorf("exempt request %d: got rate-limit header %q, want none", i, got)
+		}
+	}
+
+	// The same IP, now making its first genuinely anonymous (keyless) request,
+	// still has its full budget — proving the exempt loop above never touched
+	// the IP's counter.
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, anonRequest("203.0.113.70:51000"))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("first anonymous (keyless) request on the IP: got %d, want 200", rec.Code)
+	}
+}
+
+// TestAnonRateLimit_ExemptPredicateFalseIsMeteredNormally confirms the
+// exemption is opt-in per request: traffic the predicate does not recognise
+// (wrong or absent build key) is metered exactly as it was before the
+// predicate existed.
+func TestAnonRateLimit_ExemptPredicateFalseIsMeteredNormally(t *testing.T) {
+	t.Parallel()
+
+	clock := &fixedClock{t: time.Unix(2000, 0)}
+	store := newAnonRateLimitStore(clock.now, time.Minute)
+	exempt := func(r *http.Request) bool { return r.Header.Get("X-Build-Key") == "s3cret" }
+	mw := AnonRateLimit(store, 1, exempt, slogDiscard())
+	h := mw(okHandler())
+
+	first := httptest.NewRecorder()
+	h.ServeHTTP(first, anonRequest("203.0.113.71:51000"))
+	if first.Code != http.StatusOK {
+		t.Fatalf("first (keyless) request: got %d, want 200", first.Code)
+	}
+
+	second := httptest.NewRecorder()
+	h.ServeHTTP(second, anonRequest("203.0.113.71:51000"))
+	if second.Code != http.StatusTooManyRequests {
+		t.Fatalf("second (keyless) request: got %d, want 429 (metered normally)", second.Code)
+	}
+
+	// A wrong key does not exempt either.
+	wrongKey := anonRequest("203.0.113.71:51000")
+	wrongKey.Header.Set("X-Build-Key", "wrong")
+	third := httptest.NewRecorder()
+	h.ServeHTTP(third, wrongKey)
+	if third.Code != http.StatusTooManyRequests {
+		t.Fatalf("wrong-key request: got %d, want 429 (metered normally)", third.Code)
+	}
+}
+
 func TestAnonRateLimit_DifferentIPsHaveIndependentBudgets(t *testing.T) {
 	t.Parallel()
 
 	clock := &fixedClock{t: time.Unix(2000, 0)}
 	store := newAnonRateLimitStore(clock.now, time.Minute)
-	mw := AnonRateLimit(store, 1, slogDiscard())
+	mw := AnonRateLimit(store, 1, nil, slogDiscard())
 	h := mw(okHandler())
 
 	rec1 := httptest.NewRecorder()
@@ -175,7 +251,7 @@ func TestAnonRateLimit_UnresolvableIPsShareOneConservativeBucket(t *testing.T) {
 
 	clock := &fixedClock{t: time.Unix(2000, 0)}
 	store := newAnonRateLimitStore(clock.now, time.Minute)
-	mw := AnonRateLimit(store, 1, slogDiscard())
+	mw := AnonRateLimit(store, 1, nil, slogDiscard())
 	h := mw(okHandler())
 
 	rec1 := httptest.NewRecorder()
@@ -206,7 +282,7 @@ func TestAnonRateLimit_HealthCheckPathsExempt(t *testing.T) {
 
 	clock := &fixedClock{t: time.Unix(2000, 0)}
 	store := newAnonRateLimitStore(clock.now, time.Minute)
-	mw := AnonRateLimit(store, 1, slogDiscard())
+	mw := AnonRateLimit(store, 1, nil, slogDiscard())
 	h := mw(okHandler())
 
 	for _, path := range []string{"/health", "/v1/health"} {
@@ -228,7 +304,7 @@ func TestAnonRateLimit_WindowResets(t *testing.T) {
 
 	clock := &fixedClock{t: time.Unix(2000, 0)}
 	store := newAnonRateLimitStore(clock.now, time.Minute)
-	mw := AnonRateLimit(store, 2, slogDiscard())
+	mw := AnonRateLimit(store, 2, nil, slogDiscard())
 	h := mw(okHandler())
 
 	for range 2 {
@@ -261,7 +337,7 @@ func TestAnonRateLimit_NoClientIPInLogs(t *testing.T) {
 	spy := &logSpy{}
 	clock := &fixedClock{t: time.Unix(2000, 0)}
 	store := newAnonRateLimitStore(clock.now, time.Minute)
-	mw := AnonRateLimit(store, 1, slog.New(spy))
+	mw := AnonRateLimit(store, 1, nil, slog.New(spy))
 	h := mw(okHandler())
 
 	h.ServeHTTP(httptest.NewRecorder(), anonRequest(distinctiveIP+":51000"))
