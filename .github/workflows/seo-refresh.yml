@@ -198,6 +198,17 @@ jobs:
       - name: Load resource names
         run: cat .github/config/resource-names.env >> "$GITHUB_ENV"
 
+      # Snapshot the currently-live sitemap BEFORE the deploy below replaces it.
+      # The IndexNow step diffs the freshly built sitemap against this to submit
+      # only new/changed URLs (IndexNow spec: submit URLs whose content changed;
+      # engines deprioritise keys that resubmit identical full-site lists).
+      # Failure to capture is non-fatal: the IndexNow step then falls back to
+      # submitting the full list, which is the pre-existing behaviour.
+      - name: Capture live sitemap for IndexNow diff
+        run: |
+          curl -fsS --max-time 30 https://towncrierapp.uk/sitemap.xml -o "$RUNNER_TEMP/live-sitemap.xml" \
+            || echo "Could not capture live sitemap; IndexNow will fall back to submitting all URLs."
+
       # SPA only — empty site-build-key skips the build-time prerender.
       - uses: ./.github/actions/build-web
         with:
@@ -256,22 +267,81 @@ jobs:
           skip_app_build: true
           skip_api_build: true
 
-      # Notify Bing (IndexNow) of all live URLs so the crawl queue is skipped.
+      # Notify Bing (IndexNow) of NEW/CHANGED live URLs only (IndexNow spec:
+      # submit URLs whose content changed — resubmitting the full site daily
+      # risks the key being deprioritised). Diffs the freshly-rendered sitemap
+      # above against the live sitemap captured by "Capture live sitemap for
+      # IndexNow diff" (taken before the SWA deploy replaced it): a URL is
+      # submitted if it's new or its <lastmod> changed (the sitemap generator
+      # only bumps <lastmod> on a content change). Deleted URLs are out of
+      # scope. If there's nothing to diff against (capture failed, or the live
+      # sitemap was missing/empty), falls back to submitting the full list —
+      # the pre-existing behaviour.
+      #
       # Bing's IndexNow verifier fetches the key file from the CDN edge to
       # confirm ownership. The SWA upload above redeploys that file, and for a
       # short window afterwards the edge can serve the SPA fallback / a cold
       # cache for the key URL, so verification returns 403
       # SiteVerificationNotCompleted and the whole batch is rejected. We
       # therefore (1) wait until the edge serves the correct key contents, then
-      # (2) submit with retry-on-403 backoff. A persistent 403 means the URLs
-      # were NOT accepted, so it fails the step — it must never be silently
-      # swallowed again (that masked a total IndexNow outage for weeks).
+      # (2) submit with retry-on-403 backoff — but only when there's something
+      # to submit. A persistent 403 means the URLs were NOT accepted, so it
+      # fails the step — it must never be silently swallowed again (that
+      # masked a total IndexNow outage for weeks).
       - name: Submit sitemap URLs to IndexNow
         env:
           INDEXNOW_KEY: 1cb201daee1a485fb8cce2a68e8ee465
         run: |
           set -uo pipefail
           key_url="https://towncrierapp.uk/${INDEXNOW_KEY}.txt"
+          live_sitemap="$RUNNER_TEMP/live-sitemap.xml"
+          new_pairs_file="$RUNNER_TEMP/new-sitemap-pairs.tsv"
+          old_pairs_file="$RUNNER_TEMP/old-sitemap-pairs.tsv"
+
+          # Extract (loc, lastmod) tab-separated pairs from a sitemap.xml. A
+          # missing <lastmod> prints an empty mod field, which still compares
+          # correctly (changed/unchanged) by plain string equality below.
+          pairs() {
+            awk -F'[<>]' '
+              /<loc>/     { loc=$3 }
+              /<lastmod>/ { mod=$3 }
+              /<\/url>/   { if (loc != "") print loc "\t" mod; loc=""; mod="" }
+            ' "$1"
+          }
+
+          pairs web/dist/sitemap.xml > "$new_pairs_file" || true
+          new_count=$(wc -l < "$new_pairs_file" | tr -d ' ')
+          if [ "$new_count" -lt 1 ]; then
+            echo "No URLs parsed from web/dist/sitemap.xml — failing."
+            exit 1
+          fi
+
+          if [ -f "$live_sitemap" ]; then
+            pairs "$live_sitemap" > "$old_pairs_file" || true
+          else
+            : > "$old_pairs_file"
+          fi
+          old_count=$(wc -l < "$old_pairs_file" | tr -d ' ')
+
+          # Explicit "no usable old pairs" branch — deliberately NOT relying on
+          # awk's NR==FNR to separate old/new when the old file could be empty
+          # (NR==FNR would stay true reading the second file too, and every URL
+          # would be silently treated as "old").
+          if [ "$old_count" -lt 1 ]; then
+            echo "No live sitemap to diff against — submitting all $new_count URLs."
+            changed=$(cut -f1 "$new_pairs_file")
+          else
+            changed=$(awk -F'\t' '
+              FILENAME == ARGV[1] { old[$1] = $2; next }
+              !($1 in old) || old[$1] != $2 { print $1 }
+            ' "$old_pairs_file" "$new_pairs_file")
+          fi
+
+          changed_count=$(echo "$changed" | grep -c . || true)
+          if [ "$changed_count" -lt 1 ]; then
+            echo "No new or changed URLs since the last deploy — skipping IndexNow submission."
+            exit 0
+          fi
 
           # 1. Wait for the freshly-deployed key file to be served at the edge
           #    with the exact key contents (not the SPA fallback). Up to ~3 min.
@@ -288,13 +358,9 @@ jobs:
           # the check above and may still be hitting a colder edge.
           sleep 30
 
-          # 2. Build the payload and submit, retrying on 403 with backoff.
-          urls=$(grep -oP '(?<=<loc>)[^<]+' web/dist/sitemap.xml | jq -R '.' | jq -s '.' || true)
-          count=$(echo "$urls" | jq 'length' 2>/dev/null || echo 0)
-          if [ "$count" -lt 1 ]; then
-            echo "No URLs parsed from web/dist/sitemap.xml — failing."
-            exit 1
-          fi
+          # 2. Build the payload from only the changed URLs and submit,
+          #    retrying on 403 with backoff.
+          urls=$(echo "$changed" | jq -R '.' | jq -s '.' || true)
           payload=$(jq -n \
             --arg host "towncrierapp.uk" \
             --arg key "$INDEXNOW_KEY" \
@@ -302,7 +368,7 @@ jobs:
             --argjson urlList "$urls" \
             '{host: $host, key: $key, keyLocation: $keyLocation, urlList: $urlList}')
 
-          echo "Submitting $count URLs to IndexNow..."
+          echo "Submitting $changed_count changed URLs (of $new_count total) to IndexNow..."
           for attempt in $(seq 1 6); do
             http_code=$(curl -s -o /tmp/indexnow-response.txt -w "%{http_code}" \
               -X POST "https://api.indexnow.org/IndexNow" \
@@ -311,7 +377,7 @@ jobs:
             echo "Attempt $attempt: IndexNow response $http_code — $(cat /tmp/indexnow-response.txt)"
             case "$http_code" in
               200|202)
-                echo "IndexNow accepted $count URLs."
+                echo "IndexNow accepted $changed_count URLs."
                 exit 0
                 ;;
               403)
