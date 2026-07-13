@@ -15,6 +15,7 @@ type planItResponse struct {
 	Records []planItRecord `json:"records"`
 	PageSiz *int           `json:"pg_sz"`
 	From    *int           `json:"from"`
+	To      *int           `json:"to"`
 	Total   *int           `json:"total"`
 }
 
