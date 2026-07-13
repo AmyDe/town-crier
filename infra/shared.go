@@ -996,19 +996,40 @@ expected
 		return err
 	}
 
-	// Operational Dashboard (tc-rvf1a). Rebuilt on telemetry the Go stack actually emits: ACA's
-	// managed OpenTelemetry agent forwards only logs+traces for Go workloads, so every prior
-	// tile's customMetrics/AppMetrics query (towncrier.*) had no data behind it — Go wires no
-	// Azure Monitor metrics exporter (same reason the PlanIt failure-rate alert above is
-	// log-based, not metric-based) — and user_AuthenticatedId is never populated by the Go auth
-	// middleware. All 14 tiles below query the classic requests/dependencies KQL tables
-	// (workspace-based AppRequests/AppDependencies) or the standard availabilityResults metric
-	// from the WebTests above; each was verified against the live App Insights component on
-	// 2026-07-13. Queries with no natural "still exists" guarantee (5xx counts, PlanIt
-	// 429s/errors, dependency/email/APNs failures) use the
-	// `let data = ...; union data, (datatable(...)[])` scaffold so a quiet period renders a flat
-	// zero line instead of Azure's blank "no data" tile.
+	// Operational Dashboard (tc-rvf1a, extended by tc-gha6l). Rebuilt on telemetry the Go stack
+	// actually emits: ACA's managed OpenTelemetry agent forwards only logs+traces for Go
+	// workloads, so every prior tile's customMetrics/AppMetrics query (towncrier.*) had no data
+	// behind it — Go wires no Azure Monitor metrics exporter (same reason the PlanIt
+	// failure-rate alert above is log-based, not metric-based) — and user_AuthenticatedId is
+	// never populated by the Go auth middleware. All 23 tiles below query the classic
+	// requests/dependencies KQL tables (workspace-based AppRequests/AppDependencies), the
+	// standard availabilityResults metric from the WebTests above, or a platform metric
+	// (Postgres, Service Bus) via MonitorChartPart; each pre-existing tile was verified against
+	// the live App Insights component on 2026-07-13. Queries with no natural "still exists"
+	// guarantee (5xx counts, PlanIt 429s/errors, dependency/email/APNs failures, and the tc-gha6l
+	// additions below) use the `let data = ...; union data, (datatable(...)[])` scaffold so a
+	// quiet period renders a flat zero line instead of Azure's blank "no data" tile.
+	//
+	// The y=28 row (Oldest Poll HWM Age, App Store Notifications, Daily Active Users) queries
+	// customDimensions/columns emitted by sibling Go beads not yet deployed to prod as of
+	// 2026-07-13 — they are expected to render flat 0 until the next api-go release ships.
 	appInsightsID := appInsights.ID().ToStringOutput()
+
+	// Poll Service Bus namespace lives in the prod env stack (infra/environment.go,
+	// createServiceBusPollingInfra), not this shared one, so its ARM ID is constructed from the
+	// documented literal names rather than a cross-stack reference — same approach as the
+	// Container Apps job IDs in the prodFailedExecutionJobs loop above (shared.go:697). Mirrors
+	// alert-poll-queue-depth-prod (environment.go:856), which alerts on this same
+	// Messages/EntityName=poll metric; here it feeds a dashboard chart instead of an alert
+	// threshold. Unlike the alert, the dashboard tile below reads the Messages metric at
+	// namespace level with no EntityName=poll dimension filter: MonitorChartPart's dimension
+	// filter shape is undocumented/unverifiable without a live pulumi up (which this worker does
+	// not run), and poll is the only queue in this namespace, so namespace-level Messages is
+	// equivalent — the bead explicitly allows this fallback.
+	prodPollServiceBusNamespaceID := pulumi.String(fmt.Sprintf(
+		"/subscriptions/%s/resourceGroups/rg-town-crier-prod/providers/Microsoft.ServiceBus/namespaces/sb-town-crier-prod",
+		armSubscriptionID)).ToStringOutput()
+	postgresServerID := postgresServer.ID().ToStringOutput()
 
 	const dashboardAPIRequestsByStatusQuery = `requests | where customDimensions['deployment.environment'] == 'prod' | where isnotempty(customDimensions['http.response.status_code']) | extend class = strcat(substring(tostring(customDimensions['http.response.status_code']), 0, 1), 'xx') | summarize Value=toreal(count()) by timestamp=bin(timestamp, 1h), class | render timechart`
 	const dashboardAPI5xxQuery = `let data = requests | where customDimensions['deployment.environment'] == 'prod' | where toint(customDimensions['http.response.status_code']) >= 500 | summarize Value=toreal(count()) by timestamp=bin(timestamp, 1h); union data, (datatable(timestamp:datetime, Value:real)[]) | render timechart`
@@ -1021,8 +1042,21 @@ expected
 	const dashboardPlanItCallsQuery = `dependencies | where customDimensions['deployment.environment'] == 'prod' | where target == 'PlanIt search' | summarize Value=toreal(count()) by timestamp=bin(timestamp, 1h) | render timechart`
 	const dashboardPlanIt429sQuery = `let data = dependencies | where customDimensions['deployment.environment'] == 'prod' | where target == 'PlanIt search' | where tostring(customDimensions['http.response.status_code']) == '429' | summarize Value=toreal(count()) by timestamp=bin(timestamp, 1h); union data, (datatable(timestamp:datetime, Value:real)[]) | render timechart`
 	const dashboardPlanItErrorsQuery = `let data = dependencies | where customDimensions['deployment.environment'] == 'prod' | where target == 'PlanIt search' and success == false | extend status = tostring(customDimensions['http.response.status_code']) | where status != '429' | summarize Value=toreal(count()) by timestamp=bin(timestamp, 1h), status; union data, (datatable(timestamp:datetime, Value:real, status:string)[]) | render timechart`
-	const dashboardEmailsSentVsFailedQuery = `let data = dependencies | where customDimensions['deployment.environment'] == 'prod' | where target == 'ACS email send' | summarize Value=toreal(count()) by timestamp=bin(timestamp, 1h), outcome=iff(success == true, 'Sent', 'Failed'); union data, (datatable(timestamp:datetime, Value:real, outcome:string)[]) | render timechart`
+	// Replaces the former dashboardEmailsSentVsFailedQuery (target == 'ACS email send'), which
+	// counted the send+poll HTTP calls behind each email rather than the email itself, inflating
+	// per-email counts. 'Email send' is the one-span-per-email telemetry (tc-gha6l).
+	const dashboardEmailsByKindQuery = `let data = dependencies | where customDimensions['deployment.environment'] == 'prod' | where name == 'Email send' | summarize Value=toreal(count()) by timestamp=bin(timestamp, 1h), series=strcat(tostring(customDimensions['email.kind']), iff(success == true, '', ' (failed)')); union data, (datatable(timestamp:datetime, Value:real, series:string)[]) | render timechart`
 	const dashboardAPNsPushesQuery = `let data = dependencies | where customDimensions['deployment.environment'] == 'prod' | where target == 'APNs push' | summarize Value=toreal(count()) by timestamp=bin(timestamp, 1h), outcome=iff(success == true, 'Sent', 'Failed'); union data, (datatable(timestamp:datetime, Value:real, outcome:string)[]) | render timechart`
+
+	// tc-gha6l row y=24: poll queue depth, other job cycles, PlanIt latency.
+	const dashboardJobCyclesByOutcomeQuery = `let data = dependencies | where customDimensions['deployment.environment'] == 'prod' | where name in ('Digest Cycle', 'Hourly Digest Cycle', 'Dormant Cleanup Cycle', 'Subscription Sweep Cycle', 'Postgres Purge Cycle', 'Polling Bootstrap') | summarize Value=toreal(count()) by timestamp=bin(timestamp, 1h), series=iff(success == true, name, strcat(name, ' (failed)')); union data, (datatable(timestamp:datetime, Value:real, series:string)[]) | render timechart`
+	const dashboardPlanItLatencyP95Query = `dependencies | where customDimensions['deployment.environment'] == 'prod' | where target == 'PlanIt search' | summarize Value=percentile(duration, 95) by timestamp=bin(timestamp, 1h) | render timechart`
+
+	// tc-gha6l row y=28: telemetry from sibling Go beads not yet deployed as of 2026-07-13 — all
+	// three render flat 0 until the next api-go release ships (see the row comment above).
+	const dashboardOldestPollHWMAgeQuery = `let data = dependencies | where customDimensions['deployment.environment'] == 'prod' | where name == 'Polling Cycle (SB)' | extend v = todouble(customDimensions['polling.oldest_hwm_age_seconds']) / 3600.0 | where isnotnull(v) | summarize Value=max(v) by timestamp=bin(timestamp, 1h); union data, (datatable(timestamp:datetime, Value:real)[]) | render timechart`
+	const dashboardAppStoreNotificationsQuery = `let data = requests | where customDimensions['deployment.environment'] == 'prod' | where name == 'POST /v1/webhooks/appstore' | summarize Value=toreal(count()) by timestamp=bin(timestamp, 1h), type=coalesce(tostring(customDimensions['assn.notification_type']), '(undecoded)'); union data, (datatable(timestamp:datetime, Value:real, type:string)[]) | render timechart`
+	const dashboardDailyActiveUsersQuery = `let data = requests | where customDimensions['deployment.environment'] == 'prod' | extend uid = coalesce(user_AuthenticatedId, tostring(customDimensions['enduser.id'])) | where isnotempty(uid) | summarize Value=toreal(dcount(uid)) by timestamp=bin(timestamp, 1d); union data, (datatable(timestamp:datetime, Value:real)[]) | render timechart`
 
 	_, err = portal.NewDashboard(ctx, "dash-towncrier-operational", &portal.DashboardArgs{
 		DashboardName:     pulumi.String("dash-towncrier-operational"),
@@ -1051,8 +1085,20 @@ expected
 						dashboardPart(4, 12, 4, 4, kqlTile(appInsightsID, dashboardPlanIt429sQuery, "PlanIt 429s", "")),
 						dashboardPart(8, 12, 4, 4, kqlTile(appInsightsID, dashboardPlanItErrorsQuery, "PlanIt Errors (non-429)", "status")),
 						// Row 5 (y=16): notifications.
-						dashboardPart(0, 16, 6, 4, kqlTile(appInsightsID, dashboardEmailsSentVsFailedQuery, "Emails Sent vs Failed", "outcome")),
+						dashboardPart(0, 16, 6, 4, kqlTile(appInsightsID, dashboardEmailsByKindQuery, "Emails by Kind", "series")),
 						dashboardPart(6, 16, 6, 4, kqlTile(appInsightsID, dashboardAPNsPushesQuery, "APNs Pushes", "outcome")),
+						// Row 6 (y=20): Postgres platform metrics.
+						dashboardPart(0, 20, 4, 4, monitorChartTile(postgresServerID, "storage_percent", "Microsoft.DBforPostgreSQL/flexibleServers", monitorAggregationAverage, "Postgres Storage %")),
+						dashboardPart(4, 20, 4, 4, monitorChartTile(postgresServerID, "cpu_credits_remaining", "Microsoft.DBforPostgreSQL/flexibleServers", monitorAggregationAverage, "Postgres CPU Credits")),
+						dashboardPart(8, 20, 4, 4, monitorChartTile(postgresServerID, "active_connections", "Microsoft.DBforPostgreSQL/flexibleServers", monitorAggregationAverage, "Postgres Connections")),
+						// Row 7 (y=24): poll queue depth, other job cycles, PlanIt latency.
+						dashboardPart(0, 24, 4, 4, monitorChartTile(prodPollServiceBusNamespaceID, "Messages", "Microsoft.ServiceBus/namespaces", monitorAggregationMaximum, "Poll Queue Depth")),
+						dashboardPart(4, 24, 4, 4, kqlTile(appInsightsID, dashboardJobCyclesByOutcomeQuery, "Job Cycles by Outcome", "series")),
+						dashboardPart(8, 24, 4, 4, kqlTile(appInsightsID, dashboardPlanItLatencyP95Query, "PlanIt Latency p95 (ms)", "")),
+						// Row 8 (y=28): telemetry from sibling Go beads, expected flat 0 until deploy.
+						dashboardPart(0, 28, 4, 4, kqlTile(appInsightsID, dashboardOldestPollHWMAgeQuery, "Oldest Poll HWM Age (hours)", "")),
+						dashboardPart(4, 28, 4, 4, kqlTile(appInsightsID, dashboardAppStoreNotificationsQuery, "App Store Notifications", "type")),
+						dashboardPart(8, 28, 4, 4, kqlTile(appInsightsID, dashboardDailyActiveUsersQuery, "Daily Active Users", "")),
 					},
 				},
 			},
@@ -1110,11 +1156,21 @@ func dashboardPart(x, y, colSpan, rowSpan int, metadata portal.DashboardPartMeta
 	}
 }
 
-// availabilityMetricTile renders the Application Insights standard availabilityPercentage
-// metric — a platform metric under the microsoft.insights/components namespace, not a
-// customMetrics/AppMetrics series (Go emits no custom metrics; see the Operational Dashboard
-// comment above) — as a MonitorChartPart.
-func availabilityMetricTile(appInsightsID pulumi.StringOutput, title string) portal.DashboardPartMetadataArgs {
+// Azure Portal MonitorChartPart aggregationType codes (undocumented ARM enum reverse-engineered
+// from the dashboard JSON — order is None=0, Total=1, Minimum=2, Maximum=3, Average=4, Count=5).
+// The Average value here was verified against the live availabilityPercentage tile on
+// 2026-07-13; Maximum is inferred from the same ordering for the tc-gha6l poll-queue-depth tile.
+const (
+	monitorAggregationMaximum = 3
+	monitorAggregationAverage = 4
+)
+
+// monitorChartTile renders an arbitrary Azure Monitor platform metric — Application Insights
+// availabilityResults, Postgres Flexible Server metrics, Service Bus namespace metrics, or any
+// other metric under a namespace Go itself emits nothing for (Go wires no Azure Monitor metrics
+// exporter; see the Operational Dashboard comment above) — as a MonitorChartPart bound to
+// resourceID. aggregationType is one of the monitorAggregation* constants above.
+func monitorChartTile(resourceID pulumi.StringOutput, metricName, metricNamespace string, aggregationType int, title string) portal.DashboardPartMetadataArgs {
 	return portal.DashboardPartMetadataArgs{
 		Type: pulumi.String("Extension/HubsExtension/PartType/MonitorChartPart"),
 		Settings: pulumi.Map{
@@ -1123,10 +1179,10 @@ func availabilityMetricTile(appInsightsID pulumi.StringOutput, title string) por
 					"chart": pulumi.Map{
 						"metrics": pulumi.Array{
 							pulumi.Map{
-								"resourceMetadata":    pulumi.Map{"id": appInsightsID},
-								"name":                pulumi.String("availabilityResults/availabilityPercentage"),
-								"aggregationType":     pulumi.Int(4), // Average
-								"namespace":           pulumi.String("microsoft.insights/components"),
+								"resourceMetadata":    pulumi.Map{"id": resourceID},
+								"name":                pulumi.String(metricName),
+								"aggregationType":     pulumi.Int(aggregationType),
+								"namespace":           pulumi.String(metricNamespace),
 								"metricVisualization": pulumi.Map{"displayName": pulumi.String(title)},
 							},
 						},
@@ -1141,6 +1197,14 @@ func availabilityMetricTile(appInsightsID pulumi.StringOutput, title string) por
 			},
 		},
 	}
+}
+
+// availabilityMetricTile renders the Application Insights standard availabilityPercentage
+// metric — a platform metric under the microsoft.insights/components namespace, not a
+// customMetrics/AppMetrics series — as a MonitorChartPart. Thin wrapper over monitorChartTile
+// kept for its existing call site and the metric-name discovery documented above.
+func availabilityMetricTile(appInsightsID pulumi.StringOutput, title string) portal.DashboardPartMetadataArgs {
+	return monitorChartTile(appInsightsID, "availabilityResults/availabilityPercentage", "microsoft.insights/components", monitorAggregationAverage, title)
 }
 
 // kqlTile renders an Analytics (KQL query) dashboard part bound to the App Insights component.
