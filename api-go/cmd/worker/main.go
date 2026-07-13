@@ -480,6 +480,8 @@ func (a *pollOrchestratorAdapter) RunOnce(ctx context.Context) (worker.PollRunRe
 		out.AuthoritiesPolled = res.PollResult.AuthoritiesPolled
 		out.AuthorityErrors = res.PollResult.AuthorityErrors
 		out.Termination = res.PollResult.TerminationReason.TelemetryValue()
+		out.OldestHWMAgeSeconds = res.PollResult.OldestHWMAgeSeconds
+		out.OldestHWMNeverPolled = res.PollResult.OldestHWMNeverPolled
 	}
 	return out, nil
 }
@@ -516,7 +518,10 @@ func buildDigester(cfg platform.Config, st *stores, logger *slog.Logger) *digest
 		point: st.profile,
 	}
 
-	emailSender := buildEmailSender(cfg, logger)
+	// Wrapped in InstrumentedSender so every digest email gets exactly one
+	// "Email send" span (tagged email.kind) distinct from the underlying "ACS
+	// email send" HTTP client spans (tc-3jx8d).
+	emailSender := acsemail.NewInstrumentedSender(buildEmailSender(cfg, logger))
 	dispatcher := buildPlatformDispatcher(cfg, logger)
 
 	return digest.NewHandler(

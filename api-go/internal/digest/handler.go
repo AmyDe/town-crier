@@ -27,6 +27,22 @@ import (
 // digestWindow is the 7-day look-back the weekly digest gathers notifications over.
 const digestWindow = 7 * 24 * time.Hour
 
+// email.kind values stamped on the "Email send" wrapper span (tc-3jx8d),
+// distinguishing the two digest cycles that share sendDigestEmail.
+const (
+	emailKindWeekly = "digest-weekly"
+	emailKindHourly = "digest-hourly"
+)
+
+// emailSender is the consumer-side slice of the instrumented email transport
+// the digest handler needs: Send wraps exactly one "Email send" span (tagged
+// email.kind) around the underlying ACS transport, leaving the low-level "ACS
+// email send" HTTP client spans untouched. *acsemail.InstrumentedSender
+// satisfies it.
+type emailSender interface {
+	Send(ctx context.Context, kind string, msg acsemail.Message) error
+}
+
 // profileReader is the consumer-side slice of the profile stores the digest
 // worker needs: the weekly cycle selects by digest day (cross-partition) and the
 // hourly cycle point-reads each candidate user. profiles.AdminStore satisfies
@@ -81,7 +97,7 @@ type Handler struct {
 	zones         zoneReader
 	state         stateReader
 	devices       deviceReader
-	email         acsemail.EmailSender
+	email         emailSender
 	dispatcher    pushDispatcher
 	logger        *slog.Logger
 	now           func() time.Time
@@ -96,7 +112,7 @@ func NewHandler(
 	zones zoneReader,
 	state stateReader,
 	devices deviceReader,
-	email acsemail.EmailSender,
+	email emailSender,
 	dispatcher pushDispatcher,
 	logger *slog.Logger,
 	now func() time.Time,
@@ -156,7 +172,7 @@ func (h *Handler) RunWeekly(ctx context.Context) error {
 			// The weekly cycle does not track emailSent (it re-derives the digest from
 			// the look-back window each run), so a failed send is already logged inside
 			// sendDigestEmail; we just move on to the next user.
-			if err := h.sendDigestEmail(ctx, profile.UserID, *profile.Email, notifs); err != nil {
+			if err := h.sendDigestEmail(ctx, emailKindWeekly, profile.UserID, *profile.Email, notifs); err != nil {
 				continue
 			}
 		}
@@ -282,7 +298,7 @@ func (h *Handler) RunHourly(ctx context.Context) error {
 		// batches every included notification for this user, so a failed send must
 		// leave the whole batch unmarked for the next cycle to retry. Marking on a
 		// swallowed send error is silent data loss (tc-qvds).
-		if err := h.sendDigestEmail(ctx, userID, *profile.Email, included); err != nil {
+		if err := h.sendDigestEmail(ctx, emailKindHourly, userID, *profile.Email, included); err != nil {
 			continue
 		}
 
@@ -337,8 +353,10 @@ func markSent(n notifications.DigestNotification) notifications.DigestNotificati
 // caller can decide whether to proceed: the hourly cycle must NOT flip
 // emailSent when the send fails (otherwise the email is silently lost and
 // never retried — tc-qvds), while the weekly cycle simply moves on to the next
-// user. A failed email never aborts the rest of the cycle either way.
-func (h *Handler) sendDigestEmail(ctx context.Context, userID, email string, notifs []notifications.DigestNotification) error {
+// user. A failed email never aborts the rest of the cycle either way. kind is
+// the "Email send" span's email.kind tag (emailKindWeekly / emailKindHourly),
+// distinguishing the two cycles that share this method.
+func (h *Handler) sendDigestEmail(ctx context.Context, kind, userID, email string, notifs []notifications.DigestNotification) error {
 	zones, err := h.zones.GetByUserID(ctx, userID)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "digest email: load zones failed", "user", userID, "error", err)
@@ -358,7 +376,7 @@ func (h *Handler) sendDigestEmail(ctx context.Context, userID, email string, not
 		Subject:   buildDigestSubject(total),
 		HTMLBody:  buildDigestHTML(sections, saved, total),
 	}
-	if err := h.email.Send(ctx, msg); err != nil {
+	if err := h.email.Send(ctx, kind, msg); err != nil {
 		h.logger.ErrorContext(ctx, "digest email: send failed", "user", userID, "error", err)
 		return fmt.Errorf("send digest email to %s: %w", userID, err)
 	}

@@ -117,6 +117,16 @@ type PollPlanItResult struct {
 	// RetryAfter is the Retry-After hint bubbled up from a 429, consumed by the
 	// scheduler to time the next trigger. nil when not rate-limited or absent.
 	RetryAfter *time.Duration
+	// OldestHWMAgeSeconds is the staleness (in seconds) of the least-recently-
+	// polled candidate authority's high-water mark at cycle start, mirroring the
+	// value fed to metricsRecorder.OldestHighWaterMarkAge. nil when the
+	// candidate set was empty (nothing to report). Carried on the result (not
+	// just the metrics registry, which never reaches App Insights) so
+	// runPollSB can stamp it on the "Polling Cycle (SB)" telemetry span.
+	OldestHWMAgeSeconds *float64
+	// OldestHWMNeverPolled reports whether that oldest candidate has never been
+	// polled (no PollState). Meaningless when OldestHWMAgeSeconds is nil.
+	OldestHWMNeverPolled bool
 }
 
 // PollPlanItHandler runs one adaptive PlanIt poll cycle: select the active
@@ -258,7 +268,7 @@ func (h *PollPlanItHandler) Handle(ctx context.Context) (PollPlanItResult, error
 	// Cycle-start gauges: the never-polled backlog and the staleness of the
 	// oldest authority's LastPollTime, so the lag dashboards keep working.
 	rec.NeverPolledCount(ctx, lru.NeverPolledCount, cycleType)
-	h.recordOldestHWMAge(ctx, rec, lru, now, cycleType)
+	oldestHWMAgeSeconds, oldestHWMNeverPolled, hasOldestHWM := h.recordOldestHWMAge(ctx, rec, lru, now, cycleType)
 
 	var (
 		count           int
@@ -333,14 +343,19 @@ func (h *PollPlanItHandler) Handle(ctx context.Context) (PollPlanItResult, error
 
 	rec.CycleCompleted(ctx, cycleType, reason.TelemetryValue())
 
-	return PollPlanItResult{
+	result := PollPlanItResult{
 		ApplicationCount:  count,
 		AuthoritiesPolled: authoritiesPoll,
 		RateLimited:       rateLimited,
 		TerminationReason: reason,
 		AuthorityErrors:   authorityErrors,
 		RetryAfter:        retryAfter,
-	}, nil
+	}
+	if hasOldestHWM {
+		result.OldestHWMAgeSeconds = &oldestHWMAgeSeconds
+		result.OldestHWMNeverPolled = oldestHWMNeverPolled
+	}
+	return result, nil
 }
 
 // authorityOutcome captures one authority's processing result.
@@ -500,26 +515,28 @@ func (h *PollPlanItHandler) finishAuthority(
 }
 
 // recordOldestHWMAge records the staleness of the oldest candidate authority's
-// LastPollTime at the start of a cycle. The LRU result orders never-polled-first
-// then ascending LastPollTime, so AuthorityIDs[0] is the stalest authority. A
-// never-polled authority (no PollState) reports its age from the Unix epoch and
-// is tagged never_polled=true so dashboards distinguish it from a genuinely stale
-// HWM. An empty candidate set records nothing.
-func (h *PollPlanItHandler) recordOldestHWMAge(ctx context.Context, rec metricsRecorder, lru LeastRecentlyPolledResult, now time.Time, cycleType string) {
+// LastPollTime at the start of a cycle, and returns the same values (ok=false
+// when there was no candidate) so the caller can also carry them on the
+// result. The LRU result orders never-polled-first then ascending
+// LastPollTime, so AuthorityIDs[0] is the stalest authority. A never-polled
+// authority (no PollState) reports its age from the Unix epoch and is tagged
+// neverPolled=true so dashboards distinguish it from a genuinely stale HWM. An
+// empty candidate set records and returns nothing.
+func (h *PollPlanItHandler) recordOldestHWMAge(ctx context.Context, rec metricsRecorder, lru LeastRecentlyPolledResult, now time.Time, cycleType string) (ageSeconds float64, neverPolled bool, ok bool) {
 	if len(lru.AuthorityIDs) == 0 {
-		return
+		return 0, false, false
 	}
 	oldestID := lru.AuthorityIDs[0]
 	state, found, err := h.state.Get(ctx, oldestID)
-	neverPolled := err != nil || !found || state.LastPollTime.IsZero()
+	neverPolled = err != nil || !found || state.LastPollTime.IsZero()
 
-	var ageSeconds float64
 	if neverPolled {
 		ageSeconds = now.Sub(time.Unix(0, 0).UTC()).Seconds()
 	} else {
 		ageSeconds = now.Sub(state.LastPollTime).Seconds()
 	}
 	rec.OldestHighWaterMarkAge(ctx, ageSeconds, cycleType, oldestID, neverPolled)
+	return ageSeconds, neverPolled, true
 }
 
 // recordRetryAfter records the parsed Retry-After value (seconds) for a 429,

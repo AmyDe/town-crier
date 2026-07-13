@@ -16,13 +16,13 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/servicebus"
 )
 
-// recordBootstrapSpan swaps in an in-memory SDK TracerProvider for the
-// duration of one poll-bootstrap Run call, restoring the previous global
-// provider on cleanup, and returns the single "Polling Bootstrap" span
-// recorded. Deliberately not t.Parallel(): mutating the global TracerProvider
-// is safe only while no sibling test's body is concurrently executing (the
-// existing middleware span tests use the same non-parallel convention).
-func recordBootstrapSpan(t *testing.T, run func()) sdktrace.ReadOnlySpan {
+// recordSingleSpan swaps in an in-memory SDK TracerProvider for the duration
+// of run, restoring the previous global provider on cleanup, and returns the
+// single span recorded. Deliberately not t.Parallel(): mutating the global
+// TracerProvider is safe only while no sibling test's body is concurrently
+// executing (the existing middleware span tests use the same non-parallel
+// convention).
+func recordSingleSpan(t *testing.T, run func()) sdktrace.ReadOnlySpan {
 	t.Helper()
 
 	prev := otel.GetTracerProvider()
@@ -43,6 +43,14 @@ func recordBootstrapSpan(t *testing.T, run func()) sdktrace.ReadOnlySpan {
 	return spans[0]
 }
 
+// recordBootstrapSpan is recordSingleSpan under the name the poll-bootstrap
+// span tests were written against; kept as a thin alias so those tests read
+// the same as before.
+func recordBootstrapSpan(t *testing.T, run func()) sdktrace.ReadOnlySpan {
+	t.Helper()
+	return recordSingleSpan(t, run)
+}
+
 // attrBool returns the bool value of the named attribute on the span and
 // whether it was present.
 func attrBool(span sdktrace.ReadOnlySpan, key string) (bool, bool) {
@@ -60,6 +68,17 @@ func attrInt(span sdktrace.ReadOnlySpan, key string) (int64, bool) {
 	for _, kv := range span.Attributes() {
 		if string(kv.Key) == key {
 			return kv.Value.AsInt64(), true
+		}
+	}
+	return 0, false
+}
+
+// attrFloat64 returns the float64 value of the named attribute on the span
+// and whether it was present.
+func attrFloat64(span sdktrace.ReadOnlySpan, key string) (float64, bool) {
+	for _, kv := range span.Attributes() {
+		if string(kv.Key) == key {
+			return kv.Value.AsFloat64(), true
 		}
 	}
 	return 0, false
@@ -295,6 +314,61 @@ func TestRun_PollSBExitsOneOnlyWhenNoAppsAndAuthorityErrors(t *testing.T) {
 				t.Errorf("exit code: got %d, want %d", code, tc.wantExit)
 			}
 		})
+	}
+}
+
+// TestRun_PollSBStampsOldestHWMAttributesOnSpan pins tc-3jx8d: the oldest-HWM
+// staleness the polling handler already computes must land on the "Polling
+// Cycle (SB)" span so it's queryable in App Insights (the OTel metrics
+// registry alone never reaches it).
+func TestRun_PollSBStampsOldestHWMAttributesOnSpan(t *testing.T) {
+	age := 345600.0 // 4 days, seconds
+	o := &fakePollOrchestrator{result: PollRunResult{
+		MessageReceived:      true,
+		OldestHWMAgeSeconds:  &age,
+		OldestHWMNeverPolled: false,
+	}}
+	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
+
+	span := recordSingleSpan(t, func() {
+		Run(context.Background(), "poll-sb", nil, nil, nil, o, nil, nil, nil, logger)
+	})
+
+	if span.Name() != "Polling Cycle (SB)" {
+		t.Fatalf("span name: got %q, want %q", span.Name(), "Polling Cycle (SB)")
+	}
+	got, ok := attrFloat64(span, "polling.oldest_hwm_age_seconds")
+	if !ok {
+		t.Fatalf("missing polling.oldest_hwm_age_seconds; attrs=%v", span.Attributes())
+	}
+	if got != age {
+		t.Errorf("polling.oldest_hwm_age_seconds: got %v, want %v", got, age)
+	}
+	neverPolled, ok := attrBool(span, "polling.oldest_hwm_never_polled")
+	if !ok {
+		t.Fatalf("missing polling.oldest_hwm_never_polled; attrs=%v", span.Attributes())
+	}
+	if neverPolled {
+		t.Errorf("polling.oldest_hwm_never_polled: got true, want false")
+	}
+}
+
+// TestRun_PollSBOmitsOldestHWMAttributesWhenAbsent covers the empty
+// candidate-set case: the handler records nothing, so the span must not carry
+// a misleading zero value for either attribute.
+func TestRun_PollSBOmitsOldestHWMAttributesWhenAbsent(t *testing.T) {
+	o := &fakePollOrchestrator{result: PollRunResult{MessageReceived: true}}
+	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
+
+	span := recordSingleSpan(t, func() {
+		Run(context.Background(), "poll-sb", nil, nil, nil, o, nil, nil, nil, logger)
+	})
+
+	if _, ok := attrFloat64(span, "polling.oldest_hwm_age_seconds"); ok {
+		t.Error("polling.oldest_hwm_age_seconds: present, want absent when no candidate was recorded")
+	}
+	if _, ok := attrBool(span, "polling.oldest_hwm_never_polled"); ok {
+		t.Error("polling.oldest_hwm_never_polled: present, want absent when no candidate was recorded")
 	}
 }
 
