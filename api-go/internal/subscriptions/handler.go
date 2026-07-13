@@ -10,6 +10,9 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
 	"github.com/AmyDe/town-crier/api-go/internal/httputil"
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
@@ -343,6 +346,17 @@ func (h *handler) runWebhook(ctx context.Context, signedPayload string) error {
 	notification, err := DecodeNotification(outerJSON)
 	if err != nil {
 		return err
+	}
+
+	// Stamp the notification type on the live request span as soon as it's
+	// decoded, before any idempotency/ignore logic runs — visibility into what
+	// Apple actually sent is the point, including for notifications this
+	// handler goes on to ignore (unknown subscriber, environment mismatch).
+	// These are enum strings, no PII.
+	span := trace.SpanFromContext(ctx)
+	span.SetAttributes(attribute.String("assn.notification_type", notification.NotificationType))
+	if notification.Subtype != "" {
+		span.SetAttributes(attribute.String("assn.subtype", notification.Subtype))
 	}
 
 	processed, err := h.idempotency.IsProcessed(ctx, notification.NotificationUUID)
