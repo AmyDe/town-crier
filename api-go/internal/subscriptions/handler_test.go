@@ -11,6 +11,10 @@ import (
 	"testing"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 )
@@ -336,6 +340,11 @@ func notificationJSON(notifType, uuid, signedTxn string) string {
 		notifType, uuid, signedTxn)
 }
 
+func notificationJSONWithSubtype(notifType, subtype, uuid, signedTxn string) string {
+	return fmt.Sprintf(`{"notificationType":%q,"subtype":%q,"notificationUUID":%q,"data":{"signedTransactionInfo":%q}}`,
+		notifType, subtype, uuid, signedTxn)
+}
+
 func TestWebhook_SubscribedActivatesProfile(t *testing.T) {
 	t.Parallel()
 	d := newTestDeps()
@@ -445,6 +454,117 @@ func TestWebhook_ErrorContract(t *testing.T) {
 				t.Errorf("error = %q, want %q", got, tc.wantError)
 			}
 		})
+	}
+}
+
+// --- ASSN notification-type span tests (tc-3jx8d) ---
+
+// spanStarter mimics otelhttp: it begins a server span on the request ctx so
+// the webhook handler (further in) has a live span to stamp, matching the
+// convention already used in internal/middleware/*_span_test.go.
+func spanStarter(next http.Handler) http.Handler {
+	tracer := otel.Tracer("test")
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, span := tracer.Start(r.Context(), "request")
+		defer span.End()
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// serveWithSpan wraps d.mux in spanStarter, swaps in an in-memory SDK
+// TracerProvider for the duration of the call, restores the previous global
+// provider on cleanup, and returns both the recorded response and the single
+// recorded request span. Deliberately not t.Parallel(): mutating the global
+// TracerProvider is safe only while no sibling test's body is concurrently
+// executing (the existing middleware span tests use the same convention).
+func (d *testDeps) serveWithSpan(t *testing.T, path, body string) (*httptest.ResponseRecorder, sdktrace.ReadOnlySpan) {
+	t.Helper()
+
+	prev := otel.GetTracerProvider()
+	spanRec := tracetest.NewSpanRecorder()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spanRec))
+	otel.SetTracerProvider(tp)
+	t.Cleanup(func() {
+		_ = tp.Shutdown(context.Background())
+		otel.SetTracerProvider(prev)
+	})
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, path, strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	spanStarter(d.mux).ServeHTTP(rec, req)
+
+	spans := spanRec.Ended()
+	if len(spans) != 1 {
+		t.Fatalf("expected 1 recorded span, got %d", len(spans))
+	}
+	return rec, spans[0]
+}
+
+func spanAttrString(span sdktrace.ReadOnlySpan, key string) (string, bool) {
+	for _, kv := range span.Attributes() {
+		if string(kv.Key) == key {
+			return kv.Value.AsString(), true
+		}
+	}
+	return "", false
+}
+
+func TestWebhook_StampsNotificationTypeOnRequestSpan(t *testing.T) {
+	d := newTestDeps()
+	d.byTxn.profile = freshProfile(t)
+	d.verifier.results["hdr.OUTER.sig"] = notificationJSON("SUBSCRIBED", "uuid-1", "INNER")
+	d.verifier.results["INNER"] = txnJSON(ProductProMonthly, testBundleID, "orig-1", futureExpiryMs())
+
+	rec, span := d.serveWithSpan(t, "/v1/webhooks/appstore", `{"signedPayload":"hdr.OUTER.sig"}`)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	got, ok := spanAttrString(span, "assn.notification_type")
+	if !ok || got != "SUBSCRIBED" {
+		t.Errorf("assn.notification_type: got %q (present=%v), want %q", got, ok, "SUBSCRIBED")
+	}
+	if _, ok := spanAttrString(span, "assn.subtype"); ok {
+		t.Error("assn.subtype: present, want absent when the notification carries no subtype")
+	}
+}
+
+func TestWebhook_StampsSubtypeOnRequestSpanWhenPresent(t *testing.T) {
+	d := newTestDeps()
+	d.byTxn.profile = freshProfile(t)
+	d.verifier.results["hdr.OUTER.sig"] = notificationJSONWithSubtype("DID_CHANGE_RENEWAL_PREF", "UPGRADE", "uuid-2", "INNER")
+	d.verifier.results["INNER"] = txnJSON(ProductProMonthly, testBundleID, "orig-1", futureExpiryMs())
+
+	rec, span := d.serveWithSpan(t, "/v1/webhooks/appstore", `{"signedPayload":"hdr.OUTER.sig"}`)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	if got, ok := spanAttrString(span, "assn.notification_type"); !ok || got != "DID_CHANGE_RENEWAL_PREF" {
+		t.Errorf("assn.notification_type: got %q (present=%v), want %q", got, ok, "DID_CHANGE_RENEWAL_PREF")
+	}
+	if got, ok := spanAttrString(span, "assn.subtype"); !ok || got != "UPGRADE" {
+		t.Errorf("assn.subtype: got %q (present=%v), want %q", got, ok, "UPGRADE")
+	}
+}
+
+// TestWebhook_StampsNotificationTypeEvenWhenIgnored pins the "including for
+// notifications the handler ignores" requirement: an unknown subscriber is
+// silently marked processed with no profile mutation, but the span must still
+// carry the notification type — visibility into what Apple sent is the point.
+func TestWebhook_StampsNotificationTypeEvenWhenIgnored(t *testing.T) {
+	d := newTestDeps()
+	d.byTxn.profile = nil // no matching subscriber
+	d.verifier.results["hdr.OUTER.sig"] = notificationJSON("DID_RENEW", "uuid-3", "INNER")
+	d.verifier.results["INNER"] = txnJSON(ProductProMonthly, testBundleID, "orig-x", futureExpiryMs())
+
+	rec, span := d.serveWithSpan(t, "/v1/webhooks/appstore", `{"signedPayload":"hdr.OUTER.sig"}`)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	if got, ok := spanAttrString(span, "assn.notification_type"); !ok || got != "DID_RENEW" {
+		t.Errorf("assn.notification_type: got %q (present=%v), want %q", got, ok, "DID_RENEW")
 	}
 }
 
