@@ -8,6 +8,9 @@ import (
 	"context"
 	"net/http"
 	"strings"
+
+	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Claims carries the JWT claims the handlers need after a token is validated:
@@ -72,6 +75,14 @@ func RequireAuth(v TokenValidator, mux routeMatcher, anonymousPatterns map[strin
 			Challenge(w)
 			return
 		}
+
+		// Stamp the pseudonymous Auth0 subject on the live request span (started
+		// by the outermost otelhttp wrapper, cmd/api/wiring.go) so the Daily
+		// Active Users dashboard tile (tc-gha6l) can chart true active users.
+		// Only on successful authentication, and never email/name/IP — GDPR
+		// minimisation (see internal/middleware/errorbody.go, recover.go for the
+		// same middleware-stamps-the-live-span precedent).
+		trace.SpanFromContext(r.Context()).SetAttributes(semconv.EnduserID(claims.Subject))
 
 		mux.ServeHTTP(w, r.WithContext(WithClaims(r.Context(), claims)))
 	})
