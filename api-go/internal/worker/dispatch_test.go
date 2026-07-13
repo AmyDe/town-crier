@@ -372,6 +372,32 @@ func TestRun_PollSBOmitsOldestHWMAttributesWhenAbsent(t *testing.T) {
 	}
 }
 
+// TestRun_PollSBStampsCycleTypeOnSpan pins tc-nlvpz: the cycle type the
+// polling handler selected (Watched/Seed) must land on the "Polling Cycle
+// (SB)" span next to polling.termination, so the dashboard's Watched column
+// stops relying on a minute-of-day heuristic.
+func TestRun_PollSBStampsCycleTypeOnSpan(t *testing.T) {
+	o := &fakePollOrchestrator{result: PollRunResult{MessageReceived: true, CycleType: "Watched"}}
+	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
+
+	span := recordSingleSpan(t, func() {
+		Run(context.Background(), "poll-sb", nil, nil, nil, o, nil, nil, nil, logger)
+	})
+
+	if span.Name() != "Polling Cycle (SB)" {
+		t.Fatalf("span name: got %q, want %q", span.Name(), "Polling Cycle (SB)")
+	}
+	for _, kv := range span.Attributes() {
+		if string(kv.Key) == "polling.cycle_type" {
+			if got := kv.Value.AsString(); got != "Watched" {
+				t.Errorf("polling.cycle_type: got %q, want %q", got, "Watched")
+			}
+			return
+		}
+	}
+	t.Errorf("missing polling.cycle_type attribute; attrs=%v", span.Attributes())
+}
+
 func TestRun_PollSBExitsOneOnOrchestratorError(t *testing.T) {
 	t.Parallel()
 	o := &fakePollOrchestrator{err: errors.New("orchestrator blew up")}
