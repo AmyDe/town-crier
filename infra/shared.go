@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -1010,9 +1011,11 @@ expected
 	// additions below) use the `let data = ...; union data, (datatable(...)[])` scaffold so a
 	// quiet period renders a flat zero line instead of Azure's blank "no data" tile.
 	//
-	// The y=28 row (Oldest Poll HWM Age, App Store Notifications, Daily Active Users) queries
-	// customDimensions/columns emitted by sibling Go beads not yet deployed to prod as of
-	// 2026-07-13 — they are expected to render flat 0 until the next api-go release ships.
+	// The y=28 row: Poll HWM by Authority (tc-yxrjs) reads the existing PlanIt search dependency
+	// spans' customDimensions['url.full'] (auth=/different_start= query params), which have data
+	// today. App Store Notifications and Daily Active Users query customDimensions/columns
+	// emitted by sibling Go beads not yet deployed to prod as of 2026-07-13 — they are expected
+	// to render flat 0 until the next api-go release ships.
 	appInsightsID := appInsights.ID().ToStringOutput()
 
 	// Poll Service Bus namespace lives in the prod env stack (infra/environment.go,
@@ -1052,11 +1055,34 @@ expected
 	const dashboardJobCyclesByOutcomeQuery = `let data = dependencies | where customDimensions['deployment.environment'] == 'prod' | where name in ('Digest Cycle', 'Hourly Digest Cycle', 'Dormant Cleanup Cycle', 'Subscription Sweep Cycle', 'Postgres Purge Cycle', 'Polling Bootstrap') | summarize Value=toreal(count()) by timestamp=bin(timestamp, 1h), series=iff(success == true, name, strcat(name, ' (failed)')); union data, (datatable(timestamp:datetime, Value:real, series:string)[]) | render timechart`
 	const dashboardPlanItLatencyP95Query = `dependencies | where customDimensions['deployment.environment'] == 'prod' | where target == 'PlanIt search' | summarize Value=percentile(duration, 95) by timestamp=bin(timestamp, 1h) | render timechart`
 
-	// tc-gha6l row y=28: telemetry from sibling Go beads not yet deployed as of 2026-07-13 — all
-	// three render flat 0 until the next api-go release ships (see the row comment above).
-	const dashboardOldestPollHWMAgeQuery = `let data = dependencies | where customDimensions['deployment.environment'] == 'prod' | where name == 'Polling Cycle (SB)' | extend v = todouble(customDimensions['polling.oldest_hwm_age_seconds']) / 3600.0 | where isnotnull(v) | summarize Value=max(v) by timestamp=bin(timestamp, 1h); union data, (datatable(timestamp:datetime, Value:real)[]) | render timechart`
+	// tc-gha6l row y=28: App Store Notifications and Daily Active Users read telemetry from
+	// sibling Go beads not yet deployed as of 2026-07-13 — both render flat 0 until the next
+	// api-go release ships (see the row comment above). Poll HWM by Authority (tc-yxrjs, below)
+	// reads existing PlanIt search dependency spans instead, so it has data today.
 	const dashboardAppStoreNotificationsQuery = `let data = requests | where customDimensions['deployment.environment'] == 'prod' | where name == 'POST /v1/webhooks/appstore' | summarize Value=toreal(count()) by timestamp=bin(timestamp, 1h), type=coalesce(tostring(customDimensions['assn.notification_type']), '(undecoded)'); union data, (datatable(timestamp:datetime, Value:real, type:string)[]) | render timechart`
 	const dashboardDailyActiveUsersQuery = `let data = requests | where customDimensions['deployment.environment'] == 'prod' | extend uid = coalesce(user_AuthenticatedId, tostring(customDimensions['enduser.id'])) | where isnotempty(uid) | summarize Value=toreal(dcount(uid)) by timestamp=bin(timestamp, 1d); union data, (datatable(timestamp:datetime, Value:real)[]) | render timechart`
+
+	// dashboardPollHWMByAuthorityQueryBody is the per-authority Poll HWM grid (tc-yxrjs) query,
+	// completed at runtime by prefixing it with the `let names = datatable(...)[...];` mapping
+	// buildAuthorityNamesDatatable renders below. Reads the existing outbound PlanIt HTTP
+	// dependency spans (target == 'PlanIt search'): customDimensions['url.full'] carries
+	// `auth=<authority id>` and `different_start=<HWM date>` query params, from which this
+	// derives each authority's current high-water mark and how long ago it was last polled — one
+	// row per authority (arg_max de-dupes to the latest url.full seen per AuthorityID within the
+	// last 7 days), oldest HWM first. Validated live against appi-town-crier-shared on
+	// 2026-07-13 (returned 23 authorities with correct names/ages).
+	const dashboardPollHWMByAuthorityQueryBody = `dependencies | where timestamp > ago(7d) | where customDimensions['deployment.environment'] == 'prod' | where target == 'PlanIt search' | extend url = tostring(customDimensions['url.full']) | extend AuthorityID = toint(extract('auth=([0-9]+)', 1, url)) | where isnotnull(AuthorityID) | summarize arg_max(timestamp, url) by AuthorityID | extend HWM = todatetime(extract('different_start=([0-9-]+)', 1, url)) | lookup kind=leftouter names on AuthorityID | project Authority = coalesce(Authority, tostring(AuthorityID)), ['HWM Date'] = format_datetime(HWM, 'yyyy-MM-dd'), ['HWM Age (h)'] = round((now() - HWM) / 1h, 1), ['Last Polled (h ago)'] = round((now() - timestamp) / 1h, 1) | order by ['HWM Age (h)'] desc`
+
+	// The names lookup is generated from api-go/internal/authorities/resources/authorities.json
+	// rather than hand-maintained, so it never drifts from the authority dataset the API itself
+	// serves. A read/parse failure here aborts the whole shared-stack pulumi program (see the
+	// doc comment on buildAuthorityNamesDatatable) rather than deploying a dashboard tile with a
+	// silently empty names mapping.
+	authorityNamesDatatable, err := buildAuthorityNamesDatatable(authorityNamesJSONPath)
+	if err != nil {
+		return fmt.Errorf("build operational dashboard: %w", err)
+	}
+	dashboardPollHWMByAuthorityQuery := authorityNamesDatatable + " " + dashboardPollHWMByAuthorityQueryBody
 
 	_, err = portal.NewDashboard(ctx, "dash-towncrier-operational", &portal.DashboardArgs{
 		DashboardName:     pulumi.String("dash-towncrier-operational"),
@@ -1095,8 +1121,8 @@ expected
 						dashboardPart(0, 24, 4, 4, monitorChartTile(prodPollServiceBusNamespaceID, "Messages", "Microsoft.ServiceBus/namespaces", monitorAggregationMaximum, "Poll Queue Depth")),
 						dashboardPart(4, 24, 4, 4, kqlTile(appInsightsID, dashboardJobCyclesByOutcomeQuery, "Job Cycles by Outcome", "series")),
 						dashboardPart(8, 24, 4, 4, kqlTile(appInsightsID, dashboardPlanItLatencyP95Query, "PlanIt Latency p95 (ms)", "")),
-						// Row 8 (y=28): telemetry from sibling Go beads, expected flat 0 until deploy.
-						dashboardPart(0, 28, 4, 4, kqlTile(appInsightsID, dashboardOldestPollHWMAgeQuery, "Oldest Poll HWM Age (hours)", "")),
+						// Row 8 (y=28): Poll HWM by Authority (data today); the other two await deploy.
+						dashboardPart(0, 28, 4, 4, kqlGridTile(appInsightsID, dashboardPollHWMByAuthorityQuery, "Poll HWM by Authority (oldest first)")),
 						dashboardPart(4, 28, 4, 4, kqlTile(appInsightsID, dashboardAppStoreNotificationsQuery, "App Store Notifications", "type")),
 						dashboardPart(8, 28, 4, 4, kqlTile(appInsightsID, dashboardDailyActiveUsersQuery, "Daily Active Users", "")),
 					},
@@ -1261,6 +1287,93 @@ func kqlTile(appInsightsID pulumi.StringOutput, query, title, splitBy string) po
 			},
 		},
 	}
+}
+
+// kqlGridTile renders an Analytics (KQL query) dashboard part bound to the App Insights
+// component as a tabular grid (AnalyticsGrid) rather than a chart — for queries like the
+// per-authority Poll HWM grid (tc-yxrjs) where the result is a set of rows, not a
+// timestamp/value series a line chart could plot. Modeled on kqlTile above, but the Settings
+// content omits SpecificChart and Dimensions (chart-only fields; AnalyticsGrid renders columns
+// straight from the query's projected fields) and sets IsQueryContainTimeRange to true, not
+// false: the query embeds its own `ago(7d)` window, and unlike kqlTile's queries — which are all
+// pre-binned by timestamp and rely on the dashboard's global time-range picker to select the
+// window — this grid has no timestamp column for the picker to clip against, so leaving it false
+// would have the picker discard the query's own row selection instead.
+func kqlGridTile(appInsightsID pulumi.StringOutput, query, title string) portal.DashboardPartMetadataArgs {
+	componentID := appInsightsID.ApplyT(func(id string) map[string]interface{} {
+		segments := strings.Split(id, "/")
+		return map[string]interface{}{
+			"SubscriptionId": segments[2],
+			"ResourceGroup":  segments[4],
+			"Name":           segments[8],
+			"ResourceId":     id,
+		}
+	})
+
+	return portal.DashboardPartMetadataArgs{
+		Type: pulumi.String("Extension/AppInsightsExtension/PartType/AnalyticsPart"),
+		Settings: pulumi.Map{
+			"content": pulumi.Map{
+				"Query":                   pulumi.String(query),
+				"ControlType":             pulumi.String("AnalyticsGrid"),
+				"PartTitle":               pulumi.String(title),
+				"IsQueryContainTimeRange": pulumi.Bool(true),
+			},
+		},
+		Inputs: pulumi.Array{
+			pulumi.Map{
+				"name":  pulumi.String("ComponentId"),
+				"value": componentID,
+			},
+		},
+	}
+}
+
+// authorityNamesJSONPath is the authority id→name dataset consumed to build the KQL names
+// lookup for the per-authority Poll HWM dashboard grid (tc-yxrjs), relative to this package —
+// the same cross-dir relative-path convention names_test.go uses for resource-names.env. Both
+// `pulumi up` (CI) and `go test` run with CWD=infra, so the plain relative path resolves in
+// both contexts.
+const authorityNamesJSONPath = "../api-go/internal/authorities/resources/authorities.json"
+
+// authorityRecord is the subset of fields this program needs from one entry of
+// api-go/internal/authorities/resources/authorities.json; areaType is present in the source
+// file but unused here.
+type authorityRecord struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+}
+
+// buildAuthorityNamesDatatable reads the authority id→name dataset at path and renders it as a
+// KQL `let names = datatable(AuthorityID:int, Authority:string)[...];` prefix, which the
+// per-authority Poll HWM dashboard grid query (tc-yxrjs) `lookup`s onto AuthorityID to resolve
+// human-readable authority names. It hard-fails on a read or parse error — returning an error
+// that aborts the pulumi program — rather than falling back to an empty mapping: a silently
+// empty lookup would deploy a dashboard that renders every row as a bare numeric authority ID,
+// with nothing to signal that the dataset failed to load. Single quotes in names are escaped as
+// \' (KQL datatable string literals delimit on '); none exist in the dataset as of 2026-07-13,
+// but this defends against a future authority name introducing one.
+func buildAuthorityNamesDatatable(path string) (string, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read authority names %s: %w", path, err)
+	}
+
+	var records []authorityRecord
+	if err := json.Unmarshal(raw, &records); err != nil {
+		return "", fmt.Errorf("parse authority names %s: %w", path, err)
+	}
+
+	var b strings.Builder
+	b.WriteString("let names = datatable(AuthorityID:int, Authority:string)[")
+	for i, r := range records {
+		if i > 0 {
+			b.WriteString(",")
+		}
+		fmt.Fprintf(&b, "%d,'%s'", r.ID, strings.ReplaceAll(r.Name, "'", `\'`))
+	}
+	b.WriteString("];")
+	return b.String(), nil
 }
 
 // availabilityTestLocations is the standard 3-location EMEA coverage set shared by both
