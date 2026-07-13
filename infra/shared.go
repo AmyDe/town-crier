@@ -545,6 +545,52 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		return err
 	}
 
+	// Scheduled query (log) alert — prod PlanIt daily request-volume budget guard rail (GH #955
+	// PR C / tc-oeoga). PlanIt is a free, single-operator service; hammering it is a
+	// non-negotiable red line, measured at ~1,500 requests/day (see CLAUDE.md's PlanIt-red-line
+	// framing and GH #955's Motivation). 1,450 sits just under that red line so this fires with
+	// headroom to react (e.g. step POLLING_PLANIT_PAGE_SIZE back down, GH #955 PR B's documented
+	// rollback lever) before the fleet actually crosses it. Same shape as the PlanIt failure-rate
+	// rule above: the query itself computes the daily count and emits a row only when the
+	// threshold is breached, so the alert condition is just "did the query return anything"
+	// (threshold 0, Count aggregation).
+	const planitRequestBudgetQuery = `AppDependencies
+| where Target == "PlanIt search"
+| where tostring(Properties["deployment.environment"]) == "prod"
+| summarize RequestCount = count()
+| where RequestCount > 1450`
+
+	_, err = monitor.NewScheduledQueryRule(ctx, "alert-planit-request-budget-shared", &monitor.ScheduledQueryRuleArgs{
+		RuleName:            pulumi.String("alert-planit-request-budget-shared"),
+		ResourceGroupName:   resourceGroup.Name,
+		Location:            pulumi.String("uksouth"),
+		Kind:                pulumi.String("LogAlert"),
+		Description:         pulumi.String("Prod PlanIt request volume exceeded 1,450 calls in the last 24 hours — approaching the ~1,500/day red line for this free, single-operator service. See GH #955."),
+		DisplayName:         pulumi.String("PlanIt daily request budget"),
+		Severity:            pulumi.Float64(2), // Warning
+		Enabled:             pulumi.Bool(true),
+		EvaluationFrequency: pulumi.String("PT1H"),
+		WindowSize:          pulumi.String("P1D"),
+		Scopes:              pulumi.StringArray{logAnalytics.ID()},
+		Criteria: monitor.ScheduledQueryRuleCriteriaArgs{
+			AllOf: monitor.ConditionArray{
+				monitor.ConditionArgs{
+					Query:           pulumi.String(planitRequestBudgetQuery),
+					TimeAggregation: pulumi.String("Count"),
+					Operator:        pulumi.String("GreaterThan"),
+					Threshold:       pulumi.Float64(0),
+				},
+			},
+		},
+		Actions: monitor.ActionsArgs{
+			ActionGroups: pulumi.StringArray{actionGroup.ID()},
+		},
+		Tags: tags,
+	})
+	if err != nil {
+		return err
+	}
+
 	// Azure Communication Services (Email) — UK data location.
 	emailServiceUk, err := communication.NewEmailService(ctx, "email-town-crier-uk", &communication.EmailServiceArgs{
 		EmailServiceName:  pulumi.String("email-town-crier-uk"),
@@ -1011,11 +1057,12 @@ expected
 	// additions below) use the `let data = ...; union data, (datatable(...)[])` scaffold so a
 	// quiet period renders a flat zero line instead of Azure's blank "no data" tile.
 	//
-	// The y=28 row: Poll HWM by Authority (tc-yxrjs) reads the existing PlanIt search dependency
-	// spans' customDimensions['url.full'] (auth=/different_start= query params), which have data
-	// today. App Store Notifications and Daily Active Users query customDimensions/columns
-	// emitted by sibling Go beads not yet deployed to prod as of 2026-07-13 — they are expected
-	// to render flat 0 until the next api-go release ships.
+	// The y=28 row: Poll HWM by Authority (tc-yxrjs, rebuilt on "PlanIt authority poll" spans by
+	// tc-oeoga / GH #955 PR C) reads the per-authority-visit span shipped in GH #955 PR A
+	// (v0.20.1) — typed customDimensions attributes, no url.full parsing. App Store Notifications
+	// and Daily Active Users query customDimensions/columns emitted by sibling Go beads not yet
+	// deployed to prod as of 2026-07-13 — they are expected to render flat 0 until the next
+	// api-go release ships.
 	appInsightsID := appInsights.ID().ToStringOutput()
 
 	// Poll Service Bus namespace lives in the prod env stack (infra/environment.go,
@@ -1058,41 +1105,58 @@ expected
 	// tc-gha6l row y=28: App Store Notifications and Daily Active Users read telemetry from
 	// sibling Go beads not yet deployed as of 2026-07-13 — both render flat 0 until the next
 	// api-go release ships (see the row comment above). Poll HWM by Authority (tc-yxrjs, below)
-	// reads existing PlanIt search dependency spans instead, so it has data today.
+	// reads the "PlanIt authority poll" span shipped in GH #955 PR A (v0.20.1) instead.
 	const dashboardAppStoreNotificationsQuery = `let data = requests | where customDimensions['deployment.environment'] == 'prod' | where name == 'POST /v1/webhooks/appstore' | summarize Value=toreal(count()) by timestamp=bin(timestamp, 1h), type=coalesce(tostring(customDimensions['assn.notification_type']), '(undecoded)'); union data, (datatable(timestamp:datetime, Value:real, type:string)[]) | render timechart`
 	const dashboardDailyActiveUsersQuery = `let data = requests | where customDimensions['deployment.environment'] == 'prod' | extend uid = coalesce(user_AuthenticatedId, tostring(customDimensions['enduser.id'])) | where isnotempty(uid) | summarize Value=toreal(dcount(uid)) by timestamp=bin(timestamp, 1d); union data, (datatable(timestamp:datetime, Value:real)[]) | render timechart`
 
-	// dashboardPollHWMByAuthorityQueryBody is the per-authority Poll HWM grid (tc-yxrjs) query,
-	// completed at runtime by prefixing it with the `let names = datatable(...)[...];` mapping
-	// buildAuthorityNamesDatatable renders below. Reads the existing outbound PlanIt HTTP
-	// dependency spans (target == 'PlanIt search'): customDimensions['url.full'] carries
-	// `auth=<authority id>` and `different_start=<HWM date>` query params, from which this
-	// derives each authority's current high-water mark and how long ago it was last polled — one
-	// row per authority (arg_max de-dupes to the latest url.full seen per AuthorityID within the
-	// last 30 days), oldest HWM first.
+	// dashboardPollHWMByAuthorityQueryBody is the per-authority Poll HWM grid (tc-yxrjs, rebuilt
+	// on "PlanIt authority poll" spans by tc-oeoga / GH #955 PR C) query, completed at runtime by
+	// prefixing it with the `let names = datatable(...)[...];` mapping buildAuthorityNamesDatatable
+	// renders below. Reads the "PlanIt authority poll" span emitted once per authority visit
+	// (api-go's internal/polling/handler.go, GH #955 PR A, shipped as v0.20.1) instead of parsing
+	// auth=/different_start= out of the "PlanIt search" outbound HTTP span's url.full — the new
+	// span carries authority id, cycle type, HWM, cursor index, and known total as typed
+	// customDimensions attributes natively, so no regex extraction or root-span join is needed.
+	// arg_max(timestamp, ...) de-dupes to each authority's single latest visit within the last 30
+	// days; one row per authority, oldest HWM first.
 	//
 	// The grid covers the FULL pollable set — both Watched-cycle and Seed-backfill polls
 	// (tc-f2c4m; Seed keeps the whole dataset current so new users see a populated map, and its
 	// lag matters operationally) — minus dead PlanIt feeds: an authority whose HWM is >60 days
-	// old DESPITE being polled within the last 7 days is one PlanIt itself reports nothing new
-	// for (abolished districts like Eden/Wellingborough pinned at the April backfill start, and
-	// long-broken upstream scrapers). Both conditions must hold before a row is hidden: an
-	// ancient HWM with NO recent poll is our own starvation and must stay visible. The filter is
-	// behavioural, not a curated list — areaType can't express it (Broadland/Bromsgrove are
-	// live 'English District' entries with dead feeds) — and self-heals: a revived feed's first
-	// changed application advances its HWM and the row reappears.
+	// old, despite being polled within the last 7 days, AND with no live backlog, is one PlanIt
+	// itself reports nothing new for (abolished districts like Eden/Wellingborough pinned at the
+	// April backfill start, and long-broken upstream scrapers). All three conditions must hold
+	// before a row is hidden: an ancient HWM with no recent poll is our own starvation and stays
+	// visible, and — new in this rebuild — a starving authority that still has a nonzero Backlog
+	// stays visible past 60d even with a recent poll, since the whole point of the Backlog column
+	// is to distinguish "PlanIt has nothing new" from "we're behind and still working through
+	// it". The filter is behavioural, not a curated list — areaType can't express it
+	// (Broadland/Bromsgrove are live 'English District' entries with dead feeds) — and
+	// self-heals: a revived feed's first changed application advances its HWM and the row
+	// reappears.
 	//
-	// The Watched column marks authorities polled by a Watched cycle in the last 48h (~the
-	// current watch-zone set; a wider window would accumulate zone churn). Cycle type isn't
-	// stamped on any span, so the `watched` prefix classifies each cycle by its ROOT span's
-	// start minute — minute%30 < 15 → Watched — mirroring polling.MinuteCycleSelector
-	// (api-go/internal/polling/authorities.go); child PlanIt spans join to their root on
-	// operation_Id, so classification is exact per cycle with no boundary bleed. If the
-	// selector's schedule ever changes, this filter must change with it. Validated live against
-	// appi-town-crier-shared on 2026-07-13 (with --offset 30d — the az CLI default offset of 1h
-	// silently clips results regardless of the query's own ago() filter): 416 rows of the 461
-	// pollable authorities, 45 dead feeds hidden, 17 flagged Watched.
-	const dashboardPollHWMByAuthorityQueryBody = `let watched = dependencies | where timestamp > ago(48h) | where customDimensions['deployment.environment'] == 'prod' | where name == 'Polling Cycle (SB)' | where datetime_part('minute', timestamp) % 30 < 15 | distinct operation_Id; dependencies | where timestamp > ago(30d) | where customDimensions['deployment.environment'] == 'prod' | where target == 'PlanIt search' | extend url = tostring(customDimensions['url.full']) | extend AuthorityID = toint(extract('auth=([0-9]+)', 1, url)) | where isnotnull(AuthorityID) | join kind=leftouter watched on operation_Id | extend w = iff(isnotempty(operation_Id1), 1, 0) | summarize arg_max(timestamp, url), WatchedN=max(w) by AuthorityID | extend HWM = todatetime(extract('different_start=([0-9-]+)', 1, url)) | extend HWMAgeD = round((now() - HWM) / 1d, 1), LastPolledH = round((now() - timestamp) / 1h, 1) | where not(HWMAgeD > 60 and LastPolledH < 168) | lookup kind=leftouter names on AuthorityID | project Authority = coalesce(Authority, tostring(AuthorityID)), Watched = iff(WatchedN == 1, '✓', ''), ['HWM Date'] = format_datetime(HWM, 'yyyy-MM-dd'), ['HWM Age (d)'] = HWMAgeD, ['Last Polled (h)'] = LastPolledH | order by ['HWM Age (d)'] desc`
+	// Watched marks an authority whose latest visit was a Watched cycle
+	// (polling.cycle_type == 'Watched') within the last 48h (~the current watch-zone set; a wider
+	// window would accumulate zone churn) — a plain attribute check now that cycle type is
+	// stamped on the span natively, replacing the former root-span minute%30-heuristic join
+	// entirely (that join mirrored polling.MinuteCycleSelector as a proxy because cycle type
+	// wasn't stamped on any span at the time; it now is, so the proxy is gone).
+	//
+	// Backlog is known_total minus next_index on the latest visit, but ONLY when that visit's own
+	// outcome means a cursor is now active for the NEXT visit — cap_hit == true, or
+	// (rate_limited == true and returned > 0) — mirroring finishAuthority's own persist-cursor
+	// condition (api-go/internal/polling/handler.go) exactly. Deliberately NOT gated on probe_ran
+	// (which reflects whether a cursor was active at the START of this visit — one visit stale
+	// relative to this visit's own outcome) and NOT gated on known_total merely being present
+	// (PlanIt can return a `total` field on a response with no active cursor going forward, e.g.
+	// a natural end). When the gate doesn't hold, Backlog is left null rather than coerced to 0 —
+	// a blank cell must read as "no active backlog" and stay visually distinct from a genuine
+	// zero.
+	//
+	// Not yet live-validated against the new span as of 2026-07-13 (GH #955 PR A deployed as
+	// v0.20.1 the same day) — the tile populates progressively as authorities receive their
+	// first post-PR-A visit; seed rotation covers the fleet within days.
+	const dashboardPollHWMByAuthorityQueryBody = `dependencies | where timestamp > ago(30d) | where customDimensions['deployment.environment'] == 'prod' | where name == 'PlanIt authority poll' | extend AuthorityID = toint(customDimensions['polling.authority_id']) | where isnotnull(AuthorityID) | extend CycleType = tostring(customDimensions['polling.cycle_type']) | extend HWM = todatetime(tostring(customDimensions['polling.different_start'])) | extend NextIndex = toint(customDimensions['polling.next_index']) | extend KnownTotal = toint(customDimensions['polling.known_total']) | extend CapHit = tostring(customDimensions['polling.cap_hit']) == 'true' | extend RateLimited = tostring(customDimensions['polling.rate_limited']) == 'true' | extend Returned = toint(customDimensions['polling.returned']) | extend CursorActive = CapHit or (RateLimited and Returned > 0) | summarize arg_max(timestamp, CycleType, HWM, NextIndex, KnownTotal, CursorActive) by AuthorityID | extend Watched = iff(CycleType == 'Watched' and timestamp > ago(48h), '✓', '') | extend HWMAgeD = round((now() - HWM) / 1d, 1), LastPolledH = round((now() - timestamp) / 1h, 1) | extend Backlog = iff(CursorActive, KnownTotal - NextIndex, int(null)) | where not(HWMAgeD > 60 and LastPolledH < 168 and (isnull(Backlog) or Backlog == 0)) | lookup kind=leftouter names on AuthorityID | project Authority = coalesce(Authority, tostring(AuthorityID)), Watched, ['HWM Date'] = format_datetime(HWM, 'yyyy-MM-dd'), ['HWM Age (d)'] = HWMAgeD, Backlog, ['Last Polled (h)'] = LastPolledH | order by ['HWM Age (d)'] desc`
 
 	// The names lookup is generated from api-go/internal/authorities/resources/authorities.json
 	// rather than hand-maintained, so it never drifts from the authority dataset the API itself
