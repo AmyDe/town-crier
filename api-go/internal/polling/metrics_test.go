@@ -58,8 +58,8 @@ func TestHandler_RecordsNaturalCycleMetrics(t *testing.T) {
 	apps := newFakeApps()
 	state := newFakeStateStore()
 	total := 2
-	pi.pages[pageKey{99, 1}] = planit.FetchPageResult{
-		Page:         1,
+	pi.pages[pageKey{authority: 99, index: 0}] = planit.FetchPageResult{
+		From:         0,
 		Total:        &total,
 		Applications: []applications.PlanningApplication{testApp("App", 99, time.Date(2026, 6, 14, 9, 0, 0, 0, time.UTC))},
 		HasMorePages: false,
@@ -136,8 +136,8 @@ func TestHandler_RecordsCursorAdvancedOnCapHit(t *testing.T) {
 	apps := newFakeApps()
 	state := newFakeStateStore()
 	// Two pages with more remaining, but a cap of 1 forces a cursor save.
-	pi.pages[pageKey{99, 1}] = planit.FetchPageResult{
-		Page:         1,
+	pi.pages[pageKey{authority: 99, index: 0}] = planit.FetchPageResult{
+		From:         0,
 		Applications: []applications.PlanningApplication{testApp("A", 99, time.Date(2026, 6, 14, 9, 0, 0, 0, time.UTC))},
 		HasMorePages: true,
 	}
@@ -203,7 +203,7 @@ func TestHandler_NilMetricsRecorderIsNoOp(t *testing.T) {
 	pi := newFakePlanIt()
 	apps := newFakeApps()
 	state := newFakeStateStore()
-	pi.pages[pageKey{99, 1}] = planitPage(testApp("App", 99, time.Date(2026, 6, 14, 9, 0, 0, 0, time.UTC)))
+	pi.pages[pageKey{authority: 99, index: 0}] = planitPage(testApp("App", 99, time.Date(2026, 6, 14, 9, 0, 0, 0, time.UTC)))
 
 	// No WithMetrics call: the handler must record nothing and not panic.
 	h := newHandler(t, pi, apps, state, fakeAuthorities{ids: []int{99}}, CycleSeed, defaultHandlerOpts())

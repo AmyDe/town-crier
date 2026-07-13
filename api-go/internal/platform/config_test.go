@@ -411,6 +411,7 @@ func TestLoadConfig_PollingDefaults(t *testing.T) {
 		"PLANIT_RETRY_RATE_LIMIT_BACKOFF_SECONDS",
 		"POLLING_MAX_PAGES_PER_AUTHORITY_PER_CYCLE", "POLLING_HANDLER_BUDGET_SECONDS",
 		"POLL_REPLICA_TIMEOUT_SECONDS", "POLL_SHUTDOWN_GRACE_SECONDS",
+		"POLLING_PLANIT_PAGE_SIZE",
 	} {
 		t.Setenv(k, "")
 	}
@@ -436,6 +437,11 @@ func TestLoadConfig_PollingDefaults(t *testing.T) {
 	}
 	if cfg.PollReplicaTimeoutSeconds != 600 || cfg.PollShutdownGraceSeconds != 30 {
 		t.Errorf("cycle budget defaults: %d/%d", cfg.PollReplicaTimeoutSeconds, cfg.PollShutdownGraceSeconds)
+	}
+	// PR A adds the capability to configure page size via env; the default
+	// (100) is unchanged behaviour — PR B flips it to 300 via infra, not here.
+	if cfg.PollingPlanItPageSize != 100 {
+		t.Errorf("page size default: got %d, want 100", cfg.PollingPlanItPageSize)
 	}
 }
 
@@ -538,6 +544,7 @@ func TestLoadConfig_PollingOverrides(t *testing.T) {
 	t.Setenv("POLLING_HANDLER_BUDGET_SECONDS", "120")
 	t.Setenv("POLL_REPLICA_TIMEOUT_SECONDS", "300")
 	t.Setenv("POLL_SHUTDOWN_GRACE_SECONDS", "15")
+	t.Setenv("POLLING_PLANIT_PAGE_SIZE", "300")
 
 	cfg, err := LoadConfig()
 	if err != nil {
@@ -554,5 +561,8 @@ func TestLoadConfig_PollingOverrides(t *testing.T) {
 	}
 	if cfg.PollReplicaTimeoutSeconds != 300 || cfg.PollShutdownGraceSeconds != 15 {
 		t.Errorf("cycle budget override: %d/%d", cfg.PollReplicaTimeoutSeconds, cfg.PollShutdownGraceSeconds)
+	}
+	if cfg.PollingPlanItPageSize != 300 {
+		t.Errorf("page size override: got %d, want 300", cfg.PollingPlanItPageSize)
 	}
 }

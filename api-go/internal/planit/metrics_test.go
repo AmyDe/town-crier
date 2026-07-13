@@ -41,7 +41,7 @@ func TestFetchApplicationsPage_RecordsHTTPErrorOnPermanent4xx(t *testing.T) {
 		t.Fatalf("NewClient: %v", err)
 	}
 
-	if _, err := c.FetchApplicationsPage(context.Background(), 99, nil, 1); err == nil {
+	if _, err := c.FetchApplicationsPage(context.Background(), 99, nil, 1, false); err == nil {
 		t.Fatal("expected an error for a 404")
 	}
 	if len(rec.statuses) != 1 || rec.statuses[0] != http.StatusNotFound {
@@ -74,7 +74,7 @@ func TestFetchApplicationsPage_DoesNotRecordHTTPErrorOnSuccess(t *testing.T) {
 		t.Fatalf("NewClient: %v", err)
 	}
 
-	if _, err := c.FetchApplicationsPage(context.Background(), 99, nil, 1); err != nil {
+	if _, err := c.FetchApplicationsPage(context.Background(), 99, nil, 1, false); err != nil {
 		t.Fatalf("FetchApplicationsPage: %v", err)
 	}
 	if len(rec.statuses) != 0 {

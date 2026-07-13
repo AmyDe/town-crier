@@ -26,8 +26,9 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
 )
 
-// defaultPageSize is PlanIt's page size; a full page (>= this many records) is
-// the page-fill heuristic for "more pages may follow".
+// defaultPageSize is the page size used when Options.PageSize is zero. It also
+// backstops the page-fill heuristic ("more pages may follow") for a response
+// that omits total.
 const defaultPageSize = 100
 
 // maxResponseBytes bounds a PlanIt JSON body so a hostile or broken upstream
@@ -41,6 +42,13 @@ var (
 	// ErrInsecureBaseURL is returned for a non-HTTPS base URL other than localhost.
 	ErrInsecureBaseURL = errors.New("planit base URL must be https (except localhost)")
 )
+
+// ErrZeroProgress is returned when PlanIt responds 200 with zero records while
+// its own total reports more records remain (from < total). A well-behaved
+// upstream never does this; without this guard a caller that blindly retries
+// the same index would livelock forever. Treated like any other authority
+// fetch error by the poll handler: the authority is skipped for this cycle.
+var ErrZeroProgress = errors.New("planit: zero-progress response (0 records, from < total)")
 
 // RateLimitError is returned when PlanIt responds 429. RetryAfter carries the
 // parsed Retry-After hint, or nil when the header was absent or malformed. The
@@ -100,17 +108,27 @@ type Options struct {
 	// Metrics records towncrier.planit.http_errors. nil leaves the counter dark
 	// (the default for the many client tests that don't assert on metrics).
 	Metrics httpErrorRecorder
+	// PageSize is the pg_sz sent on every request and the length-heuristic
+	// fallback for HasMorePages when a response omits total. Zero defaults to
+	// defaultPageSize (100) — the current, unchanged behaviour. Config knob:
+	// POLLING_PLANIT_PAGE_SIZE (internal/platform.Config.PollingPlanItPageSize).
+	PageSize int
 	// TraceOptions are extra otelhttp options threaded into the wrapped transport
 	// (e.g. WithTracerProvider in hermetic tests). Production leaves this nil and
 	// relies on the global provider installed by SetupTelemetry.
 	TraceOptions []otelhttp.Option
 }
 
-// FetchPageResult is one page of a PlanIt fetch: the parsed applications, the
-// reported total (nil when PlanIt omitted it), and whether more pages may follow
-// (the page-fill heuristic).
+// FetchPageResult is one fetch of a PlanIt index-paginated response: the parsed
+// applications, the echoed from (the record offset the response actually
+// started at), the reported total (nil when PlanIt omitted it), and whether
+// more records may follow.
 type FetchPageResult struct {
-	Page         int
+	// From is the record offset PlanIt's response reports it started at (the
+	// response's own "from" field), falling back to the requested startIndex
+	// when the response omits it. Callers use From + len(Applications) as the
+	// next fetch's startIndex, so a truncated page still advances correctly.
+	From         int
 	Applications []applications.PlanningApplication
 	Total        *int
 	HasMorePages bool
@@ -124,6 +142,7 @@ type Client struct {
 	retry      RetryOptions
 	sleep      func(ctx context.Context, d time.Duration) error
 	metrics    httpErrorRecorder
+	pageSize   int
 }
 
 // NewClient validates the base URL and wires the client. A non-HTTPS base URL is
@@ -153,6 +172,10 @@ func NewClient(opts Options) (*Client, error) {
 	if sleep == nil {
 		sleep = contextSleep
 	}
+	pageSize := opts.PageSize
+	if pageSize == 0 {
+		pageSize = defaultPageSize
+	}
 
 	return &Client{
 		httpClient: hc,
@@ -161,14 +184,18 @@ func NewClient(opts Options) (*Client, error) {
 		retry:      opts.Retry,
 		sleep:      sleep,
 		metrics:    opts.Metrics,
+		pageSize:   pageSize,
 	}, nil
 }
 
-// FetchApplicationsPage fetches one page of applications for authorityID, scoped
-// to records changed on or after differentStart (nil for an unbounded fetch).
-// It throttles, retries transient failures, and surfaces 429 as *RateLimitError.
-func (c *Client) FetchApplicationsPage(ctx context.Context, authorityID int, differentStart *time.Time, page int) (FetchPageResult, error) {
-	target := c.baseURL + buildPath(authorityID, differentStart, page)
+// FetchApplicationsPage fetches one index-paginated page of applications for
+// authorityID, scoped to records changed on or after differentStart (nil for an
+// unbounded fetch), starting at the 0-based record offset startIndex. descending
+// selects sort=-last_different (newest first, used by the freshness probe)
+// instead of the drain's default ascending sort=last_different. It throttles,
+// retries transient failures, and surfaces 429 as *RateLimitError.
+func (c *Client) FetchApplicationsPage(ctx context.Context, authorityID int, differentStart *time.Time, startIndex int, descending bool) (FetchPageResult, error) {
+	target := c.baseURL + buildPath(authorityID, differentStart, startIndex, descending, c.pageSize)
 
 	resp, err := c.sendWithThrottle(ctx, target, authorityID)
 	if err != nil {
@@ -182,12 +209,12 @@ func (c *Client) FetchApplicationsPage(ctx context.Context, authorityID int, dif
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
-		return FetchPageResult{}, fmt.Errorf("read planit page %d body: %w", page, err)
+		return FetchPageResult{}, fmt.Errorf("read planit index %d body: %w", startIndex, err)
 	}
 
 	var parsed planItResponse
 	if err := json.Unmarshal(body, &parsed); err != nil {
-		return FetchPageResult{}, fmt.Errorf("decode planit page %d: %w", page, err)
+		return FetchPageResult{}, fmt.Errorf("decode planit index %d: %w", startIndex, err)
 	}
 
 	apps := make([]applications.PlanningApplication, 0, len(parsed.Records))
@@ -199,11 +226,30 @@ func (c *Client) FetchApplicationsPage(ctx context.Context, authorityID int, dif
 		apps = append(apps, app)
 	}
 
+	from := startIndex
+	if parsed.From != nil {
+		from = *parsed.From
+	}
+
+	// Zero-progress guard: PlanIt reporting more records remain (from < total)
+	// while returning none this fetch would livelock a caller that blindly
+	// resumes at the same index forever. Treat it as a hard authority error
+	// instead — the poll handler's existing per-authority error path skips to
+	// the next authority and retries this one next cycle.
+	if len(apps) == 0 && parsed.Total != nil && from < *parsed.Total {
+		return FetchPageResult{}, fmt.Errorf("planit authority %d at index %d: %w", authorityID, startIndex, ErrZeroProgress)
+	}
+
+	hasMorePages := len(apps) >= c.pageSize
+	if parsed.Total != nil {
+		hasMorePages = from+len(apps) < *parsed.Total
+	}
+
 	return FetchPageResult{
-		Page:         page,
+		From:         from,
 		Applications: apps,
 		Total:        parsed.Total,
-		HasMorePages: len(apps) >= defaultPageSize,
+		HasMorePages: hasMorePages,
 	}, nil
 }
 
@@ -301,10 +347,18 @@ func isRetryable(status int) bool {
 	}
 }
 
-// buildPath builds the PlanIt applications query path:
-// pg_sz, sort=last_different, page, auth, and optional different_start (date).
-func buildPath(authorityID int, differentStart *time.Time, page int) string {
-	path := fmt.Sprintf("/api/applics/json?pg_sz=%d&sort=last_different&page=%d&auth=%d", defaultPageSize, page, authorityID)
+// buildPath builds the PlanIt applications query path: pg_sz, sort (ascending
+// last_different, or descending -last_different when descending is true),
+// index (the 0-based record offset), auth, and optional different_start (date).
+// index= replaces the old page= parameter: a record-level resume is immune to
+// PlanIt's 1MB response-body truncation, where a shortened page misread as
+// end-of-results under page= silently restarted the window (GH#955).
+func buildPath(authorityID int, differentStart *time.Time, startIndex int, descending bool, pageSize int) string {
+	sortParam := "last_different"
+	if descending {
+		sortParam = "-last_different"
+	}
+	path := fmt.Sprintf("/api/applics/json?pg_sz=%d&sort=%s&index=%d&auth=%d", pageSize, sortParam, startIndex, authorityID)
 	if differentStart != nil {
 		path += "&different_start=" + differentStart.UTC().Format("2006-01-02")
 	}

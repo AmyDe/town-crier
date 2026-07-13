@@ -243,7 +243,8 @@ func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, reg
 			InitialBackoff:   secondsToDuration(cfg.PlanItInitialBackoffSeconds),
 			RateLimitBackoff: secondsToDuration(cfg.PlanItRateLimitBackoffSeconds),
 		},
-		Metrics: registry,
+		Metrics:  registry,
+		PageSize: cfg.PollingPlanItPageSize,
 	})
 	if err != nil {
 		return nil, err
@@ -482,6 +483,7 @@ func (a *pollOrchestratorAdapter) RunOnce(ctx context.Context) (worker.PollRunRe
 		out.Termination = res.PollResult.TerminationReason.TelemetryValue()
 		out.OldestHWMAgeSeconds = res.PollResult.OldestHWMAgeSeconds
 		out.OldestHWMNeverPolled = res.PollResult.OldestHWMNeverPolled
+		out.CycleType = res.PollResult.CycleType
 	}
 	return out, nil
 }

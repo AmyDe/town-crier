@@ -17,19 +17,28 @@ import (
 	"log/slog"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
 	"github.com/AmyDe/town-crier/api-go/internal/planit"
 )
 
-// resumeOverlap is the one-page overlap applied when resuming from a saved
-// cursor (start at max(1, NextPage-1)) to tolerate PlanIt page-shift between
-// cycles.
-const resumeOverlap = 1
+// tracerName labels the polling package's OpenTelemetry spans.
+const tracerName = "github.com/AmyDe/town-crier/api-go/internal/polling"
+
+// resumeOverlapRecords is the 100-record overlap applied when resuming from a
+// saved cursor (start at max(0, NextIndex-resumeOverlapRecords)) to tolerate
+// PlanIt record-shift between cycles. Replaces the old one-page overlap now
+// that the cursor is record-granular rather than page-granular.
+const resumeOverlapRecords = 100
 
 // planItFetcher is the consumer-side slice of the PlanIt client the handler
-// needs: fetch one page for an authority. *planit.Client satisfies it.
+// needs: fetch one index-paginated page for an authority. descending selects
+// newest-first (used by the freshness probe); the drain always fetches
+// ascending. *planit.Client satisfies it.
 type planItFetcher interface {
-	FetchApplicationsPage(ctx context.Context, authorityID int, differentStart *time.Time, page int) (planit.FetchPageResult, error)
+	FetchApplicationsPage(ctx context.Context, authorityID int, differentStart *time.Time, startIndex int, descending bool) (planit.FetchPageResult, error)
 }
 
 // applicationStore is the consumer-side slice of the Applications store: a
@@ -127,6 +136,11 @@ type PollPlanItResult struct {
 	// OldestHWMNeverPolled reports whether that oldest candidate has never been
 	// polled (no PollState). Meaningless when OldestHWMAgeSeconds is nil.
 	OldestHWMNeverPolled bool
+	// CycleType is CycleType.TelemetryValue() ("Watched" | "Seed") for the cycle
+	// that produced this result, carried through OrchestratorRunResult and
+	// worker.PollRunResult so runPollSB can stamp polling.cycle_type on the
+	// "Polling Cycle (SB)" span (tc-nlvpz).
+	CycleType string
 }
 
 // PollPlanItHandler runs one adaptive PlanIt poll cycle: select the active
@@ -350,6 +364,7 @@ func (h *PollPlanItHandler) Handle(ctx context.Context) (PollPlanItResult, error
 		TerminationReason: reason,
 		AuthorityErrors:   authorityErrors,
 		RetryAfter:        retryAfter,
+		CycleType:         cycleType,
 	}
 	if hasOldestHWM {
 		result.OldestHWMAgeSeconds = &oldestHWMAgeSeconds
@@ -366,13 +381,23 @@ type authorityOutcome struct {
 	timeBounded bool
 	retryAfter  *time.Duration
 	err         error
+	// hwmAdvanced reports whether finishAuthority's natural-end branch actually
+	// moved the high-water mark forward this visit — telemetry only
+	// (polling.hwm_advanced on the authority-poll span).
+	hwmAdvanced bool
 }
 
-// pollAuthority pages one authority from its resume point up to the cap, upserts
-// changed applications, and persists the advanced poll state (HWM + cursor). A
-// 429 is an expected outcome (not an error); a transport/5xx failure after
-// retries is an authority error that the caller counts and skips past.
+// pollAuthority visits one authority: an optional newest-first freshness probe
+// (when resuming an active backlog cursor), then the ascending drain from its
+// resume point up to the fetch cap, upserting changed applications and
+// persisting the advanced poll state (HWM + cursor) at the end. A 429 is an
+// expected outcome (not an error); a transport/5xx failure after retries is an
+// authority error that the caller counts and skips past. Emits one "PlanIt
+// authority poll" span per call (GH#955 PR A).
 func (h *PollPlanItHandler) pollAuthority(ctx context.Context, authorityID int, now time.Time, budgetExhausted func() bool, cycleType string) authorityOutcome {
+	ctx, span := otel.Tracer(tracerName).Start(ctx, "PlanIt authority poll")
+	defer span.End()
+
 	existing, _, err := h.state.Get(ctx, authorityID)
 	existingHWM := now.AddDate(0, 0, -1)
 	hadCursor := false
@@ -383,92 +408,143 @@ func (h *PollPlanItHandler) pollAuthority(ctx context.Context, authorityID int, 
 		hadCursor = existing.Cursor != nil
 	}
 
-	// Resume from a saved cursor only when it still anchors the current HWM date,
-	// overlapping by one page to tolerate PlanIt page-shift. Otherwise start at 1.
-	startPage := 1
-	if existing.Cursor != nil && sameDate(existing.Cursor.DifferentStart, existingHWM) {
-		startPage = max(1, existing.Cursor.NextPage-resumeOverlap)
+	// A cursor is "active" only while it still anchors the current HWM date;
+	// once the HWM advances a stale cursor is ignored (fresh start at index 0).
+	activeCursor := existing.Cursor != nil && sameDate(existing.Cursor.DifferentStart, existingHWM)
+	startIndex := 0
+	if activeCursor {
+		startIndex = max(0, existing.Cursor.NextIndex-resumeOverlapRecords)
+	}
+
+	ds := existingHWM
+	var (
+		out            authorityOutcome
+		highWaterMark  time.Time
+		firstPageTotal *int
+		capHit         bool
+		fetchesDone    int
+		probeRan       bool
+		nextIndex      = startIndex
+	)
+
+	// Freshness probe (A4): iff resuming an active backlog cursor, one
+	// newest-first fetch at index 0 so new applications/decisions land within a
+	// visit even while the ascending drain is still working through older
+	// churn. Ingested through the normal upsert/fan-out path; it never touches
+	// highWaterMark or the cursor, and it never counts against the drain-fetch
+	// cap below.
+	if activeCursor {
+		probeRan = true
+		res, ferr := h.planIt.FetchApplicationsPage(ctx, authorityID, &ds, 0, true)
+		if ferr != nil {
+			var rl *planit.RateLimitError
+			if errors.As(ferr, &rl) {
+				out.rateLimited = true
+				out.retryAfter = rl.RetryAfter
+			} else {
+				out.err = ferr
+			}
+		} else {
+			for _, app := range res.Applications {
+				out.appCount++
+				if err := h.ingester.Ingest(ctx, app); err != nil {
+					out.err = err
+					break
+				}
+			}
+		}
 	}
 
 	maxPages := h.opts.MaxPagesPerAuthorityPerCycle
-	var (
-		out             authorityOutcome
-		highWaterMark   time.Time
-		lastPageFetched int
-		firstPageTotal  *int
-		capHit          bool
-		pagesFetched    int
-		page            = startPage
-	)
+	if out.err == nil && !out.rateLimited {
+	drainLoop:
+		for {
+			res, fetchErr := h.planIt.FetchApplicationsPage(ctx, authorityID, &ds, nextIndex, false)
+			if fetchErr != nil {
+				var rl *planit.RateLimitError
+				if errors.As(fetchErr, &rl) {
+					out.rateLimited = true
+					out.retryAfter = rl.RetryAfter
+				} else {
+					out.err = fetchErr
+				}
+				break drainLoop
+			}
 
-	ds := existingHWM
-	for {
-		res, fetchErr := h.planIt.FetchApplicationsPage(ctx, authorityID, &ds, page)
-		if fetchErr != nil {
-			var rl *planit.RateLimitError
-			if errors.As(fetchErr, &rl) {
-				out.rateLimited = true
-				out.retryAfter = rl.RetryAfter
+			if fetchesDone == 0 {
+				firstPageTotal = res.Total
+				if res.Total != nil {
+					h.recorder().AuthorityTotal(ctx, *res.Total, cycleType, authorityID)
+				}
+			}
+
+			from := res.From
+			for _, app := range res.Applications {
+				out.appCount++
+				if app.LastDifferent.After(highWaterMark) {
+					highWaterMark = app.LastDifferent
+				}
+				if err := h.ingester.Ingest(ctx, app); err != nil {
+					out.err = err
+					break drainLoop
+				}
+			}
+
+			fetchesDone++
+			nextIndex = from + len(res.Applications)
+
+			if !res.HasMorePages {
 				break
 			}
-			out.err = fetchErr
-			break
-		}
-
-		if pagesFetched == 0 {
-			firstPageTotal = res.Total
-			if res.Total != nil {
-				h.recorder().AuthorityTotal(ctx, *res.Total, cycleType, authorityID)
+			if maxPages != nil && fetchesDone >= *maxPages {
+				capHit = true
+				break
+			}
+			if ctx.Err() != nil || budgetExhausted() {
+				capHit = true
+				out.timeBounded = true
+				break
 			}
 		}
-
-		for _, app := range res.Applications {
-			out.appCount++
-			if app.LastDifferent.After(highWaterMark) {
-				highWaterMark = app.LastDifferent
-			}
-			if err := h.ingester.Ingest(ctx, app); err != nil {
-				out.err = err
-				return h.finishAuthority(ctx, authorityID, now, out, highWaterMark, existingHWM, lastPageFetched, firstPageTotal, capHit, hadCursor, cycleType)
-			}
-		}
-
-		pagesFetched++
-		lastPageFetched = page
-
-		if !res.HasMorePages {
-			break
-		}
-		if maxPages != nil && pagesFetched >= *maxPages {
-			capHit = true
-			break
-		}
-		if ctx.Err() != nil || budgetExhausted() {
-			capHit = true
-			out.timeBounded = true
-			break
-		}
-		page++
 	}
 
 	if out.err == nil && !out.rateLimited {
 		out.completed = true
 	}
-	return h.finishAuthority(ctx, authorityID, now, out, highWaterMark, existingHWM, lastPageFetched, firstPageTotal, capHit, hadCursor, cycleType)
+
+	result := h.finishAuthority(ctx, authorityID, now, out, highWaterMark, existingHWM, nextIndex, firstPageTotal, capHit, hadCursor, cycleType)
+
+	span.SetAttributes(
+		attribute.Int("polling.authority_id", authorityID),
+		attribute.String("polling.cycle_type", cycleType),
+		attribute.String("polling.different_start", existingHWM.UTC().Format("2006-01-02")),
+		attribute.Int("polling.start_index", startIndex),
+		attribute.Int("polling.next_index", nextIndex),
+		attribute.Int("polling.returned", result.appCount),
+		attribute.Bool("polling.cap_hit", capHit),
+		attribute.Bool("polling.rate_limited", result.rateLimited),
+		attribute.Bool("polling.probe_ran", probeRan),
+		attribute.Bool("polling.hwm_advanced", result.hwmAdvanced),
+	)
+	if firstPageTotal != nil {
+		span.SetAttributes(attribute.Int("polling.known_total", *firstPageTotal))
+	}
+
+	return result
 }
 
 // finishAuthority persists the authority's advanced poll state. On a cap-hit or
-// mid-pagination 429 it freezes the HWM and saves a resumable cursor at the next
-// unfetched page; on a natural end it advances the HWM to the max LastDifferent
-// observed and clears any cursor. State is only written when the authority
-// produced work (completed or saw applications).
+// mid-pagination 429 it freezes the HWM and saves a resumable cursor at the
+// next unfetched record index; on a natural end it advances the HWM to the max
+// LastDifferent observed and clears any cursor. State is only written when the
+// authority produced work (completed or saw applications).
 func (h *PollPlanItHandler) finishAuthority(
 	ctx context.Context,
 	authorityID int,
 	now time.Time,
 	out authorityOutcome,
 	highWaterMark, existingHWM time.Time,
-	lastPageFetched int,
+	nextIndex int,
 	firstPageTotal *int,
 	capHit, hadCursor bool,
 	cycleType string,
@@ -480,13 +556,12 @@ func (h *PollPlanItHandler) finishAuthority(
 	rec := h.recorder()
 
 	if capHit || (out.rateLimited && out.appCount > 0) {
-		// Freeze HWM, save a resumable cursor at the next unfetched page so the
-		// following cycle resumes there. LastPollTime still advances so the
-		// scheduler rotates off this authority.
-		nextPage := lastPageFetched + 1
+		// Freeze HWM, save a resumable cursor at the next unfetched record index
+		// so the following cycle resumes there. LastPollTime still advances so
+		// the scheduler rotates off this authority.
 		cursor := &PollCursor{
 			DifferentStart: truncateToDate(existingHWM),
-			NextPage:       nextPage,
+			NextIndex:      nextIndex,
 			KnownTotal:     firstPageTotal,
 		}
 		if err := h.state.Save(ctx, authorityID, now, existingHWM, cursor); err != nil && out.err == nil {
@@ -503,6 +578,7 @@ func (h *PollPlanItHandler) finishAuthority(
 	if !highWaterMark.IsZero() {
 		advancedHWM = highWaterMark
 	}
+	out.hwmAdvanced = advancedHWM.After(existingHWM)
 	if err := h.state.Save(ctx, authorityID, now, advancedHWM, nil); err != nil && out.err == nil {
 		out.err = err
 	}

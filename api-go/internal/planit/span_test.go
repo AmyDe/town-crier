@@ -59,7 +59,7 @@ func TestFetchApplicationsPage_EmitsClientSpan(t *testing.T) {
 		t.Fatalf("NewClient: %v", err)
 	}
 
-	if _, err := c.FetchApplicationsPage(context.Background(), 99, nil, 1); err != nil {
+	if _, err := c.FetchApplicationsPage(context.Background(), 99, nil, 1, false); err != nil {
 		t.Fatalf("FetchApplicationsPage: %v", err)
 	}
 

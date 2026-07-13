@@ -46,7 +46,7 @@ func TestPostgresPollStateStore_RoundTrip(t *testing.T) {
 	hwm := time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC)
 	cursor := &PollCursor{
 		DifferentStart: time.Date(2026, 6, 13, 0, 0, 0, 0, time.UTC),
-		NextPage:       3,
+		NextIndex:      300,
 		KnownTotal:     platform.Ptr(250),
 	}
 
@@ -73,8 +73,8 @@ func TestPostgresPollStateStore_RoundTrip(t *testing.T) {
 	if !got.Cursor.DifferentStart.Equal(cursor.DifferentStart) {
 		t.Errorf("DifferentStart: got %v, want %v", got.Cursor.DifferentStart, cursor.DifferentStart)
 	}
-	if got.Cursor.NextPage != 3 {
-		t.Errorf("NextPage: got %d, want 3", got.Cursor.NextPage)
+	if got.Cursor.NextIndex != 300 {
+		t.Errorf("NextIndex: got %d, want 300", got.Cursor.NextIndex)
 	}
 	if got.Cursor.KnownTotal == nil || *got.Cursor.KnownTotal != 250 {
 		t.Errorf("KnownTotal: got %v, want 250", got.Cursor.KnownTotal)
@@ -90,7 +90,7 @@ func TestPostgresPollStateStore_RoundTrip_NilCursor(t *testing.T) {
 	now := time.Date(2026, 6, 14, 12, 0, 0, 0, time.UTC)
 
 	// First save with a cursor, then clear it.
-	_ = store.Save(ctx, 5, now, now, &PollCursor{DifferentStart: now, NextPage: 2})
+	_ = store.Save(ctx, 5, now, now, &PollCursor{DifferentStart: now, NextIndex: 200})
 	if err := store.Save(ctx, 5, now, now, nil); err != nil {
 		t.Fatalf("Save (clear cursor): %v", err)
 	}
@@ -101,6 +101,95 @@ func TestPostgresPollStateStore_RoundTrip_NilCursor(t *testing.T) {
 	}
 	if got.Cursor != nil {
 		t.Errorf("Cursor should be nil after clearing, got %+v", got.Cursor)
+	}
+}
+
+// TestPostgresPollStateStore_MigrationBackfillsCursorNextIndexFromLegacyPage
+// re-runs the additive migration's own backfill statement
+// (00021_poll_state_cursor_index.sql: cursor_next_index = (cursor_next_page-1)
+// * 100) against a row seeded to look exactly like a pre-migration row (only
+// cursor_next_page set), proving the formula, and that Get surfaces the
+// backfilled value as PollCursor.NextIndex.
+func TestPostgresPollStateStore_MigrationBackfillsCursorNextIndexFromLegacyPage(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.New(t)
+	pgtest.Truncate(t, pool, "poll_state", "leases")
+
+	now := time.Date(2026, 6, 14, 12, 0, 0, 0, time.UTC)
+	// Seed a legacy-shaped row: only cursor_next_page is set, cursor_next_index
+	// left NULL (as an ADD COLUMN would leave a pre-existing row before the
+	// backfill UPDATE runs).
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO poll_state (authority_id, last_poll_time, high_water_mark, cursor_different_start, cursor_next_page)
+		VALUES ($1, $2, $2, $3, $4)`,
+		300, now, now, 19,
+	); err != nil {
+		t.Fatalf("seed legacy row: %v", err)
+	}
+
+	// The migration's own backfill statement, verbatim.
+	if _, err := pool.Exec(ctx, `
+		UPDATE poll_state SET cursor_next_index = (cursor_next_page - 1) * 100
+		WHERE cursor_next_page IS NOT NULL`,
+	); err != nil {
+		t.Fatalf("run backfill: %v", err)
+	}
+
+	var nextIndex int
+	if err := pool.QueryRow(ctx, `SELECT cursor_next_index FROM poll_state WHERE authority_id = $1`, 300).Scan(&nextIndex); err != nil {
+		t.Fatalf("read backfilled column: %v", err)
+	}
+	if nextIndex != 1800 {
+		t.Errorf("cursor_next_index: got %d, want 1800 ((19-1)*100)", nextIndex)
+	}
+
+	store := NewPostgresPollStateStore(pool)
+	got, ok, err := store.Get(ctx, 300)
+	if err != nil || !ok {
+		t.Fatalf("Get: ok=%v err=%v", ok, err)
+	}
+	if got.Cursor == nil || got.Cursor.NextIndex != 1800 {
+		t.Errorf("Cursor: got %+v, want NextIndex=1800", got.Cursor)
+	}
+}
+
+// TestPostgresPollStateStore_SaveNullsLegacyCursorNextPageColumn proves that
+// Save always migrates a row forward: even when a legacy cursor_next_page
+// value is already present (left by an old-code writer during the
+// deploy-overlap window), a subsequent Save nulls it out and writes
+// cursor_next_index instead.
+func TestPostgresPollStateStore_SaveNullsLegacyCursorNextPageColumn(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.New(t)
+	pgtest.Truncate(t, pool, "poll_state", "leases")
+
+	now := time.Date(2026, 6, 14, 12, 0, 0, 0, time.UTC)
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO poll_state (authority_id, last_poll_time, high_water_mark, cursor_different_start, cursor_next_page)
+		VALUES ($1, $2, $2, $3, $4)`,
+		400, now, now, 5,
+	); err != nil {
+		t.Fatalf("seed legacy row: %v", err)
+	}
+
+	store := NewPostgresPollStateStore(pool)
+	if err := store.Save(ctx, 400, now, now, &PollCursor{DifferentStart: now, NextIndex: 777}); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	var (
+		nextPage  *int
+		nextIndex *int
+	)
+	if err := pool.QueryRow(ctx, `SELECT cursor_next_page, cursor_next_index FROM poll_state WHERE authority_id = $1`, 400).
+		Scan(&nextPage, &nextIndex); err != nil {
+		t.Fatalf("read row: %v", err)
+	}
+	if nextPage != nil {
+		t.Errorf("cursor_next_page: got %v, want NULL after Save", *nextPage)
+	}
+	if nextIndex == nil || *nextIndex != 777 {
+		t.Errorf("cursor_next_index: got %v, want 777", nextIndex)
 	}
 }
 

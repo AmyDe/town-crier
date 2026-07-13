@@ -66,7 +66,7 @@ func TestHandler_FanOut_EnqueuesEveryUpsertedApplication(t *testing.T) {
 	t.Parallel()
 	pi := newFakePlanIt()
 	ld := time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC)
-	pi.pages[pageKey{99, 1}] = planitPage(decisionApp("Undecided", ld))
+	pi.pages[pageKey{authority: 99, index: 0}] = planitPage(decisionApp("Undecided", ld))
 	apps := newFakeApps()
 	state := newFakeStateStore()
 	disp := &fakeDecisionDispatcher{}
@@ -86,7 +86,7 @@ func TestHandler_FanOut_DispatchesDecisionOnTransitionExactlyOnce(t *testing.T) 
 	pi := newFakePlanIt()
 	ld := time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC)
 	// Incoming app is in a decision state (Permitted).
-	pi.pages[pageKey{99, 1}] = planitPage(decisionApp("Permitted", ld))
+	pi.pages[pageKey{authority: 99, index: 0}] = planitPage(decisionApp("Permitted", ld))
 	apps := newFakeApps()
 	// Existing record is NOT in a decision state — so this is a new-decision transition.
 	existing := decisionApp("Undecided", ld.Add(-time.Hour))
@@ -110,7 +110,7 @@ func TestHandler_FanOut_NoDecisionDispatchWhenAlreadyDecided(t *testing.T) {
 	ld := time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC)
 	// Incoming app is Conditions (a decision state) but the existing record was
 	// ALREADY in a decision state (Permitted) — no transition, so no dispatch.
-	pi.pages[pageKey{99, 1}] = planitPage(decisionApp("Conditions", ld))
+	pi.pages[pageKey{authority: 99, index: 0}] = planitPage(decisionApp("Conditions", ld))
 	apps := newFakeApps()
 	apps.existing["24/0001/FUL"] = decisionApp("Permitted", ld.Add(-time.Hour))
 	state := newFakeStateStore()
@@ -136,7 +136,7 @@ func TestHandler_FanOut_FirstSeenDecidedAppCountsAsTransition(t *testing.T) {
 	ld := time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC)
 	// First-time insert that arrives already decided (no existing record) counts
 	// as a transition (no prior state means the new state is a first-time decision).
-	pi.pages[pageKey{99, 1}] = planitPage(decisionApp("Rejected", ld))
+	pi.pages[pageKey{authority: 99, index: 0}] = planitPage(decisionApp("Rejected", ld))
 	apps := newFakeApps()
 	state := newFakeStateStore()
 	disp := &fakeDecisionDispatcher{}
@@ -156,7 +156,7 @@ func TestHandler_FanOut_SkipsUnchangedReindex(t *testing.T) {
 	pi := newFakePlanIt()
 	ld := time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC)
 	app := decisionApp("Permitted", ld)
-	pi.pages[pageKey{99, 1}] = planitPage(app)
+	pi.pages[pageKey{authority: 99, index: 0}] = planitPage(app)
 	apps := newFakeApps()
 	// Identical business fields already stored (only LastDifferent differs) —
 	// the reindex-flood guard must skip both upsert AND fan-out.

@@ -180,6 +180,12 @@ type Config struct {
 	PollReplicaTimeoutSeconds           int
 	PollShutdownGraceSeconds            int
 
+	// PollingPlanItPageSize is the pg_sz sent on every PlanIt fetch (default
+	// 100, unchanged behaviour). Loaded from POLLING_PLANIT_PAGE_SIZE. This PR
+	// (GH#955 PR A, tc-nlvpz) only adds the capability to configure it via env;
+	// PR B flips the prod value to 300 through infra, not a code default change.
+	PollingPlanItPageSize int
+
 	// NotificationsRetentionDays is the number of days to keep Notifications rows
 	// when running the pg-purge job. Loaded from NOTIFICATIONS_RETENTION_DAYS;
 	// defaults to 90.
@@ -311,6 +317,7 @@ func LoadConfig() (Config, error) {
 		PollingHandlerBudgetSeconds:         getenvInt("POLLING_HANDLER_BUDGET_SECONDS", 240),
 		PollReplicaTimeoutSeconds:           getenvInt("POLL_REPLICA_TIMEOUT_SECONDS", 600),
 		PollShutdownGraceSeconds:            getenvInt("POLL_SHUTDOWN_GRACE_SECONDS", 30),
+		PollingPlanItPageSize:               getenvInt("POLLING_PLANIT_PAGE_SIZE", 100),
 
 		NotificationsRetentionDays:       getenvInt("NOTIFICATIONS_RETENTION_DAYS", 90),
 		DeviceRegistrationsRetentionDays: getenvInt("DEVICE_REGISTRATIONS_RETENTION_DAYS", 180),

@@ -24,25 +24,31 @@ type fakePlanIt struct {
 	mu      sync.Mutex
 }
 
+// pageKey identifies one fake fetch: the authority, the requested 0-based
+// record index, and the sort direction (descending distinguishes the
+// freshness probe's newest-first fetch from an ascending drain fetch that
+// happens to request the same index — e.g. a resume that overlaps back to 0).
 type pageKey struct {
-	authority int
-	page      int
+	authority  int
+	index      int
+	descending bool
 }
 
 func newFakePlanIt() *fakePlanIt {
 	return &fakePlanIt{pages: map[pageKey]planit.FetchPageResult{}, errs: map[int]error{}}
 }
 
-func (f *fakePlanIt) FetchApplicationsPage(_ context.Context, authorityID int, _ *time.Time, page int) (planit.FetchPageResult, error) {
+func (f *fakePlanIt) FetchApplicationsPage(_ context.Context, authorityID int, _ *time.Time, startIndex int, descending bool) (planit.FetchPageResult, error) {
+	key := pageKey{authority: authorityID, index: startIndex, descending: descending}
 	f.mu.Lock()
-	f.fetched = append(f.fetched, pageKey{authorityID, page})
+	f.fetched = append(f.fetched, key)
 	f.mu.Unlock()
 	if err := f.errs[authorityID]; err != nil {
 		return planit.FetchPageResult{}, err
 	}
-	res, ok := f.pages[pageKey{authorityID, page}]
+	res, ok := f.pages[key]
 	if !ok {
-		return planit.FetchPageResult{Page: page, Applications: nil, HasMorePages: false}, nil
+		return planit.FetchPageResult{From: startIndex, Applications: nil, HasMorePages: false}, nil
 	}
 	return res, nil
 }
@@ -165,10 +171,11 @@ func newHandlerWithFanOut(t *testing.T, pi *fakePlanIt, apps *fakeApps, state *f
 	return h
 }
 
-// planitPage wraps a single application into a one-page, no-more-pages result.
+// planitPage wraps a single application into a one-fetch, no-more-pages result
+// starting at index 0.
 func planitPage(app applications.PlanningApplication) planit.FetchPageResult {
 	return planit.FetchPageResult{
-		Page:         1,
+		From:         0,
 		Applications: []applications.PlanningApplication{app},
 		HasMorePages: false,
 	}
@@ -189,8 +196,8 @@ func TestHandler_IngestsAndUpsertsNewApplications(t *testing.T) {
 	t.Parallel()
 	pi := newFakePlanIt()
 	ld := time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC)
-	pi.pages[pageKey{99, 1}] = planit.FetchPageResult{
-		Page:         1,
+	pi.pages[pageKey{authority: 99, index: 0}] = planit.FetchPageResult{
+		From:         0,
 		Applications: []applications.PlanningApplication{testApp("24/0001", 99, ld)},
 		HasMorePages: false,
 	}
@@ -222,7 +229,7 @@ func TestHandler_SkipsUpsertWhenBusinessFieldsUnchanged(t *testing.T) {
 	pi := newFakePlanIt()
 	ld := time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC)
 	app := testApp("24/0001", 99, ld)
-	pi.pages[pageKey{99, 1}] = planit.FetchPageResult{Page: 1, Applications: []applications.PlanningApplication{app}}
+	pi.pages[pageKey{authority: 99, index: 0}] = planit.FetchPageResult{From: 0, Applications: []applications.PlanningApplication{app}}
 	apps := newFakeApps()
 	// An identical record already exists (only LastDifferent would differ).
 	existing := app
@@ -253,8 +260,10 @@ func TestHandler_CapsPagesAndSavesResumableCursor(t *testing.T) {
 	for i := range full {
 		full[i] = testApp("app", 99, ld)
 	}
-	for p := 1; p <= 5; p++ {
-		pi.pages[pageKey{99, p}] = planit.FetchPageResult{Page: p, Applications: full, HasMorePages: true, Total: platform.Ptr(500)}
+	// Fetches at index 0, 100, 200, 300, 400 (each returns a full 100-record page).
+	for i := range 5 {
+		idx := i * 100
+		pi.pages[pageKey{authority: 99, index: idx}] = planit.FetchPageResult{From: idx, Applications: full, HasMorePages: true, Total: platform.Ptr(500)}
 	}
 	apps := newFakeApps()
 	state := newFakeStateStore()
@@ -264,20 +273,21 @@ func TestHandler_CapsPagesAndSavesResumableCursor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
-	// MaxPages = 3, so exactly 3 pages fetched.
+	// MaxPages = 3, so exactly 3 fetches.
 	if pi.fetchCount() != 3 {
-		t.Errorf("pages fetched: got %d, want 3 (MaxPages cap)", pi.fetchCount())
+		t.Errorf("fetches: got %d, want 3 (MaxPages cap)", pi.fetchCount())
 	}
 	if res.TerminationReason != TerminationNatural {
 		t.Errorf("cap-hit on a single authority is a natural cycle end: got %v", res.TerminationReason)
 	}
-	// Cap hit saves a resumable cursor at next unfetched page (4) and freezes HWM.
+	// Cap hit saves a resumable cursor at the next unfetched index: 3 fetches of
+	// 100 records starting at 0 land at from(200)+records(100) = 300.
 	if len(state.saves) != 1 {
 		t.Fatalf("state saves: got %d, want 1", len(state.saves))
 	}
 	cur := state.saves[0].cursor
-	if cur == nil || cur.NextPage != 4 {
-		t.Errorf("cursor: %+v, want NextPage=4", cur)
+	if cur == nil || cur.NextIndex != 300 {
+		t.Errorf("cursor: %+v, want NextIndex=300", cur)
 	}
 }
 
@@ -285,25 +295,101 @@ func TestHandler_ResumesFromSavedCursor(t *testing.T) {
 	t.Parallel()
 	pi := newFakePlanIt()
 	hwm := time.Date(2026, 6, 13, 0, 0, 0, 0, time.UTC)
-	for p := 1; p <= 5; p++ {
-		pi.pages[pageKey{99, p}] = planit.FetchPageResult{Page: p, Applications: []applications.PlanningApplication{testApp("a", 99, hwm)}, HasMorePages: false}
-	}
+	pi.pages[pageKey{authority: 99, index: 300}] = planit.FetchPageResult{From: 300, Applications: []applications.PlanningApplication{testApp("a", 99, hwm)}, HasMorePages: false}
 	apps := newFakeApps()
 	state := newFakeStateStore()
-	// Existing state: HWM at 2026-06-13, cursor pointing at page 4 against that date.
+	// Existing state: HWM at 2026-06-13, cursor pointing at record index 400
+	// against that date.
 	state.states[99] = PollState{
 		LastPollTime:  hwm,
 		HighWaterMark: hwm,
-		Cursor:        &PollCursor{DifferentStart: hwm, NextPage: 4, KnownTotal: platform.Ptr(500)},
+		Cursor:        &PollCursor{DifferentStart: hwm, NextIndex: 400, KnownTotal: platform.Ptr(500)},
 	}
 	h := newHandler(t, pi, apps, state, fakeAuthorities{ids: []int{99}}, CycleSeed, defaultHandlerOpts())
 
 	if _, err := h.Handle(context.Background()); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
-	// Resume overlaps by one page: start at max(1, NextPage-1) = 3.
-	if len(pi.fetched) == 0 || pi.fetched[0].page != 3 {
-		t.Errorf("first fetched page: got %+v, want page 3 (resume with -1 overlap)", pi.fetched)
+	// An active cursor fires the freshness probe first (index 0, descending),
+	// then the ascending drain resumes overlapping by 100 records: start at
+	// max(0, 400-100) = 300.
+	if len(pi.fetched) != 2 {
+		t.Fatalf("fetched: got %+v, want 2 (probe + drain)", pi.fetched)
+	}
+	if !pi.fetched[0].descending || pi.fetched[0].index != 0 {
+		t.Errorf("probe fetch: got %+v, want index=0 descending=true", pi.fetched[0])
+	}
+	if pi.fetched[1].descending || pi.fetched[1].index != 300 {
+		t.Errorf("drain fetch: got %+v, want index=300 descending=false (resume with -100 overlap)", pi.fetched[1])
+	}
+}
+
+// TestHandler_CapHitSavesNextIndexAsFromPlusRecords pins the acceptance
+// criterion directly: a single-fetch cap hit (MaxPages=1, HasMorePages=true)
+// must persist NextIndex == from+records, independent of the multi-fetch
+// scenario TestHandler_CapsPagesAndSavesResumableCursor already covers.
+func TestHandler_CapHitSavesNextIndexAsFromPlusRecords(t *testing.T) {
+	t.Parallel()
+	pi := newFakePlanIt()
+	ld := time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC)
+	pi.pages[pageKey{authority: 99, index: 0}] = planit.FetchPageResult{
+		From:         0,
+		Applications: []applications.PlanningApplication{testApp("a", 99, ld), testApp("b", 99, ld)},
+		HasMorePages: true,
+		Total:        platform.Ptr(500),
+	}
+	one := 1
+	opts := HandlerOptions{MaxPagesPerAuthorityPerCycle: &one, HandlerBudget: 4 * time.Minute}
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	h := newHandler(t, pi, apps, state, fakeAuthorities{ids: []int{99}}, CycleSeed, opts)
+
+	if _, err := h.Handle(context.Background()); err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if len(state.saves) != 1 {
+		t.Fatalf("state saves: got %d, want 1", len(state.saves))
+	}
+	cur := state.saves[0].cursor
+	if cur == nil || cur.NextIndex != 2 {
+		t.Errorf("cursor: %+v, want NextIndex=2 (from=0 + records=2)", cur)
+	}
+}
+
+// TestHandler_LegacyCursorNextPageResumesViaIndexFallback pins the second
+// resume acceptance criterion: a legacy cursor with only NextIndex populated
+// via the store's (cursor_next_page-1)*100 fallback (store_postgres_test.go /
+// store_postgres_integration_test.go cover the store-level conversion; this
+// test proves the HANDLER applies the same resumeOverlapRecords maths to a
+// cursor regardless of whether it originated from the legacy column) resumes
+// at index (19-1)*100 - 100 = 1700.
+func TestHandler_LegacyCursorNextPageResumesViaIndexFallback(t *testing.T) {
+	t.Parallel()
+	pi := newFakePlanIt()
+	hwm := time.Date(2026, 6, 13, 0, 0, 0, 0, time.UTC)
+	pi.pages[pageKey{authority: 99, index: 1700}] = planit.FetchPageResult{From: 1700, Applications: nil, HasMorePages: false}
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	// The store layer is responsible for converting a legacy cursor_next_page
+	// into NextIndex = (19-1)*100 = 1800 on read; the fake here stands in for
+	// that already-converted value, so this test isolates the handler's resume
+	// maths from the store's conversion.
+	state.states[99] = PollState{
+		LastPollTime:  hwm,
+		HighWaterMark: hwm,
+		Cursor:        &PollCursor{DifferentStart: hwm, NextIndex: 1800},
+	}
+	h := newHandler(t, pi, apps, state, fakeAuthorities{ids: []int{99}}, CycleSeed, defaultHandlerOpts())
+
+	if _, err := h.Handle(context.Background()); err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	// The active cursor also fires the probe (index 0, descending) first.
+	if len(pi.fetched) != 2 {
+		t.Fatalf("fetched: got %+v, want 2 (probe + drain)", pi.fetched)
+	}
+	if pi.fetched[1].descending || pi.fetched[1].index != 1700 {
+		t.Errorf("drain fetch: got %+v, want index 1700 ((19-1)*100 - 100)", pi.fetched[1])
 	}
 }
 
@@ -340,7 +426,7 @@ func TestHandler_AuthorityErrorIsCountedAndCycleContinues(t *testing.T) {
 	pi := newFakePlanIt()
 	pi.errs[99] = errors.New("planit 500 exhausted")
 	ld := time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC)
-	pi.pages[pageKey{200, 1}] = planit.FetchPageResult{Page: 1, Applications: []applications.PlanningApplication{testApp("ok", 200, ld)}}
+	pi.pages[pageKey{authority: 200, index: 0}] = planit.FetchPageResult{From: 0, Applications: []applications.PlanningApplication{testApp("ok", 200, ld)}}
 	apps := newFakeApps()
 	state := newFakeStateStore()
 	h := newHandler(t, pi, apps, state, fakeAuthorities{ids: []int{99, 200}}, CycleSeed, defaultHandlerOpts())

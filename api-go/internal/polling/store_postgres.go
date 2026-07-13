@@ -48,11 +48,23 @@ func NewPostgresPollStateStore(db querier) *PostgresPollStateStore {
 	return &PostgresPollStateStore{db: db}
 }
 
+// legacyPageSize is the fixed page size the old page-granular cursor was
+// recorded against (the pre-tc-nlvpz defaultPageSize). It is used ONLY to
+// convert a legacy cursor_next_page value into an equivalent record index for
+// rows written before this release: cursor_next_index = (cursor_next_page-1) *
+// legacyPageSize, matching the migration's SQL backfill exactly.
+const legacyPageSize = 100
+
 // getPollStateQuery point-reads the poll state for one authority by its integer
-// id. Cursor columns are nullable; absent cursor fields mean no active cursor.
+// id. Cursor columns are nullable; absent cursor_different_start means no
+// active cursor. Both the new cursor_next_index and the old cursor_next_page
+// are read so Get can fall back to the legacy column for a row the additive
+// migration backfilled but a concurrent old-code writer might still be
+// touching during the deploy-overlap window (cursor_next_page is kept for one
+// release after tc-nlvpz for exactly this reason).
 const getPollStateQuery = `
 SELECT last_poll_time, high_water_mark,
-       cursor_different_start, cursor_next_page, cursor_known_total
+       cursor_different_start, cursor_next_index, cursor_next_page, cursor_known_total
 FROM poll_state
 WHERE authority_id = $1`
 
@@ -63,12 +75,13 @@ func (s *PostgresPollStateStore) Get(ctx context.Context, authorityID int) (Poll
 		lastPollTime     time.Time
 		highWaterMark    time.Time
 		cursorDiffStart  *time.Time
+		cursorNextIndex  *int
 		cursorNextPage   *int
 		cursorKnownTotal *int
 	)
 	err := s.db.QueryRow(ctx, getPollStateQuery, authorityID).Scan(
 		&lastPollTime, &highWaterMark,
-		&cursorDiffStart, &cursorNextPage, &cursorKnownTotal,
+		&cursorDiffStart, &cursorNextIndex, &cursorNextPage, &cursorKnownTotal,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return PollState{}, false, nil
@@ -81,10 +94,20 @@ func (s *PostgresPollStateStore) Get(ctx context.Context, authorityID int) (Poll
 		LastPollTime:  lastPollTime.UTC(),
 		HighWaterMark: highWaterMark.UTC(),
 	}
-	if cursorDiffStart != nil && cursorNextPage != nil {
+	if cursorDiffStart != nil {
+		nextIndex := 0
+		switch {
+		case cursorNextIndex != nil:
+			nextIndex = *cursorNextIndex
+		case cursorNextPage != nil:
+			// Legacy row: only the old page-granular column is set (the
+			// migration's backfill missed it, or it predates the migration).
+			// Convert on read so callers never see the old shape.
+			nextIndex = (*cursorNextPage - 1) * legacyPageSize
+		}
 		state.Cursor = &PollCursor{
 			DifferentStart: cursorDiffStart.UTC(),
-			NextPage:       *cursorNextPage,
+			NextIndex:      nextIndex,
 			KnownTotal:     cursorKnownTotal,
 		}
 	}
@@ -92,32 +115,38 @@ func (s *PostgresPollStateStore) Get(ctx context.Context, authorityID int) (Poll
 }
 
 // savePollStateQuery upserts the poll state for one authority. Cursor columns
-// are written together as a set; a nil cursor clears all three cursor fields to
-// NULL, which readCursor interprets as "no active cursor".
+// are written together as a set; a nil cursor clears all cursor fields to
+// NULL, which Get interprets as "no active cursor". cursor_next_page is always
+// nulled on write — every save migrates the row forward to the index-only
+// shape, matching the "writes always set cursor_next_index and null out
+// cursor_next_page" plan (tc-nlvpz).
 const savePollStateQuery = `
 INSERT INTO poll_state (
     authority_id, last_poll_time, high_water_mark,
-    cursor_different_start, cursor_next_page, cursor_known_total
-) VALUES ($1, $2, $3, $4, $5, $6)
+    cursor_different_start, cursor_next_index, cursor_next_page, cursor_known_total
+) VALUES ($1, $2, $3, $4, $5, NULL, $6)
 ON CONFLICT (authority_id) DO UPDATE SET
     last_poll_time         = EXCLUDED.last_poll_time,
     high_water_mark        = EXCLUDED.high_water_mark,
     cursor_different_start = EXCLUDED.cursor_different_start,
-    cursor_next_page       = EXCLUDED.cursor_next_page,
+    cursor_next_index      = EXCLUDED.cursor_next_index,
+    cursor_next_page       = NULL,
     cursor_known_total     = EXCLUDED.cursor_known_total`
 
 // Save upserts the poll state for authorityID. A nil cursor clears any active
-// cursor. The three poll-state fields are written together as a set.
+// cursor. The poll-state fields are written together as a set, and every save
+// nulls the legacy cursor_next_page column (writes always use the new
+// cursor_next_index shape).
 func (s *PostgresPollStateStore) Save(ctx context.Context, authorityID int, lastPollTime, highWaterMark time.Time, cursor *PollCursor) error {
 	var (
 		cursorDiffStart  *time.Time
-		cursorNextPage   *int
+		cursorNextIndex  *int
 		cursorKnownTotal *int
 	)
 	if cursor != nil {
 		ds := cursor.DifferentStart.UTC()
 		cursorDiffStart = &ds
-		cursorNextPage = &cursor.NextPage
+		cursorNextIndex = &cursor.NextIndex
 		cursorKnownTotal = cursor.KnownTotal
 	}
 
@@ -126,7 +155,7 @@ func (s *PostgresPollStateStore) Save(ctx context.Context, authorityID int, last
 		lastPollTime.UTC(),
 		highWaterMark.UTC(),
 		cursorDiffStart,
-		cursorNextPage,
+		cursorNextIndex,
 		cursorKnownTotal,
 	)
 	if err != nil {
