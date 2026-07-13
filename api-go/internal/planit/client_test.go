@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -56,13 +57,13 @@ func newTestClient(t *testing.T, baseURL string, clock *fakeClock) *Client {
 
 func TestFetchApplicationsPage_ParsesRecordsAndTotal(t *testing.T) {
 	t.Parallel()
-	body := `{"total":42,"pg_sz":100,"records":[
+	body := `{"total":42,"pg_sz":100,"from":0,"records":[
 		{"name":"24/0001","uid":"24/0001/FUL","area_name":"Test","area_id":99,"address":"1 High St","postcode":"AB1 2CD","description":"A shed","app_type":"Full","app_state":"Undecided","app_size":"Small","start_date":"2026-06-01","location_x":-0.1,"location_y":51.5,"url":"http://x","link":"http://y","last_different":"2026-06-10T09:00:00Z"}
 	]}`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Verify the query parameters: pg_sz, sort, page, auth, different_start.
+		// Verify the query parameters: pg_sz, sort, index, auth, different_start.
 		q := r.URL.Query()
-		if q.Get("auth") != "99" || q.Get("page") != "1" || q.Get("different_start") != "2026-06-09" {
+		if q.Get("auth") != "99" || q.Get("index") != "0" || q.Get("sort") != "last_different" || q.Get("different_start") != "2026-06-09" {
 			t.Errorf("unexpected query: %s", r.URL.RawQuery)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -74,12 +75,15 @@ func TestFetchApplicationsPage_ParsesRecordsAndTotal(t *testing.T) {
 	c := newTestClient(t, srv.URL, clock)
 
 	ds := time.Date(2026, 6, 9, 0, 0, 0, 0, time.UTC)
-	res, err := c.FetchApplicationsPage(context.Background(), 99, &ds, 1)
+	res, err := c.FetchApplicationsPage(context.Background(), 99, &ds, 0, false)
 	if err != nil {
 		t.Fatalf("FetchApplicationsPage: %v", err)
 	}
 	if res.Total == nil || *res.Total != 42 {
 		t.Errorf("total: got %v, want 42", res.Total)
+	}
+	if res.From != 0 {
+		t.Errorf("From: got %d, want 0", res.From)
 	}
 	if len(res.Applications) != 1 {
 		t.Fatalf("applications: got %d, want 1", len(res.Applications))
@@ -94,16 +98,56 @@ func TestFetchApplicationsPage_ParsesRecordsAndTotal(t *testing.T) {
 	if !app.LastDifferent.Equal(time.Date(2026, 6, 10, 9, 0, 0, 0, time.UTC)) {
 		t.Errorf("lastDifferent: got %v", app.LastDifferent)
 	}
-	// A short (< page size) record set means no more pages.
-	if res.HasMorePages {
-		t.Error("HasMorePages should be false for a partial page")
+	// from(0) + 1 record < total(42): more records remain.
+	if !res.HasMorePages {
+		t.Error("HasMorePages should be true when from+len(records) < total")
 	}
 }
 
-func TestFetchApplicationsPage_FullPageMeansMorePages(t *testing.T) {
+// TestFetchApplicationsPage_TruncatedPageWithTotal_HasMorePagesTrue pins the
+// truncation-safety acceptance criterion: a response truncated well under the
+// nominal page size (e.g. by PlanIt's 1MB body cap) must still report
+// HasMorePages=true whenever from+len(records) < total, and From must echo the
+// response's own from (falling back to startIndex only when absent).
+func TestFetchApplicationsPage_TruncatedPageWithTotal_HasMorePagesTrue(t *testing.T) {
 	t.Parallel()
 	var sb strings.Builder
-	sb.WriteString(`{"total":250,"records":[`)
+	sb.WriteString(`{"total":500,"from":0,"records":[`)
+	for i := range 87 {
+		if i > 0 {
+			sb.WriteString(",")
+		}
+		sb.WriteString(`{"name":"r","uid":"u","area_name":"a","area_id":1,"address":"x","description":"d","app_type":"t","app_state":"s","last_different":"2026-06-10T09:00:00Z"}`)
+	}
+	sb.WriteString(`]}`)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(sb.String()))
+	}))
+	t.Cleanup(srv.Close)
+
+	c := newTestClient(t, srv.URL, &fakeClock{})
+	res, err := c.FetchApplicationsPage(context.Background(), 1, nil, 0, false)
+	if err != nil {
+		t.Fatalf("FetchApplicationsPage: %v", err)
+	}
+	if !res.HasMorePages {
+		t.Error("truncated page (87 < total 500) must still report HasMorePages=true")
+	}
+	if res.From != 0 {
+		t.Errorf("From: got %d, want 0", res.From)
+	}
+	if len(res.Applications) != 87 {
+		t.Errorf("applications: got %d, want 87 (truncated)", len(res.Applications))
+	}
+}
+
+// TestFetchApplicationsPage_MissingTotalFallsBackToLengthHeuristic covers a
+// response that omits total entirely: HasMorePages must fall back to the
+// page-size length heuristic (>= configured page size).
+func TestFetchApplicationsPage_MissingTotalFallsBackToLengthHeuristic(t *testing.T) {
+	t.Parallel()
+	var sb strings.Builder
+	sb.WriteString(`{"records":[`)
 	for i := range 100 {
 		if i > 0 {
 			sb.WriteString(",")
@@ -117,12 +161,96 @@ func TestFetchApplicationsPage_FullPageMeansMorePages(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	c := newTestClient(t, srv.URL, &fakeClock{})
-	res, err := c.FetchApplicationsPage(context.Background(), 1, nil, 1)
+	res, err := c.FetchApplicationsPage(context.Background(), 1, nil, 0, false)
 	if err != nil {
 		t.Fatalf("FetchApplicationsPage: %v", err)
 	}
+	if res.Total != nil {
+		t.Fatalf("Total: got %v, want nil (omitted by response)", res.Total)
+	}
 	if !res.HasMorePages {
-		t.Error("HasMorePages should be true for a full page")
+		t.Error("HasMorePages should be true for a full (100-record) page when total is unknown")
+	}
+}
+
+// TestFetchApplicationsPage_ZeroRecordsWithMoreRemaining_ReturnsError pins the
+// zero-progress guard: PlanIt reporting total > from while returning zero
+// records this fetch must error rather than let a resuming caller livelock at
+// the same index forever.
+func TestFetchApplicationsPage_ZeroRecordsWithMoreRemaining_ReturnsError(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"total":500,"from":200,"records":[]}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	c := newTestClient(t, srv.URL, &fakeClock{})
+	_, err := c.FetchApplicationsPage(context.Background(), 1, nil, 200, false)
+	if !errors.Is(err, ErrZeroProgress) {
+		t.Fatalf("expected ErrZeroProgress, got %v", err)
+	}
+}
+
+// TestFetchApplicationsPage_ZeroRecordsAtTotalIsNotAnError covers the normal
+// natural end: zero records with from == total (nothing remains) must NOT
+// trip the zero-progress guard.
+func TestFetchApplicationsPage_ZeroRecordsAtTotalIsNotAnError(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"total":200,"from":200,"records":[]}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	c := newTestClient(t, srv.URL, &fakeClock{})
+	res, err := c.FetchApplicationsPage(context.Background(), 1, nil, 200, false)
+	if err != nil {
+		t.Fatalf("FetchApplicationsPage: %v", err)
+	}
+	if res.HasMorePages {
+		t.Error("HasMorePages should be false when from == total")
+	}
+}
+
+func TestBuildPath_IndexAndSortDirections(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name       string
+		startIndex int
+		descending bool
+		pageSize   int
+		wantIndex  string
+		wantSort   string
+		wantPgSz   string
+	}{
+		{"ascending default", 0, false, 100, "0", "last_different", "100"},
+		{"descending probe", 0, true, 100, "0", "-last_different", "100"},
+		{"non-zero resume index", 1700, false, 300, "1700", "last_different", "300"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			path := buildPath(99, nil, tc.startIndex, tc.descending, tc.pageSize)
+			u, err := url.Parse("http://x" + path)
+			if err != nil {
+				t.Fatalf("parse built path: %v", err)
+			}
+			q := u.Query()
+			if got := q.Get("index"); got != tc.wantIndex {
+				t.Errorf("index: got %q, want %q (path=%s)", got, tc.wantIndex, path)
+			}
+			if got := q.Get("sort"); got != tc.wantSort {
+				t.Errorf("sort: got %q, want %q (path=%s)", got, tc.wantSort, path)
+			}
+			if got := q.Get("pg_sz"); got != tc.wantPgSz {
+				t.Errorf("pg_sz: got %q, want %q (path=%s)", got, tc.wantPgSz, path)
+			}
+			if got := q.Get("auth"); got != "99" {
+				t.Errorf("auth: got %q, want 99 (path=%s)", got, path)
+			}
+			if strings.Contains(path, "page=") {
+				t.Errorf("path must not contain the legacy page= parameter: %s", path)
+			}
+		})
 	}
 }
 
@@ -137,7 +265,7 @@ func TestFetchApplicationsPage_429SurfacesRateLimitWithRetryAfterAndIsNotRetried
 	t.Cleanup(srv.Close)
 
 	c := newTestClient(t, srv.URL, &fakeClock{})
-	_, err := c.FetchApplicationsPage(context.Background(), 1, nil, 1)
+	_, err := c.FetchApplicationsPage(context.Background(), 1, nil, 1, false)
 
 	var rl *RateLimitError
 	if !errors.As(err, &rl) {
@@ -160,7 +288,7 @@ func TestFetchApplicationsPage_429WithoutHeaderHasNilRetryAfter(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	c := newTestClient(t, srv.URL, &fakeClock{})
-	_, err := c.FetchApplicationsPage(context.Background(), 1, nil, 1)
+	_, err := c.FetchApplicationsPage(context.Background(), 1, nil, 1, false)
 
 	var rl *RateLimitError
 	if !errors.As(err, &rl) {
@@ -186,7 +314,7 @@ func TestFetchApplicationsPage_RetriesOn503ThenSucceeds(t *testing.T) {
 
 	clock := &fakeClock{}
 	c := newTestClient(t, srv.URL, clock)
-	res, err := c.FetchApplicationsPage(context.Background(), 1, nil, 1)
+	res, err := c.FetchApplicationsPage(context.Background(), 1, nil, 1, false)
 	if err != nil {
 		t.Fatalf("FetchApplicationsPage: %v", err)
 	}
@@ -212,7 +340,7 @@ func TestFetchApplicationsPage_GivesUpAfterMaxRetries(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	c := newTestClient(t, srv.URL, &fakeClock{})
-	_, err := c.FetchApplicationsPage(context.Background(), 1, nil, 1)
+	_, err := c.FetchApplicationsPage(context.Background(), 1, nil, 1, false)
 	if err == nil {
 		t.Fatal("expected error after exhausting retries")
 	}
@@ -232,7 +360,7 @@ func TestFetchApplicationsPage_4xxIsPermanentAndNotRetried(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	c := newTestClient(t, srv.URL, &fakeClock{})
-	_, err := c.FetchApplicationsPage(context.Background(), 1, nil, 1)
+	_, err := c.FetchApplicationsPage(context.Background(), 1, nil, 1, false)
 	if err == nil {
 		t.Fatal("expected error for 400")
 	}
@@ -263,7 +391,7 @@ func TestFetchApplicationsPage_AppliesThrottleDelayBeforeRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	if _, err := c.FetchApplicationsPage(context.Background(), 1, nil, 1); err != nil {
+	if _, err := c.FetchApplicationsPage(context.Background(), 1, nil, 1, false); err != nil {
 		t.Fatalf("FetchApplicationsPage: %v", err)
 	}
 	if got := clock.total(); got != 2*time.Second {
