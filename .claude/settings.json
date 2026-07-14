@@ -4,6 +4,12 @@
     "code-review@claude-plugins-official": true,
     "skill-creator@claude-plugins-official": true
   },
+  "permissions": {
+    "allow": [
+      "Bash(./scripts/wf/prod-read.sh:*)",
+      "Bash(scripts/wf/prod-read.sh:*)"
+    ]
+  },
   "hooks": {
     "PostToolUse": [
       {

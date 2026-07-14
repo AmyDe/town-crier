@@ -110,9 +110,29 @@ This catches decisions on applications whose `start_date` is older than Lane A's
 
 Catches what the delta axis structurally cannot: decisions with no `decided_date`, rows with no `app_state`, applications discovered so late their `start_date` falls outside both masks, upstream corrections, and deletions.
 
-Per authority, a light projection sweep (`select=uid,app_state,decided_date,last_different`, ~100 bytes/record) covering that authority's live set — one request each at `pg_sz=300`–`1000`. **485 requests, run weekly (~70/day amortised).** Diff against Postgres locally; hydrate only rows whose `app_state`, `decided_date` or `last_different` actually differs.
+Per authority, a light projection sweep (`select=uid,app_state,decided_date,last_different`, ~100 bytes/record) covering that authority's live set — one request each at `pg_sz=300`. **485 requests, run weekly (~70/day amortised).** Diff against Postgres in the worker; hydrate only rows whose `app_state`, `decided_date` or `last_different` actually differs.
 
 Per-authority, not national, because an unbounded national sweep is the query we must never send (`start_date >= today-365` returned `total: null` after **45 seconds**).
+
+**Lane C is not on the critical path for the cutover.** It is a completeness backstop, and it is deliberately *not* the verification mechanism — see "The oracle is free" below.
+
+### The oracle is free
+
+A cutover to a new ingest axis needs an independent check that it is not silently dropping records. That check must not cost PlanIt requests, and it must not come from a developer machine.
+
+It doesn't have to. **PlanIt returns `total` in the very response Lane A is already fetching** — the count of records matching the filter. Stamp it on the poll span alongside what we actually saw:
+
+| Span attribute | Meaning |
+|---|---|
+| `planit.total` | records PlanIt says match the window |
+| `poll.records_seen` | records we fetched |
+| `poll.records_ingested` | records that were new or changed |
+| `poll.watermark_before` / `poll.watermark_after` | the delta boundary we moved |
+| `poll.pages` | pages walked |
+
+For a given `different_start` day, the union of `records_seen` across that day's runs must equal `planit.total`. If it does, we skipped nothing — **proven from telemetry, at zero PlanIt cost, with nothing issued from a laptop.**
+
+Note that `records_seen` — not a Postgres row count — is the correct left-hand side. An unchanged record that PlanIt re-touches is fetched, found identical, and *not written* (`polling/ingester.go` gates on `HasSameBusinessFieldsAs`), so its stored `last_different` stays at the old value. A Postgres-side count would therefore under-report and look like a skip when nothing was skipped.
 
 ### Retired
 
@@ -146,7 +166,8 @@ The budget no longer scales with the number of watched authorities, which remove
 
 ### Guardrails
 
-- **Bounded windows only.** No national query without both a `different_start` prefilter and a date mask. The 45-second `total: null` response is the evidence for why.
+- **PlanIt is called from the deployed worker only. Never from a developer machine.** Ad-hoc exploration, backfills and verification scripts must not hit planit.org.uk from a laptop. A blocked home or office IP is unrecoverable — we would lose our only data source and could not restore it. All PlanIt traffic originates from the Container Apps worker's egress. Verification of a deploy is done from telemetry and Postgres, never by re-querying PlanIt locally.
+- **Bounded windows only.** No national query without both a `different_start` prefilter and a date mask. The 45-second `total: null` response is the evidence for why, and the 11.7-second response to a masked-but-unprefiltered national query is the evidence that the prefilter is what makes it cheap.
 - **`pg_sz=300`.** PlanIt's documented default, and its docs explicitly ask callers not to raise it: *"Please don't try to get all the data in one request by setting this as your default page size. Instead make multiple requests with a smaller `pg_sz`."* At 777.6 bytes/record a 300-row page is 233 KB — 4.3x headroom under the 1,000 kB cap, so no adaptive page-size logic is needed.
 - **`select` is mandatory** on every poll request. `other_fields` is ~60% of a record's bytes and nothing reads it back today.
 - **Sort fields must appear in `select`** — a documented PlanIt constraint.
@@ -166,6 +187,8 @@ The budget no longer scales with the number of watched authorities, which remove
 ### Negative / risks
 
 - **The mask has a tail.** An application PlanIt discovers more than 90 days after its `start_date` is invisible to Lane A. Measured p99 lag is ~28 days, so this is a thin tail, and Lane C is the backstop — but such an application waits up to a week rather than an hour.
+- **The cutover does not backfill.** It fixes the flow of new applications, not the stock of missing ones. Camden stays at 66/300 until a separate historical sweep runs. Anyone reading the coverage numbers after the cutover must not mistake this for a failure of the new axis.
+- **A small coverage regression against a *healthy* drain.** The unmasked drain saw every change to every record. The masked delta cannot see a change to an application whose `start_date` is outside the mask and which carries no `decided_date` (2–16% of decided rows by state). Lane C is the backstop, but between Lane C runs those changes are invisible. Against today's *actual* drain — 131 authorities stuck mid-cursor — this is still a large net gain, but it is a real loss against the design's intent.
 - **`other_fields` goes stale** for records ingested through the new lanes. Nothing consumes it today, but GH #935 ingested it deliberately. Needs a lazy-hydration path (on app-detail view) or a slow background job. **Open question, tracked separately.**
 - **Bulk hydration by identity is unproven.** Lane C flags changed rows by `uid`; whether `id_match` accepts a comma-separated list of uids is untested. If it is single-valued, hydration costs one request per straggler.
 - **Lane B's volume is inferred, not measured.** Lane A's national delta was measured at 1,717 records/day; Lane B is assumed to be the same order. Measure it before the cutover, not after.
@@ -183,36 +206,45 @@ The budget no longer scales with the number of watched authorities, which remove
 
 **A committed cutover, not a parallel run.** The request budget does not allow both (see "Request budget"), and the old drain is what holds us on the red line. We replace it in one deploy, and we buy safety with *verification* rather than with a parallel drain.
 
+### Scope: forward flow only. This migration does not backfill.
+
+**Say this plainly, because it is the easiest thing to get wrong: the masked delta only ingests records PlanIt touches from now on.** It does not go back and fetch what we are already missing. Camden's 234 absent applications arrive only when PlanIt next re-touches them, which for a quiet undecided application may be weeks.
+
+So the cutover fixes the *flow* and does not fix the *stock*. Coverage of new applications goes to ~100% immediately; the historical hole stays until something else fills it. That is accepted deliberately: filling it is a separate exercise (a paced, worker-side historical sweep backwards on `start_date`) with its own budget and its own risks, and conflating the two would make both harder to verify.
+
+**Corollary for the rollback trigger:** do *not* gate the cutover on Camden's 30-day coverage climbing to 90%. It will not, and it is not supposed to. Gate it on forward flow.
+
 ### Ship together, in one release
 
-Lanes A, B and C ship as a unit. **Lane C is not a later phase — it is the safety net that makes the cutover defensible.** Cutting over to a new ingest axis with no independent check that it is not silently dropping records is the one thing we must not do.
-
-1. **Lanes A and B** replace the drain in the poll cycle.
-2. **Lane C runs daily** (not weekly) for the soak, and emits a per-authority **coverage metric**: for each authority, our row count for a recent `start_date` window against PlanIt's `total` for the same window. This is an oracle *outside* the new code path — it asks PlanIt directly rather than trusting our own watermark.
+1. **Lanes A and B** replace the drain in the poll cycle, with the span attributes above.
+2. **Lane C** ships in the same binary but may run on its weekly cadence from the start; it is a completeness backstop, not the cutover's verification.
 3. **The `poll_state` columns are not dropped.** No migration runs. Rollback is a pure image redeploy.
 4. The old drain code is **left in the binary but not wired**, so reverting is a config change if we need it faster than a redeploy.
 
 ### The failure mode we are actually guarding against
 
-Not a crash — a crash is loud and the existing alerts catch it. The risk is a **silent skip**: `different_start` is date-granular, so exact delta semantics depend on paging descending until we cross an in-memory timestamp watermark. A boundary bug there drops applications quietly. No error, no 429, no alert; a resident simply never hears about the development next door. Lane C's coverage metric is the only thing that detects this, which is why it ships in the same release.
+Not a crash — a crash is loud and the existing alerts catch it. The risk is a **silent skip**: `different_start` is date-granular, so exact delta semantics depend on paging descending until we cross an in-memory timestamp watermark. A boundary bug there drops applications quietly. No error, no 429, no alert; a resident simply never hears about the development next door.
+
+The `planit.total` vs `records_seen` invariant is what detects it, and it costs nothing.
 
 ### Rollback trigger — named in advance
 
-Roll back if, at any point in the soak:
+Roll back if, in the first 24 hours:
 
-- **Coverage regresses.** Any authority's coverage ratio (ours ÷ PlanIt's, 30-day `start_date` window) falls below its pre-cutover value. The pre-cutover baselines are recorded before the deploy — Camden's is **66/300 = 22%**, and the fleet's is the `applications` snapshot taken on 2026-07-14.
-- **Coverage fails to climb.** Camden is not above ~90% within 72 hours. The masked delta should take it to ~100% as PlanIt re-touches records; if it does not, the mask is dropping something.
-- Lane A returns zero records for more than 3 consecutive hours (PlanIt's national delta is never empty for that long — measured at ~72 records/hour).
+- **The coverage invariant breaks.** For any `different_start` day, `records_seen` < `planit.total` with no error and no 429. That is a silent skip, and it is the reason we are watching.
+- **Forward flow stalls.** No new applications ingested for 3 consecutive hours while `planit.total` is non-zero. (PlanIt's national delta runs ~72 records/hour; measured, its scrape batch lands roughly 02:00–05:30 UTC, so a quiet evening hour is normal and an empty *batch window* is not.)
+- **Freshness regresses.** `max(last_different)` in `applications` stops tracking PlanIt. Pre-cutover baseline: **2026-07-14 05:14:58Z**, against PlanIt's newest of 05:16:14Z — i.e. we are currently within ~1 minute at the head, and must stay there.
+- PlanIt request volume exceeds ~600/day, or any 429 is returned.
 
-Rollback is `az containerapp revision` back to the prior image. **It is safe but not free:** the old drain resumes from `high_water_mark` values that will be as stale as the soak was long, so its windows come back bigger. That is a strong reason to keep the decision window **short — days, not weeks** — and to make the call on the coverage metric rather than on vibes.
+Rollback is a redeploy of the prior revision. **It is safe but not free:** the old drain resumes from `high_water_mark` values that have gone as stale as the soak was long, so its windows come back bigger. Keep the decision window **short — days, not weeks**.
 
 ### After the soak
 
-Once coverage is at parity or better across the fleet for a full week:
+Once the coverage invariant has held for a week:
 
-5. Lane C drops to weekly.
-6. Delete the drain, the freshness probe, the density tiers and the scheduler tiering.
-7. Drop `poll_state.cursor_next_index` / `cursor_next_page` / `cursor_known_total` / `high_water_mark`. **This is the point of no return** — after it, rollback means a re-seed, not a redeploy. Do it deliberately and not before.
+5. Delete the drain, the freshness probe, the density tiers and the scheduler tiering.
+6. Drop `poll_state.cursor_next_index` / `cursor_next_page` / `cursor_known_total` / `high_water_mark`. **This is the point of no return** — after it, rollback means a re-seed, not a redeploy. Do it deliberately and not before.
+7. Only then take on the historical backfill, as separate work.
 
 ## What the first version got wrong
 
