@@ -678,6 +678,75 @@ func TestHandler_DrainErrorAfterProbeSavesCursorAtResumeIndex(t *testing.T) {
 	}
 }
 
+// TestHandler_FirstDrainFetchErrorWithNoRecordsWritesNoState pins the boundary of
+// the GH#958 fix: an authority that errored on its first fetch, ingested nothing
+// and had no prior cursor has no progress to record, so finishAuthority's
+// nothing-to-write early return must still hold — no phantom cursor at index 0,
+// no LastPollTime bump.
+func TestHandler_FirstDrainFetchErrorWithNoRecordsWritesNoState(t *testing.T) {
+	t.Parallel()
+	pi := newFakePlanIt()
+	pi.failNthFetch(99, 1, errors.New("planit timeout after retries"))
+	apps := newFakeApps()
+	state := newFakeStateStore() // no PollState -> no cursor
+	h := newHandler(t, pi, apps, state, fakeAuthorities{ids: []int{99}}, CycleSeed, defaultHandlerOpts())
+
+	res, err := h.Handle(context.Background())
+	if err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if res.AuthorityErrors != 1 {
+		t.Errorf("AuthorityErrors: got %d, want 1", res.AuthorityErrors)
+	}
+	if res.ApplicationCount != 0 {
+		t.Errorf("ApplicationCount: got %d, want 0", res.ApplicationCount)
+	}
+	if len(state.saves) != 0 {
+		t.Errorf("state saves: got %+v, want none (nothing was ingested and there was no cursor)", state.saves)
+	}
+}
+
+// TestHandler_CleanNaturalEndAdvancesHWMAndClearsCursor asserts the behaviour the
+// GH#958 fix must preserve: a window that genuinely ran to its end (HasMorePages
+// false, no error) still advances the HWM to the max LastDifferent observed and
+// still clears the active cursor, so the next visit starts a fresh window.
+func TestHandler_CleanNaturalEndAdvancesHWMAndClearsCursor(t *testing.T) {
+	t.Parallel()
+	pi := newFakePlanIt()
+	hwm := time.Date(2026, 6, 13, 0, 0, 0, 0, time.UTC)
+	pi.pages[pageKey{authority: 99, index: 0, descending: true}] = planit.FetchPageResult{From: 0, HasMorePages: false}
+	// The drain resumes at max(0, 100-100)=0 and ends naturally on this last page.
+	drainLD := time.Date(2026, 6, 13, 18, 0, 0, 0, time.UTC)
+	pi.pages[pageKey{authority: 99, index: 0}] = planit.FetchPageResult{
+		From: 0, Applications: []applications.PlanningApplication{testApp("last", 99, drainLD)}, HasMorePages: false,
+	}
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	state.states[99] = PollState{
+		LastPollTime: hwm, HighWaterMark: hwm,
+		Cursor: &PollCursor{DifferentStart: hwm, NextIndex: 100, KnownTotal: platform.Ptr(500)},
+	}
+	h := newHandler(t, pi, apps, state, fakeAuthorities{ids: []int{99}}, CycleSeed, defaultHandlerOpts())
+
+	res, err := h.Handle(context.Background())
+	if err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if res.AuthorityErrors != 0 {
+		t.Errorf("AuthorityErrors: got %d, want 0", res.AuthorityErrors)
+	}
+	if len(state.saves) != 1 {
+		t.Fatalf("state saves: got %d, want 1", len(state.saves))
+	}
+	save := state.saves[0]
+	if !save.highWaterMark.Equal(drainLD) {
+		t.Errorf("HWM: got %v, want %v (a completed window advances the HWM)", save.highWaterMark, drainLD)
+	}
+	if save.cursor != nil {
+		t.Errorf("cursor: got %+v, want nil (a completed window clears the cursor)", save.cursor)
+	}
+}
+
 // TestHandler_ErroredVisitSpanReportsHWMNotAdvanced pins the telemetry half of
 // GH#958: the visit that stopped on a fetch error must report
 // polling.hwm_advanced=false, so a starving authority is visible on the poll
