@@ -4,7 +4,7 @@ Date: 2026-04-20
 
 ## Status
 
-Accepted
+Superseded by [0041](0041-poll-planit-on-a-churn-masked-delta-axis.md)
 
 ## Context
 
