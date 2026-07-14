@@ -55,12 +55,6 @@ func newFakePlanIt() *fakePlanIt {
 	}
 }
 
-// failNthFetch primes the fake to return err on the nth fetch for authorityID
-// (1-based, counting the freshness probe), serving every other fetch normally.
-func (f *fakePlanIt) failNthFetch(authorityID, n int, err error) {
-	f.nthErrs[authorityID] = nthFailure{n: n, err: err}
-}
-
 func (f *fakePlanIt) FetchApplicationsPage(_ context.Context, authorityID int, _ *time.Time, startIndex int, descending bool) (planit.FetchPageResult, error) {
 	key := pageKey{authority: authorityID, index: startIndex, descending: descending}
 	f.mu.Lock()
@@ -563,15 +557,20 @@ func TestHandler_OmitsOldestHWMWhenNoActiveAuthorities(t *testing.T) {
 	}
 }
 
+// fakeKnownTotal is the record count PlanIt reports on every paged fetch the
+// fullPage helper serves — the value the persisted cursor's KnownTotal must
+// carry through an interrupted drain.
+const fakeKnownTotal = 500
+
 // fullPage builds a 100-record page starting at index from, every record
 // carrying lastDifferent, with more pages behind it — the shape of a mid-drain
 // PlanIt page.
-func fullPage(from int, lastDifferent time.Time, total int) planit.FetchPageResult {
+func fullPage(from int, lastDifferent time.Time) planit.FetchPageResult {
 	apps := make([]applications.PlanningApplication, 100)
 	for i := range apps {
 		apps[i] = testApp("app", 99, lastDifferent)
 	}
-	return planit.FetchPageResult{From: from, Applications: apps, HasMorePages: true, Total: platform.Ptr(total)}
+	return planit.FetchPageResult{From: from, Applications: apps, HasMorePages: true, Total: platform.Ptr(fakeKnownTotal)}
 }
 
 // TestHandler_MidDrainFetchErrorFreezesHWMAndSavesCursor pins the GH#958 fix: a
@@ -587,10 +586,10 @@ func TestHandler_MidDrainFetchErrorFreezesHWMAndSavesCursor(t *testing.T) {
 	// Drain records sit inside the HWM's own churn day, exactly as on a large
 	// backlog: advancing the HWM to them would not move the date on at all.
 	ld := hwm.Add(9 * time.Hour)
-	pi.pages[pageKey{authority: 99, index: 0}] = fullPage(0, ld, 500)
-	pi.pages[pageKey{authority: 99, index: 100}] = fullPage(100, ld, 500)
+	pi.pages[pageKey{authority: 99, index: 0}] = fullPage(0, ld)
+	pi.pages[pageKey{authority: 99, index: 100}] = fullPage(100, ld)
 	// The third drain fetch times out after the first two ingested their records.
-	pi.failNthFetch(99, 3, errors.New("planit timeout after retries"))
+	pi.nthErrs[99] = nthFailure{n: 3, err: errors.New("planit timeout after retries")}
 
 	apps := newFakeApps()
 	state := newFakeStateStore()
@@ -624,8 +623,8 @@ func TestHandler_MidDrainFetchErrorFreezesHWMAndSavesCursor(t *testing.T) {
 	if cur.NextIndex != 200 {
 		t.Errorf("cursor NextIndex: got %d, want 200 (from=100 + records=100 of the last SUCCESSFUL fetch)", cur.NextIndex)
 	}
-	if cur.KnownTotal == nil || *cur.KnownTotal != 500 {
-		t.Errorf("cursor KnownTotal: got %v, want 500 (preserved)", cur.KnownTotal)
+	if cur.KnownTotal == nil || *cur.KnownTotal != fakeKnownTotal {
+		t.Errorf("cursor KnownTotal: got %v, want %d (preserved)", cur.KnownTotal, fakeKnownTotal)
 	}
 	if !cur.DifferentStart.Equal(hwm) {
 		t.Errorf("cursor DifferentStart: got %v, want %v", cur.DifferentStart, hwm)
@@ -646,7 +645,7 @@ func TestHandler_DrainErrorAfterProbeSavesCursorAtResumeIndex(t *testing.T) {
 		From: 0, Applications: []applications.PlanningApplication{testApp("newest", 99, probeLD)}, HasMorePages: false,
 	}
 	// Fetch 1 is the probe; fetch 2 is the first drain fetch (resume index 300).
-	pi.failNthFetch(99, 2, errors.New("planit timeout after retries"))
+	pi.nthErrs[99] = nthFailure{n: 2, err: errors.New("planit timeout after retries")}
 
 	apps := newFakeApps()
 	state := newFakeStateStore()
@@ -686,7 +685,7 @@ func TestHandler_DrainErrorAfterProbeSavesCursorAtResumeIndex(t *testing.T) {
 func TestHandler_FirstDrainFetchErrorWithNoRecordsWritesNoState(t *testing.T) {
 	t.Parallel()
 	pi := newFakePlanIt()
-	pi.failNthFetch(99, 1, errors.New("planit timeout after retries"))
+	pi.nthErrs[99] = nthFailure{n: 1, err: errors.New("planit timeout after retries")}
 	apps := newFakeApps()
 	state := newFakeStateStore() // no PollState -> no cursor
 	h := newHandler(t, pi, apps, state, fakeAuthorities{ids: []int{99}}, CycleSeed, defaultHandlerOpts())
@@ -756,9 +755,9 @@ func TestHandler_ErroredVisitSpanReportsHWMNotAdvanced(t *testing.T) {
 	pi := newFakePlanIt()
 	hwm := time.Date(2026, 6, 13, 0, 0, 0, 0, time.UTC)
 	ld := hwm.Add(9 * time.Hour)
-	pi.pages[pageKey{authority: 99, index: 0}] = fullPage(0, ld, 500)
-	pi.pages[pageKey{authority: 99, index: 100}] = fullPage(100, ld, 500)
-	pi.failNthFetch(99, 3, errors.New("planit timeout after retries"))
+	pi.pages[pageKey{authority: 99, index: 0}] = fullPage(0, ld)
+	pi.pages[pageKey{authority: 99, index: 100}] = fullPage(100, ld)
+	pi.nthErrs[99] = nthFailure{n: 3, err: errors.New("planit timeout after retries")}
 
 	apps := newFakeApps()
 	state := newFakeStateStore()
@@ -770,9 +769,13 @@ func TestHandler_ErroredVisitSpanReportsHWMNotAdvanced(t *testing.T) {
 			t.Fatalf("Handle: %v", err)
 		}
 	})
-	span, ok := spanNamed(spans, "PlanIt authority poll")
-	if !ok {
-		t.Fatalf("expected a %q span among %d recorded spans", "PlanIt authority poll", len(spans))
+	// One authority, so exactly one "PlanIt authority poll" span.
+	if len(spans) != 1 {
+		t.Fatalf("recorded spans: got %d, want 1", len(spans))
+	}
+	span := spans[0]
+	if span.Name() != "PlanIt authority poll" {
+		t.Fatalf("span name: got %q, want %q", span.Name(), "PlanIt authority poll")
 	}
 	if v, ok := attrValue(span, "polling.hwm_advanced"); !ok || v.AsBool() {
 		t.Errorf("polling.hwm_advanced: got %v (ok=%v), want false (a fetch error freezes the HWM)", v, ok)
