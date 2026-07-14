@@ -533,10 +533,15 @@ func (h *PollPlanItHandler) pollAuthority(ctx context.Context, authorityID int, 
 	return result
 }
 
-// finishAuthority persists the authority's advanced poll state. On a cap-hit or
-// mid-pagination 429 it freezes the HWM and saves a resumable cursor at the
-// next unfetched record index; on a natural end it advances the HWM to the max
-// LastDifferent observed and clears any cursor. State is only written when the
+// finishAuthority persists the authority's advanced poll state. Any early stop —
+// a cap-hit, or a mid-pagination 429 / fetch error after records were ingested —
+// freezes the HWM and saves a resumable cursor at the next unfetched record
+// index. Only a window that genuinely ran to its end (out.completed, no cap-hit)
+// advances the HWM to the max LastDifferent observed and clears the cursor:
+// clearing it on a fetch error would discard the drain progress of every prior
+// visit and, since the freshness probe only runs off an active cursor, silently
+// disable the newest-first ingest too (GH#958). LastPollTime advances on every
+// path so the scheduler rotates off the authority. State is only written when the
 // authority produced work (completed or saw applications).
 func (h *PollPlanItHandler) finishAuthority(
 	ctx context.Context,
@@ -555,10 +560,13 @@ func (h *PollPlanItHandler) finishAuthority(
 
 	rec := h.recorder()
 
-	if capHit || (out.rateLimited && out.appCount > 0) {
-		// Freeze HWM, save a resumable cursor at the next unfetched record index
-		// so the following cycle resumes there. LastPollTime still advances so
-		// the scheduler rotates off this authority.
+	if capHit || (out.appCount > 0 && (out.rateLimited || out.err != nil)) {
+		// Early stop (cap, 429 or fetch error): freeze HWM and save a resumable
+		// cursor at the next unfetched record index so the following cycle resumes
+		// there. nextIndex is from+len of the last SUCCESSFUL fetch, so a failing
+		// fetch contributes nothing and is simply re-read next visit (the resume
+		// overlap plus idempotent upserts make that harmless). LastPollTime still
+		// advances so the scheduler rotates off this authority.
 		cursor := &PollCursor{
 			DifferentStart: truncateToDate(existingHWM),
 			NextIndex:      nextIndex,
@@ -572,8 +580,11 @@ func (h *PollPlanItHandler) finishAuthority(
 		return out
 	}
 
-	// Natural end: advance HWM to the max LastDifferent observed, falling back to
-	// the existing HWM when the authority was quiet. Clear any active cursor.
+	// Natural end. Only a clean completion reaches here: out.completed is exactly
+	// (out.err == nil && !out.rateLimited), and the early return above has already
+	// dropped the completed-nothing case, so every early stop was caught by the
+	// cursor branch. Advance the HWM to the max LastDifferent observed, falling
+	// back to the existing HWM when the authority was quiet, and clear any cursor.
 	advancedHWM := existingHWM
 	if !highWaterMark.IsZero() {
 		advancedHWM = highWaterMark
