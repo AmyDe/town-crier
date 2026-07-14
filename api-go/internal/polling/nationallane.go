@@ -15,6 +15,7 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/AmyDe/town-crier/api-go/internal/planit"
 )
@@ -203,6 +204,9 @@ type laneOutcome struct {
 // HasSameBusinessFieldsAs gate makes the redundant re-ingests free), and is
 // the safe failure direction the ADR calls out: "never advance a watermark
 // past a page that errored."
+//
+// A lane with no prior watermark (never run) does NOT walk this way at all —
+// see seed.
 func (h *NationalLaneHandler) Run(ctx context.Context) laneOutcome {
 	ctx, span := otel.Tracer(tracerName).Start(ctx, "PlanIt national lane poll")
 	defer span.End()
@@ -219,14 +223,24 @@ func (h *NationalLaneHandler) Run(ctx context.Context) laneOutcome {
 	out.watermarkBefore = watermarkBefore
 
 	maskCutoff := truncateToDate(now.Add(-h.opts.MaskWindow))
-	// On a lane's first-ever run there is no watermark to prefilter on; the
-	// mask cutoff itself is the widest sane different_start, so the first run
-	// behaves like a bounded national sweep of the mask window rather than an
-	// unprefiltered query (never sent — ADR 0041's 11.7s-vs-0.2s guardrail).
-	prefilterDate := maskCutoff
-	if !watermarkBefore.IsZero() {
-		prefilterDate = truncateToDate(watermarkBefore)
+
+	// A lane with no prior watermark has never run. Walking the mask window
+	// here — as a normal delta walk would, since "> zero time" is true for
+	// every real record — would be a historical backfill (forbidden: ADR 0041
+	// rule 2) and, for Lane A's unbounded page walk, a red-line request
+	// spike that never even finishes inside the cycle budget: a budget
+	// cut-off is never a "clean run", so the watermark could never be set,
+	// and every subsequent cycle would re-attempt the same full-window walk
+	// forever. Seed instead: read PlanIt's current head from a single page-0
+	// fetch and persist it, ingesting nothing. The old drain already held us
+	// at the head (prod baseline max last_different 2026-07-14 05:14:58Z);
+	// Lane C's reconciliation sweep is the backstop for the small forward-flow
+	// gap a seed (rather than a backfill) leaves.
+	if watermarkBefore.IsZero() {
+		return h.seed(ctx, span, now, maskCutoff)
 	}
+
+	prefilterDate := truncateToDate(watermarkBefore)
 
 	var (
 		index       int
@@ -303,6 +317,73 @@ pageLoop:
 		out.err = serr
 	}
 
+	h.setSpanAttributes(span, out, watermarkBefore, prefilterDate, false)
+	return out
+}
+
+// seed handles a lane's first-ever run (no prior watermark): forward-flow
+// only, never a historical sweep (ADR 0041 rule 2). It fetches PlanIt's
+// current head from a SINGLE page-0 fetch — never paging further — and
+// persists that as the watermark without ingesting anything, so the cutover
+// starts from "now" rather than replaying the whole masked window. An empty
+// page 0 (nothing currently matches the masked window) seeds the watermark to
+// now() instead, so a quiet mask window still leaves the lane seeded rather
+// than permanently stuck re-attempting the seed. A page-0 fetch error or 429
+// seeds NOTHING — the lane stays unseeded and the next cycle retries the seed
+// (bounded to one extra request/cycle, harmless).
+func (h *NationalLaneHandler) seed(ctx context.Context, span trace.Span, now, maskCutoff time.Time) laneOutcome {
+	var out laneOutcome
+
+	res, ferr := h.fetcher.FetchNationalDeltaPage(ctx, planit.NationalDeltaQuery{
+		DifferentStart: maskCutoff,
+		Mask:           h.opts.Mask,
+		MaskCutoff:     maskCutoff,
+		StartIndex:     0,
+	})
+	if ferr != nil {
+		var rl *planit.RateLimitError
+		if errors.As(ferr, &rl) {
+			out.rateLimited = true
+			out.retryAfter = rl.RetryAfter
+		} else {
+			out.err = ferr
+		}
+		h.setSpanAttributes(span, out, time.Time{}, maskCutoff, true)
+		return out
+	}
+
+	out.pages = 1
+	out.planitTotal = res.Total
+	out.recordsSeen = len(res.Applications)
+
+	head := time.Time{}
+	for _, app := range res.Applications {
+		if app.LastDifferent.After(head) {
+			head = app.LastDifferent
+		}
+	}
+	if head.IsZero() {
+		head = now
+	}
+	out.watermarkAfter = head
+
+	if serr := h.watermark.save(ctx, now, head); serr != nil {
+		out.err = serr
+	}
+
+	h.setSpanAttributes(span, out, time.Time{}, maskCutoff, true)
+	return out
+}
+
+// setSpanAttributes stamps the "PlanIt national lane poll" span with the full
+// ADR 0041 telemetry set — the safety mechanism a silent-skip bug would
+// otherwise defeat with no error, no 429, and no alert. differentStart is the
+// different_start prefilter actually sent this run (the mask cutoff on a
+// seeding run, the watermark's calendar date on a normal walk), so spans can
+// be grouped by that day to check the records_seen == planit.total invariant.
+// seeded tags a first-run seed, so a seeding run's recordsIngested==0 is never
+// misread as a stall.
+func (h *NationalLaneHandler) setSpanAttributes(span trace.Span, out laneOutcome, watermarkBefore, differentStart time.Time, seeded bool) {
 	attrs := []attribute.KeyValue{
 		attribute.String("poll.lane", string(h.opts.Lane)),
 		attribute.Int("poll.records_seen", out.recordsSeen),
@@ -312,6 +393,8 @@ pageLoop:
 		attribute.String("poll.watermark_after", formatWatermark(out.watermarkAfter)),
 		attribute.Bool("poll.rate_limited", out.rateLimited),
 		attribute.Bool("poll.cap_hit", out.capHit),
+		attribute.Bool("poll.seeded", seeded),
+		attribute.String("poll.different_start", differentStart.UTC().Format("2006-01-02")),
 	}
 	if out.planitTotal != nil {
 		attrs = append(attrs, attribute.Int("planit.total", *out.planitTotal))
@@ -320,8 +403,6 @@ pageLoop:
 		attrs = append(attrs, attribute.String("poll.error", out.err.Error()))
 	}
 	span.SetAttributes(attrs...)
-
-	return out
 }
 
 // formatWatermark renders a lane watermark as RFC3339, or "" for a lane that
