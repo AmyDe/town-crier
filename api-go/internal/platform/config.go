@@ -184,7 +184,28 @@ type Config struct {
 	// 100, unchanged behaviour). Loaded from POLLING_PLANIT_PAGE_SIZE. This PR
 	// (GH#955 PR A, tc-nlvpz) only adds the capability to configure it via env;
 	// PR B flips the prod value to 300 through infra, not a code default change.
+	// Governs only the legacy per-authority drain (unwired since ADR 0041) —
+	// the national lanes below hardcode pg_sz=300, not this field.
 	PollingPlanItPageSize int
+
+	// PollingLane* configure ADR 0041's churn-masked national delta poll
+	// (GH#962, bead tc-5m3tw), which replaces the per-authority drain above.
+	// PollingLaneAMaskDays / PollingLaneBMaskDays are the start_date /
+	// decided_start churn-mask widths in days (default 90 — "a config dial,
+	// not a correctness boundary": ADR 0041, Lane C is the backstop for
+	// anything a mask misses). PollingLaneBMaxPages hard-caps Lane B's
+	// descending page walk per run (decision volume is unmeasured
+	// pre-cutover) — do not remove this cap. PollingLaneCIntervalHours is the
+	// minimum gap between full Lane C reconciliation sweeps (default 168 =
+	// weekly; dial down to 24 for a daily soak, per the ADR's migration plan).
+	// PollingLaneCMaxStragglersPerAuthority bounds Lane C's per-authority
+	// hydration fan-out so one badly-drifted authority cannot balloon a
+	// single sweep's PlanIt request count.
+	PollingLaneAMaskDays                  int
+	PollingLaneBMaskDays                  int
+	PollingLaneBMaxPages                  int
+	PollingLaneCIntervalHours             int
+	PollingLaneCMaxStragglersPerAuthority int
 
 	// NotificationsRetentionDays is the number of days to keep Notifications rows
 	// when running the pg-purge job. Loaded from NOTIFICATIONS_RETENTION_DAYS;
@@ -318,6 +339,12 @@ func LoadConfig() (Config, error) {
 		PollReplicaTimeoutSeconds:           getenvInt("POLL_REPLICA_TIMEOUT_SECONDS", 600),
 		PollShutdownGraceSeconds:            getenvInt("POLL_SHUTDOWN_GRACE_SECONDS", 30),
 		PollingPlanItPageSize:               getenvInt("POLLING_PLANIT_PAGE_SIZE", 100),
+
+		PollingLaneAMaskDays:                  getenvInt("POLLING_LANE_A_MASK_DAYS", 90),
+		PollingLaneBMaskDays:                  getenvInt("POLLING_LANE_B_MASK_DAYS", 90),
+		PollingLaneBMaxPages:                  getenvInt("POLLING_LANE_B_MAX_PAGES", 20),
+		PollingLaneCIntervalHours:             getenvInt("POLLING_LANE_C_INTERVAL_HOURS", 168),
+		PollingLaneCMaxStragglersPerAuthority: getenvInt("POLLING_LANE_C_MAX_STRAGGLERS_PER_AUTHORITY", 10),
 
 		NotificationsRetentionDays:       getenvInt("NOTIFICATIONS_RETENTION_DAYS", 90),
 		DeviceRegistrationsRetentionDays: getenvInt("DEVICE_REGISTRATIONS_RETENTION_DAYS", 180),
