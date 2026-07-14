@@ -117,28 +117,32 @@ Per-authority, not national, because an unbounded national sweep is the query we
 ### Retired
 
 - The **unmasked** `different_start` drain, and with it the `MaxPagesPerAuthorityPerCycle` / `PageSize` throughput levers.
-- Per-authority `poll_state` high-water marks and pagination cursors (ADR 0021). Drop `cursor_next_index`, `cursor_next_page`, `cursor_known_total`, `high_water_mark`.
-- Watch-zone-density polling tiers (ADR 0012). A national poll costs the same whether one user or ten thousand watch an authority, so there is nothing to prioritise.
+- Per-authority pagination cursors and the density-tiered scheduler (ADR 0021, ADR 0012). A national poll costs the same whether one user or ten thousand watch an authority, so there is nothing to prioritise.
 - The freshness probe (GH #955). It was a workaround for the churn; with the mask, every poll *is* a freshness poll.
 - GH #955 PR B (`pg_sz=300`, `MaxPages=2`) is cancelled. It accelerates a lane that no longer exists.
 
+The `poll_state` **columns are left in place and unused** at cutover — see "Migration". They are dropped only once the new design is confirmed, because they are what a rollback lands on.
+
 ### Request budget
 
-The PlanIt free-service red line is ~1,500 requests/day and is non-negotiable. We are currently **at** it (measured: 2,999 PlanIt request spans in 48h).
+The PlanIt free-service red line is ~1,500 requests/day and is non-negotiable. We are currently **at** it (measured: 2,999 PlanIt request spans in 48h) — and it is the *old drain* that puts us there. Every day we keep it running is a day we sit on the line.
 
 | Lane | Cadence | Requests/day | Records/day |
 |---|---|---|---|
 | A — new applications | hourly, national | ~24–30 | ~1,700 |
 | B — decisions | hourly, national | ~24–30 | ~1,700 |
-| C — reconciliation | weekly, per authority | ~70 | ~19,400 |
+| C — reconciliation | **daily during soak**, then weekly | ~485 → ~70 | ~19,400 |
 | Hydration of Lane C deltas | as needed | ~20 | small |
-| **Total** | | **~140–150** | **~23,000** |
+| **Total (soak)** | | **~560** | **~23,000** |
+| **Total (steady state)** | | **~140–150** | **~23,000** |
 
-Against today's ~1,500 requests/day and ~150,000 records/day: **~90% fewer requests and ~85% fewer records served.** Bandwidth falls from ~345 MB/day to under ~20 MB/day.
+Against today's ~1,500 requests/day and ~150,000 records/day: **~90% fewer requests and ~85% fewer records served** in steady state, and still ~60% fewer requests during the soak. Bandwidth falls from ~345 MB/day to under ~20 MB/day.
 
 Both axes fall. That matters: request count alone is the wrong unit for a free service, because the operator's cost is dominated by rows retrieved and serialised, not by HTTP overhead. A design that cut requests while raising rows served would not be a saving.
 
 The budget no longer scales with the number of watched authorities, which removes the growth cliff in the current design.
+
+**This is also why the new lanes are not run in parallel with the old drain.** A parallel soak would hold us at ~1,530 requests/day — above the red line — for its whole duration, and would keep the load on PlanIt high precisely while we are least sure of ourselves. The cutover is the polite move as well as the cheap one. The freed budget is spent on verification instead (Lane C, daily), which is a far better use of it than running a drain we have already decided is wrong.
 
 ### Guardrails
 
@@ -164,8 +168,10 @@ The budget no longer scales with the number of watched authorities, which remove
 - **The mask has a tail.** An application PlanIt discovers more than 90 days after its `start_date` is invisible to Lane A. Measured p99 lag is ~28 days, so this is a thin tail, and Lane C is the backstop — but such an application waits up to a week rather than an hour.
 - **`other_fields` goes stale** for records ingested through the new lanes. Nothing consumes it today, but GH #935 ingested it deliberately. Needs a lazy-hydration path (on app-detail view) or a slow background job. **Open question, tracked separately.**
 - **Bulk hydration by identity is unproven.** Lane C flags changed rows by `uid`; whether `id_match` accepts a comma-separated list of uids is untested. If it is single-valued, hydration costs one request per straggler.
-- **Lane B's volume is inferred, not measured.** Lane A's national delta was measured at 1,717 records/day; Lane B is assumed to be the same order. Measure it before enabling.
-- **Migration is a rewrite of the poll handler**, not a tweak. It runs alongside the existing drain until verified, then the drain is deleted.
+- **Lane B's volume is inferred, not measured.** Lane A's national delta was measured at 1,717 records/day; Lane B is assumed to be the same order. Measure it before the cutover, not after.
+- **This is a cutover, and the risk is a silent skip, not a crash.** The delta relies on a descending page and an in-memory watermark because `different_start` is date-granular; a boundary bug there drops applications with no error and no alert. Lane C's coverage metric is the mitigation, and it is the reason Lane C ships in the same release rather than later. See "Migration".
+- **Rollback is safe but not free.** The old drain resumes from high-water marks that have gone stale by the length of the soak, so its windows come back larger. The decision window must be short.
+- **A national query is a single point of failure.** Today one authority failing does not stop the others; after the cutover, one failing national query stops everything. Mitigated by the existing retry/backoff discipline and by the fact that the query is now cheap (0.2s) and shallow, but it is a genuine concentration of risk.
 
 ### Neutral
 
@@ -175,12 +181,38 @@ The budget no longer scales with the number of watched authorities, which remove
 
 ## Migration
 
-1. **Lane A first**, shipped alongside the existing drain, behind a flag. It is additive: a new national fetch on a new query, ingesting through the existing idempotent path. Verify on prod telemetry that Camden's 30-day coverage goes from 66/300 to ~100%.
-2. **Lane B**, same shape. Measure its volume before enabling.
-3. **Lane C**, plus the hydration path.
-4. **Delete the drain**, the cursor, the high-water marks, the density tiers, the freshness probe and the scheduler tiering once Lanes A–C are proven. Drop the `poll_state` cursor columns.
+**A committed cutover, not a parallel run.** The request budget does not allow both (see "Request budget"), and the old drain is what holds us on the red line. We replace it in one deploy, and we buy safety with *verification* rather than with a parallel drain.
 
-Rollback at every step is "stop running the new lane"; the drain remains until step 4, so there is no window where the product is worse off than today.
+### Ship together, in one release
+
+Lanes A, B and C ship as a unit. **Lane C is not a later phase — it is the safety net that makes the cutover defensible.** Cutting over to a new ingest axis with no independent check that it is not silently dropping records is the one thing we must not do.
+
+1. **Lanes A and B** replace the drain in the poll cycle.
+2. **Lane C runs daily** (not weekly) for the soak, and emits a per-authority **coverage metric**: for each authority, our row count for a recent `start_date` window against PlanIt's `total` for the same window. This is an oracle *outside* the new code path — it asks PlanIt directly rather than trusting our own watermark.
+3. **The `poll_state` columns are not dropped.** No migration runs. Rollback is a pure image redeploy.
+4. The old drain code is **left in the binary but not wired**, so reverting is a config change if we need it faster than a redeploy.
+
+### The failure mode we are actually guarding against
+
+Not a crash — a crash is loud and the existing alerts catch it. The risk is a **silent skip**: `different_start` is date-granular, so exact delta semantics depend on paging descending until we cross an in-memory timestamp watermark. A boundary bug there drops applications quietly. No error, no 429, no alert; a resident simply never hears about the development next door. Lane C's coverage metric is the only thing that detects this, which is why it ships in the same release.
+
+### Rollback trigger — named in advance
+
+Roll back if, at any point in the soak:
+
+- **Coverage regresses.** Any authority's coverage ratio (ours ÷ PlanIt's, 30-day `start_date` window) falls below its pre-cutover value. The pre-cutover baselines are recorded before the deploy — Camden's is **66/300 = 22%**, and the fleet's is the `applications` snapshot taken on 2026-07-14.
+- **Coverage fails to climb.** Camden is not above ~90% within 72 hours. The masked delta should take it to ~100% as PlanIt re-touches records; if it does not, the mask is dropping something.
+- Lane A returns zero records for more than 3 consecutive hours (PlanIt's national delta is never empty for that long — measured at ~72 records/hour).
+
+Rollback is `az containerapp revision` back to the prior image. **It is safe but not free:** the old drain resumes from `high_water_mark` values that will be as stale as the soak was long, so its windows come back bigger. That is a strong reason to keep the decision window **short — days, not weeks** — and to make the call on the coverage metric rather than on vibes.
+
+### After the soak
+
+Once coverage is at parity or better across the fleet for a full week:
+
+5. Lane C drops to weekly.
+6. Delete the drain, the freshness probe, the density tiers and the scheduler tiering.
+7. Drop `poll_state.cursor_next_index` / `cursor_next_page` / `cursor_known_total` / `high_water_mark`. **This is the point of no return** — after it, rollback means a re-seed, not a redeploy. Do it deliberately and not before.
 
 ## What the first version got wrong
 
