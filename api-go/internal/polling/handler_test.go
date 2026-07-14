@@ -16,12 +16,24 @@ import (
 // --- hand-written fakes for the handler's dependencies ---
 
 // fakePlanIt serves pre-canned pages keyed by (authorityID, page) and can be
-// primed with a rate-limit or transient error per authority.
+// primed with a rate-limit or transient error per authority — either on every
+// fetch (errs) or on one specific fetch ordinal (nthErrs, via failNthFetch).
 type fakePlanIt struct {
 	pages   map[pageKey]planit.FetchPageResult
-	errs    map[int]error // authorityID -> error returned on every page fetch
+	errs    map[int]error      // authorityID -> error returned on every page fetch
+	nthErrs map[int]nthFailure // authorityID -> error returned on one fetch only
+	calls   map[int]int        // authorityID -> fetches served so far
 	fetched []pageKey
 	mu      sync.Mutex
+}
+
+// nthFailure primes a single failing fetch: err is returned on the nth fetch
+// (1-based, counting every fetch for that authority including the freshness
+// probe) and every other fetch is served normally. Models a PlanIt transport
+// timeout part-way through a drain.
+type nthFailure struct {
+	n   int
+	err error
 }
 
 // pageKey identifies one fake fetch: the authority, the requested 0-based
@@ -35,16 +47,32 @@ type pageKey struct {
 }
 
 func newFakePlanIt() *fakePlanIt {
-	return &fakePlanIt{pages: map[pageKey]planit.FetchPageResult{}, errs: map[int]error{}}
+	return &fakePlanIt{
+		pages:   map[pageKey]planit.FetchPageResult{},
+		errs:    map[int]error{},
+		nthErrs: map[int]nthFailure{},
+		calls:   map[int]int{},
+	}
+}
+
+// failNthFetch primes the fake to return err on the nth fetch for authorityID
+// (1-based, counting the freshness probe), serving every other fetch normally.
+func (f *fakePlanIt) failNthFetch(authorityID, n int, err error) {
+	f.nthErrs[authorityID] = nthFailure{n: n, err: err}
 }
 
 func (f *fakePlanIt) FetchApplicationsPage(_ context.Context, authorityID int, _ *time.Time, startIndex int, descending bool) (planit.FetchPageResult, error) {
 	key := pageKey{authority: authorityID, index: startIndex, descending: descending}
 	f.mu.Lock()
 	f.fetched = append(f.fetched, key)
+	f.calls[authorityID]++
+	nth := f.calls[authorityID]
 	f.mu.Unlock()
 	if err := f.errs[authorityID]; err != nil {
 		return planit.FetchPageResult{}, err
+	}
+	if fail, ok := f.nthErrs[authorityID]; ok && fail.n == nth {
+		return planit.FetchPageResult{}, fail.err
 	}
 	res, ok := f.pages[key]
 	if !ok {
@@ -532,6 +560,159 @@ func TestHandler_OmitsOldestHWMWhenNoActiveAuthorities(t *testing.T) {
 	}
 	if res.OldestHWMAgeSeconds != nil {
 		t.Errorf("OldestHWMAgeSeconds: got %v, want nil for an empty candidate set", *res.OldestHWMAgeSeconds)
+	}
+}
+
+// fullPage builds a 100-record page starting at index from, every record
+// carrying lastDifferent, with more pages behind it — the shape of a mid-drain
+// PlanIt page.
+func fullPage(from int, lastDifferent time.Time, total int) planit.FetchPageResult {
+	apps := make([]applications.PlanningApplication, 100)
+	for i := range apps {
+		apps[i] = testApp("app", 99, lastDifferent)
+	}
+	return planit.FetchPageResult{From: from, Applications: apps, HasMorePages: true, Total: platform.Ptr(total)}
+}
+
+// TestHandler_MidDrainFetchErrorFreezesHWMAndSavesCursor pins the GH#958 fix: a
+// PlanIt fetch error part-way through the drain must be treated as an early stop
+// (like a cap hit or a 429), not as a natural end of window. The HWM stays frozen
+// at the existing value and a resumable cursor is persisted at the next unfetched
+// record index, so the next visit resumes the drain instead of restarting the same
+// window from index 0 (which also silently disabled the freshness probe).
+func TestHandler_MidDrainFetchErrorFreezesHWMAndSavesCursor(t *testing.T) {
+	t.Parallel()
+	pi := newFakePlanIt()
+	hwm := time.Date(2026, 6, 13, 0, 0, 0, 0, time.UTC)
+	// Drain records sit inside the HWM's own churn day, exactly as on a large
+	// backlog: advancing the HWM to them would not move the date on at all.
+	ld := hwm.Add(9 * time.Hour)
+	pi.pages[pageKey{authority: 99, index: 0}] = fullPage(0, ld, 500)
+	pi.pages[pageKey{authority: 99, index: 100}] = fullPage(100, ld, 500)
+	// The third drain fetch times out after the first two ingested their records.
+	pi.failNthFetch(99, 3, errors.New("planit timeout after retries"))
+
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	state.states[99] = PollState{LastPollTime: hwm, HighWaterMark: hwm}
+	h := newHandler(t, pi, apps, state, fakeAuthorities{ids: []int{99}}, CycleSeed, defaultHandlerOpts())
+
+	res, err := h.Handle(context.Background())
+	if err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if res.AuthorityErrors != 1 {
+		t.Errorf("AuthorityErrors: got %d, want 1", res.AuthorityErrors)
+	}
+	if res.ApplicationCount != 200 {
+		t.Errorf("ApplicationCount: got %d, want 200 (two ingested fetches)", res.ApplicationCount)
+	}
+	if len(state.saves) != 1 {
+		t.Fatalf("state saves: got %d, want 1", len(state.saves))
+	}
+	save := state.saves[0]
+	if !save.highWaterMark.Equal(hwm) {
+		t.Errorf("HWM: got %v, want %v (frozen — a fetch error is not a completed window)", save.highWaterMark, hwm)
+	}
+	if !save.lastPollTime.Equal(time.Date(2026, 6, 14, 12, 0, 0, 0, time.UTC)) {
+		t.Errorf("LastPollTime: got %v, want the pinned now (the scheduler must still rotate off)", save.lastPollTime)
+	}
+	cur := save.cursor
+	if cur == nil {
+		t.Fatal("cursor: got nil, want a resumable cursor at the next unfetched index")
+	}
+	if cur.NextIndex != 200 {
+		t.Errorf("cursor NextIndex: got %d, want 200 (from=100 + records=100 of the last SUCCESSFUL fetch)", cur.NextIndex)
+	}
+	if cur.KnownTotal == nil || *cur.KnownTotal != 500 {
+		t.Errorf("cursor KnownTotal: got %v, want 500 (preserved)", cur.KnownTotal)
+	}
+	if !cur.DifferentStart.Equal(hwm) {
+		t.Errorf("cursor DifferentStart: got %v, want %v", cur.DifferentStart, hwm)
+	}
+}
+
+// TestHandler_DrainErrorAfterProbeSavesCursorAtResumeIndex covers the probe-then-
+// error path: the probe ingested records (so the authority is past finishAuthority's
+// nothing-to-write early return) and the first drain fetch then failed. No drain
+// fetch succeeded, so the cursor must be persisted at the resume index it started
+// from — never cleared, which would destroy the drain progress of every prior visit.
+func TestHandler_DrainErrorAfterProbeSavesCursorAtResumeIndex(t *testing.T) {
+	t.Parallel()
+	pi := newFakePlanIt()
+	hwm := time.Date(2026, 6, 13, 0, 0, 0, 0, time.UTC)
+	probeLD := time.Date(2026, 6, 20, 0, 0, 0, 0, time.UTC)
+	pi.pages[pageKey{authority: 99, index: 0, descending: true}] = planit.FetchPageResult{
+		From: 0, Applications: []applications.PlanningApplication{testApp("newest", 99, probeLD)}, HasMorePages: false,
+	}
+	// Fetch 1 is the probe; fetch 2 is the first drain fetch (resume index 300).
+	pi.failNthFetch(99, 2, errors.New("planit timeout after retries"))
+
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	state.states[99] = PollState{
+		LastPollTime: hwm, HighWaterMark: hwm,
+		Cursor: &PollCursor{DifferentStart: hwm, NextIndex: 400, KnownTotal: platform.Ptr(500)},
+	}
+	h := newHandler(t, pi, apps, state, fakeAuthorities{ids: []int{99}}, CycleSeed, defaultHandlerOpts())
+
+	res, err := h.Handle(context.Background())
+	if err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if res.AuthorityErrors != 1 {
+		t.Errorf("AuthorityErrors: got %d, want 1", res.AuthorityErrors)
+	}
+	if len(state.saves) != 1 {
+		t.Fatalf("state saves: got %d, want 1", len(state.saves))
+	}
+	save := state.saves[0]
+	if !save.highWaterMark.Equal(hwm) {
+		t.Errorf("HWM: got %v, want %v (frozen)", save.highWaterMark, hwm)
+	}
+	if save.cursor == nil {
+		t.Fatal("cursor: got nil (cleared), want it preserved at the resume index")
+	}
+	if save.cursor.NextIndex != 300 {
+		t.Errorf("cursor NextIndex: got %d, want 300 (the resume index; the failing fetch contributed nothing)", save.cursor.NextIndex)
+	}
+}
+
+// TestHandler_ErroredVisitSpanReportsHWMNotAdvanced pins the telemetry half of
+// GH#958: the visit that stopped on a fetch error must report
+// polling.hwm_advanced=false, so a starving authority is visible on the poll
+// dashboard instead of masquerading as a cleanly drained window.
+// Deliberately not t.Parallel(): recordSpans mutates the global TracerProvider.
+func TestHandler_ErroredVisitSpanReportsHWMNotAdvanced(t *testing.T) {
+	pi := newFakePlanIt()
+	hwm := time.Date(2026, 6, 13, 0, 0, 0, 0, time.UTC)
+	ld := hwm.Add(9 * time.Hour)
+	pi.pages[pageKey{authority: 99, index: 0}] = fullPage(0, ld, 500)
+	pi.pages[pageKey{authority: 99, index: 100}] = fullPage(100, ld, 500)
+	pi.failNthFetch(99, 3, errors.New("planit timeout after retries"))
+
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	state.states[99] = PollState{LastPollTime: hwm, HighWaterMark: hwm}
+	h := newHandler(t, pi, apps, state, fakeAuthorities{ids: []int{99}}, CycleSeed, defaultHandlerOpts())
+
+	spans := recordSpans(t, func() {
+		if _, err := h.Handle(context.Background()); err != nil {
+			t.Fatalf("Handle: %v", err)
+		}
+	})
+	span, ok := spanNamed(spans, "PlanIt authority poll")
+	if !ok {
+		t.Fatalf("expected a %q span among %d recorded spans", "PlanIt authority poll", len(spans))
+	}
+	if v, ok := attrValue(span, "polling.hwm_advanced"); !ok || v.AsBool() {
+		t.Errorf("polling.hwm_advanced: got %v (ok=%v), want false (a fetch error freezes the HWM)", v, ok)
+	}
+	if v, ok := attrValue(span, "polling.cap_hit"); !ok || v.AsBool() {
+		t.Errorf("polling.cap_hit: got %v (ok=%v), want false (the drain stopped on an error, not the cap)", v, ok)
+	}
+	if v, ok := attrValue(span, "polling.next_index"); !ok || v.AsInt64() != 200 {
+		t.Errorf("polling.next_index: got %v (ok=%v), want 200", v, ok)
 	}
 }
 
