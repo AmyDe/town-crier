@@ -242,8 +242,8 @@ func TestOrchestrator_NaturalResultUsesNaturalCadence(t *testing.T) {
 	if _, err := o.RunOnce(context.Background()); err != nil {
 		t.Fatalf("RunOnce: %v", err)
 	}
-	// Natural cadence (5m): 12:00:00 + 5m = 12:05:00.
-	want := time.Date(2026, 6, 14, 12, 5, 0, 0, time.UTC)
+	// Natural cadence (1h, ADR 0041): 12:00:00 + 1h = 13:00:00.
+	want := time.Date(2026, 6, 14, 13, 0, 0, 0, time.UTC)
 	if !pub.publishedAt.Equal(want) {
 		t.Errorf("scheduled enqueue: got %v, want %v", pub.publishedAt, want)
 	}
