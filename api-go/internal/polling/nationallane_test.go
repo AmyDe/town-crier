@@ -693,3 +693,61 @@ func TestNationalPollHandler_Handle_SkipsLaneCWhenNil(t *testing.T) {
 		t.Errorf("ApplicationCount: got %d, want 2 (both lanes ingested, nil Lane C contributed nothing)", res.ApplicationCount)
 	}
 }
+
+// TestNationalPollHandler_WithBackfillNilNeverPanics pins the wiring safety
+// contract for Lane D (GH#967): WithBackfill(nil) — the shape cmd/worker's
+// buildPollOrchestrator produces when POLLING_BACKFILL_ENABLED is off (its
+// default) — must never panic, and Handle must complete normally with no
+// backfill work attempted.
+func TestNationalPollHandler_WithBackfillNilNeverPanics(t *testing.T) {
+	t.Parallel()
+	fetcherA := newFakeNationalFetcher()
+	fetcherB := newFakeNationalFetcher()
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	logger := slog.New(slog.NewTextHandler(discard{}, nil))
+	clock := func() time.Time { return time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC) }
+
+	laneAHandler := NewNationalLaneHandler(fetcherA, state, apps, laneAOpts(), clock, logger)
+	laneBHandler := NewNationalLaneHandler(fetcherB, state, apps, laneBOpts(20), clock, logger)
+	handler := NewNationalPollHandler(laneAHandler, laneBHandler, nil, clock, logger)
+
+	handler.WithBackfill(nil)
+
+	res, err := handler.Handle(context.Background())
+	if err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if res.CycleType != "National" {
+		t.Errorf("CycleType: got %q, want National", res.CycleType)
+	}
+}
+
+// TestNationalPollHandler_Handle_RunsBackfillLaneAfterLaneC proves Lane D runs
+// unconditionally every cycle (nil-guarded, not Due-gated like Lane C) once
+// wired via WithBackfill.
+func TestNationalPollHandler_Handle_RunsBackfillLaneAfterLaneC(t *testing.T) {
+	t.Parallel()
+	fetcherA := newFakeNationalFetcher()
+	fetcherB := newFakeNationalFetcher()
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	logger := slog.New(slog.NewTextHandler(discard{}, nil))
+	clock := func() time.Time { return time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC) }
+
+	laneAHandler := NewNationalLaneHandler(fetcherA, state, apps, laneAOpts(), clock, logger)
+	laneBHandler := NewNationalLaneHandler(fetcherB, state, apps, laneBOpts(20), clock, logger)
+	handler := NewNationalPollHandler(laneAHandler, laneBHandler, nil, clock, logger)
+
+	backfillFetcher := newFakeBackfillFetcher()
+	backfillState := newFakeBackfillStateStore()
+	backfillHandler := NewBackfillHandler(backfillFetcher, backfillState, apps, defaultBackfillOpts(), clock, logger)
+	handler.WithBackfill(backfillHandler)
+
+	if _, err := handler.Handle(context.Background()); err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if backfillFetcher.calls == 0 {
+		t.Error("backfill fetcher: got 0 calls, want Lane D to have run")
+	}
+}
