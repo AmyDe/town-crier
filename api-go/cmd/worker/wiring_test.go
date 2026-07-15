@@ -13,6 +13,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/notifydispatch"
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
 	"github.com/AmyDe/town-crier/api-go/internal/polling"
+	"github.com/AmyDe/town-crier/api-go/internal/servicebus"
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
 )
 
@@ -72,6 +73,24 @@ func TestWirePollFanOut_AcceptsZoneStoreInterface(t *testing.T) {
 	wirePollFanOut(platform.Config{}, laneA, laneB, laneC, handler, spy, testRegistry(), nil, discardLogger())
 }
 
+// TestWirePollFanOut_NilLaneCDoesNotPanic pins the tc-5lu8h hotfix: Lane C
+// reconciliation is disabled by default (POLLING_LANE_C_ENABLED=false), so
+// buildPollOrchestrator passes a nil *polling.ReconciliationHandler as laneC.
+// Before the fix, wirePollFanOut called laneC.WithFanOut unconditionally,
+// which nil-panics on a nil receiver method value dereference. This proves
+// the guard: a nil laneC must not panic, and Lane A/B fan-out wiring must be
+// unaffected.
+func TestWirePollFanOut_NilLaneCDoesNotPanic(t *testing.T) {
+	t.Parallel()
+
+	laneA := &polling.NationalLaneHandler{}
+	laneB := &polling.NationalLaneHandler{}
+	handler := &polling.NationalPollHandler{}
+	spy := newSpyZoneStore()
+
+	wirePollFanOut(platform.Config{}, laneA, laneB, nil, handler, spy, testRegistry(), nil, discardLogger())
+}
+
 // TestEnqueuer_FindZonesContainingFlowsThroughInterface proves the notify fan-out
 // reaches the watch-zone store solely through the watchzones.Store interface:
 // EnqueueForApplication's entry point is FindZonesContaining, so whichever backend
@@ -102,6 +121,52 @@ func TestEnqueuer_FindZonesContainingFlowsThroughInterface(t *testing.T) {
 	if spy.lastFindLat != lat || spy.lastFindLng != lng {
 		t.Fatalf("FindZonesContaining coords = (%v, %v), want (%v, %v)",
 			spy.lastFindLat, spy.lastFindLng, lat, lng)
+	}
+}
+
+// TestBuildPollOrchestrator_LaneCGating pins the tc-5lu8h hotfix: Lane C
+// reconciliation is wired only when cfg.PollingLaneCEnabled is true (default
+// false). Both gate states must build a working orchestrator without
+// panicking — disabled exercises the nil-laneC path through
+// wirePollFanOut's guard; enabled exercises the still-functional (if
+// currently broken upstream, tracked separately as tc-tuge8) construction
+// path so the flag itself introduces no regression when flipped back on.
+// sbClient and st are zero-value: buildPollOrchestrator only needs sbClient
+// non-nil to pass its "no poller configured" guard, and every collaborator
+// it constructs (planit.NewClient, the national lane handlers, the
+// reconciliation handler, the orchestrator) opens no connection and performs
+// no I/O at construction time.
+func TestBuildPollOrchestrator_LaneCGating(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		laneCEnabled bool
+	}{
+		{"disabled (default)", false},
+		{"enabled", true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := platform.Config{
+				PlanItBaseURL:                         "https://stub.planit.test/",
+				PollingLaneCEnabled:                   tc.laneCEnabled,
+				PollingLaneCIntervalHours:             168,
+				PollingLaneCMaxStragglersPerAuthority: 10,
+			}
+			sbClient := &servicebus.Client{}
+			st := &stores{}
+
+			adapter, err := buildPollOrchestrator(cfg, sbClient, testRegistry(), st, discardLogger())
+			if err != nil {
+				t.Fatalf("buildPollOrchestrator: %v", err)
+			}
+			if adapter == nil {
+				t.Fatal("buildPollOrchestrator: got nil adapter, want a configured orchestrator")
+			}
+		})
 	}
 }
 

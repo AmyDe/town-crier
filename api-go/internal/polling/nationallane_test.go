@@ -647,3 +647,49 @@ func TestNationalPollHandler_Handle_CountsLaneErrorsWithoutFailingTheCycle(t *te
 		t.Errorf("AuthorityErrors: got %d, want 1", res.AuthorityErrors)
 	}
 }
+
+// TestNationalPollHandler_Handle_SkipsLaneCWhenNil pins the tc-5lu8h hotfix
+// contract at the handler level: NewNationalPollHandler(laneA, laneB, nil,
+// ...) — the shape cmd/worker's buildPollOrchestrator produces when
+// POLLING_LANE_C_ENABLED is off (its default) — must run Lane A and Lane B to
+// completion and return cleanly, with no reconciliation work attempted (there
+// is no Lane C to fetch from: h.laneC is nil, so Handle's `if h.laneC != nil`
+// guard skips the Due/Run call entirely rather than dereferencing a nil
+// *ReconciliationHandler).
+func TestNationalPollHandler_Handle_SkipsLaneCWhenNil(t *testing.T) {
+	t.Parallel()
+	watermark := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	ldA := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	ldB := time.Date(2026, 7, 11, 0, 0, 0, 0, time.UTC)
+
+	fetcherA := newFakeNationalFetcher()
+	fetcherA.pages[0] = planit.FetchPageResult{From: 0, Applications: []applications.PlanningApplication{testApp("a", 300, ldA)}}
+	fetcherB := newFakeNationalFetcher()
+	fetcherB.pages[0] = planit.FetchPageResult{From: 0, Applications: []applications.PlanningApplication{testApp("b", 300, ldB)}}
+
+	appsA := newFakeApps()
+	appsB := newFakeApps()
+	state := newFakeStateStore()
+	state.states[sentinelLaneA] = PollState{HighWaterMark: watermark, LastPollTime: watermark}
+	state.states[sentinelLaneB] = PollState{HighWaterMark: watermark, LastPollTime: watermark}
+	logger := slog.New(slog.NewTextHandler(discard{}, nil))
+	clock := func() time.Time { return time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC) }
+
+	laneAHandler := NewNationalLaneHandler(fetcherA, state, appsA, laneAOpts(), clock, logger)
+	laneBHandler := NewNationalLaneHandler(fetcherB, state, appsB, laneBOpts(20), clock, logger)
+	handler := NewNationalPollHandler(laneAHandler, laneBHandler, nil, clock, logger)
+
+	res, err := handler.Handle(context.Background())
+	if err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if fetcherA.calls == 0 {
+		t.Error("Lane A fetcher: got 0 calls, want Lane A to have run")
+	}
+	if fetcherB.calls == 0 {
+		t.Error("Lane B fetcher: got 0 calls, want Lane B to have run")
+	}
+	if res.ApplicationCount != 2 {
+		t.Errorf("ApplicationCount: got %d, want 2 (both lanes ingested, nil Lane C contributed nothing)", res.ApplicationCount)
+	}
+}
