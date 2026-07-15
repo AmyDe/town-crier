@@ -131,6 +131,12 @@ type NationalLaneHandler struct {
 	opts      NationalLaneOptions
 	now       func() time.Time
 	logger    *slog.Logger
+
+	// metrics records the towncrier.polling.* business KPIs for this lane's
+	// runs, wired via WithMetrics, mirroring PollPlanItHandler.metrics. nil
+	// until wired (the no-metrics default), so the many ingestion-only tests
+	// and call sites that don't supply one record nothing.
+	metrics metricsRecorder
 }
 
 // NewNationalLaneHandler wires a national lane. now is injected so tests pin
@@ -164,6 +170,25 @@ func (h *NationalLaneHandler) WithFanOut(decision DecisionDispatcher, enqueuer N
 	h.ingester.decision = decision
 	h.ingester.enqueuer = enqueuer
 	return h
+}
+
+// WithMetrics wires the metrics recorder this lane records its per-run
+// business KPIs on, mirroring PollPlanItHandler.WithMetrics. A
+// post-construction setter, so the many ingestion-only call sites and tests
+// are unaffected; cmd/worker calls it once per lane after construction.
+// Returns the handler for chaining.
+func (h *NationalLaneHandler) WithMetrics(rec metricsRecorder) *NationalLaneHandler {
+	h.metrics = rec
+	return h
+}
+
+// recorder returns a non-nil recorder so call sites can record
+// unconditionally, mirroring PollPlanItHandler.recorder.
+func (h *NationalLaneHandler) recorder() metricsRecorder {
+	if h.metrics == nil {
+		return noopMetrics{}
+	}
+	return h.metrics
 }
 
 // laneOutcome is one national lane run's result, carried both into
@@ -218,6 +243,11 @@ func (h *NationalLaneHandler) Run(ctx context.Context) laneOutcome {
 	if err != nil {
 		out.err = fmt.Errorf("lane %s: read watermark: %w", h.opts.Lane, err)
 		span.SetAttributes(attribute.String("poll.lane", string(h.opts.Lane)))
+		// out is not fully computed here — the watermark read itself failed,
+		// so there is nothing yet to report ingested and no watermark to age
+		// (out.watermarkAfter is still the zero time). No metrics recorded,
+		// mirroring the absence of a setSpanAttributes call on this early
+		// bail-out.
 		return out
 	}
 	out.watermarkBefore = watermarkBefore
@@ -317,6 +347,7 @@ pageLoop:
 		out.err = serr
 	}
 
+	h.recordRunMetrics(ctx, out, now)
 	h.setSpanAttributes(span, out, watermarkBefore, prefilterDate, false)
 	return out
 }
@@ -348,6 +379,12 @@ func (h *NationalLaneHandler) seed(ctx context.Context, span trace.Span, now, ma
 		} else {
 			out.err = ferr
 		}
+		// out.watermarkAfter is still the zero time here — the seeding fetch
+		// itself failed, so nothing was ever established this run. Recording
+		// an epoch-to-now "age" would mislead rather than signal genuine
+		// staleness, so recordRunMetrics's own IsZero guard skips that call;
+		// the rate-limit counters still fire when applicable.
+		h.recordRunMetrics(ctx, out, now)
 		h.setSpanAttributes(span, out, time.Time{}, maskCutoff, true)
 		return out
 	}
@@ -371,8 +408,49 @@ func (h *NationalLaneHandler) seed(ctx context.Context, span trace.Span, now, ma
 		out.err = serr
 	}
 
+	h.recordRunMetrics(ctx, out, now)
 	h.setSpanAttributes(span, out, time.Time{}, maskCutoff, true)
 	return out
+}
+
+// recordRunMetrics records one Run or seed invocation's lane-tagged business
+// KPIs: applications ingested, the lane's watermark staleness, and — on a
+// 429 — the rate-limit counter and Retry-After value (mirroring
+// PollPlanItHandler.recordRetryAfter's header-present/absent branching).
+//
+// OldestHighWaterMarkAge repurposes the per-authority staleness gauge as
+// "how far this lane's single global watermark trails now" — the correct
+// analogue for a cursor-less national lane. It is skipped whenever
+// out.watermarkAfter is still the zero time: that only happens when this
+// run (or seed) bailed out before establishing any watermark at all (a
+// watermark-read failure, or a failed/rate-limited seed fetch), and an
+// epoch-to-now "age" in that case would mislead rather than signal
+// staleness.
+func (h *NationalLaneHandler) recordRunMetrics(ctx context.Context, out laneOutcome, now time.Time) {
+	rec := h.recorder()
+	lane := string(h.opts.Lane)
+
+	rec.ApplicationsIngested(ctx, out.recordsIngested, lane)
+	if !out.watermarkAfter.IsZero() {
+		rec.OldestHighWaterMarkAge(ctx, now.Sub(out.watermarkAfter).Seconds(), lane, sentinelIDForLane(h.opts.Lane), out.watermarkAfter.IsZero())
+	}
+	if out.rateLimited {
+		rec.RateLimited(ctx, lane)
+		h.recordRetryAfter(ctx, rec, out.retryAfter, lane)
+	}
+}
+
+// recordRetryAfter records the parsed Retry-After value (seconds) for a
+// lane's 429, tagging header_present so dashboards distinguish a PlanIt 429
+// with no Retry-After header (value 0, header_present=false) from a real
+// small backoff — mirroring PollPlanItHandler.recordRetryAfter.
+func (h *NationalLaneHandler) recordRetryAfter(ctx context.Context, rec metricsRecorder, retryAfter *time.Duration, lane string) {
+	sentinelID := sentinelIDForLane(h.opts.Lane)
+	if retryAfter == nil {
+		rec.RetryAfterSeconds(ctx, 0, lane, sentinelID, false)
+		return
+	}
+	rec.RetryAfterSeconds(ctx, retryAfter.Seconds(), lane, sentinelID, true)
 }
 
 // setSpanAttributes stamps the "PlanIt national lane poll" span with the full
@@ -428,6 +506,11 @@ type NationalPollHandler struct {
 	flusher pushFlusher
 	now     func() time.Time
 	logger  *slog.Logger
+
+	// metrics records towncrier.polling.cycles_completed for this handler's
+	// cycles, wired via WithMetrics, mirroring PollPlanItHandler.metrics. nil
+	// until wired (the no-metrics default).
+	metrics metricsRecorder
 }
 
 // NewNationalPollHandler wires the three lanes. laneC may be nil to skip
@@ -441,6 +524,25 @@ func NewNationalPollHandler(laneA, laneB *NationalLaneHandler, laneC *Reconcilia
 func (h *NationalPollHandler) WithPushFlusher(f pushFlusher) *NationalPollHandler {
 	h.flusher = f
 	return h
+}
+
+// WithMetrics wires the metrics recorder this handler records
+// towncrier.polling.cycles_completed on, mirroring
+// PollPlanItHandler.WithMetrics. A post-construction setter, so tests that
+// don't supply one are unaffected; cmd/worker calls it once after
+// construction. Returns the handler for chaining.
+func (h *NationalPollHandler) WithMetrics(rec metricsRecorder) *NationalPollHandler {
+	h.metrics = rec
+	return h
+}
+
+// recorder returns a non-nil recorder so call sites can record
+// unconditionally, mirroring PollPlanItHandler.recorder.
+func (h *NationalPollHandler) recorder() metricsRecorder {
+	if h.metrics == nil {
+		return noopMetrics{}
+	}
+	return h.metrics
 }
 
 // Handle runs one national poll cycle: Lane A, then Lane B, then — only when
@@ -505,6 +607,8 @@ func (h *NationalPollHandler) Handle(ctx context.Context) (PollPlanItResult, err
 			}
 		}
 	}
+
+	h.recorder().CycleCompleted(ctx, "National", reason.TelemetryValue())
 
 	return PollPlanItResult{
 		ApplicationCount:  outA.recordsIngested + outB.recordsIngested,

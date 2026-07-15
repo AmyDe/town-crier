@@ -53,6 +53,11 @@ type ReconciliationHandler struct {
 	opts        ReconciliationOptions
 	now         func() time.Time
 	logger      *slog.Logger
+
+	// metrics records towncrier.polling.applications_ingested (tagged "C")
+	// for this lane's sweeps, wired via WithMetrics, mirroring
+	// PollPlanItHandler.metrics. nil until wired (the no-metrics default).
+	metrics metricsRecorder
 }
 
 // NewReconciliationHandler wires Lane C. now is injected so tests pin the
@@ -88,6 +93,25 @@ func (h *ReconciliationHandler) WithFanOut(decision DecisionDispatcher, enqueuer
 	h.ingester.decision = decision
 	h.ingester.enqueuer = enqueuer
 	return h
+}
+
+// WithMetrics wires the metrics recorder Lane C records its per-sweep
+// ApplicationsIngested count on, mirroring PollPlanItHandler.WithMetrics. A
+// post-construction setter, so the many tests that don't supply one are
+// unaffected; cmd/worker calls it once after construction. Returns the
+// handler for chaining.
+func (h *ReconciliationHandler) WithMetrics(rec metricsRecorder) *ReconciliationHandler {
+	h.metrics = rec
+	return h
+}
+
+// recorder returns a non-nil recorder so call sites can record
+// unconditionally, mirroring PollPlanItHandler.recorder.
+func (h *ReconciliationHandler) recorder() metricsRecorder {
+	if h.metrics == nil {
+		return noopMetrics{}
+	}
+	return h.metrics
 }
 
 // Due reports whether Lane C's sweep interval has elapsed since its last run
@@ -129,6 +153,9 @@ func (h *ReconciliationHandler) Run(ctx context.Context) reconciliationOutcome {
 	if err != nil {
 		out.err = fmt.Errorf("lane C: list authorities: %w", err)
 		span.SetAttributes(attribute.String("poll.lane", string(LaneC)))
+		// out is not fully computed here (the authority list itself failed to
+		// load, so nothing was swept) — no metrics recorded, mirroring the
+		// absence of the full span attribute set on this early bail-out.
 		return out
 	}
 
@@ -145,6 +172,8 @@ func (h *ReconciliationHandler) Run(ctx context.Context) reconciliationOutcome {
 	if serr := h.watermark.save(ctx, now, time.Time{}); serr != nil && out.err == nil {
 		out.err = serr
 	}
+
+	h.recorder().ApplicationsIngested(ctx, out.hydrated, string(LaneC))
 
 	span.SetAttributes(
 		attribute.String("poll.lane", string(LaneC)),
