@@ -206,6 +206,13 @@ type Config struct {
 	PollingLaneBMaxPages                  int
 	PollingLaneCIntervalHours             int
 	PollingLaneCMaxStragglersPerAuthority int
+	// PollingLaneCEnabled gates whether Lane C (reconciliation) is wired into
+	// the poll cycle at all. Loaded from POLLING_LANE_C_ENABLED and DEFAULT
+	// FALSE: Lane C shipped broken in v0.21.0 (its per-authority query 400s and
+	// it never records its weekly last-run on a budget cut-off, so it re-runs
+	// and hammers PlanIt every cycle). It stays off until tc-tuge8 fixes the
+	// query and the last-run persistence, then this default flips to true.
+	PollingLaneCEnabled bool
 
 	// NotificationsRetentionDays is the number of days to keep Notifications rows
 	// when running the pg-purge job. Loaded from NOTIFICATIONS_RETENTION_DAYS;
@@ -345,6 +352,7 @@ func LoadConfig() (Config, error) {
 		PollingLaneBMaxPages:                  getenvInt("POLLING_LANE_B_MAX_PAGES", 20),
 		PollingLaneCIntervalHours:             getenvInt("POLLING_LANE_C_INTERVAL_HOURS", 168),
 		PollingLaneCMaxStragglersPerAuthority: getenvInt("POLLING_LANE_C_MAX_STRAGGLERS_PER_AUTHORITY", 10),
+		PollingLaneCEnabled:                   getenvBool("POLLING_LANE_C_ENABLED"),
 
 		NotificationsRetentionDays:       getenvInt("NOTIFICATIONS_RETENTION_DAYS", 90),
 		DeviceRegistrationsRetentionDays: getenvInt("DEVICE_REGISTRATIONS_RETENTION_DAYS", 180),
