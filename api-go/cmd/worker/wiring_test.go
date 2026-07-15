@@ -170,6 +170,52 @@ func TestBuildPollOrchestrator_LaneCGating(t *testing.T) {
 	}
 }
 
+// TestBuildPollOrchestrator_BackfillGating pins GH#967's dark-ship default:
+// Lane D (the paced historical backfill lane) is constructed and wired only
+// when cfg.PollingBackfillEnabled is true (default false). Both gate states
+// must build a working orchestrator without panicking, mirroring
+// TestBuildPollOrchestrator_LaneCGating's rationale — every collaborator
+// buildPollOrchestrator constructs opens no connection and performs no I/O at
+// construction time, so a zero-value *stores works for both branches.
+func TestBuildPollOrchestrator_BackfillGating(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name            string
+		backfillEnabled bool
+	}{
+		{"disabled (default)", false},
+		{"enabled", true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := platform.Config{
+				PlanItBaseURL:                             "https://stub.planit.test/",
+				PollingBackfillEnabled:                    tc.backfillEnabled,
+				PollingBackfillWindowWidthDays:            90,
+				PollingBackfillMaxPagesPerCycle:           2,
+				PollingBackfillEmptyWindowsBeforeComplete: 12,
+			}
+			sbClient := &servicebus.Client{}
+			// Referencing the backfill field by name (even as nil) forces
+			// stores to carry a *polling.PostgresBackfillStateStore field —
+			// buildPollOrchestrator's real construction path reads it when
+			// PollingBackfillEnabled is true.
+			st := &stores{backfill: nil}
+
+			adapter, err := buildPollOrchestrator(cfg, sbClient, testRegistry(), st, discardLogger())
+			if err != nil {
+				t.Fatalf("buildPollOrchestrator: %v", err)
+			}
+			if adapter == nil {
+				t.Fatal("buildPollOrchestrator: got nil adapter, want a configured orchestrator")
+			}
+		})
+	}
+}
+
 // TestLeaseTTLFor_AddsFiveMinuteMargin pins the honest-TTL derivation (GH#938
 // PR1): the polling lease TTL is the handler budget plus a 5-minute margin,
 // covering soft-budget overshoot (the budget is checked between authorities, not
