@@ -404,6 +404,19 @@ func wirePollFanOut(cfg platform.Config, laneA, laneB *polling.NationalLaneHandl
 		laneC.WithFanOut(dispatcher, enqueuer)
 	}
 	handler.WithPushFlusher(coalescer)
+
+	// Record towncrier.polling.applications_ingested / cycles_completed /
+	// oldest_hwm_age_seconds on the three ADR 0041 lanes and the top-level
+	// handler (tc-7ef9g) — the same registry already wired onto the
+	// notification fan-out above. Without this the new national-lane code
+	// path is invisible on those instruments even though ingestion itself
+	// works (confirmed via AppDependencies span inspection).
+	laneA.WithMetrics(registry)
+	laneB.WithMetrics(registry)
+	if laneC != nil {
+		laneC.WithMetrics(registry)
+	}
+	handler.WithMetrics(registry)
 }
 
 // buildNotifyFanOut constructs the decision-dispatch, zone-enqueue and
