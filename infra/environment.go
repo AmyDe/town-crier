@@ -706,6 +706,8 @@ func addGoWorkerEnv(envVars app.EnvironmentVarArray, ec envContext, workerMode s
 			app.EnvironmentVarArgs{Name: pulumi.String("POLLING_HANDLER_BUDGET_SECONDS"), Value: pulumi.String("240")},
 			app.EnvironmentVarArgs{Name: pulumi.String("POLL_REPLICA_TIMEOUT_SECONDS"), Value: pulumi.String("600")},
 			app.EnvironmentVarArgs{Name: pulumi.String("POLL_SHUTDOWN_GRACE_SECONDS"), Value: pulumi.String("30")},
+			// Lane D (ADR 0042 / GH#967, PR #968): dark-shipped disabled, flipped on here.
+			app.EnvironmentVarArgs{Name: pulumi.String("POLLING_BACKFILL_ENABLED"), Value: pulumi.String("true")},
 		)
 	}
 
