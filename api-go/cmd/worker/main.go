@@ -64,6 +64,7 @@ type stores struct {
 	offerCode    *offercodes.PostgresStore
 	pollState    *polling.PostgresPollStateStore
 	lease        *polling.PostgresLeaseStore
+	backfill     *polling.PostgresBackfillStateStore
 }
 
 func main() {
@@ -142,6 +143,7 @@ func run() int {
 		offerCode:    offercodes.NewPostgresStore(pool, logger),
 		pollState:    polling.NewPostgresPollStateStore(pool),
 		lease:        polling.NewPostgresLeaseStore(pool, time.Now),
+		backfill:     polling.NewPostgresBackfillStateStore(pool),
 	}
 
 	// The Service Bus client (and thus the bootstrapper and the poll-sb
@@ -322,6 +324,34 @@ func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, reg
 	}
 
 	handler := polling.NewNationalPollHandler(laneA, laneB, laneC, time.Now, logger)
+
+	// Lane D (GH#967, ADR 0042): the paced historical backfill lane. A
+	// national, date-windowed backward sweep that enriches stale/NULL GH#935
+	// fields and fills coverage gaps via the existing Ingester — structurally
+	// incapable of notifying (its Ingester is always built with nil
+	// decision/enqueuer collaborators, and BackfillHandler has no method that
+	// could wire one; see internal/polling/backfill.go's package doc).
+	//
+	// Gated behind POLLING_BACKFILL_ENABLED (default off), mirroring the
+	// Lane C rollout precedent (tc-5lu8h): ships dark, soaks, then flips on
+	// deliberately. WithBackfill(nil) is the safe default when disabled —
+	// NationalPollHandler.Handle nil-guards it exactly like Lane C.
+	//
+	// Deliberately NOT passed to wirePollFanOut below: there is no fan-out to
+	// wire for this lane, by construction.
+	var laneD *polling.BackfillHandler
+	if cfg.PollingBackfillEnabled {
+		laneD = polling.NewBackfillHandler(
+			planItClient, st.backfill, appStore,
+			polling.BackfillOptions{
+				WindowWidthDays:            cfg.PollingBackfillWindowWidthDays,
+				MaxPagesPerCycle:           cfg.PollingBackfillMaxPagesPerCycle,
+				EmptyWindowsBeforeComplete: cfg.PollingBackfillEmptyWindowsBeforeComplete,
+			},
+			time.Now, logger,
+		).WithMetrics(registry)
+	}
+	handler.WithBackfill(laneD)
 
 	// Wire the poll-path notification fan-out onto all three lanes: each
 	// upserted/hydrated application drives a decision-event dispatch (on a

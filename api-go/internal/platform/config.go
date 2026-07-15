@@ -214,6 +214,27 @@ type Config struct {
 	// query and the last-run persistence, then this default flips to true.
 	PollingLaneCEnabled bool
 
+	// PollingBackfill* configure Lane D, the paced historical backfill lane
+	// (GH#967, ADR 0042): a national, date-windowed backward sweep that
+	// enriches stale/NULL GH#935 fields and fills coverage gaps, but never
+	// notifies (its Ingester is always built with nil decision/enqueuer
+	// collaborators, and BackfillHandler has no method that could wire one).
+	// PollingBackfillEnabled gates whether the lane is constructed and wired
+	// into the poll cycle at all. Loaded from POLLING_BACKFILL_ENABLED and
+	// DEFAULT FALSE, mirroring the Lane C rollout precedent (tc-5lu8h): new
+	// polling code ships dark, gets soaked, flips on deliberately.
+	// PollingBackfillWindowWidthDays is the width of each backward-sliding
+	// date window (default 90, mirroring ADR 0041's mask width).
+	// PollingBackfillMaxPagesPerCycle bounds how many pages the lane fetches
+	// per poll cycle (default 2 — "creep a little bit each hour").
+	// PollingBackfillEmptyWindowsBeforeComplete is how many consecutive
+	// fully-drained, zero-record windows the lane tolerates before declaring
+	// itself done (default 12, ~3 years of national silence).
+	PollingBackfillEnabled                    bool
+	PollingBackfillWindowWidthDays            int
+	PollingBackfillMaxPagesPerCycle           int
+	PollingBackfillEmptyWindowsBeforeComplete int
+
 	// NotificationsRetentionDays is the number of days to keep Notifications rows
 	// when running the pg-purge job. Loaded from NOTIFICATIONS_RETENTION_DAYS;
 	// defaults to 90.
@@ -353,6 +374,11 @@ func LoadConfig() (Config, error) {
 		PollingLaneCIntervalHours:             getenvInt("POLLING_LANE_C_INTERVAL_HOURS", 168),
 		PollingLaneCMaxStragglersPerAuthority: getenvInt("POLLING_LANE_C_MAX_STRAGGLERS_PER_AUTHORITY", 10),
 		PollingLaneCEnabled:                   getenvBool("POLLING_LANE_C_ENABLED"),
+
+		PollingBackfillEnabled:                    getenvBool("POLLING_BACKFILL_ENABLED"),
+		PollingBackfillWindowWidthDays:            getenvInt("POLLING_BACKFILL_WINDOW_WIDTH_DAYS", 90),
+		PollingBackfillMaxPagesPerCycle:           getenvInt("POLLING_BACKFILL_MAX_PAGES_PER_CYCLE", 2),
+		PollingBackfillEmptyWindowsBeforeComplete: getenvInt("POLLING_BACKFILL_EMPTY_WINDOWS_BEFORE_COMPLETE", 12),
 
 		NotificationsRetentionDays:       getenvInt("NOTIFICATIONS_RETENTION_DAYS", 90),
 		DeviceRegistrationsRetentionDays: getenvInt("DEVICE_REGISTRATIONS_RETENTION_DAYS", 180),

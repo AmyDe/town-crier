@@ -415,6 +415,8 @@ func TestLoadConfig_PollingDefaults(t *testing.T) {
 		"POLLING_LANE_A_MASK_DAYS", "POLLING_LANE_B_MASK_DAYS", "POLLING_LANE_B_MAX_PAGES",
 		"POLLING_LANE_C_INTERVAL_HOURS", "POLLING_LANE_C_MAX_STRAGGLERS_PER_AUTHORITY",
 		"POLLING_LANE_C_ENABLED",
+		"POLLING_BACKFILL_ENABLED", "POLLING_BACKFILL_WINDOW_WIDTH_DAYS",
+		"POLLING_BACKFILL_MAX_PAGES_PER_CYCLE", "POLLING_BACKFILL_EMPTY_WINDOWS_BEFORE_COMPLETE",
 	} {
 		t.Setenv(k, "")
 	}
@@ -460,6 +462,47 @@ func TestLoadConfig_PollingDefaults(t *testing.T) {
 	}
 	if cfg.PollingLaneCMaxStragglersPerAuthority != 10 {
 		t.Errorf("lane C max stragglers default: got %d, want 10", cfg.PollingLaneCMaxStragglersPerAuthority)
+	}
+	if cfg.PollingBackfillEnabled {
+		t.Error("PollingBackfillEnabled: got true, want false by default (GH#967, ships dark)")
+	}
+	if cfg.PollingBackfillWindowWidthDays != 90 {
+		t.Errorf("backfill window width default: got %d, want 90", cfg.PollingBackfillWindowWidthDays)
+	}
+	if cfg.PollingBackfillMaxPagesPerCycle != 2 {
+		t.Errorf("backfill max pages per cycle default: got %d, want 2", cfg.PollingBackfillMaxPagesPerCycle)
+	}
+	if cfg.PollingBackfillEmptyWindowsBeforeComplete != 12 {
+		t.Errorf("backfill empty-windows-before-complete default: got %d, want 12", cfg.PollingBackfillEmptyWindowsBeforeComplete)
+	}
+}
+
+// TestLoadConfig_PollingBackfillEnabled pins Lane D's dark-ship default
+// (GH#967): POLLING_BACKFILL_ENABLED unset or falsy stays disabled, mirroring
+// the Lane C rollout precedent (tc-5lu8h). An explicit truthy value opts in.
+func TestLoadConfig_PollingBackfillEnabled(t *testing.T) {
+	tests := []struct {
+		name string
+		env  string
+		want bool
+	}{
+		{"unset defaults false", "", false},
+		{"true enables", "true", true},
+		{"1 enables", "1", true},
+		{"false stays disabled", "false", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("POLLING_BACKFILL_ENABLED", tc.env)
+
+			cfg, err := LoadConfig()
+			if err != nil {
+				t.Fatalf("LoadConfig: %v", err)
+			}
+			if cfg.PollingBackfillEnabled != tc.want {
+				t.Errorf("PollingBackfillEnabled: got %v, want %v", cfg.PollingBackfillEnabled, tc.want)
+			}
+		})
 	}
 }
 

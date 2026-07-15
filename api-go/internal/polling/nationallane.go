@@ -503,6 +503,7 @@ type NationalPollHandler struct {
 	laneA   *NationalLaneHandler
 	laneB   *NationalLaneHandler
 	laneC   *ReconciliationHandler // nil skips Lane C entirely (e.g. a test exercising only the critical path)
+	laneD   *BackfillHandler       // nil skips Lane D (GH#967, ADR 0042) — the shape until POLLING_BACKFILL_ENABLED flips on
 	flusher pushFlusher
 	now     func() time.Time
 	logger  *slog.Logger
@@ -517,6 +518,16 @@ type NationalPollHandler struct {
 // reconciliation.
 func NewNationalPollHandler(laneA, laneB *NationalLaneHandler, laneC *ReconciliationHandler, now func() time.Time, logger *slog.Logger) *NationalPollHandler {
 	return &NationalPollHandler{laneA: laneA, laneB: laneB, laneC: laneC, now: now, logger: logger}
+}
+
+// WithBackfill wires Lane D (GH#967, ADR 0042), the paced historical backfill
+// lane. nil is the safe default — Handle's nil guard skips it entirely — so
+// cmd/worker's buildPollOrchestrator can call this unconditionally with
+// whatever POLLING_BACKFILL_ENABLED produced (a real *BackfillHandler, or
+// nil) without a separate branch. Returns the handler for chaining.
+func (h *NationalPollHandler) WithBackfill(laneD *BackfillHandler) *NationalPollHandler {
+	h.laneD = laneD
+	return h
 }
 
 // WithPushFlusher wires the poll-cycle push coalescer (GH#784), mirroring
@@ -605,6 +616,20 @@ func (h *NationalPollHandler) Handle(ctx context.Context) (PollPlanItResult, err
 			if outC.err != nil {
 				h.logger.ErrorContext(ctx, "lane C reconciliation error", "error", outC.err)
 			}
+		}
+	}
+
+	// Lane D (GH#967, ADR 0042): runs unconditionally every cycle, nil-guarded
+	// — unlike Lane C it is never Due-gated (there is no interval to check, it
+	// always spends its small fixed page budget) and it never contributes to
+	// ApplicationCount/AuthorityErrors/termination reason below: it is a
+	// data-quality/coverage lane, not part of the critical path those fields
+	// describe, and it structurally cannot notify (nil decision/enqueuer,
+	// no WithFanOut method), so there is nothing here for it to affect.
+	if h.laneD != nil {
+		outD := h.laneD.Run(ctx)
+		if outD.err != nil {
+			h.logger.ErrorContext(ctx, "lane D backfill error", "error", outD.err)
 		}
 	}
 
