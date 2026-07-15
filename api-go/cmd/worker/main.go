@@ -302,15 +302,24 @@ func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, reg
 	// Lane C (reconciliation): a weekly (config-dialable) per-authority
 	// completeness backstop, not on the cutover's critical path. Reuses the
 	// static pollable-authority list the old Seed cycle drained.
-	laneC := polling.NewReconciliationHandler(
-		planItClient, stateStore, appStore,
-		polling.NewAllAuthorityProvider(authorities.NewLookup()),
-		polling.ReconciliationOptions{
-			Interval:                  time.Duration(cfg.PollingLaneCIntervalHours) * time.Hour,
-			MaxStragglersPerAuthority: cfg.PollingLaneCMaxStragglersPerAuthority,
-		},
-		time.Now, logger,
-	)
+	//
+	// Gated behind POLLING_LANE_C_ENABLED (default off): Lane C shipped broken
+	// in v0.21.0 — its per-authority query 400s on every authority, and it
+	// never records its weekly last-run when the sweep is cut off by the cycle
+	// budget, so it re-runs and hammers PlanIt every cycle. It stays nil (Handle
+	// skips it) until tc-tuge8 fixes both, then the config default flips.
+	var laneC *polling.ReconciliationHandler
+	if cfg.PollingLaneCEnabled {
+		laneC = polling.NewReconciliationHandler(
+			planItClient, stateStore, appStore,
+			polling.NewAllAuthorityProvider(authorities.NewLookup()),
+			polling.ReconciliationOptions{
+				Interval:                  time.Duration(cfg.PollingLaneCIntervalHours) * time.Hour,
+				MaxStragglersPerAuthority: cfg.PollingLaneCMaxStragglersPerAuthority,
+			},
+			time.Now, logger,
+		)
+	}
 
 	handler := polling.NewNationalPollHandler(laneA, laneB, laneC, time.Now, logger)
 
@@ -389,7 +398,11 @@ func wirePollFanOut(cfg platform.Config, laneA, laneB *polling.NationalLaneHandl
 
 	laneA.WithFanOut(dispatcher, enqueuer)
 	laneB.WithFanOut(dispatcher, enqueuer)
-	laneC.WithFanOut(dispatcher, enqueuer)
+	// laneC is nil when POLLING_LANE_C_ENABLED is off (its default) — Lane C is
+	// disabled until tc-tuge8 fixes it, so there is nothing to wire.
+	if laneC != nil {
+		laneC.WithFanOut(dispatcher, enqueuer)
+	}
 	handler.WithPushFlusher(coalescer)
 }
 

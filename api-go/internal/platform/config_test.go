@@ -414,6 +414,7 @@ func TestLoadConfig_PollingDefaults(t *testing.T) {
 		"POLLING_PLANIT_PAGE_SIZE",
 		"POLLING_LANE_A_MASK_DAYS", "POLLING_LANE_B_MASK_DAYS", "POLLING_LANE_B_MAX_PAGES",
 		"POLLING_LANE_C_INTERVAL_HOURS", "POLLING_LANE_C_MAX_STRAGGLERS_PER_AUTHORITY",
+		"POLLING_LANE_C_ENABLED",
 	} {
 		t.Setenv(k, "")
 	}
@@ -454,8 +455,41 @@ func TestLoadConfig_PollingDefaults(t *testing.T) {
 	if cfg.PollingLaneCIntervalHours != 168 {
 		t.Errorf("lane C interval default: got %d, want 168", cfg.PollingLaneCIntervalHours)
 	}
+	if cfg.PollingLaneCEnabled {
+		t.Error("PollingLaneCEnabled: got true, want false by default (Lane C disabled until tc-tuge8)")
+	}
 	if cfg.PollingLaneCMaxStragglersPerAuthority != 10 {
 		t.Errorf("lane C max stragglers default: got %d, want 10", cfg.PollingLaneCMaxStragglersPerAuthority)
+	}
+}
+
+// TestLoadConfig_PollingLaneCEnabled pins the tc-5lu8h hotfix default: Lane C
+// reconciliation ships OFF (POLLING_LANE_C_ENABLED unset or falsy) until
+// tc-tuge8 fixes its per-authority query and cancelled-context save bug. An
+// explicit truthy value opts back in.
+func TestLoadConfig_PollingLaneCEnabled(t *testing.T) {
+	tests := []struct {
+		name string
+		env  string
+		want bool
+	}{
+		{"unset defaults false", "", false},
+		{"true enables", "true", true},
+		{"1 enables", "1", true},
+		{"false stays disabled", "false", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("POLLING_LANE_C_ENABLED", tc.env)
+
+			cfg, err := LoadConfig()
+			if err != nil {
+				t.Fatalf("LoadConfig: %v", err)
+			}
+			if cfg.PollingLaneCEnabled != tc.want {
+				t.Errorf("PollingLaneCEnabled: got %v, want %v", cfg.PollingLaneCEnabled, tc.want)
+			}
+		})
 	}
 }
 
@@ -564,6 +598,7 @@ func TestLoadConfig_PollingOverrides(t *testing.T) {
 	t.Setenv("POLLING_LANE_B_MAX_PAGES", "10")
 	t.Setenv("POLLING_LANE_C_INTERVAL_HOURS", "24")
 	t.Setenv("POLLING_LANE_C_MAX_STRAGGLERS_PER_AUTHORITY", "5")
+	t.Setenv("POLLING_LANE_C_ENABLED", "true")
 
 	cfg, err := LoadConfig()
 	if err != nil {
@@ -595,5 +630,8 @@ func TestLoadConfig_PollingOverrides(t *testing.T) {
 	}
 	if cfg.PollingLaneCMaxStragglersPerAuthority != 5 {
 		t.Errorf("lane C max stragglers override: got %d, want 5", cfg.PollingLaneCMaxStragglersPerAuthority)
+	}
+	if !cfg.PollingLaneCEnabled {
+		t.Error("PollingLaneCEnabled override: got false, want true")
 	}
 }
