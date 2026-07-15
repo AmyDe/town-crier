@@ -412,6 +412,8 @@ func TestLoadConfig_PollingDefaults(t *testing.T) {
 		"POLLING_MAX_PAGES_PER_AUTHORITY_PER_CYCLE", "POLLING_HANDLER_BUDGET_SECONDS",
 		"POLL_REPLICA_TIMEOUT_SECONDS", "POLL_SHUTDOWN_GRACE_SECONDS",
 		"POLLING_PLANIT_PAGE_SIZE",
+		"POLLING_LANE_A_MASK_DAYS", "POLLING_LANE_B_MASK_DAYS", "POLLING_LANE_B_MAX_PAGES",
+		"POLLING_LANE_C_INTERVAL_HOURS", "POLLING_LANE_C_MAX_STRAGGLERS_PER_AUTHORITY",
 	} {
 		t.Setenv(k, "")
 	}
@@ -442,6 +444,18 @@ func TestLoadConfig_PollingDefaults(t *testing.T) {
 	// (100) is unchanged behaviour — PR B flips it to 300 via infra, not here.
 	if cfg.PollingPlanItPageSize != 100 {
 		t.Errorf("page size default: got %d, want 100", cfg.PollingPlanItPageSize)
+	}
+	if cfg.PollingLaneAMaskDays != 90 || cfg.PollingLaneBMaskDays != 90 {
+		t.Errorf("lane mask day defaults: got %d/%d, want 90/90", cfg.PollingLaneAMaskDays, cfg.PollingLaneBMaskDays)
+	}
+	if cfg.PollingLaneBMaxPages != 20 {
+		t.Errorf("lane B max pages default: got %d, want 20", cfg.PollingLaneBMaxPages)
+	}
+	if cfg.PollingLaneCIntervalHours != 168 {
+		t.Errorf("lane C interval default: got %d, want 168", cfg.PollingLaneCIntervalHours)
+	}
+	if cfg.PollingLaneCMaxStragglersPerAuthority != 10 {
+		t.Errorf("lane C max stragglers default: got %d, want 10", cfg.PollingLaneCMaxStragglersPerAuthority)
 	}
 }
 
@@ -545,6 +559,11 @@ func TestLoadConfig_PollingOverrides(t *testing.T) {
 	t.Setenv("POLL_REPLICA_TIMEOUT_SECONDS", "300")
 	t.Setenv("POLL_SHUTDOWN_GRACE_SECONDS", "15")
 	t.Setenv("POLLING_PLANIT_PAGE_SIZE", "300")
+	t.Setenv("POLLING_LANE_A_MASK_DAYS", "45")
+	t.Setenv("POLLING_LANE_B_MASK_DAYS", "60")
+	t.Setenv("POLLING_LANE_B_MAX_PAGES", "10")
+	t.Setenv("POLLING_LANE_C_INTERVAL_HOURS", "24")
+	t.Setenv("POLLING_LANE_C_MAX_STRAGGLERS_PER_AUTHORITY", "5")
 
 	cfg, err := LoadConfig()
 	if err != nil {
@@ -564,5 +583,17 @@ func TestLoadConfig_PollingOverrides(t *testing.T) {
 	}
 	if cfg.PollingPlanItPageSize != 300 {
 		t.Errorf("page size override: got %d, want 300", cfg.PollingPlanItPageSize)
+	}
+	if cfg.PollingLaneAMaskDays != 45 || cfg.PollingLaneBMaskDays != 60 {
+		t.Errorf("lane mask day overrides: got %d/%d, want 45/60", cfg.PollingLaneAMaskDays, cfg.PollingLaneBMaskDays)
+	}
+	if cfg.PollingLaneBMaxPages != 10 {
+		t.Errorf("lane B max pages override: got %d, want 10", cfg.PollingLaneBMaxPages)
+	}
+	if cfg.PollingLaneCIntervalHours != 24 {
+		t.Errorf("lane C interval override: got %d, want 24", cfg.PollingLaneCIntervalHours)
+	}
+	if cfg.PollingLaneCMaxStragglersPerAuthority != 5 {
+		t.Errorf("lane C max stragglers override: got %d, want 5", cfg.PollingLaneCMaxStragglersPerAuthority)
 	}
 }

@@ -18,9 +18,10 @@ import (
 
 // pollAppConsumer mirrors polling's unexported applicationStore: the exact slice
 // of applications.Store the poll handler consumes — the change-dedup read and the
-// Upsert write the poll cycle performs. The worker hands NewPollPlanItHandler the
-// applications.Store interface, so that interface must satisfy this contract for
-// the poll Upsert to reach the store.
+// Upsert write the poll cycle performs. The worker hands each ADR 0041 lane
+// (NewNationalLaneHandler / NewReconciliationHandler) the applications.Store
+// interface, so that interface must satisfy this contract for the poll Upsert
+// to reach the store.
 type pollAppConsumer interface {
 	GetByUID(ctx context.Context, uid, authorityCode string) (applications.PlanningApplication, bool, error)
 	Upsert(ctx context.Context, a applications.PlanningApplication) error
@@ -60,12 +61,15 @@ func testRegistry() *metrics.Registry {
 func TestWirePollFanOut_AcceptsZoneStoreInterface(t *testing.T) {
 	t.Parallel()
 
-	handler := &polling.PollPlanItHandler{}
+	laneA := &polling.NationalLaneHandler{}
+	laneB := &polling.NationalLaneHandler{}
+	laneC := &polling.ReconciliationHandler{}
+	handler := &polling.NationalPollHandler{}
 	spy := newSpyZoneStore()
 
 	// wirePollFanOut must accept the watchzones.Store interface (the spy) and wire
-	// the fan-out onto the handler without panicking on a nil stores pointer.
-	wirePollFanOut(platform.Config{}, handler, spy, testRegistry(), nil, discardLogger())
+	// the fan-out onto all three lanes without panicking on a nil stores pointer.
+	wirePollFanOut(platform.Config{}, laneA, laneB, laneC, handler, spy, testRegistry(), nil, discardLogger())
 }
 
 // TestEnqueuer_FindZonesContainingFlowsThroughInterface proves the notify fan-out

@@ -222,12 +222,23 @@ func run() int {
 }
 
 // buildPollOrchestrator wires the poll-sb orchestrator: the PlanIt client, the
-// Postgres poll-state and lease stores, the cycle-alternating authority provider,
-// the ingestion handler, and the next-run scheduler — bridged to the
-// receive/publish operations of the shared Service Bus client. It returns
-// (nil, nil) when Service Bus config is absent, so poll-sb refuses to run rather
-// than nil-panicking. The cycle budget (replicaTimeout − grace) and the
+// Postgres poll-state and lease stores, ADR 0041's three national delta lanes
+// (A/B/C), and the next-run scheduler — bridged to the receive/publish
+// operations of the shared Service Bus client. It returns (nil, nil) when
+// Service Bus config is absent, so poll-sb refuses to run rather than
+// nil-panicking. The cycle budget (replicaTimeout − grace) and the
 // handler/lease budgets all come from config.
+//
+// ADR 0041 / GH#962 (bead tc-5m3tw) replaced the per-authority drain this
+// function used to build — the LRU authority selection, the watched/seed
+// cycle alternation, and the per-authority cursor/high-water-mark handler —
+// with a single national query per lane and one global watermark per lane.
+// That old wiring (polling.NewMinuteCycleSelector, NewCycleAlternatingProvider,
+// NewWatchZoneAuthorityProvider, NewPollPlanItHandler) is left compiling but
+// unwired (the ADR's explicit migration posture: rollback is a config change,
+// not a revert). NewAllAuthorityProvider is the one exception — it is
+// REWIRED below as Lane C's per-authority sweep target, the same pollable-
+// authority list the old Seed cycle drained.
 func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, registry *metrics.Registry, st *stores, logger *slog.Logger) (*pollOrchestratorAdapter, error) {
 	if sbClient == nil {
 		return nil, nil //nolint:nilnil // absent Service Bus config is a valid "no poller" state, not an error
@@ -243,51 +254,73 @@ func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, reg
 			InitialBackoff:   secondsToDuration(cfg.PlanItInitialBackoffSeconds),
 			RateLimitBackoff: secondsToDuration(cfg.PlanItRateLimitBackoffSeconds),
 		},
-		Metrics:  registry,
+		Metrics: registry,
+		// PageSize governs only the legacy per-authority FetchApplicationsPage
+		// path (unwired below); the national lanes hardcode pg_sz=300
+		// (planit.nationalPageSize) — a fixed safety rule, not a config dial.
 		PageSize: cfg.PollingPlanItPageSize,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	// appStore and zoneStore are the Postgres stores the poll handler (Upsert +
-	// change dedup) and the watch-zone notify fan-out (FindZonesContaining) consume.
+	// appStore and zoneStore are the Postgres stores every lane's ingester
+	// (Upsert + change dedup) and the watch-zone notify fan-out
+	// (FindZonesContaining) consume.
 	appStore := st.app
 	zoneStore := st.zone
 
 	var stateStore polling.PollStateAccess = st.pollState
 	var leaseStore polling.LeaseAccess = st.lease
 
-	cycleSelector := polling.NewMinuteCycleSelector(time.Now)
-	authorityProvider := polling.NewCycleAlternatingProvider(
-		polling.NewWatchZoneAuthorityProvider(zoneStore),
-		polling.NewAllAuthorityProvider(authorities.NewLookup()),
-		cycleSelector,
-	)
-
-	maxPages := cfg.PollingMaxPagesPerAuthorityPerCycle
-	handler := polling.NewPollPlanItHandler(
-		planItClient,
-		appStore,
-		stateStore,
-		authorityProvider,
-		cycleSelector,
-		polling.HandlerOptions{
-			MaxPagesPerAuthorityPerCycle: &maxPages,
-			HandlerBudget:                secondsToDuration(float64(cfg.PollingHandlerBudgetSeconds)),
+	// Lane A (new applications) and Lane B (decisions): the national
+	// churn-masked delta poll. Each lane owns ONE global watermark (persisted
+	// in the existing poll_state table via a reserved sentinel authority_id —
+	// no schema migration) instead of the retired per-authority cursors.
+	laneA := polling.NewNationalLaneHandler(
+		planItClient, stateStore, appStore,
+		polling.NationalLaneOptions{
+			Lane:       polling.LaneA,
+			Mask:       planit.MaskStartDate,
+			MaskWindow: time.Duration(cfg.PollingLaneAMaskDays) * 24 * time.Hour,
+			MaxPages:   nil, // unbounded: the national delta is measured at ~6 pages/day (ADR 0041)
 		},
-		time.Now,
-		logger,
+		time.Now, logger,
 	)
-	// Record the towncrier.polling.* per-cycle / per-authority KPIs (tc-21np).
-	handler.WithMetrics(registry)
+	laneBMaxPages := cfg.PollingLaneBMaxPages
+	laneB := polling.NewNationalLaneHandler(
+		planItClient, stateStore, appStore,
+		polling.NationalLaneOptions{
+			Lane:       polling.LaneB,
+			Mask:       planit.MaskDecidedStart,
+			MaskWindow: time.Duration(cfg.PollingLaneBMaskDays) * 24 * time.Hour,
+			MaxPages:   &laneBMaxPages, // decision volume is unmeasured pre-cutover; do not remove this cap
+		},
+		time.Now, logger,
+	)
 
-	// Wire the poll-path notification fan-out: each upserted application drives a
-	// decision-event dispatch (on a non-decision -> decision transition) and a
-	// watch-zone notification fan-out.
-	// This is the CUTOVER-BLOCKER fan-out (bead tc-uc2p) — without it the
-	// Notifications table stays empty and every alert/digest breaks.
-	wirePollFanOut(cfg, handler, zoneStore, registry, st, logger)
+	// Lane C (reconciliation): a weekly (config-dialable) per-authority
+	// completeness backstop, not on the cutover's critical path. Reuses the
+	// static pollable-authority list the old Seed cycle drained.
+	laneC := polling.NewReconciliationHandler(
+		planItClient, stateStore, appStore,
+		polling.NewAllAuthorityProvider(authorities.NewLookup()),
+		polling.ReconciliationOptions{
+			Interval:                  time.Duration(cfg.PollingLaneCIntervalHours) * time.Hour,
+			MaxStragglersPerAuthority: cfg.PollingLaneCMaxStragglersPerAuthority,
+		},
+		time.Now, logger,
+	)
+
+	handler := polling.NewNationalPollHandler(laneA, laneB, laneC, time.Now, logger)
+
+	// Wire the poll-path notification fan-out onto all three lanes: each
+	// upserted/hydrated application drives a decision-event dispatch (on a
+	// non-decision -> decision transition) and a watch-zone notification
+	// fan-out, unchanged from the old drain (GH#784, tc-uc2p — the
+	// CUTOVER-BLOCKER fan-out; without it the Notifications table stays
+	// empty and every alert/digest breaks).
+	wirePollFanOut(cfg, laneA, laneB, laneC, handler, zoneStore, registry, st, logger)
 
 	scheduler := polling.NewNextRunScheduler(polling.DefaultSchedulerOptions(), polling.NewRandomJitter())
 
@@ -329,20 +362,23 @@ func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, reg
 // wirePollFanOut builds the poll-path notification fan-out collaborators — the
 // decision-event dispatcher, the watch-zone enqueuer, and the push coalescer
 // that batches the cycle's queued pushes into at most one per (user, watch
-// zone) — and attaches them to the ingestion handler (GH#784). They share the
-// WatchZones store with the poll's authority provider (the same watchzones.Store
-// satisfies the zone-containment lookup and the coalescer's zone-name
-// resolution) and the Postgres Notifications / Users / NotificationState /
-// DeviceRegistrations / SavedApplications stores. zoneStore is the same Postgres
-// watchzones.Store from buildPollOrchestrator so FindZonesContaining already runs
-// against the right backend. The APNs push sender is real when its credentials
-// are present, NoOp otherwise so the poll job boots even without APNs config (the
-// record is still written, so the digest pipeline keeps working).
+// zone) — and attaches them to all three ADR 0041 lanes (GH#784). They share
+// the WatchZones store with Lane C's authority provider (the same
+// watchzones.Store satisfies the zone-containment lookup and the coalescer's
+// zone-name resolution) and the Postgres Notifications / Users /
+// NotificationState / DeviceRegistrations / SavedApplications stores.
+// zoneStore is the same Postgres watchzones.Store from buildPollOrchestrator
+// so FindZonesContaining already runs against the right backend. The APNs
+// push sender is real when its credentials are present, NoOp otherwise so the
+// poll job boots even without APNs config (the record is still written, so
+// the digest pipeline keeps working). The push coalescer is wired onto the
+// top-level handler, not the individual lanes: one Reset/Flush per cycle
+// covers every lane's pushes, mirroring the old drain's single flush point.
 //
 // st may be nil in tests that only exercise the zone-containment path; the store
 // fields are extracted under a nil guard so the fan-out wires with no other
 // store dependency.
-func wirePollFanOut(cfg platform.Config, handler *polling.PollPlanItHandler, zoneStore watchzones.Store, registry *metrics.Registry, st *stores, logger *slog.Logger) {
+func wirePollFanOut(cfg platform.Config, laneA, laneB *polling.NationalLaneHandler, laneC *polling.ReconciliationHandler, handler *polling.NationalPollHandler, zoneStore watchzones.Store, registry *metrics.Registry, st *stores, logger *slog.Logger) {
 	dispatcher, enqueuer, coalescer := buildNotifyFanOut(cfg, zoneStore, st, logger)
 
 	// Record towncrier.notifications.created on each dispatcher (tc-21np). Only
@@ -351,7 +387,9 @@ func wirePollFanOut(cfg platform.Config, handler *polling.PollPlanItHandler, zon
 	enqueuer = enqueuer.WithMetrics(registry)
 	dispatcher = dispatcher.WithMetrics(registry)
 
-	handler.WithFanOut(dispatcher, enqueuer)
+	laneA.WithFanOut(dispatcher, enqueuer)
+	laneB.WithFanOut(dispatcher, enqueuer)
+	laneC.WithFanOut(dispatcher, enqueuer)
 	handler.WithPushFlusher(coalescer)
 }
 

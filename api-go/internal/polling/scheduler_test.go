@@ -19,9 +19,9 @@ func TestNextRunScheduler_ComputeNextRun(t *testing.T) {
 	}{
 		{
 			name: "natural uses natural cadence",
-			// 5m natural cadence, no jitter (jitter is zero in this test).
+			// 1h natural cadence (ADR 0041), no jitter (jitter is zero in this test).
 			reason: TerminationNatural,
-			want:   now.Add(5 * time.Minute),
+			want:   now.Add(1 * time.Hour),
 		},
 		{
 			name:   "time-bounded uses short resume cadence",
@@ -85,8 +85,8 @@ func TestNextRunScheduler_RateLimitedAppliesJitter(t *testing.T) {
 
 	// Natural cadence does NOT apply jitter (only the rate-limited branch does).
 	gotNatural := s.ComputeNextRun(TerminationNatural, nil, now)
-	if !gotNatural.Equal(now.Add(5 * time.Minute)) {
-		t.Errorf("natural cadence should not jitter: got %v, want %v", gotNatural, now.Add(5*time.Minute))
+	if !gotNatural.Equal(now.Add(1 * time.Hour)) {
+		t.Errorf("natural cadence should not jitter: got %v, want %v", gotNatural, now.Add(1*time.Hour))
 	}
 }
 

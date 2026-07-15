@@ -20,10 +20,14 @@ type SchedulerOptions struct {
 	JitterBound        time.Duration
 }
 
-// DefaultSchedulerOptions returns the default scheduler tunables.
+// DefaultSchedulerOptions returns the default scheduler tunables. NaturalCadence
+// is hourly (ADR 0041 / GH#962): the churn-masked national delta poll is
+// measured at ~72 records/hour nationally, so an hourly cadence is the right
+// natural rhythm for the new lanes — replacing the old per-authority drain's
+// 5-minute cadence, which existed to keep a 485-authority LRU queue moving.
 func DefaultSchedulerOptions() SchedulerOptions {
 	return SchedulerOptions{
-		NaturalCadence:     5 * time.Minute,
+		NaturalCadence:     1 * time.Hour,
 		TimeBoundedCadence: 1 * time.Minute,
 		RetryAfterCap:      3 * time.Hour,
 		RateLimitDefault:   5 * time.Minute,
