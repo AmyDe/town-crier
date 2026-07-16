@@ -592,23 +592,6 @@ func (h *NationalPollHandler) Handle(ctx context.Context) (PollPlanItResult, err
 		laneErrors++
 	}
 
-	rateLimited := outA.rateLimited || outB.rateLimited
-	var retryAfter *time.Duration
-	switch {
-	case outA.retryAfter != nil:
-		retryAfter = outA.retryAfter
-	case outB.retryAfter != nil:
-		retryAfter = outB.retryAfter
-	}
-
-	reason := TerminationNatural
-	switch {
-	case rateLimited:
-		reason = TerminationRateLimited
-	case outA.capHit || outB.capHit:
-		reason = TerminationTimeBounded
-	}
-
 	if h.laneC != nil {
 		now := h.now().UTC()
 		if h.laneC.Due(ctx, now) {
@@ -621,16 +604,40 @@ func (h *NationalPollHandler) Handle(ctx context.Context) (PollPlanItResult, err
 
 	// Lane D (GH#967, ADR 0042): runs unconditionally every cycle, nil-guarded
 	// — unlike Lane C it is never Due-gated (there is no interval to check, it
-	// always spends its small fixed page budget) and it never contributes to
-	// ApplicationCount/AuthorityErrors/termination reason below: it is a
-	// data-quality/coverage lane, not part of the critical path those fields
-	// describe, and it structurally cannot notify (nil decision/enqueuer,
-	// no WithFanOut method), so there is nothing here for it to affect.
+	// always spends its small fixed page budget). It never contributes to
+	// ApplicationCount/AuthorityErrors below: it is a data-quality/coverage
+	// lane, not part of the critical path those fields describe, and it
+	// structurally cannot notify (nil decision/enqueuer, no WithFanOut
+	// method), so there is nothing here for it to affect. It DOES fold into
+	// the rate-limit backoff below (rateLimited/retryAfter/reason, tc-hew73):
+	// a 429 against Lane D specifically must still slow the next poll cycle,
+	// exactly as an A/B 429 does, or PlanIt's Retry-After hint gets silently
+	// dropped on the floor.
+	var outD backfillOutcome
 	if h.laneD != nil {
-		outD := h.laneD.Run(ctx)
+		outD = h.laneD.Run(ctx)
 		if outD.err != nil {
 			h.logger.ErrorContext(ctx, "lane D backfill error", "error", outD.err)
 		}
+	}
+
+	rateLimited := outA.rateLimited || outB.rateLimited || outD.rateLimited
+	var retryAfter *time.Duration
+	switch {
+	case outA.retryAfter != nil:
+		retryAfter = outA.retryAfter
+	case outB.retryAfter != nil:
+		retryAfter = outB.retryAfter
+	case outD.retryAfter != nil:
+		retryAfter = outD.retryAfter
+	}
+
+	reason := TerminationNatural
+	switch {
+	case rateLimited:
+		reason = TerminationRateLimited
+	case outA.capHit || outB.capHit:
+		reason = TerminationTimeBounded
 	}
 
 	h.recorder().CycleCompleted(ctx, "National", reason.TelemetryValue())
