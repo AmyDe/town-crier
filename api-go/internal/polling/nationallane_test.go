@@ -751,3 +751,42 @@ func TestNationalPollHandler_Handle_RunsBackfillLaneAfterLaneC(t *testing.T) {
 		t.Error("backfill fetcher: got 0 calls, want Lane D to have run")
 	}
 }
+
+// TestNationalPollHandler_Handle_LaneDRateLimitBubblesToNextCycle proves a
+// 429 hitting Lane D alone (A and B both run cleanly) still bubbles into the
+// cycle's RateLimited/TerminationReason/RetryAfter fields, so
+// Orchestrator.RunOnce -> NextRunScheduler.ComputeNextRun backs off the next
+// poll cycle exactly as it would for an A/B rate limit (tc-hew73).
+func TestNationalPollHandler_Handle_LaneDRateLimitBubblesToNextCycle(t *testing.T) {
+	t.Parallel()
+	fetcherA := newFakeNationalFetcher()
+	fetcherB := newFakeNationalFetcher()
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	logger := slog.New(slog.NewTextHandler(discard{}, nil))
+	clock := func() time.Time { return time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC) }
+
+	laneAHandler := NewNationalLaneHandler(fetcherA, state, apps, laneAOpts(), clock, logger)
+	laneBHandler := NewNationalLaneHandler(fetcherB, state, apps, laneBOpts(20), clock, logger)
+	handler := NewNationalPollHandler(laneAHandler, laneBHandler, nil, clock, logger)
+
+	retryAfter := 45 * time.Second
+	backfillFetcher := newFakeBackfillFetcher(fakeBackfillResponse{err: &planit.RateLimitError{RetryAfter: &retryAfter}})
+	backfillState := newFakeBackfillStateStore()
+	backfillHandler := NewBackfillHandler(backfillFetcher, backfillState, apps, defaultBackfillOpts(), clock, logger)
+	handler.WithBackfill(backfillHandler)
+
+	res, err := handler.Handle(context.Background())
+	if err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if !res.RateLimited {
+		t.Error("RateLimited: got false, want true (Lane D was rate-limited)")
+	}
+	if res.TerminationReason != TerminationRateLimited {
+		t.Errorf("TerminationReason: got %v, want %v", res.TerminationReason, TerminationRateLimited)
+	}
+	if res.RetryAfter == nil || *res.RetryAfter != retryAfter {
+		t.Errorf("RetryAfter: got %v, want %v", res.RetryAfter, retryAfter)
+	}
+}
