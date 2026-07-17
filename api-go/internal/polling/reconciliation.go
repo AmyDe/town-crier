@@ -306,6 +306,14 @@ func (h *ReconciliationHandler) Run(ctx context.Context) reconciliationOutcome {
 		attribute.Int("reconciliation.stragglers", out.stragglers),
 		attribute.String("reconciliation.sample_error_body", out.sampleErrorBody),
 		attribute.Int("reconciliation.error_count", out.badRequestCount),
+		// tc-mc0hf: lets a prod check confirm the 429 circuit breaker fired
+		// by reading this attribute directly (Properties in AppDependencies)
+		// instead of cross-referencing raw 429 counts by hand. Absent
+		// entirely on the two early-bail-out paths above (authority list
+		// load / watermark read failure) along with every other
+		// reconciliation.* attribute -- nothing was swept, so there is
+		// nothing to report.
+		attribute.Bool("reconciliation.rate_limited", out.rateLimited),
 	)
 	return out
 }
