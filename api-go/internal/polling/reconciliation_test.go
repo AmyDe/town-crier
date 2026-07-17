@@ -512,6 +512,74 @@ func TestReconciliation_EarlyCtxCancelPersistsActuallyAttemptedCountNotPlannedEn
 	}
 }
 
+// TestReconciliation_RateLimitStopsSweepingFurtherAuthorities pins tc-mc0hf:
+// once a per-authority sweep fetch (FetchReconciliationPage) returns a
+// *planit.RateLimitError, Run must stop sweeping further authorities for the
+// rest of this cycle -- mirroring NationalLaneHandler's "stop on first 429"
+// behavior. The fake authority list supplies MORE ids than the point where
+// the 429 hits, so a broken loop is distinguishable from one that merely ran
+// out of authorities to sweep.
+func TestReconciliation_RateLimitStopsSweepingFurtherAuthorities(t *testing.T) {
+	t.Parallel()
+	ids := []int{1, 2, 3, 4, 5}
+	fetcher := newFakeReconciliationFetcher()
+	for _, id := range ids {
+		fetcher.pages[id] = planit.FetchPageResult{}
+	}
+	fetcher.pageErrs[2] = &planit.RateLimitError{}
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	opts := ReconciliationOptions{Interval: 7 * 24 * time.Hour, MaxStragglersPerAuthority: 10, AuthoritiesPerCycle: 100}
+	h := newReconciliationHandler(t, fetcher, apps, state, ids, opts)
+
+	out := h.Run(context.Background())
+
+	if !out.rateLimited {
+		t.Error("out.rateLimited: got false, want true (authority 2's sweep fetch returned a *planit.RateLimitError)")
+	}
+	if !intsEqual(fetcher.pageCalls, []int{1, 2}) {
+		t.Errorf("pageCalls: got %v, want [1 2] (authorities 3, 4, 5 must not be swept after the 429)", fetcher.pageCalls)
+	}
+	if out.authoritiesSwept != 1 {
+		t.Errorf("authoritiesSwept: got %d, want 1 (authority 1 succeeded; authority 2's fetch errored, so it never increments)", out.authoritiesSwept)
+	}
+}
+
+// TestReconciliation_RateLimitedEarlyExitPersistsActuallyAttemptedCount pins
+// the correctness-critical edge case for the rate-limit circuit breaker,
+// mirroring TestReconciliation_EarlyCtxCancelPersistsActuallyAttemptedCountNotPlannedEnd
+// with a 429 as the trigger instead of ctx-cancel: the persisted cursor must
+// reflect how many authorities were ACTUALLY attempted (including the one
+// that got rate-limited -- it WAS attempted, just rejected), not the planned
+// AuthoritiesPerCycle slice end. This reuses the exact same "persist what was
+// actually attempted" mechanism as the ctx-cancel case, not a parallel one.
+func TestReconciliation_RateLimitedEarlyExitPersistsActuallyAttemptedCount(t *testing.T) {
+	t.Parallel()
+	ids := []int{1, 2, 3, 4, 5}
+	fetcher := newFakeReconciliationFetcher()
+	for _, id := range ids {
+		fetcher.pages[id] = planit.FetchPageResult{}
+	}
+	fetcher.pageErrs[2] = &planit.RateLimitError{}
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	opts := ReconciliationOptions{Interval: 7 * 24 * time.Hour, MaxStragglersPerAuthority: 10, AuthoritiesPerCycle: 5} // planned to sweep all 5 this cycle
+	h := newReconciliationHandler(t, fetcher, apps, state, ids, opts)
+
+	h.Run(context.Background())
+
+	if len(state.saves) != 1 {
+		t.Fatalf("expected exactly one state save, got %d", len(state.saves))
+	}
+	saved := state.saves[0]
+	if saved.cursor == nil || saved.cursor.NextIndex != 2 {
+		t.Errorf("cursor: got %+v, want NextIndex=2 (authorities 1 and 2 actually attempted, NOT the planned slice end of 5)", saved.cursor)
+	}
+	if !saved.lastPollTime.IsZero() {
+		t.Errorf("lastPollTime: got %v, want zero (pass cut short by rate limit, not completed, so last-run must not advance)", saved.lastPollTime)
+	}
+}
+
 // TestReconciliation_CompletedPassResetsCursorAndStampsLastPollTime proves a
 // pass that reaches the end of the authority list resets the cursor to nil
 // and stamps LastPollTime -- the only branch that advances it -- and that Due
