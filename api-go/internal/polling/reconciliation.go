@@ -2,8 +2,10 @@ package polling
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"strconv"
 	"time"
 
@@ -135,6 +137,18 @@ type reconciliationOutcome struct {
 	stragglers       int
 	hydrated         int
 	err              error
+	// sampleErrorBody is the FIRST non-empty PlanIt HTTP error body observed
+	// this sweep, across every authority's fetch error. It is never
+	// overwritten once set: one sample is enough to read a 400's reason off
+	// AppDependencies (AppTraces is Basic-tier and invisible to KQL, so this
+	// travels on the span, not a log line -- tc-tuge8/GH#971).
+	sampleErrorBody string
+	// badRequestCount counts fetch errors specifically carrying HTTP 400
+	// (reconciliation.error_count on the span). Other statuses (5xx,
+	// transport failures) are logged per-authority as today but don't
+	// inflate this counter -- it exists to answer "is every authority 400ing
+	// the same way", the v0.21.0 storm signature.
+	badRequestCount int
 }
 
 // Run sweeps every pollable authority's light projection, diffs each row
@@ -181,6 +195,8 @@ func (h *ReconciliationHandler) Run(ctx context.Context) reconciliationOutcome {
 		attribute.Int("poll.records_ingested", out.hydrated),
 		attribute.Int("reconciliation.authorities_swept", out.authoritiesSwept),
 		attribute.Int("reconciliation.stragglers", out.stragglers),
+		attribute.String("reconciliation.sample_error_body", out.sampleErrorBody),
+		attribute.Int("reconciliation.error_count", out.badRequestCount),
 	)
 	return out
 }
@@ -192,6 +208,7 @@ func (h *ReconciliationHandler) sweepAuthority(ctx context.Context, authorityID 
 	res, err := h.fetcher.FetchReconciliationPage(ctx, authorityID, 0)
 	if err != nil {
 		h.logger.WarnContext(ctx, "lane C: reconciliation page fetch failed, skipping authority", "authorityId", authorityID, "error", err)
+		recordFetchError(err, out)
 		return
 	}
 	out.authoritiesSwept++
@@ -214,6 +231,23 @@ func (h *ReconciliationHandler) sweepAuthority(ctx context.Context, authorityID 
 		out.stragglers++
 		stragglers++
 		h.hydrate(ctx, light.UID, out)
+	}
+}
+
+// recordFetchError captures a PlanIt HTTP error's status/body onto the sweep
+// outcome (tc-tuge8/GH#971): a non-*planit.HTTPError (e.g. a transport
+// failure) is a no-op here -- it stays logged, as before, with nothing to add
+// to the span.
+func recordFetchError(err error, out *reconciliationOutcome) {
+	var herr *planit.HTTPError
+	if !errors.As(err, &herr) {
+		return
+	}
+	if herr.StatusCode == http.StatusBadRequest {
+		out.badRequestCount++
+	}
+	if out.sampleErrorBody == "" && herr.Body != "" {
+		out.sampleErrorBody = herr.Body
 	}
 }
 
