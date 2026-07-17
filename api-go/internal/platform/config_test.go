@@ -414,7 +414,7 @@ func TestLoadConfig_PollingDefaults(t *testing.T) {
 		"POLLING_PLANIT_PAGE_SIZE",
 		"POLLING_LANE_A_MASK_DAYS", "POLLING_LANE_B_MASK_DAYS", "POLLING_LANE_B_MAX_PAGES",
 		"POLLING_LANE_C_INTERVAL_HOURS", "POLLING_LANE_C_MAX_STRAGGLERS_PER_AUTHORITY",
-		"POLLING_LANE_C_ENABLED", "POLLING_LANE_C_AUTHORITIES_PER_CYCLE",
+		"POLLING_LANE_C_ENABLED", "POLLING_LANE_C_AUTHORITIES_PER_CYCLE", "POLLING_LANE_C_LOOKBACK_DAYS",
 		"POLLING_BACKFILL_ENABLED", "POLLING_BACKFILL_WINDOW_WIDTH_DAYS",
 		"POLLING_BACKFILL_MAX_PAGES_PER_CYCLE", "POLLING_BACKFILL_EMPTY_WINDOWS_BEFORE_COMPLETE",
 	} {
@@ -457,14 +457,17 @@ func TestLoadConfig_PollingDefaults(t *testing.T) {
 	if cfg.PollingLaneCIntervalHours != 168 {
 		t.Errorf("lane C interval default: got %d, want 168", cfg.PollingLaneCIntervalHours)
 	}
-	if cfg.PollingLaneCEnabled {
-		t.Error("PollingLaneCEnabled: got true, want false by default (Lane C disabled until tc-tuge8)")
+	if !cfg.PollingLaneCEnabled {
+		t.Error("PollingLaneCEnabled: got false, want true by default (tc-tuge8: the 400 is fixed, so Lane C now defaults on)")
 	}
 	if cfg.PollingLaneCMaxStragglersPerAuthority != 10 {
 		t.Errorf("lane C max stragglers default: got %d, want 10", cfg.PollingLaneCMaxStragglersPerAuthority)
 	}
 	if cfg.PollingLaneCAuthoritiesPerCycle != 50 {
 		t.Errorf("lane C authorities-per-cycle default: got %d, want 50 (tc-tuge8: 50 x 2s throttle = 100s, inside the ~570s cycle budget)", cfg.PollingLaneCAuthoritiesPerCycle)
+	}
+	if cfg.PollingLaneCLookbackDays != 365 {
+		t.Errorf("lane C lookback-days default: got %d, want 365 (tc-tuge8: deliberately generous -- detects drift, not an exact delta)", cfg.PollingLaneCLookbackDays)
 	}
 	if cfg.PollingBackfillEnabled {
 		t.Error("PollingBackfillEnabled: got true, want false by default (GH#967, ships dark)")
@@ -509,20 +512,22 @@ func TestLoadConfig_PollingBackfillEnabled(t *testing.T) {
 	}
 }
 
-// TestLoadConfig_PollingLaneCEnabled pins the tc-5lu8h hotfix default: Lane C
-// reconciliation ships OFF (POLLING_LANE_C_ENABLED unset or falsy) until
-// tc-tuge8 fixes its per-authority query and cancelled-context save bug. An
-// explicit truthy value opts back in.
+// TestLoadConfig_PollingLaneCEnabled pins the tc-tuge8 fix: Lane C's 400 root
+// cause (an unbounded query PlanIt rejects) is fixed, so POLLING_LANE_C_ENABLED
+// unset now defaults Lane C ON. An operator who explicitly wants it off must
+// still be able to set POLLING_LANE_C_ENABLED=false -- the fail-safe-off path
+// is preserved, only the unset default direction flips.
 func TestLoadConfig_PollingLaneCEnabled(t *testing.T) {
 	tests := []struct {
 		name string
 		env  string
 		want bool
 	}{
-		{"unset defaults false", "", false},
+		{"unset defaults true", "", true},
 		{"true enables", "true", true},
 		{"1 enables", "1", true},
-		{"false stays disabled", "false", false},
+		{"false explicitly disables", "false", false},
+		{"0 explicitly disables", "0", false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -646,6 +651,7 @@ func TestLoadConfig_PollingOverrides(t *testing.T) {
 	t.Setenv("POLLING_LANE_C_MAX_STRAGGLERS_PER_AUTHORITY", "5")
 	t.Setenv("POLLING_LANE_C_ENABLED", "true")
 	t.Setenv("POLLING_LANE_C_AUTHORITIES_PER_CYCLE", "25")
+	t.Setenv("POLLING_LANE_C_LOOKBACK_DAYS", "180")
 
 	cfg, err := LoadConfig()
 	if err != nil {
@@ -683,5 +689,8 @@ func TestLoadConfig_PollingOverrides(t *testing.T) {
 	}
 	if cfg.PollingLaneCAuthoritiesPerCycle != 25 {
 		t.Errorf("lane C authorities-per-cycle override: got %d, want 25", cfg.PollingLaneCAuthoritiesPerCycle)
+	}
+	if cfg.PollingLaneCLookbackDays != 180 {
+		t.Errorf("lane C lookback-days override: got %d, want 180", cfg.PollingLaneCLookbackDays)
 	}
 }
