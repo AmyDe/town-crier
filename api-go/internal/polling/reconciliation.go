@@ -252,6 +252,15 @@ func (h *ReconciliationHandler) Run(ctx context.Context) reconciliationOutcome {
 		}
 		h.sweepAuthority(ctx, authorityID, cutoff, &out)
 		attempted++
+		// The authority just swept above DID make its request (and is
+		// correctly counted in attempted immediately above) even when that
+		// request came back rate-limited -- only the NEXT authority's sweep
+		// is skipped. Mirrors NationalLaneHandler's "stop on first 429" and
+		// feeds the exact same actually-attempted persistence path as the
+		// ctx.Err() break above (tc-mc0hf).
+		if out.rateLimited {
+			break
+		}
 	}
 
 	// The persisted next-index must reflect how many authorities were
