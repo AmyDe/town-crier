@@ -361,7 +361,10 @@ func classify(resp *http.Response) error {
 		}
 		return &RateLimitError{RetryAfter: retryAfter}
 	}
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, errorBodyPrefixBytes))
+	// Best-effort: a read failure here still leaves a valid HTTPError with
+	// StatusCode set (io.ReadAll returns whatever partial bytes it read even
+	// on error), so there's nothing actionable to do with the error itself.
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, errorBodyPrefixBytes)) //nolint:errcheck // partial body is fine; StatusCode is what matters
 	return &HTTPError{StatusCode: resp.StatusCode, Body: string(body)}
 }
 
