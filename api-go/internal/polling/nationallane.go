@@ -67,10 +67,13 @@ type nationalDeltaFetcher interface {
 // laneWatermarkStore persists ONE lane's global delta watermark in the
 // existing poll_state table via a reserved sentinel authority_id (see the
 // package doc above): HighWaterMark holds the watermark, LastPollTime the
-// lane's last-run time, and the cursor columns are always nil — lanes A/B/C
-// are cursor-less by design (ADR 0041: "a single timestamp, not 485
-// cursors"). It is a thin wrapper over the existing pollStateAccess
-// Get/Save — no new store, no new columns.
+// lane's last-run time. Lane A/B never pass a cursor (ADR 0041: "a single
+// timestamp, not 485 cursors") — get/save simply thread it through so those
+// callers can ignore it. Lane C is the one exception (tc-tuge8/GH#971): its
+// ReconciliationHandler reuses the same cursor column to resume a
+// multi-cycle authority-list sweep (see reconciliation.go). It is a thin
+// wrapper over the existing pollStateAccess Get/Save — no new store, no new
+// columns either way.
 type laneWatermarkStore struct {
 	state      pollStateAccess
 	sentinelID int
@@ -80,23 +83,25 @@ func newLaneWatermarkStore(state pollStateAccess, sentinelID int) *laneWatermark
 	return &laneWatermarkStore{state: state, sentinelID: sentinelID}
 }
 
-// get returns the lane's persisted watermark and last-run time, both zero when
-// the lane has never run (no sentinel row yet).
-func (s *laneWatermarkStore) get(ctx context.Context) (watermark, lastRun time.Time, err error) {
+// get returns the lane's persisted watermark, last-run time, and cursor. All
+// three are zero/nil when the lane has never run (no sentinel row yet). Lane
+// A/B callers discard the cursor return value; only Lane C reads it.
+func (s *laneWatermarkStore) get(ctx context.Context) (watermark, lastRun time.Time, cursor *PollCursor, err error) {
 	st, found, err := s.state.Get(ctx, s.sentinelID)
 	if err != nil {
-		return time.Time{}, time.Time{}, err
+		return time.Time{}, time.Time{}, nil, err
 	}
 	if !found {
-		return time.Time{}, time.Time{}, nil
+		return time.Time{}, time.Time{}, nil, nil
 	}
-	return st.HighWaterMark, st.LastPollTime, nil
+	return st.HighWaterMark, st.LastPollTime, st.Cursor, nil
 }
 
-// save persists the lane's watermark and this run's timestamp, with no
-// cursor (lanes A/B/C never use one).
-func (s *laneWatermarkStore) save(ctx context.Context, lastRun, watermark time.Time) error {
-	return s.state.Save(ctx, s.sentinelID, lastRun, watermark, nil)
+// save persists the lane's watermark, this run's timestamp, and its cursor.
+// Lane A/B always pass a nil cursor (they never use one); Lane C passes its
+// authority-list resume position.
+func (s *laneWatermarkStore) save(ctx context.Context, lastRun, watermark time.Time, cursor *PollCursor) error {
+	return s.state.Save(ctx, s.sentinelID, lastRun, watermark, cursor)
 }
 
 // NationalLaneOptions configure one of ADR 0041's national delta lanes (A or
@@ -239,7 +244,7 @@ func (h *NationalLaneHandler) Run(ctx context.Context) laneOutcome {
 	now := h.now().UTC()
 	var out laneOutcome
 
-	watermarkBefore, _, err := h.watermark.get(ctx)
+	watermarkBefore, _, _, err := h.watermark.get(ctx)
 	if err != nil {
 		out.err = fmt.Errorf("lane %s: read watermark: %w", h.opts.Lane, err)
 		span.SetAttributes(attribute.String("poll.lane", string(h.opts.Lane)))
@@ -343,7 +348,7 @@ pageLoop:
 	}
 	out.watermarkAfter = newWatermark
 
-	if serr := h.watermark.save(ctx, now, newWatermark); serr != nil && out.err == nil {
+	if serr := h.watermark.save(ctx, now, newWatermark, nil); serr != nil && out.err == nil {
 		out.err = serr
 	}
 
@@ -404,7 +409,7 @@ func (h *NationalLaneHandler) seed(ctx context.Context, span trace.Span, now, ma
 	}
 	out.watermarkAfter = head
 
-	if serr := h.watermark.save(ctx, now, head); serr != nil {
+	if serr := h.watermark.save(ctx, now, head, nil); serr != nil {
 		out.err = serr
 	}
 
