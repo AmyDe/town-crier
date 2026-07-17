@@ -414,7 +414,7 @@ func TestLoadConfig_PollingDefaults(t *testing.T) {
 		"POLLING_PLANIT_PAGE_SIZE",
 		"POLLING_LANE_A_MASK_DAYS", "POLLING_LANE_B_MASK_DAYS", "POLLING_LANE_B_MAX_PAGES",
 		"POLLING_LANE_C_INTERVAL_HOURS", "POLLING_LANE_C_MAX_STRAGGLERS_PER_AUTHORITY",
-		"POLLING_LANE_C_ENABLED",
+		"POLLING_LANE_C_ENABLED", "POLLING_LANE_C_AUTHORITIES_PER_CYCLE",
 		"POLLING_BACKFILL_ENABLED", "POLLING_BACKFILL_WINDOW_WIDTH_DAYS",
 		"POLLING_BACKFILL_MAX_PAGES_PER_CYCLE", "POLLING_BACKFILL_EMPTY_WINDOWS_BEFORE_COMPLETE",
 	} {
@@ -462,6 +462,9 @@ func TestLoadConfig_PollingDefaults(t *testing.T) {
 	}
 	if cfg.PollingLaneCMaxStragglersPerAuthority != 10 {
 		t.Errorf("lane C max stragglers default: got %d, want 10", cfg.PollingLaneCMaxStragglersPerAuthority)
+	}
+	if cfg.PollingLaneCAuthoritiesPerCycle != 50 {
+		t.Errorf("lane C authorities-per-cycle default: got %d, want 50 (tc-tuge8: 50 x 2s throttle = 100s, inside the ~570s cycle budget)", cfg.PollingLaneCAuthoritiesPerCycle)
 	}
 	if cfg.PollingBackfillEnabled {
 		t.Error("PollingBackfillEnabled: got true, want false by default (GH#967, ships dark)")
@@ -642,6 +645,7 @@ func TestLoadConfig_PollingOverrides(t *testing.T) {
 	t.Setenv("POLLING_LANE_C_INTERVAL_HOURS", "24")
 	t.Setenv("POLLING_LANE_C_MAX_STRAGGLERS_PER_AUTHORITY", "5")
 	t.Setenv("POLLING_LANE_C_ENABLED", "true")
+	t.Setenv("POLLING_LANE_C_AUTHORITIES_PER_CYCLE", "25")
 
 	cfg, err := LoadConfig()
 	if err != nil {
@@ -676,5 +680,8 @@ func TestLoadConfig_PollingOverrides(t *testing.T) {
 	}
 	if !cfg.PollingLaneCEnabled {
 		t.Error("PollingLaneCEnabled override: got false, want true")
+	}
+	if cfg.PollingLaneCAuthoritiesPerCycle != 25 {
+		t.Errorf("lane C authorities-per-cycle override: got %d, want 25", cfg.PollingLaneCAuthoritiesPerCycle)
 	}
 }
