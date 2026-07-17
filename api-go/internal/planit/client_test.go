@@ -373,6 +373,95 @@ func TestFetchApplicationsPage_4xxIsPermanentAndNotRetried(t *testing.T) {
 	}
 }
 
+// TestClassifyCapturesErrorBody pins tc-tuge8/GH#971 root cause 1: PlanIt's
+// 400 body carries the actual failure reason (e.g. a bad column name), and it
+// was previously discarded entirely. A non-2xx, non-429 response must surface
+// its body on the returned *HTTPError.
+func TestClassifyCapturesErrorBody(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":"42703: column \"last_different\" does not exist"}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	c := newTestClient(t, srv.URL, &fakeClock{})
+	_, err := c.FetchApplicationsPage(context.Background(), 1, nil, 1, false)
+
+	var herr *HTTPError
+	if !errors.As(err, &herr) {
+		t.Fatalf("expected *HTTPError, got %v", err)
+	}
+	if herr.StatusCode != http.StatusBadRequest {
+		t.Errorf("StatusCode: got %d, want 400", herr.StatusCode)
+	}
+	wantBody := `{"error":"42703: column \"last_different\" does not exist"}`
+	if herr.Body != wantBody {
+		t.Errorf("Body: got %q, want %q", herr.Body, wantBody)
+	}
+	if !strings.Contains(herr.Error(), "42703") {
+		t.Errorf("Error() should include the captured body, got %q", herr.Error())
+	}
+}
+
+// TestClassify429DoesNotCaptureBody pins the "429 branch stays completely
+// untouched" requirement: even when a 429 response carries a body, classify
+// must still yield a *RateLimitError (never an *HTTPError), and the body must
+// never be read from the 429 path.
+func TestClassify429DoesNotCaptureBody(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Retry-After", "60")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(`{"error":"rate limited"}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	c := newTestClient(t, srv.URL, &fakeClock{})
+	_, err := c.FetchApplicationsPage(context.Background(), 1, nil, 1, false)
+
+	var rl *RateLimitError
+	if !errors.As(err, &rl) {
+		t.Fatalf("expected *RateLimitError, got %v", err)
+	}
+	if rl.RetryAfter == nil || *rl.RetryAfter != 60*time.Second {
+		t.Errorf("RetryAfter: got %v, want 60s", rl.RetryAfter)
+	}
+	var herr *HTTPError
+	if errors.As(err, &herr) {
+		t.Error("a 429 must never become an *HTTPError")
+	}
+}
+
+// TestClassifyTruncatesLongErrorBody pins the 512-byte bound on a captured
+// error body, so a hostile or broken upstream cannot balloon the eventual
+// OTel span attribute.
+func TestClassifyTruncatesLongErrorBody(t *testing.T) {
+	t.Parallel()
+	longBody := strings.Repeat("x", 1000)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		// 500 is not retryable by isRetryable (only 502/503/504/408 are), so
+		// this reaches classify on the first and only attempt.
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(longBody))
+	}))
+	t.Cleanup(srv.Close)
+
+	c := newTestClient(t, srv.URL, &fakeClock{})
+	_, err := c.FetchApplicationsPage(context.Background(), 1, nil, 1, false)
+
+	var herr *HTTPError
+	if !errors.As(err, &herr) {
+		t.Fatalf("expected *HTTPError, got %v", err)
+	}
+	if len(herr.Body) != 512 {
+		t.Errorf("Body length: got %d, want 512 (truncated)", len(herr.Body))
+	}
+	if herr.Body != longBody[:512] {
+		t.Error("Body should be exactly the first 512 bytes of the response")
+	}
+}
+
 func TestFetchApplicationsPage_AppliesThrottleDelayBeforeRequest(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
