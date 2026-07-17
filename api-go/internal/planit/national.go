@@ -94,8 +94,15 @@ func (c *Client) FetchNationalDeltaPage(ctx context.Context, q NationalDeltaQuer
 // FetchReconciliationPage fetches one page of Lane C's light per-authority
 // projection (ADR 0041): select=uid,app_state,decided_date,last_different,
 // sorted newest-touched-first, pg_sz=300, scoped to authorityID.
-func (c *Client) FetchReconciliationPage(ctx context.Context, authorityID, startIndex int) (FetchPageResult, error) {
-	target := c.baseURL + buildReconciliationPath(authorityID, startIndex)
+// differentStart is the caller-computed date-only cutoff (today minus the
+// configured lookback window) satisfying PlanIt's requirement that every
+// query carry a spatial, date, or search restriction (tc-tuge8/GH#971: an
+// unbounded query 400s with "Spatial, date or search restrictions required
+// in query"). The caller computes it once per sweep from its own injected
+// clock, mirroring how NationalLaneHandler.Run computes MaskCutoff --
+// *Client deliberately has no clock dependency of its own.
+func (c *Client) FetchReconciliationPage(ctx context.Context, authorityID, startIndex int, differentStart time.Time) (FetchPageResult, error) {
+	target := c.baseURL + buildReconciliationPath(authorityID, startIndex, differentStart)
 	return c.fetchPage(ctx, target, authorityID, startIndex, nationalPageSize)
 }
 
@@ -132,11 +139,17 @@ func buildNationalDeltaPath(q NationalDeltaQuery) string {
 	)
 }
 
-// buildReconciliationPath builds Lane C's light per-authority projection path.
-func buildReconciliationPath(authorityID, startIndex int) string {
+// buildReconciliationPath builds Lane C's light per-authority projection
+// path: scoped by auth, a different_start date bound (tc-tuge8/GH#971 -- see
+// FetchReconciliationPage), the light select set, sort=-last_different,
+// pg_sz=300, and compress=on. differentStart is deliberately NOT a churn
+// mask (MaskStartDate/MaskDecidedStart): Lane C's job is detecting drift in
+// what PlanIt has touched, so this stays a wide, date-only prefilter rather
+// than the exact-delta mask Lane A/B compute.
+func buildReconciliationPath(authorityID, startIndex int, differentStart time.Time) string {
 	return fmt.Sprintf(
-		"/api/applics/json?auth=%d&sort=-last_different&pg_sz=%d&index=%d&select=%s&compress=on",
-		authorityID, nationalPageSize, startIndex, selectParam(reconciliationSelectFields),
+		"/api/applics/json?auth=%d&different_start=%s&sort=-last_different&pg_sz=%d&index=%d&select=%s&compress=on",
+		authorityID, differentStart.UTC().Format("2006-01-02"), nationalPageSize, startIndex, selectParam(reconciliationSelectFields),
 	)
 }
 

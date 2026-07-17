@@ -26,6 +26,11 @@ type fakeReconciliationFetcher struct {
 	// off (a fake serving a handful of ids can't catch a resume bug; the
 	// caller must supply more ids than AuthoritiesPerCycle).
 	pageCalls []int
+	// differentStarts records the differentStart cutoff FetchReconciliationPage
+	// was called with, in call order -- proves Run computes the
+	// LookbackDays-derived cutoff once per sweep and threads it down to every
+	// fetch (tc-tuge8/GH#971).
+	differentStarts []time.Time
 	// cancelAfter, when > 0, calls cancel once len(pageCalls) reaches it --
 	// simulates a budget/ctx cut-off arriving mid-sweep, so a test can assert
 	// the persisted cursor reflects authorities ACTUALLY attempted, not the
@@ -43,8 +48,9 @@ func newFakeReconciliationFetcher() *fakeReconciliationFetcher {
 	}
 }
 
-func (f *fakeReconciliationFetcher) FetchReconciliationPage(_ context.Context, authorityID, _ int) (planit.FetchPageResult, error) {
+func (f *fakeReconciliationFetcher) FetchReconciliationPage(_ context.Context, authorityID, _ int, differentStart time.Time) (planit.FetchPageResult, error) {
 	f.pageCalls = append(f.pageCalls, authorityID)
+	f.differentStarts = append(f.differentStarts, differentStart)
 	if f.cancelAfter > 0 && len(f.pageCalls) == f.cancelAfter && f.cancel != nil {
 		f.cancel()
 	}
@@ -88,7 +94,7 @@ func newReconciliationHandler(t *testing.T, fetcher *fakeReconciliationFetcher, 
 // own with a deliberately larger id list (see the fake-design note on
 // pageCalls above).
 func defaultReconciliationOpts() ReconciliationOptions {
-	return ReconciliationOptions{Interval: 7 * 24 * time.Hour, MaxStragglersPerAuthority: 10, AuthoritiesPerCycle: 100}
+	return ReconciliationOptions{Interval: 7 * 24 * time.Hour, MaxStragglersPerAuthority: 10, AuthoritiesPerCycle: 100, LookbackDays: 365}
 }
 
 // TestReconciliation_HydratesGenuinelyDifferingRow covers the straggler path:
@@ -176,6 +182,36 @@ func TestReconciliation_MissingApplicationIsAStraggler(t *testing.T) {
 
 	if out.stragglers != 1 || out.hydrated != 1 {
 		t.Errorf("stragglers=%d hydrated=%d, want 1/1 (never-seen uid must hydrate)", out.stragglers, out.hydrated)
+	}
+}
+
+// TestReconciliation_PassesLookbackCutoffToFetchReconciliationPage pins
+// tc-tuge8/GH#971: Run computes the LookbackDays-derived different_start
+// cutoff ONCE from its own injected clock (mirroring how
+// NationalLaneHandler.Run computes MaskCutoff once per run) and threads the
+// SAME cutoff down to every authority's FetchReconciliationPage call.
+func TestReconciliation_PassesLookbackCutoffToFetchReconciliationPage(t *testing.T) {
+	t.Parallel()
+	fetcher := newFakeReconciliationFetcher()
+	fetcher.pages[1] = planit.FetchPageResult{}
+	fetcher.pages[2] = planit.FetchPageResult{}
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	opts := ReconciliationOptions{Interval: 7 * 24 * time.Hour, MaxStragglersPerAuthority: 10, AuthoritiesPerCycle: 100, LookbackDays: 365}
+	h := newReconciliationHandler(t, fetcher, apps, state, []int{1, 2}, opts)
+
+	h.Run(context.Background())
+
+	// newReconciliationHandler pins the clock to 2026-07-14T12:00:00Z; 365
+	// days earlier is 2025-07-14T12:00:00Z (no leap day falls in between).
+	wantCutoff := time.Date(2025, 7, 14, 12, 0, 0, 0, time.UTC)
+	if len(fetcher.differentStarts) != 2 {
+		t.Fatalf("differentStarts: got %d calls, want 2", len(fetcher.differentStarts))
+	}
+	for i, got := range fetcher.differentStarts {
+		if !got.Equal(wantCutoff) {
+			t.Errorf("differentStarts[%d]: got %v, want %v (now - LookbackDays)", i, got, wantCutoff)
+		}
 	}
 }
 

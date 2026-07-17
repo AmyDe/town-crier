@@ -20,7 +20,7 @@ import (
 // needs: one light per-authority projection page, and a full-record hydration
 // fetch by uid. *planit.Client satisfies both.
 type reconciliationFetcher interface {
-	FetchReconciliationPage(ctx context.Context, authorityID, startIndex int) (planit.FetchPageResult, error)
+	FetchReconciliationPage(ctx context.Context, authorityID, startIndex int, differentStart time.Time) (planit.FetchPageResult, error)
 	FetchByUID(ctx context.Context, uid string) (planit.FetchPageResult, error)
 }
 
@@ -45,6 +45,18 @@ type ReconciliationOptions struct {
 	// ever reach the authorities that fit one cycle's budget, starving the
 	// rest permanently (tc-tuge8/GH#971).
 	AuthoritiesPerCycle int
+	// LookbackDays bounds how far back Lane C's different_start prefilter
+	// reaches (config: POLLING_LANE_C_LOOKBACK_DAYS, default 365). PlanIt
+	// rejects a reconciliation query with no date bound at all --
+	// "Spatial, date or search restrictions required in query", the
+	// tc-tuge8/GH#971 root cause confirmed from prod's
+	// reconciliation.sample_error_body span attribute. Deliberately generous
+	// and NOT a churn mask (see MaskStartDate/MaskDecidedStart on
+	// planit.NationalDeltaQuery): Lane C's job is detecting drift in what
+	// PlanIt has touched, not computing an exact delta, so a wide, date-only
+	// prefilter satisfies PlanIt's requirement while still scanning each
+	// authority's genuinely-touched-recently set.
+	LookbackDays int
 }
 
 // ReconciliationHandler runs ADR 0041's Lane C: per authority, fetch a light
@@ -214,12 +226,18 @@ func (h *ReconciliationHandler) Run(ctx context.Context) reconciliationOutcome {
 	// sweeping zero authorities forever.
 	end := min(start+h.opts.AuthoritiesPerCycle, len(ids))
 
+	// The different_start cutoff is computed ONCE per sweep from this Run
+	// call's own injected clock (now) and threaded down to every authority's
+	// fetch, mirroring how NationalLaneHandler.Run computes MaskCutoff once
+	// rather than per-page/per-authority (tc-tuge8/GH#971).
+	cutoff := now.AddDate(0, 0, -h.opts.LookbackDays)
+
 	attempted := start
 	for _, authorityID := range ids[start:end] {
 		if ctx.Err() != nil {
 			break
 		}
-		h.sweepAuthority(ctx, authorityID, &out)
+		h.sweepAuthority(ctx, authorityID, cutoff, &out)
 		attempted++
 	}
 
@@ -272,9 +290,10 @@ func (h *ReconciliationHandler) Run(ctx context.Context) reconciliationOutcome {
 
 // sweepAuthority fetches one authority's light projection page, diffs each
 // row against the persisted application, and hydrates the stragglers
-// (bounded by MaxStragglersPerAuthority).
-func (h *ReconciliationHandler) sweepAuthority(ctx context.Context, authorityID int, out *reconciliationOutcome) {
-	res, err := h.fetcher.FetchReconciliationPage(ctx, authorityID, 0)
+// (bounded by MaxStragglersPerAuthority). differentStart is Run's
+// once-per-sweep LookbackDays cutoff.
+func (h *ReconciliationHandler) sweepAuthority(ctx context.Context, authorityID int, differentStart time.Time, out *reconciliationOutcome) {
+	res, err := h.fetcher.FetchReconciliationPage(ctx, authorityID, 0, differentStart)
 	if err != nil {
 		h.logger.WarnContext(ctx, "lane C: reconciliation page fetch failed, skipping authority", "authorityId", authorityID, "error", err)
 		recordFetchError(err, out)

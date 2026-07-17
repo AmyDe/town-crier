@@ -205,18 +205,29 @@ type Config struct {
 	// persisting a resumable cursor and continuing next cycle (default 50 —
 	// 50 x 2s throttle = 100s, comfortably inside the ~570s cycle budget; a
 	// full ~485-authority pass takes ~10 cycles — tc-tuge8/GH#971).
+	// PollingLaneCLookbackDays bounds Lane C's different_start date prefilter
+	// (default 365): PlanIt 400s a reconciliation query carrying no date
+	// bound at all ("Spatial, date or search restrictions required in
+	// query" — tc-tuge8/GH#971's confirmed root cause), and 365 days is
+	// deliberately generous since Lane C's job is detecting drift in what
+	// PlanIt has touched, not computing an exact delta.
 	PollingLaneAMaskDays                  int
 	PollingLaneBMaskDays                  int
 	PollingLaneBMaxPages                  int
 	PollingLaneCIntervalHours             int
 	PollingLaneCMaxStragglersPerAuthority int
 	PollingLaneCAuthoritiesPerCycle       int
+	PollingLaneCLookbackDays              int
 	// PollingLaneCEnabled gates whether Lane C (reconciliation) is wired into
 	// the poll cycle at all. Loaded from POLLING_LANE_C_ENABLED and DEFAULT
-	// FALSE: Lane C shipped broken in v0.21.0 (its per-authority query 400s and
-	// it never records its weekly last-run on a budget cut-off, so it re-runs
-	// and hammers PlanIt every cycle). It stays off until tc-tuge8 fixes the
-	// query and the last-run persistence, then this default flips to true.
+	// TRUE (tc-tuge8/GH#971): Lane C shipped broken in v0.21.0 (its
+	// per-authority query 400s because it carried no date param at all, and
+	// it never recorded its weekly last-run on a budget cut-off, so it
+	// re-ran and hammered PlanIt every cycle). Both are now fixed —
+	// buildReconciliationPath sends a different_start bound, and Run
+	// persists its cursor uncancellably (PR 1, tc-tuge8) — so an unset value
+	// now opts IN by default. An operator can still set
+	// POLLING_LANE_C_ENABLED=false to force it off.
 	PollingLaneCEnabled bool
 
 	// PollingBackfill* configure Lane D, the paced historical backfill lane
@@ -379,7 +390,8 @@ func LoadConfig() (Config, error) {
 		PollingLaneCIntervalHours:             getenvInt("POLLING_LANE_C_INTERVAL_HOURS", 168),
 		PollingLaneCMaxStragglersPerAuthority: getenvInt("POLLING_LANE_C_MAX_STRAGGLERS_PER_AUTHORITY", 10),
 		PollingLaneCAuthoritiesPerCycle:       getenvInt("POLLING_LANE_C_AUTHORITIES_PER_CYCLE", 50),
-		PollingLaneCEnabled:                   getenvBool("POLLING_LANE_C_ENABLED"),
+		PollingLaneCLookbackDays:              getenvInt("POLLING_LANE_C_LOOKBACK_DAYS", 365),
+		PollingLaneCEnabled:                   getenvBoolDefault("POLLING_LANE_C_ENABLED", true),
 
 		PollingBackfillEnabled:                    getenvBool("POLLING_BACKFILL_ENABLED"),
 		PollingBackfillWindowWidthDays:            getenvInt("POLLING_BACKFILL_WINDOW_WIDTH_DAYS", 90),
@@ -460,6 +472,28 @@ func getenv(key, fallback string) string {
 // (e.g. APNS_ENABLED defaults to off).
 func getenvBool(key string) bool {
 	v, err := strconv.ParseBool(strings.TrimSpace(os.Getenv(key)))
+	if err != nil {
+		return false
+	}
+	return v
+}
+
+// getenvBoolDefault is getenvBool with a caller-chosen fallback for the
+// unset case, distinguishing "unset" from "explicitly set" via
+// os.LookupEnv (an empty value counts as unset too, matching getenv's and
+// getenvInt's treatment of "" elsewhere in this file). A present,
+// non-empty, but unparseable value still fails safe to false, mirroring
+// getenvBool — only the unset branch honours fallback. Use this (rather
+// than getenvBool) for a flag whose safe default is true once the feature
+// it gates is no longer known-broken (e.g. PollingLaneCEnabled,
+// tc-tuge8/GH#971); every other boolean flag in this file has a safe
+// default of false and should keep using getenvBool.
+func getenvBoolDefault(key string, fallback bool) bool {
+	raw, ok := os.LookupEnv(key)
+	if !ok || strings.TrimSpace(raw) == "" {
+		return fallback
+	}
+	v, err := strconv.ParseBool(strings.TrimSpace(raw))
 	if err != nil {
 		return false
 	}

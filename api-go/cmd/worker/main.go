@@ -305,11 +305,17 @@ func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, reg
 	// completeness backstop, not on the cutover's critical path. Reuses the
 	// static pollable-authority list the old Seed cycle drained.
 	//
-	// Gated behind POLLING_LANE_C_ENABLED (default off): Lane C shipped broken
-	// in v0.21.0 — its per-authority query 400s on every authority, and it
-	// never records its weekly last-run when the sweep is cut off by the cycle
-	// budget, so it re-runs and hammers PlanIt every cycle. It stays nil (Handle
-	// skips it) until tc-tuge8 fixes both, then the config default flips.
+	// Gated behind POLLING_LANE_C_ENABLED (default ON as of tc-tuge8/GH#971):
+	// Lane C shipped broken in v0.21.0 — its per-authority query 400s because
+	// it carried no date param at all ("Spatial, date or search restrictions
+	// required in query", confirmed from prod's
+	// reconciliation.sample_error_body span attribute), and it never recorded
+	// its weekly last-run when the sweep was cut off by the cycle budget, so
+	// it re-ran and hammered PlanIt every cycle. Both are now fixed —
+	// buildReconciliationPath sends a different_start bound (below) and Run
+	// persists its cursor uncancellably (PR 1, tc-tuge8) — so the config
+	// default now enables Lane C; an operator can still set
+	// POLLING_LANE_C_ENABLED=false to force it off.
 	var laneC *polling.ReconciliationHandler
 	if cfg.PollingLaneCEnabled {
 		laneC = polling.NewReconciliationHandler(
@@ -319,6 +325,7 @@ func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, reg
 				Interval:                  time.Duration(cfg.PollingLaneCIntervalHours) * time.Hour,
 				MaxStragglersPerAuthority: cfg.PollingLaneCMaxStragglersPerAuthority,
 				AuthoritiesPerCycle:       cfg.PollingLaneCAuthoritiesPerCycle,
+				LookbackDays:              cfg.PollingLaneCLookbackDays,
 			},
 			time.Now, logger,
 		)

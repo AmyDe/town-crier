@@ -72,11 +72,16 @@ func TestBuildNationalDeltaPath(t *testing.T) {
 }
 
 // TestBuildReconciliationPath pins Lane C's light per-authority projection
-// shape: scoped by auth, the light select set (containing the sort field),
-// pg_sz=300, compress=on.
+// shape: scoped by auth, a different_start date bound (tc-tuge8/GH#971: PlanIt
+// 400s "Spatial, date or search restrictions required in query" on a query
+// with no date param at all -- confirmed from prod's
+// reconciliation.sample_error_body span attribute), the light select set
+// (containing the sort field), pg_sz=300, compress=on. differentStart is
+// injected (not real time) so the assertion is deterministic.
 func TestBuildReconciliationPath(t *testing.T) {
 	t.Parallel()
-	path := buildReconciliationPath(99, 0)
+	differentStart := time.Date(2025, 7, 17, 0, 0, 0, 0, time.UTC)
+	path := buildReconciliationPath(99, 0, differentStart)
 	u, err := url.Parse(path)
 	if err != nil {
 		t.Fatalf("parse built path %q: %v", path, err)
@@ -85,6 +90,9 @@ func TestBuildReconciliationPath(t *testing.T) {
 
 	if got.Get("auth") != "99" {
 		t.Errorf("auth: got %q, want 99", got.Get("auth"))
+	}
+	if got.Get("different_start") != "2025-07-17" {
+		t.Errorf("different_start: got %q, want 2025-07-17", got.Get("different_start"))
 	}
 	if got.Get("pg_sz") != "300" {
 		t.Errorf("pg_sz: got %q, want 300", got.Get("pg_sz"))
