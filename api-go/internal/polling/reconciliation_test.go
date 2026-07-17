@@ -328,6 +328,61 @@ func TestReconciliation_NonHTTPErrorLeavesSampleErrorBodyEmpty(t *testing.T) {
 	}
 }
 
+// TestReconciliation_StampsRateLimitedOnSpan pins tc-mc0hf's observability
+// requirement: reconciliation.rate_limited must read true on the sweep span
+// when a PlanIt call this Run made was rejected with a 429, and false when it
+// wasn't -- so a prod check can confirm the circuit breaker fired by reading
+// AppDependencies' Properties['reconciliation.rate_limited'] directly, rather
+// than cross-referencing raw 429 counts by hand (as this bug was first
+// diagnosed).
+func TestReconciliation_StampsRateLimitedOnSpan(t *testing.T) {
+	// Not t.Parallel(): recordSpans swaps the global TracerProvider (see its
+	// doc comment in span_test.go).
+	tests := []struct {
+		name string
+		// setup configures the fetcher to trip (or not trip) the rate limit.
+		setup func(f *fakeReconciliationFetcher)
+		want  bool
+	}{
+		{
+			name:  "no rate limit hit",
+			setup: func(f *fakeReconciliationFetcher) {},
+			want:  false,
+		},
+		{
+			name: "sweep fetch rate limited",
+			setup: func(f *fakeReconciliationFetcher) {
+				f.pageErrs[1] = &planit.RateLimitError{}
+			},
+			want: true,
+		},
+	}
+	for _, tc := range tests {
+		fetcher := newFakeReconciliationFetcher()
+		fetcher.pages[1] = planit.FetchPageResult{}
+		tc.setup(fetcher)
+		apps := newFakeApps()
+		state := newFakeStateStore()
+		h := newReconciliationHandler(t, fetcher, apps, state, []int{1}, defaultReconciliationOpts())
+
+		spans := recordSpans(t, func() {
+			h.Run(context.Background())
+		})
+
+		span, ok := spanNamed(spans, "PlanIt reconciliation sweep")
+		if !ok {
+			t.Fatalf("%s: expected a %q span", tc.name, "PlanIt reconciliation sweep")
+		}
+		v, ok := attrValue(span, "reconciliation.rate_limited")
+		if !ok {
+			t.Fatalf("%s: reconciliation.rate_limited missing from span", tc.name)
+		}
+		if got := v.AsBool(); got != tc.want {
+			t.Errorf("%s: reconciliation.rate_limited: got %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
 // TestReconciliation_PersistsLastRunDespiteCancelledCtx pins tc-tuge8/GH#971
 // root cause 2: the request ctx can already be cancelled (a budget cut-off)
 // by the time Run reaches its state save. The save must still land --
