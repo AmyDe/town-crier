@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net/http"
 	"testing"
 	"time"
 
@@ -202,6 +203,70 @@ func TestReconciliation_MaxStragglersPerAuthorityBoundsHydration(t *testing.T) {
 
 	if out.stragglers != 2 {
 		t.Errorf("stragglers: got %d, want 2 (capped)", out.stragglers)
+	}
+}
+
+// TestReconciliation_StampsSampleErrorBodyAndCountOnSpan pins tc-tuge8/GH#971
+// telemetry: AppTraces is Basic-tier (slog is invisible to KQL), so a
+// captured PlanIt error body must land on the Lane C sweep span, not a log
+// line. The FIRST non-empty body wins even though a later authority also
+// errors (a second sample adds no diagnostic value once the reason is known),
+// and reconciliation.error_count counts 400s specifically -- the 500 must not
+// inflate it.
+func TestReconciliation_StampsSampleErrorBodyAndCountOnSpan(t *testing.T) {
+	// Not t.Parallel(): recordSpans swaps the global TracerProvider (see its
+	// doc comment in span_test.go).
+	fetcher := newFakeReconciliationFetcher()
+	fetcher.pageErrs[1] = &planit.HTTPError{StatusCode: http.StatusBadRequest, Body: `{"error":"42703: column does not exist"}`}
+	fetcher.pageErrs[2] = &planit.HTTPError{StatusCode: http.StatusBadRequest, Body: `{"error":"second authority's body"}`}
+	fetcher.pageErrs[3] = &planit.HTTPError{StatusCode: http.StatusInternalServerError, Body: "boom"}
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	h := newReconciliationHandler(t, fetcher, apps, state, []int{1, 2, 3}, defaultReconciliationOpts())
+
+	spans := recordSpans(t, func() {
+		h.Run(context.Background())
+	})
+
+	span, ok := spanNamed(spans, "PlanIt reconciliation sweep")
+	if !ok {
+		t.Fatalf("expected a %q span", "PlanIt reconciliation sweep")
+	}
+	wantBody := `{"error":"42703: column does not exist"}`
+	if v, ok := attrValue(span, "reconciliation.sample_error_body"); !ok || v.AsString() != wantBody {
+		t.Errorf("reconciliation.sample_error_body: got %v (ok=%v), want the FIRST authority's body %q", v, ok, wantBody)
+	}
+	if v, ok := attrValue(span, "reconciliation.error_count"); !ok || v.AsInt64() != 2 {
+		t.Errorf("reconciliation.error_count: got %v (ok=%v), want 2 (two 400s; the 500 must not count)", v, ok)
+	}
+}
+
+// TestReconciliation_NonHTTPErrorLeavesSampleErrorBodyEmpty proves a
+// non-PlanIt fetch error (transport failure, not a typed *planit.HTTPError)
+// leaves the span's diagnostic attributes at their empty defaults rather than
+// panicking or fabricating a body.
+func TestReconciliation_NonHTTPErrorLeavesSampleErrorBodyEmpty(t *testing.T) {
+	// Not t.Parallel(): recordSpans swaps the global TracerProvider (see its
+	// doc comment in span_test.go).
+	fetcher := newFakeReconciliationFetcher()
+	fetcher.pageErrs[1] = errors.New("planit: transport blew up")
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	h := newReconciliationHandler(t, fetcher, apps, state, []int{1}, defaultReconciliationOpts())
+
+	spans := recordSpans(t, func() {
+		h.Run(context.Background())
+	})
+
+	span, ok := spanNamed(spans, "PlanIt reconciliation sweep")
+	if !ok {
+		t.Fatalf("expected a %q span", "PlanIt reconciliation sweep")
+	}
+	if v, ok := attrValue(span, "reconciliation.sample_error_body"); !ok || v.AsString() != "" {
+		t.Errorf("reconciliation.sample_error_body: got %v (ok=%v), want empty", v, ok)
+	}
+	if v, ok := attrValue(span, "reconciliation.error_count"); !ok || v.AsInt64() != 0 {
+		t.Errorf("reconciliation.error_count: got %v (ok=%v), want 0", v, ok)
 	}
 }
 
