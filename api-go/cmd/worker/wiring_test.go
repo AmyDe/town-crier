@@ -124,18 +124,18 @@ func TestEnqueuer_FindZonesContainingFlowsThroughInterface(t *testing.T) {
 	}
 }
 
-// TestBuildPollOrchestrator_LaneCGating pins the tc-5lu8h hotfix: Lane C
-// reconciliation is wired only when cfg.PollingLaneCEnabled is true (default
-// false). Both gate states must build a working orchestrator without
+// TestBuildPollOrchestrator_LaneCGating pins the tc-5lu8h/tc-tuge8 gating
+// behaviour: Lane C reconciliation is wired only when cfg.PollingLaneCEnabled
+// is true (default true as of tc-tuge8/GH#971, now that the 400 root cause
+// and the cursor-persistence bug are both fixed — an operator can still set
+// it false). Both gate states must build a working orchestrator without
 // panicking — disabled exercises the nil-laneC path through
-// wirePollFanOut's guard; enabled exercises the still-functional (if
-// currently broken upstream, tracked separately as tc-tuge8) construction
-// path so the flag itself introduces no regression when flipped back on.
-// sbClient and st are zero-value: buildPollOrchestrator only needs sbClient
-// non-nil to pass its "no poller configured" guard, and every collaborator
-// it constructs (planit.NewClient, the national lane handlers, the
-// reconciliation handler, the orchestrator) opens no connection and performs
-// no I/O at construction time.
+// wirePollFanOut's guard; enabled exercises the construction path so the
+// flag itself introduces no regression. sbClient and st are zero-value:
+// buildPollOrchestrator only needs sbClient non-nil to pass its "no poller
+// configured" guard, and every collaborator it constructs (planit.NewClient,
+// the national lane handlers, the reconciliation handler, the orchestrator)
+// opens no connection and performs no I/O at construction time.
 func TestBuildPollOrchestrator_LaneCGating(t *testing.T) {
 	t.Parallel()
 
@@ -143,8 +143,8 @@ func TestBuildPollOrchestrator_LaneCGating(t *testing.T) {
 		name         string
 		laneCEnabled bool
 	}{
-		{"disabled (default)", false},
-		{"enabled", true},
+		{"disabled", false},
+		{"enabled (default)", true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
