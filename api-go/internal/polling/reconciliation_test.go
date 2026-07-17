@@ -350,6 +350,44 @@ func TestReconciliation_PersistsLastRunDespiteCancelledCtx(t *testing.T) {
 	}
 }
 
+// TestReconciliation_HydrationRateLimitStopsHydratingFurtherStragglersInAuthority
+// pins tc-mc0hf: once a straggler hydration fetch (FetchByUID) returns a
+// *planit.RateLimitError, sweepAuthority must stop hydrating further
+// stragglers for the REST of that same authority -- mirroring
+// NationalLaneHandler's "stop on first 429" circuit breaker (Lane A/B). The
+// fake page carries three never-seen (unconditionally-straggler) uids so the
+// break can be distinguished from merely running out of rows: if the loop
+// didn't actually stop, uids 2 and 3 would still be hydrated.
+func TestReconciliation_HydrationRateLimitStopsHydratingFurtherStragglersInAuthority(t *testing.T) {
+	t.Parallel()
+	ld := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	fetcher := newFakeReconciliationFetcher()
+	fetcher.pages[99] = planit.FetchPageResult{
+		Applications: []applications.PlanningApplication{
+			lightApp("a/1", 99, "Permitted", ld),
+			lightApp("a/2", 99, "Permitted", ld),
+			lightApp("a/3", 99, "Permitted", ld),
+		},
+	}
+	fetcher.hydrateErrs["a/1"] = &planit.RateLimitError{}
+	apps := newFakeApps()
+	state := newFakeStateStore()
+
+	opts := ReconciliationOptions{Interval: 7 * 24 * time.Hour, MaxStragglersPerAuthority: 10, AuthoritiesPerCycle: 100}
+	h := newReconciliationHandler(t, fetcher, apps, state, []int{99}, opts)
+	out := h.Run(context.Background())
+
+	if !out.rateLimited {
+		t.Error("out.rateLimited: got false, want true (FetchByUID returned a *planit.RateLimitError)")
+	}
+	if len(fetcher.hydrateCalls) != 1 || fetcher.hydrateCalls[0] != "a/1" {
+		t.Errorf("hydrateCalls: got %v, want [a/1] only (a/2 and a/3 must not be attempted after the 429)", fetcher.hydrateCalls)
+	}
+	if out.stragglers != 1 {
+		t.Errorf("stragglers: got %d, want 1 (a/2 and a/3 never reach the straggler count once rate-limited)", out.stragglers)
+	}
+}
+
 // intsEqual compares two int slices for the pageCalls assertions below.
 func intsEqual(a, b []int) bool {
 	if len(a) != len(b) {
