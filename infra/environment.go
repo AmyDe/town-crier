@@ -709,19 +709,16 @@ func addGoWorkerEnv(envVars app.EnvironmentVarArray, ec envContext, workerMode s
 			// Lane D (ADR 0042 / GH#967, PR #968): dark-shipped disabled, flipped on here.
 			app.EnvironmentVarArgs{Name: pulumi.String("POLLING_BACKFILL_ENABLED"), Value: pulumi.String("true")},
 			// Lane C (ADR 0041 reconciliation/completeness backstop, tc-tuge8 / GH#971):
-			// disabled again pending a straggler-hydration circuit-breaker (tc-mc0hf).
-			// The query-level 400 fix (PR 1 diagnosed, PR 2 fixed buildReconciliationPath)
-			// is confirmed working in prod: the 2026-07-17 v0.21.7 sweep itself was clean
-			// (reconciliation.error_count=0, all 200s). But that same cycle's straggler
-			// hydration loop (ReconciliationHandler.hydrate, called from sweepAuthority)
-			// has no PlanIt rate-limit backoff, and was observed hammering PlanIt after
-			// its first 429: 141 of 187 hydration requests were rejected with 429 over
-			// 8.5 minutes, one every ~2s, all wasted. PlanIt is a free, single-operator
-			// service; repeated rejected requests are a red-line violation regardless of
-			// the eventual reconciliation sweep succeeding. Re-enable once tc-mc0hf lands
-			// a 429 circuit-breaker on the hydration loop. AuthoritiesPerCycle is left at
-			// its steady-state value (harmless while disabled, correct once re-enabled).
-			app.EnvironmentVarArgs{Name: pulumi.String("POLLING_LANE_C_ENABLED"), Value: pulumi.String("false")},
+			// re-enabled (tc-52xss) now that tc-mc0hf's 429 circuit-breaker (PR #976,
+			// v0.21.9) is live. Prior disable: the query-level 400 fix was confirmed
+			// working in prod (2026-07-17 v0.21.7 sweep clean, reconciliation.error_count=0,
+			// all 200s), but that cycle's straggler hydration loop had no PlanIt
+			// rate-limit backoff and hammered PlanIt after its first 429 (141 of 187
+			// hydration requests rejected over 8.5 minutes, one every ~2s, all wasted) --
+			// a red-line violation against PlanIt's free single-operator service. The
+			// circuit-breaker now stops hydration within an authority and stops sweeping
+			// further authorities the moment a 429 is seen, so it's safe to re-enable.
+			app.EnvironmentVarArgs{Name: pulumi.String("POLLING_LANE_C_ENABLED"), Value: pulumi.String("true")},
 			app.EnvironmentVarArgs{Name: pulumi.String("POLLING_LANE_C_AUTHORITIES_PER_CYCLE"), Value: pulumi.String("50")},
 		)
 	}
