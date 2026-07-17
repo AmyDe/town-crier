@@ -2,8 +2,10 @@ package polling
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"strconv"
 	"time"
 
@@ -33,6 +35,16 @@ type ReconciliationOptions struct {
 	// one badly-drifted authority cannot balloon a single sweep's PlanIt
 	// request count.
 	MaxStragglersPerAuthority int
+	// AuthoritiesPerCycle bounds how many authorities a single Run call
+	// sweeps (config: POLLING_LANE_C_AUTHORITIES_PER_CYCLE, default 50 — 50 x
+	// 2s throttle = 100s, comfortably inside the ~570s cycle budget; a full
+	// ~485-authority pass takes ~10 cycles). A pass that doesn't finish this
+	// cycle persists a resumable cursor (see Run) so the next cycle picks up
+	// where this one left off instead of restarting at authority 0 — without
+	// this bound, and without the resume, every weekly attempt would only
+	// ever reach the authorities that fit one cycle's budget, starving the
+	// rest permanently (tc-tuge8/GH#971).
+	AuthoritiesPerCycle int
 }
 
 // ReconciliationHandler runs ADR 0041's Lane C: per authority, fetch a light
@@ -114,15 +126,20 @@ func (h *ReconciliationHandler) recorder() metricsRecorder {
 	return h.metrics
 }
 
-// Due reports whether Lane C's sweep interval has elapsed since its last run
-// (or it has never run). A watermark-store read error fails safe (not due):
-// skipping a sweep this cycle is far cheaper than risking an unbounded extra
-// PlanIt load off the back of a store hiccup.
+// Due reports whether Lane C should run this cycle: either a sweep pass is
+// already mid-flight (a persisted cursor), in which case it continues
+// unconditionally regardless of Interval, or Interval has elapsed since the
+// last COMPLETED pass (or none has ever completed). A watermark-store read
+// error fails safe (not due): skipping a sweep this cycle is far cheaper than
+// risking an unbounded extra PlanIt load off the back of a store hiccup.
 func (h *ReconciliationHandler) Due(ctx context.Context, now time.Time) bool {
-	_, lastRun, err := h.watermark.get(ctx)
+	_, lastRun, cursor, err := h.watermark.get(ctx)
 	if err != nil {
 		h.logger.WarnContext(ctx, "lane C: read last-run watermark failed; skipping this cycle's due check", "error", err)
 		return false
+	}
+	if cursor != nil {
+		return true
 	}
 	return lastRun.IsZero() || now.Sub(lastRun) >= h.opts.Interval
 }
@@ -135,13 +152,35 @@ type reconciliationOutcome struct {
 	stragglers       int
 	hydrated         int
 	err              error
+	// sampleErrorBody is the FIRST non-empty PlanIt HTTP error body observed
+	// this sweep, across every authority's fetch error. It is never
+	// overwritten once set: one sample is enough to read a 400's reason off
+	// AppDependencies (AppTraces is Basic-tier and invisible to KQL, so this
+	// travels on the span, not a log line -- tc-tuge8/GH#971).
+	sampleErrorBody string
+	// badRequestCount counts fetch errors specifically carrying HTTP 400
+	// (reconciliation.error_count on the span). Other statuses (5xx,
+	// transport failures) are logged per-authority as today but don't
+	// inflate this counter -- it exists to answer "is every authority 400ing
+	// the same way", the v0.21.0 storm signature.
+	badRequestCount int
 }
 
-// Run sweeps every pollable authority's light projection, diffs each row
-// against Postgres, and hydrates genuinely-differing rows one uid at a time
-// (bulk hydration by id_match is unproven — ADR 0041). A per-authority fetch
-// error is logged and skipped, not fatal to the sweep: the next scheduled
-// sweep retries it.
+// Run sweeps up to AuthoritiesPerCycle authorities' light projections, diffs
+// each row against Postgres, and hydrates genuinely-differing rows one uid at
+// a time (bulk hydration by id_match is unproven — ADR 0041). A per-authority
+// fetch error is logged and skipped, not fatal to the sweep: the next
+// scheduled sweep retries it.
+//
+// The full ~485-authority pass rarely fits one cycle's budget, so Run resumes
+// a persisted authority-list cursor across cycles rather than restarting at
+// index 0 every time (tc-tuge8/GH#971): without a resume, only the
+// authorities that fit inside one cycle's budget would EVER be swept, and the
+// rest would starve permanently — the same failure class ADR 0041 was
+// written to kill. The cursor lives in the same poll_state row Due reads (the
+// -3 sentinel), so a mid-pass cycle is unconditionally Due regardless of
+// Interval; Interval only gates starting a brand-new pass once the previous
+// one has completed.
 func (h *ReconciliationHandler) Run(ctx context.Context) reconciliationOutcome {
 	ctx, span := otel.Tracer(tracerName).Start(ctx, "PlanIt reconciliation sweep")
 	defer span.End()
@@ -159,17 +198,61 @@ func (h *ReconciliationHandler) Run(ctx context.Context) reconciliationOutcome {
 		return out
 	}
 
-	for _, authorityID := range ids {
+	_, lastRun, cursor, werr := h.watermark.get(ctx)
+	if werr != nil {
+		out.err = fmt.Errorf("lane C: read watermark: %w", werr)
+		span.SetAttributes(attribute.String("poll.lane", string(LaneC)))
+		return out
+	}
+
+	start := 0
+	if cursor != nil && cursor.NextIndex < len(ids) {
+		start = cursor.NextIndex
+	}
+	// A stale cursor at or past the current authority list's end (e.g. the
+	// list shrank between cycles) falls through to start=0 above rather than
+	// sweeping zero authorities forever.
+	end := min(start+h.opts.AuthoritiesPerCycle, len(ids))
+
+	attempted := start
+	for _, authorityID := range ids[start:end] {
 		if ctx.Err() != nil {
 			break
 		}
 		h.sweepAuthority(ctx, authorityID, &out)
+		attempted++
 	}
 
-	// Lane C's watermark row carries only a last-run timestamp (the Due gate)
-	// — it has no delta boundary of its own, so the watermark value itself is
-	// always the zero time.
-	if serr := h.watermark.save(ctx, now, time.Time{}); serr != nil && out.err == nil {
+	// The persisted next-index must reflect how many authorities were
+	// ACTUALLY attempted before any early ctx-cancel break above, not the
+	// planned slice end (end) — otherwise the never-attempted tail between
+	// them is skipped forever, reproducing the exact starvation this cursor
+	// exists to fix.
+	newLastRun := lastRun
+	var newCursor *PollCursor
+	if attempted >= len(ids) {
+		// The pass reached the end of the authority list: complete. Reset the
+		// cursor and stamp last-run now — the only branch that advances
+		// LastPollTime, so Due's Interval math is measured from the last
+		// COMPLETED pass, not from a mid-pass cycle.
+		newLastRun = now
+	} else {
+		// Still mid-pass: persist the resume position. DifferentStart and
+		// KnownTotal are Lane A/B pagination concepts (a date-bound resume
+		// position within one authority's PlanIt page walk) that don't apply
+		// to Lane C's plain index into the static authority list, so both
+		// stay zero/nil.
+		newCursor = &PollCursor{NextIndex: attempted}
+	}
+
+	// Persist uncancellably: a budget-cutoff cancellation of the request ctx
+	// must never lose this cycle's write (root cause 2, tc-tuge8/GH#971) —
+	// without this, Due sees no persisted state forever and Lane C re-fires
+	// every cycle, storming PlanIt. Lane C's watermark row carries no delta
+	// boundary of its own (HighWaterMark always stays the zero time); only
+	// LastPollTime and Cursor move.
+	saveCtx := context.WithoutCancel(ctx)
+	if serr := h.watermark.save(saveCtx, newLastRun, time.Time{}, newCursor); serr != nil && out.err == nil {
 		out.err = serr
 	}
 
@@ -181,6 +264,8 @@ func (h *ReconciliationHandler) Run(ctx context.Context) reconciliationOutcome {
 		attribute.Int("poll.records_ingested", out.hydrated),
 		attribute.Int("reconciliation.authorities_swept", out.authoritiesSwept),
 		attribute.Int("reconciliation.stragglers", out.stragglers),
+		attribute.String("reconciliation.sample_error_body", out.sampleErrorBody),
+		attribute.Int("reconciliation.error_count", out.badRequestCount),
 	)
 	return out
 }
@@ -192,6 +277,7 @@ func (h *ReconciliationHandler) sweepAuthority(ctx context.Context, authorityID 
 	res, err := h.fetcher.FetchReconciliationPage(ctx, authorityID, 0)
 	if err != nil {
 		h.logger.WarnContext(ctx, "lane C: reconciliation page fetch failed, skipping authority", "authorityId", authorityID, "error", err)
+		recordFetchError(err, out)
 		return
 	}
 	out.authoritiesSwept++
@@ -214,6 +300,23 @@ func (h *ReconciliationHandler) sweepAuthority(ctx context.Context, authorityID 
 		out.stragglers++
 		stragglers++
 		h.hydrate(ctx, light.UID, out)
+	}
+}
+
+// recordFetchError captures a PlanIt HTTP error's status/body onto the sweep
+// outcome (tc-tuge8/GH#971): a non-*planit.HTTPError (e.g. a transport
+// failure) is a no-op here -- it stays logged, as before, with nothing to add
+// to the span.
+func recordFetchError(err error, out *reconciliationOutcome) {
+	var herr *planit.HTTPError
+	if !errors.As(err, &herr) {
+		return
+	}
+	if herr.StatusCode == http.StatusBadRequest {
+		out.badRequestCount++
+	}
+	if out.sampleErrorBody == "" && herr.Body != "" {
+		out.sampleErrorBody = herr.Body
 	}
 }
 

@@ -708,6 +708,16 @@ func addGoWorkerEnv(envVars app.EnvironmentVarArray, ec envContext, workerMode s
 			app.EnvironmentVarArgs{Name: pulumi.String("POLL_SHUTDOWN_GRACE_SECONDS"), Value: pulumi.String("30")},
 			// Lane D (ADR 0042 / GH#967, PR #968): dark-shipped disabled, flipped on here.
 			app.EnvironmentVarArgs{Name: pulumi.String("POLLING_BACKFILL_ENABLED"), Value: pulumi.String("true")},
+			// Lane C (ADR 0041 reconciliation/completeness backstop, tc-tuge8 / GH#971):
+			// bounded diagnostic enable only, NOT the eventual steady-state config. Capped
+			// at 10 authorities/cycle (code default is 50) so the next scheduled poll cycle
+			// spends at most 10 PlanIt requests to capture the real 400 error reason onto the
+			// "PlanIt reconciliation sweep" span's reconciliation.sample_error_body attribute
+			// (queryable via App Insights AppDependencies). PR 2 (later, after the prod
+			// observation window) fixes buildReconciliationPath per that captured reason and
+			// raises this to 50 for steady state.
+			app.EnvironmentVarArgs{Name: pulumi.String("POLLING_LANE_C_ENABLED"), Value: pulumi.String("true")},
+			app.EnvironmentVarArgs{Name: pulumi.String("POLLING_LANE_C_AUTHORITIES_PER_CYCLE"), Value: pulumi.String("10")},
 		)
 	}
 

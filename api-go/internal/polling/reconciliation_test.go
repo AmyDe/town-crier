@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net/http"
 	"testing"
 	"time"
 
@@ -19,6 +20,18 @@ type fakeReconciliationFetcher struct {
 	hydrated     map[string]applications.PlanningApplication
 	hydrateErrs  map[string]error
 	hydrateCalls []string
+	// pageCalls records the authority ids FetchReconciliationPage was called
+	// with, in call order -- proves a bounded sweep only touches the
+	// requested slice, and a resumed Run picks up where the last one left
+	// off (a fake serving a handful of ids can't catch a resume bug; the
+	// caller must supply more ids than AuthoritiesPerCycle).
+	pageCalls []int
+	// cancelAfter, when > 0, calls cancel once len(pageCalls) reaches it --
+	// simulates a budget/ctx cut-off arriving mid-sweep, so a test can assert
+	// the persisted cursor reflects authorities ACTUALLY attempted, not the
+	// planned slice end.
+	cancelAfter int
+	cancel      context.CancelFunc
 }
 
 func newFakeReconciliationFetcher() *fakeReconciliationFetcher {
@@ -31,6 +44,10 @@ func newFakeReconciliationFetcher() *fakeReconciliationFetcher {
 }
 
 func (f *fakeReconciliationFetcher) FetchReconciliationPage(_ context.Context, authorityID, _ int) (planit.FetchPageResult, error) {
+	f.pageCalls = append(f.pageCalls, authorityID)
+	if f.cancelAfter > 0 && len(f.pageCalls) == f.cancelAfter && f.cancel != nil {
+		f.cancel()
+	}
 	if err, ok := f.pageErrs[authorityID]; ok {
 		return planit.FetchPageResult{}, err
 	}
@@ -64,8 +81,14 @@ func newReconciliationHandler(t *testing.T, fetcher *fakeReconciliationFetcher, 
 	return NewReconciliationHandler(fetcher, state, apps, fakeAuthorities{ids: authorityIDs}, opts, clock, logger)
 }
 
+// defaultReconciliationOpts sets AuthoritiesPerCycle generously (100) so the
+// many tests exercising small (1-3 authority) id lists still sweep the whole
+// set in a single Run call, as they did before the cursor existed. Tests that
+// specifically exercise the cursor use a small AuthoritiesPerCycle of their
+// own with a deliberately larger id list (see the fake-design note on
+// pageCalls above).
 func defaultReconciliationOpts() ReconciliationOptions {
-	return ReconciliationOptions{Interval: 7 * 24 * time.Hour, MaxStragglersPerAuthority: 10}
+	return ReconciliationOptions{Interval: 7 * 24 * time.Hour, MaxStragglersPerAuthority: 10, AuthoritiesPerCycle: 100}
 }
 
 // TestReconciliation_HydratesGenuinelyDifferingRow covers the straggler path:
@@ -197,11 +220,303 @@ func TestReconciliation_MaxStragglersPerAuthorityBoundsHydration(t *testing.T) {
 	apps := newFakeApps()
 	state := newFakeStateStore()
 
-	h := newReconciliationHandler(t, fetcher, apps, state, []int{99}, ReconciliationOptions{Interval: 7 * 24 * time.Hour, MaxStragglersPerAuthority: 2})
+	h := newReconciliationHandler(t, fetcher, apps, state, []int{99}, ReconciliationOptions{Interval: 7 * 24 * time.Hour, MaxStragglersPerAuthority: 2, AuthoritiesPerCycle: 100})
 	out := h.Run(context.Background())
 
 	if out.stragglers != 2 {
 		t.Errorf("stragglers: got %d, want 2 (capped)", out.stragglers)
+	}
+}
+
+// TestReconciliation_StampsSampleErrorBodyAndCountOnSpan pins tc-tuge8/GH#971
+// telemetry: AppTraces is Basic-tier (slog is invisible to KQL), so a
+// captured PlanIt error body must land on the Lane C sweep span, not a log
+// line. The FIRST non-empty body wins even though a later authority also
+// errors (a second sample adds no diagnostic value once the reason is known),
+// and reconciliation.error_count counts 400s specifically -- the 500 must not
+// inflate it.
+func TestReconciliation_StampsSampleErrorBodyAndCountOnSpan(t *testing.T) {
+	// Not t.Parallel(): recordSpans swaps the global TracerProvider (see its
+	// doc comment in span_test.go).
+	fetcher := newFakeReconciliationFetcher()
+	fetcher.pageErrs[1] = &planit.HTTPError{StatusCode: http.StatusBadRequest, Body: `{"error":"42703: column does not exist"}`}
+	fetcher.pageErrs[2] = &planit.HTTPError{StatusCode: http.StatusBadRequest, Body: `{"error":"second authority's body"}`}
+	fetcher.pageErrs[3] = &planit.HTTPError{StatusCode: http.StatusInternalServerError, Body: "boom"}
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	h := newReconciliationHandler(t, fetcher, apps, state, []int{1, 2, 3}, defaultReconciliationOpts())
+
+	spans := recordSpans(t, func() {
+		h.Run(context.Background())
+	})
+
+	span, ok := spanNamed(spans, "PlanIt reconciliation sweep")
+	if !ok {
+		t.Fatalf("expected a %q span", "PlanIt reconciliation sweep")
+	}
+	wantBody := `{"error":"42703: column does not exist"}`
+	if v, ok := attrValue(span, "reconciliation.sample_error_body"); !ok || v.AsString() != wantBody {
+		t.Errorf("reconciliation.sample_error_body: got %v (ok=%v), want the FIRST authority's body %q", v, ok, wantBody)
+	}
+	if v, ok := attrValue(span, "reconciliation.error_count"); !ok || v.AsInt64() != 2 {
+		t.Errorf("reconciliation.error_count: got %v (ok=%v), want 2 (two 400s; the 500 must not count)", v, ok)
+	}
+}
+
+// TestReconciliation_NonHTTPErrorLeavesSampleErrorBodyEmpty proves a
+// non-PlanIt fetch error (transport failure, not a typed *planit.HTTPError)
+// leaves the span's diagnostic attributes at their empty defaults rather than
+// panicking or fabricating a body.
+func TestReconciliation_NonHTTPErrorLeavesSampleErrorBodyEmpty(t *testing.T) {
+	// Not t.Parallel(): recordSpans swaps the global TracerProvider (see its
+	// doc comment in span_test.go).
+	fetcher := newFakeReconciliationFetcher()
+	fetcher.pageErrs[1] = errors.New("planit: transport blew up")
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	h := newReconciliationHandler(t, fetcher, apps, state, []int{1}, defaultReconciliationOpts())
+
+	spans := recordSpans(t, func() {
+		h.Run(context.Background())
+	})
+
+	span, ok := spanNamed(spans, "PlanIt reconciliation sweep")
+	if !ok {
+		t.Fatalf("expected a %q span", "PlanIt reconciliation sweep")
+	}
+	if v, ok := attrValue(span, "reconciliation.sample_error_body"); !ok || v.AsString() != "" {
+		t.Errorf("reconciliation.sample_error_body: got %v (ok=%v), want empty", v, ok)
+	}
+	if v, ok := attrValue(span, "reconciliation.error_count"); !ok || v.AsInt64() != 0 {
+		t.Errorf("reconciliation.error_count: got %v (ok=%v), want 0", v, ok)
+	}
+}
+
+// TestReconciliation_PersistsLastRunDespiteCancelledCtx pins tc-tuge8/GH#971
+// root cause 2: the request ctx can already be cancelled (a budget cut-off)
+// by the time Run reaches its state save. The save must still land --
+// fakeStateStore.Save errors on a cancelled ctx, so this only passes when the
+// production code detaches the write via context.WithoutCancel.
+func TestReconciliation_PersistsLastRunDespiteCancelledCtx(t *testing.T) {
+	t.Parallel()
+	fetcher := newFakeReconciliationFetcher()
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	h := newReconciliationHandler(t, fetcher, apps, state, []int{1, 2, 3}, defaultReconciliationOpts())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // already cancelled before Run starts -- a budget cut-off cycle
+
+	h.Run(ctx)
+
+	if len(state.saves) != 1 {
+		t.Fatalf("expected the last-run save to persist despite the cancelled request ctx, got %d saves", len(state.saves))
+	}
+}
+
+// intsEqual compares two int slices for the pageCalls assertions below.
+func intsEqual(a, b []int) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// TestReconciliation_SweepsAtMostAuthoritiesPerCycleAndPersistsNextIndex pins
+// the resumable cursor's basic shape: a Run call touches only
+// AuthoritiesPerCycle authorities (a fake serving MORE ids than that is the
+// only way to prove the bound, not just that every supplied id happened to be
+// swept), and persists the next unfetched index -- not lastPollTime, since
+// the pass is still mid-flight.
+func TestReconciliation_SweepsAtMostAuthoritiesPerCycleAndPersistsNextIndex(t *testing.T) {
+	t.Parallel()
+	ids := make([]int, 12)
+	fetcher := newFakeReconciliationFetcher()
+	for i := range ids {
+		ids[i] = i + 1
+		fetcher.pages[ids[i]] = planit.FetchPageResult{}
+	}
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	opts := ReconciliationOptions{Interval: 7 * 24 * time.Hour, MaxStragglersPerAuthority: 10, AuthoritiesPerCycle: 5}
+	h := newReconciliationHandler(t, fetcher, apps, state, ids, opts)
+
+	out := h.Run(context.Background())
+
+	if out.authoritiesSwept != 5 {
+		t.Errorf("authoritiesSwept: got %d, want 5 (bounded by AuthoritiesPerCycle, 12 ids supplied)", out.authoritiesSwept)
+	}
+	if !intsEqual(fetcher.pageCalls, []int{1, 2, 3, 4, 5}) {
+		t.Errorf("pageCalls: got %v, want [1 2 3 4 5]", fetcher.pageCalls)
+	}
+	if len(state.saves) != 1 {
+		t.Fatalf("expected exactly one state save, got %d", len(state.saves))
+	}
+	saved := state.saves[0]
+	if saved.cursor == nil || saved.cursor.NextIndex != 5 {
+		t.Errorf("cursor: got %+v, want NextIndex=5 (mid-pass, 12 authorities > 5 per cycle)", saved.cursor)
+	}
+	if saved.cursor != nil && (!saved.cursor.DifferentStart.IsZero() || saved.cursor.KnownTotal != nil) {
+		t.Errorf("cursor: got DifferentStart=%v KnownTotal=%v, want both zero/nil (Lane A/B pagination concepts, not applicable here)", saved.cursor.DifferentStart, saved.cursor.KnownTotal)
+	}
+	if !saved.lastPollTime.IsZero() {
+		t.Errorf("lastPollTime: got %v, want zero (pass not yet complete, so last-run must not advance)", saved.lastPollTime)
+	}
+}
+
+// TestReconciliation_ResumesFromPersistedCursorOnSecondRun proves the second
+// Run call picks up exactly where the first left off, rather than restarting
+// at authority index 0 -- the starvation bug the cursor exists to fix.
+func TestReconciliation_ResumesFromPersistedCursorOnSecondRun(t *testing.T) {
+	t.Parallel()
+	ids := make([]int, 12)
+	fetcher := newFakeReconciliationFetcher()
+	for i := range ids {
+		ids[i] = i + 1
+		fetcher.pages[ids[i]] = planit.FetchPageResult{}
+	}
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	opts := ReconciliationOptions{Interval: 7 * 24 * time.Hour, MaxStragglersPerAuthority: 10, AuthoritiesPerCycle: 5}
+	h := newReconciliationHandler(t, fetcher, apps, state, ids, opts)
+
+	h.Run(context.Background())
+	out2 := h.Run(context.Background())
+
+	if out2.authoritiesSwept != 5 {
+		t.Errorf("second Run authoritiesSwept: got %d, want 5", out2.authoritiesSwept)
+	}
+	if !intsEqual(fetcher.pageCalls, []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}) {
+		t.Errorf("pageCalls across both runs: got %v, want [1..5] then [6..10] (resume, not restart)", fetcher.pageCalls)
+	}
+	if len(state.saves) != 2 {
+		t.Fatalf("expected two state saves, got %d", len(state.saves))
+	}
+	if c := state.saves[1].cursor; c == nil || c.NextIndex != 10 {
+		t.Errorf("second save cursor: got %+v, want NextIndex=10", c)
+	}
+}
+
+// TestReconciliation_EarlyCtxCancelPersistsActuallyAttemptedCountNotPlannedEnd
+// pins the correctness-critical edge case: an early ctx-cancel break inside
+// the sweep loop must persist how many authorities were ACTUALLY attempted,
+// not the planned AuthoritiesPerCycle slice end -- otherwise the un-attempted
+// tail between "actually swept" and "planned end" is skipped forever
+// (exactly the starvation bug this cursor exists to fix).
+func TestReconciliation_EarlyCtxCancelPersistsActuallyAttemptedCountNotPlannedEnd(t *testing.T) {
+	t.Parallel()
+	ids := []int{1, 2, 3, 4, 5}
+	fetcher := newFakeReconciliationFetcher()
+	for _, id := range ids {
+		fetcher.pages[id] = planit.FetchPageResult{}
+	}
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	opts := ReconciliationOptions{Interval: 7 * 24 * time.Hour, MaxStragglersPerAuthority: 10, AuthoritiesPerCycle: 5} // planned to sweep all 5 this cycle
+	h := newReconciliationHandler(t, fetcher, apps, state, ids, opts)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	fetcher.cancelAfter = 2
+	fetcher.cancel = cancel // simulates a budget cut-off arriving after the 2nd authority
+
+	out := h.Run(ctx)
+
+	if out.authoritiesSwept != 2 {
+		t.Fatalf("authoritiesSwept: got %d, want 2 (broke early on ctx cancel)", out.authoritiesSwept)
+	}
+	if len(state.saves) != 1 {
+		t.Fatalf("expected the cursor save to survive the cancelled ctx (context.WithoutCancel), got %d saves", len(state.saves))
+	}
+	saved := state.saves[0]
+	if saved.cursor == nil || saved.cursor.NextIndex != 2 {
+		t.Errorf("cursor: got %+v, want NextIndex=2 (actually attempted, NOT the planned slice end of 5)", saved.cursor)
+	}
+}
+
+// TestReconciliation_CompletedPassResetsCursorAndStampsLastPollTime proves a
+// pass that reaches the end of the authority list resets the cursor to nil
+// and stamps LastPollTime -- the only branch that advances it -- and that Due
+// then goes false until Interval elapses.
+func TestReconciliation_CompletedPassResetsCursorAndStampsLastPollTime(t *testing.T) {
+	t.Parallel()
+	ids := []int{1, 2, 3}
+	fetcher := newFakeReconciliationFetcher()
+	for _, id := range ids {
+		fetcher.pages[id] = planit.FetchPageResult{}
+	}
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	opts := ReconciliationOptions{Interval: 7 * 24 * time.Hour, MaxStragglersPerAuthority: 10, AuthoritiesPerCycle: 10} // whole set fits in one cycle
+	h := newReconciliationHandler(t, fetcher, apps, state, ids, opts)
+
+	out := h.Run(context.Background())
+	if out.authoritiesSwept != 3 {
+		t.Fatalf("authoritiesSwept: got %d, want 3", out.authoritiesSwept)
+	}
+	if len(state.saves) != 1 {
+		t.Fatalf("expected exactly one state save, got %d", len(state.saves))
+	}
+	saved := state.saves[0]
+	if saved.cursor != nil {
+		t.Errorf("cursor: got %+v, want nil (pass completed)", saved.cursor)
+	}
+	wantLastRun := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC) // newReconciliationHandler's pinned clock
+	if !saved.lastPollTime.Equal(wantLastRun) {
+		t.Errorf("lastPollTime: got %v, want %v (pass completed, so last-run advances)", saved.lastPollTime, wantLastRun)
+	}
+
+	if h.Due(context.Background(), wantLastRun.Add(time.Hour)) {
+		t.Error("Due should be false immediately after a completed pass, within Interval")
+	}
+	if !h.Due(context.Background(), wantLastRun.Add(8*24*time.Hour)) {
+		t.Error("Due should be true once Interval has elapsed since the completed pass")
+	}
+}
+
+// TestReconciliationDue_TrueMidPassRegardlessOfInterval pins the mid-pass Due
+// override: a persisted cursor means a pass is in progress, so the cycle
+// continues it unconditionally -- Interval only gates STARTING a new pass.
+func TestReconciliationDue_TrueMidPassRegardlessOfInterval(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
+	opts := ReconciliationOptions{Interval: 7 * 24 * time.Hour, MaxStragglersPerAuthority: 10, AuthoritiesPerCycle: 50}
+	fetcher := newFakeReconciliationFetcher()
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	// A mid-pass cursor with a very recent last-run (well within Interval).
+	state.states[sentinelLaneC] = PollState{LastPollTime: now.Add(-time.Minute), Cursor: &PollCursor{NextIndex: 30}}
+	h := newReconciliationHandler(t, fetcher, apps, state, nil, opts)
+
+	if !h.Due(context.Background(), now) {
+		t.Error("Due should be true whenever a pass is mid-flight (cursor present), regardless of Interval")
+	}
+}
+
+// TestReconciliation_StaleCursorPastEndOfAuthorityListRestartsAtZero covers
+// the defensive case: a persisted NextIndex >= len(ids) (e.g. the authority
+// list shrank) must be treated as no cursor at all -- a fresh pass at index
+// 0 -- rather than sweeping zero authorities forever.
+func TestReconciliation_StaleCursorPastEndOfAuthorityListRestartsAtZero(t *testing.T) {
+	t.Parallel()
+	ids := []int{1, 2, 3}
+	fetcher := newFakeReconciliationFetcher()
+	for _, id := range ids {
+		fetcher.pages[id] = planit.FetchPageResult{}
+	}
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	state.states[sentinelLaneC] = PollState{Cursor: &PollCursor{NextIndex: 99}} // stale: the authority list shrank
+	opts := ReconciliationOptions{Interval: 7 * 24 * time.Hour, MaxStragglersPerAuthority: 10, AuthoritiesPerCycle: 10}
+	h := newReconciliationHandler(t, fetcher, apps, state, ids, opts)
+
+	out := h.Run(context.Background())
+	if out.authoritiesSwept != 3 {
+		t.Errorf("authoritiesSwept: got %d, want 3 (a stale past-end cursor must restart at 0, not skip everything)", out.authoritiesSwept)
 	}
 }
 

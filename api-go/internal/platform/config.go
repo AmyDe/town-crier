@@ -200,12 +200,17 @@ type Config struct {
 	// weekly; dial down to 24 for a daily soak, per the ADR's migration plan).
 	// PollingLaneCMaxStragglersPerAuthority bounds Lane C's per-authority
 	// hydration fan-out so one badly-drifted authority cannot balloon a
-	// single sweep's PlanIt request count.
+	// single sweep's PlanIt request count. PollingLaneCAuthoritiesPerCycle
+	// bounds how many authorities one Lane C sweep cycle attempts before
+	// persisting a resumable cursor and continuing next cycle (default 50 —
+	// 50 x 2s throttle = 100s, comfortably inside the ~570s cycle budget; a
+	// full ~485-authority pass takes ~10 cycles — tc-tuge8/GH#971).
 	PollingLaneAMaskDays                  int
 	PollingLaneBMaskDays                  int
 	PollingLaneBMaxPages                  int
 	PollingLaneCIntervalHours             int
 	PollingLaneCMaxStragglersPerAuthority int
+	PollingLaneCAuthoritiesPerCycle       int
 	// PollingLaneCEnabled gates whether Lane C (reconciliation) is wired into
 	// the poll cycle at all. Loaded from POLLING_LANE_C_ENABLED and DEFAULT
 	// FALSE: Lane C shipped broken in v0.21.0 (its per-authority query 400s and
@@ -373,6 +378,7 @@ func LoadConfig() (Config, error) {
 		PollingLaneBMaxPages:                  getenvInt("POLLING_LANE_B_MAX_PAGES", 20),
 		PollingLaneCIntervalHours:             getenvInt("POLLING_LANE_C_INTERVAL_HOURS", 168),
 		PollingLaneCMaxStragglersPerAuthority: getenvInt("POLLING_LANE_C_MAX_STRAGGLERS_PER_AUTHORITY", 10),
+		PollingLaneCAuthoritiesPerCycle:       getenvInt("POLLING_LANE_C_AUTHORITIES_PER_CYCLE", 50),
 		PollingLaneCEnabled:                   getenvBool("POLLING_LANE_C_ENABLED"),
 
 		PollingBackfillEnabled:                    getenvBool("POLLING_BACKFILL_ENABLED"),

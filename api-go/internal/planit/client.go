@@ -35,6 +35,12 @@ const defaultPageSize = 100
 // cannot exhaust memory. A 100-record page is well under this.
 const maxResponseBytes = 10 << 20 // 10 MiB
 
+// errorBodyPrefixBytes bounds the error body classify captures onto HTTPError
+// for a non-2xx, non-429 response: enough for PlanIt's typical
+// {"error": "..."} shape, small enough to be a safe OTel span attribute
+// (tc-tuge8/GH#971).
+const errorBodyPrefixBytes = 512
+
 // Sentinel errors for construction-time validation.
 var (
 	// ErrMissingBaseURL is returned when the PlanIt base URL is empty.
@@ -65,13 +71,22 @@ func (e *RateLimitError) Error() string {
 	return "planit rate limited (no retry-after)"
 }
 
-// httpError is a non-429, non-2xx response from PlanIt that the client gave up
-// on (either permanent 4xx or a 5xx that exhausted retries).
-type httpError struct {
+// HTTPError is a non-429, non-2xx response from PlanIt that the client gave up
+// on (either permanent 4xx or a 5xx that exhausted retries). Body carries a
+// bounded prefix (errorBodyPrefixBytes) of PlanIt's response body: for a 400
+// this is usually the actual failure reason (e.g. a bad column name in the
+// query), which the client previously discarded entirely (tc-tuge8/GH#971).
+// Exported so callers (Lane C's reconciliation sweep) can errors.As into it
+// and surface Body on their own telemetry.
+type HTTPError struct {
 	StatusCode int
+	Body       string
 }
 
-func (e *httpError) Error() string {
+func (e *HTTPError) Error() string {
+	if e.Body != "" {
+		return fmt.Sprintf("planit http error: status %d: %s", e.StatusCode, e.Body)
+	}
 	return fmt.Sprintf("planit http error: status %d", e.StatusCode)
 }
 
@@ -329,8 +344,12 @@ func (c *Client) sendWithThrottle(ctx context.Context, target string, authorityI
 }
 
 // classify maps a non-2xx response to a typed error, leaving 2xx as nil. A 429
-// becomes *RateLimitError with the parsed Retry-After; any other non-2xx becomes
-// *httpError.
+// becomes *RateLimitError with the parsed Retry-After -- its body is never
+// read, matching the pre-tc-tuge8 behaviour exactly. Any other non-2xx
+// becomes *HTTPError carrying a bounded prefix of the response body: resp.Body
+// is guaranteed unread at this point (sendWithThrottle returns it unread on
+// every non-2xx exit, and fetchPage's own io.ReadAll only runs on the nil-err
+// 2xx path), so this is the one safe place to read it.
 func classify(resp *http.Response) error {
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return nil
@@ -342,7 +361,11 @@ func classify(resp *http.Response) error {
 		}
 		return &RateLimitError{RetryAfter: retryAfter}
 	}
-	return &httpError{StatusCode: resp.StatusCode}
+	// Best-effort: a read failure here still leaves a valid HTTPError with
+	// StatusCode set (io.ReadAll returns whatever partial bytes it read even
+	// on error), so there's nothing actionable to do with the error itself.
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, errorBodyPrefixBytes)) //nolint:errcheck // partial body is fine; StatusCode is what matters
+	return &HTTPError{StatusCode: resp.StatusCode, Body: string(body)}
 }
 
 // backoff computes exponential backoff: base * 2^attempt.

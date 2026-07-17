@@ -318,6 +318,7 @@ func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, reg
 			polling.ReconciliationOptions{
 				Interval:                  time.Duration(cfg.PollingLaneCIntervalHours) * time.Hour,
 				MaxStragglersPerAuthority: cfg.PollingLaneCMaxStragglersPerAuthority,
+				AuthoritiesPerCycle:       cfg.PollingLaneCAuthoritiesPerCycle,
 			},
 			time.Now, logger,
 		)
