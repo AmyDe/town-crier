@@ -709,15 +709,19 @@ func addGoWorkerEnv(envVars app.EnvironmentVarArray, ec envContext, workerMode s
 			// Lane D (ADR 0042 / GH#967, PR #968): dark-shipped disabled, flipped on here.
 			app.EnvironmentVarArgs{Name: pulumi.String("POLLING_BACKFILL_ENABLED"), Value: pulumi.String("true")},
 			// Lane C (ADR 0041 reconciliation/completeness backstop, tc-tuge8 / GH#971):
-			// steady-state config. PR 1's bounded diagnostic run (10 authorities/cycle)
-			// captured the real prod 400 reason onto the "PlanIt reconciliation sweep"
-			// span's reconciliation.sample_error_body attribute (queryable via App
-			// Insights AppDependencies): a missing date bound on the reconciliation
-			// query. PR 2 fixed buildReconciliationPath to add that bound, so this now
-			// runs the full weekly reconciliation sweep at the code-default 50
-			// authorities/cycle (50 x 2s PlanIt throttle = 100s/cycle, well inside the
-			// ~570s handler budget; a full ~485-authority pass completes over ~10 cycles).
-			app.EnvironmentVarArgs{Name: pulumi.String("POLLING_LANE_C_ENABLED"), Value: pulumi.String("true")},
+			// disabled again pending a straggler-hydration circuit-breaker (tc-mc0hf).
+			// The query-level 400 fix (PR 1 diagnosed, PR 2 fixed buildReconciliationPath)
+			// is confirmed working in prod: the 2026-07-17 v0.21.7 sweep itself was clean
+			// (reconciliation.error_count=0, all 200s). But that same cycle's straggler
+			// hydration loop (ReconciliationHandler.hydrate, called from sweepAuthority)
+			// has no PlanIt rate-limit backoff, and was observed hammering PlanIt after
+			// its first 429: 141 of 187 hydration requests were rejected with 429 over
+			// 8.5 minutes, one every ~2s, all wasted. PlanIt is a free, single-operator
+			// service; repeated rejected requests are a red-line violation regardless of
+			// the eventual reconciliation sweep succeeding. Re-enable once tc-mc0hf lands
+			// a 429 circuit-breaker on the hydration loop. AuthoritiesPerCycle is left at
+			// its steady-state value (harmless while disabled, correct once re-enabled).
+			app.EnvironmentVarArgs{Name: pulumi.String("POLLING_LANE_C_ENABLED"), Value: pulumi.String("false")},
 			app.EnvironmentVarArgs{Name: pulumi.String("POLLING_LANE_C_AUTHORITIES_PER_CYCLE"), Value: pulumi.String("50")},
 		)
 	}
