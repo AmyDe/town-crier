@@ -133,7 +133,15 @@ func (f *fakeStateStore) Get(_ context.Context, authorityID int) (PollState, boo
 	return s, ok, nil
 }
 
-func (f *fakeStateStore) Save(_ context.Context, authorityID int, lastPollTime, highWaterMark time.Time, cursor *PollCursor) error {
+// Save is deliberately ctx-sensitive (unlike Get): it errors when ctx is
+// already cancelled, mirroring a real pgx query aborting on a cancelled
+// context. This is what lets a test prove a write survives a cancelled
+// request ctx only when the production code actually detaches it (e.g. via
+// context.WithoutCancel) before calling Save -- tc-tuge8/GH#971.
+func (f *fakeStateStore) Save(ctx context.Context, authorityID int, lastPollTime, highWaterMark time.Time, cursor *PollCursor) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	f.saves = append(f.saves, savedState{authorityID, lastPollTime, highWaterMark, cursor})
 	f.states[authorityID] = PollState{LastPollTime: lastPollTime, HighWaterMark: highWaterMark, Cursor: cursor}
 	return nil
