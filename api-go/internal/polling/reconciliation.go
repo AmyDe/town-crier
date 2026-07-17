@@ -176,6 +176,19 @@ type reconciliationOutcome struct {
 	// inflate this counter -- it exists to answer "is every authority 400ing
 	// the same way", the v0.21.0 storm signature.
 	badRequestCount int
+	// rateLimited is set once, the first time ANY PlanIt call this Run makes
+	// -- a per-authority sweep fetch (FetchReconciliationPage) or a straggler
+	// hydration fetch (FetchByUID) -- returns a *planit.RateLimitError, and
+	// is never cleared afterwards (tc-mc0hf). It is Lane C's circuit breaker:
+	// once tripped, sweepAuthority stops hydrating further stragglers for the
+	// rest of that authority and Run stops sweeping further authorities for
+	// the rest of this cycle, mirroring NationalLaneHandler's "stop on first
+	// 429" behavior for Lane A/B. Without this, a single 429 was previously
+	// followed by every remaining straggler hydration and authority sweep
+	// still firing anyway -- 141 of 187 hydration requests rejected with 429
+	// over 8.5 minutes in one prod cycle, a live violation of PlanIt's
+	// never-hammer red line.
+	rateLimited bool
 }
 
 // Run sweeps up to AuthoritiesPerCycle authorities' light projections, diffs
@@ -308,6 +321,13 @@ func (h *ReconciliationHandler) sweepAuthority(ctx context.Context, authorityID 
 		if stragglers >= h.opts.MaxStragglersPerAuthority {
 			break
 		}
+		// A 429 from hydrating an earlier straggler in THIS authority trips
+		// the circuit breaker: stop hydrating the rest of this authority's
+		// stragglers rather than following a rejected request with more
+		// rejected requests (tc-mc0hf).
+		if out.rateLimited {
+			break
+		}
 		existing, found, gerr := h.ingester.apps.GetByUID(ctx, light.UID, authorityCode)
 		if gerr != nil {
 			h.logger.WarnContext(ctx, "lane C: read existing application failed", "uid", light.UID, "error", gerr)
@@ -322,11 +342,20 @@ func (h *ReconciliationHandler) sweepAuthority(ctx context.Context, authorityID 
 	}
 }
 
-// recordFetchError captures a PlanIt HTTP error's status/body onto the sweep
-// outcome (tc-tuge8/GH#971): a non-*planit.HTTPError (e.g. a transport
-// failure) is a no-op here -- it stays logged, as before, with nothing to add
-// to the span.
+// recordFetchError captures a PlanIt fetch error onto the sweep outcome.
+// *planit.HTTPError's status/body is captured as before (tc-tuge8/GH#971).
+// Independently, *planit.RateLimitError -- a distinct sibling error type,
+// never an HTTPError -- trips out.rateLimited (tc-mc0hf), Lane C's circuit
+// breaker: Run and sweepAuthority's straggler loop both check it to stop
+// making further PlanIt requests for the rest of this cycle. Any other error
+// type (e.g. a transport failure) is a no-op here -- it stays logged, as
+// before, with nothing to add to the span.
 func recordFetchError(err error, out *reconciliationOutcome) {
+	var rlErr *planit.RateLimitError
+	if errors.As(err, &rlErr) {
+		out.rateLimited = true
+	}
+
 	var herr *planit.HTTPError
 	if !errors.As(err, &herr) {
 		return
@@ -346,6 +375,7 @@ func (h *ReconciliationHandler) hydrate(ctx context.Context, uid string, out *re
 	full, err := h.fetcher.FetchByUID(ctx, uid)
 	if err != nil {
 		h.logger.WarnContext(ctx, "lane C: hydration fetch failed", "uid", uid, "error", err)
+		recordFetchError(err, out)
 		return
 	}
 	for _, app := range full.Applications {
