@@ -233,26 +233,52 @@ func TestPlanner_NextWork_LRUPicksOldestAmongEligibleWithWork(t *testing.T) {
 	}
 }
 
-// TestPlanner_NextWork_LaneCAlwaysHasWorkWhenEligible covers Lane C: once
-// eligible (daytime), it always has unwalked epoch work (there is always
-// more epoch to walk or a new one to anchor — ADR 0044 §5) regardless of its
-// own LastPollTime or cursor state.
-func TestPlanner_NextWork_LaneCAlwaysHasWorkWhenEligible(t *testing.T) {
+// TestPlanner_NextWork_LaneCHasWork covers Lane C's has-work rule (ADR 0044
+// §5/§6): an active mid-epoch cursor always has work regardless of how
+// recently it last ran (a genuine backlog must grind without delay), but an
+// idle lane (no cursor) only anchors a fresh epoch once
+// laneCIdleAnchorInterval has elapsed since its last run — never on every
+// single pick, which would busy-loop anchoring near-empty epochs forever
+// once caught up.
+func TestPlanner_NextWork_LaneCHasWork(t *testing.T) {
 	t.Parallel()
 	p := NewPlanner(testPlannerOptions(t))
 	daytime := time.Date(2026, 1, 15, 15, 0, 0, 0, time.UTC)
 
-	state := PlannerState{
-		// A/B parked far in the future: never due, so C is the only
-		// candidate and must be picked.
-		LaneA: LaneState{LastPollTime: daytime.Add(time.Hour)},
-		LaneB: LaneState{LastPollTime: daytime.Add(time.Hour)},
-		LaneC: &LaneState{LastPollTime: daytime}, // just ran, no active cursor
-		LaneD: &LaneDState{Complete: true},
+	tests := []struct {
+		name         string
+		lastPollTime time.Time
+		hasCursor    bool
+		wantWork     bool
+	}{
+		{"never polled: has work", time.Time{}, false, true},
+		{"idle, ran seconds ago: no work yet", daytime.Add(-time.Minute), false, false},
+		{"idle, ran just under a day ago: no work yet", daytime.Add(-laneCIdleAnchorInterval + time.Minute), false, false},
+		{"idle, ran exactly a day ago: has work", daytime.Add(-laneCIdleAnchorInterval), false, true},
+		{"idle, ran over a day ago: has work", daytime.Add(-laneCIdleAnchorInterval - time.Hour), false, true},
+		{"mid-epoch, ran seconds ago: has work regardless (genuine backlog)", daytime.Add(-time.Minute), true, true},
 	}
-	item := p.NextWork(state, daytime)
-	if item == nil || item.Lane != LaneC {
-		t.Fatalf("NextWork: got %+v, want lane C", item)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var cursor *PollCursor
+			if tc.hasCursor {
+				cursor = &PollCursor{NextIndex: 300}
+			}
+			state := PlannerState{
+				// A/B parked far in the future: never due, so C is the only
+				// possible candidate.
+				LaneA: LaneState{LastPollTime: daytime.Add(time.Hour)},
+				LaneB: LaneState{LastPollTime: daytime.Add(time.Hour)},
+				LaneC: &LaneState{LastPollTime: tc.lastPollTime, Cursor: cursor},
+				LaneD: &LaneDState{Complete: true},
+			}
+			item := p.NextWork(state, daytime)
+			gotWork := item != nil && item.Lane == LaneC
+			if gotWork != tc.wantWork {
+				t.Errorf("NextWork: got item=%+v, wantWork=%v", item, tc.wantWork)
+			}
+		})
 	}
 }
 

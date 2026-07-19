@@ -169,6 +169,35 @@ func hasWorkAB(s LaneState, now time.Time, freshness time.Duration) bool {
 	return s.LastPollTime.IsZero() || now.Sub(s.LastPollTime) >= freshness
 }
 
+// laneCIdleAnchorInterval bounds how often Lane C anchors a BRAND NEW epoch
+// once it has no backlog to walk — ADR 0044 §5/§6's "daily epoch cadence"
+// (no dedicated env var is named for it, unlike FreshnessInterval or the
+// day window, so this is a hardcoded constant, mirroring resumeOverlapRecords
+// in handler.go). Without this gate, a fully caught-up Lane C would anchor a
+// fresh near-zero-width epoch on every single planner iteration it wins
+// (last_different-ascending epochs are pinned to "now", so a caught-up lane
+// always has SOME sliver of a new epoch available) and busy-loop issuing
+// near-empty requests for the rest of every daytime cycle — a request-volume
+// hammering risk distinct from (and not covered by) the rows-served metric
+// ADR 0041/0044 are built around. A lane with an ACTIVE cursor (a genuine
+// backlog mid-drain) is exempt: it must keep grinding without waiting out
+// this interval, or a real backlog would take up to a day per epoch to
+// clear.
+const laneCIdleAnchorInterval = 24 * time.Hour
+
+// hasWorkC reports whether Lane C currently has unwalked epoch pages: an
+// active cursor (mid-epoch) always has work, so a genuine backlog drains
+// without delay; otherwise a new epoch is anchored only once
+// laneCIdleAnchorInterval has elapsed since Lane C's last run, so a fully
+// caught-up lane settles to a quiet daily check instead of busy-anchoring a
+// fresh near-empty epoch every time it is picked.
+func hasWorkC(s LaneState, now time.Time) bool {
+	if s.Cursor != nil {
+		return true
+	}
+	return s.LastPollTime.IsZero() || now.Sub(s.LastPollTime) >= laneCIdleAnchorInterval
+}
+
 // NextWork picks the next lane to run: among every eligible lane that
 // currently has work, the one with the oldest LastPollTime (LRU / round-
 // robin — ADR 0044 §3). Returns nil when nothing eligible has work
@@ -187,11 +216,7 @@ func (p *Planner) NextWork(state PlannerState, now time.Time) *WorkItem {
 	if p.Eligible(LaneB, now) && hasWorkAB(state.LaneB, now, p.opts.FreshnessInterval) {
 		candidates = append(candidates, candidate{LaneB, state.LaneB.LastPollTime, state.LaneB.Cursor})
 	}
-	// Lane C always has work once eligible: there is always more of the
-	// pinned epoch to walk, or (once the current one drains) a new one to
-	// anchor (ADR 0044 §5) — unlike A/B there is no freshness interval to
-	// wait out.
-	if state.LaneC != nil && p.Eligible(LaneC, now) {
+	if state.LaneC != nil && p.Eligible(LaneC, now) && hasWorkC(*state.LaneC, now) {
 		candidates = append(candidates, candidate{LaneC, state.LaneC.LastPollTime, state.LaneC.Cursor})
 	}
 	if state.LaneD != nil && p.Eligible(LaneD, now) && !state.LaneD.Complete {
