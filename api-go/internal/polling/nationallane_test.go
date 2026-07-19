@@ -60,7 +60,8 @@ func laneBOpts(maxPages int) NationalLaneOptions {
 // LastDifferent equals the watermark stops the walk without being
 // re-ingested, but a strictly-newer record that shares the SAME page as the
 // boundary record must still be ingested — descending order means it is
-// encountered first.
+// encountered first. One page suffices to reach the boundary, so one
+// RunOnePage call completes the whole walk (ADR 0044).
 func TestNationalLane_IngestsNewerRecordsAndStopsAtExactBoundary(t *testing.T) {
 	t.Parallel()
 	watermark := time.Date(2026, 7, 10, 9, 0, 0, 0, time.UTC)
@@ -82,10 +83,10 @@ func TestNationalLane_IngestsNewerRecordsAndStopsAtExactBoundary(t *testing.T) {
 	state.states[sentinelLaneA] = PollState{HighWaterMark: watermark, LastPollTime: watermark}
 
 	h := newLaneHandler(t, fetcher, apps, state, laneAOpts())
-	out := h.Run(context.Background())
+	out := h.RunOnePage(context.Background())
 
 	if out.err != nil {
-		t.Fatalf("Run: %v", out.err)
+		t.Fatalf("RunOnePage: %v", out.err)
 	}
 	if out.recordsSeen != 3 {
 		t.Errorf("recordsSeen: got %d, want 3 (every record fetched, including the ones at/after the boundary)", out.recordsSeen)
@@ -97,7 +98,10 @@ func TestNationalLane_IngestsNewerRecordsAndStopsAtExactBoundary(t *testing.T) {
 		t.Fatalf("upserts: got %+v, want exactly the 'newer' record", apps.upserts)
 	}
 	if !out.watermarkAfter.Equal(newer) {
-		t.Errorf("watermarkAfter: got %v, want %v (max ingested this run)", out.watermarkAfter, newer)
+		t.Errorf("watermarkAfter: got %v, want %v (max ingested this page)", out.watermarkAfter, newer)
+	}
+	if state.states[sentinelLaneA].Cursor != nil {
+		t.Errorf("cursor: got %+v, want nil (a clean completion clears the cursor)", state.states[sentinelLaneA].Cursor)
 	}
 }
 
@@ -113,10 +117,10 @@ func TestNationalLane_HandlesEmptyPage(t *testing.T) {
 	state.states[sentinelLaneA] = PollState{HighWaterMark: watermark, LastPollTime: watermark}
 
 	h := newLaneHandler(t, fetcher, apps, state, laneAOpts())
-	out := h.Run(context.Background())
+	out := h.RunOnePage(context.Background())
 
 	if out.err != nil {
-		t.Fatalf("Run: %v", out.err)
+		t.Fatalf("RunOnePage: %v", out.err)
 	}
 	if out.recordsSeen != 0 || out.recordsIngested != 0 {
 		t.Errorf("expected no records seen/ingested, got seen=%d ingested=%d", out.recordsSeen, out.recordsIngested)
@@ -138,7 +142,7 @@ func TestNationalLane_HandlesTotalAbsent(t *testing.T) {
 	state := newFakeStateStore()
 
 	h := newLaneHandler(t, fetcher, apps, state, laneAOpts())
-	out := h.Run(context.Background())
+	out := h.RunOnePage(context.Background())
 
 	if out.planitTotal != nil {
 		t.Errorf("planitTotal: got %v, want nil (PlanIt omitted total)", out.planitTotal)
@@ -146,10 +150,13 @@ func TestNationalLane_HandlesTotalAbsent(t *testing.T) {
 }
 
 // TestNationalLane_NeverAdvancesWatermarkPastAnErroredPage is the safety
-// invariant: a page that ingests successfully, followed by a page that
-// fails, must leave the watermark exactly where it was before the run —
-// never partway advanced to the first page's max — so nothing between the
-// old watermark and the failed page is silently skipped on the next run.
+// invariant under ADR 0044's per-page checkpointing: a page that ingests
+// successfully and persists a resume cursor, followed by a SEPARATE
+// RunOnePage call whose fetch fails, must leave the watermark exactly where
+// it was before either call — never partway advanced to the first page's
+// max — so nothing between the old watermark and the failed page is
+// silently skipped on the next call. The first page's already-persisted
+// cursor must also survive the second call's failure untouched.
 func TestNationalLane_NeverAdvancesWatermarkPastAnErroredPage(t *testing.T) {
 	t.Parallel()
 	watermark := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
@@ -159,7 +166,7 @@ func TestNationalLane_NeverAdvancesWatermarkPastAnErroredPage(t *testing.T) {
 	fetcher.pages[0] = planit.FetchPageResult{
 		From:         0,
 		Applications: []applications.PlanningApplication{testApp("page1", 300, page1LD)},
-		HasMorePages: true, // more pages follow -> the loop will fetch index 1
+		HasMorePages: true, // more pages follow -> the next RunOnePage call fetches index 1
 	}
 	fetcher.failNth[2] = errors.New("planit: transport blew up")
 
@@ -168,16 +175,31 @@ func TestNationalLane_NeverAdvancesWatermarkPastAnErroredPage(t *testing.T) {
 	state.states[sentinelLaneA] = PollState{HighWaterMark: watermark, LastPollTime: watermark}
 
 	h := newLaneHandler(t, fetcher, apps, state, laneAOpts())
-	out := h.Run(context.Background())
 
-	if out.err == nil {
-		t.Fatal("expected the second page's fetch error to surface on the outcome")
+	firstOut := h.RunOnePage(context.Background())
+	if firstOut.err != nil {
+		t.Fatalf("first RunOnePage: %v", firstOut.err)
 	}
 	if len(apps.upserts) != 1 {
-		t.Errorf("page 1's record should still have been ingested: got %d upserts", len(apps.upserts))
+		t.Fatalf("page 1's record should have been ingested: got %d upserts", len(apps.upserts))
 	}
-	if !out.watermarkAfter.Equal(watermark) {
-		t.Errorf("watermarkAfter: got %v, want unchanged %v (never advance past an errored page)", out.watermarkAfter, watermark)
+	persistedCursor := state.states[sentinelLaneA].Cursor
+	if persistedCursor == nil || persistedCursor.NextIndex != 1 {
+		t.Fatalf("expected a resume cursor at index 1 after page 1, got %+v", persistedCursor)
+	}
+	if !firstOut.watermarkAfter.Equal(watermark) {
+		t.Errorf("watermarkAfter after page 1: got %v, want unchanged %v (mid-drain)", firstOut.watermarkAfter, watermark)
+	}
+
+	secondOut := h.RunOnePage(context.Background())
+	if secondOut.err == nil {
+		t.Fatal("expected the second page's fetch error to surface on the outcome")
+	}
+	if !secondOut.watermarkAfter.Equal(watermark) {
+		t.Errorf("watermarkAfter after the failed page: got %v, want unchanged %v (never advance past an errored page)", secondOut.watermarkAfter, watermark)
+	}
+	if got := state.states[sentinelLaneA].Cursor; got == nil || got.NextIndex != 1 {
+		t.Errorf("cursor after the failed page: got %+v, want the untouched page-1 checkpoint (NextIndex=1)", got)
 	}
 }
 
@@ -187,23 +209,17 @@ func TestNationalLane_NeverAdvancesWatermarkPastAnErroredPage(t *testing.T) {
 func TestNationalLane_NeverAdvancesWatermarkOn429(t *testing.T) {
 	t.Parallel()
 	watermark := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	page1LD := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
 	retryAfter := 30 * time.Second
 
 	fetcher := newFakeNationalFetcher()
-	fetcher.pages[0] = planit.FetchPageResult{
-		From:         0,
-		Applications: []applications.PlanningApplication{testApp("page1", 300, page1LD)},
-		HasMorePages: true,
-	}
-	fetcher.failNth[2] = &planit.RateLimitError{RetryAfter: &retryAfter}
+	fetcher.failNth[1] = &planit.RateLimitError{RetryAfter: &retryAfter}
 
 	apps := newFakeApps()
 	state := newFakeStateStore()
 	state.states[sentinelLaneA] = PollState{HighWaterMark: watermark, LastPollTime: watermark}
 
 	h := newLaneHandler(t, fetcher, apps, state, laneAOpts())
-	out := h.Run(context.Background())
+	out := h.RunOnePage(context.Background())
 
 	if !out.rateLimited {
 		t.Fatal("expected rateLimited=true")
@@ -216,38 +232,50 @@ func TestNationalLane_NeverAdvancesWatermarkOn429(t *testing.T) {
 	}
 }
 
-// TestNationalLane_LaneBPageCapStopsWalkAndFreezesWatermark proves Lane B's
-// hard page cap: the walk stops after MaxPages even though more pages remain,
-// and — because a cap-hit is an incomplete run — the watermark freezes rather
-// than advancing to whatever the capped walk saw.
-func TestNationalLane_LaneBPageCapStopsWalkAndFreezesWatermark(t *testing.T) {
+// TestNationalLane_MidDrainResumesAtCheckpointedIndex proves the per-page
+// checkpoint's whole point (ADR 0044 §2, GH#955/tc-nlvpz): a second
+// RunOnePage call resumes pagination at the persisted (minus the resume
+// overlap) NextIndex rather than re-fetching from index 0.
+func TestNationalLane_MidDrainResumesAtCheckpointedIndex(t *testing.T) {
 	t.Parallel()
 	watermark := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
 	ld := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	prefilterDate := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
 
+	// A pre-seeded cursor at a nontrivial index, so resumeOverlapRecords
+	// (100) genuinely clamps to a non-zero StartIndex — 300 - 100 = 200 —
+	// rather than degenerating to 0 the way a tiny (single-record) fake page
+	// would.
 	fetcher := newFakeNationalFetcher()
-	for i := range 3 {
-		fetcher.pages[i] = planit.FetchPageResult{
-			From:         i,
-			Applications: []applications.PlanningApplication{testApp("d", 300, ld)},
-			HasMorePages: true, // every page claims more follow
-		}
+	fetcher.pages[200] = planit.FetchPageResult{
+		From:         200,
+		Applications: []applications.PlanningApplication{testApp("resumed", 300, ld)},
+		HasMorePages: false,
 	}
 	apps := newFakeApps()
 	state := newFakeStateStore()
-	state.states[sentinelLaneB] = PollState{HighWaterMark: watermark, LastPollTime: watermark}
-
-	h := newLaneHandler(t, fetcher, apps, state, laneBOpts(2))
-	out := h.Run(context.Background())
-
-	if out.pages != 2 {
-		t.Errorf("pages: got %d, want 2 (capped)", out.pages)
+	state.states[sentinelLaneA] = PollState{
+		HighWaterMark: watermark,
+		Cursor:        &PollCursor{DifferentStart: prefilterDate, NextIndex: 300},
 	}
-	if !out.capHit {
-		t.Error("capHit: got false, want true")
+
+	h := newLaneHandler(t, fetcher, apps, state, laneAOpts())
+	out := h.RunOnePage(context.Background())
+
+	if out.err != nil {
+		t.Fatalf("RunOnePage: %v", out.err)
 	}
-	if !out.watermarkAfter.Equal(watermark) {
-		t.Errorf("watermarkAfter: got %v, want unchanged %v (a cap hit is an incomplete run)", out.watermarkAfter, watermark)
+	if len(fetcher.queries) != 1 || fetcher.queries[0].StartIndex != 200 {
+		t.Fatalf("expected exactly one fetch at StartIndex 200 (300 - the 100-record resume overlap), got %+v", fetcher.queries)
+	}
+	if len(apps.upserts) != 1 || apps.upserts[0].Name != "resumed" {
+		t.Fatalf("upserts: got %+v", apps.upserts)
+	}
+	if !out.watermarkAfter.Equal(ld) {
+		t.Errorf("watermarkAfter: got %v, want %v (walk completed on this page)", out.watermarkAfter, ld)
+	}
+	if state.states[sentinelLaneA].Cursor != nil {
+		t.Errorf("cursor: got %+v, want nil (walk completed)", state.states[sentinelLaneA].Cursor)
 	}
 }
 
@@ -262,7 +290,7 @@ func TestNationalLane_FirstRunPrefiltersOnMaskCutoff(t *testing.T) {
 	state := newFakeStateStore() // no sentinel row: never run
 
 	h := newLaneHandler(t, fetcher, apps, state, laneAOpts())
-	h.Run(context.Background())
+	h.RunOnePage(context.Background())
 
 	if len(fetcher.queries) != 1 {
 		t.Fatalf("expected exactly one fetch, got %d", len(fetcher.queries))
@@ -305,10 +333,10 @@ func TestNationalLane_SeedsWatermarkFromHeadOnFirstRun(t *testing.T) {
 	state := newFakeStateStore() // no sentinel row: never run
 
 	h := newLaneHandler(t, fetcher, apps, state, laneAOpts())
-	out := h.Run(context.Background())
+	out := h.RunOnePage(context.Background())
 
 	if out.err != nil {
-		t.Fatalf("Run: %v", out.err)
+		t.Fatalf("RunOnePage: %v", out.err)
 	}
 	if fetcher.calls != 1 {
 		t.Fatalf("expected exactly one fetch (page 0 only, never walking further pages), got %d", fetcher.calls)
@@ -338,10 +366,10 @@ func TestNationalLane_SeedsToNowOnEmptyFirstPage(t *testing.T) {
 	state := newFakeStateStore()
 
 	h := newLaneHandler(t, fetcher, apps, state, laneAOpts())
-	out := h.Run(context.Background())
+	out := h.RunOnePage(context.Background())
 
 	if out.err != nil {
-		t.Fatalf("Run: %v", out.err)
+		t.Fatalf("RunOnePage: %v", out.err)
 	}
 	wantNow := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC) // newLaneHandler's pinned clock
 	if !out.watermarkAfter.Equal(wantNow) {
@@ -367,7 +395,7 @@ func TestNationalLane_SeedFetchErrorLeavesLaneUnseeded(t *testing.T) {
 	state := newFakeStateStore()
 
 	h := newLaneHandler(t, fetcher, apps, state, laneAOpts())
-	out := h.Run(context.Background())
+	out := h.RunOnePage(context.Background())
 
 	if out.err == nil {
 		t.Fatal("expected the page-0 fetch error to surface on the outcome")
@@ -388,7 +416,7 @@ func TestNationalLane_SeedRateLimitedLeavesLaneUnseeded(t *testing.T) {
 	state := newFakeStateStore()
 
 	h := newLaneHandler(t, fetcher, apps, state, laneAOpts())
-	out := h.Run(context.Background())
+	out := h.RunOnePage(context.Background())
 
 	if !out.rateLimited {
 		t.Fatal("expected rateLimited=true")
@@ -399,7 +427,7 @@ func TestNationalLane_SeedRateLimitedLeavesLaneUnseeded(t *testing.T) {
 }
 
 // TestNationalLane_SeedThenForwardFlow proves seeding does not break steady
-// state: after a seeded run, a second run from that watermark ingests only
+// state: after a seeded call, a second call from that watermark ingests only
 // the record strictly newer than the seed and stops normally at the
 // (re-encountered) boundary.
 func TestNationalLane_SeedThenForwardFlow(t *testing.T) {
@@ -415,12 +443,12 @@ func TestNationalLane_SeedThenForwardFlow(t *testing.T) {
 	state := newFakeStateStore()
 	h := newLaneHandler(t, fetcher, apps, state, laneAOpts())
 
-	seedOut := h.Run(context.Background())
+	seedOut := h.RunOnePage(context.Background())
 	if seedOut.recordsIngested != 0 {
-		t.Fatalf("seed run must not ingest: got %d", seedOut.recordsIngested)
+		t.Fatalf("seed call must not ingest: got %d", seedOut.recordsIngested)
 	}
 
-	// Second run: a fresh descending walk (a new fetcher, as a new PlanIt
+	// Second call: a fresh descending walk (a new fetcher, as a new PlanIt
 	// request would be) finds one genuinely new record ahead of the seeded
 	// watermark, plus the seed-head record again at the exact boundary.
 	newRecord := seedHead.Add(1 * time.Hour)
@@ -434,10 +462,10 @@ func TestNationalLane_SeedThenForwardFlow(t *testing.T) {
 		HasMorePages: false,
 	}
 	h2 := newLaneHandler(t, fetcher2, apps, state, laneAOpts())
-	out2 := h2.Run(context.Background())
+	out2 := h2.RunOnePage(context.Background())
 
 	if out2.err != nil {
-		t.Fatalf("Run: %v", out2.err)
+		t.Fatalf("RunOnePage: %v", out2.err)
 	}
 	if out2.recordsIngested != 1 {
 		t.Errorf("recordsIngested: got %d, want 1 (only the record strictly newer than the seed)", out2.recordsIngested)
@@ -459,7 +487,7 @@ func TestNationalLane_SubsequentRunPrefiltersOnWatermarkDate(t *testing.T) {
 	state.states[sentinelLaneB] = PollState{HighWaterMark: watermark, LastPollTime: watermark}
 
 	h := newLaneHandler(t, fetcher, apps, state, laneBOpts(20))
-	h.Run(context.Background())
+	h.RunOnePage(context.Background())
 
 	q := fetcher.queries[0]
 	wantPrefilter := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
@@ -494,7 +522,7 @@ func TestNationalLaneRun_EmitsSpanWithFullAttributeSet(t *testing.T) {
 	h := newLaneHandler(t, fetcher, apps, state, laneAOpts())
 
 	spans := recordSpans(t, func() {
-		h.Run(context.Background())
+		h.RunOnePage(context.Background())
 	})
 	span, ok := spanNamed(spans, "PlanIt national lane poll")
 	if !ok {
@@ -554,7 +582,7 @@ func TestNationalLaneRun_SeedingSpanTagsSeededAndDifferentStart(t *testing.T) {
 	h := newLaneHandler(t, fetcher, apps, state, laneAOpts())
 
 	spans := recordSpans(t, func() {
-		h.Run(context.Background())
+		h.RunOnePage(context.Background())
 	})
 	span, ok := spanNamed(spans, "PlanIt national lane poll")
 	if !ok {
@@ -572,15 +600,29 @@ func TestNationalLaneRun_SeedingSpanTagsSeededAndDifferentStart(t *testing.T) {
 	}
 }
 
-// TestNationalPollHandler_Handle_AggregatesBothLanes covers the top-level
-// cycleHandler: both lanes run, their ingested counts sum, and CycleType is
-// stamped "National" so runPollSB's existing polling.cycle_type tag keeps
-// working with a value that reflects the new design.
-func TestNationalPollHandler_Handle_AggregatesBothLanes(t *testing.T) {
+// --- NationalPollHandler.Handle: the ADR 0044 planner/executor loop ---
+
+// newTestPlannerOpts pins a Planner over the same clock newNationalPollTestHandler uses.
+func newTestPlannerOpts() PlannerOptions {
+	dayStart, _ := ParseCivilTime("07:00")
+	dayEnd, _ := ParseCivilTime("19:00")
+	loc, _ := time.LoadLocation("Europe/London")
+	return PlannerOptions{FreshnessInterval: 15 * time.Minute, DayStart: dayStart, DayEnd: dayEnd, Location: loc}
+}
+
+// TestNationalPollHandler_Handle_RunsBothLanesToCompletion covers the
+// top-level planner/executor loop end to end: both lanes are due (mid-day
+// UTC clock, both eligible 24/7), each has exactly one page of work, the
+// loop runs both to completion and then finds nothing left to do (nil ->
+// Natural).
+func TestNationalPollHandler_Handle_RunsBothLanesToCompletion(t *testing.T) {
 	t.Parallel()
-	// Both lanes already seeded (a watermark row exists), so this exercises
-	// the steady-state delta walk, not the first-run seed path.
+	// Both lanes already seeded (a watermark row exists) and last polled
+	// long enough ago to be due, so this exercises the steady-state delta
+	// walk, not the first-run seed path.
+	clockTime := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
 	watermark := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	longAgo := clockTime.Add(-time.Hour)
 	ldA := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
 	ldB := time.Date(2026, 7, 11, 0, 0, 0, 0, time.UTC)
 
@@ -592,15 +634,16 @@ func TestNationalPollHandler_Handle_AggregatesBothLanes(t *testing.T) {
 	appsA := newFakeApps()
 	appsB := newFakeApps()
 	state := newFakeStateStore()
-	state.states[sentinelLaneA] = PollState{HighWaterMark: watermark, LastPollTime: watermark}
-	state.states[sentinelLaneB] = PollState{HighWaterMark: watermark, LastPollTime: watermark}
+	state.states[sentinelLaneA] = PollState{HighWaterMark: watermark, LastPollTime: longAgo}
+	state.states[sentinelLaneB] = PollState{HighWaterMark: watermark, LastPollTime: longAgo}
 	logger := slog.New(slog.NewTextHandler(discard{}, nil))
-	clock := func() time.Time { return time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC) }
+	clock := func() time.Time { return clockTime }
 
 	laneAHandler := NewNationalLaneHandler(fetcherA, state, appsA, laneAOpts(), clock, logger)
 	laneBHandler := NewNationalLaneHandler(fetcherB, state, appsB, laneBOpts(20), clock, logger)
+	planner := NewPlanner(newTestPlannerOpts())
 
-	handler := NewNationalPollHandler(laneAHandler, laneBHandler, nil, clock, logger)
+	handler := NewNationalPollHandler(laneAHandler, laneBHandler, nil, planner, NationalPollOptions{HandlerBudget: 4 * time.Minute}, clock, logger)
 
 	res, err := handler.Handle(context.Background())
 	if err != nil {
@@ -618,26 +661,37 @@ func TestNationalPollHandler_Handle_AggregatesBothLanes(t *testing.T) {
 	if res.AuthorityErrors != 0 {
 		t.Errorf("AuthorityErrors: got %d, want 0", res.AuthorityErrors)
 	}
+	if fetcherA.calls != 1 || fetcherB.calls != 1 {
+		t.Errorf("expected exactly one fetch per lane, got A=%d B=%d", fetcherA.calls, fetcherB.calls)
+	}
 }
 
-// TestNationalPollHandler_Handle_CountsLaneErrorsWithoutFailingTheCycle
-// proves a lane error is counted, not fatal: the cycle still returns a nil
-// error so the orchestrator schedules the next run (self-healing — no
-// per-authority state to strand).
-func TestNationalPollHandler_Handle_CountsLaneErrorsWithoutFailingTheCycle(t *testing.T) {
+// TestNationalPollHandler_Handle_StopsOnFirstLaneError proves a lane error
+// stops the WHOLE loop immediately (ADR 0044's single break, replacing the
+// old per-lane fold): the cycle still returns a nil error (self-healing —
+// the last checkpoint holds) but AuthorityErrors reports the stop.
+func TestNationalPollHandler_Handle_StopsOnFirstLaneError(t *testing.T) {
 	t.Parallel()
+	clockTime := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
+	longAgo := clockTime.Add(-time.Hour)
+
 	fetcherA := newFakeNationalFetcher()
 	fetcherA.failNth[1] = errors.New("planit: transport blew up")
 	fetcherB := newFakeNationalFetcher()
+	fetcherB.pages[0] = planit.FetchPageResult{From: 0, Applications: nil, HasMorePages: false}
 
 	apps := newFakeApps()
 	state := newFakeStateStore()
+	watermark := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	state.states[sentinelLaneA] = PollState{HighWaterMark: watermark, LastPollTime: longAgo}
+	state.states[sentinelLaneB] = PollState{HighWaterMark: watermark, LastPollTime: longAgo}
 	logger := slog.New(slog.NewTextHandler(discard{}, nil))
-	clock := func() time.Time { return time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC) }
+	clock := func() time.Time { return clockTime }
 
 	laneAHandler := NewNationalLaneHandler(fetcherA, state, apps, laneAOpts(), clock, logger)
 	laneBHandler := NewNationalLaneHandler(fetcherB, state, apps, laneBOpts(20), clock, logger)
-	handler := NewNationalPollHandler(laneAHandler, laneBHandler, nil, clock, logger)
+	planner := NewPlanner(newTestPlannerOpts())
+	handler := NewNationalPollHandler(laneAHandler, laneBHandler, nil, planner, NationalPollOptions{HandlerBudget: 4 * time.Minute}, clock, logger)
 
 	res, err := handler.Handle(context.Background())
 	if err != nil {
@@ -646,18 +700,22 @@ func TestNationalPollHandler_Handle_CountsLaneErrorsWithoutFailingTheCycle(t *te
 	if res.AuthorityErrors != 1 {
 		t.Errorf("AuthorityErrors: got %d, want 1", res.AuthorityErrors)
 	}
+	// Lane A is the older (longAgo) and therefore LRU-first candidate, so it
+	// runs (and fails) before Lane B ever gets a turn — the single break
+	// covers whichever lane errors, without a per-lane fold to omit one.
+	if fetcherB.calls != 0 {
+		t.Errorf("lane B fetcher: got %d calls, want 0 (the loop stopped on lane A's error before lane B's turn)", fetcherB.calls)
+	}
 }
 
-// TestNationalPollHandler_Handle_SkipsLaneCWhenNil pins the tc-5lu8h hotfix
-// contract at the handler level: NewNationalPollHandler(laneA, laneB, nil,
-// ...) — the shape cmd/worker's buildPollOrchestrator produces when
-// POLLING_LANE_C_ENABLED is off (its default) — must run Lane A and Lane B to
-// completion and return cleanly, with no reconciliation work attempted (there
-// is no Lane C to fetch from: h.laneC is nil, so Handle's `if h.laneC != nil`
-// guard skips the Due/Run call entirely rather than dereferencing a nil
-// *ReconciliationHandler).
+// TestNationalPollHandler_Handle_SkipsLaneCWhenNil pins the contract when
+// Lane C is not wired (a test convenience / the current production shape
+// before this PR is deployed): NextWork must never pick it, so Lane A/B run
+// to completion and the cycle returns cleanly.
 func TestNationalPollHandler_Handle_SkipsLaneCWhenNil(t *testing.T) {
 	t.Parallel()
+	clockTime := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
+	longAgo := clockTime.Add(-time.Hour)
 	watermark := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
 	ldA := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
 	ldB := time.Date(2026, 7, 11, 0, 0, 0, 0, time.UTC)
@@ -670,14 +728,15 @@ func TestNationalPollHandler_Handle_SkipsLaneCWhenNil(t *testing.T) {
 	appsA := newFakeApps()
 	appsB := newFakeApps()
 	state := newFakeStateStore()
-	state.states[sentinelLaneA] = PollState{HighWaterMark: watermark, LastPollTime: watermark}
-	state.states[sentinelLaneB] = PollState{HighWaterMark: watermark, LastPollTime: watermark}
+	state.states[sentinelLaneA] = PollState{HighWaterMark: watermark, LastPollTime: longAgo}
+	state.states[sentinelLaneB] = PollState{HighWaterMark: watermark, LastPollTime: longAgo}
 	logger := slog.New(slog.NewTextHandler(discard{}, nil))
-	clock := func() time.Time { return time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC) }
+	clock := func() time.Time { return clockTime }
 
 	laneAHandler := NewNationalLaneHandler(fetcherA, state, appsA, laneAOpts(), clock, logger)
 	laneBHandler := NewNationalLaneHandler(fetcherB, state, appsB, laneBOpts(20), clock, logger)
-	handler := NewNationalPollHandler(laneAHandler, laneBHandler, nil, clock, logger)
+	planner := NewPlanner(newTestPlannerOpts())
+	handler := NewNationalPollHandler(laneAHandler, laneBHandler, nil, planner, NationalPollOptions{HandlerBudget: 4 * time.Minute}, clock, logger)
 
 	res, err := handler.Handle(context.Background())
 	if err != nil {
@@ -701,16 +760,18 @@ func TestNationalPollHandler_Handle_SkipsLaneCWhenNil(t *testing.T) {
 // backfill work attempted.
 func TestNationalPollHandler_WithBackfillNilNeverPanics(t *testing.T) {
 	t.Parallel()
+	clockTime := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
 	fetcherA := newFakeNationalFetcher()
 	fetcherB := newFakeNationalFetcher()
 	apps := newFakeApps()
 	state := newFakeStateStore()
 	logger := slog.New(slog.NewTextHandler(discard{}, nil))
-	clock := func() time.Time { return time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC) }
+	clock := func() time.Time { return clockTime }
 
 	laneAHandler := NewNationalLaneHandler(fetcherA, state, apps, laneAOpts(), clock, logger)
 	laneBHandler := NewNationalLaneHandler(fetcherB, state, apps, laneBOpts(20), clock, logger)
-	handler := NewNationalPollHandler(laneAHandler, laneBHandler, nil, clock, logger)
+	planner := NewPlanner(newTestPlannerOpts())
+	handler := NewNationalPollHandler(laneAHandler, laneBHandler, nil, planner, NationalPollOptions{HandlerBudget: 4 * time.Minute}, clock, logger)
 
 	handler.WithBackfill(nil)
 
@@ -723,21 +784,28 @@ func TestNationalPollHandler_WithBackfillNilNeverPanics(t *testing.T) {
 	}
 }
 
-// TestNationalPollHandler_Handle_RunsBackfillLaneAfterLaneC proves Lane D runs
-// unconditionally every cycle (nil-guarded, not Due-gated like Lane C) once
-// wired via WithBackfill.
-func TestNationalPollHandler_Handle_RunsBackfillLaneAfterLaneC(t *testing.T) {
+// TestNationalPollHandler_Handle_RunsBackfillLaneOutOfHours proves Lane D
+// runs once the planner picks it: eligible only out-of-hours (night, no
+// active window for A/B beyond their own due check), incomplete, and the
+// only lane with work once A/B have run their single due page.
+func TestNationalPollHandler_Handle_RunsBackfillLaneOutOfHours(t *testing.T) {
 	t.Parallel()
+	night := time.Date(2026, 7, 14, 3, 0, 0, 0, time.UTC) // 03:00 UTC = 03:00 GMT, out-of-hours
 	fetcherA := newFakeNationalFetcher()
 	fetcherB := newFakeNationalFetcher()
 	apps := newFakeApps()
 	state := newFakeStateStore()
+	// A/B just polled: not due, so they never contend with Lane D's turn.
+	watermark := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	state.states[sentinelLaneA] = PollState{HighWaterMark: watermark, LastPollTime: night}
+	state.states[sentinelLaneB] = PollState{HighWaterMark: watermark, LastPollTime: night}
 	logger := slog.New(slog.NewTextHandler(discard{}, nil))
-	clock := func() time.Time { return time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC) }
+	clock := func() time.Time { return night }
 
 	laneAHandler := NewNationalLaneHandler(fetcherA, state, apps, laneAOpts(), clock, logger)
 	laneBHandler := NewNationalLaneHandler(fetcherB, state, apps, laneBOpts(20), clock, logger)
-	handler := NewNationalPollHandler(laneAHandler, laneBHandler, nil, clock, logger)
+	planner := NewPlanner(newTestPlannerOpts())
+	handler := NewNationalPollHandler(laneAHandler, laneBHandler, nil, planner, NationalPollOptions{HandlerBudget: 4 * time.Minute}, clock, logger)
 
 	backfillFetcher := newFakeBackfillFetcher()
 	backfillState := newFakeBackfillStateStore()
@@ -753,22 +821,27 @@ func TestNationalPollHandler_Handle_RunsBackfillLaneAfterLaneC(t *testing.T) {
 }
 
 // TestNationalPollHandler_Handle_LaneDRateLimitBubblesToNextCycle proves a
-// 429 hitting Lane D alone (A and B both run cleanly) still bubbles into the
-// cycle's RateLimited/TerminationReason/RetryAfter fields, so
-// Orchestrator.RunOnce -> NextRunScheduler.ComputeNextRun backs off the next
-// poll cycle exactly as it would for an A/B rate limit (tc-hew73).
+// 429 hitting Lane D alone still bubbles into the cycle's
+// RateLimited/TerminationReason/RetryAfter fields, so Orchestrator.RunOnce
+// -> NextRunScheduler.ComputeNextRun backs off the next poll cycle exactly
+// as it would for an A/B rate limit (tc-hew73).
 func TestNationalPollHandler_Handle_LaneDRateLimitBubblesToNextCycle(t *testing.T) {
 	t.Parallel()
+	night := time.Date(2026, 7, 14, 3, 0, 0, 0, time.UTC)
 	fetcherA := newFakeNationalFetcher()
 	fetcherB := newFakeNationalFetcher()
 	apps := newFakeApps()
 	state := newFakeStateStore()
+	watermark := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	state.states[sentinelLaneA] = PollState{HighWaterMark: watermark, LastPollTime: night}
+	state.states[sentinelLaneB] = PollState{HighWaterMark: watermark, LastPollTime: night}
 	logger := slog.New(slog.NewTextHandler(discard{}, nil))
-	clock := func() time.Time { return time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC) }
+	clock := func() time.Time { return night }
 
 	laneAHandler := NewNationalLaneHandler(fetcherA, state, apps, laneAOpts(), clock, logger)
 	laneBHandler := NewNationalLaneHandler(fetcherB, state, apps, laneBOpts(20), clock, logger)
-	handler := NewNationalPollHandler(laneAHandler, laneBHandler, nil, clock, logger)
+	planner := NewPlanner(newTestPlannerOpts())
+	handler := NewNationalPollHandler(laneAHandler, laneBHandler, nil, planner, NationalPollOptions{HandlerBudget: 4 * time.Minute}, clock, logger)
 
 	retryAfter := 45 * time.Second
 	backfillFetcher := newFakeBackfillFetcher(fakeBackfillResponse{err: &planit.RateLimitError{RetryAfter: &retryAfter}})
@@ -788,5 +861,108 @@ func TestNationalPollHandler_Handle_LaneDRateLimitBubblesToNextCycle(t *testing.
 	}
 	if res.RetryAfter == nil || *res.RetryAfter != retryAfter {
 		t.Errorf("RetryAfter: got %v, want %v", res.RetryAfter, retryAfter)
+	}
+}
+
+// TestNationalPollHandler_Handle_BudgetExhaustedIsTimeBounded proves the
+// budget check happens BEFORE calling the planner: once wall-clock time has
+// advanced past the deadline computed at the start of Handle, the loop stops
+// immediately with TerminationTimeBounded and no lane ever runs. The clock
+// double returns the deadline-computation instant on its FIRST call, then a
+// later instant (already past a small budget) on every subsequent call —
+// modelling genuine wall-clock advancement between Handle's setup and its
+// first budget check, since a literal zero/negative HandlerBudget instead
+// disables the check entirely (hasDeadline's documented "zero disables"
+// contract, mirroring the legacy handler.go).
+func TestNationalPollHandler_Handle_BudgetExhaustedIsTimeBounded(t *testing.T) {
+	t.Parallel()
+	start := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
+	fetcherA := newFakeNationalFetcher()
+	fetcherB := newFakeNationalFetcher()
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	logger := slog.New(slog.NewTextHandler(discard{}, nil))
+
+	calls := 0
+	clock := func() time.Time {
+		calls++
+		if calls == 1 {
+			return start
+		}
+		return start.Add(10 * time.Minute)
+	}
+
+	laneAHandler := NewNationalLaneHandler(fetcherA, state, apps, laneAOpts(), clock, logger)
+	laneBHandler := NewNationalLaneHandler(fetcherB, state, apps, laneBOpts(20), clock, logger)
+	planner := NewPlanner(newTestPlannerOpts())
+	handler := NewNationalPollHandler(laneAHandler, laneBHandler, nil, planner, NationalPollOptions{HandlerBudget: time.Minute}, clock, logger)
+
+	res, err := handler.Handle(context.Background())
+	if err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if res.TerminationReason != TerminationTimeBounded {
+		t.Errorf("TerminationReason: got %v, want TerminationTimeBounded", res.TerminationReason)
+	}
+	if fetcherA.calls != 0 || fetcherB.calls != 0 {
+		t.Errorf("expected no lane to run when the budget is already exhausted, got A=%d B=%d", fetcherA.calls, fetcherB.calls)
+	}
+}
+
+// TestNationalPollHandler_Handle_ExcludesCappedLaneForRestOfCycle proves
+// NationalLaneOptions.MaxPages is enforced per-cycle (ADR 0044): Lane B hits
+// its cap after 2 pages and is excluded from planner candidacy for the rest
+// of THIS cycle (its real persisted cursor is untouched, so it resumes
+// normally next cycle) — Lane A, uncapped, keeps draining past 2 pages in
+// the same cycle.
+func TestNationalPollHandler_Handle_ExcludesCappedLaneForRestOfCycle(t *testing.T) {
+	t.Parallel()
+	clockTime := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
+	longAgo := clockTime.Add(-time.Hour)
+	watermark := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	ld := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+
+	fetcherB := newFakeNationalFetcher()
+	for i := range 5 {
+		fetcherB.pages[i] = planit.FetchPageResult{
+			From:         i,
+			Applications: []applications.PlanningApplication{testApp("d", 300, ld)},
+			HasMorePages: true, // every page claims more follow, so B never completes on its own
+		}
+	}
+	fetcherA := newFakeNationalFetcher()
+	fetcherA.pages[0] = planit.FetchPageResult{From: 0, Applications: nil, HasMorePages: false}
+
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	state.states[sentinelLaneA] = PollState{HighWaterMark: watermark, LastPollTime: longAgo}
+	state.states[sentinelLaneB] = PollState{HighWaterMark: watermark, LastPollTime: longAgo}
+	logger := slog.New(slog.NewTextHandler(discard{}, nil))
+	clock := func() time.Time { return clockTime }
+
+	laneAHandler := NewNationalLaneHandler(fetcherA, state, apps, laneAOpts(), clock, logger)
+	laneBHandler := NewNationalLaneHandler(fetcherB, state, apps, laneBOpts(2), clock, logger) // cap: 2 pages/cycle
+	planner := NewPlanner(newTestPlannerOpts())
+	handler := NewNationalPollHandler(laneAHandler, laneBHandler, nil, planner, NationalPollOptions{HandlerBudget: 4 * time.Minute}, clock, logger)
+
+	res, err := handler.Handle(context.Background())
+	if err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if fetcherB.calls != 2 {
+		t.Errorf("lane B fetches: got %d, want exactly 2 (the per-cycle cap)", fetcherB.calls)
+	}
+	if res.TerminationReason != TerminationNatural {
+		t.Errorf("TerminationReason: got %v, want TerminationNatural (A completed, B capped — nothing left eligible-with-work)", res.TerminationReason)
+	}
+	// Both capped calls land on StartIndex 0 (the 100-record resume overlap
+	// swamps these 1-record fake pages' tiny NextIndex), so the persisted
+	// cursor's exact NextIndex isn't the interesting assertion here — what
+	// matters is that it is still ACTIVE (mid-drain), proving the cap never
+	// touched Lane B's real persisted state, only the in-memory candidacy
+	// this cycle.
+	cursor := state.states[sentinelLaneB].Cursor
+	if cursor == nil {
+		t.Fatal("lane B's persisted cursor: got nil, want an active mid-drain cursor (untouched by the in-cycle cap, ready to resume next cycle)")
 	}
 }

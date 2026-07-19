@@ -1,9 +1,12 @@
-// ADR 0041 / GH#962: the churn-masked national delta poll. This file replaces
-// the per-authority drain (handler.go, left compiling but unwired — see
-// cmd/worker/main.go) with a single national query per lane and ONE global
-// watermark per lane, persisted in the EXISTING poll_state table via a
-// reserved sentinel authority_id (no schema migration: rollback stays a pure
-// image redeploy).
+// ADR 0041 / GH#962 (churn-masked axis) + ADR 0044 (resumable, checkpointed
+// execution model). This file replaces the per-authority drain (handler.go,
+// left compiling but unwired — see cmd/worker/main.go) with a single
+// national query per lane. ADR 0041 gave each lane ONE global watermark; ADR
+// 0044 adds per-page checkpointing on top (the existing PollCursor,
+// reused — no schema migration) and replaces the old "each lane fully drains
+// itself per cycle" model with a one-page-at-a-time executor driven by
+// NationalPollHandler.Handle's planner loop (planner.go). State is persisted
+// in the EXISTING poll_state table via a reserved sentinel authority_id.
 package polling
 
 import (
@@ -20,7 +23,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/planit"
 )
 
-// Sentinel poll_state.authority_id values reserved for the three ADR 0041
+// Sentinel poll_state.authority_id values reserved for the ADR 0041/0044
 // lanes' global watermark bookkeeping. Real PlanIt authority ids are always
 // positive (authorities.Lookup never emits <= 0), so a sentinel row can never
 // collide with a real authority's poll state.
@@ -30,11 +33,13 @@ const (
 	sentinelLaneC = -3
 )
 
-// LaneName tags which ADR 0041 lane produced a span/result: "A" (new
-// applications), "B" (decisions), or "C" (reconciliation).
+// LaneName tags which lane produced a span/result: "A" (new applications),
+// "B" (decisions), "C" (inverse-mask reconciliation), or "D" (historical
+// backfill — see LaneD in planner.go).
 type LaneName string
 
-// LaneA, LaneB, and LaneC are the three ADR 0041 lanes.
+// LaneA, LaneB, and LaneC are three of the four ADR 0044 lanes (LaneD lives
+// in planner.go, tagged into this same vocabulary).
 const (
 	LaneA LaneName = "A"
 	LaneB LaneName = "B"
@@ -64,16 +69,16 @@ type nationalDeltaFetcher interface {
 	FetchNationalDeltaPage(ctx context.Context, q planit.NationalDeltaQuery) (planit.FetchPageResult, error)
 }
 
-// laneWatermarkStore persists ONE lane's global delta watermark in the
-// existing poll_state table via a reserved sentinel authority_id (see the
-// package doc above): HighWaterMark holds the watermark, LastPollTime the
-// lane's last-run time. Lane A/B never pass a cursor (ADR 0041: "a single
-// timestamp, not 485 cursors") — get/save simply thread it through so those
-// callers can ignore it. Lane C is the one exception (tc-tuge8/GH#971): its
-// ReconciliationHandler reuses the same cursor column to resume a
-// multi-cycle authority-list sweep (see reconciliation.go). It is a thin
-// wrapper over the existing pollStateAccess Get/Save — no new store, no new
-// columns either way.
+// laneWatermarkStore persists ONE lane's global delta watermark plus its
+// resumable per-page cursor in the existing poll_state table via a reserved
+// sentinel authority_id (see the package doc above): HighWaterMark holds the
+// watermark (Lane A/B: the descending delta watermark; Lane C: the pinned
+// epoch_upper — see lanec.go), LastPollTime the lane's last-run time, Cursor
+// the active resume position (Lane A/B: an insurance checkpoint for a
+// multi-page walk; Lane C: DifferentStart doubles as epoch_lower and
+// NextIndex as the ascending record offset — ADR 0044's reuse of the
+// existing PollCursor shape, no migration). It is a thin wrapper over the
+// existing pollStateAccess Get/Save — no new store, no new columns.
 type laneWatermarkStore struct {
 	state      pollStateAccess
 	sentinelID int
@@ -84,8 +89,7 @@ func newLaneWatermarkStore(state pollStateAccess, sentinelID int) *laneWatermark
 }
 
 // get returns the lane's persisted watermark, last-run time, and cursor. All
-// three are zero/nil when the lane has never run (no sentinel row yet). Lane
-// A/B callers discard the cursor return value; only Lane C reads it.
+// three are zero/nil when the lane has never run (no sentinel row yet).
 func (s *laneWatermarkStore) get(ctx context.Context) (watermark, lastRun time.Time, cursor *PollCursor, err error) {
 	st, found, err := s.state.Get(ctx, s.sentinelID)
 	if err != nil {
@@ -98,14 +102,13 @@ func (s *laneWatermarkStore) get(ctx context.Context) (watermark, lastRun time.T
 }
 
 // save persists the lane's watermark, this run's timestamp, and its cursor.
-// Lane A/B always pass a nil cursor (they never use one); Lane C passes its
-// authority-list resume position.
+// A nil cursor clears any previously active cursor.
 func (s *laneWatermarkStore) save(ctx context.Context, lastRun, watermark time.Time, cursor *PollCursor) error {
 	return s.state.Save(ctx, s.sentinelID, lastRun, watermark, cursor)
 }
 
-// NationalLaneOptions configure one of ADR 0041's national delta lanes (A or
-// B — Lane C has its own ReconciliationOptions).
+// NationalLaneOptions configure one of the national delta lanes (A or B —
+// Lane C has its own InverseMaskOptions in lanec.go).
 type NationalLaneOptions struct {
 	// Lane tags telemetry and selects the sentinel watermark row ("A" or "B").
 	Lane LaneName
@@ -116,19 +119,33 @@ type NationalLaneOptions struct {
 	// A config dial, not a correctness boundary (ADR 0041): Lane C is the
 	// backstop for anything a mask misses.
 	MaskWindow time.Duration
-	// MaxPages caps the descending page walk. nil = unbounded (Lane A: the
+	// MaxPages bounds how many pages of this lane NationalPollHandler.Handle
+	// will run within a single Handle call (nil = unbounded — Lane A: the
 	// national delta is measured at ~6 pages/day). Non-nil hard-caps the
-	// walk (Lane B: 20 pages/run — decision volume is unmeasured
-	// pre-cutover, and this cap must not be removed).
+	// PER-CYCLE page count (Lane B: 20 pages/cycle — decision volume is
+	// unmeasured pre-cutover, and this cap must not be removed); it is NOT
+	// read by RunOnePage itself — ADR 0044's checkpointed model means a
+	// lane's walk resumes across cycles with no lost progress, so the old
+	// "per-Run() cap, safe because the next cycle just re-walks from
+	// scratch" reasoning no longer applies. Handle enforces this by
+	// excluding the lane from planner candidacy for the REST of the current
+	// cycle once its own per-cycle page count is reached (see
+	// NationalPollHandler.loadPlannerState) — the walk resumes exactly where
+	// it left off on the next cycle via the persisted cursor, so the cap
+	// still bounds decision volume per cycle without ever losing progress or
+	// busy-looping.
 	MaxPages *int
 }
 
-// NationalLaneHandler runs one ADR 0041 national delta lane (A or B): a
-// single national PlanIt query (no auth param), masked by start_date or
-// decided_start to filter out re-index churn, paged descending by
-// last_different until a record at or before the lane's watermark is
-// reached. State is ONE global timestamp — no per-authority cursors, no LRU
-// authority selection.
+// NationalLaneHandler runs one national delta lane (A or B) as a one-page
+// executor (ADR 0044): RunOnePage builds the query from the lane's
+// persisted watermark and resume cursor, fetches exactly ONE page, ingests
+// it, and persists the advanced checkpoint. The page LOOP that used to walk
+// a lane to its boundary in a single call (ADR 0041) now lives up in
+// NationalPollHandler.Handle, which calls RunOnePage repeatedly (via the
+// planner) until the walk completes, is rate-limited, or errors — so a 429
+// costs at most the one in-flight page, and the next cycle resumes exactly
+// where this one stopped.
 type NationalLaneHandler struct {
 	fetcher   nationalDeltaFetcher
 	watermark *laneWatermarkStore
@@ -196,8 +213,11 @@ func (h *NationalLaneHandler) recorder() metricsRecorder {
 	return h.metrics
 }
 
-// laneOutcome is one national lane run's result, carried both into
-// PollPlanItResult (by the caller) and onto the lane's telemetry span.
+// laneOutcome is one lane page's result, carried both into PollPlanItResult
+// (by the caller) and onto the lane's telemetry span. Lane C (lanec.go)
+// reuses this same shape: watermarkBefore/After there hold epoch_lower and
+// the epoch_upper in effect after the call, rather than a literal delta
+// watermark.
 type laneOutcome struct {
 	recordsSeen     int
 	recordsIngested int
@@ -208,51 +228,52 @@ type laneOutcome struct {
 	planitTotal     *int
 	watermarkBefore time.Time
 	watermarkAfter  time.Time
-	capHit          bool
+	// capHit is retained for telemetry continuity (poll.cap_hit) but is
+	// always false from RunOnePage under the ADR 0044 model — MaxPages is
+	// now enforced a level up, by NationalPollHandler excluding a capped
+	// lane from planner candidacy, not by the one-page executor itself (see
+	// NationalLaneOptions.MaxPages).
+	capHit bool
 }
 
-// Run walks one national delta lane's descending pages from PlanIt's newest
-// record down to the lane's watermark (ADR 0041): the coarse different_start
-// prefilter narrows PlanIt's scan to roughly the right window, the
-// start_date/decided_start mask filters out re-index churn, and the
-// descending sort plus this in-memory timestamp watermark give exact delta
-// semantics with no cursor to persist.
+// RunOnePage executes exactly ONE page of this lane's descending delta walk
+// (ADR 0044 §1/§2): read the persisted watermark and resume cursor, build
+// the query, fetch one page, ingest it, and persist the advanced checkpoint.
 //
 // A record whose LastDifferent is at or before the watermark was already
-// ingested by a prior run (the watermark is set to that run's max ingested
+// ingested by a prior walk (the watermark is set to that walk's max ingested
 // value) — paging stops there without re-ingesting it. Every record strictly
 // newer that shares its page with the boundary record has already been
-// ingested earlier in the same page's iteration (descending order means it
+// ingested earlier in this same page's iteration (descending order means it
 // comes first), so nothing between the old watermark and the new one is
 // dropped.
 //
-// The watermark advances ONLY on a completely clean run (no fetch error, no
-// 429, no page-cap or context cut-off): only then is every record between the
-// old watermark and the new one accounted for. Any early stop leaves the
-// watermark untouched — the next run re-walks the same range from scratch,
-// which is wasted request budget, not a silent skip (Ingester's
-// HasSameBusinessFieldsAs gate makes the redundant re-ingests free), and is
-// the safe failure direction the ADR calls out: "never advance a watermark
-// past a page that errored."
+// The watermark advances ONLY when THIS page reaches the boundary or the
+// last page (a clean completion of the whole walk): only then is every
+// record between the old watermark and the new one accounted for. Any
+// earlier stop (fetch error, 429, or simply "more pages remain") freezes the
+// watermark and persists a resume cursor instead — the next call to
+// RunOnePage (this cycle or a later one, via NationalPollHandler.Handle's
+// planner loop) resumes at the checkpointed index rather than re-walking
+// from the start. A record actually received always advances the cursor
+// (truncation-immune, GH#955/tc-nlvpz); nothing beyond the last SUCCESSFUL
+// page is ever persisted, so a page that errors mid-ingest leaves the
+// PREVIOUS page's checkpoint standing (a retry simply re-fetches this page
+// from its start — free, via Ingester's dedup gate).
 //
 // A lane with no prior watermark (never run) does NOT walk this way at all —
 // see seed.
-func (h *NationalLaneHandler) Run(ctx context.Context) laneOutcome {
+func (h *NationalLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 	ctx, span := otel.Tracer(tracerName).Start(ctx, "PlanIt national lane poll")
 	defer span.End()
 
 	now := h.now().UTC()
 	var out laneOutcome
 
-	watermarkBefore, _, _, err := h.watermark.get(ctx)
+	watermarkBefore, _, cursor, err := h.watermark.get(ctx)
 	if err != nil {
 		out.err = fmt.Errorf("lane %s: read watermark: %w", h.opts.Lane, err)
 		span.SetAttributes(attribute.String("poll.lane", string(h.opts.Lane)))
-		// out is not fully computed here — the watermark read itself failed,
-		// so there is nothing yet to report ingested and no watermark to age
-		// (out.watermarkAfter is still the zero time). No metrics recorded,
-		// mirroring the absence of a setSpanAttributes call on this early
-		// bail-out.
 		return out
 	}
 	out.watermarkBefore = watermarkBefore
@@ -262,94 +283,86 @@ func (h *NationalLaneHandler) Run(ctx context.Context) laneOutcome {
 	// A lane with no prior watermark has never run. Walking the mask window
 	// here — as a normal delta walk would, since "> zero time" is true for
 	// every real record — would be a historical backfill (forbidden: ADR 0041
-	// rule 2) and, for Lane A's unbounded page walk, a red-line request
-	// spike that never even finishes inside the cycle budget: a budget
-	// cut-off is never a "clean run", so the watermark could never be set,
-	// and every subsequent cycle would re-attempt the same full-window walk
-	// forever. Seed instead: read PlanIt's current head from a single page-0
-	// fetch and persist it, ingesting nothing. The old drain already held us
-	// at the head (prod baseline max last_different 2026-07-14 05:14:58Z);
-	// Lane C's reconciliation sweep is the backstop for the small forward-flow
-	// gap a seed (rather than a backfill) leaves.
+	// rule 2). Seed instead: read PlanIt's current head from a single
+	// page-0 fetch and persist it, ingesting nothing.
 	if watermarkBefore.IsZero() {
 		return h.seed(ctx, span, now, maskCutoff)
 	}
 
 	prefilterDate := truncateToDate(watermarkBefore)
 
-	var (
-		index       int
-		maxIngested time.Time
-	)
+	// A cursor is active only while it still anchors the current watermark's
+	// calendar date; once the watermark advances, a stale cursor from a
+	// prior walk is ignored (fresh start at index 0) — the same
+	// activeCursor/sameDate staleness guard handler.go's per-authority drain
+	// uses, reused here at national-lane scope (ADR 0044).
+	startIndex := 0
+	if cursor != nil && sameDate(cursor.DifferentStart, watermarkBefore) {
+		startIndex = max(0, cursor.NextIndex-resumeOverlapRecords)
+	}
 
-pageLoop:
-	for {
-		if h.opts.MaxPages != nil && out.pages >= *h.opts.MaxPages {
-			out.capHit = true
+	res, ferr := h.fetcher.FetchNationalDeltaPage(ctx, planit.NationalDeltaQuery{
+		DifferentStart: prefilterDate,
+		Mask:           h.opts.Mask,
+		MaskCutoff:     maskCutoff,
+		StartIndex:     startIndex,
+	})
+	if ferr != nil {
+		var rl *planit.RateLimitError
+		if errors.As(ferr, &rl) {
+			out.rateLimited = true
+			out.retryAfter = rl.RetryAfter
+		} else {
+			out.err = ferr
+		}
+		out.watermarkAfter = watermarkBefore
+		h.recordRunMetrics(ctx, out, now)
+		h.setSpanAttributes(span, out, watermarkBefore, prefilterDate, false)
+		return out
+	}
+
+	out.pages = 1
+	out.planitTotal = res.Total
+	out.recordsSeen = len(res.Applications)
+
+	reachedBoundary := false
+	var maxIngested time.Time
+	for _, app := range res.Applications {
+		if !app.LastDifferent.After(watermarkBefore) {
+			reachedBoundary = true
 			break
 		}
-		if ctx.Err() != nil {
-			out.capHit = true
-			break
+		if ierr := h.ingester.Ingest(ctx, app); ierr != nil {
+			out.err = ierr
+			out.watermarkAfter = watermarkBefore
+			h.recordRunMetrics(ctx, out, now)
+			h.setSpanAttributes(span, out, watermarkBefore, prefilterDate, false)
+			return out
 		}
-
-		res, ferr := h.fetcher.FetchNationalDeltaPage(ctx, planit.NationalDeltaQuery{
-			DifferentStart: prefilterDate,
-			Mask:           h.opts.Mask,
-			MaskCutoff:     maskCutoff,
-			StartIndex:     index,
-		})
-		if ferr != nil {
-			var rl *planit.RateLimitError
-			if errors.As(ferr, &rl) {
-				out.rateLimited = true
-				out.retryAfter = rl.RetryAfter
-			} else {
-				out.err = ferr
-			}
-			break pageLoop
-		}
-
-		out.pages++
-		if out.pages == 1 {
-			out.planitTotal = res.Total
-		}
-		out.recordsSeen += len(res.Applications)
-
-		reachedBoundary := false
-		for _, app := range res.Applications {
-			if !app.LastDifferent.After(watermarkBefore) {
-				reachedBoundary = true
-				break
-			}
-			if ierr := h.ingester.Ingest(ctx, app); ierr != nil {
-				out.err = ierr
-				break pageLoop
-			}
-			out.recordsIngested++
-			if app.LastDifferent.After(maxIngested) {
-				maxIngested = app.LastDifferent
-			}
-		}
-		if reachedBoundary {
-			break
-		}
-
-		index += len(res.Applications)
-		if !res.HasMorePages {
-			break
+		out.recordsIngested++
+		if app.LastDifferent.After(maxIngested) {
+			maxIngested = app.LastDifferent
 		}
 	}
 
-	naturalEnd := out.err == nil && !out.rateLimited && !out.capHit
-	newWatermark := watermarkBefore
-	if naturalEnd && !maxIngested.IsZero() {
-		newWatermark = maxIngested
-	}
-	out.watermarkAfter = newWatermark
+	nextIndex := startIndex + len(res.Applications)
+	complete := reachedBoundary || !res.HasMorePages
 
-	if serr := h.watermark.save(ctx, now, newWatermark, nil); serr != nil && out.err == nil {
-		out.err = serr
+	if complete {
+		newWatermark := watermarkBefore
+		if !maxIngested.IsZero() {
+			newWatermark = maxIngested
+		}
+		out.watermarkAfter = newWatermark
+		if serr := h.watermark.save(ctx, now, newWatermark, nil); serr != nil && out.err == nil {
+			out.err = serr
+		}
+	} else {
+		out.watermarkAfter = watermarkBefore
+		newCursor := &PollCursor{DifferentStart: prefilterDate, NextIndex: nextIndex, KnownTotal: res.Total}
+		if serr := h.watermark.save(ctx, now, watermarkBefore, newCursor); serr != nil && out.err == nil {
+			out.err = serr
+		}
 	}
 
 	h.recordRunMetrics(ctx, out, now)
@@ -418,9 +431,9 @@ func (h *NationalLaneHandler) seed(ctx context.Context, span trace.Span, now, ma
 	return out
 }
 
-// recordRunMetrics records one Run or seed invocation's lane-tagged business
-// KPIs: applications ingested, the lane's watermark staleness, and — on a
-// 429 — the rate-limit counter and Retry-After value (mirroring
+// recordRunMetrics records one RunOnePage or seed invocation's lane-tagged
+// business KPIs: applications ingested, the lane's watermark staleness, and
+// — on a 429 — the rate-limit counter and Retry-After value (mirroring
 // PollPlanItHandler.recordRetryAfter's header-present/absent branching).
 //
 // OldestHighWaterMarkAge repurposes the per-authority staleness gauge as
@@ -459,8 +472,8 @@ func (h *NationalLaneHandler) recordRetryAfter(ctx context.Context, rec metricsR
 }
 
 // setSpanAttributes stamps the "PlanIt national lane poll" span with the full
-// ADR 0041 telemetry set — the safety mechanism a silent-skip bug would
-// otherwise defeat with no error, no 429, and no alert. differentStart is the
+// telemetry set — the safety mechanism a silent-skip bug would otherwise
+// defeat with no error, no 429, and no alert. differentStart is the
 // different_start prefilter actually sent this run (the mask cutoff on a
 // seeding run, the watermark's calendar date on a normal walk), so spans can
 // be grouped by that day to check the records_seen == planit.total invariant.
@@ -497,18 +510,37 @@ func formatWatermark(t time.Time) string {
 	return t.UTC().Format(time.RFC3339)
 }
 
-// NationalPollHandler runs ADR 0041's churn-masked national delta poll: Lane A
-// (new applications) and Lane B (decisions) every cycle, plus Lane C
-// (reconciliation) whenever its own, much longer interval has elapsed. It
-// satisfies the Orchestrator's cycleHandler interface, so it plugs into the
-// existing Service-Bus-triggered orchestrator (orchestrator.go, ADR 0024)
-// unchanged — the trigger/lease machinery does not know or care which
-// concrete handler it drives.
+// nextWorkPlanner is the consumer-side slice of *Planner NationalPollHandler
+// needs. Declared here (not planner.go) per the consumer-side-interface
+// convention.
+type nextWorkPlanner interface {
+	NextWork(state PlannerState, now time.Time) *WorkItem
+}
+
+// NationalPollOptions tune NationalPollHandler.Handle's planner/executor
+// loop (ADR 0044).
+type NationalPollOptions struct {
+	// HandlerBudget is the soft wall-clock deadline Handle stops starting new
+	// work before (mirrors HandlerOptions.HandlerBudget on the legacy
+	// per-authority handler.go). Zero disables it (never time-bounded by
+	// budget alone — only by the planner returning nil, an error, or a 429).
+	HandlerBudget time.Duration
+}
+
+// NationalPollHandler runs the ADR 0044 resumable, checkpointed poll cycle:
+// a planner/executor loop across four lanes (A/B always eligible, C
+// daytime-only, D out-of-hours), one page per iteration, checkpointed after
+// every page. It satisfies the Orchestrator's cycleHandler interface, so it
+// plugs into the existing Service-Bus-triggered orchestrator (orchestrator.go,
+// ADR 0024) unchanged — the trigger/lease machinery does not know or care
+// which concrete handler it drives.
 type NationalPollHandler struct {
 	laneA   *NationalLaneHandler
 	laneB   *NationalLaneHandler
-	laneC   *ReconciliationHandler // nil skips Lane C entirely (e.g. a test exercising only the critical path)
-	laneD   *BackfillHandler       // nil skips Lane D (GH#967, ADR 0042) — the shape until POLLING_BACKFILL_ENABLED flips on
+	laneC   *InverseMaskLaneHandler // nil skips Lane C entirely (e.g. a test exercising only the critical path)
+	laneD   *BackfillHandler        // nil skips Lane D (GH#967, ADR 0042) — the shape until POLLING_BACKFILL_ENABLED flips on
+	planner nextWorkPlanner
+	opts    NationalPollOptions
 	flusher pushFlusher
 	now     func() time.Time
 	logger  *slog.Logger
@@ -519,17 +551,25 @@ type NationalPollHandler struct {
 	metrics metricsRecorder
 }
 
-// NewNationalPollHandler wires the three lanes. laneC may be nil to skip
-// reconciliation.
-func NewNationalPollHandler(laneA, laneB *NationalLaneHandler, laneC *ReconciliationHandler, now func() time.Time, logger *slog.Logger) *NationalPollHandler {
-	return &NationalPollHandler{laneA: laneA, laneB: laneB, laneC: laneC, now: now, logger: logger}
+// NewNationalPollHandler wires the handler over its planner and Lane A/B/C.
+// laneC may be nil to skip Lane C entirely.
+func NewNationalPollHandler(
+	laneA, laneB *NationalLaneHandler,
+	laneC *InverseMaskLaneHandler,
+	planner nextWorkPlanner,
+	opts NationalPollOptions,
+	now func() time.Time,
+	logger *slog.Logger,
+) *NationalPollHandler {
+	return &NationalPollHandler{laneA: laneA, laneB: laneB, laneC: laneC, planner: planner, opts: opts, now: now, logger: logger}
 }
 
 // WithBackfill wires Lane D (GH#967, ADR 0042), the paced historical backfill
-// lane. nil is the safe default — Handle's nil guard skips it entirely — so
-// cmd/worker's buildPollOrchestrator can call this unconditionally with
-// whatever POLLING_BACKFILL_ENABLED produced (a real *BackfillHandler, or
-// nil) without a separate branch. Returns the handler for chaining.
+// lane. nil is the safe default — loadPlannerState/execOnePage's nil guards
+// skip it entirely — so cmd/worker's buildPollOrchestrator can call this
+// unconditionally with whatever POLLING_BACKFILL_ENABLED produced (a real
+// *BackfillHandler, or nil) without a separate branch. Returns the handler
+// for chaining.
 func (h *NationalPollHandler) WithBackfill(laneD *BackfillHandler) *NationalPollHandler {
 	h.laneD = laneD
 	return h
@@ -561,20 +601,92 @@ func (h *NationalPollHandler) recorder() metricsRecorder {
 	return h.metrics
 }
 
-// Handle runs one national poll cycle: Lane A, then Lane B, then — only when
-// due — Lane C. A lane error is logged and counted (AuthorityErrors) but
-// never fails the cycle: there is no per-authority state to strand and no
-// cursor to corrupt, so the next hourly run is self-healing. Handle returns a
-// non-nil error only when it cannot even determine what to do (never reached
-// today — kept for interface parity with cycleHandler, mirroring
-// PollPlanItHandler.Handle's contract).
+// commonLaneOutcome unifies the different lane executors' outcome shapes
+// (laneOutcome for A/B/C, backfillOutcome for D) into the handful of fields
+// Handle's loop needs to decide what to do next.
+type commonLaneOutcome struct {
+	recordsIngested int
+	rateLimited     bool
+	retryAfter      *time.Duration
+	err             error
+}
+
+// Handle runs one ADR 0044 poll cycle: a planner/executor loop replacing the
+// old fixed A -> B -> (C) -> D sequence (ADR 0041/0042):
+//
+//	for {
+//	    if budget exhausted:  TimeBounded; stop
+//	    item := planner.NextWork(state, now)   // pure, no I/O
+//	    if item == nil:       Natural; stop
+//	    out := execOnePage(item.Lane)          // ONE fetch + ingest + checkpoint
+//	    if out.rateLimited:   RateLimited; stop
+//	    if out.err:           log it; stop (safe stop, last checkpoint holds)
+//	}
+//
+// The loop breaks on the FIRST 429 or error from ANY lane — there is no
+// per-lane backoff fold to forget, unlike the old outC-dropped bug
+// (tc-mc0hf): a single `break` covers every lane uniformly. Exactly one
+// ComputeNextRun/PublishAt happens per Handle call, via the unchanged
+// orchestrator (ADR 0024) — the loop is a code boundary inside one process,
+// one lease, one trigger, one budget, never a second job or trigger chain.
 func (h *NationalPollHandler) Handle(ctx context.Context) (PollPlanItResult, error) {
 	if h.flusher != nil {
 		h.flusher.Reset()
 	}
 
-	outA := h.laneA.Run(ctx)
-	outB := h.laneB.Run(ctx)
+	var deadline time.Time
+	hasDeadline := h.opts.HandlerBudget > 0
+	if hasDeadline {
+		deadline = h.now().UTC().Add(h.opts.HandlerBudget)
+	}
+	budgetExhausted := func() bool {
+		return hasDeadline && !h.now().UTC().Before(deadline)
+	}
+
+	var (
+		totalIngested int
+		lastErr       error
+		rateLimited   bool
+		retryAfter    *time.Duration
+		reason        = TerminationNatural
+		pagesRun      = map[LaneName]int{}
+	)
+
+loop:
+	for {
+		if ctx.Err() != nil || budgetExhausted() {
+			reason = TerminationTimeBounded
+			break
+		}
+
+		state, err := h.loadPlannerState(ctx, pagesRun)
+		if err != nil {
+			h.logger.ErrorContext(ctx, "poll cycle: load planner state failed", "error", err)
+			lastErr = err
+			break
+		}
+
+		item := h.planner.NextWork(state, h.now().UTC())
+		if item == nil {
+			reason = TerminationNatural
+			break
+		}
+
+		out := h.execOnePage(ctx, item.Lane)
+		pagesRun[item.Lane]++
+		totalIngested += out.recordsIngested
+
+		if out.err != nil {
+			lastErr = out.err
+			break loop
+		}
+		if out.rateLimited {
+			rateLimited = true
+			retryAfter = out.retryAfter
+			reason = TerminationRateLimited
+			break loop
+		}
+	}
 
 	if h.flusher != nil {
 		if err := h.flusher.Flush(ctx); err != nil {
@@ -582,73 +694,15 @@ func (h *NationalPollHandler) Handle(ctx context.Context) (PollPlanItResult, err
 		}
 	}
 
-	if outA.err != nil {
-		h.logger.ErrorContext(ctx, "lane A poll error", "error", outA.err)
-	}
-	if outB.err != nil {
-		h.logger.ErrorContext(ctx, "lane B poll error", "error", outB.err)
-	}
-
 	laneErrors := 0
-	if outA.err != nil {
-		laneErrors++
-	}
-	if outB.err != nil {
-		laneErrors++
-	}
-
-	if h.laneC != nil {
-		now := h.now().UTC()
-		if h.laneC.Due(ctx, now) {
-			outC := h.laneC.Run(ctx)
-			if outC.err != nil {
-				h.logger.ErrorContext(ctx, "lane C reconciliation error", "error", outC.err)
-			}
-		}
-	}
-
-	// Lane D (GH#967, ADR 0042): runs unconditionally every cycle, nil-guarded
-	// — unlike Lane C it is never Due-gated (there is no interval to check, it
-	// always spends its small fixed page budget). It never contributes to
-	// ApplicationCount/AuthorityErrors below: it is a data-quality/coverage
-	// lane, not part of the critical path those fields describe, and it
-	// structurally cannot notify (nil decision/enqueuer, no WithFanOut
-	// method), so there is nothing here for it to affect. It DOES fold into
-	// the rate-limit backoff below (rateLimited/retryAfter/reason, tc-hew73):
-	// a 429 against Lane D specifically must still slow the next poll cycle,
-	// exactly as an A/B 429 does, or PlanIt's Retry-After hint gets silently
-	// dropped on the floor.
-	var outD backfillOutcome
-	if h.laneD != nil {
-		outD = h.laneD.Run(ctx)
-		if outD.err != nil {
-			h.logger.ErrorContext(ctx, "lane D backfill error", "error", outD.err)
-		}
-	}
-
-	rateLimited := outA.rateLimited || outB.rateLimited || outD.rateLimited
-	var retryAfter *time.Duration
-	switch {
-	case outA.retryAfter != nil:
-		retryAfter = outA.retryAfter
-	case outB.retryAfter != nil:
-		retryAfter = outB.retryAfter
-	case outD.retryAfter != nil:
-		retryAfter = outD.retryAfter
-	}
-
-	reason := TerminationNatural
-	switch {
-	case rateLimited:
-		reason = TerminationRateLimited
-	case outA.capHit || outB.capHit:
-		reason = TerminationTimeBounded
+	if lastErr != nil {
+		laneErrors = 1
 	}
 
 	h.recorder().CycleCompleted(ctx, "National", reason.TelemetryValue())
 
 	return PollPlanItResult{
-		ApplicationCount:  outA.recordsIngested + outB.recordsIngested,
+		ApplicationCount:  totalIngested,
 		AuthoritiesPolled: 0, // no per-authority concept in the national lanes
 		RateLimited:       rateLimited,
 		TerminationReason: reason,
@@ -656,4 +710,106 @@ func (h *NationalPollHandler) Handle(ctx context.Context) (PollPlanItResult, err
 		RetryAfter:        retryAfter,
 		CycleType:         "National",
 	}, nil
+}
+
+// loadPlannerState loads fresh PlannerState from the stores: a handful of
+// cheap point-reads (one per wired lane's sentinel row, plus Lane D's
+// singleton backfill state) — there are only 4 lanes, not 485 authorities,
+// so this is called once per loop iteration rather than once per Handle
+// call, keeping the planner's view of the world always current without any
+// manual in-memory bookkeeping to keep in sync.
+//
+// pagesRun is this Handle call's own in-memory per-lane page counter
+// (reset every call, never persisted): a lane with a configured MaxPages
+// that has already run that many pages THIS cycle is reported to the
+// planner as if it had just run and had no active cursor — i.e. excluded
+// from candidacy for the rest of this cycle — without touching its real
+// persisted state at all, so the walk resumes exactly where it left off
+// next cycle (see NationalLaneOptions.MaxPages).
+func (h *NationalPollHandler) loadPlannerState(ctx context.Context, pagesRun map[LaneName]int) (PlannerState, error) {
+	var st PlannerState
+	now := h.now().UTC()
+
+	_, aLast, aCursor, err := h.laneA.watermark.get(ctx)
+	if err != nil {
+		return st, fmt.Errorf("load lane A state: %w", err)
+	}
+	st.LaneA = LaneState{LastPollTime: aLast, Cursor: aCursor}
+
+	_, bLast, bCursor, err := h.laneB.watermark.get(ctx)
+	if err != nil {
+		return st, fmt.Errorf("load lane B state: %w", err)
+	}
+	st.LaneB = LaneState{LastPollTime: bLast, Cursor: bCursor}
+
+	if h.laneC != nil {
+		_, cLast, cCursor, err := h.laneC.watermark.get(ctx)
+		if err != nil {
+			return st, fmt.Errorf("load lane C state: %w", err)
+		}
+		st.LaneC = &LaneState{LastPollTime: cLast, Cursor: cCursor}
+	}
+
+	if h.laneD != nil {
+		bs, err := h.laneD.state.Get(ctx)
+		if err != nil {
+			return st, fmt.Errorf("load lane D state: %w", err)
+		}
+		st.LaneD = &LaneDState{LastPollTime: bs.LastRunTime, Complete: bs.Complete}
+	}
+
+	if maxPages := h.laneA.opts.MaxPages; maxPages != nil && pagesRun[LaneA] >= *maxPages {
+		st.LaneA = LaneState{LastPollTime: now}
+	}
+	if maxPages := h.laneB.opts.MaxPages; maxPages != nil && pagesRun[LaneB] >= *maxPages {
+		st.LaneB = LaneState{LastPollTime: now}
+	}
+
+	return st, nil
+}
+
+// execOnePage dispatches to the named lane's one-page executor and maps its
+// outcome onto the shape Handle's loop needs. Lane D's "one page" is its own
+// existing Run (unchanged, ADR 0042) — it already bounds and checkpoints
+// itself internally (up to MaxPagesPerCycle pages, persisting after each) —
+// so calling it once is "one unit of work" from Handle's perspective,
+// exactly like every other lane's single page. Lane D deliberately never
+// contributes to ApplicationCount: it is a data-quality/coverage lane, not
+// part of the notification-bearing critical path (its Ingester is built
+// with nil decision/enqueuer collaborators and structurally cannot notify).
+func (h *NationalPollHandler) execOnePage(ctx context.Context, lane LaneName) commonLaneOutcome {
+	switch lane {
+	case LaneA:
+		out := h.laneA.RunOnePage(ctx)
+		if out.err != nil {
+			h.logger.ErrorContext(ctx, "lane A poll error", "error", out.err)
+		}
+		return commonLaneOutcome{recordsIngested: out.recordsIngested, rateLimited: out.rateLimited, retryAfter: out.retryAfter, err: out.err}
+	case LaneB:
+		out := h.laneB.RunOnePage(ctx)
+		if out.err != nil {
+			h.logger.ErrorContext(ctx, "lane B poll error", "error", out.err)
+		}
+		return commonLaneOutcome{recordsIngested: out.recordsIngested, rateLimited: out.rateLimited, retryAfter: out.retryAfter, err: out.err}
+	case LaneC:
+		if h.laneC == nil {
+			return commonLaneOutcome{}
+		}
+		out := h.laneC.RunOnePage(ctx)
+		if out.err != nil {
+			h.logger.ErrorContext(ctx, "lane C poll error", "error", out.err)
+		}
+		return commonLaneOutcome{recordsIngested: out.recordsIngested, rateLimited: out.rateLimited, retryAfter: out.retryAfter, err: out.err}
+	case LaneD:
+		if h.laneD == nil {
+			return commonLaneOutcome{}
+		}
+		out := h.laneD.Run(ctx)
+		if out.err != nil {
+			h.logger.ErrorContext(ctx, "lane D backfill error", "error", out.err)
+		}
+		return commonLaneOutcome{rateLimited: out.rateLimited, retryAfter: out.retryAfter, err: out.err}
+	default:
+		return commonLaneOutcome{}
+	}
 }
