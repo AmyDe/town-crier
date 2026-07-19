@@ -19,8 +19,8 @@ import (
 
 // pollAppConsumer mirrors polling's unexported applicationStore: the exact slice
 // of applications.Store the poll handler consumes — the change-dedup read and the
-// Upsert write the poll cycle performs. The worker hands each ADR 0041 lane
-// (NewNationalLaneHandler / NewReconciliationHandler) the applications.Store
+// Upsert write the poll cycle performs. The worker hands each ADR 0044 lane
+// (NewNationalLaneHandler / NewInverseMaskLaneHandler) the applications.Store
 // interface, so that interface must satisfy this contract for the poll Upsert
 // to reach the store.
 type pollAppConsumer interface {
@@ -64,22 +64,21 @@ func TestWirePollFanOut_AcceptsZoneStoreInterface(t *testing.T) {
 
 	laneA := &polling.NationalLaneHandler{}
 	laneB := &polling.NationalLaneHandler{}
-	laneC := &polling.ReconciliationHandler{}
+	laneC := &polling.InverseMaskLaneHandler{}
 	handler := &polling.NationalPollHandler{}
 	spy := newSpyZoneStore()
 
 	// wirePollFanOut must accept the watchzones.Store interface (the spy) and wire
-	// the fan-out onto all three lanes without panicking on a nil stores pointer.
+	// the fan-out onto all four lanes without panicking on a nil stores pointer.
 	wirePollFanOut(platform.Config{}, laneA, laneB, laneC, handler, spy, testRegistry(), nil, discardLogger())
 }
 
-// TestWirePollFanOut_NilLaneCDoesNotPanic pins the tc-5lu8h hotfix: Lane C
-// reconciliation is disabled by default (POLLING_LANE_C_ENABLED=false), so
-// buildPollOrchestrator passes a nil *polling.ReconciliationHandler as laneC.
-// Before the fix, wirePollFanOut called laneC.WithFanOut unconditionally,
-// which nil-panics on a nil receiver method value dereference. This proves
-// the guard: a nil laneC must not panic, and Lane A/B fan-out wiring must be
-// unaffected.
+// TestWirePollFanOut_NilLaneCDoesNotPanic proves wirePollFanOut's nil guard
+// still holds even though production always wires a real Lane C now (ADR
+// 0044 dropped POLLING_LANE_C_ENABLED): a test exercising a narrower lane
+// set must not need to stub Lane C too. Before the original tc-5lu8h fix,
+// wirePollFanOut called laneC.WithFanOut unconditionally, which nil-panics
+// on a nil receiver method value dereference.
 func TestWirePollFanOut_NilLaneCDoesNotPanic(t *testing.T) {
 	t.Parallel()
 
@@ -124,57 +123,63 @@ func TestEnqueuer_FindZonesContainingFlowsThroughInterface(t *testing.T) {
 	}
 }
 
-// TestBuildPollOrchestrator_LaneCGating pins the tc-5lu8h/tc-tuge8 gating
-// behaviour: Lane C reconciliation is wired only when cfg.PollingLaneCEnabled
-// is true (default true as of tc-tuge8/GH#971, now that the 400 root cause
-// and the cursor-persistence bug are both fixed — an operator can still set
-// it false). Both gate states must build a working orchestrator without
-// panicking — disabled exercises the nil-laneC path through
-// wirePollFanOut's guard; enabled exercises the construction path so the
-// flag itself introduces no regression. sbClient and st are zero-value:
-// buildPollOrchestrator only needs sbClient non-nil to pass its "no poller
-// configured" guard, and every collaborator it constructs (planit.NewClient,
-// the national lane handlers, the reconciliation handler, the orchestrator)
-// opens no connection and performs no I/O at construction time.
-func TestBuildPollOrchestrator_LaneCGating(t *testing.T) {
+// pollOrchestratorTestConfig returns the minimal platform.Config
+// buildPollOrchestrator needs to construct without error: a PlanIt base URL
+// and the ADR 0044 day-window fields (LoadConfig's own defaults —
+// buildPollOrchestrator now parses these via polling.ParseCivilTime and
+// fails the whole build on a malformed value, so a zero-value Config{} is no
+// longer a valid input here).
+func pollOrchestratorTestConfig() platform.Config {
+	return platform.Config{
+		PlanItBaseURL:   "https://stub.planit.test/",
+		PollingDayStart: "07:00",
+		PollingDayEnd:   "19:00",
+	}
+}
+
+// TestBuildPollOrchestrator_AlwaysWiresLaneC pins ADR 0044's removal of the
+// POLLING_LANE_C_ENABLED gate: Lane C (the national inverse-mask
+// reconciliation lane) is now constructed and wired unconditionally, with no
+// flag to check. sbClient and st are zero-value: buildPollOrchestrator only
+// needs sbClient non-nil to pass its "no poller configured" guard, and every
+// collaborator it constructs (planit.NewClient, the lane handlers, the
+// planner, the orchestrator) opens no connection and performs no I/O at
+// construction time.
+func TestBuildPollOrchestrator_AlwaysWiresLaneC(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name         string
-		laneCEnabled bool
-	}{
-		{"disabled", false},
-		{"enabled (default)", true},
+	sbClient := &servicebus.Client{}
+	st := &stores{}
+
+	adapter, err := buildPollOrchestrator(pollOrchestratorTestConfig(), sbClient, testRegistry(), st, discardLogger())
+	if err != nil {
+		t.Fatalf("buildPollOrchestrator: %v", err)
 	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
+	if adapter == nil {
+		t.Fatal("buildPollOrchestrator: got nil adapter, want a configured orchestrator")
+	}
+}
 
-			cfg := platform.Config{
-				PlanItBaseURL:                         "https://stub.planit.test/",
-				PollingLaneCEnabled:                   tc.laneCEnabled,
-				PollingLaneCIntervalHours:             168,
-				PollingLaneCMaxStragglersPerAuthority: 10,
-			}
-			sbClient := &servicebus.Client{}
-			st := &stores{}
+// TestBuildPollOrchestrator_InvalidDayWindowFailsTheBuild proves a malformed
+// POLLING_DAY_START/POLLING_DAY_END fails buildPollOrchestrator outright
+// (never silently degrades Lane C/D's eligibility window to some default).
+func TestBuildPollOrchestrator_InvalidDayWindowFailsTheBuild(t *testing.T) {
+	t.Parallel()
 
-			adapter, err := buildPollOrchestrator(cfg, sbClient, testRegistry(), st, discardLogger())
-			if err != nil {
-				t.Fatalf("buildPollOrchestrator: %v", err)
-			}
-			if adapter == nil {
-				t.Fatal("buildPollOrchestrator: got nil adapter, want a configured orchestrator")
-			}
-		})
+	cfg := pollOrchestratorTestConfig()
+	cfg.PollingDayStart = "not-a-time"
+	sbClient := &servicebus.Client{}
+	st := &stores{}
+
+	if _, err := buildPollOrchestrator(cfg, sbClient, testRegistry(), st, discardLogger()); err == nil {
+		t.Fatal("buildPollOrchestrator: got nil error, want a parse failure for an invalid POLLING_DAY_START")
 	}
 }
 
 // TestBuildPollOrchestrator_BackfillGating pins GH#967's dark-ship default:
 // Lane D (the paced historical backfill lane) is constructed and wired only
 // when cfg.PollingBackfillEnabled is true (default false). Both gate states
-// must build a working orchestrator without panicking, mirroring
-// TestBuildPollOrchestrator_LaneCGating's rationale — every collaborator
+// must build a working orchestrator without panicking — every collaborator
 // buildPollOrchestrator constructs opens no connection and performs no I/O at
 // construction time, so a zero-value *stores works for both branches.
 func TestBuildPollOrchestrator_BackfillGating(t *testing.T) {
@@ -191,13 +196,11 @@ func TestBuildPollOrchestrator_BackfillGating(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			cfg := platform.Config{
-				PlanItBaseURL:                             "https://stub.planit.test/",
-				PollingBackfillEnabled:                    tc.backfillEnabled,
-				PollingBackfillWindowWidthDays:            90,
-				PollingBackfillMaxPagesPerCycle:           2,
-				PollingBackfillEmptyWindowsBeforeComplete: 12,
-			}
+			cfg := pollOrchestratorTestConfig()
+			cfg.PollingBackfillEnabled = tc.backfillEnabled
+			cfg.PollingBackfillWindowWidthDays = 90
+			cfg.PollingBackfillMaxPagesPerCycle = 2
+			cfg.PollingBackfillEmptyWindowsBeforeComplete = 12
 			sbClient := &servicebus.Client{}
 			// Referencing the backfill field by name (even as nil) forces
 			// stores to carry a *polling.PostgresBackfillStateStore field —
