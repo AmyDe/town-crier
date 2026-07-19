@@ -130,8 +130,7 @@ func TestPlanner_Eligible(t *testing.T) {
 func TestPlanner_NextWork_ABDueInterval(t *testing.T) {
 	t.Parallel()
 	p := NewPlanner(testPlannerOptions(t))
-	now := time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC) // 12:00 GMT, outside C's... no, inside; use night instead
-	now = time.Date(2026, 1, 15, 3, 0, 0, 0, time.UTC)   // 03:00 GMT: C ineligible, D eligible-but-complete below
+	now := time.Date(2026, 1, 15, 3, 0, 0, 0, time.UTC) // 03:00 GMT: C ineligible, D eligible-but-complete below
 
 	tests := []struct {
 		name         string

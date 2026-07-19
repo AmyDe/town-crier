@@ -315,7 +315,7 @@ func (h *InverseMaskLaneHandler) hydrate(ctx context.Context, uid string, wantAr
 		out.recordsIngested++
 		return nil
 	}
-	h.logger.WarnContext(ctx, "lane C: hydration fetch returned no matching record", "uid", uid, "areaID", wantAreaID)
+	h.logger.WarnContext(ctx, "lane C: hydration fetch returned no matching record", "uid", uid, "areaId", wantAreaID)
 	return nil
 }
 
