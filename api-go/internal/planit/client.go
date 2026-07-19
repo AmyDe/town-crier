@@ -217,10 +217,10 @@ func (c *Client) FetchApplicationsPage(ctx context.Context, authorityID int, dif
 // fetchPage sends target, classifies the response, decodes the PlanIt
 // envelope, and maps its records to the domain snapshot. It is the shared tail
 // end of every fetch method — the per-authority drain (FetchApplicationsPage),
-// the ADR 0041 national delta lanes (FetchNationalDeltaPage), Lane C's light
-// per-authority sweep (FetchReconciliationPage), and its single-uid hydration
-// lookup (FetchByUID) — so the classify/decode/zero-progress logic lives in
-// exactly one place. authorityIDForMetrics tags the http-error counter only; a
+// the ADR 0041 national delta lanes (FetchNationalDeltaPage), ADR 0044 Lane
+// C's national inverse-mask sweep (FetchInverseMaskPage), and its single-uid
+// hydration lookup (FetchByUID) — so the classify/decode/zero-progress logic
+// lives in exactly one place. authorityIDForMetrics tags the http-error counter only; a
 // national or uid-scoped request has no single owning authority, so callers
 // pass 0. pageSize drives both the zero-progress guard's "from < total"
 // comparison context and the length-heuristic HasMorePages fallback for a
