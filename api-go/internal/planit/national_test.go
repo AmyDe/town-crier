@@ -71,31 +71,44 @@ func TestBuildNationalDeltaPath(t *testing.T) {
 	}
 }
 
-// TestBuildReconciliationPath pins Lane C's light per-authority projection
-// shape: scoped by auth, a different_start date bound (tc-tuge8/GH#971: PlanIt
-// 400s "Spatial, date or search restrictions required in query" on a query
-// with no date param at all -- confirmed from prod's
-// reconciliation.sample_error_body span attribute), the light select set
-// (containing the sort field), pg_sz=300, compress=on. differentStart is
-// injected (not real time) so the assertion is deterministic.
-func TestBuildReconciliationPath(t *testing.T) {
+// TestBuildInverseMaskPath pins ADR 0044 Lane C's national inverse-mask
+// projection shape: no auth param (national, zero per-authority requests), a
+// different_start floor (the epoch lower bound) and an end_date ceiling (the
+// inverse of Lane A's start_date mask), ASCENDING sort (no leading "-",
+// unlike the descending Lane A/B query), the light select set (containing
+// the sort field, plus area_id — ADR 0044's uid-uniqueness-within-authority
+// fix), pg_sz=300, compress=on.
+func TestBuildInverseMaskPath(t *testing.T) {
 	t.Parallel()
-	differentStart := time.Date(2025, 7, 17, 0, 0, 0, 0, time.UTC)
-	path := buildReconciliationPath(99, 0, differentStart)
+	q := NationalInverseMaskQuery{
+		EpochLower: time.Date(2025, 7, 17, 0, 0, 0, 0, time.UTC),
+		MaskCutoff: time.Date(2026, 4, 15, 0, 0, 0, 0, time.UTC),
+		StartIndex: 600,
+	}
+	path := buildInverseMaskPath(q)
 	u, err := url.Parse(path)
 	if err != nil {
 		t.Fatalf("parse built path %q: %v", path, err)
 	}
 	got := u.Query()
 
-	if got.Get("auth") != "99" {
-		t.Errorf("auth: got %q, want 99", got.Get("auth"))
+	if got.Has("auth") {
+		t.Error("inverse-mask query must not carry an auth param (national, not per-authority)")
 	}
 	if got.Get("different_start") != "2025-07-17" {
 		t.Errorf("different_start: got %q, want 2025-07-17", got.Get("different_start"))
 	}
+	if got.Get("end_date") != "2026-04-15" {
+		t.Errorf("end_date: got %q, want 2026-04-15", got.Get("end_date"))
+	}
+	if got.Get("sort") != "last_different" {
+		t.Errorf("sort: got %q, want last_different (ascending, no leading '-')", got.Get("sort"))
+	}
 	if got.Get("pg_sz") != "300" {
 		t.Errorf("pg_sz: got %q, want 300", got.Get("pg_sz"))
+	}
+	if got.Get("index") != "600" {
+		t.Errorf("index: got %q, want 600", got.Get("index"))
 	}
 	if got.Get("compress") != "on" {
 		t.Errorf("compress: got %q, want on", got.Get("compress"))
@@ -104,8 +117,80 @@ func TestBuildReconciliationPath(t *testing.T) {
 	if !containsString(fields, "last_different") {
 		t.Errorf("select must contain the sort field last_different: got %v", fields)
 	}
+	if !containsString(fields, "area_id") {
+		t.Errorf("select must contain area_id (uid is only unique within an authority): got %v", fields)
+	}
 	if containsString(fields, "name") {
-		t.Errorf("reconciliation select must stay a light projection, not the full ingest set: got %v", fields)
+		t.Errorf("inverse-mask select must stay a light projection, not the full ingest set: got %v", fields)
+	}
+}
+
+// TestFetchInverseMaskPage_SendsExpectedQueryAndParsesResponse drives the
+// client end-to-end against an httptest server on localhost.
+func TestFetchInverseMaskPage_SendsExpectedQueryAndParsesResponse(t *testing.T) {
+	t.Parallel()
+	body := `{"total":42,"pg_sz":300,"from":0,"records":[
+		{"uid":"26/0001/FUL","area_id":300,"app_state":"Undecided","last_different":"2026-07-14T09:00:00.123456"}
+	]}`
+	var gotQuery url.Values
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.Query()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+
+	clock := &fakeClock{}
+	c := newTestClient(t, srv.URL, clock)
+
+	res, err := c.FetchInverseMaskPage(context.Background(), NationalInverseMaskQuery{
+		EpochLower: time.Date(2026, 4, 15, 0, 0, 0, 0, time.UTC),
+		MaskCutoff: time.Date(2026, 4, 15, 0, 0, 0, 0, time.UTC),
+		StartIndex: 0,
+	})
+	if err != nil {
+		t.Fatalf("FetchInverseMaskPage: %v", err)
+	}
+
+	if gotQuery.Get("different_start") != "2026-04-15" ||
+		gotQuery.Get("end_date") != "2026-04-15" ||
+		gotQuery.Get("sort") != "last_different" ||
+		gotQuery.Get("pg_sz") != "300" ||
+		gotQuery.Get("compress") != "on" ||
+		gotQuery.Has("auth") {
+		t.Errorf("unexpected request query: %s", gotQuery.Encode())
+	}
+	if res.Total == nil || *res.Total != 42 {
+		t.Errorf("Total: got %v, want 42", res.Total)
+	}
+	if len(res.Applications) != 1 || res.Applications[0].UID != "26/0001/FUL" || res.Applications[0].AreaID != 300 {
+		t.Fatalf("Applications: got %+v", res.Applications)
+	}
+}
+
+// TestFetchInverseMaskPage_RateLimited proves a 429 surfaces as
+// *RateLimitError, identically to every other fetch method.
+func TestFetchInverseMaskPage_RateLimited(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "30")
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	t.Cleanup(srv.Close)
+
+	clock := &fakeClock{}
+	c := newTestClient(t, srv.URL, clock)
+
+	_, err := c.FetchInverseMaskPage(context.Background(), NationalInverseMaskQuery{
+		EpochLower: time.Now(),
+		MaskCutoff: time.Now(),
+	})
+	var rl *RateLimitError
+	if !errors.As(err, &rl) {
+		t.Fatalf("expected *RateLimitError, got %T: %v", err, err)
+	}
+	if rl.RetryAfter == nil || *rl.RetryAfter != 30*time.Second {
+		t.Errorf("RetryAfter: got %v", rl.RetryAfter)
 	}
 }
 

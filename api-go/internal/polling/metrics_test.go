@@ -252,9 +252,9 @@ func TestNationalLaneRun_RecordsApplicationsIngestedWithLaneTag(t *testing.T) {
 	h := newLaneHandler(t, fetcher, apps, state, laneAOpts())
 	h.WithMetrics(rec)
 
-	out := h.Run(context.Background())
+	out := h.RunOnePage(context.Background())
 	if out.err != nil {
-		t.Fatalf("Run: %v", out.err)
+		t.Fatalf("RunOnePage: %v", out.err)
 	}
 	if rec.applicationsIngest != 1 {
 		t.Errorf("ApplicationsIngested total = %d, want 1", rec.applicationsIngest)
@@ -267,9 +267,10 @@ func TestNationalLaneRun_RecordsApplicationsIngestedWithLaneTag(t *testing.T) {
 	}
 }
 
-// TestNationalLaneRun_RecordsRateLimitMetrics covers a lane hitting a 429
-// mid-walk: RateLimited and RetryAfterSeconds must both fire, tagged with the
-// lane letter, mirroring PollPlanItHandler.recordRetryAfter.
+// TestNationalLaneRun_RecordsRateLimitMetrics covers a lane hitting a 429 on
+// a SECOND RunOnePage call (a mid-walk 429 under the ADR 0044 one-page-per-
+// call model): RateLimited and RetryAfterSeconds must both fire, tagged with
+// the lane letter, mirroring PollPlanItHandler.recordRetryAfter.
 func TestNationalLaneRun_RecordsRateLimitMetrics(t *testing.T) {
 	t.Parallel()
 	watermark := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
@@ -292,7 +293,10 @@ func TestNationalLaneRun_RecordsRateLimitMetrics(t *testing.T) {
 	h := newLaneHandler(t, fetcher, apps, state, laneAOpts())
 	h.WithMetrics(rec)
 
-	out := h.Run(context.Background())
+	if out := h.RunOnePage(context.Background()); out.err != nil {
+		t.Fatalf("first RunOnePage: %v", out.err)
+	}
+	out := h.RunOnePage(context.Background())
 	if !out.rateLimited {
 		t.Fatal("expected rateLimited=true")
 	}
@@ -326,21 +330,22 @@ func TestNationalLane_NilMetricsRecorderIsNoOp(t *testing.T) {
 	state := newFakeStateStore()
 	state.states[sentinelLaneA] = PollState{HighWaterMark: watermark, LastPollTime: watermark}
 
-	// No WithMetrics call: Run must not panic.
+	// No WithMetrics call: RunOnePage must not panic.
 	h := newLaneHandler(t, fetcher, apps, state, laneAOpts())
-	if out := h.Run(context.Background()); out.err != nil {
-		t.Fatalf("Run without metrics recorder: %v", out.err)
+	if out := h.RunOnePage(context.Background()); out.err != nil {
+		t.Fatalf("RunOnePage without metrics recorder: %v", out.err)
 	}
 }
 
-// TestReconciliationRun_RecordsApplicationsIngestedWithHydratedCount covers
-// Lane C: Run records ApplicationsIngested tagged "C" with the count of
-// stragglers actually hydrated this sweep.
-func TestReconciliationRun_RecordsApplicationsIngestedWithHydratedCount(t *testing.T) {
+// TestInverseMaskLane_RecordsApplicationsIngestedWithLaneTag covers Lane C:
+// RunOnePage records ApplicationsIngested tagged "C" with the count of
+// stragglers actually hydrated this page.
+func TestInverseMaskLane_RecordsApplicationsIngestedWithLaneTag(t *testing.T) {
 	t.Parallel()
 	ld := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
-	fetcher := newFakeReconciliationFetcher()
-	fetcher.pages[99] = planit.FetchPageResult{
+	epochUpper := ld.Add(time.Hour)
+	fetcher := newFakeInverseMaskFetcher()
+	fetcher.pages[0] = planit.FetchPageResult{
 		Applications: []applications.PlanningApplication{lightApp("24/0001/FUL", 99, "Permitted", ld)},
 	}
 	full := testApp("24/0001", 99, ld)
@@ -353,14 +358,15 @@ func TestReconciliationRun_RecordsApplicationsIngestedWithHydratedCount(t *testi
 	undecided := "Undecided"
 	apps.existing["24/0001/FUL"] = applications.PlanningApplication{UID: "24/0001/FUL", AreaID: 99, AppState: &undecided, LastDifferent: ld.Add(-time.Hour)}
 	state := newFakeStateStore()
+	state.states[sentinelLaneC] = PollState{HighWaterMark: epochUpper, Cursor: &PollCursor{DifferentStart: ld.Add(-2 * time.Hour), NextIndex: 0}}
 
 	rec := &fakePollMetrics{}
-	h := newReconciliationHandler(t, fetcher, apps, state, []int{99}, defaultReconciliationOpts())
+	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
 	h.WithMetrics(rec)
 
-	out := h.Run(context.Background())
+	out := h.RunOnePage(context.Background())
 	if out.err != nil {
-		t.Fatalf("Run: %v", out.err)
+		t.Fatalf("RunOnePage: %v", out.err)
 	}
 	if rec.applicationsIngest != 1 {
 		t.Errorf("ApplicationsIngested total = %d, want 1", rec.applicationsIngest)
@@ -370,30 +376,28 @@ func TestReconciliationRun_RecordsApplicationsIngestedWithHydratedCount(t *testi
 	}
 }
 
-// TestReconciliation_NilMetricsRecorderIsNoOp mirrors
+// TestInverseMaskLane_NilMetricsRecorderIsNoOp mirrors
 // TestHandler_NilMetricsRecorderIsNoOp for Lane C.
-func TestReconciliation_NilMetricsRecorderIsNoOp(t *testing.T) {
+func TestInverseMaskLane_NilMetricsRecorderIsNoOp(t *testing.T) {
 	t.Parallel()
-	ld := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
-	fetcher := newFakeReconciliationFetcher()
-	fetcher.pages[99] = planit.FetchPageResult{
-		Applications: []applications.PlanningApplication{lightApp("24/0001/FUL", 99, "Permitted", ld)},
-	}
+	fetcher := newFakeInverseMaskFetcher()
 	apps := newFakeApps()
 	state := newFakeStateStore()
 
-	// No WithMetrics call: Run must not panic.
-	h := newReconciliationHandler(t, fetcher, apps, state, []int{99}, defaultReconciliationOpts())
-	if out := h.Run(context.Background()); out.err != nil {
-		t.Fatalf("Run without metrics recorder: %v", out.err)
+	// No WithMetrics call: RunOnePage must not panic.
+	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
+	if out := h.RunOnePage(context.Background()); out.err != nil {
+		t.Fatalf("RunOnePage without metrics recorder: %v", out.err)
 	}
 }
 
 // TestNationalPollHandler_RecordsCycleCompletedOnce covers the top-level
 // orchestration handler: exactly one CycleCompleted("National", <termination>)
-// per Handle call, regardless of how many lanes ran underneath it.
+// per Handle call, regardless of how many pages ran underneath it.
 func TestNationalPollHandler_RecordsCycleCompletedOnce(t *testing.T) {
 	t.Parallel()
+	clockTime := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
+	longAgo := clockTime.Add(-time.Hour)
 	watermark := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
 	ldA := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
 	ldB := time.Date(2026, 7, 11, 0, 0, 0, 0, time.UTC)
@@ -406,14 +410,15 @@ func TestNationalPollHandler_RecordsCycleCompletedOnce(t *testing.T) {
 	appsA := newFakeApps()
 	appsB := newFakeApps()
 	state := newFakeStateStore()
-	state.states[sentinelLaneA] = PollState{HighWaterMark: watermark, LastPollTime: watermark}
-	state.states[sentinelLaneB] = PollState{HighWaterMark: watermark, LastPollTime: watermark}
+	state.states[sentinelLaneA] = PollState{HighWaterMark: watermark, LastPollTime: longAgo}
+	state.states[sentinelLaneB] = PollState{HighWaterMark: watermark, LastPollTime: longAgo}
 	logger := slog.New(slog.NewTextHandler(discard{}, nil))
-	clock := func() time.Time { return time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC) }
+	clock := func() time.Time { return clockTime }
 
 	laneAHandler := NewNationalLaneHandler(fetcherA, state, appsA, laneAOpts(), clock, logger)
 	laneBHandler := NewNationalLaneHandler(fetcherB, state, appsB, laneBOpts(20), clock, logger)
-	handler := NewNationalPollHandler(laneAHandler, laneBHandler, nil, clock, logger)
+	planner := NewPlanner(newTestPlannerOpts())
+	handler := NewNationalPollHandler(laneAHandler, laneBHandler, nil, planner, NationalPollOptions{HandlerBudget: 4 * time.Minute}, clock, logger)
 
 	rec := &fakePollMetrics{}
 	handler.WithMetrics(rec)
@@ -434,16 +439,18 @@ func TestNationalPollHandler_RecordsCycleCompletedOnce(t *testing.T) {
 // TestHandler_NilMetricsRecorderIsNoOp for the top-level handler.
 func TestNationalPollHandler_NilMetricsRecorderIsNoOp(t *testing.T) {
 	t.Parallel()
+	clockTime := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
 	fetcherA := newFakeNationalFetcher()
 	fetcherB := newFakeNationalFetcher()
 	apps := newFakeApps()
 	state := newFakeStateStore()
 	logger := slog.New(slog.NewTextHandler(discard{}, nil))
-	clock := func() time.Time { return time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC) }
+	clock := func() time.Time { return clockTime }
 
 	laneAHandler := NewNationalLaneHandler(fetcherA, state, apps, laneAOpts(), clock, logger)
 	laneBHandler := NewNationalLaneHandler(fetcherB, state, apps, laneBOpts(20), clock, logger)
-	handler := NewNationalPollHandler(laneAHandler, laneBHandler, nil, clock, logger)
+	planner := NewPlanner(newTestPlannerOpts())
+	handler := NewNationalPollHandler(laneAHandler, laneBHandler, nil, planner, NationalPollOptions{HandlerBudget: 4 * time.Minute}, clock, logger)
 
 	// No WithMetrics call: Handle must not panic.
 	if _, err := handler.Handle(context.Background()); err != nil {

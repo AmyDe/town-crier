@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // defaultCorsOrigin is the fallback when CORS_ALLOWED_ORIGINS is unset.
@@ -193,42 +194,24 @@ type Config struct {
 	// PollingLaneAMaskDays / PollingLaneBMaskDays are the start_date /
 	// decided_start churn-mask widths in days (default 90 — "a config dial,
 	// not a correctness boundary": ADR 0041, Lane C is the backstop for
-	// anything a mask misses). PollingLaneBMaxPages hard-caps Lane B's
-	// descending page walk per run (decision volume is unmeasured
-	// pre-cutover) — do not remove this cap. PollingLaneCIntervalHours is the
-	// minimum gap between full Lane C reconciliation sweeps (default 168 =
-	// weekly; dial down to 24 for a daily soak, per the ADR's migration plan).
-	// PollingLaneCMaxStragglersPerAuthority bounds Lane C's per-authority
-	// hydration fan-out so one badly-drifted authority cannot balloon a
-	// single sweep's PlanIt request count. PollingLaneCAuthoritiesPerCycle
-	// bounds how many authorities one Lane C sweep cycle attempts before
-	// persisting a resumable cursor and continuing next cycle (default 50 —
-	// 50 x 2s throttle = 100s, comfortably inside the ~570s cycle budget; a
-	// full ~485-authority pass takes ~10 cycles — tc-tuge8/GH#971).
-	// PollingLaneCLookbackDays bounds Lane C's different_start date prefilter
-	// (default 365): PlanIt 400s a reconciliation query carrying no date
-	// bound at all ("Spatial, date or search restrictions required in
-	// query" — tc-tuge8/GH#971's confirmed root cause), and 365 days is
-	// deliberately generous since Lane C's job is detecting drift in what
-	// PlanIt has touched, not computing an exact delta.
-	PollingLaneAMaskDays                  int
-	PollingLaneBMaskDays                  int
-	PollingLaneBMaxPages                  int
-	PollingLaneCIntervalHours             int
-	PollingLaneCMaxStragglersPerAuthority int
-	PollingLaneCAuthoritiesPerCycle       int
-	PollingLaneCLookbackDays              int
-	// PollingLaneCEnabled gates whether Lane C (reconciliation) is wired into
-	// the poll cycle at all. Loaded from POLLING_LANE_C_ENABLED and DEFAULT
-	// TRUE (tc-tuge8/GH#971): Lane C shipped broken in v0.21.0 (its
-	// per-authority query 400s because it carried no date param at all, and
-	// it never recorded its weekly last-run on a budget cut-off, so it
-	// re-ran and hammered PlanIt every cycle). Both are now fixed —
-	// buildReconciliationPath sends a different_start bound, and Run
-	// persists its cursor uncancellably (PR 1, tc-tuge8) — so an unset value
-	// now opts IN by default. An operator can still set
-	// POLLING_LANE_C_ENABLED=false to force it off.
-	PollingLaneCEnabled bool
+	// anything a mask misses). PollingLaneBMaxPages hard-caps how many pages
+	// of Lane B NationalPollHandler.Handle runs per CYCLE under ADR 0044's
+	// checkpointed executor (decision volume is unmeasured pre-cutover) — do
+	// not remove this cap.
+	PollingLaneAMaskDays int
+	PollingLaneBMaskDays int
+	PollingLaneBMaxPages int
+	// PollingDayStart / PollingDayEnd bound Lane C's daytime eligibility
+	// window (ADR 0044 §3), in Europe/London local time — Lane D (the
+	// historical backfill) is eligible exactly outside this window. Loaded
+	// from POLLING_DAY_START / POLLING_DAY_END as "HH:MM" (default
+	// "07:00" / "19:00"), parsed via polling.ParseCivilTime.
+	PollingDayStart string
+	PollingDayEnd   string
+	// PollingLaneFreshnessInterval is how often Lane A/B are due absent an
+	// active mid-drain cursor (ADR 0044 §3, default 15m). Loaded from
+	// POLLING_LANE_FRESHNESS_INTERVAL via time.ParseDuration.
+	PollingLaneFreshnessInterval time.Duration
 
 	// PollingBackfill* configure Lane D, the paced historical backfill lane
 	// (GH#967, ADR 0042): a national, date-windowed backward sweep that
@@ -384,14 +367,12 @@ func LoadConfig() (Config, error) {
 		PollShutdownGraceSeconds:            getenvInt("POLL_SHUTDOWN_GRACE_SECONDS", 30),
 		PollingPlanItPageSize:               getenvInt("POLLING_PLANIT_PAGE_SIZE", 100),
 
-		PollingLaneAMaskDays:                  getenvInt("POLLING_LANE_A_MASK_DAYS", 90),
-		PollingLaneBMaskDays:                  getenvInt("POLLING_LANE_B_MASK_DAYS", 90),
-		PollingLaneBMaxPages:                  getenvInt("POLLING_LANE_B_MAX_PAGES", 20),
-		PollingLaneCIntervalHours:             getenvInt("POLLING_LANE_C_INTERVAL_HOURS", 168),
-		PollingLaneCMaxStragglersPerAuthority: getenvInt("POLLING_LANE_C_MAX_STRAGGLERS_PER_AUTHORITY", 10),
-		PollingLaneCAuthoritiesPerCycle:       getenvInt("POLLING_LANE_C_AUTHORITIES_PER_CYCLE", 50),
-		PollingLaneCLookbackDays:              getenvInt("POLLING_LANE_C_LOOKBACK_DAYS", 365),
-		PollingLaneCEnabled:                   getenvBoolDefault("POLLING_LANE_C_ENABLED", true),
+		PollingLaneAMaskDays:         getenvInt("POLLING_LANE_A_MASK_DAYS", 90),
+		PollingLaneBMaskDays:         getenvInt("POLLING_LANE_B_MASK_DAYS", 90),
+		PollingLaneBMaxPages:         getenvInt("POLLING_LANE_B_MAX_PAGES", 20),
+		PollingDayStart:              getenv("POLLING_DAY_START", "07:00"),
+		PollingDayEnd:                getenv("POLLING_DAY_END", "19:00"),
+		PollingLaneFreshnessInterval: getenvDuration("POLLING_LANE_FRESHNESS_INTERVAL", 15*time.Minute),
 
 		PollingBackfillEnabled:                    getenvBool("POLLING_BACKFILL_ENABLED"),
 		PollingBackfillWindowWidthDays:            getenvInt("POLLING_BACKFILL_WINDOW_WIDTH_DAYS", 90),
@@ -514,6 +495,18 @@ func getenvInt(key string, fallback int) int {
 // unset, empty, or unparseable.
 func getenvFloat(key string, fallback float64) float64 {
 	v, err := strconv.ParseFloat(strings.TrimSpace(os.Getenv(key)), 64)
+	if err != nil {
+		return fallback
+	}
+	return v
+}
+
+// getenvDuration returns the named env var parsed via time.ParseDuration
+// (e.g. "15m"), or fallback when unset, empty, or unparseable — so a
+// misconfigured value fails safe to the default (ADR 0044:
+// POLLING_LANE_FRESHNESS_INTERVAL).
+func getenvDuration(key string, fallback time.Duration) time.Duration {
+	v, err := time.ParseDuration(strings.TrimSpace(os.Getenv(key)))
 	if err != nil {
 		return fallback
 	}

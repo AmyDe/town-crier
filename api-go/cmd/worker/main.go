@@ -11,6 +11,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"log/slog"
 	"net/http"
@@ -23,7 +24,6 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/acsemail"
 	"github.com/AmyDe/town-crier/api-go/internal/apns"
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
-	"github.com/AmyDe/town-crier/api-go/internal/authorities"
 	"github.com/AmyDe/town-crier/api-go/internal/devicetokens"
 	"github.com/AmyDe/town-crier/api-go/internal/devseed"
 	"github.com/AmyDe/town-crier/api-go/internal/digest"
@@ -223,24 +223,24 @@ func run() int {
 	return worker.Run(context.Background(), mode, bootstrapper, digester, dormantRunner, poller, sweepRunner, purger, devSeeder, logger)
 }
 
-// buildPollOrchestrator wires the poll-sb orchestrator: the PlanIt client, the
-// Postgres poll-state and lease stores, ADR 0041's three national delta lanes
-// (A/B/C), and the next-run scheduler — bridged to the receive/publish
-// operations of the shared Service Bus client. It returns (nil, nil) when
-// Service Bus config is absent, so poll-sb refuses to run rather than
-// nil-panicking. The cycle budget (replicaTimeout − grace) and the
-// handler/lease budgets all come from config.
+// buildPollOrchestrator wires the poll-sb orchestrator: the PlanIt client,
+// the Postgres poll-state and lease stores, ADR 0044's four-lane
+// planner/executor loop (A/B/C/D), and the next-run scheduler — bridged to
+// the receive/publish operations of the shared Service Bus client. It
+// returns (nil, nil) when Service Bus config is absent, so poll-sb refuses
+// to run rather than nil-panicking. The cycle budget (replicaTimeout −
+// grace) and the handler/lease budgets all come from config.
 //
-// ADR 0041 / GH#962 (bead tc-5m3tw) replaced the per-authority drain this
-// function used to build — the LRU authority selection, the watched/seed
-// cycle alternation, and the per-authority cursor/high-water-mark handler —
-// with a single national query per lane and one global watermark per lane.
-// That old wiring (polling.NewMinuteCycleSelector, NewCycleAlternatingProvider,
-// NewWatchZoneAuthorityProvider, NewPollPlanItHandler) is left compiling but
-// unwired (the ADR's explicit migration posture: rollback is a config change,
-// not a revert). NewAllAuthorityProvider is the one exception — it is
-// REWIRED below as Lane C's per-authority sweep target, the same pollable-
-// authority list the old Seed cycle drained.
+// ADR 0041 / GH#962 (bead tc-5m3tw) replaced the original per-authority
+// drain this function used to build — the LRU authority selection, the
+// watched/seed cycle alternation, and the per-authority cursor/high-water-
+// mark handler — with a single national query per lane and one global
+// watermark per lane. That old wiring (polling.NewMinuteCycleSelector,
+// NewCycleAlternatingProvider, NewWatchZoneAuthorityProvider,
+// NewPollPlanItHandler, NewAllAuthorityProvider) is left compiling but
+// unwired (the ADR's explicit migration posture: rollback is a config
+// change, not a revert) — ADR 0044 (this function's current shape) removed
+// the last remaining use of it, the per-authority Lane C sweep.
 func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, registry *metrics.Registry, st *stores, logger *slog.Logger) (*pollOrchestratorAdapter, error) {
 	if sbClient == nil {
 		return nil, nil //nolint:nilnil // absent Service Bus config is a valid "no poller" state, not an error
@@ -301,37 +301,52 @@ func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, reg
 		time.Now, logger,
 	)
 
-	// Lane C (reconciliation): a weekly (config-dialable) per-authority
-	// completeness backstop, not on the cutover's critical path. Reuses the
-	// static pollable-authority list the old Seed cycle drained.
-	//
-	// Gated behind POLLING_LANE_C_ENABLED (default ON as of tc-tuge8/GH#971):
-	// Lane C shipped broken in v0.21.0 — its per-authority query 400s because
-	// it carried no date param at all ("Spatial, date or search restrictions
-	// required in query", confirmed from prod's
-	// reconciliation.sample_error_body span attribute), and it never recorded
-	// its weekly last-run when the sweep was cut off by the cycle budget, so
-	// it re-ran and hammered PlanIt every cycle. Both are now fixed —
-	// buildReconciliationPath sends a different_start bound (below) and Run
-	// persists its cursor uncancellably (PR 1, tc-tuge8) — so the config
-	// default now enables Lane C; an operator can still set
-	// POLLING_LANE_C_ENABLED=false to force it off.
-	var laneC *polling.ReconciliationHandler
-	if cfg.PollingLaneCEnabled {
-		laneC = polling.NewReconciliationHandler(
-			planItClient, stateStore, appStore,
-			polling.NewAllAuthorityProvider(authorities.NewLookup()),
-			polling.ReconciliationOptions{
-				Interval:                  time.Duration(cfg.PollingLaneCIntervalHours) * time.Hour,
-				MaxStragglersPerAuthority: cfg.PollingLaneCMaxStragglersPerAuthority,
-				AuthoritiesPerCycle:       cfg.PollingLaneCAuthoritiesPerCycle,
-				LookbackDays:              cfg.PollingLaneCLookbackDays,
-			},
-			time.Now, logger,
-		)
-	}
+	// Lane C (ADR 0044): the national inverse-mask reconciliation lane,
+	// replacing the deleted per-authority ReconciliationHandler (485
+	// requests/pass plus hydration fan-out, the source of the tc-mc0hf 429
+	// storms). Always wired — there is no more POLLING_LANE_C_ENABLED gate:
+	// the planner/executor loop's single "stop on first 429" rule and the
+	// bounded, national query shape make Lane C safe to run unconditionally,
+	// unlike the per-authority sweep it replaces.
+	laneC := polling.NewInverseMaskLaneHandler(
+		planItClient, stateStore, appStore,
+		polling.InverseMaskOptions{
+			// The same mask width as Lane A's start_date mask: Lane C's
+			// end_date bound is that cutoff inverted, so the two lanes
+			// partition the national change axis with no gap or overlap.
+			MaskWindow: time.Duration(cfg.PollingLaneAMaskDays) * 24 * time.Hour,
+		},
+		time.Now, logger,
+	)
 
-	handler := polling.NewNationalPollHandler(laneA, laneB, laneC, time.Now, logger)
+	// The ADR 0044 planner: eligibility windows in Europe/London local time
+	// (Lane C daytime-only, Lane D out-of-hours) — the blank time/tzdata
+	// import in internal/polling/planner.go guarantees this resolves even on
+	// a container base image with no system tzdata.
+	loc, err := time.LoadLocation("Europe/London")
+	if err != nil {
+		return nil, fmt.Errorf("load Europe/London location: %w", err)
+	}
+	dayStart, err := polling.ParseCivilTime(cfg.PollingDayStart)
+	if err != nil {
+		return nil, fmt.Errorf("parse POLLING_DAY_START: %w", err)
+	}
+	dayEnd, err := polling.ParseCivilTime(cfg.PollingDayEnd)
+	if err != nil {
+		return nil, fmt.Errorf("parse POLLING_DAY_END: %w", err)
+	}
+	plnr := polling.NewPlanner(polling.PlannerOptions{
+		FreshnessInterval: cfg.PollingLaneFreshnessInterval,
+		DayStart:          dayStart,
+		DayEnd:            dayEnd,
+		Location:          loc,
+	})
+
+	handler := polling.NewNationalPollHandler(
+		laneA, laneB, laneC, plnr,
+		polling.NationalPollOptions{HandlerBudget: secondsToDuration(float64(cfg.PollingHandlerBudgetSeconds))},
+		time.Now, logger,
+	)
 
 	// Lane D (GH#967, ADR 0042): the paced historical backfill lane. A
 	// national, date-windowed backward sweep that enriches stale/NULL GH#935
@@ -409,10 +424,8 @@ func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, reg
 // wirePollFanOut builds the poll-path notification fan-out collaborators — the
 // decision-event dispatcher, the watch-zone enqueuer, and the push coalescer
 // that batches the cycle's queued pushes into at most one per (user, watch
-// zone) — and attaches them to all three ADR 0041 lanes (GH#784). They share
-// the WatchZones store with Lane C's authority provider (the same
-// watchzones.Store satisfies the zone-containment lookup and the coalescer's
-// zone-name resolution) and the Postgres Notifications / Users /
+// zone) — and attaches them to all three ADR 0044 lanes (GH#784). They share
+// the WatchZones store with the Postgres Notifications / Users /
 // NotificationState / DeviceRegistrations / SavedApplications stores.
 // zoneStore is the same Postgres watchzones.Store from buildPollOrchestrator
 // so FindZonesContaining already runs against the right backend. The APNs
@@ -422,10 +435,14 @@ func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, reg
 // top-level handler, not the individual lanes: one Reset/Flush per cycle
 // covers every lane's pushes, mirroring the old drain's single flush point.
 //
+// laneC is always non-nil in production (ADR 0044 dropped the
+// POLLING_LANE_C_ENABLED gate); the nil guard remains only so a test wiring
+// a narrower lane set (e.g. only A/B) doesn't need to stub Lane C too.
+//
 // st may be nil in tests that only exercise the zone-containment path; the store
 // fields are extracted under a nil guard so the fan-out wires with no other
 // store dependency.
-func wirePollFanOut(cfg platform.Config, laneA, laneB *polling.NationalLaneHandler, laneC *polling.ReconciliationHandler, handler *polling.NationalPollHandler, zoneStore watchzones.Store, registry *metrics.Registry, st *stores, logger *slog.Logger) {
+func wirePollFanOut(cfg platform.Config, laneA, laneB *polling.NationalLaneHandler, laneC *polling.InverseMaskLaneHandler, handler *polling.NationalPollHandler, zoneStore watchzones.Store, registry *metrics.Registry, st *stores, logger *slog.Logger) {
 	dispatcher, enqueuer, coalescer := buildNotifyFanOut(cfg, zoneStore, st, logger)
 
 	// Record towncrier.notifications.created on each dispatcher (tc-21np). Only
@@ -436,19 +453,17 @@ func wirePollFanOut(cfg platform.Config, laneA, laneB *polling.NationalLaneHandl
 
 	laneA.WithFanOut(dispatcher, enqueuer)
 	laneB.WithFanOut(dispatcher, enqueuer)
-	// laneC is nil when POLLING_LANE_C_ENABLED is off (its default) — Lane C is
-	// disabled until tc-tuge8 fixes it, so there is nothing to wire.
 	if laneC != nil {
 		laneC.WithFanOut(dispatcher, enqueuer)
 	}
 	handler.WithPushFlusher(coalescer)
 
 	// Record towncrier.polling.applications_ingested / cycles_completed /
-	// oldest_hwm_age_seconds on the three ADR 0041 lanes and the top-level
+	// oldest_hwm_age_seconds on the four ADR 0044 lanes and the top-level
 	// handler (tc-7ef9g) — the same registry already wired onto the
-	// notification fan-out above. Without this the new national-lane code
-	// path is invisible on those instruments even though ingestion itself
-	// works (confirmed via AppDependencies span inspection).
+	// notification fan-out above. Without this the national-lane code path
+	// is invisible on those instruments even though ingestion itself works
+	// (confirmed via AppDependencies span inspection).
 	laneA.WithMetrics(registry)
 	laneB.WithMetrics(registry)
 	if laneC != nil {

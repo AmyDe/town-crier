@@ -40,11 +40,18 @@ var ingestSelectFields = []string{
 	"associated_id", "last_changed", "last_scraped", "scraper_name",
 }
 
-// reconciliationSelectFields is Lane C's light projection (ADR 0041): just
-// enough to detect a straggler — a row whose PlanIt state has drifted from
-// what Postgres holds — without paying for the full ~778 bytes/record ingest
-// set.
-var reconciliationSelectFields = []string{"uid", "app_state", "decided_date", "last_different"}
+// inverseMaskSelectFields is ADR 0044 Lane C's light national projection:
+// just enough to detect a straggler — a row whose PlanIt state has drifted
+// from what Postgres holds — without paying for the full ~778 bytes/record
+// ingest set. area_id is a deliberate ADR 0044 addition on top of the old
+// per-authority reconciliation's light set (uid, app_state, decided_date,
+// last_different): PlanIt's uid is only unique WITHIN one authority
+// (applications.PostgresStore.GetByUID's doc comment), so a NATIONAL query —
+// unlike the old per-authority sweep, which already knew its authority from
+// the loop it ran inside — needs area_id on every row to build the correct
+// authorityCode for the existence/diff check, or two authorities sharing a
+// bare uid could cross-contaminate.
+var inverseMaskSelectFields = []string{"uid", "area_id", "app_state", "decided_date", "last_different"}
 
 // MaskParam names the churn-mask query parameter ADR 0041 defines: Lane A
 // masks on start_date (the council's own date, which a PlanIt re-index cannot
@@ -91,19 +98,39 @@ func (c *Client) FetchNationalDeltaPage(ctx context.Context, q NationalDeltaQuer
 	return c.fetchPage(ctx, target, 0, q.StartIndex, nationalPageSize)
 }
 
-// FetchReconciliationPage fetches one page of Lane C's light per-authority
-// projection (ADR 0041): select=uid,app_state,decided_date,last_different,
-// sorted newest-touched-first, pg_sz=300, scoped to authorityID.
-// differentStart is the caller-computed date-only cutoff (today minus the
-// configured lookback window) satisfying PlanIt's requirement that every
-// query carry a spatial, date, or search restriction (tc-tuge8/GH#971: an
-// unbounded query 400s with "Spatial, date or search restrictions required
-// in query"). The caller computes it once per sweep from its own injected
-// clock, mirroring how NationalLaneHandler.Run computes MaskCutoff --
-// *Client deliberately has no clock dependency of its own.
-func (c *Client) FetchReconciliationPage(ctx context.Context, authorityID, startIndex int, differentStart time.Time) (FetchPageResult, error) {
-	target := c.baseURL + buildReconciliationPath(authorityID, startIndex, differentStart)
-	return c.fetchPage(ctx, target, authorityID, startIndex, nationalPageSize)
+// NationalInverseMaskQuery configures one ADR 0044 Lane C ascending
+// epoch-page fetch: a national inverse-mask query walking last_different
+// ASCENDING over a pinned epoch [EpochLower, epoch_upper]. The upper bound is
+// NOT a PlanIt query parameter — PlanIt has no different_end/ceiling param
+// (only different_start) — it is enforced by the caller reading each
+// returned record's LastDifferent and stopping once one exceeds the pinned
+// ceiling, mirroring NationalLaneHandler's existing descending
+// reachedBoundary pattern in the opposite direction.
+type NationalInverseMaskQuery struct {
+	// EpochLower is the different_start floor: the coarse, date-granular
+	// prefilter (PlanIt's different_start is date-granular, not an exact
+	// lower bound — the ascending sort plus the caller's own epoch_upper
+	// comparison gives exact epoch semantics, same idea as
+	// NationalDeltaQuery.DifferentStart).
+	EpochLower time.Time
+	// MaskCutoff is the end_date bound: the inverse of Lane A's start_date
+	// mask (today - POLLING_LANE_A_MASK_DAYS), so this query reaches exactly
+	// the old applications Lane A/B's mask excludes.
+	MaskCutoff time.Time
+	// StartIndex is this page's 0-based record offset (index=).
+	StartIndex int
+}
+
+// FetchInverseMaskPage fetches one page of ADR 0044 Lane C's national
+// inverse-mask query: no auth param (a single national query touches every
+// authority, zero per-authority requests), sort=last_different ASCENDING
+// (unlike FetchNationalDeltaPage's descending walk — Lane C drains a
+// pinned-epoch backlog oldest-first so a stall just widens the next epoch
+// rather than re-treading committed ground), pg_sz=300, the light
+// inverseMaskSelectFields projection, compress=on.
+func (c *Client) FetchInverseMaskPage(ctx context.Context, q NationalInverseMaskQuery) (FetchPageResult, error) {
+	target := c.baseURL + buildInverseMaskPath(q)
+	return c.fetchPage(ctx, target, 0, q.StartIndex, nationalPageSize)
 }
 
 // FetchByUID hydrates one straggler Lane C flagged: a single-record fetch via
@@ -139,17 +166,19 @@ func buildNationalDeltaPath(q NationalDeltaQuery) string {
 	)
 }
 
-// buildReconciliationPath builds Lane C's light per-authority projection
-// path: scoped by auth, a different_start date bound (tc-tuge8/GH#971 -- see
-// FetchReconciliationPage), the light select set, sort=-last_different,
-// pg_sz=300, and compress=on. differentStart is deliberately NOT a churn
-// mask (MaskStartDate/MaskDecidedStart): Lane C's job is detecting drift in
-// what PlanIt has touched, so this stays a wide, date-only prefilter rather
-// than the exact-delta mask Lane A/B compute.
-func buildReconciliationPath(authorityID, startIndex int, differentStart time.Time) string {
+// buildInverseMaskPath builds ADR 0044 Lane C's national inverse-mask query
+// path: no auth param, a different_start floor (the epoch's lower bound), an
+// end_date ceiling (the inverse of Lane A's start_date mask — see
+// NationalInverseMaskQuery.MaskCutoff), sort=last_different ASCENDING (no
+// leading "-", unlike buildNationalDeltaPath), the light select set
+// (containing the sort field, satisfying PlanIt's "sort field must be
+// selected" rule), pg_sz=300, and compress=on.
+func buildInverseMaskPath(q NationalInverseMaskQuery) string {
 	return fmt.Sprintf(
-		"/api/applics/json?auth=%d&different_start=%s&sort=-last_different&pg_sz=%d&index=%d&select=%s&compress=on",
-		authorityID, differentStart.UTC().Format("2006-01-02"), nationalPageSize, startIndex, selectParam(reconciliationSelectFields),
+		"/api/applics/json?different_start=%s&end_date=%s&sort=last_different&pg_sz=%d&index=%d&select=%s&compress=on",
+		q.EpochLower.UTC().Format("2006-01-02"),
+		q.MaskCutoff.UTC().Format("2006-01-02"),
+		nationalPageSize, q.StartIndex, selectParam(inverseMaskSelectFields),
 	)
 }
 

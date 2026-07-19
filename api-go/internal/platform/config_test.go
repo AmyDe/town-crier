@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"reflect"
 	"testing"
+	"time"
 )
 
 func TestLoadConfig(t *testing.T) {
@@ -413,8 +414,7 @@ func TestLoadConfig_PollingDefaults(t *testing.T) {
 		"POLL_REPLICA_TIMEOUT_SECONDS", "POLL_SHUTDOWN_GRACE_SECONDS",
 		"POLLING_PLANIT_PAGE_SIZE",
 		"POLLING_LANE_A_MASK_DAYS", "POLLING_LANE_B_MASK_DAYS", "POLLING_LANE_B_MAX_PAGES",
-		"POLLING_LANE_C_INTERVAL_HOURS", "POLLING_LANE_C_MAX_STRAGGLERS_PER_AUTHORITY",
-		"POLLING_LANE_C_ENABLED", "POLLING_LANE_C_AUTHORITIES_PER_CYCLE", "POLLING_LANE_C_LOOKBACK_DAYS",
+		"POLLING_DAY_START", "POLLING_DAY_END", "POLLING_LANE_FRESHNESS_INTERVAL",
 		"POLLING_BACKFILL_ENABLED", "POLLING_BACKFILL_WINDOW_WIDTH_DAYS",
 		"POLLING_BACKFILL_MAX_PAGES_PER_CYCLE", "POLLING_BACKFILL_EMPTY_WINDOWS_BEFORE_COMPLETE",
 	} {
@@ -454,20 +454,14 @@ func TestLoadConfig_PollingDefaults(t *testing.T) {
 	if cfg.PollingLaneBMaxPages != 20 {
 		t.Errorf("lane B max pages default: got %d, want 20", cfg.PollingLaneBMaxPages)
 	}
-	if cfg.PollingLaneCIntervalHours != 168 {
-		t.Errorf("lane C interval default: got %d, want 168", cfg.PollingLaneCIntervalHours)
+	if cfg.PollingDayStart != "07:00" {
+		t.Errorf("PollingDayStart default: got %q, want 07:00", cfg.PollingDayStart)
 	}
-	if !cfg.PollingLaneCEnabled {
-		t.Error("PollingLaneCEnabled: got false, want true by default (tc-tuge8: the 400 is fixed, so Lane C now defaults on)")
+	if cfg.PollingDayEnd != "19:00" {
+		t.Errorf("PollingDayEnd default: got %q, want 19:00", cfg.PollingDayEnd)
 	}
-	if cfg.PollingLaneCMaxStragglersPerAuthority != 10 {
-		t.Errorf("lane C max stragglers default: got %d, want 10", cfg.PollingLaneCMaxStragglersPerAuthority)
-	}
-	if cfg.PollingLaneCAuthoritiesPerCycle != 50 {
-		t.Errorf("lane C authorities-per-cycle default: got %d, want 50 (tc-tuge8: 50 x 2s throttle = 100s, inside the ~570s cycle budget)", cfg.PollingLaneCAuthoritiesPerCycle)
-	}
-	if cfg.PollingLaneCLookbackDays != 365 {
-		t.Errorf("lane C lookback-days default: got %d, want 365 (tc-tuge8: deliberately generous -- detects drift, not an exact delta)", cfg.PollingLaneCLookbackDays)
+	if cfg.PollingLaneFreshnessInterval != 15*time.Minute {
+		t.Errorf("PollingLaneFreshnessInterval default: got %v, want 15m", cfg.PollingLaneFreshnessInterval)
 	}
 	if cfg.PollingBackfillEnabled {
 		t.Error("PollingBackfillEnabled: got true, want false by default (GH#967, ships dark)")
@@ -512,33 +506,42 @@ func TestLoadConfig_PollingBackfillEnabled(t *testing.T) {
 	}
 }
 
-// TestLoadConfig_PollingLaneCEnabled pins the tc-tuge8 fix: Lane C's 400 root
-// cause (an unbounded query PlanIt rejects) is fixed, so POLLING_LANE_C_ENABLED
-// unset now defaults Lane C ON. An operator who explicitly wants it off must
-// still be able to set POLLING_LANE_C_ENABLED=false -- the fail-safe-off path
-// is preserved, only the unset default direction flips.
-func TestLoadConfig_PollingLaneCEnabled(t *testing.T) {
+// TestLoadConfig_PollingDayWindowAndFreshnessInterval covers ADR 0044's new
+// config: POLLING_DAY_START / POLLING_DAY_END bound Lane C's daytime
+// eligibility window (Lane D is eligible exactly outside it), and
+// POLLING_LANE_FRESHNESS_INTERVAL is Lane A/B's due interval. Unset falls
+// back to the documented defaults (07:00/19:00, 15m); an explicit override
+// is honoured; an unparseable duration fails safe to the default.
+func TestLoadConfig_PollingDayWindowAndFreshnessInterval(t *testing.T) {
 	tests := []struct {
-		name string
-		env  string
-		want bool
+		name               string
+		dayStart, dayEnd   string
+		freshness          string
+		wantStart, wantEnd string
+		wantFreshness      time.Duration
 	}{
-		{"unset defaults true", "", true},
-		{"true enables", "true", true},
-		{"1 enables", "1", true},
-		{"false explicitly disables", "false", false},
-		{"0 explicitly disables", "0", false},
+		{name: "unset defaults", wantStart: "07:00", wantEnd: "19:00", wantFreshness: 15 * time.Minute},
+		{name: "explicit override", dayStart: "06:30", dayEnd: "20:15", freshness: "10m", wantStart: "06:30", wantEnd: "20:15", wantFreshness: 10 * time.Minute},
+		{name: "unparseable freshness interval fails safe to default", freshness: "not-a-duration", wantStart: "07:00", wantEnd: "19:00", wantFreshness: 15 * time.Minute},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("POLLING_LANE_C_ENABLED", tc.env)
+			t.Setenv("POLLING_DAY_START", tc.dayStart)
+			t.Setenv("POLLING_DAY_END", tc.dayEnd)
+			t.Setenv("POLLING_LANE_FRESHNESS_INTERVAL", tc.freshness)
 
 			cfg, err := LoadConfig()
 			if err != nil {
 				t.Fatalf("LoadConfig: %v", err)
 			}
-			if cfg.PollingLaneCEnabled != tc.want {
-				t.Errorf("PollingLaneCEnabled: got %v, want %v", cfg.PollingLaneCEnabled, tc.want)
+			if cfg.PollingDayStart != tc.wantStart {
+				t.Errorf("PollingDayStart: got %q, want %q", cfg.PollingDayStart, tc.wantStart)
+			}
+			if cfg.PollingDayEnd != tc.wantEnd {
+				t.Errorf("PollingDayEnd: got %q, want %q", cfg.PollingDayEnd, tc.wantEnd)
+			}
+			if cfg.PollingLaneFreshnessInterval != tc.wantFreshness {
+				t.Errorf("PollingLaneFreshnessInterval: got %v, want %v", cfg.PollingLaneFreshnessInterval, tc.wantFreshness)
 			}
 		})
 	}
@@ -647,11 +650,9 @@ func TestLoadConfig_PollingOverrides(t *testing.T) {
 	t.Setenv("POLLING_LANE_A_MASK_DAYS", "45")
 	t.Setenv("POLLING_LANE_B_MASK_DAYS", "60")
 	t.Setenv("POLLING_LANE_B_MAX_PAGES", "10")
-	t.Setenv("POLLING_LANE_C_INTERVAL_HOURS", "24")
-	t.Setenv("POLLING_LANE_C_MAX_STRAGGLERS_PER_AUTHORITY", "5")
-	t.Setenv("POLLING_LANE_C_ENABLED", "true")
-	t.Setenv("POLLING_LANE_C_AUTHORITIES_PER_CYCLE", "25")
-	t.Setenv("POLLING_LANE_C_LOOKBACK_DAYS", "180")
+	t.Setenv("POLLING_DAY_START", "06:30")
+	t.Setenv("POLLING_DAY_END", "20:15")
+	t.Setenv("POLLING_LANE_FRESHNESS_INTERVAL", "10m")
 
 	cfg, err := LoadConfig()
 	if err != nil {
@@ -678,19 +679,13 @@ func TestLoadConfig_PollingOverrides(t *testing.T) {
 	if cfg.PollingLaneBMaxPages != 10 {
 		t.Errorf("lane B max pages override: got %d, want 10", cfg.PollingLaneBMaxPages)
 	}
-	if cfg.PollingLaneCIntervalHours != 24 {
-		t.Errorf("lane C interval override: got %d, want 24", cfg.PollingLaneCIntervalHours)
+	if cfg.PollingDayStart != "06:30" {
+		t.Errorf("PollingDayStart override: got %q, want 06:30", cfg.PollingDayStart)
 	}
-	if cfg.PollingLaneCMaxStragglersPerAuthority != 5 {
-		t.Errorf("lane C max stragglers override: got %d, want 5", cfg.PollingLaneCMaxStragglersPerAuthority)
+	if cfg.PollingDayEnd != "20:15" {
+		t.Errorf("PollingDayEnd override: got %q, want 20:15", cfg.PollingDayEnd)
 	}
-	if !cfg.PollingLaneCEnabled {
-		t.Error("PollingLaneCEnabled override: got false, want true")
-	}
-	if cfg.PollingLaneCAuthoritiesPerCycle != 25 {
-		t.Errorf("lane C authorities-per-cycle override: got %d, want 25", cfg.PollingLaneCAuthoritiesPerCycle)
-	}
-	if cfg.PollingLaneCLookbackDays != 180 {
-		t.Errorf("lane C lookback-days override: got %d, want 180", cfg.PollingLaneCLookbackDays)
+	if cfg.PollingLaneFreshnessInterval != 10*time.Minute {
+		t.Errorf("PollingLaneFreshnessInterval override: got %v, want 10m", cfg.PollingLaneFreshnessInterval)
 	}
 }
