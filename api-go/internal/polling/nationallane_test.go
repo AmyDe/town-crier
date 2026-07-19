@@ -1,7 +1,9 @@
 package polling
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"testing"
@@ -146,6 +148,124 @@ func TestNationalLane_HandlesTotalAbsent(t *testing.T) {
 
 	if out.planitTotal != nil {
 		t.Errorf("planitTotal: got %v, want nil (PlanIt omitted total)", out.planitTotal)
+	}
+}
+
+// findLogRecord parses each newline-delimited JSON record in buf and returns
+// the first whose "msg" field equals want, decoded into a generic map so
+// tests can assert on individual keys without coupling to slog's exact
+// encoding. Fails the test if no matching record is found.
+func findLogRecord(t *testing.T, buf []byte, want string) map[string]any {
+	t.Helper()
+	for _, line := range bytes.Split(buf, []byte("\n")) {
+		if len(bytes.TrimSpace(line)) == 0 {
+			continue
+		}
+		var rec map[string]any
+		if err := json.Unmarshal(line, &rec); err != nil {
+			continue
+		}
+		if rec["msg"] == want {
+			return rec
+		}
+	}
+	t.Fatalf("no log record with msg=%q found in:\n%s", want, buf)
+	return nil
+}
+
+// TestNationalLane_RunOnePage_LogsPageFetchDiagnostics pins the ONE
+// diagnostic log line added for the frozen-watermark investigation
+// (tc-h2tcx): every successful fetch logs enough to tell, per cycle, what
+// PlanIt actually returned for this query shape (recordsSeen plus the
+// first/last record's UID+LastDifferent) alongside the query parameters
+// that produced it (watermarkBefore, differentStart, maskCutoff,
+// startIndex) — all without touching recordsIngested, the watermark-advance
+// decision, or any span attribute.
+func TestNationalLane_RunOnePage_LogsPageFetchDiagnostics(t *testing.T) {
+	t.Parallel()
+	watermark := time.Date(2026, 7, 10, 9, 0, 0, 0, time.UTC)
+	newer := watermark.Add(2 * time.Hour)
+	newest := watermark.Add(3 * time.Hour)
+
+	fetcher := newFakeNationalFetcher()
+	fetcher.pages[0] = planit.FetchPageResult{
+		From: 0,
+		Applications: []applications.PlanningApplication{
+			testApp("newest", 300, newest),
+			testApp("newer", 300, newer),
+		},
+		HasMorePages: false,
+	}
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	state.states[sentinelLaneA] = PollState{HighWaterMark: watermark, LastPollTime: watermark}
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+	clock := func() time.Time { return time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC) }
+	h := NewNationalLaneHandler(fetcher, state, apps, laneAOpts(), clock, logger)
+
+	if out := h.RunOnePage(context.Background()); out.err != nil {
+		t.Fatalf("RunOnePage: %v", out.err)
+	}
+
+	rec := findLogRecord(t, buf.Bytes(), "lane delta page fetched")
+	if got := rec["lane"]; got != "A" {
+		t.Errorf("lane: got %v, want A", got)
+	}
+	if got := rec["recordsSeen"]; got != float64(2) {
+		t.Errorf("recordsSeen: got %v, want 2", got)
+	}
+	if got := rec["startIndex"]; got != float64(0) {
+		t.Errorf("startIndex: got %v, want 0", got)
+	}
+	if got := rec["planitTotal"]; got != float64(0) {
+		t.Errorf("planitTotal: got %v, want 0 (nil-safe default when PlanIt omits total)", got)
+	}
+	if got := rec["firstUID"]; got != "newest/FUL" {
+		t.Errorf("firstUID: got %v, want newest/FUL (descending order: newest record fetched first)", got)
+	}
+	if got := rec["lastUID"]; got != "newer/FUL" {
+		t.Errorf("lastUID: got %v, want newer/FUL", got)
+	}
+	for _, key := range []string{"watermarkBefore", "differentStart", "maskCutoff", "firstLastDifferent", "lastLastDifferent"} {
+		if _, ok := rec[key]; !ok {
+			t.Errorf("expected key %q present in log record, got %+v", key, rec)
+		}
+	}
+}
+
+// TestNationalLane_RunOnePage_LogsEmptyPageWithoutFirstLastKeys guards the
+// empty-Applications edge case explicitly: no out-of-range index on
+// res.Applications[0]/[len-1], and no firstUID/lastUID keys logged when
+// there is nothing to report.
+func TestNationalLane_RunOnePage_LogsEmptyPageWithoutFirstLastKeys(t *testing.T) {
+	t.Parallel()
+	watermark := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	fetcher := newFakeNationalFetcher()
+	fetcher.pages[0] = planit.FetchPageResult{From: 0, Applications: nil, HasMorePages: false}
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	state.states[sentinelLaneA] = PollState{HighWaterMark: watermark, LastPollTime: watermark}
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+	clock := func() time.Time { return time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC) }
+	h := NewNationalLaneHandler(fetcher, state, apps, laneAOpts(), clock, logger)
+
+	if out := h.RunOnePage(context.Background()); out.err != nil {
+		t.Fatalf("RunOnePage: %v", out.err)
+	}
+
+	rec := findLogRecord(t, buf.Bytes(), "lane delta page fetched")
+	if got := rec["recordsSeen"]; got != float64(0) {
+		t.Errorf("recordsSeen: got %v, want 0", got)
+	}
+	if _, ok := rec["firstUID"]; ok {
+		t.Errorf("firstUID should be absent on an empty page, got %v", rec["firstUID"])
+	}
+	if _, ok := rec["lastUID"]; ok {
+		t.Errorf("lastUID should be absent on an empty page, got %v", rec["lastUID"])
 	}
 }
 

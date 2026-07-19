@@ -325,6 +325,36 @@ func (h *NationalLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 	out.planitTotal = res.Total
 	out.recordsSeen = len(res.Applications)
 
+	// Diagnostic logging for the frozen-watermark investigation (tc-h2tcx):
+	// no control-flow or behavioral change, purely additive. planitTotal is
+	// dereferenced behind a nil check (res.Total is a nilable *int, same as
+	// the setSpanAttributes convention above) rather than logged as a raw
+	// pointer.
+	planitTotal := 0
+	if res.Total != nil {
+		planitTotal = *res.Total
+	}
+	logArgs := []any{
+		"lane", string(h.opts.Lane),
+		"watermarkBefore", watermarkBefore,
+		"differentStart", prefilterDate,
+		"maskCutoff", maskCutoff,
+		"startIndex", startIndex,
+		"planitTotal", planitTotal,
+		"recordsSeen", len(res.Applications),
+	}
+	if len(res.Applications) > 0 {
+		first := res.Applications[0]
+		last := res.Applications[len(res.Applications)-1]
+		logArgs = append(logArgs,
+			"firstUID", first.UID,
+			"firstLastDifferent", first.LastDifferent,
+			"lastUID", last.UID,
+			"lastLastDifferent", last.LastDifferent,
+		)
+	}
+	h.logger.InfoContext(ctx, "lane delta page fetched", logArgs...)
+
 	reachedBoundary := false
 	var maxIngested time.Time
 	for _, app := range res.Applications {
