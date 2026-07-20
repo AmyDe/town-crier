@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"testing"
 	"time"
@@ -38,6 +39,19 @@ func (f *fakeNationalFetcher) FetchNationalDeltaPage(_ context.Context, q planit
 		return planit.FetchPageResult{From: q.StartIndex, HasMorePages: false}, nil
 	}
 	return res, nil
+}
+
+// manyApps builds n synthetic applications with strictly descending
+// LastDifferent values spaced step apart, starting at head. Used to push a
+// walk's cursor.NextIndex past the 100-record resume overlap
+// (handler.go's resumeOverlapRecords) in a multi-page test without needing
+// a real PlanIt page.
+func manyApps(n int, head time.Time, step time.Duration) []applications.PlanningApplication {
+	apps := make([]applications.PlanningApplication, n)
+	for i := range n {
+		apps[i] = testApp(fmt.Sprintf("bulk-%d", i), 300, head.Add(-time.Duration(i)*step))
+	}
+	return apps
 }
 
 // newLaneHandler wires a NationalLaneHandler pinned to a fixed clock
@@ -356,6 +370,14 @@ func TestNationalLane_NeverAdvancesWatermarkOn429(t *testing.T) {
 // checkpoint's whole point (ADR 0044 §2, GH#955/tc-nlvpz): a second
 // RunOnePage call resumes pagination at the persisted (minus the resume
 // overlap) NextIndex rather than re-fetching from index 0.
+//
+// It doubles as the GH#983 acceptance-criterion-4 regression test: the
+// pre-seeded cursor here never sets WalkHead (its zero value, matching a
+// row read back from before the cursor_walk_head column existed), so
+// completion must fall back to this page's own maxIngested -- exactly
+// today's behaviour -- rather than erroring or leaving the watermark
+// stuck. See TestNationalLane_ResumeWithCarriedWalkHead_CompletionUsesCarriedHead
+// for the counterpart proving a genuinely carried WalkHead wins instead.
 func TestNationalLane_MidDrainResumesAtCheckpointedIndex(t *testing.T) {
 	t.Parallel()
 	watermark := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
@@ -396,6 +418,182 @@ func TestNationalLane_MidDrainResumesAtCheckpointedIndex(t *testing.T) {
 	}
 	if state.states[sentinelLaneA].Cursor != nil {
 		t.Errorf("cursor: got %+v, want nil (walk completed)", state.states[sentinelLaneA].Cursor)
+	}
+}
+
+// TestNationalLane_MultiPageWalk_WatermarkUsesPageZeroHead is the primary
+// regression test for GH#983: a two-page walk driven the way
+// NationalPollHandler.Handle's planner loop drives it (RunOnePage called
+// repeatedly, feeding the persisted cursor forward) must land the final
+// watermark on page 0's head -- the walk's true maximum for a descending
+// walk -- never the boundary (oldest) page's own max.
+func TestNationalLane_MultiPageWalk_WatermarkUsesPageZeroHead(t *testing.T) {
+	t.Parallel()
+	watermark := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	head := watermark.Add(48 * time.Hour)
+
+	fetcher := newFakeNationalFetcher()
+	fetcher.pages[0] = planit.FetchPageResult{
+		From:         0,
+		Applications: manyApps(110, head, time.Minute),
+		HasMorePages: true, // walk continues past this page
+	}
+	fetcher.pages[10] = planit.FetchPageResult{
+		From: 10,
+		Applications: []applications.PlanningApplication{
+			testApp("boundary-page-newer", 300, watermark.Add(2*time.Hour)), // ingested, but far below the true walk head
+			testApp("boundary-page-stop", 300, watermark),                   // == watermark: stops the walk here
+		},
+		HasMorePages: false,
+	}
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	state.states[sentinelLaneA] = PollState{HighWaterMark: watermark, LastPollTime: watermark}
+
+	h := newLaneHandler(t, fetcher, apps, state, laneAOpts())
+
+	firstOut := h.RunOnePage(context.Background())
+	if firstOut.err != nil {
+		t.Fatalf("page 0 RunOnePage: %v", firstOut.err)
+	}
+	if !firstOut.watermarkAfter.Equal(watermark) {
+		t.Errorf("watermarkAfter after page 0: got %v, want unchanged %v (mid-walk)", firstOut.watermarkAfter, watermark)
+	}
+
+	secondOut := h.RunOnePage(context.Background())
+	if secondOut.err != nil {
+		t.Fatalf("page 1 RunOnePage: %v", secondOut.err)
+	}
+	if !secondOut.watermarkAfter.Equal(head) {
+		t.Errorf("watermarkAfter after completion: got %v, want the WHOLE walk's head %v, not the boundary page's own max", secondOut.watermarkAfter, head)
+	}
+	if state.states[sentinelLaneA].Cursor != nil {
+		t.Errorf("cursor: got %+v, want nil (walk completed)", state.states[sentinelLaneA].Cursor)
+	}
+}
+
+// TestNationalLane_InterruptedWalk_CursorCarriesWalkHead proves an
+// interrupted (more-pages-remain, boundary not reached) walk captures page
+// 0's head into the persisted cursor's WalkHead even though it goes unused
+// this call -- it is the value a LATER RunOnePage call (this cycle or a
+// future one) needs to complete the walk correctly (GH#983).
+func TestNationalLane_InterruptedWalk_CursorCarriesWalkHead(t *testing.T) {
+	t.Parallel()
+	watermark := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	head := watermark.Add(10 * time.Hour)
+
+	fetcher := newFakeNationalFetcher()
+	fetcher.pages[0] = planit.FetchPageResult{
+		From:         0,
+		Applications: manyApps(110, head, time.Minute),
+		HasMorePages: true, // more pages remain: the walk does not complete this call
+	}
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	state.states[sentinelLaneA] = PollState{HighWaterMark: watermark, LastPollTime: watermark}
+
+	h := newLaneHandler(t, fetcher, apps, state, laneAOpts())
+	out := h.RunOnePage(context.Background())
+
+	if out.err != nil {
+		t.Fatalf("RunOnePage: %v", out.err)
+	}
+	if !out.watermarkAfter.Equal(watermark) {
+		t.Errorf("watermarkAfter: got %v, want unchanged %v (walk interrupted, not complete)", out.watermarkAfter, watermark)
+	}
+	cursor := state.states[sentinelLaneA].Cursor
+	if cursor == nil {
+		t.Fatal("expected a resume cursor to be persisted")
+	}
+	if !cursor.WalkHead.Equal(head) {
+		t.Errorf("cursor.WalkHead: got %v, want %v (page 0's first record, captured even though unused this call)", cursor.WalkHead, head)
+	}
+}
+
+// TestNationalLane_ResumeWithCarriedWalkHead_CompletionUsesCarriedHead is
+// the core regression test for GH#983: when a resume completes the walk,
+// the persisted watermark must come from the CARRIED cursor.WalkHead --
+// never a comparison against or blend with this page's own maxIngested,
+// even when maxIngested happens to be numerically newer than the carried
+// head. That proves the fix genuinely replaces the per-page-scoped
+// variable as the source of truth rather than just widening its scope
+// with a max().
+func TestNationalLane_ResumeWithCarriedWalkHead_CompletionUsesCarriedHead(t *testing.T) {
+	t.Parallel()
+	watermark := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	prefilterDate := watermark
+	carriedHead := watermark.Add(3 * time.Hour) // the walk's true head, captured on page 0
+	pageMax := watermark.Add(10 * time.Hour)    // THIS resumed page's own max -- numerically newer, must be ignored
+
+	fetcher := newFakeNationalFetcher()
+	fetcher.pages[200] = planit.FetchPageResult{
+		From: 200,
+		Applications: []applications.PlanningApplication{
+			testApp("resumed-max", 300, pageMax),
+			testApp("resumed-boundary", 300, watermark),
+		},
+		HasMorePages: false,
+	}
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	state.states[sentinelLaneA] = PollState{
+		HighWaterMark: watermark,
+		Cursor:        &PollCursor{DifferentStart: prefilterDate, NextIndex: 300, WalkHead: carriedHead},
+	}
+
+	h := newLaneHandler(t, fetcher, apps, state, laneAOpts())
+	out := h.RunOnePage(context.Background())
+
+	if out.err != nil {
+		t.Fatalf("RunOnePage: %v", out.err)
+	}
+	if !out.watermarkAfter.Equal(carriedHead) {
+		t.Errorf("watermarkAfter: got %v, want the carried WalkHead %v, not this page's own max %v", out.watermarkAfter, carriedHead, pageMax)
+	}
+	if state.states[sentinelLaneA].Cursor != nil {
+		t.Errorf("cursor: got %+v, want nil (walk completed)", state.states[sentinelLaneA].Cursor)
+	}
+}
+
+// TestNationalLane_BoundaryHitAtIndexZero_WatermarkUnchanged pins the
+// healthy-quiet path from the 07-18->19 PlanIt outage (GH#983 "NOT the
+// bug"): when the walk's very FIRST record already sits at the watermark,
+// the walk completes on iteration 0 having ingested nothing. Because
+// walkHead is captured from that same first record, newWatermark ==
+// walkHead == watermarkBefore -- numerically a no-op -- so the fix must
+// not regress this previously-verified freeze-safe behaviour.
+func TestNationalLane_BoundaryHitAtIndexZero_WatermarkUnchanged(t *testing.T) {
+	t.Parallel()
+	watermark := time.Date(2026, 7, 18, 7, 1, 28, 0, time.UTC)
+	older := watermark.Add(-1 * time.Hour)
+
+	fetcher := newFakeNationalFetcher()
+	fetcher.pages[0] = planit.FetchPageResult{
+		From: 0,
+		Applications: []applications.PlanningApplication{
+			testApp("boundary", 300, watermark), // == watermark: stops the walk immediately
+			testApp("older", 300, older),        // must never be reached
+		},
+		HasMorePages: false,
+	}
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	state.states[sentinelLaneA] = PollState{HighWaterMark: watermark, LastPollTime: watermark}
+
+	h := newLaneHandler(t, fetcher, apps, state, laneAOpts())
+	out := h.RunOnePage(context.Background())
+
+	if out.err != nil {
+		t.Fatalf("RunOnePage: %v", out.err)
+	}
+	if out.recordsIngested != 0 {
+		t.Errorf("recordsIngested: got %d, want 0 (boundary hit on the very first record)", out.recordsIngested)
+	}
+	if !out.watermarkAfter.Equal(watermark) {
+		t.Errorf("watermarkAfter: got %v, want unchanged %v (healthy-quiet path, GH#983 'NOT the bug')", out.watermarkAfter, watermark)
+	}
+	if state.states[sentinelLaneA].Cursor != nil {
+		t.Errorf("cursor: got %+v, want nil (clean completion)", state.states[sentinelLaneA].Cursor)
 	}
 }
 

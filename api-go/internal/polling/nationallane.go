@@ -248,6 +248,15 @@ type laneOutcome struct {
 // comes first), so nothing between the old watermark and the new one is
 // dropped.
 //
+// "That walk's max ingested value" is the WHOLE walk's maximum, which for a
+// descending walk is always the very first record of the walk's very first
+// page — never a later page's own max (GH#983: a multi-page walk used to set
+// the watermark to the BOUNDARY page's max instead, since maxIngested was
+// scoped to one page and went out of scope across the ADR 0044 checkpoint).
+// walkHead captures that first-page value once, on the fresh start
+// (startIndex == 0), and carries it through every resume via
+// PollCursor.WalkHead so a later page's completion still uses it.
+//
 // The watermark advances ONLY when THIS page reaches the boundary or the
 // last page (a clean completion of the whole walk): only then is every
 // record between the old watermark and the new one accounted for. Any
@@ -355,6 +364,24 @@ func (h *NationalLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 	}
 	h.logger.InfoContext(ctx, "lane delta page fetched", logArgs...)
 
+	// walkHead is this DESCENDING walk's true maximum LastDifferent (GH#983):
+	// always the first record of the walk's first page (index 0), never a
+	// later page's own max. A fresh walk (startIndex == 0) captures it
+	// directly off this page; a resumed walk (startIndex != 0) carries it
+	// forward from the persisted cursor, since the page that captured it is
+	// long gone by the time a later page completes the walk. It stays the
+	// zero value (unset) on a fresh walk's empty page 0, or when resuming a
+	// pre-migration cursor that never recorded one -- see the completion
+	// switch below, which degrades to maxIngested in that case.
+	var walkHead time.Time
+	if startIndex == 0 {
+		if len(res.Applications) > 0 {
+			walkHead = res.Applications[0].LastDifferent
+		}
+	} else if cursor != nil {
+		walkHead = cursor.WalkHead
+	}
+
 	reachedBoundary := false
 	var maxIngested time.Time
 	for _, app := range res.Applications {
@@ -379,8 +406,17 @@ func (h *NationalLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 	complete := reachedBoundary || !res.HasMorePages
 
 	if complete {
+		// walkHead wins whenever it is known: it is the WHOLE walk's true
+		// maximum (GH#983), never just this page's. maxIngested is the
+		// legacy-degrade fallback (acceptance criterion 4) for a pre-migration
+		// cursor that never captured a walk head -- today's exact behaviour,
+		// self-healing the moment the next fresh walk (startIndex == 0)
+		// captures a real one.
 		newWatermark := watermarkBefore
-		if !maxIngested.IsZero() {
+		switch {
+		case !walkHead.IsZero():
+			newWatermark = walkHead
+		case !maxIngested.IsZero():
 			newWatermark = maxIngested
 		}
 		out.watermarkAfter = newWatermark
@@ -389,7 +425,7 @@ func (h *NationalLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 		}
 	} else {
 		out.watermarkAfter = watermarkBefore
-		newCursor := &PollCursor{DifferentStart: prefilterDate, NextIndex: nextIndex, KnownTotal: res.Total}
+		newCursor := &PollCursor{DifferentStart: prefilterDate, NextIndex: nextIndex, KnownTotal: res.Total, WalkHead: walkHead}
 		if serr := h.watermark.save(ctx, now, watermarkBefore, newCursor); serr != nil && out.err == nil {
 			out.err = serr
 		}

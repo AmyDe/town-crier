@@ -61,10 +61,13 @@ const legacyPageSize = 100
 // are read so Get can fall back to the legacy column for a row the additive
 // migration backfilled but a concurrent old-code writer might still be
 // touching during the deploy-overlap window (cursor_next_page is kept for one
-// release after tc-nlvpz for exactly this reason).
+// release after tc-nlvpz for exactly this reason). cursor_walk_head (0023,
+// GH#983) is nullable too: NULL on a pre-migration row degrades to the
+// PollCursor.WalkHead zero value, which RunOnePage's completion switch
+// treats as "unset" and falls back to its own maxIngested.
 const getPollStateQuery = `
 SELECT last_poll_time, high_water_mark,
-       cursor_different_start, cursor_next_index, cursor_next_page, cursor_known_total
+       cursor_different_start, cursor_next_index, cursor_next_page, cursor_known_total, cursor_walk_head
 FROM poll_state
 WHERE authority_id = $1`
 
@@ -78,10 +81,11 @@ func (s *PostgresPollStateStore) Get(ctx context.Context, authorityID int) (Poll
 		cursorNextIndex  *int
 		cursorNextPage   *int
 		cursorKnownTotal *int
+		cursorWalkHead   *time.Time
 	)
 	err := s.db.QueryRow(ctx, getPollStateQuery, authorityID).Scan(
 		&lastPollTime, &highWaterMark,
-		&cursorDiffStart, &cursorNextIndex, &cursorNextPage, &cursorKnownTotal,
+		&cursorDiffStart, &cursorNextIndex, &cursorNextPage, &cursorKnownTotal, &cursorWalkHead,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return PollState{}, false, nil
@@ -105,11 +109,15 @@ func (s *PostgresPollStateStore) Get(ctx context.Context, authorityID int) (Poll
 			// Convert on read so callers never see the old shape.
 			nextIndex = (*cursorNextPage - 1) * legacyPageSize
 		}
-		state.Cursor = &PollCursor{
+		cursor := &PollCursor{
 			DifferentStart: cursorDiffStart.UTC(),
 			NextIndex:      nextIndex,
 			KnownTotal:     cursorKnownTotal,
 		}
+		if cursorWalkHead != nil {
+			cursor.WalkHead = cursorWalkHead.UTC()
+		}
+		state.Cursor = cursor
 	}
 	return state, true, nil
 }
@@ -119,19 +127,23 @@ func (s *PostgresPollStateStore) Get(ctx context.Context, authorityID int) (Poll
 // NULL, which Get interprets as "no active cursor". cursor_next_page is always
 // nulled on write — every save migrates the row forward to the index-only
 // shape, matching the "writes always set cursor_next_index and null out
-// cursor_next_page" plan (tc-nlvpz).
+// cursor_next_page" plan (tc-nlvpz). cursor_walk_head (0023, GH#983) is
+// written unconditionally alongside the rest of the set whenever a cursor is
+// present — including its zero value, mirroring cursor_different_start; only
+// Get/RunOnePage special-case zero vs non-zero.
 const savePollStateQuery = `
 INSERT INTO poll_state (
     authority_id, last_poll_time, high_water_mark,
-    cursor_different_start, cursor_next_index, cursor_next_page, cursor_known_total
-) VALUES ($1, $2, $3, $4, $5, NULL, $6)
+    cursor_different_start, cursor_next_index, cursor_next_page, cursor_known_total, cursor_walk_head
+) VALUES ($1, $2, $3, $4, $5, NULL, $6, $7)
 ON CONFLICT (authority_id) DO UPDATE SET
     last_poll_time         = EXCLUDED.last_poll_time,
     high_water_mark        = EXCLUDED.high_water_mark,
     cursor_different_start = EXCLUDED.cursor_different_start,
     cursor_next_index      = EXCLUDED.cursor_next_index,
     cursor_next_page       = NULL,
-    cursor_known_total     = EXCLUDED.cursor_known_total`
+    cursor_known_total     = EXCLUDED.cursor_known_total,
+    cursor_walk_head       = EXCLUDED.cursor_walk_head`
 
 // Save upserts the poll state for authorityID. A nil cursor clears any active
 // cursor. The poll-state fields are written together as a set, and every save
@@ -142,12 +154,15 @@ func (s *PostgresPollStateStore) Save(ctx context.Context, authorityID int, last
 		cursorDiffStart  *time.Time
 		cursorNextIndex  *int
 		cursorKnownTotal *int
+		cursorWalkHead   *time.Time
 	)
 	if cursor != nil {
 		ds := cursor.DifferentStart.UTC()
 		cursorDiffStart = &ds
 		cursorNextIndex = &cursor.NextIndex
 		cursorKnownTotal = cursor.KnownTotal
+		wh := cursor.WalkHead.UTC()
+		cursorWalkHead = &wh
 	}
 
 	_, err := s.db.Exec(ctx, savePollStateQuery,
@@ -157,6 +172,7 @@ func (s *PostgresPollStateStore) Save(ctx context.Context, authorityID int, last
 		cursorDiffStart,
 		cursorNextIndex,
 		cursorKnownTotal,
+		cursorWalkHead,
 	)
 	if err != nil {
 		return fmt.Errorf("save poll state %d: %w", authorityID, err)
