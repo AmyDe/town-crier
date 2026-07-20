@@ -19,6 +19,15 @@ type PollCursor struct {
 	// KnownTotal is the total PlanIt reported on the first page of the cycle that
 	// recorded the cursor, if known. Telemetry only. nil when unknown.
 	KnownTotal *int
+	// WalkHead is a national lane's descending-walk true maximum LastDifferent
+	// (ADR 0044 / GH#983), captured from the first record of the walk's first
+	// page (index 0) and carried unchanged through every resume until the
+	// walk completes. The zero value means unset -- no walk-head captured yet,
+	// or a pre-migration legacy cursor -- same zero-time convention as
+	// HighWaterMark elsewhere in this package. Unused by Lane C's ascending
+	// epoch walk (lanec.go) and the legacy per-authority drain (handler.go),
+	// which never set or read it.
+	WalkHead time.Time
 }
 
 // PollState is the combined poll-state snapshot for one authority: when it was
