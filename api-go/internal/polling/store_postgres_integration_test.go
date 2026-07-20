@@ -48,6 +48,7 @@ func TestPostgresPollStateStore_RoundTrip(t *testing.T) {
 		DifferentStart: time.Date(2026, 6, 13, 0, 0, 0, 0, time.UTC),
 		NextIndex:      300,
 		KnownTotal:     platform.Ptr(250),
+		WalkHead:       time.Date(2026, 6, 13, 3, 0, 0, 0, time.UTC),
 	}
 
 	if err := store.Save(ctx, 99, lastPoll, hwm, cursor); err != nil {
@@ -78,6 +79,46 @@ func TestPostgresPollStateStore_RoundTrip(t *testing.T) {
 	}
 	if got.Cursor.KnownTotal == nil || *got.Cursor.KnownTotal != 250 {
 		t.Errorf("KnownTotal: got %v, want 250", got.Cursor.KnownTotal)
+	}
+	if !got.Cursor.WalkHead.Equal(cursor.WalkHead) {
+		t.Errorf("WalkHead: got %v, want %v", got.Cursor.WalkHead, cursor.WalkHead)
+	}
+}
+
+// TestPostgresPollStateStore_RoundTrip_WalkHeadZeroWhenNeverSet proves
+// acceptance criterion 4 of GH#983: a row whose cursor_walk_head column is
+// NULL -- simulating one written before the 0023 migration added the
+// column, or one this release's Save has not yet touched -- reads back with
+// PollCursor.WalkHead at its zero value rather than erroring. The row is
+// seeded with a direct INSERT (not Save) precisely to avoid ever writing
+// cursor_walk_head, standing in for a genuinely pre-migration row.
+func TestPostgresPollStateStore_RoundTrip_WalkHeadZeroWhenNeverSet(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.New(t)
+	pgtest.Truncate(t, pool, "poll_state", "leases")
+
+	now := time.Date(2026, 6, 14, 12, 0, 0, 0, time.UTC)
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO poll_state (authority_id, last_poll_time, high_water_mark, cursor_different_start, cursor_next_index)
+		VALUES ($1, $2, $2, $3, $4)`,
+		600, now, now, 300,
+	); err != nil {
+		t.Fatalf("seed legacy row: %v", err)
+	}
+
+	store := NewPostgresPollStateStore(pool)
+	got, ok, err := store.Get(ctx, 600)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if !ok {
+		t.Fatal("Get: expected ok=true for seeded state")
+	}
+	if got.Cursor == nil {
+		t.Fatal("Cursor: expected non-nil (cursor_different_start was set)")
+	}
+	if !got.Cursor.WalkHead.IsZero() {
+		t.Errorf("WalkHead: got %v, want the zero value (never set on this row)", got.Cursor.WalkHead)
 	}
 }
 
