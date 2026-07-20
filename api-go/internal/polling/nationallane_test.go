@@ -48,7 +48,7 @@ func (f *fakeNationalFetcher) FetchNationalDeltaPage(_ context.Context, q planit
 // a real PlanIt page.
 func manyApps(n int, head time.Time, step time.Duration) []applications.PlanningApplication {
 	apps := make([]applications.PlanningApplication, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		apps[i] = testApp(fmt.Sprintf("bulk-%d", i), 300, head.Add(-time.Duration(i)*step))
 	}
 	return apps
