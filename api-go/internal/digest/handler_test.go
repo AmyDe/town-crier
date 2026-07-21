@@ -894,7 +894,6 @@ func TestRunHourly_NeverIncludesFreeTierNoticeRegardlessOfTier(t *testing.T) {
 	// both paid tiers the hourly cycle can actually reach and confirm neither
 	// ever renders the notice.
 	for _, tier := range []profiles.SubscriptionTier{profiles.TierPersonal, profiles.TierPro} {
-		tier := tier
 		t.Run(tier.String(), func(t *testing.T) {
 			t.Parallel()
 			prefs := profiles.DefaultPreferences()
