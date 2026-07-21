@@ -198,29 +198,51 @@ func hasWorkC(s LaneState, now time.Time) bool {
 	return s.LastPollTime.IsZero() || now.Sub(s.LastPollTime) >= laneCIdleAnchorInterval
 }
 
-// NextWork picks the next lane to run: among every eligible lane that
-// currently has work, the one with the oldest LastPollTime (LRU / round-
-// robin — ADR 0044 §3). Returns nil when nothing eligible has work
+// NextWork picks the next lane to run using a TIERED priority (GH#986): Lane
+// A/B (new-application and decision detection, the notification-bearing
+// critical path) always outrank Lane C/D (reconciliation and backfill, both
+// data-quality/coverage lanes) whenever A/B has work at all, regardless of
+// how LRU-stale C or D have become. Only once NEITHER A nor B has work does
+// C/D become candidates. Within whichever tier is in play, selection is
+// unchanged: the eligible-with-work lane with the oldest LastPollTime (LRU /
+// round-robin — ADR 0044 §3). Returns nil when nothing eligible has work
 // (everything is caught up — the "Natural" cycle-end case).
+//
+// Before this fix NextWork ran pure LRU across all four lanes uniformly: a
+// lane whose last_poll_time never advances (e.g. Lane C livelocked on a
+// repeatedly-failing checkpoint, GH#986) looked perpetually
+// least-recently-polled and was picked every single cycle, starving A/B
+// entirely for as long as the underlying failure persisted. Tiering makes
+// that starvation structurally impossible even under a future bug in any
+// lower-tier lane.
 func (p *Planner) NextWork(state PlannerState, now time.Time) *WorkItem {
 	type candidate struct {
 		lane         LaneName
 		lastPollTime time.Time
 		cursor       *PollCursor
 	}
-	var candidates []candidate
 
+	var tier1 []candidate // Lane A/B: the notification-bearing critical path.
 	if p.Eligible(LaneA, now) && hasWorkAB(state.LaneA, now, p.opts.FreshnessInterval) {
-		candidates = append(candidates, candidate{LaneA, state.LaneA.LastPollTime, state.LaneA.Cursor})
+		tier1 = append(tier1, candidate{LaneA, state.LaneA.LastPollTime, state.LaneA.Cursor})
 	}
 	if p.Eligible(LaneB, now) && hasWorkAB(state.LaneB, now, p.opts.FreshnessInterval) {
-		candidates = append(candidates, candidate{LaneB, state.LaneB.LastPollTime, state.LaneB.Cursor})
+		tier1 = append(tier1, candidate{LaneB, state.LaneB.LastPollTime, state.LaneB.Cursor})
 	}
-	if state.LaneC != nil && p.Eligible(LaneC, now) && hasWorkC(*state.LaneC, now) {
-		candidates = append(candidates, candidate{LaneC, state.LaneC.LastPollTime, state.LaneC.Cursor})
-	}
-	if state.LaneD != nil && p.Eligible(LaneD, now) && !state.LaneD.Complete {
-		candidates = append(candidates, candidate{LaneD, state.LaneD.LastPollTime, nil})
+
+	candidates := tier1
+	if len(candidates) == 0 {
+		// Tier 1 has nothing to do this iteration: only now does tier 2
+		// (Lane C/D — reconciliation and backfill) become eligible for
+		// selection at all.
+		var tier2 []candidate
+		if state.LaneC != nil && p.Eligible(LaneC, now) && hasWorkC(*state.LaneC, now) {
+			tier2 = append(tier2, candidate{LaneC, state.LaneC.LastPollTime, state.LaneC.Cursor})
+		}
+		if state.LaneD != nil && p.Eligible(LaneD, now) && !state.LaneD.Complete {
+			tier2 = append(tier2, candidate{LaneD, state.LaneD.LastPollTime, nil})
+		}
+		candidates = tier2
 	}
 
 	if len(candidates) == 0 {

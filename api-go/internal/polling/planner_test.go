@@ -281,6 +281,55 @@ func TestPlanner_NextWork_LaneCHasWork(t *testing.T) {
 	}
 }
 
+// TestPlanner_NextWork_TieredSelection_AOutranksStaleLaneC is GH#986
+// acceptance criterion (e): Lane A due AND Lane C holding an active,
+// mid-drain cursor that is FAR more LRU-stale than A must still lose to A —
+// pure LRU across all four lanes (the pre-fix algorithm) would have picked C
+// here, since a stale/livelocked lane's frozen last_poll_time makes it look
+// perpetually least-recently-polled. Tiering makes A/B categorically
+// outrank C/D whenever A/B has work, independent of any staleness on the
+// lower tier.
+func TestPlanner_NextWork_TieredSelection_AOutranksStaleLaneC(t *testing.T) {
+	t.Parallel()
+	p := NewPlanner(testPlannerOptions(t))
+	daytime := time.Date(2026, 1, 15, 15, 0, 0, 0, time.UTC) // Lane C eligible (daytime window)
+
+	state := PlannerState{
+		LaneA: LaneState{LastPollTime: daytime.Add(-20 * time.Minute)}, // due (> 15m freshness)
+		LaneB: LaneState{LastPollTime: daytime},                        // not due
+		LaneC: &LaneState{
+			LastPollTime: daytime.Add(-48 * time.Hour), // vastly older than A: pure LRU would pick C
+			Cursor:       &PollCursor{NextIndex: 300},  // mid-drain: has work regardless of staleness
+		},
+		LaneD: &LaneDState{Complete: true},
+	}
+	item := p.NextWork(state, daytime)
+	if item == nil || item.Lane != LaneA {
+		t.Fatalf("NextWork: got %+v, want lane A (A/B must categorically outrank C/D whenever A/B has work, GH#986)", item)
+	}
+}
+
+// TestPlanner_NextWork_TieredSelection_FallsBackToLaneCWhenABIdle is GH#986
+// acceptance criterion (f): when neither A nor B currently has work, C is
+// still picked in-window — tiering must never starve the lower tier when the
+// upper tier is genuinely caught up, only when the upper tier has work to do.
+func TestPlanner_NextWork_TieredSelection_FallsBackToLaneCWhenABIdle(t *testing.T) {
+	t.Parallel()
+	p := NewPlanner(testPlannerOptions(t))
+	daytime := time.Date(2026, 1, 15, 15, 0, 0, 0, time.UTC)
+
+	state := PlannerState{
+		LaneA: LaneState{LastPollTime: daytime},      // not due
+		LaneB: LaneState{LastPollTime: daytime},      // not due
+		LaneC: &LaneState{LastPollTime: time.Time{}}, // never polled: has work
+		LaneD: &LaneDState{Complete: true},
+	}
+	item := p.NextWork(state, daytime)
+	if item == nil || item.Lane != LaneC {
+		t.Fatalf("NextWork: got %+v, want lane C (A/B idle: the lower tier becomes eligible)", item)
+	}
+}
+
 // TestPlanner_NextWork_NilLaneCSkipsIt covers the test/wiring convenience of
 // a nil Lane C (not wired): NextWork must never pick a lane that is not
 // present in state, even when it would otherwise be eligible.

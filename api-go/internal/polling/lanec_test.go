@@ -3,6 +3,7 @@ package polling
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"testing"
 	"time"
@@ -162,16 +163,19 @@ func TestInverseMaskLane_AnchorsNewEpochFromPriorCeiling(t *testing.T) {
 	}
 }
 
-// TestInverseMaskLane_ResumesActiveEpochAtCheckpointedIndex proves the
-// per-page checkpoint's whole point: an active cursor resumes pagination at
-// its persisted NextIndex within the SAME epoch bounds, rather than
-// re-anchoring.
-func TestInverseMaskLane_ResumesActiveEpochAtCheckpointedIndex(t *testing.T) {
+// TestInverseMaskLane_ResumesActiveEpochWithOverlap proves the per-page
+// checkpoint's resume story (GH#986): an active cursor resumes pagination at
+// max(0, NextIndex-resumeOverlapRecords) within the SAME epoch bounds,
+// mirroring Lane A/B's own resume overlap (nationallane.go), rather than
+// either re-anchoring or resuming at the checkpointed index with no safety
+// margin.
+func TestInverseMaskLane_ResumesActiveEpochWithOverlap(t *testing.T) {
 	t.Parallel()
 	epochLower := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
 	epochUpper := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
 	fetcher := newFakeInverseMaskFetcher()
-	fetcher.pages[300] = planit.FetchPageResult{From: 300, Applications: nil, HasMorePages: false}
+	// 300 - the 100-record resume overlap = 200.
+	fetcher.pages[200] = planit.FetchPageResult{From: 200, Applications: nil, HasMorePages: false}
 	apps := newFakeApps()
 	state := newFakeStateStore()
 	state.states[sentinelLaneC] = PollState{
@@ -185,8 +189,8 @@ func TestInverseMaskLane_ResumesActiveEpochAtCheckpointedIndex(t *testing.T) {
 	if out.err != nil {
 		t.Fatalf("RunOnePage: %v", out.err)
 	}
-	if len(fetcher.queries) != 1 || fetcher.queries[0].StartIndex != 300 {
-		t.Fatalf("expected exactly one fetch at StartIndex 300, got %+v", fetcher.queries)
+	if len(fetcher.queries) != 1 || fetcher.queries[0].StartIndex != 200 {
+		t.Fatalf("expected exactly one fetch at StartIndex 200 (300 - the 100-record resume overlap), got %+v", fetcher.queries)
 	}
 	if !fetcher.queries[0].EpochLower.Equal(epochLower) {
 		t.Errorf("EpochLower: got %v, want the active epoch's floor %v", fetcher.queries[0].EpochLower, epochLower)
@@ -196,6 +200,57 @@ func TestInverseMaskLane_ResumesActiveEpochAtCheckpointedIndex(t *testing.T) {
 	}
 	if !out.watermarkAfter.Equal(epochUpper) {
 		t.Errorf("watermarkAfter: got %v, want the unchanged pinned ceiling %v", out.watermarkAfter, epochUpper)
+	}
+}
+
+// TestInverseMaskLane_ResumeOverlapDedupesAlreadyProcessedRows proves the
+// resume overlap's safety property (GH#986): rows the overlap window
+// re-serves that are ALREADY correct in Postgres dedupe via
+// GetByUID/inverseMaskDiffers and are never re-hydrated or re-notified,
+// while a genuine straggler beyond the overlap zone still hydrates and
+// ingests normally — the overlap costs a few redundant existence reads, not
+// duplicate notifications.
+func TestInverseMaskLane_ResumeOverlapDedupesAlreadyProcessedRows(t *testing.T) {
+	t.Parallel()
+	epochLower := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	epochUpper := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	ld := epochLower.Add(time.Hour)
+
+	same := "Permitted"
+	fetcher := newFakeInverseMaskFetcher()
+	fetcher.pages[200] = planit.FetchPageResult{ // 300 - the 100-record resume overlap
+		From: 200,
+		Applications: []applications.PlanningApplication{
+			lightApp("already/FUL", 99, same, ld), // in the overlap window: unchanged since last pass
+			lightApp("genuine/FUL", 99, "Permitted", ld),
+		},
+		HasMorePages: false,
+	}
+	full := testApp("genuine", 99, ld)
+	full.UID = "genuine/FUL"
+	permitted := "Permitted"
+	full.AppState = &permitted
+	fetcher.hydrated["genuine/FUL"] = full
+
+	apps := newFakeApps()
+	apps.existing["already/FUL"] = applications.PlanningApplication{UID: "already/FUL", AreaID: 99, AppState: &same, LastDifferent: ld}
+	state := newFakeStateStore()
+	state.states[sentinelLaneC] = PollState{
+		HighWaterMark: epochUpper,
+		Cursor:        &PollCursor{DifferentStart: epochLower, NextIndex: 300},
+	}
+
+	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
+	out := h.RunOnePage(context.Background())
+
+	if out.err != nil {
+		t.Fatalf("RunOnePage: %v", out.err)
+	}
+	if len(fetcher.hydrateCalls) != 1 || fetcher.hydrateCalls[0] != "genuine/FUL" {
+		t.Errorf("expected only the genuine straggler to hydrate (the overlap-reprocessed row dedupes via GetByUID/inverseMaskDiffers): got %v", fetcher.hydrateCalls)
+	}
+	if out.recordsIngested != 1 {
+		t.Errorf("recordsIngested: got %d, want 1 (the already-processed row must not be re-notified)", out.recordsIngested)
 	}
 }
 
@@ -392,13 +447,19 @@ func TestInverseMaskLane_UsesAreaIDForAuthorityScopedExistenceCheck(t *testing.T
 	}
 }
 
-// TestInverseMaskLane_RateLimitedPageFetchLeavesCursorUntouched mirrors Lane
-// A/B's "never advance past a 429" invariant for Lane C's epoch cursor.
-func TestInverseMaskLane_RateLimitedPageFetchLeavesCursorUntouched(t *testing.T) {
+// TestInverseMaskLane_RateLimitedPageFetchPreservesCursorAdvancesLastPollTime
+// is GH#986 acceptance criterion (d): a page-fetch 429 must never lose the
+// existing checkpoint (the cursor's NextIndex is re-saved unchanged, exactly
+// as loaded — nothing was actually fetched, so there is no new progress to
+// record), but it MUST advance last_poll_time so the planner's LRU rotates
+// off Lane C instead of freezing it at the front of the queue forever (the
+// observed prod livelock).
+func TestInverseMaskLane_RateLimitedPageFetchPreservesCursorAdvancesLastPollTime(t *testing.T) {
 	t.Parallel()
 	epochLower := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
 	epochUpper := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
 	retryAfter := 30 * time.Second
+	wantNow := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC) // newLaneCHandler's pinned clock
 
 	fetcher := newFakeInverseMaskFetcher()
 	fetcher.failNth[1] = &planit.RateLimitError{RetryAfter: &retryAfter}
@@ -417,7 +478,48 @@ func TestInverseMaskLane_RateLimitedPageFetchLeavesCursorUntouched(t *testing.T)
 	}
 	got := state.states[sentinelLaneC].Cursor
 	if got == nil || got.NextIndex != 300 {
-		t.Errorf("cursor: got %+v, want the untouched checkpoint (NextIndex=300) — the next cycle resumes here, no re-tread", got)
+		t.Errorf("cursor: got %+v, want the preserved checkpoint (NextIndex=300) — the next cycle resumes here, no re-tread", got)
+	}
+	if lastPoll := state.states[sentinelLaneC].LastPollTime; !lastPoll.Equal(wantNow) {
+		t.Errorf("LastPollTime: got %v, want %v (must advance so the planner LRU rotates off this lane)", lastPoll, wantNow)
+	}
+}
+
+// TestInverseMaskLane_FreshAnchorPageFetch429PreservesUnanchoredState covers
+// the page-fetch-429 checkpoint's OTHER shape: a 429 on the very first fetch
+// of a freshly-anchoring epoch (no active cursor yet). The re-save must
+// persist the state EXACTLY as it was loaded — the prior ceiling as
+// HighWaterMark, cursor nil — not the in-memory epochUpper this call
+// provisionally reset to now(); saving that would falsely mark a brand new
+// epoch as already anchored-and-drained (nil cursor) without a single record
+// ever having been walked, silently skipping its entire contents.
+func TestInverseMaskLane_FreshAnchorPageFetch429PreservesUnanchoredState(t *testing.T) {
+	t.Parallel()
+	priorCeiling := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	retryAfter := 15 * time.Second
+	wantNow := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC) // newLaneCHandler's pinned clock
+
+	fetcher := newFakeInverseMaskFetcher()
+	fetcher.failNth[1] = &planit.RateLimitError{RetryAfter: &retryAfter}
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	state.states[sentinelLaneC] = PollState{HighWaterMark: priorCeiling} // no cursor: about to anchor a new epoch
+
+	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
+	out := h.RunOnePage(context.Background())
+
+	if !out.rateLimited {
+		t.Fatal("expected rateLimited=true")
+	}
+	got := state.states[sentinelLaneC]
+	if !got.HighWaterMark.Equal(priorCeiling) {
+		t.Errorf("HighWaterMark: got %v, want the unchanged prior ceiling %v (never falsely advanced to now on a failed anchor fetch)", got.HighWaterMark, priorCeiling)
+	}
+	if got.Cursor != nil {
+		t.Errorf("cursor: got %+v, want nil (still no active cursor -- the epoch never actually anchored)", got.Cursor)
+	}
+	if !got.LastPollTime.Equal(wantNow) {
+		t.Errorf("LastPollTime: got %v, want %v (must still advance so LRU rotates)", got.LastPollTime, wantNow)
 	}
 }
 
@@ -458,15 +560,124 @@ func TestInverseMaskLane_HydrationRateLimitStopsTheWholePage(t *testing.T) {
 	}
 }
 
+// TestInverseMaskLane_MidPageHydrationRateLimitCheckpointsAtFailingOffset is
+// GH#986 acceptance criterion (a): a mid-page hydration 429 must checkpoint
+// the cursor at the FAILING record's own offset (startIndex + i, where i
+// counts every record iterated this page including the exact-instant skip)
+// and advance last_poll_time — previously this path (stoppedEarly) returned
+// with no save at all, which froze the cursor on the same page forever (the
+// observed 59x re-fetch of the same 300-record boundary in prod) and froze
+// last_poll_time, starving Lane A/B via the planner's pure LRU.
+func TestInverseMaskLane_MidPageHydrationRateLimitCheckpointsAtFailingOffset(t *testing.T) {
+	t.Parallel()
+	epochLower := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	epochUpper := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	newLD := epochLower.Add(time.Hour)
+	retryAfter := 20 * time.Second
+	wantNow := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC) // newLaneCHandler's pinned clock
+
+	full := testApp("ok", 99, newLD)
+	full.UID = "ok/FUL"
+	permitted := "Permitted"
+	full.AppState = &permitted
+
+	fetcher := newFakeInverseMaskFetcher()
+	fetcher.pages[0] = planit.FetchPageResult{
+		From: 0,
+		Applications: []applications.PlanningApplication{
+			lightApp("before/FUL", 99, "Permitted", epochLower), // index 0: <= epochLower, skipped -- still counts toward the offset
+			lightApp("ok/FUL", 99, "Permitted", newLD),          // index 1: hydrates fine
+			lightApp("fails/FUL", 99, "Permitted", newLD),       // index 2: hydration 429s here
+			lightApp("never/FUL", 99, "Permitted", newLD),       // index 3: must never be reached
+		},
+		HasMorePages: false,
+	}
+	fetcher.hydrated["ok/FUL"] = full
+	fetcher.hydrateErr["fails/FUL"] = &planit.RateLimitError{RetryAfter: &retryAfter}
+
+	apps := newFakeApps() // every uid is new: every one would otherwise hydrate
+	state := newFakeStateStore()
+	state.states[sentinelLaneC] = PollState{HighWaterMark: epochUpper, Cursor: &PollCursor{DifferentStart: epochLower, NextIndex: 0}}
+
+	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
+	out := h.RunOnePage(context.Background())
+
+	if !out.rateLimited {
+		t.Fatal("expected rateLimited=true")
+	}
+	if len(fetcher.hydrateCalls) != 2 || fetcher.hydrateCalls[0] != "ok/FUL" || fetcher.hydrateCalls[1] != "fails/FUL" {
+		t.Fatalf("expected hydration to stop right after the failing record, never reaching the fourth: got %v", fetcher.hydrateCalls)
+	}
+	got := state.states[sentinelLaneC].Cursor
+	if got == nil || got.NextIndex != 2 {
+		t.Errorf("cursor: got %+v, want NextIndex=2 (the failing record's own offset, so a retry re-attempts it)", got)
+	}
+	if lastPoll := state.states[sentinelLaneC].LastPollTime; !lastPoll.Equal(wantNow) {
+		t.Errorf("LastPollTime: got %v, want %v (must advance so the planner LRU rotates off this lane)", lastPoll, wantNow)
+	}
+}
+
+// TestInverseMaskLane_HydrationCapStopsPassAndCheckpoints is GH#986
+// acceptance criterion (c): once a single RunOnePage call has attempted
+// maxHydrationsPerPass hydrations, it stops the walk as a CLEAN early stop
+// (out.err is nil, not an error) and checkpoints at the offset reached, so
+// the next pass resumes past what this one already hydrated. Bounds the
+// FetchByUID burst a page of many clustered genuine stragglers can trigger.
+func TestInverseMaskLane_HydrationCapStopsPassAndCheckpoints(t *testing.T) {
+	t.Parallel()
+	epochLower := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	epochUpper := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	ld := epochLower.Add(time.Hour)
+	wantNow := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC) // newLaneCHandler's pinned clock
+
+	const recordCount = maxHydrationsPerPass + 5
+	fetcher := newFakeInverseMaskFetcher()
+	apps := newFakeApps() // every uid is new: every one is a genuine straggler
+	lightRows := make([]applications.PlanningApplication, 0, recordCount)
+	for i := range recordCount {
+		uid := fmt.Sprintf("straggler-%02d/FUL", i)
+		lightRows = append(lightRows, lightApp(uid, 99, "Permitted", ld))
+		full := testApp(fmt.Sprintf("straggler-%02d", i), 99, ld)
+		full.UID = uid
+		fetcher.hydrated[uid] = full
+	}
+	fetcher.pages[0] = planit.FetchPageResult{From: 0, Applications: lightRows, HasMorePages: false}
+
+	state := newFakeStateStore()
+	state.states[sentinelLaneC] = PollState{HighWaterMark: epochUpper, Cursor: &PollCursor{DifferentStart: epochLower, NextIndex: 0}}
+
+	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
+	out := h.RunOnePage(context.Background())
+
+	if out.err != nil {
+		t.Fatalf("RunOnePage: %v (the hydration cap is a clean early stop, not an error)", out.err)
+	}
+	if len(fetcher.hydrateCalls) != maxHydrationsPerPass {
+		t.Fatalf("hydrateCalls: got %d, want %d (the per-pass cap)", len(fetcher.hydrateCalls), maxHydrationsPerPass)
+	}
+	got := state.states[sentinelLaneC].Cursor
+	if got == nil || got.NextIndex != maxHydrationsPerPass {
+		t.Errorf("cursor: got %+v, want NextIndex=%d (checkpointed right after the capped hydration run)", got, maxHydrationsPerPass)
+	}
+	if lastPoll := state.states[sentinelLaneC].LastPollTime; !lastPoll.Equal(wantNow) {
+		t.Errorf("LastPollTime: got %v, want %v (LRU must still rotate on a clean cap stop)", lastPoll, wantNow)
+	}
+}
+
 // TestInverseMaskLane_IngestErrorIsAHardStop proves a hydrated Ingest
-// failure freezes state exactly like a page-fetch error: nothing new is
-// persisted this call, so the previous checkpoint stands and a retry simply
-// re-fetches this page.
+// failure checkpoints at the failing record's offset (GH#986) exactly like a
+// mid-page hydration 429 does, and advances last_poll_time, even though the
+// Ingest failure itself surfaces as out.err — the checkpoint and the error
+// are independent: a retry re-fetches from this exact offset (the resume
+// overlap covers any residual doubt), rather than either re-walking the
+// whole page from scratch or freezing the LRU clock.
 func TestInverseMaskLane_IngestErrorIsAHardStop(t *testing.T) {
 	t.Parallel()
 	epochLower := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
 	epochUpper := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
 	newLD := epochLower.Add(time.Hour)
+
+	wantNow := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC) // newLaneCHandler's pinned clock
 
 	fetcher := newFakeInverseMaskFetcher()
 	fetcher.pages[0] = planit.FetchPageResult{
@@ -491,7 +702,10 @@ func TestInverseMaskLane_IngestErrorIsAHardStop(t *testing.T) {
 	}
 	got := state.states[sentinelLaneC].Cursor
 	if got == nil || got.NextIndex != 0 {
-		t.Errorf("cursor: got %+v, want the untouched checkpoint (NextIndex=0, nothing persisted this call)", got)
+		t.Errorf("cursor: got %+v, want the checkpoint at the failing record's own offset (NextIndex=0)", got)
+	}
+	if lastPoll := state.states[sentinelLaneC].LastPollTime; !lastPoll.Equal(wantNow) {
+		t.Errorf("LastPollTime: got %v, want %v (must advance even on an Ingest-error bail)", lastPoll, wantNow)
 	}
 }
 
