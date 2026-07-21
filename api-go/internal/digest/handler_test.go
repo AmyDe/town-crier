@@ -763,6 +763,168 @@ func TestRunWeekly_DuplicatePairCollapsesPushCountToUniqueApplications(t *testin
 	}
 }
 
+// ---- free-tier account-status line (tc-m1pb5) ----
+
+const freeTierNoticeSnippet = "free weekly digest"
+
+func TestRunWeekly_FreeTierEmailIncludesFreeTierNotice(t *testing.T) {
+	t.Parallel()
+	prefs := profiles.DefaultPreferences()
+	prefs.EmailDigestEnabled = true
+	p := mkProfile(t, profiles.TierFree, prefs)
+
+	fp := &fakeProfiles{byDay: map[time.Weekday][]*profiles.UserProfile{time.Wednesday: {p}}}
+	fn := &fakeNotifications{sinceByUser: map[string][]notifications.DigestNotification{
+		"user-1": {zoneNotif("uid-A", "zone-1")},
+	}}
+	fz := &fakeZones{byUser: map[string][]watchzones.WatchZone{
+		"user-1": {mkZone(t, "zone-1", "Home", true)},
+	}}
+	email := &spyEmail{}
+	h := newHandler(fp, fn, fz, &fakeState{}, &fakeDevices{}, email, &spyPush{})
+
+	if err := h.RunWeekly(context.Background()); err != nil {
+		t.Fatalf("RunWeekly: %v", err)
+	}
+	if len(email.sent) != 1 {
+		t.Fatalf("emails sent: got %d, want 1", len(email.sent))
+	}
+	if !contains(email.sent[0].HTMLBody, freeTierNoticeSnippet) {
+		t.Errorf("Free tier weekly digest should show the free-tier notice, got:\n%s", email.sent[0].HTMLBody)
+	}
+}
+
+// TestRunWeekly_PersonalTierEmailExcludesFreeTierNotice guards the exact
+// regression this bead exists to prevent: Personal is a real, paid,
+// purchasable tier (uk.towncrierapp.personal.monthly). Deriving the notice
+// from IsPaidPro() (Pro-only) instead of IsPaid() (any paid tier) would show
+// paying Personal subscribers "You're on the free weekly digest.", which
+// directly violates "paid users' emails are unchanged".
+func TestRunWeekly_PersonalTierEmailExcludesFreeTierNotice(t *testing.T) {
+	t.Parallel()
+	prefs := profiles.DefaultPreferences()
+	prefs.EmailDigestEnabled = true
+	p := mkProfile(t, profiles.TierPersonal, prefs)
+
+	fp := &fakeProfiles{byDay: map[time.Weekday][]*profiles.UserProfile{time.Wednesday: {p}}}
+	fn := &fakeNotifications{sinceByUser: map[string][]notifications.DigestNotification{
+		"user-1": {zoneNotif("uid-A", "zone-1")},
+	}}
+	fz := &fakeZones{byUser: map[string][]watchzones.WatchZone{
+		"user-1": {mkZone(t, "zone-1", "Home", true)},
+	}}
+	email := &spyEmail{}
+	h := newHandler(fp, fn, fz, &fakeState{}, &fakeDevices{}, email, &spyPush{})
+
+	if err := h.RunWeekly(context.Background()); err != nil {
+		t.Fatalf("RunWeekly: %v", err)
+	}
+	if len(email.sent) != 1 {
+		t.Fatalf("emails sent: got %d, want 1", len(email.sent))
+	}
+	if contains(email.sent[0].HTMLBody, freeTierNoticeSnippet) {
+		t.Errorf("Personal (paid) tier weekly digest must NOT show the free-tier notice, got:\n%s", email.sent[0].HTMLBody)
+	}
+}
+
+func TestRunWeekly_ProTierEmailExcludesFreeTierNotice(t *testing.T) {
+	t.Parallel()
+	prefs := profiles.DefaultPreferences()
+	prefs.EmailDigestEnabled = true
+	prefs.PushEnabled = false
+	p := mkProfile(t, profiles.TierPro, prefs)
+
+	fp := &fakeProfiles{byDay: map[time.Weekday][]*profiles.UserProfile{time.Wednesday: {p}}}
+	fn := &fakeNotifications{sinceByUser: map[string][]notifications.DigestNotification{
+		"user-1": {zoneNotif("uid-A", "zone-1")},
+	}}
+	fz := &fakeZones{byUser: map[string][]watchzones.WatchZone{
+		"user-1": {mkZone(t, "zone-1", "Home", true)},
+	}}
+	email := &spyEmail{}
+	h := newHandler(fp, fn, fz, &fakeState{}, &fakeDevices{}, email, &spyPush{})
+
+	if err := h.RunWeekly(context.Background()); err != nil {
+		t.Fatalf("RunWeekly: %v", err)
+	}
+	if len(email.sent) != 1 {
+		t.Fatalf("emails sent: got %d, want 1", len(email.sent))
+	}
+	if contains(email.sent[0].HTMLBody, freeTierNoticeSnippet) {
+		t.Errorf("Pro tier weekly digest must NOT show the free-tier notice, got:\n%s", email.sent[0].HTMLBody)
+	}
+}
+
+func TestRunWeekly_ExpiredProTierEmailIncludesFreeTierNotice(t *testing.T) {
+	t.Parallel()
+	// A lapsed Pro subscription reads as Free via EffectiveTier and correctly
+	// sees the notice, same as any other Free-tier recipient.
+	prefs := profiles.DefaultPreferences()
+	prefs.EmailDigestEnabled = true
+	prefs.PushEnabled = false
+	p := mkProfile(t, profiles.TierPro, prefs)
+	past := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) // before the harness clock (2026-02-04)
+	p.SubscriptionExpiry = &past
+
+	fp := &fakeProfiles{byDay: map[time.Weekday][]*profiles.UserProfile{time.Wednesday: {p}}}
+	fn := &fakeNotifications{sinceByUser: map[string][]notifications.DigestNotification{
+		"user-1": {zoneNotif("uid-A", "zone-1")},
+	}}
+	fz := &fakeZones{byUser: map[string][]watchzones.WatchZone{
+		"user-1": {mkZone(t, "zone-1", "Home", true)},
+	}}
+	email := &spyEmail{}
+	h := newHandler(fp, fn, fz, &fakeState{}, &fakeDevices{}, email, &spyPush{})
+
+	if err := h.RunWeekly(context.Background()); err != nil {
+		t.Fatalf("RunWeekly: %v", err)
+	}
+	if len(email.sent) != 1 {
+		t.Fatalf("emails sent: got %d, want 1", len(email.sent))
+	}
+	if !contains(email.sent[0].HTMLBody, freeTierNoticeSnippet) {
+		t.Errorf("lapsed Pro tier (reads as Free) weekly digest should show the free-tier notice, got:\n%s", email.sent[0].HTMLBody)
+	}
+}
+
+func TestRunHourly_NeverIncludesFreeTierNoticeRegardlessOfTier(t *testing.T) {
+	t.Parallel()
+	// The free-tier notice is weekly-only. Hourly is already paid-only
+	// (Free is skipped entirely — TestRunHourly_FreeTierSkipped), so exercise
+	// both paid tiers the hourly cycle can actually reach and confirm neither
+	// ever renders the notice.
+	for _, tier := range []profiles.SubscriptionTier{profiles.TierPersonal, profiles.TierPro} {
+		tier := tier
+		t.Run(tier.String(), func(t *testing.T) {
+			t.Parallel()
+			prefs := profiles.DefaultPreferences()
+			prefs.EmailDigestEnabled = true
+			p := mkProfile(t, tier, prefs)
+
+			fp := &fakeProfiles{byID: map[string]*profiles.UserProfile{"user-1": p}}
+			fn := &fakeNotifications{
+				unsentUserIDs: []string{"user-1"},
+				unsentByUser:  map[string][]notifications.DigestNotification{"user-1": {zoneNotif("uid-A", "zone-1")}},
+			}
+			fz := &fakeZones{byUser: map[string][]watchzones.WatchZone{
+				"user-1": {mkZone(t, "zone-1", "Home", true)},
+			}}
+			email := &spyEmail{}
+			h := newHandler(fp, fn, fz, &fakeState{}, &fakeDevices{}, email, &spyPush{})
+
+			if err := h.RunHourly(context.Background()); err != nil {
+				t.Fatalf("RunHourly: %v", err)
+			}
+			if len(email.sent) != 1 {
+				t.Fatalf("emails sent: got %d, want 1", len(email.sent))
+			}
+			if contains(email.sent[0].HTMLBody, freeTierNoticeSnippet) {
+				t.Errorf("hourly digest must never show the free-tier notice, got:\n%s", email.sent[0].HTMLBody)
+			}
+		})
+	}
+}
+
 func TestRunHourly_DistinctApplicationsStillBothRenderAndBothMarkSent(t *testing.T) {
 	t.Parallel()
 	// Regression guard: dedup must only collapse genuine duplicates. Two
