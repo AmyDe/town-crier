@@ -30,6 +30,17 @@ type inverseMaskFetcher interface {
 	FetchByUID(ctx context.Context, uid string) (planit.FetchPageResult, error)
 }
 
+// maxHydrationsPerPass bounds Lane C's straggler hydration fan-out within a
+// single RunOnePage call (GH#986). Unlike Lane A/B's plain fetch-then-ingest
+// walk, Lane C's page loop can trigger one FetchByUID PER changed row, so an
+// unbounded page (many genuine stragglers clustered together) could burst
+// dozens of hydration requests in a single call and trip PlanIt's 429
+// threshold outright. Once the cap is reached the walk stops cleanly (the
+// same checkpoint-and-return path as a rate limit or hydration error, NOT an
+// error itself) so the pass resumes past the already-hydrated rows next
+// time, bounding the burst without losing progress.
+const maxHydrationsPerPass = 25
+
 // InverseMaskOptions tune Lane C's mask cutoff (ADR 0044).
 type InverseMaskOptions struct {
 	// MaskWindow is Lane A's start_date mask width. Lane C's end_date bound
@@ -114,11 +125,23 @@ func (h *InverseMaskLaneHandler) recorder() metricsRecorder {
 
 // RunOnePage executes exactly one page of Lane C's ascending epoch walk (ADR
 // 0044 §5): anchor a new epoch when none is active, or resume the active one
-// at its persisted NextIndex; fetch one page; diff/hydrate genuinely changed
-// rows; checkpoint. The sentinel row's HighWaterMark holds the pinned
-// epoch_upper, Cursor.DifferentStart doubles as epoch_lower, and
-// Cursor.NextIndex is the ascending record offset — the existing PollCursor
-// shape, reused with no schema migration.
+// (with a resume overlap, GH#986) at its persisted NextIndex; fetch one
+// page; diff/hydrate genuinely changed rows up to maxHydrationsPerPass;
+// checkpoint. The sentinel row's HighWaterMark holds the pinned epoch_upper,
+// Cursor.DifferentStart doubles as epoch_lower, and Cursor.NextIndex is the
+// ascending record offset — the existing PollCursor shape, reused with no
+// schema migration.
+//
+// GH#986: every early-exit path now checkpoints before returning — a page-
+// fetch 429/error re-saves the state exactly as loaded (unchanged epoch,
+// unchanged cursor) with last_poll_time bumped to now, and a mid-page bail
+// (a hydration 429, a straggler error, or the hydration cap) saves a cursor
+// at the offset actually reached. Previously both paths returned with no
+// save at all, so a persistently-failing record froze last_poll_time
+// forever: the planner's pure LRU then read Lane C as perpetually the
+// least-recently-polled lane, picked it every cycle, and it re-walked (and
+// re-failed on) the exact same page — the observed prod livelock that also
+// starved Lane A/B of every daytime cycle.
 func (h *InverseMaskLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 	ctx, span := otel.Tracer(tracerName).Start(ctx, "PlanIt Lane C inverse-mask poll")
 	defer span.End()
@@ -126,7 +149,7 @@ func (h *InverseMaskLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 	now := h.now().UTC()
 	var out laneOutcome
 
-	epochUpper, _, cursor, err := h.watermark.get(ctx)
+	loadedEpochUpper, _, cursor, err := h.watermark.get(ctx)
 	if err != nil {
 		out.err = fmt.Errorf("lane C: read epoch state: %w", err)
 		span.SetAttributes(attribute.String("poll.lane", string(LaneC)))
@@ -135,7 +158,7 @@ func (h *InverseMaskLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 
 	maskCutoff := truncateToDate(now.Add(-h.opts.MaskWindow))
 
-	if epochUpper.IsZero() {
+	if loadedEpochUpper.IsZero() {
 		// Never run: seed like Lane A/B, but Lane C's epoch is purely
 		// time-bound (no "head record" to discover), so seeding needs NO
 		// PlanIt request at all: anchor a zero-width epoch (epoch_lower ==
@@ -155,6 +178,7 @@ func (h *InverseMaskLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 		return out
 	}
 
+	epochUpper := loadedEpochUpper
 	var epochLower time.Time
 	if cursor != nil {
 		// Resume the active epoch at its persisted position.
@@ -169,9 +193,16 @@ func (h *InverseMaskLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 	}
 	out.watermarkBefore = epochLower
 
+	// GH#986: resume WITH a safety overlap, mirroring Lane A/B's
+	// resumeOverlapRecords (nationallane.go / handler.go). Safe because Lane
+	// C dedups every row via GetByUID/inverseMaskDiffers plus the Ingester,
+	// so re-processing up to resumeOverlapRecords rows on a resume is
+	// idempotent and cheap — and, now that a mid-page bail checkpoints at
+	// the exact failing offset, the overlap is what makes that checkpoint
+	// genuinely skip-safe against any off-by-one in PlanIt's own ordering.
 	startIndex := 0
 	if cursor != nil {
-		startIndex = cursor.NextIndex
+		startIndex = max(0, cursor.NextIndex-resumeOverlapRecords)
 	}
 
 	differentStart := truncateToDate(epochLower)
@@ -188,6 +219,13 @@ func (h *InverseMaskLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 		} else {
 			out.err = ferr
 		}
+		// GH#986: re-persist the epoch/cursor exactly as loaded (nothing was
+		// fetched, so no progress exists to checkpoint) but with
+		// last_poll_time advanced to now, so a page-fetch 429/error still
+		// rotates this lane off the LRU front instead of freezing it there.
+		if serr := h.watermark.save(ctx, now, loadedEpochUpper, cursor); serr != nil && out.err == nil {
+			out.err = serr
+		}
 		out.watermarkAfter = epochUpper
 		h.recordOutcome(ctx, out)
 		h.setSpanAttributes(span, out, epochLower, differentStart, false)
@@ -200,7 +238,11 @@ func (h *InverseMaskLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 
 	reachedCeiling := false
 	stoppedEarly := false
-	for _, light := range res.Applications {
+	hydrationsThisPass := 0
+	hydrationCapHit := false
+	i := 0
+	for ; i < len(res.Applications); i++ {
+		light := res.Applications[i]
 		// Ascending walk, exact-instant skip: a record at or before
 		// epochLower was already handled by the PREVIOUS epoch — the
 		// different_start prefilter is only date-granular, so the boundary
@@ -218,21 +260,33 @@ func (h *InverseMaskLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 			reachedCeiling = true
 			break
 		}
-		if perr := h.processStraggler(ctx, light, &out); perr != nil {
+		if perr := h.processStraggler(ctx, light, &out, &hydrationsThisPass, &hydrationCapHit); perr != nil {
 			out.err = perr
 			stoppedEarly = true
 			break
 		}
-		if out.rateLimited {
+		if out.rateLimited || hydrationCapHit {
 			// A hydration 429 trips the SAME "stop everything" rule as a
 			// page-fetch 429 (ADR 0044: one break on the first 429 from ANY
 			// lane) — never follow a rejected request with more requests.
+			// The hydration cap (GH#986) is a distinct, non-error reason to
+			// stop the same way: it bounds the FetchByUID burst a page of
+			// clustered stragglers can trigger.
 			stoppedEarly = true
 			break
 		}
 	}
 
 	if stoppedEarly {
+		// GH#986: checkpoint the offset actually reached — startIndex + i,
+		// where i counts every record iterated this page, including the
+		// exact-instant skips above — so both the cursor and last_poll_time
+		// advance even on a mid-page bail, and the next pass resumes past
+		// what this one already handled instead of re-walking it forever.
+		newCursor := &PollCursor{DifferentStart: epochLower, NextIndex: startIndex + i, KnownTotal: res.Total}
+		if serr := h.watermark.save(ctx, now, epochUpper, newCursor); serr != nil && out.err == nil {
+			out.err = serr
+		}
 		out.watermarkAfter = epochUpper
 		h.recordOutcome(ctx, out)
 		h.setSpanAttributes(span, out, epochLower, differentStart, false)
@@ -274,7 +328,15 @@ func (h *InverseMaskLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 // silently skip, freeze and let the next call resume" behaviour — so it is
 // surfaced as an error rather than logged-and-skipped, unlike the deleted
 // per-authority ReconciliationHandler.
-func (h *InverseMaskLaneHandler) processStraggler(ctx context.Context, light applications.PlanningApplication, out *laneOutcome) error {
+//
+// hydrationsThisPass/hydrationCapHit (GH#986) bound the FetchByUID fan-out a
+// single RunOnePage call can trigger: once hydrationsThisPass reaches
+// maxHydrationsPerPass, a row that would otherwise hydrate is left alone
+// (hydrationCapHit set instead) so the caller stops the walk and checkpoints
+// at this exact record rather than burst-hydrating an unbounded page of
+// clustered stragglers. A row that dedupes via GetByUID/inverseMaskDiffers
+// never counts against the cap — only a genuine FetchByUID attempt does.
+func (h *InverseMaskLaneHandler) processStraggler(ctx context.Context, light applications.PlanningApplication, out *laneOutcome, hydrationsThisPass *int, hydrationCapHit *bool) error {
 	authorityCode := strconv.Itoa(light.AreaID)
 	existing, found, gerr := h.apps.GetByUID(ctx, light.UID, authorityCode)
 	if gerr != nil {
@@ -283,6 +345,11 @@ func (h *InverseMaskLaneHandler) processStraggler(ctx context.Context, light app
 	if found && !inverseMaskDiffers(existing, light) {
 		return nil
 	}
+	if *hydrationsThisPass >= maxHydrationsPerPass {
+		*hydrationCapHit = true
+		return nil
+	}
+	*hydrationsThisPass++
 	return h.hydrate(ctx, light.UID, light.AreaID, out)
 }
 
