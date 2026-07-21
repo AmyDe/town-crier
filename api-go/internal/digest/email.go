@@ -33,10 +33,11 @@ const (
 
 // pageTemplate is the outer Public Notice shell: a paper-toned page holding a
 // single 600px card, a lettered masthead over a double rule, the per-zone
-// notification blocks, an amber CTA, and a footer with the unsubscribe link.
-// It is light-only by design (the color-scheme/supported-color-schemes meta
-// pair): email client dark-mode colour inversion is unreliable enough that a
-// dark variant is out of scope for v1 (issue 859).
+// notification blocks, an optional free-tier account-status line, an amber
+// CTA, and a footer with the unsubscribe link. It is light-only by design
+// (the color-scheme/supported-color-schemes meta pair): email client
+// dark-mode colour inversion is unreliable enough that a dark variant is out
+// of scope for v1 (issue 859).
 const pageTemplate = `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
 <meta name="color-scheme" content="light">
@@ -56,6 +57,7 @@ const pageTemplate = `<!DOCTYPE html>
       %s
     </table>
     <table width="100%%" cellpadding="0" cellspacing="0" role="presentation" style="margin-top:24px;">
+      %s
       <tr><td align="center">
         <a href="https://towncrierapp.uk/applications" style="display:inline-block;background:%s;color:%s;padding:12px 32px;border-radius:6px;text-decoration:none;font-weight:600;">Open Town Crier</a>
       </td></tr>
@@ -67,6 +69,21 @@ const pageTemplate = `<!DOCTYPE html>
 </table>
 </td></tr></table>
 </body></html>`
+
+// freeTierNoticeText is the account-status line shown on the weekly digest to
+// Free-tier recipients only (tc-m1pb5). It is a factual account statement,
+// not marketing copy: no benefit claim, no pricing, no urgency, and no CTA of
+// its own — the digest stays a service message rather than a promotion (the
+// Privacy Policy states "we do not send marketing email"). It must never
+// become a link and must never point at a paywall/plans/pricing page: it
+// leans on the existing "Open Town Crier" button rendered directly beneath
+// it.
+const freeTierNoticeText = "You're on the free weekly digest."
+
+// freeTierNoticeTemplate renders the free-tier notice as its own row directly
+// above the CTA button, inside the same centered table: small, muted,
+// secondary-coloured text, centre-aligned like the button below it.
+const freeTierNoticeTemplate = `<tr><td align="center" data-testid="digest-free-tier-notice" style="padding-bottom:12px;font-size:12px;color:%s;">%s</td></tr>`
 
 // sectionHeaderTemplate renders a zone or "Saved Applications" section label.
 const sectionHeaderTemplate = `<tr><td style="padding:16px 0 8px 0;font-size:14px;color:%s;text-transform:uppercase;letter-spacing:0.08em;">
@@ -121,11 +138,15 @@ func buildDigestSubject(totalCount int) string {
 // buildDigestHTML renders the full digest email body as a Public Notice
 // masthead-and-card layout (issue 859): a paper-toned page, a lettered
 // masthead over a double rule, one filed-notice card per watch zone (plus an
-// optional Saved Applications section), an amber CTA, and a footer carrying
-// the count and the unsubscribe link. All user-supplied content is
-// HTML-encoded. The markup stays table-based with inline styles throughout —
-// email-client reality, no external stylesheet, no flexbox/grid.
-func buildDigestHTML(zoneSections []watchZoneDigest, savedApplications []notifications.DigestNotification, totalCount int) string {
+// optional Saved Applications section), an optional free-tier account-status
+// line, an amber CTA, and a footer carrying the count and the unsubscribe
+// link. All user-supplied content is HTML-encoded. The markup stays
+// table-based with inline styles throughout — email-client reality, no
+// external stylesheet, no flexbox/grid. showFreeTierNotice renders the
+// "You're on the free weekly digest." line directly above the CTA button
+// (tc-m1pb5); callers pass true only for Free-tier recipients on the weekly
+// cycle — never the hourly cycle, which is paid-only anyway.
+func buildDigestHTML(zoneSections []watchZoneDigest, savedApplications []notifications.DigestNotification, totalCount int, showFreeTierNotice bool) string {
 	var zoneBlocks strings.Builder
 	for _, section := range zoneSections {
 		var cards strings.Builder
@@ -150,6 +171,11 @@ func buildDigestHTML(zoneSections []watchZoneDigest, savedApplications []notific
 		plural = ""
 	}
 
+	freeTierNotice := ""
+	if showFreeTierNotice {
+		freeTierNotice = fmt.Sprintf(freeTierNoticeTemplate, designtokens.TextSecondaryLightHex, htmlEncode(freeTierNoticeText))
+	}
+
 	return fmt.Sprintf(pageTemplate,
 		designtokens.BackgroundLightHex, bodyFontStack,
 		designtokens.SurfaceLightHex, designtokens.BorderLightHex, designtokens.TextPrimaryLightHex,
@@ -159,6 +185,7 @@ func buildDigestHTML(zoneSections []watchZoneDigest, savedApplications []notific
 		designtokens.TextPrimaryLightHex,
 		designtokens.BorderLightHex,
 		zoneBlocks.String(),
+		freeTierNotice,
 		designtokens.AmberLightHex, designtokens.TextOnAccentLightHex,
 		designtokens.TextSecondaryLightHex, designtokens.BorderLightHex,
 		totalCount, plural,
