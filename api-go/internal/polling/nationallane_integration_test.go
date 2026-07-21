@@ -94,8 +94,8 @@ func TestInverseMaskLane_EpochCursorCrossCycleResume_RealPostgres(t *testing.T) 
 
 	newLD := epochLower.Add(2 * time.Hour)
 	fetcher := newFakeInverseMaskFetcher()
-	fetcher.pages[300] = planit.FetchPageResult{
-		From:         300,
+	fetcher.pages[200] = planit.FetchPageResult{
+		From:         200,
 		Applications: []applications.PlanningApplication{lightApp("resumed/FUL", 99, "Permitted", newLD)},
 		HasMorePages: false,
 	}
@@ -112,8 +112,8 @@ func TestInverseMaskLane_EpochCursorCrossCycleResume_RealPostgres(t *testing.T) 
 	if out.err != nil {
 		t.Fatalf("RunOnePage: %v", out.err)
 	}
-	if len(fetcher.queries) != 1 || fetcher.queries[0].StartIndex != 300 {
-		t.Fatalf("expected the resumed fetch at StartIndex 300 (Lane C's cursor carries no resume overlap), got %+v", fetcher.queries)
+	if len(fetcher.queries) != 1 || fetcher.queries[0].StartIndex != 200 {
+		t.Fatalf("expected the resumed fetch at StartIndex 200 (checkpointed NextIndex 300 minus the 100-record resume overlap, GH#986), got %+v", fetcher.queries)
 	}
 	if !fetcher.queries[0].EpochLower.Equal(epochLower) {
 		t.Errorf("EpochLower: got %v, want the active epoch's floor %v", fetcher.queries[0].EpochLower, epochLower)
