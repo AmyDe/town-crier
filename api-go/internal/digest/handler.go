@@ -172,7 +172,9 @@ func (h *Handler) RunWeekly(ctx context.Context) error {
 			// The weekly cycle does not track emailSent (it re-derives the digest from
 			// the look-back window each run), so a failed send is already logged inside
 			// sendDigestEmail; we just move on to the next user.
-			if err := h.sendDigestEmail(ctx, emailKindWeekly, profile.UserID, *profile.Email, notifs); err != nil {
+			// TODO(tc-m1pb5): wire the real Free-tier check here; a following TDD
+			// cycle drives this via a failing handler-level test.
+			if err := h.sendDigestEmail(ctx, emailKindWeekly, profile.UserID, *profile.Email, notifs, false); err != nil {
 				continue
 			}
 		}
@@ -298,7 +300,10 @@ func (h *Handler) RunHourly(ctx context.Context) error {
 		// batches every included notification for this user, so a failed send must
 		// leave the whole batch unmarked for the next cycle to retry. Marking on a
 		// swallowed send error is silent data loss (tc-qvds).
-		if err := h.sendDigestEmail(ctx, emailKindHourly, userID, *profile.Email, included); err != nil {
+		// The hourly digest never shows the free-tier notice: it is a paid-only
+		// entitlement (RunHourly already excludes Free tier above), and the line
+		// is scoped to the weekly cycle only (tc-m1pb5).
+		if err := h.sendDigestEmail(ctx, emailKindHourly, userID, *profile.Email, included, false); err != nil {
 			continue
 		}
 
@@ -355,8 +360,11 @@ func markSent(n notifications.DigestNotification) notifications.DigestNotificati
 // never retried — tc-qvds), while the weekly cycle simply moves on to the next
 // user. A failed email never aborts the rest of the cycle either way. kind is
 // the "Email send" span's email.kind tag (emailKindWeekly / emailKindHourly),
-// distinguishing the two cycles that share this method.
-func (h *Handler) sendDigestEmail(ctx context.Context, kind, userID, email string, notifs []notifications.DigestNotification) error {
+// distinguishing the two cycles that share this method. showFreeTierNotice
+// controls the "You're on the free weekly digest." line (tc-m1pb5); the
+// hourly cycle always passes false (it is paid-only anyway), so only
+// RunWeekly ever shows it.
+func (h *Handler) sendDigestEmail(ctx context.Context, kind, userID, email string, notifs []notifications.DigestNotification, showFreeTierNotice bool) error {
 	zones, err := h.zones.GetByUserID(ctx, userID)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "digest email: load zones failed", "user", userID, "error", err)
@@ -374,7 +382,7 @@ func (h *Handler) sendDigestEmail(ctx context.Context, kind, userID, email strin
 		Sender:    senderAddress,
 		Recipient: email,
 		Subject:   buildDigestSubject(total),
-		HTMLBody:  buildDigestHTML(sections, saved, total),
+		HTMLBody:  buildDigestHTML(sections, saved, total, showFreeTierNotice),
 	}
 	if err := h.email.Send(ctx, kind, msg); err != nil {
 		h.logger.ErrorContext(ctx, "digest email: send failed", "user", userID, "error", err)

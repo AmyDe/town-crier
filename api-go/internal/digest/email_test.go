@@ -53,7 +53,7 @@ func TestBuildDigestHTML_RendersZoneAndSavedSections(t *testing.T) {
 		testNotification("20/00045/FUL", "", "5 Mill Ln", "Full", "New dwelling"),
 	}
 
-	html := buildDigestHTML(zones, saved, 2)
+	html := buildDigestHTML(zones, saved, 2, false)
 
 	for _, want := range []string{
 		"Town Crier",
@@ -81,7 +81,7 @@ func TestBuildDigestHTML_DecisionLabelBadge(t *testing.T) {
 	n.Decision = strptr("Permitted")
 	zones := []watchZoneDigest{{name: "Home", notifications: []notifications.DigestNotification{n}}}
 
-	html := buildDigestHTML(zones, nil, 1)
+	html := buildDigestHTML(zones, nil, 1, false)
 
 	if !strings.Contains(html, "[Approved]") {
 		t.Errorf("decision badge should show UK label [Approved], got:\n%s", html)
@@ -103,7 +103,7 @@ func TestBuildDigestHTML_SavedIndicatorOnZoneCard(t *testing.T) {
 	n.Sources = "Zone, Saved"
 	zones := []watchZoneDigest{{name: "Home", notifications: []notifications.DigestNotification{n}}}
 
-	html := buildDigestHTML(zones, nil, 1)
+	html := buildDigestHTML(zones, nil, 1, false)
 
 	if !strings.Contains(html, "★ saved") {
 		t.Errorf("expected saved indicator on zone card, got:\n%s", html)
@@ -116,7 +116,7 @@ func TestBuildDigestHTML_EscapesUserContent(t *testing.T) {
 	n := testNotification("19/0011", "zone-1", "<script>alert(1)</script>", "Householder", "x & y")
 	zones := []watchZoneDigest{{name: "Home & Garden", notifications: []notifications.DigestNotification{n}}}
 
-	html := buildDigestHTML(zones, nil, 1)
+	html := buildDigestHTML(zones, nil, 1, false)
 
 	if strings.Contains(html, "<script>alert(1)</script>") {
 		t.Errorf("address must be HTML-encoded, got:\n%s", html)
@@ -150,7 +150,7 @@ func TestBuildDigestHTML_NoLegacyBrandHexLiterals(t *testing.T) {
 	// now comes from designtokens.
 	n := testNotification("19/00123/FUL", "zone-1", "10 High St", "Householder", "Rear extension")
 	zones := []watchZoneDigest{{name: "Home", notifications: []notifications.DigestNotification{n}}}
-	html := buildDigestHTML(zones, nil, 1)
+	html := buildDigestHTML(zones, nil, 1, false)
 
 	for _, legacy := range []string{"#1a1a2e", "#4a6cf7", "#f0f0f0", "#eef1ff", "#fff3cd", "#f8f9fa", "#666", "#999", "#888", "#eee"} {
 		if strings.Contains(html, legacy) {
@@ -163,7 +163,7 @@ func TestBuildDigestHTML_UsesDesignTokenColours(t *testing.T) {
 	t.Parallel()
 	n := testNotification("19/00123/FUL", "zone-1", "10 High St", "Householder", "Rear extension")
 	zones := []watchZoneDigest{{name: "Home", notifications: []notifications.DigestNotification{n}}}
-	html := buildDigestHTML(zones, nil, 1)
+	html := buildDigestHTML(zones, nil, 1, false)
 
 	for _, want := range []string{
 		designtokens.BackgroundLightHex,
@@ -182,7 +182,7 @@ func TestBuildDigestHTML_UsesDesignTokenColours(t *testing.T) {
 
 func TestBuildDigestHTML_MastheadAndDoubleRule(t *testing.T) {
 	t.Parallel()
-	html := buildDigestHTML(nil, nil, 0)
+	html := buildDigestHTML(nil, nil, 0, false)
 
 	if !strings.Contains(html, "Town Crier") {
 		t.Errorf("masthead should render the Town Crier wordmark, got:\n%s", html)
@@ -196,7 +196,7 @@ func TestBuildDigestHTML_MastheadAndDoubleRule(t *testing.T) {
 
 func TestBuildDigestHTML_CTAIsVerbFirstAmber(t *testing.T) {
 	t.Parallel()
-	html := buildDigestHTML(nil, nil, 0)
+	html := buildDigestHTML(nil, nil, 0, false)
 
 	if !strings.Contains(html, "Open Town Crier") {
 		t.Errorf("CTA label should be verb-first (\"Open Town Crier\"), got:\n%s", html)
@@ -218,7 +218,7 @@ func TestBuildDigestHTML_HeadlinesUseSansStack(t *testing.T) {
 
 	n := testNotification("19/00123/FUL", "zone-1", "10 High St", "Householder", "Rear extension")
 	zones := []watchZoneDigest{{name: "Home", notifications: []notifications.DigestNotification{n}}}
-	html := buildDigestHTML(zones, nil, 1)
+	html := buildDigestHTML(zones, nil, 1, false)
 
 	if !strings.Contains(html, fmt.Sprintf(`font-family:%s;font-weight:700`, bodyFontStack)) {
 		t.Errorf("headlines should render with the sans stack, got:\n%s", html)
@@ -229,7 +229,7 @@ func TestBuildDigestHTML_ReferenceAndDateUseMonospace(t *testing.T) {
 	t.Parallel()
 	n := testNotification("19/00123/FUL", "zone-1", "10 High St", "Householder", "Rear extension")
 	zones := []watchZoneDigest{{name: "Home", notifications: []notifications.DigestNotification{n}}}
-	html := buildDigestHTML(zones, nil, 1)
+	html := buildDigestHTML(zones, nil, 1, false)
 
 	if !strings.Contains(html, "'Courier New', monospace") {
 		t.Errorf("references/dates should use the Courier New monospace stack, got:\n%s", html)
@@ -249,7 +249,7 @@ func TestBuildDigestHTML_ChipsAreOutlinedTransparent(t *testing.T) {
 	n.Decision = strptr("Permitted")
 	n.Sources = "Zone, Saved"
 	zones := []watchZoneDigest{{name: "Home", notifications: []notifications.DigestNotification{n}}}
-	html := buildDigestHTML(zones, nil, 1)
+	html := buildDigestHTML(zones, nil, 1, false)
 
 	if !strings.Contains(html, "background:transparent") {
 		t.Errorf("type chip and saved indicator should have a transparent background, got:\n%s", html)
@@ -264,7 +264,7 @@ func TestBuildDigestHTML_ChipsAreOutlinedTransparent(t *testing.T) {
 
 func TestBuildDigestHTML_LightOnlyMetaTags(t *testing.T) {
 	t.Parallel()
-	html := buildDigestHTML(nil, nil, 0)
+	html := buildDigestHTML(nil, nil, 0, false)
 
 	if !strings.Contains(html, `<meta name="color-scheme" content="light">`) {
 		t.Errorf("expected a light-only color-scheme meta tag, got:\n%s", html)
@@ -278,7 +278,7 @@ func TestBuildDigestHTML_StructuralSafety(t *testing.T) {
 	t.Parallel()
 	n := testNotification("19/00123/FUL", "zone-1", "10 High St", "Householder", "Rear extension")
 	zones := []watchZoneDigest{{name: "Home", notifications: []notifications.DigestNotification{n}}}
-	html := buildDigestHTML(zones, nil, 1)
+	html := buildDigestHTML(zones, nil, 1, false)
 
 	if got := strings.Count(html, `width="600"`); got != 1 {
 		t.Errorf("expected exactly one 600-wide table, got %d in:\n%s", got, html)
