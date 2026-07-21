@@ -335,6 +335,31 @@ export function renderInlineCta(area, storeHref) {
 }
 
 /**
+ * Render the unconditional cross-link to the `/planning/towns` index
+ * (tc-3ht16, GH #990 slice 1). `/planning/towns` links out to all 1,307
+ * published town pages but had zero inbound links of its own, which is the
+ * root cause of 80 pages sitting "Discovered - currently not indexed" in
+ * Search Console. This single link is what un-orphans it.
+ *
+ * Shared between the `/planning` hub (`render-planning-index.mjs`) and every
+ * authority page (`render-page.mjs`), where it must render even for the 29
+ * authorities with zero published towns of their own (the conditional
+ * `renderTownLinks()` section in `render-page.mjs` returns `''` for those, so
+ * this helper is deliberately separate and unconditional). `/planning/towns`
+ * is a static route that always publishes a page (even a "no towns yet" one,
+ * see `render-towns-index.mjs`), so this link can never point at a 404.
+ * Takes no arguments: the copy and target are identical on every page it
+ * appears on.
+ *
+ * @returns {string}
+ */
+export function renderPlanningCrossLinks() {
+  return `        <p class="crossLinks">
+          <a class="crossLinks__link" href="/planning/towns">See planning applications by town →</a>
+        </p>`;
+}
+
+/**
  * Render the QR block for the bottom CTA banner (tc-fgoyj). Hidden on touch
  * devices by the stylesheet (see `.cta__qr`) and shown only where the primary
  * pointer is a mouse/trackpad: a desktop visitor who clicks the App Store link
@@ -596,6 +621,11 @@ export function pageStyles() {
       font-weight: 700;
     }
     .ctaInline__button:hover { background: var(--tc-amber-hover); }
+    /* Towns-index cross-link (tc-3ht16): a lightweight text link, not a
+       filled pill — secondary to the inline alerts CTA above it. */
+    .crossLinks { margin: 0 0 var(--tc-space-lg); }
+    .crossLinks__link { color: var(--tc-amber); font-weight: 600; text-decoration: none; }
+    .crossLinks__link:hover { color: var(--tc-amber-hover); text-decoration: underline; }
     /* ---------- CTA bands: filed-notice card shape, 2px brass top rule,
        display-font heading, one brass button — mid-list pitch (tc-fgoyj) and
        bottom banner both use this treatment. ---------- */
