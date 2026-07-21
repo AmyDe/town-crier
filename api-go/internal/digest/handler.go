@@ -172,9 +172,13 @@ func (h *Handler) RunWeekly(ctx context.Context) error {
 			// The weekly cycle does not track emailSent (it re-derives the digest from
 			// the look-back window each run), so a failed send is already logged inside
 			// sendDigestEmail; we just move on to the next user.
-			// TODO(tc-m1pb5): wire the real Free-tier check here; a following TDD
-			// cycle drives this via a failing handler-level test.
-			if err := h.sendDigestEmail(ctx, emailKindWeekly, profile.UserID, *profile.Email, notifs, false); err != nil {
+			// The free-tier account-status line is Free-tier only (tc-m1pb5):
+			// IsPaid() covers every paid tier (Personal and Pro alike), not just
+			// Pro — a Personal subscriber must never see "You're on the free
+			// weekly digest." A lapsed paid tier reads as Free via EffectiveTier
+			// and correctly sees the line too.
+			showFreeTierNotice := !profile.EffectiveTier(now).IsPaid()
+			if err := h.sendDigestEmail(ctx, emailKindWeekly, profile.UserID, *profile.Email, notifs, showFreeTierNotice); err != nil {
 				continue
 			}
 		}
