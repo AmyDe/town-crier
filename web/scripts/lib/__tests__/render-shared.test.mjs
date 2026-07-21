@@ -7,6 +7,7 @@ import {
   renderInlineCta,
   renderMidListCta,
   renderQrBlock,
+  renderPlanningCrossLinks,
   pageStyles,
 } from '../render-shared.mjs';
 import { ATTRIBUTION_LINES } from '../constants.mjs';
@@ -390,6 +391,27 @@ describe('renderAttributionList', () => {
     // HTML in a line is escaped so data can never inject markup.
     expect(html).toContain('<li>Line two &amp; &lt;b&gt;bold&lt;/b&gt;</li>');
     expect((html.match(/<li>/g) ?? []).length).toBe(2);
+  });
+});
+
+describe('renderPlanningCrossLinks (tc-3ht16, GH #990 slice 1: un-orphan /planning/towns)', () => {
+  it('renders a real, crawlable link to /planning/towns', () => {
+    const html = renderPlanningCrossLinks();
+    expect(html).toContain('class="crossLinks"');
+    expect(html).toContain('<a class="crossLinks__link" href="/planning/towns">');
+    expect(html).not.toContain('onclick');
+  });
+
+  it('takes no arguments, so both the hub and every authority page render byte-identical markup', () => {
+    expect(renderPlanningCrossLinks()).toBe(renderPlanningCrossLinks());
+  });
+});
+
+describe('pageStyles cross-link (tc-3ht16)', () => {
+  it('styles the towns-index cross-link as an amber text link, not a filled pill', () => {
+    const css = pageStyles();
+    expect(css).toMatch(/\.crossLinks__link \{[^}]*color: var\(--tc-amber\)/);
+    expect(css).not.toMatch(/\.crossLinks__link \{[^}]*background: var\(--tc-amber\)/);
   });
 });
 
