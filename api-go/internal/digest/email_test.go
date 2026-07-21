@@ -292,3 +292,47 @@ func TestBuildDigestHTML_StructuralSafety(t *testing.T) {
 		t.Errorf("expected an unsubscribe link, got:\n%s", html)
 	}
 }
+
+// --- Free-tier account-status line (tc-m1pb5) ---
+
+func TestBuildDigestHTML_FreeTierNotice_ShownAndPositionedAboveCTA(t *testing.T) {
+	t.Parallel()
+	html := buildDigestHTML(nil, nil, 0, true)
+
+	if !strings.Contains(html, "You&#39;re on the free weekly digest.") {
+		t.Errorf("expected the free-tier notice copy (apostrophe HTML-encoded), got:\n%s", html)
+	}
+	if !strings.Contains(html, `data-testid="digest-free-tier-notice"`) {
+		t.Errorf("expected the free-tier notice testid, got:\n%s", html)
+	}
+
+	noticeIdx := strings.Index(html, `data-testid="digest-free-tier-notice"`)
+	ctaIdx := strings.Index(html, "Open Town Crier")
+	if noticeIdx == -1 || ctaIdx == -1 || noticeIdx > ctaIdx {
+		t.Fatalf("free-tier notice must render above the Open Town Crier CTA, notice=%d cta=%d in:\n%s", noticeIdx, ctaIdx, html)
+	}
+
+	// The notice must not introduce a new anchor tag: extract just its row and
+	// confirm no <a> lives inside it. It leans on the existing CTA button
+	// beneath it instead of linking itself.
+	rowEnd := strings.Index(html[noticeIdx:], "</tr>")
+	if rowEnd == -1 {
+		t.Fatalf("could not find closing </tr> for the free-tier notice row in:\n%s", html)
+	}
+	noticeRow := html[noticeIdx : noticeIdx+rowEnd]
+	if strings.Contains(noticeRow, "<a ") || strings.Contains(noticeRow, "<a>") {
+		t.Errorf("free-tier notice must not itself be a link, got row:\n%s", noticeRow)
+	}
+}
+
+func TestBuildDigestHTML_FreeTierNotice_HiddenWhenNotRequested(t *testing.T) {
+	t.Parallel()
+	html := buildDigestHTML(nil, nil, 0, false)
+
+	if strings.Contains(html, "free weekly digest") {
+		t.Errorf("paid-tier digest must not show the free-tier notice copy, got:\n%s", html)
+	}
+	if strings.Contains(html, `data-testid="digest-free-tier-notice"`) {
+		t.Errorf("paid-tier digest must not render the free-tier notice row at all, got:\n%s", html)
+	}
+}
