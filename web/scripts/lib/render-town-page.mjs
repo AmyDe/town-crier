@@ -123,6 +123,12 @@ export function renderTownPage(data) {
   const authority = escapeHtml(data.authorityName);
   const canonical = `${SITE_ORIGIN}/planning/${data.authoritySlug}/${data.townSlug}`;
   const authorityCanonical = `${SITE_ORIGIN}/planning/${data.authoritySlug}`;
+  // Site-relative path for the VISIBLE breadcrumb link only — every sibling
+  // crumb (Home, the /planning hub) is relative, so this one must be too, or
+  // it jumps off-host on any non-prod origin (local preview, dev, staging).
+  // `authorityCanonical` stays absolute for the JSON-LD BreadcrumbList `item`,
+  // which schema.org expects as a full url.
+  const authorityPath = `/planning/${data.authoritySlug}`;
   const lead = escapeHtml(leadLine(data.townName, data.total));
   const title = `Planning applications in ${town} | Town Crier`;
   const metaDescription = escapeHtml(
@@ -178,7 +184,7 @@ ${pageStyles()}
         <ol>
           <li><a href="/">Town Crier</a></li>
           <li><a href="/planning">Planning applications</a></li>
-          <li><a href="${authorityCanonical}">${authority}</a></li>
+          <li><a href="${authorityPath}">${authority}</a></li>
           <li>${town}</li>
         </ol>
       </nav>
