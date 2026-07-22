@@ -16,7 +16,12 @@
 
 import { SITE_ORIGIN, APPLE_APP_ID, appStoreUrl } from './constants.mjs';
 import { escapeHtml } from './format.mjs';
-import { pageStyles, renderInlineCta, renderAttributionList } from './render-shared.mjs';
+import {
+  pageStyles,
+  renderInlineCta,
+  renderAttributionList,
+  renderPlanningCrossLinks,
+} from './render-shared.mjs';
 
 /**
  * @typedef {Object} PlanningIndexEntry
@@ -234,6 +239,7 @@ ${pageStyles()}
         <h1>Planning applications by council</h1>
         <p class="lead">Browse recent planning applications for ${count} ${authoritiesNoun} across the UK.</p>
 ${renderInlineCta('your council', storeHref)}
+${renderPlanningCrossLinks()}
 ${letterNav}
 ${letterSections}
 
