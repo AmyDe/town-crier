@@ -84,6 +84,10 @@ function buildTownJsonLd(data, canonical, authorityCanonical) {
     license:
       'https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/',
   };
+  // Mirrors the visible four-level trail (tc-3ht16): Home -> the /planning hub
+  // -> the parent authority -> this town. "Planning applications" matches the
+  // hub's own self-referential label (render-planning-index.mjs's buildJsonLd)
+  // and the authority page's breadcrumb (render-page.mjs's buildJsonLd) exactly.
   const breadcrumb = {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
@@ -92,10 +96,16 @@ function buildTownJsonLd(data, canonical, authorityCanonical) {
       {
         '@type': 'ListItem',
         position: 2,
+        name: 'Planning applications',
+        item: `${SITE_ORIGIN}/planning`,
+      },
+      {
+        '@type': 'ListItem',
+        position: 3,
         name: data.authorityName,
         item: authorityCanonical,
       },
-      { '@type': 'ListItem', position: 3, name: data.townName, item: canonical },
+      { '@type': 'ListItem', position: 4, name: data.townName, item: canonical },
     ],
   };
   // Escape "<" so a malicious data value can never close the <script> element.
@@ -113,6 +123,12 @@ export function renderTownPage(data) {
   const authority = escapeHtml(data.authorityName);
   const canonical = `${SITE_ORIGIN}/planning/${data.authoritySlug}/${data.townSlug}`;
   const authorityCanonical = `${SITE_ORIGIN}/planning/${data.authoritySlug}`;
+  // Site-relative path for the VISIBLE breadcrumb link only — every sibling
+  // crumb (Home, the /planning hub) is relative, so this one must be too, or
+  // it jumps off-host on any non-prod origin (local preview, dev, staging).
+  // `authorityCanonical` stays absolute for the JSON-LD BreadcrumbList `item`,
+  // which schema.org expects as a full url.
+  const authorityPath = `/planning/${data.authoritySlug}`;
   const lead = escapeHtml(leadLine(data.townName, data.total));
   const title = `Planning applications in ${town} | Town Crier`;
   const metaDescription = escapeHtml(
@@ -167,7 +183,8 @@ ${pageStyles()}
       <nav class="breadcrumb" aria-label="Breadcrumb">
         <ol>
           <li><a href="/">Town Crier</a></li>
-          <li><a href="${authorityCanonical}">${authority}</a></li>
+          <li><a href="/planning">Planning applications</a></li>
+          <li><a href="${authorityPath}">${authority}</a></li>
           <li>${town}</li>
         </ol>
       </nav>

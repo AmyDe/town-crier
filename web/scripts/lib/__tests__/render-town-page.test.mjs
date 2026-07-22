@@ -89,12 +89,117 @@ describe('renderTownPage', () => {
     expect(html).toContain('"@type":"BreadcrumbList"');
   });
 
-  it('renders a breadcrumb linking up to the authority page', () => {
-    const html = renderTownPage(townData());
-    expect(html).toContain('class="breadcrumb"');
-    expect(html).toContain(`href="${SITE_ORIGIN}/planning/cornwall"`);
-    // The breadcrumb names the parent authority.
-    expect(html).toMatch(/breadcrumb[\s\S]*?Cornwall/);
+  describe('breadcrumb (tc-3ht16, GH #990 slice 2: includes the /planning hub)', () => {
+    it('renders a visible breadcrumb with exactly four levels: Home, the hub, the authority, then the town', () => {
+      const html = renderTownPage(townData());
+      const nav = html.match(
+        /<nav class="breadcrumb" aria-label="Breadcrumb">[\s\S]*?<\/nav>/,
+      );
+      expect(nav).not.toBeNull();
+      const [navHtml] = nav;
+      const liCount = (navHtml.match(/<li/g) ?? []).length;
+      expect(liCount).toBe(4);
+      expect(navHtml).toContain('<li><a href="/">Town Crier</a></li>');
+      expect(navHtml).toContain(
+        '<li><a href="/planning">Planning applications</a></li>',
+      );
+      expect(navHtml).toContain(
+        '<li><a href="/planning/cornwall">Cornwall</a></li>',
+      );
+      expect(navHtml).toContain('<li>Truro</li>');
+    });
+
+    it('links the visible authority crumb with a site-relative href, not the absolute JSON-LD url (so it never jumps off-host on a non-prod origin)', () => {
+      const html = renderTownPage(townData());
+      const navHtml = html.match(
+        /<nav class="breadcrumb" aria-label="Breadcrumb">[\s\S]*?<\/nav>/,
+      )[0];
+      expect(navHtml).toContain('href="/planning/cornwall"');
+      expect(navHtml).not.toContain(`href="${SITE_ORIGIN}/planning/cornwall"`);
+      // The JSON-LD BreadcrumbList `item` is still the full absolute url — only
+      // the VISIBLE nav link is relative, matching every sibling crumb.
+      const [, json] = html.match(
+        /<script type="application\/ld\+json">([\s\S]*?)<\/script>/,
+      );
+      const breadcrumb = JSON.parse(json).find(
+        (entry) => entry['@type'] === 'BreadcrumbList',
+      );
+      const authorityEntry = breadcrumb.itemListElement.find(
+        (entry) => entry.name === 'Cornwall',
+      );
+      expect(authorityEntry.item).toBe(`${SITE_ORIGIN}/planning/cornwall`);
+    });
+
+    it('embeds a four-item BreadcrumbList in the schema.org JSON-LD', () => {
+      const html = renderTownPage(townData());
+      const ld = html.match(
+        /<script type="application\/ld\+json">([\s\S]*?)<\/script>/,
+      );
+      expect(ld).not.toBeNull();
+      const [, json] = ld;
+      const parsed = JSON.parse(json);
+      const breadcrumb = parsed.find((entry) => entry['@type'] === 'BreadcrumbList');
+      expect(breadcrumb).toBeDefined();
+      expect(breadcrumb.itemListElement).toEqual([
+        {
+          '@type': 'ListItem',
+          position: 1,
+          name: 'Town Crier',
+          item: `${SITE_ORIGIN}/`,
+        },
+        {
+          '@type': 'ListItem',
+          position: 2,
+          name: 'Planning applications',
+          item: `${SITE_ORIGIN}/planning`,
+        },
+        {
+          '@type': 'ListItem',
+          position: 3,
+          name: 'Cornwall',
+          item: `${SITE_ORIGIN}/planning/cornwall`,
+        },
+        {
+          '@type': 'ListItem',
+          position: 4,
+          name: 'Truro',
+          item: `${SITE_ORIGIN}/planning/cornwall/truro`,
+        },
+      ]);
+    });
+
+    it('carries the same name sequence, and the same hrefs for every linked crumb, in the visible breadcrumb and the JSON-LD BreadcrumbList', () => {
+      const html = renderTownPage(townData());
+      const navHtml = html.match(
+        /<nav class="breadcrumb" aria-label="Breadcrumb">[\s\S]*?<\/nav>/,
+      )[0];
+      // The authority crumb's visible href is absolute (authorityCanonical);
+      // the Home/hub crumbs are site-relative. Normalise both sides the same
+      // way before comparing so an origin-qualified href and its relative
+      // equivalent aren't treated as a mismatch.
+      const normalize = (href) =>
+        href.startsWith(SITE_ORIGIN) ? href.slice(SITE_ORIGIN.length) : href;
+      const visibleNames = [
+        ...navHtml.matchAll(/<li>(?:<a[^>]*>)?([^<]+)(?:<\/a>)?<\/li>/g),
+      ].map((m) => m[1]);
+      const visibleLinkedHrefs = [
+        ...navHtml.matchAll(/<li><a href="([^"]+)">/g),
+      ].map((m) => normalize(m[1]));
+
+      const [, json] = html.match(
+        /<script type="application\/ld\+json">([\s\S]*?)<\/script>/,
+      );
+      const breadcrumb = JSON.parse(json).find(
+        (entry) => entry['@type'] === 'BreadcrumbList',
+      );
+      const jsonLdNames = breadcrumb.itemListElement.map((entry) => entry.name);
+      const jsonLdLinkedHrefs = breadcrumb.itemListElement
+        .slice(0, -1)
+        .map((entry) => normalize(entry.item));
+
+      expect(visibleNames).toEqual(jsonLdNames);
+      expect(visibleLinkedHrefs).toEqual(jsonLdLinkedHrefs);
+    });
   });
 
   it('renders each application address as the headline and status label', () => {

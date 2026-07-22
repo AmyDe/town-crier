@@ -9,6 +9,7 @@ import {
   renderInlineCta,
   renderQrBlock,
   renderAttributionList,
+  renderPlanningCrossLinks,
 } from './render-shared.mjs';
 
 /**
@@ -100,14 +101,22 @@ function buildJsonLd(data, canonical) {
     license:
       'https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/',
   };
-  // An authority page has no parent above it (unlike a town page, which climbs
-  // Home -> Authority -> Town), so this trail is two levels: Home -> Authority.
+  // Mirrors the visible three-level trail (tc-3ht16): Home -> the /planning hub
+  // -> this authority. Matches the hub's own self-referential "Planning
+  // applications" label (render-planning-index.mjs's buildJsonLd) exactly, so
+  // the label is consistent site-wide.
   const breadcrumb = {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
     itemListElement: [
       { '@type': 'ListItem', position: 1, name: 'Town Crier', item: `${SITE_ORIGIN}/` },
-      { '@type': 'ListItem', position: 2, name: data.areaName, item: canonical },
+      {
+        '@type': 'ListItem',
+        position: 2,
+        name: 'Planning applications',
+        item: `${SITE_ORIGIN}/planning`,
+      },
+      { '@type': 'ListItem', position: 3, name: data.areaName, item: canonical },
     ],
   };
   // Escape "<" so a malicious data value can never close the <script> element.
@@ -175,6 +184,7 @@ ${pageStyles()}
       <nav class="breadcrumb" aria-label="Breadcrumb">
         <ol>
           <li><a href="/">Town Crier</a></li>
+          <li><a href="/planning">Planning applications</a></li>
           <li>${area}</li>
         </ol>
       </nav>
@@ -183,6 +193,7 @@ ${pageStyles()}
         ${dataUpdated}
         <p class="lead">${lead}</p>
 ${renderInlineCta(data.areaName, appStoreUrl('seo-lpa-inline'))}
+${renderPlanningCrossLinks()}
 
 ${renderStatusSummary(data.statusBreakdown)}
 

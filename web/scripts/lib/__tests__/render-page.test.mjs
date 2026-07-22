@@ -89,8 +89,8 @@ describe('renderPlanningPage', () => {
     expect(html).toContain('"@type":"ItemList"');
   });
 
-  describe('breadcrumb (tc-r4n9.4)', () => {
-    it('renders a visible breadcrumb with exactly two levels: Home, then the authority (no grandparent level)', () => {
+  describe('breadcrumb (tc-r4n9.4, extended to include the /planning hub tc-3ht16)', () => {
+    it('renders a visible breadcrumb with exactly three levels: Home, the hub, then the authority', () => {
       const html = renderPlanningPage(pageData());
       const nav = html.match(
         /<nav class="breadcrumb" aria-label="Breadcrumb">[\s\S]*?<\/nav>/,
@@ -98,8 +98,11 @@ describe('renderPlanningPage', () => {
       expect(nav).not.toBeNull();
       const [navHtml] = nav;
       const liCount = (navHtml.match(/<li/g) ?? []).length;
-      expect(liCount).toBe(2);
+      expect(liCount).toBe(3);
       expect(navHtml).toContain('<li><a href="/">Town Crier</a></li>');
+      expect(navHtml).toContain(
+        '<li><a href="/planning">Planning applications</a></li>',
+      );
       expect(navHtml).toContain('<li>Basingstoke and Deane</li>');
       // The current page is plain text, not a self-link (matches the town-page pattern).
       expect(navHtml).not.toContain('<a href="/planning/basingstoke-and-deane"');
@@ -123,7 +126,7 @@ describe('renderPlanningPage', () => {
       expect(html).toContain('<li>Stoke &amp; &lt;b&gt;Bramley&lt;/b&gt;</li>');
     });
 
-    it('embeds a two-item BreadcrumbList in the schema.org JSON-LD, alongside the ItemList and Dataset', () => {
+    it('embeds a three-item BreadcrumbList in the schema.org JSON-LD, alongside the ItemList and Dataset', () => {
       const html = renderPlanningPage(pageData());
       expect(html).toContain('"@type":"BreadcrumbList"');
       const ld = html.match(
@@ -144,10 +147,64 @@ describe('renderPlanningPage', () => {
         {
           '@type': 'ListItem',
           position: 2,
+          name: 'Planning applications',
+          item: `${SITE_ORIGIN}/planning`,
+        },
+        {
+          '@type': 'ListItem',
+          position: 3,
           name: 'Basingstoke and Deane',
           item: `${SITE_ORIGIN}/planning/basingstoke-and-deane`,
         },
       ]);
+    });
+
+    it('carries the same name sequence, and the same hrefs for every linked crumb, in the visible breadcrumb and the JSON-LD BreadcrumbList', () => {
+      const html = renderPlanningPage(pageData());
+      const navHtml = html.match(
+        /<nav class="breadcrumb" aria-label="Breadcrumb">[\s\S]*?<\/nav>/,
+      )[0];
+      const visibleNames = [
+        ...navHtml.matchAll(/<li>(?:<a[^>]*>)?([^<]+)(?:<\/a>)?<\/li>/g),
+      ].map((m) => m[1]);
+      const visibleLinkedHrefs = [
+        ...navHtml.matchAll(/<li><a href="([^"]+)">/g),
+      ].map((m) => m[1]);
+
+      const [, json] = html.match(
+        /<script type="application\/ld\+json">([\s\S]*?)<\/script>/,
+      );
+      const breadcrumb = JSON.parse(json).find(
+        (entry) => entry['@type'] === 'BreadcrumbList',
+      );
+      const jsonLdNames = breadcrumb.itemListElement.map((entry) => entry.name);
+      // The final crumb (the current page) is plain text in the visible nav, so
+      // only the LINKED crumbs need matching hrefs.
+      const jsonLdLinkedHrefs = breadcrumb.itemListElement
+        .slice(0, -1)
+        .map((entry) => entry.item.replace(SITE_ORIGIN, ''));
+
+      expect(visibleNames).toEqual(jsonLdNames);
+      expect(visibleLinkedHrefs).toEqual(jsonLdLinkedHrefs);
+    });
+  });
+
+  describe('towns-index cross-link (tc-3ht16, GH #990 slice 1)', () => {
+    it('links to /planning/towns when the authority has published towns', () => {
+      const html = renderPlanningPage(
+        pageData({ towns: [{ name: 'Basingstoke', slug: 'basingstoke' }] }),
+      );
+      expect(html).toContain('href="/planning/towns"');
+    });
+
+    it('still links to /planning/towns when the authority has zero published towns (the 29-authority case)', () => {
+      const html = renderPlanningPage(pageData({ towns: [] }));
+      expect(html).toContain('href="/planning/towns"');
+    });
+
+    it('also links to the /planning hub', () => {
+      const html = renderPlanningPage(pageData());
+      expect(html).toContain('href="/planning"');
     });
   });
 
