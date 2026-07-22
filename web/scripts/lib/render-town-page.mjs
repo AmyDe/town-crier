@@ -84,6 +84,10 @@ function buildTownJsonLd(data, canonical, authorityCanonical) {
     license:
       'https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/',
   };
+  // Mirrors the visible four-level trail (tc-3ht16): Home -> the /planning hub
+  // -> the parent authority -> this town. "Planning applications" matches the
+  // hub's own self-referential label (render-planning-index.mjs's buildJsonLd)
+  // and the authority page's breadcrumb (render-page.mjs's buildJsonLd) exactly.
   const breadcrumb = {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
@@ -92,10 +96,16 @@ function buildTownJsonLd(data, canonical, authorityCanonical) {
       {
         '@type': 'ListItem',
         position: 2,
+        name: 'Planning applications',
+        item: `${SITE_ORIGIN}/planning`,
+      },
+      {
+        '@type': 'ListItem',
+        position: 3,
         name: data.authorityName,
         item: authorityCanonical,
       },
-      { '@type': 'ListItem', position: 3, name: data.townName, item: canonical },
+      { '@type': 'ListItem', position: 4, name: data.townName, item: canonical },
     ],
   };
   // Escape "<" so a malicious data value can never close the <script> element.
@@ -167,6 +177,7 @@ ${pageStyles()}
       <nav class="breadcrumb" aria-label="Breadcrumb">
         <ol>
           <li><a href="/">Town Crier</a></li>
+          <li><a href="/planning">Planning applications</a></li>
           <li><a href="${authorityCanonical}">${authority}</a></li>
           <li>${town}</li>
         </ol>
