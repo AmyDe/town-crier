@@ -122,6 +122,23 @@ describe('renderPlanningIndexPage', () => {
     ]);
   });
 
+  describe('towns-index cross-link (tc-3ht16, GH #990 slice 1)', () => {
+    it('links to /planning/towns', () => {
+      const html = renderPlanningIndexPage(indexData());
+      expect(html).toContain('href="/planning/towns"');
+    });
+
+    it('places the cross-link near the lead paragraph, above the A-Z letter sections', () => {
+      const html = renderPlanningIndexPage(indexData());
+      expect(html.indexOf('class="lead"')).toBeLessThan(
+        html.indexOf('href="/planning/towns"'),
+      );
+      expect(html.indexOf('href="/planning/towns"')).toBeLessThan(
+        html.indexOf('class="hubGroup"'),
+      );
+    });
+  });
+
   describe('A-Z grouping', () => {
     it('groups authorities under their first-letter heading', () => {
       const html = renderPlanningIndexPage(indexData());
