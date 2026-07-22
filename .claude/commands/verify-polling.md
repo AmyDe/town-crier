@@ -79,6 +79,22 @@ for t in AppMetrics AppDependencies AppExceptions; do
 ```
 `AppDependencies` should be non-zero. **If `AppMetrics` is 0**, flag it (it's a real, separate defect) and treat Checks 4/5 and any metric total as UNKNOWN, leaning on Postgres + AppDependencies + AppTraces instead.
 
+### 0.5. Recent Azure Monitor alerts (orientation — run early)
+Azure Monitor already watches this stack (alert rules defined in `infra/shared.go` / `infra/environment.go` — job failures, PlanIt failure-rate, PlanIt request-budget, Postgres capacity, ACS/APNs/Auth0 delivery, API 5xx). Check its alert board before digging into raw telemetry by hand — a currently-Fired alert often explains what you're about to spend an hour re-discovering. There is **no `az monitor alert list` command**; `az monitor metrics alert list` / `az monitor scheduled-query list` only show rule *definitions*, not fired instances. Query the Alerts Management API directly:
+```bash
+SUB=$(az account show --query id -o tsv)
+for rg in rg-town-crier-prod rg-town-crier-shared; do
+  echo "=== $rg ==="
+  az rest --method get \
+    --url "https://management.azure.com/subscriptions/$SUB/providers/Microsoft.AlertsManagement/alerts?api-version=2019-05-05-preview&targetResourceGroup=$rg&timeRange=1d" \
+    --query "value[].{name:name, sev:properties.essentials.severity, cond:properties.essentials.monitorCondition, resource:properties.essentials.targetResourceName, started:properties.essentials.startDateTime}" -o table
+done
+```
+- `cond: Fired` is **currently open** — treat it as a lead, not a footnote. Chase it with the matching check below: `alert-job-failed-*` → Check 2; `alert-planit-failure-rate-shared` / `alert-planit-request-budget-shared` → Check 3/4; `alert-pg-*` → Postgres capacity (orthogonal to polling, but worth a one-line mention); anything else → note it and use judgement.
+- `cond: Resolved` within the window is a closed incident — worth a one-line footnote in the report (what fired, when it cleared), not a ❌.
+- Empty output for both resource groups is the clean/expected case.
+- If the call 403s, the signed-in account isn't scoped for `Microsoft.AlertsManagement/alerts/read` — say so and mark this check UNKNOWN; don't report a clean alert board on the strength of an error.
+
 ### 1. Deployment is current
 ```bash
 gh run list --workflow='CD Production' --limit 3
@@ -183,7 +199,7 @@ Empty or known-benign. `PlanItRateLimitException` is expected — not a concern 
 State the current **London time and which lanes are in-window** up front — every lane verdict depends on it.
 
 1. **Lane status** — one row each for A, B, C, D: ✅ / ⚠️ / ❌ + eligibility-aware evidence. For A/B give the healthy-quiet / active / upstream-frozen / broken verdict with `watermark` vs `firstLastDifferent`. For C/D say "idle (out of window) — expected" when applicable, else progress.
-2. **Cross-cutting invariants** — deploy current, worker running, lease `released_412`=0, queue ≤1, telemetry-pipeline (AppMetrics present?), notifications flowing, exceptions. One row each, ✅ / ⚠️ / ❌ + one line of evidence.
+2. **Cross-cutting invariants** — Azure Monitor alerts (any Fired?), deploy current, worker running, lease `released_412`=0, queue ≤1, telemetry-pipeline (AppMetrics present?), notifications flowing, exceptions. One row each, ✅ / ⚠️ / ❌ + one line of evidence.
 3. **Recovery / backlog** (only if a backlog is draining) — watermark at start vs now, PlanIt masked head, rough catch-up trend.
 
 End with 1–3 watch items and one recommendation line. Keep prose under 200 words.
