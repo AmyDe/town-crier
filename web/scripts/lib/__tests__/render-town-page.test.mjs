@@ -104,9 +104,30 @@ describe('renderTownPage', () => {
         '<li><a href="/planning">Planning applications</a></li>',
       );
       expect(navHtml).toContain(
-        `<li><a href="${SITE_ORIGIN}/planning/cornwall">Cornwall</a></li>`,
+        '<li><a href="/planning/cornwall">Cornwall</a></li>',
       );
       expect(navHtml).toContain('<li>Truro</li>');
+    });
+
+    it('links the visible authority crumb with a site-relative href, not the absolute JSON-LD url (so it never jumps off-host on a non-prod origin)', () => {
+      const html = renderTownPage(townData());
+      const navHtml = html.match(
+        /<nav class="breadcrumb" aria-label="Breadcrumb">[\s\S]*?<\/nav>/,
+      )[0];
+      expect(navHtml).toContain('href="/planning/cornwall"');
+      expect(navHtml).not.toContain(`href="${SITE_ORIGIN}/planning/cornwall"`);
+      // The JSON-LD BreadcrumbList `item` is still the full absolute url — only
+      // the VISIBLE nav link is relative, matching every sibling crumb.
+      const [, json] = html.match(
+        /<script type="application\/ld\+json">([\s\S]*?)<\/script>/,
+      );
+      const breadcrumb = JSON.parse(json).find(
+        (entry) => entry['@type'] === 'BreadcrumbList',
+      );
+      const authorityEntry = breadcrumb.itemListElement.find(
+        (entry) => entry.name === 'Cornwall',
+      );
+      expect(authorityEntry.item).toBe(`${SITE_ORIGIN}/planning/cornwall`);
     });
 
     it('embeds a four-item BreadcrumbList in the schema.org JSON-LD', () => {
