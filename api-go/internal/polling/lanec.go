@@ -218,6 +218,7 @@ func (h *InverseMaskLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 			out.retryAfter = rl.RetryAfter
 		} else {
 			out.err = ferr
+			out.timedOut = isTimeoutError(ferr)
 		}
 		// GH#986: re-persist the epoch/cursor exactly as loaded (nothing was
 		// fetched, so no progress exists to checkpoint) but with
@@ -262,6 +263,7 @@ func (h *InverseMaskLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 		}
 		if perr := h.processStraggler(ctx, light, &out, &hydrationsThisPass, &hydrationCapHit); perr != nil {
 			out.err = perr
+			out.timedOut = isTimeoutError(perr)
 			stoppedEarly = true
 			break
 		}
