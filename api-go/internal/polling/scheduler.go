@@ -9,14 +9,15 @@ type Jitter interface {
 	NextOffset(bound time.Duration) time.Duration
 }
 
-// SchedulerOptions are the next-run scheduler tunables: 5m natural cadence, 1m
+// SchedulerOptions are the next-run scheduler tunables: 1h natural cadence, 1m
 // resume after a time-bounded cut-off, 3h cap on a Retry-After hint, 5m
-// rate-limit default, 10s jitter bound.
+// rate-limit default, 2h timeout cadence, 10s jitter bound.
 type SchedulerOptions struct {
 	NaturalCadence     time.Duration
 	TimeBoundedCadence time.Duration
 	RetryAfterCap      time.Duration
 	RateLimitDefault   time.Duration
+	TimeoutCadence     time.Duration
 	JitterBound        time.Duration
 }
 
@@ -31,7 +32,12 @@ func DefaultSchedulerOptions() SchedulerOptions {
 		TimeBoundedCadence: 1 * time.Minute,
 		RetryAfterCap:      3 * time.Hour,
 		RateLimitDefault:   5 * time.Minute,
-		JitterBound:        10 * time.Second,
+		// TimeoutCadence is deliberately longer than NaturalCadence: a
+		// client-side timeout is more than "nothing happened" (ADR 0041's
+		// natural-cadence rationale), so it should back off further than a
+		// quiet cycle would, not resume sooner than the 429 default either.
+		TimeoutCadence: 2 * time.Hour,
+		JitterBound:    10 * time.Second,
 	}
 }
 
@@ -56,6 +62,8 @@ func (s *NextRunScheduler) ComputeNextRun(reason TerminationReason, retryAfter *
 		return now.Add(s.rateLimitedDelay(retryAfter))
 	case TerminationTimeBounded:
 		return now.Add(s.opts.TimeBoundedCadence)
+	case TerminationTimeout:
+		return now.Add(s.timeoutDelay())
 	case TerminationNatural:
 		return now.Add(s.opts.NaturalCadence)
 	default:
@@ -74,4 +82,10 @@ func (s *NextRunScheduler) rateLimitedDelay(retryAfter *time.Duration) time.Dura
 		}
 	}
 	return base + s.jitter.NextOffset(s.opts.JitterBound)
+}
+
+// timeoutDelay adds a symmetric jitter to TimeoutCadence, mirroring
+// rateLimitedDelay's base+jitter shape.
+func (s *NextRunScheduler) timeoutDelay() time.Duration {
+	return s.opts.TimeoutCadence + s.jitter.NextOffset(s.opts.JitterBound)
 }
