@@ -623,6 +623,50 @@ func TestInverseMaskLane_HydrationTimeoutSetsTimedOut(t *testing.T) {
 	}
 }
 
+// TestInverseMaskLane_GetByUIDTimeoutDoesNotSetTimedOut proves
+// processStraggler's two error sources are classified by provenance
+// (tc-c5tmz, a CodeRabbit follow-up on tc-pmh5y): a Postgres GetByUID read
+// failure -- even one that happens to satisfy net.Error/Timeout(),
+// deliberately atypical for a real Postgres fake, but that is exactly the
+// point -- must never be run through isTimeoutError. Only a genuine PlanIt
+// hydrate() fetch timeout may set timedOut, so a GetByUID failure stays
+// classified as TerminationNatural (1h cadence), never misclassified as
+// TerminationTimeout (2h cadence).
+func TestInverseMaskLane_GetByUIDTimeoutDoesNotSetTimedOut(t *testing.T) {
+	t.Parallel()
+	epochLower := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	epochUpper := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	newLD := epochLower.Add(time.Hour)
+
+	fetcher := newFakeInverseMaskFetcher()
+	fetcher.pages[0] = planit.FetchPageResult{
+		From:         0,
+		Applications: []applications.PlanningApplication{lightApp("first/FUL", 99, "Permitted", newLD)},
+		HasMorePages: false,
+	}
+
+	apps := newFakeApps()
+	// Deliberately atypical for a Postgres fake: a *url.Error satisfying
+	// net.Error/Timeout()==true, to prove isTimeoutError is never even
+	// consulted on the GetByUID path -- it is Postgres, never PlanIt.
+	apps.getErr = &url.Error{Op: "Get", URL: "postgres://irrelevant", Err: context.DeadlineExceeded}
+	state := newFakeStateStore()
+	state.states[sentinelLaneC] = PollState{HighWaterMark: epochUpper, Cursor: &PollCursor{DifferentStart: epochLower, NextIndex: 0}}
+
+	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
+	out := h.RunOnePage(context.Background())
+
+	if out.err == nil {
+		t.Fatal("expected the GetByUID failure to surface as out.err")
+	}
+	if out.timedOut {
+		t.Error("timedOut: got true, want false (GetByUID is Postgres, never PlanIt -- isTimeoutError must never be consulted on this path)")
+	}
+	if len(fetcher.hydrateCalls) != 0 {
+		t.Errorf("expected hydrate() never called when GetByUID fails, got %v", fetcher.hydrateCalls)
+	}
+}
+
 // TestInverseMaskLane_MidPageHydrationRateLimitCheckpointsAtFailingOffset is
 // GH#986 acceptance criterion (a): a mid-page hydration 429 must checkpoint
 // the cursor at the FAILING record's own offset (startIndex + i, where i

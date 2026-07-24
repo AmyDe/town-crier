@@ -262,8 +262,13 @@ func (h *InverseMaskLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 			break
 		}
 		if perr := h.processStraggler(ctx, light, &out, &hydrationsThisPass, &hydrationCapHit); perr != nil {
+			// timedOut (when applicable) is set inside hydrate itself, not
+			// re-derived here from the aggregate perr: processStraggler wraps
+			// errors from TWO sources (a Postgres GetByUID read, and a PlanIt
+			// hydrate() fetch), and isTimeoutError must only ever be
+			// consulted against the PlanIt one (tc-c5tmz, CodeRabbit
+			// follow-up on tc-pmh5y).
 			out.err = perr
-			out.timedOut = isTimeoutError(perr)
 			stoppedEarly = true
 			break
 		}
@@ -372,6 +377,12 @@ func (h *InverseMaskLaneHandler) hydrate(ctx context.Context, uid string, wantAr
 			out.retryAfter = rl.RetryAfter
 			return nil
 		}
+		// timedOut is set here, at the actual PlanIt fetch site, rather than
+		// re-derived from processStraggler's aggregate error at the
+		// RunOnePage call site -- so a Postgres GetByUID error (the sibling
+		// error source processStraggler wraps) never gets misclassified as a
+		// PlanIt timeout (tc-c5tmz, CodeRabbit follow-up on tc-pmh5y).
+		out.timedOut = isTimeoutError(err)
 		return fmt.Errorf("lane C: hydration fetch %q: %w", uid, err)
 	}
 	for _, app := range full.Applications {

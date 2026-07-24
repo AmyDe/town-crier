@@ -745,6 +745,36 @@ func TestNationalLane_SeedRateLimitedLeavesLaneUnseeded(t *testing.T) {
 	}
 }
 
+// TestNationalLane_SeedFetchTimeoutSetsTimedOut proves seed() -- a lane's
+// first-ever run, used only while watermarkBefore.IsZero() -- classifies a
+// PlanIt fetch timeout the same way RunOnePage's steady-state branch already
+// does (tc-62z2i, a CodeRabbit follow-up on tc-pmh5y: seed() has its own
+// separate FetchNationalDeltaPage error branch that was never wired to
+// isTimeoutError at all). Left unfixed, a timeout during a lane's bootstrap
+// seed falls through to TerminationNatural's 1h cadence instead of
+// TerminationTimeout's 2h backoff.
+func TestNationalLane_SeedFetchTimeoutSetsTimedOut(t *testing.T) {
+	t.Parallel()
+	timeoutErr := &url.Error{Op: "Get", URL: "https://www.planit.org.uk/api/applics/json", Err: context.DeadlineExceeded}
+	fetcher := newFakeNationalFetcher()
+	fetcher.failNth[1] = timeoutErr
+	apps := newFakeApps()
+	state := newFakeStateStore() // no sentinel row: never run -- exercises seed()
+
+	h := newLaneHandler(t, fetcher, apps, state, laneAOpts())
+	out := h.RunOnePage(context.Background())
+
+	if out.err == nil {
+		t.Fatal("expected the timed-out seed fetch to surface as out.err")
+	}
+	if !out.timedOut {
+		t.Error("timedOut: got false, want true (seed()'s FetchNationalDeltaPage error branch must be wired to isTimeoutError, same as RunOnePage's)")
+	}
+	if len(state.saves) != 0 {
+		t.Errorf("expected NO Save call when the seed fetch times out, got %+v", state.saves)
+	}
+}
+
 // TestNationalLane_SeedThenForwardFlow proves seeding does not break steady
 // state: after a seeded call, a second call from that watermark ingests only
 // the record strictly newer than the seed and stops normally at the

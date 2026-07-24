@@ -485,6 +485,7 @@ func (h *NationalLaneHandler) seed(ctx context.Context, span trace.Span, now, ma
 			out.retryAfter = rl.RetryAfter
 		} else {
 			out.err = ferr
+			out.timedOut = isTimeoutError(ferr)
 		}
 		// out.watermarkAfter is still the zero time here — the seeding fetch
 		// itself failed, so nothing was ever established this run. Recording
