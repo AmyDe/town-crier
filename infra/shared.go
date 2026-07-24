@@ -491,7 +491,7 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		return err
 	}
 
-	// Scheduled query (log) alert — PlanIt non-429 dependency failure ratio over the last hour,
+	// Scheduled query (log) alert — PlanIt non-429 dependency failure ratio over the last 3 hours,
 	// computed from AppDependencies on this shared Log Analytics workspace (tc-ttjor / GH #938
 	// PR3). Go emits no AppMetrics by design (no Go Azure Monitor metrics exporter), so a
 	// log-based alert is the only option here. The query requires >=20 calls in the window so a
@@ -515,7 +515,7 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		ResourceGroupName:   resourceGroup.Name,
 		Location:            pulumi.String("uksouth"),
 		Kind:                pulumi.String("LogAlert"),
-		Description:         pulumi.String("PlanIt non-429 dependency failure ratio exceeded 30% over the last hour (>=20 calls). See GH #938."),
+		Description:         pulumi.String("PlanIt non-429 dependency failure ratio exceeded 30% over the last 3 hours (>=20 calls). See GH #938."),
 		DisplayName:         pulumi.String("PlanIt non-429 failure rate"),
 		Severity:            pulumi.Float64(2), // Warning
 		Enabled:             pulumi.Bool(true),
