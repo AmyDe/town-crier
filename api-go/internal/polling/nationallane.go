@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -225,6 +226,12 @@ type laneOutcome struct {
 	rateLimited     bool
 	retryAfter      *time.Duration
 	err             error
+	// timedOut is true when err came from a PlanIt fetch call (page fetch or
+	// hydration) whose client-side timeout expired — never from a
+	// watermark/cursor persistence error, which is unrelated to PlanIt. It
+	// lets Handle's loop distinguish "PlanIt needs space" (TerminationTimeout)
+	// from a genuine natural completion (tc-pmh5y).
+	timedOut        bool
 	planitTotal     *int
 	watermarkBefore time.Time
 	watermarkAfter  time.Time
@@ -234,6 +241,21 @@ type laneOutcome struct {
 	// lane from planner candidacy, not by the one-page executor itself (see
 	// NationalLaneOptions.MaxPages).
 	capHit bool
+}
+
+// isTimeoutError reports whether err is (or wraps, via %w) a net.Error whose
+// Timeout() reports true — the client-side-timeout shape a PlanIt fetch
+// produces once its retries are exhausted (internal/planit/client.go's
+// sendWithThrottle wraps the underlying *url.Error as
+// "planit request failed: %w", which errors.As unwraps through).
+// context.DeadlineExceeded alone is not a net.Error; the *url.Error (or
+// similar) that wraps it is what implements Timeout().
+func isTimeoutError(err error) bool {
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return netErr.Timeout()
+	}
+	return false
 }
 
 // RunOnePage executes exactly ONE page of this lane's descending delta walk
@@ -323,6 +345,7 @@ func (h *NationalLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 			out.retryAfter = rl.RetryAfter
 		} else {
 			out.err = ferr
+			out.timedOut = isTimeoutError(ferr)
 		}
 		out.watermarkAfter = watermarkBefore
 		h.recordRunMetrics(ctx, out, now)
@@ -675,6 +698,10 @@ type commonLaneOutcome struct {
 	rateLimited     bool
 	retryAfter      *time.Duration
 	err             error
+	// timedOut mirrors laneOutcome.timedOut (Lane D's backfillOutcome carries
+	// no equivalent, so it always reads false from that branch — Lane D is
+	// out of scope for tc-pmh5y's timeout classification).
+	timedOut bool
 }
 
 // Handle runs one ADR 0044 poll cycle: a planner/executor loop replacing the
@@ -744,6 +771,9 @@ loop:
 
 		if out.err != nil {
 			lastErr = out.err
+			if out.timedOut {
+				reason = TerminationTimeout
+			}
 			break loop
 		}
 		if out.rateLimited {
@@ -850,13 +880,13 @@ func (h *NationalPollHandler) execOnePage(ctx context.Context, lane LaneName) co
 		if out.err != nil {
 			h.logger.ErrorContext(ctx, "lane A poll error", "error", out.err)
 		}
-		return commonLaneOutcome{recordsIngested: out.recordsIngested, rateLimited: out.rateLimited, retryAfter: out.retryAfter, err: out.err}
+		return commonLaneOutcome{recordsIngested: out.recordsIngested, rateLimited: out.rateLimited, retryAfter: out.retryAfter, err: out.err, timedOut: out.timedOut}
 	case LaneB:
 		out := h.laneB.RunOnePage(ctx)
 		if out.err != nil {
 			h.logger.ErrorContext(ctx, "lane B poll error", "error", out.err)
 		}
-		return commonLaneOutcome{recordsIngested: out.recordsIngested, rateLimited: out.rateLimited, retryAfter: out.retryAfter, err: out.err}
+		return commonLaneOutcome{recordsIngested: out.recordsIngested, rateLimited: out.rateLimited, retryAfter: out.retryAfter, err: out.err, timedOut: out.timedOut}
 	case LaneC:
 		if h.laneC == nil {
 			return commonLaneOutcome{}
@@ -865,7 +895,7 @@ func (h *NationalPollHandler) execOnePage(ctx context.Context, lane LaneName) co
 		if out.err != nil {
 			h.logger.ErrorContext(ctx, "lane C poll error", "error", out.err)
 		}
-		return commonLaneOutcome{recordsIngested: out.recordsIngested, rateLimited: out.rateLimited, retryAfter: out.retryAfter, err: out.err}
+		return commonLaneOutcome{recordsIngested: out.recordsIngested, rateLimited: out.rateLimited, retryAfter: out.retryAfter, err: out.err, timedOut: out.timedOut}
 	case LaneD:
 		if h.laneD == nil {
 			return commonLaneOutcome{}
