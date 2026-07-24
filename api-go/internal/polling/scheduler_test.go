@@ -48,6 +48,14 @@ func TestNextRunScheduler_ComputeNextRun(t *testing.T) {
 			// no retry-after -> RateLimitDefault (5m)
 			want: now.Add(5 * time.Minute),
 		},
+		{
+			name: "timeout uses timeout cadence",
+			// 2h timeout cadence, deliberately longer than the 1h natural
+			// cadence -- a client-side timeout is more than "nothing
+			// happened", so it should back off further, not resume sooner.
+			reason: TerminationTimeout,
+			want:   now.Add(2 * time.Hour),
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -87,6 +95,21 @@ func TestNextRunScheduler_RateLimitedAppliesJitter(t *testing.T) {
 	gotNatural := s.ComputeNextRun(TerminationNatural, nil, now)
 	if !gotNatural.Equal(now.Add(1 * time.Hour)) {
 		t.Errorf("natural cadence should not jitter: got %v, want %v", gotNatural, now.Add(1*time.Hour))
+	}
+}
+
+func TestNextRunScheduler_TimeoutAppliesJitter(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 6, 14, 12, 0, 0, 0, time.UTC)
+	opts := DefaultSchedulerOptions()
+	// A fixed +7s jitter must be added on top of the timeout cadence, mirroring
+	// the rate-limited path's jitter application.
+	s := NewNextRunScheduler(opts, fixedJitter{offset: 7 * time.Second})
+
+	got := s.ComputeNextRun(TerminationTimeout, nil, now)
+	want := now.Add(2*time.Hour + 7*time.Second)
+	if !got.Equal(want) {
+		t.Errorf("timeout jittered next run: got %v, want %v", got, want)
 	}
 }
 
