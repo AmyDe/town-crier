@@ -11,8 +11,17 @@ case "$file_path" in
   *) exit 0 ;;
 esac
 
-# Skip non-project paths (skills, node_modules, build artifacts, beads DB)
+# Worktrees live at <repo>/.claude/worktrees/<name>/, so project files inside one
+# carry ".claude" in their path. Strip the worktree prefix before applying the
+# exemptions below — otherwise every file edited in a worktree looks like config
+# and the bead gate silently stops firing.
+rel="$file_path"
 case "$file_path" in
+  */.claude/worktrees/*) rel="/${file_path#*/.claude/worktrees/*/}" ;;
+esac
+
+# Skip non-project paths (skills, node_modules, build artifacts, beads DB)
+case "$rel" in
   */.claude/*|*/node_modules/*|*/bin/*|*/obj/*|*/.beads/*) exit 0 ;;
 esac
 

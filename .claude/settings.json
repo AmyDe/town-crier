@@ -96,7 +96,7 @@
             "type": "command"
           },
           {
-            "command": "jq -r '.tool_input.command' | grep -qE '(^|[[:space:];\u0026|])git[[:space:]]+worktree[[:space:]]+add([[:space:];\u0026|]|$)' \u0026\u0026 jq -n '{\"decision\":\"block\",\"reason\":\"`git worktree add` is disabled in this project. Use `bd worktree create \u003cname\u003e` instead — it configures beads database sharing via git common-directory discovery and avoids beads bug GH#3311 (stray root `issues.jsonl` on every commit).\\n\\nExamples:\\n  bd worktree create feature-auth\\n  bd worktree create bugfix --branch fix-1\\n\\nSee `bd worktree --help`.\"}' || true",
+            "command": "jq -r '.tool_input.command' | grep -qE '(^|[[:space:];\u0026|])git[[:space:]]+worktree[[:space:]]+add([[:space:];\u0026|]|$)' \u0026\u0026 jq -n '{\"decision\":\"block\",\"reason\":\"`git worktree add` is disabled in this project. Use `scripts/wf/worktree-setup.sh \u003cname\u003e [--branch \u003cbranch\u003e]` instead — it runs `bd worktree create .claude/worktrees/\u003cname\u003e`, which configures beads database sharing via git common-directory discovery and avoids beads bug GH#3311 (stray root `issues.jsonl` on every commit).\\n\\nExamples:\\n  scripts/wf/worktree-setup.sh feature-auth\\n  scripts/wf/worktree-setup.sh bugfix --branch fix-1\\n\\nWorktrees MUST land under .claude/worktrees/ — EnterWorktree auto-approves those paths and raises a permission prompt, unanswerable from settings, for anywhere else. Never run `bd worktree create` with a bare name; if you bypass the script, pass it the .claude/worktrees/\u003cname\u003e path.\"}' || true",
             "statusMessage": "Checking for git worktree add...",
             "timeout": 5,
             "type": "command"

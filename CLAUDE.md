@@ -224,9 +224,10 @@ Use `bd` for ALL task tracking. Do NOT use TodoWrite, TaskCreate, or markdown fi
 
 **All code changes happen in a worktree — never in the main working tree.** Parallel conversations editing the main tree conflict.
 
-- **`scripts/wf/worktree-setup.sh <name> [--branch <branch>]` runs the whole recipe**: resets local main to `origin/main`, runs `bd worktree create` (never raw `git worktree add`), applies the two bd workarounds (GH#3421 port symlink, beads#3593 chmod), resets the worktree to `origin/main`, and prints the path. Always prefer it; the script's header documents the manual fallback. Remove the workarounds when the upstream bd fixes ship.
+- **Every worktree lives at `<repo>/.claude/worktrees/<name>`.** EnterWorktree auto-approves paths under `.claude/worktrees/`; anywhere else it raises a permission prompt that cannot be pre-approved in settings, which stalls unattended sessions. bd's default `<repo>/<name>` layout is therefore banned — pass bd the path (`bd worktree create .claude/worktrees/<name>`), not a bare name. `bd worktree remove <name>` still takes the bare name.
+- **`scripts/wf/worktree-setup.sh <name> [--branch <branch>]` runs the whole recipe**: resets local main to `origin/main`, runs `bd worktree create .claude/worktrees/<name>` (never raw `git worktree add`), verifies git registered it there, applies the two bd workarounds (GH#3421 port symlink, beads#3593 chmod), resets the worktree to `origin/main`, and prints the absolute path. Always prefer it; the script's header documents the manual fallback. Remove the workarounds when the upstream bd fixes ship.
 - Then `EnterWorktree path: "<printed path>"`, make changes there, and use `/ship` or `ExitWorktree` when done; `bd worktree remove <name>` for cleanup (name, not path).
-- PreToolUse hooks enforce this: Write/Edit on code files is blocked outside a worktree, and raw `git worktree add` is blocked in favour of `bd worktree create`. Do not work around them.
+- PreToolUse hooks enforce this: Write/Edit on code files is blocked outside a worktree, and raw `git worktree add` is blocked in favour of `bd worktree create`. Do not work around them. Worktrees created before this rule still sit at `<repo>/<name>`; the edit hook keeps accepting them so in-flight work isn't stranded, but create new ones under `.claude/worktrees/`.
 - **The orchestrator creates the worktree, not the subagent.** Dispatch workers with the worktree path already in hand — keeps the lifecycle (create, verify, remove) in one place.
 
 ### Cleanup Discipline

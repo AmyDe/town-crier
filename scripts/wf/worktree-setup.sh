@@ -4,9 +4,17 @@
 #
 # Usage: worktree-setup.sh <name> [--branch <branch>]
 #
+# Worktrees are created at <repo>/.claude/worktrees/<name>, NOT at <repo>/<name>.
+# EnterWorktree auto-approves paths under .claude/worktrees/ and raises a
+# permission prompt (not answerable from settings) for anything else, so the
+# location is load-bearing, not cosmetic. bd takes a path in place of a bare
+# name, and still resolves `bd worktree remove <name>` by basename. The blanket
+# `.claude/worktrees/` line in .gitignore also stops bd appending a per-worktree
+# ignore line for every tree it creates.
+#
 # Does, in order:
 #   1. fetch origin and reset local main to origin/main (bd bases off HEAD)
-#   2. `bd worktree create` (GH#3311-safe; never `git worktree add`)
+#   2. `bd worktree create .claude/worktrees/<name>` (GH#3311-safe; never `git worktree add`)
 #   3. symlink .beads/dolt-server.port into the worktree (GH#3421)
 #   4. chmod 700 the worktree's .beads (gastownhall/beads#3593)
 #   5. reset the worktree branch to origin/main and verify
@@ -22,28 +30,48 @@ if [ "${1:-}" = "--branch" ]; then
   branch="${2:?--branch needs a value}"
 fi
 
-root=$(git rev-parse --show-toplevel)
+# Accept a bare name only. A caller passing a path would land the tree outside
+# .claude/worktrees/ and reintroduce the permission prompt.
+case "$name" in
+  */*|.*) echo "worktree-setup.sh: <name> must be a bare name, got '$name'" >&2; exit 2 ;;
+esac
+
+# Resolve the MAIN repo root, not the current tree: run from inside a worktree,
+# --show-toplevel returns that worktree and would nest the new tree inside it.
+# --git-common-dir always points at the main repo's .git, from any worktree.
+root=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+rel=".claude/worktrees/$name"
+wt="$root/$rel"
 
 git -C "$root" fetch origin --quiet
-git -C "$root" branch -f main origin/main 2>/dev/null || true
+# Silence stdout too: `git branch -f` prints "branch 'main' set up to track ..."
+# on stdout, which would corrupt `wt=$(worktree-setup.sh <name>)`.
+git -C "$root" branch -f main origin/main >/dev/null 2>&1 || true
 
 if [ -n "$branch" ]; then
-  (cd "$root" && bd worktree create "$name" --branch "$branch" >/dev/null)
+  (cd "$root" && bd worktree create "$rel" --branch "$branch" >/dev/null)
 else
-  (cd "$root" && bd worktree create "$name" >/dev/null)
+  (cd "$root" && bd worktree create "$rel" >/dev/null)
 fi
 
-# Resolve the worktree path from git (handles both <repo>/<name> and nested layouts).
-wt=$(git -C "$root" worktree list --porcelain \
-  | awk -v n="/$name" '/^worktree /{p=$2} substr(p, length(p)-length(n)+1)==n{print p; exit}')
-[ -z "$wt" ] && wt="$root/$name"
+# Confirm git registered it where we asked — EnterWorktree requires both the
+# .claude/worktrees/ location and a `git worktree list` entry. Matched in pure
+# bash: `grep` is proxied through RTK in this repo and mangles piped output.
+found=0
+while IFS= read -r line; do
+  if [ "$line" = "worktree $wt" ]; then found=1; break; fi
+done < <(git -C "$root" worktree list --porcelain)
+if [ "$found" -ne 1 ]; then
+  echo "worktree-setup.sh: expected worktree at $wt, not found in git worktree list" >&2
+  exit 1
+fi
 
 # GH#3421: dolt-server.port is not propagated into the worktree.
 if [ -f "$root/.beads/dolt-server.port" ] && [ ! -e "$wt/.beads/dolt-server.port" ]; then
   mkdir -p "$wt/.beads"
-  rel=$(python3 -c 'import os,sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))' \
+  link=$(python3 -c 'import os,sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))' \
     "$root/.beads/dolt-server.port" "$wt/.beads")
-  ln -sf "$rel" "$wt/.beads/dolt-server.port"
+  ln -sf "$link" "$wt/.beads/dolt-server.port"
 fi
 
 # gastownhall/beads#3593: tighten .beads perms so bd stops warning.
