@@ -14,7 +14,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Town Crier is a mobile-first app for monitoring UK local authority planning applications, delivering push notifications to residents, community groups, and property professionals. It uses PlanIt (planit.org.uk) as its primary data provider, with a polling-based ingestion model (see ADR 0006). PlanIt is a free, single-operator service — hammering it is a non-negotiable red line.
+Town Crier is a mobile-first app for monitoring UK local authority planning applications, delivering push notifications to residents, community groups, and property professionals. It uses PlanIt (planit.org.uk) as its primary data provider, with a polling-based ingestion model (see ADR 0006). PlanIt is a free, single-operator service — read the hard call limits below before calling it from a local session.
+
+## PlanIt: Hard Call Limits
+
+PlanIt is a **free service run by one individual** and our sole planning-data provider (ADR 0006). Not hammering it is non-negotiable — but that is a rule about **behaviour, not a daily quota**. There is **no fixed daily call budget**: don't introduce one, don't enforce one, and don't raise findings on the basis of one. (ADR 0041 and ADR 0042 cite a `~1,500 requests/day` figure; that is historical context from when those decisions were made, not a live limit.)
+
+**The deployed poller is not the risk.** It honours `Retry-After` (a 429 is never retried internally — it ends the cycle so the scheduler reschedules), backs off for 2h after a timeout, caps attempts at 4, and sleeps 2s before *every* attempt including retries. That behaviour is what "polite" means here, and it is enforced in `api-go/internal/planit/client.go`.
+
+**A local session is the risk** — a `curl` loop, a throwaway Python script, a "let me just test this quickly" harness. It has none of those brakes and no review. So, binding on any local or agent session calling PlanIt by hand:
+
+- **Never more than 10 requests total in a session.**
+- **Never more than one request per 60 seconds.**
+- **Never write a loop that hits PlanIt without an explicit sleep of 60s or more between iterations.**
+
+No exceptions for "it's only a few more", for batching, or for running it in parallel. If a task looks like it needs more than 10 calls, **stop and ask** rather than proceeding. Prefer the `httptest`-backed doubles in `api-go/internal/planit/*_test.go` over live calls.
 
 ## Business Status
 
