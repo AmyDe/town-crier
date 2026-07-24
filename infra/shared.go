@@ -520,8 +520,16 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		Severity:            pulumi.Float64(2), // Warning
 		Enabled:             pulumi.Bool(true),
 		EvaluationFrequency: pulumi.String("PT15M"),
-		WindowSize:          pulumi.String("PT1H"),
-		Scopes:              pulumi.StringArray{logAnalytics.ID()},
+		// WindowSize is PT3H, not PT1H (widened by tc-k5c9w, alert-noise audit 2026-07-23). A 3x
+		// wider rolling window dilutes the failure-ratio calc by ~3x more total calls before it
+		// can cross 30%, so a short-lived blip that would trip a 1h window won't trip a 3h one,
+		// while a genuinely sustained PlanIt outage — the only kind of event this alert should
+		// page for — still comfortably breaches within the window. Same "give it space to prove
+		// it's a real trend, not a blip" principle as the polling-code timeout backoff change in
+		// the companion bead (tc-pmh5y), applied on the alerting side instead of the scheduling
+		// side.
+		WindowSize: pulumi.String("PT3H"),
+		Scopes:     pulumi.StringArray{logAnalytics.ID()},
 		Criteria: monitor.ScheduledQueryRuleCriteriaArgs{
 			AllOf: monitor.ConditionArray{
 				monitor.ConditionArgs{
@@ -728,33 +736,64 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 	}
 
 	// Container Apps jobs — one failed-execution alert per prod job, generated via a loop over
-	// the job-name slice (rather than seven copy-pasted blocks). Scopes are constructed ARM IDs:
-	// these jobs live in the prod stack (infra/environment.go, createWorkerJob), named
+	// a per-job spec slice (rather than seven copy-pasted blocks), same "same alert shape,
+	// per-item tunables" idiom as postgresAlertSpec above. Scopes are constructed ARM IDs: these
+	// jobs live in the prod stack (infra/environment.go, createWorkerJob), named
 	// job-tc-<name>-prod.
-	prodFailedExecutionJobs := []string{
-		"poll",
-		"poll-bootstrap",
-		"digest",
-		"digest-hourly",
-		"dormant-cleanup",
-		"subscription-sweep",
-		"pg-purge",
+	//
+	// "poll" carries a wider window/higher threshold than the rest (tc-k5c9w, alert-noise audit
+	// 2026-07-23): it was the dominant noise source at 13 firings/30d, because the default
+	// shape (WindowSize PT30M, Threshold GreaterThan 0) fires on ANY single Failed execution.
+	// Root cause of most of those firings was isolated single-execution PlanIt hydration
+	// timeouts (Lane C, "context deadline exceeded") that self-recover on the next 15-min
+	// schedule tick — not a real incident. Validated against 7 days of real execution history:
+	// with WindowSize=PT6H/Threshold>1, 6 of 7 days with a poll failure would NOT have fired
+	// (isolated singles suppressed), while the one real cluster (2026-07-17, 4 failures in a
+	// day) still would. The other six jobs are unchanged: they have never fired in 30 days and
+	// have a different failure profile (daily/lower-frequency cadence, no quick retry), so
+	// there's no evidence they need the same relaxation.
+	type failedExecutionJobSpec struct {
+		name       string
+		windowSize string
+		threshold  float64
+		// description overrides the default "reported a Failed execution" text when non-empty;
+		// used for "poll" so the fired-alert email states the new >=2-in-6h semantics rather than
+		// implying a single-failure trigger.
+		description string
+	}
+	prodFailedExecutionJobs := []failedExecutionJobSpec{
+		{
+			name:        "poll",
+			windowSize:  "PT6H",
+			threshold:   1,
+			description: "Container Apps job job-tc-poll-prod reported 2 or more Failed executions within 6 hours.",
+		},
+		{name: "poll-bootstrap", windowSize: "PT30M", threshold: 0},
+		{name: "digest", windowSize: "PT30M", threshold: 0},
+		{name: "digest-hourly", windowSize: "PT30M", threshold: 0},
+		{name: "dormant-cleanup", windowSize: "PT30M", threshold: 0},
+		{name: "subscription-sweep", windowSize: "PT30M", threshold: 0},
+		{name: "pg-purge", windowSize: "PT30M", threshold: 0},
 	}
 	for _, job := range prodFailedExecutionJobs {
-		alertName := fmt.Sprintf("alert-job-failed-%s-prod", job)
+		alertName := fmt.Sprintf("alert-job-failed-%s-prod", job.name)
 		jobID := fmt.Sprintf(
 			"/subscriptions/%s/resourceGroups/rg-town-crier-prod/providers/Microsoft.App/jobs/job-tc-%s-prod",
-			armSubscriptionID, job)
+			armSubscriptionID, job.name)
+		description := job.description
+		if description == "" {
+			description = fmt.Sprintf("Container Apps job job-tc-%s-prod reported a Failed execution.", job.name)
+		}
 		_, err = monitor.NewMetricAlert(ctx, alertName, &monitor.MetricAlertArgs{
 			RuleName:            pulumi.String(alertName),
 			ResourceGroupName:   resourceGroup.Name,
 			Location:            pulumi.String("global"),
-			Description:         pulumi.String(fmt.Sprintf("Container Apps job job-tc-%s-prod reported a Failed execution.", job)),
+			Description:         pulumi.String(description),
 			Severity:            pulumi.Int(2),
 			Enabled:             pulumi.Bool(true),
 			AutoMitigate:        pulumi.Bool(true),
 			EvaluationFrequency: pulumi.String("PT15M"),
-			WindowSize:          pulumi.String("PT30M"),
+			WindowSize:          pulumi.String(job.windowSize),
 			Scopes:              pulumi.StringArray{pulumi.String(jobID)},
 			Criteria: monitor.MetricAlertSingleResourceMultipleMetricCriteriaArgs{
 				OdataType: pulumi.String("Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria"),
@@ -772,7 +811,7 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 							},
 						},
 						Operator:        pulumi.String("GreaterThan"),
-						Threshold:       pulumi.Float64(0),
+						Threshold:       pulumi.Float64(job.threshold),
 						TimeAggregation: pulumi.String("Total"),
 					},
 				},
