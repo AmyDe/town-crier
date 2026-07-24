@@ -175,8 +175,12 @@ On approval:
 
 2. **Enter a worktree** (repo convention — `.claude/require-worktree.sh` hook blocks edits on main):
    ```
-   EnterWorktree with a name like "legal-audit-<date>"
+   scripts/wf/worktree-setup.sh legal-audit-<date>     # prints the absolute path
+   EnterWorktree path: "<the path it printed>"
    ```
+   The script lands the worktree under `.claude/worktrees/`, which is the only
+   location EnterWorktree accepts without a permission prompt. `EnterWorktree`
+   with a bare `name:` is blocked by `.claude/require-bd-worktree.sh`.
 
 3. **Apply the edits** to `api-go/internal/legal/resources/{privacy,terms}.json`:
    - Update affected sections
