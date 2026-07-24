@@ -438,10 +438,16 @@ func newRouter(
 	// mux directly (the same lookup RequireAuth uses), which is why it takes mux
 	// rather than relying on r.Pattern (lost across the chain's context copies).
 	chain = middleware.RouteSpan(mux)(chain)
-	// otelhttp is the outermost wrapper so its span covers the whole request,
+	// otelhttp wraps the whole chain so its span covers the request end to end,
 	// including the CORS, error-envelope and panic-recovery middleware. When
 	// telemetry is disabled (no OTLP endpoint) the global no-op TracerProvider
 	// makes this produce no-op spans at negligible cost, so the wiring stays
 	// unconditional and every existing httptest assertion is unaffected.
-	return otelhttp.NewHandler(chain, "town-crier-api-go")
+	instrumented := otelhttp.NewHandler(chain, "town-crier-api-go")
+	// StripForwardedFor is the true outermost wrapper, and has to be: otelhttp
+	// reads X-Forwarded-For when it starts the span, so the header must already
+	// be gone by then or the caller's IP lands on the span (and in App Insights).
+	// Nothing downstream reads the header — internal/clientip uses
+	// CF-Connecting-IP validated against the Cloudflare ranges.
+	return middleware.StripForwardedFor(instrumented)
 }
