@@ -15,6 +15,12 @@ const (
 	// TerminationRateLimited means the cycle stopped early because PlanIt returned
 	// HTTP 429.
 	TerminationRateLimited
+	// TerminationTimeout means the cycle stopped early because a PlanIt fetch
+	// (page fetch or hydration) exceeded its client-side timeout — distinct
+	// from TerminationNatural ("nothing happened") because a timeout is a real
+	// signal that PlanIt needs space, even though it never surfaced as an
+	// explicit 429.
+	TerminationTimeout
 )
 
 // TelemetryValue returns the span-tag string for this reason.
@@ -24,6 +30,8 @@ func (r TerminationReason) TelemetryValue() string {
 		return "TimeBounded"
 	case TerminationRateLimited:
 		return "RateLimited"
+	case TerminationTimeout:
+		return "Timeout"
 	case TerminationNatural:
 		return "Natural"
 	default:

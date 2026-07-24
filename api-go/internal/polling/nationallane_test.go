@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"testing"
 	"time"
 
@@ -1018,6 +1019,12 @@ func TestNationalPollHandler_Handle_StopsOnFirstLaneError(t *testing.T) {
 	if res.AuthorityErrors != 1 {
 		t.Errorf("AuthorityErrors: got %d, want 1", res.AuthorityErrors)
 	}
+	// A plain, non-timeout transport error must NOT be misclassified as
+	// TerminationTimeout (tc-pmh5y regression guard: isTimeoutError must not
+	// over-match a generic error).
+	if res.TerminationReason != TerminationNatural {
+		t.Errorf("TerminationReason: got %v, want %v (a non-timeout error must not trip TerminationTimeout)", res.TerminationReason, TerminationNatural)
+	}
 	// Lane A is the older (longAgo) and therefore LRU-first candidate, so it
 	// runs (and fails) before Lane B ever gets a turn — the single break
 	// covers whichever lane errors, without a per-lane fold to omit one.
@@ -1179,6 +1186,48 @@ func TestNationalPollHandler_Handle_LaneDRateLimitBubblesToNextCycle(t *testing.
 	}
 	if res.RetryAfter == nil || *res.RetryAfter != retryAfter {
 		t.Errorf("RetryAfter: got %v, want %v", res.RetryAfter, retryAfter)
+	}
+}
+
+// TestNationalPollHandler_Handle_LaneTimeoutSetsTerminationTimeout proves a
+// PlanIt fetch that times out — the real 2026-07-23 prod shape: a
+// *url.Error wrapping context.DeadlineExceeded from an exhausted-retries
+// PlanIt HTTP client (tc-pmh5y) — is classified as TerminationTimeout, not
+// TerminationNatural's "nothing happened" cadence. context.DeadlineExceeded
+// itself is not a net.Error; the wrapping *url.Error is what reports
+// Timeout()==true, so the fake must return the wrapped form to be faithful
+// to production.
+func TestNationalPollHandler_Handle_LaneTimeoutSetsTerminationTimeout(t *testing.T) {
+	t.Parallel()
+	clockTime := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
+	longAgo := clockTime.Add(-time.Hour)
+
+	timeoutErr := &url.Error{Op: "Get", URL: "https://www.planit.org.uk/api/applics/json", Err: context.DeadlineExceeded}
+
+	fetcherA := newFakeNationalFetcher()
+	fetcherA.failNth[1] = timeoutErr
+	fetcherB := newFakeNationalFetcher()
+	fetcherB.pages[0] = planit.FetchPageResult{From: 0, Applications: nil, HasMorePages: false}
+
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	watermark := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	state.states[sentinelLaneA] = PollState{HighWaterMark: watermark, LastPollTime: longAgo}
+	state.states[sentinelLaneB] = PollState{HighWaterMark: watermark, LastPollTime: longAgo}
+	logger := slog.New(slog.NewTextHandler(discard{}, nil))
+	clock := func() time.Time { return clockTime }
+
+	laneAHandler := NewNationalLaneHandler(fetcherA, state, apps, laneAOpts(), clock, logger)
+	laneBHandler := NewNationalLaneHandler(fetcherB, state, apps, laneBOpts(20), clock, logger)
+	planner := NewPlanner(newTestPlannerOpts())
+	handler := NewNationalPollHandler(laneAHandler, laneBHandler, nil, planner, NationalPollOptions{HandlerBudget: 4 * time.Minute}, clock, logger)
+
+	res, err := handler.Handle(context.Background())
+	if err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if res.TerminationReason != TerminationTimeout {
+		t.Errorf("TerminationReason: got %v, want %v", res.TerminationReason, TerminationTimeout)
 	}
 }
 

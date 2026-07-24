@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"testing"
 	"time"
 
@@ -560,6 +561,68 @@ func TestInverseMaskLane_HydrationRateLimitStopsTheWholePage(t *testing.T) {
 	}
 }
 
+// TestInverseMaskLane_PageFetchTimeoutSetsTimedOut proves a page-fetch
+// client-side timeout (the real prod shape: a *url.Error wrapping
+// context.DeadlineExceeded once PlanIt's HTTP client's retries are
+// exhausted) is flagged on the outcome via timedOut, distinguishing it from
+// a plain fetch error so NationalPollHandler.Handle can classify the cycle
+// as TerminationTimeout rather than TerminationNatural (tc-pmh5y).
+func TestInverseMaskLane_PageFetchTimeoutSetsTimedOut(t *testing.T) {
+	t.Parallel()
+	epochLower := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	epochUpper := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+
+	fetcher := newFakeInverseMaskFetcher()
+	fetcher.failNth[1] = &url.Error{Op: "Get", URL: "https://www.planit.org.uk/api/applics/json", Err: context.DeadlineExceeded}
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	state.states[sentinelLaneC] = PollState{HighWaterMark: epochUpper, Cursor: &PollCursor{DifferentStart: epochLower, NextIndex: 300}}
+
+	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
+	out := h.RunOnePage(context.Background())
+
+	if out.err == nil {
+		t.Fatal("expected the timed-out fetch to surface as out.err")
+	}
+	if !out.timedOut {
+		t.Error("timedOut: got false, want true (page-fetch client timeout)")
+	}
+}
+
+// TestInverseMaskLane_HydrationTimeoutSetsTimedOut mirrors
+// TestInverseMaskLane_PageFetchTimeoutSetsTimedOut for a HYDRATION
+// sub-fetch timeout — the exact site that produced the real 2026-07-23 prod
+// failure ("lane C: hydration fetch ... context deadline exceeded", via
+// FetchByUID).
+func TestInverseMaskLane_HydrationTimeoutSetsTimedOut(t *testing.T) {
+	t.Parallel()
+	epochLower := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	epochUpper := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	newLD := epochLower.Add(time.Hour)
+
+	fetcher := newFakeInverseMaskFetcher()
+	fetcher.pages[0] = planit.FetchPageResult{
+		From:         0,
+		Applications: []applications.PlanningApplication{lightApp("first/FUL", 99, "Permitted", newLD)},
+		HasMorePages: false,
+	}
+	fetcher.hydrateErr["first/FUL"] = &url.Error{Op: "Get", URL: "https://www.planit.org.uk/api/applics/json", Err: context.DeadlineExceeded}
+
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	state.states[sentinelLaneC] = PollState{HighWaterMark: epochUpper, Cursor: &PollCursor{DifferentStart: epochLower, NextIndex: 0}}
+
+	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
+	out := h.RunOnePage(context.Background())
+
+	if out.err == nil {
+		t.Fatal("expected the timed-out hydration fetch to surface as out.err")
+	}
+	if !out.timedOut {
+		t.Error("timedOut: got false, want true (hydration client timeout)")
+	}
+}
+
 // TestInverseMaskLane_MidPageHydrationRateLimitCheckpointsAtFailingOffset is
 // GH#986 acceptance criterion (a): a mid-page hydration 429 must checkpoint
 // the cursor at the FAILING record's own offset (startIndex + i, where i
@@ -699,6 +762,9 @@ func TestInverseMaskLane_IngestErrorIsAHardStop(t *testing.T) {
 
 	if out.err == nil {
 		t.Fatal("expected the Ingest failure to surface as out.err")
+	}
+	if out.timedOut {
+		t.Error("timedOut: got true, want false (a plain persistence/ingest error must not be misclassified as a timeout)")
 	}
 	got := state.states[sentinelLaneC].Cursor
 	if got == nil || got.NextIndex != 0 {
