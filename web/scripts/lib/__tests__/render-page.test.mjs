@@ -571,4 +571,75 @@ describe('renderPlanningPage', () => {
       expect(html).toContain('Stoke &amp; &lt;b&gt;Bramley&lt;/b&gt;');
     });
   });
+
+  describe('neighbouring councils section (tc-gyw1q, GH #990 slice 4)', () => {
+    const sixNeighbours = [
+      { name: 'Adur', slug: 'adur' },
+      { name: 'Worthing', slug: 'worthing' },
+      { name: 'Horsham', slug: 'horsham' },
+      { name: 'Mid Sussex', slug: 'mid-sussex' },
+      { name: 'Crawley', slug: 'crawley' },
+      { name: 'Arun', slug: 'arun' },
+    ];
+
+    it('omits the section entirely when neighbours is undefined (an authority with zero published towns)', () => {
+      const html = renderPlanningPage(pageData());
+      expect(html).not.toContain('<section class="neighbouringCouncils">');
+    });
+
+    it('omits the section entirely when neighbours is an empty array, without erroring', () => {
+      const html = renderPlanningPage(pageData({ neighbours: [] }));
+      expect(html).not.toContain('<section class="neighbouringCouncils">');
+    });
+
+    it('renders exactly 6 neighbouring-authority links when 6 are supplied', () => {
+      const html = renderPlanningPage(pageData({ neighbours: sixNeighbours }));
+      expect(html).toContain('<section class="neighbouringCouncils">');
+      const section = html.match(
+        /<section class="neighbouringCouncils">[\s\S]*?<\/section>/,
+      )[0];
+      const liCount = (section.match(/<li>/g) ?? []).length;
+      expect(liCount).toBe(6);
+    });
+
+    it('renders fewer than 6 links when fewer are supplied', () => {
+      const html = renderPlanningPage(
+        pageData({ neighbours: sixNeighbours.slice(0, 2) }),
+      );
+      const section = html.match(
+        /<section class="neighbouringCouncils">[\s\S]*?<\/section>/,
+      )[0];
+      const liCount = (section.match(/<li>/g) ?? []).length;
+      expect(liCount).toBe(2);
+    });
+
+    it('links each neighbour to its own /planning/<slug> authority page', () => {
+      const html = renderPlanningPage(pageData({ neighbours: sixNeighbours }));
+      expect(html).toContain('<a href="/planning/adur">Adur</a>');
+      expect(html).toContain('<a href="/planning/mid-sussex">Mid Sussex</a>');
+    });
+
+    it('HTML-escapes neighbour names', () => {
+      const html = renderPlanningPage(
+        pageData({
+          neighbours: [{ name: 'Stoke & <b>Bramley</b>', slug: 'stoke-bramley' }],
+        }),
+      );
+      expect(html).not.toContain('<b>Bramley</b>');
+      expect(html).toContain('Stoke &amp; &lt;b&gt;Bramley&lt;/b&gt;');
+    });
+
+    it('renders the section before the bottom CTA banner', () => {
+      const html = renderPlanningPage(pageData({ neighbours: sixNeighbours }));
+      expect(html.indexOf('<section class="neighbouringCouncils">')).toBeLessThan(
+        html.indexOf('<section class="cta">'),
+      );
+    });
+
+    it('regression: still carries the /planning and /planning/towns cross-links from PR #991 alongside the new section', () => {
+      const html = renderPlanningPage(pageData({ neighbours: sixNeighbours }));
+      expect(html).toContain('href="/planning"');
+      expect(html).toContain('href="/planning/towns"');
+    });
+  });
 });
