@@ -593,6 +593,35 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		return err
 	}
 
+	// Diagnostic Setting routes ACS email logs to the shared Log Analytics workspace, giving
+	// us an independent send/delivery audit trail — during the tc-wr7r investigation ACS
+	// metrics (ApiRequests/DeliveryStatusUpdate) read 0 even when real email was delivered, so
+	// they can't be trusted as a send signal on their own. Only two named categories, not the
+	// "allLogs" group: EmailSendMailOperational (aggregate send-volume metadata, no PII) and
+	// EmailStatusUpdateOperational (per-recipient delivery status — Delivered/Bounced/Failed/
+	// etc). The latter includes the recipient's email address in a RecipientId field; that is
+	// an accepted, deliberate tradeoff already discussed, not an oversight — no scrubbing or
+	// extra config gating here. No RetentionPolicy override — inherits the workspace's
+	// existing 30-day default, same as every other table there. See tc-p6af.
+	_, err = monitor.NewDiagnosticSetting(ctx, "diag-acs-town-crier-uk", &monitor.DiagnosticSettingArgs{
+		Name:        pulumi.String("diag-acs-town-crier-uk"),
+		ResourceUri: communicationServiceUk.ID(),
+		WorkspaceId: logAnalytics.ID(),
+		Logs: monitor.LogSettingsArray{
+			&monitor.LogSettingsArgs{
+				Category: pulumi.String("EmailSendMailOperational"),
+				Enabled:  pulumi.Bool(true),
+			},
+			&monitor.LogSettingsArgs{
+				Category: pulumi.String("EmailStatusUpdateOperational"),
+				Enabled:  pulumi.Bool(true),
+			},
+		},
+	})
+	if err != nil {
+		return err
+	}
+
 	// Authorises the local-part `hello` for sends from towncrierapp.uk. See tc-6tak.
 	_, err = communication.NewSenderUsername(ctx, "sender-hello-towncrier-uk", &communication.SenderUsernameArgs{
 		SenderUsername:    pulumi.String("hello"),
