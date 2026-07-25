@@ -90,7 +90,7 @@ for rg in rg-town-crier-prod rg-town-crier-shared; do
     --query "value[].{name:name, sev:properties.essentials.severity, cond:properties.essentials.monitorCondition, resource:properties.essentials.targetResourceName, started:properties.essentials.startDateTime}" -o table
 done
 ```
-- `cond: Fired` is **currently open** — treat it as a lead, not a footnote. Chase it with the matching check below: `alert-job-failed-*` → Check 2; `alert-planit-failure-rate-shared` / `alert-planit-request-budget-shared` → Check 3/4; `alert-pg-*` → Postgres capacity (orthogonal to polling, but worth a one-line mention); anything else → note it and use judgement.
+- `cond: Fired` is **currently open** — treat it as a lead, not a footnote. Chase it with the matching check below: `alert-job-failed-*` → Check 2; `alert-planit-failure-rate-shared` → Check 3/4; `alert-poll-queue-depth-*` → Check 6; `alert-pg-*` → Postgres capacity (orthogonal to polling, but worth a one-line mention); anything else → note it and use judgement.
 - `cond: Resolved` within the window is a closed incident — worth a one-line footnote in the report (what fired, when it cleared), not a ❌.
 - Empty output for both resource groups is the clean/expected case.
 - If the call 403s, the signed-in account isn't scoped for `Microsoft.AlertsManagement/alerts/read` — say so and mark this check UNKNOWN; don't report a clean alert board on the strength of an error.
