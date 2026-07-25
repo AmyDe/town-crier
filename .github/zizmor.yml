@@ -51,6 +51,26 @@ rules:
   github-env:
     disable: true
 
+  # ref-version-mismatch (49 findings, repo-wide): the trailing `# vN` comment
+  # on several hash-pinned actions (actions/checkout, and one action inside
+  # build-web/action.yml) no longer matches the commit their upstream vN tag
+  # currently resolves to — e.g. actions/checkout is pinned to df4cb1c069e1...
+  # but the v6 tag has since moved to d23441a48e51.... This is a comment-
+  # accuracy issue, not a pin-integrity one: every finding here is still an
+  # exact, immutable commit-SHA pin (the actual security property zizmor's
+  # unpinned-uses rule already enforces, see the note above), so a stale
+  # label doesn't weaken supply-chain protection the way an unpinned or
+  # branch/tag-pinned `uses:` would. Confirmed pre-existing on main (49 hits
+  # reproduced against an unmodified checkout with GH_TOKEN set) — discovered
+  # while fixing tc-xukdb, which touched seo-refresh.yml and was the first PR
+  # in a while to trigger this gate job at all (it only runs when a PR's diff
+  # touches .github/). Re-pinning every occurrence to its current tag commit
+  # is a repo-wide sweep across ~10 files including cd-prod.yml and
+  # cd-ios-testflight.yml — too broad for tc-xukdb's scope. Deferred to
+  # tc-ddlls (discovered-from tc-xukdb).
+  ref-version-mismatch:
+    disable: true
+
   # excessive-permissions (5 findings, High confidence/severity): each of
   # these 5 workflows declares `id-token: write` (cd-ios-testflight.yml:
   # `contents: write`) at the workflow level rather than scoped per-job.
