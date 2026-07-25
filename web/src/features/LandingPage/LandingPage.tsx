@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { Navbar } from '../../components/Navbar/Navbar';
 import { Hero } from '../../components/Hero/Hero';
 import { StatsBar } from '../../components/StatsBar/StatsBar';

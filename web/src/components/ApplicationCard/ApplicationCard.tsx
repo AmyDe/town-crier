@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import type { PlanningApplicationSummary } from '../../domain/types';
 import { formatDate, statusClassName, statusDisplayLabel } from '../../utils/formatting';
 import { StatusIcon } from '../StatusIcon/StatusIcon';

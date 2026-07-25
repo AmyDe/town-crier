@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { useApiClient } from '../../api/useApiClient';
 import { geocodingApi } from '../../api/geocoding';
 import { ApiWatchZoneRepository } from './ApiWatchZoneRepository';

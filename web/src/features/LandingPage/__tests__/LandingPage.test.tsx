@@ -1,5 +1,5 @@
 import { render, screen, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { AuthProvider } from '../../../auth/auth-context';
 import { SpyAuthPort } from '../../../auth/__tests__/spies/spy-auth-port';

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate } from 'react-router';
 import { useApiClient } from '../../api/useApiClient';
 import { userProfileApi } from '../../api/userProfile';
 import { watchZonesApi } from '../../api/watchZones';

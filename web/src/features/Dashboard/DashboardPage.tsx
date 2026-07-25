@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import type { DashboardPort } from '../../domain/ports/dashboard-port';
 import { useDashboard } from './useDashboard';
 import { ApplicationCard } from '../../components/ApplicationCard/ApplicationCard';

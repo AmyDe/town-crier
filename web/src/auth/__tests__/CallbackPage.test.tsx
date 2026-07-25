@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react';
-import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { MemoryRouter, Routes, Route } from 'react-router';
 import { CallbackPage } from '../CallbackPage.tsx';
 import { AuthProvider } from '../auth-context.ts';
 import type { AuthPort } from '../../domain/ports/auth-port.ts';

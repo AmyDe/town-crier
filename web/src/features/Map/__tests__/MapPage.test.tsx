@@ -1,5 +1,5 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, useLocation } from 'react-router';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MapPage } from '../MapPage';
 import { SpyMapPort } from './spies/spy-map-port';

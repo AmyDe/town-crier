@@ -1,5 +1,5 @@
 import { Suspense, useState } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet } from 'react-router';
 import { Sidebar } from '../Sidebar/Sidebar';
 import { LoadingSkeleton } from '../LoadingSkeleton/LoadingSkeleton';
 import styles from './AppShell.module.css';

@@ -1,5 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { AuthProvider } from '../auth/auth-context';
 import { ProfileRepositoryProvider } from '../auth/profile-context';

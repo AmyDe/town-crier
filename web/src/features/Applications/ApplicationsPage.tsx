@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import type { WatchZoneSummary, ApplicationStatus } from '../../domain/types';
 import type { ApplicationsBrowsePort } from '../../domain/ports/applications-browse-port';
 import type { NotificationStateRepository } from '../../domain/ports/notification-state-repository';

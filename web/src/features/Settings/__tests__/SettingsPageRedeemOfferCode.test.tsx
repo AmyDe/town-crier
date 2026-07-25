@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router';
 import { SettingsPage } from '../SettingsPage';
 import { SpySettingsRepository } from './spies/spy-settings-repository';
 import { freeUserProfile, proUserProfile } from './fixtures/user-profile.fixtures';

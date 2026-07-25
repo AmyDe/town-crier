@@ -1,5 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { MemoryRouter, Routes, Route } from 'react-router';
 import { AuthProvider } from '../auth-context.ts';
 import { AuthGuard } from '../AuthGuard.tsx';
 import { SpyAuthPort } from './spies/spy-auth-port.ts';

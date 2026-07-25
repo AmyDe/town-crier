@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams } from 'react-router';
 import { useApiClient } from '../../api/useApiClient';
 import { useProfileRepository } from '../../auth/profile-context';
 import { useFetchData } from '../../hooks/useFetchData';
