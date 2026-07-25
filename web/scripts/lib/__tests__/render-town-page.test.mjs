@@ -495,4 +495,86 @@ describe('renderTownPage', () => {
     expect(html).not.toContain('<script>alert(1)</script>');
     expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
   });
+
+  describe('nearby areas section (tc-gyw1q, GH #990 slice 3)', () => {
+    const eightNearby = [
+      { name: 'Falmouth', slug: 'falmouth', authoritySlug: 'cornwall', authorityName: 'Cornwall' },
+      { name: 'Penryn', slug: 'penryn', authoritySlug: 'cornwall', authorityName: 'Cornwall' },
+      { name: 'Redruth', slug: 'redruth', authoritySlug: 'cornwall', authorityName: 'Cornwall' },
+      { name: 'Camborne', slug: 'camborne', authoritySlug: 'cornwall', authorityName: 'Cornwall' },
+      { name: 'St Austell', slug: 'st-austell', authoritySlug: 'cornwall', authorityName: 'Cornwall' },
+      { name: 'Newquay', slug: 'newquay', authoritySlug: 'cornwall', authorityName: 'Cornwall' },
+      { name: 'Saltash', slug: 'saltash', authoritySlug: 'cornwall', authorityName: 'Cornwall' },
+      // The cross-authority entry (GH #990's explicit border-town requirement):
+      // a neighbour in a DIFFERENT authority from the page's own (Cornwall).
+      { name: 'Plymouth', slug: 'plymouth', authoritySlug: 'plymouth', authorityName: 'Plymouth' },
+    ];
+
+    it('omits the section entirely when nearby is undefined (backwards compatible)', () => {
+      const html = renderTownPage(townData());
+      expect(html).not.toContain('<section class="nearbyAreas">');
+    });
+
+    it('omits the section entirely when nearby is an empty array', () => {
+      const html = renderTownPage(townData({ nearby: [] }));
+      expect(html).not.toContain('<section class="nearbyAreas">');
+    });
+
+    it('renders exactly 8 nearby-area links when 8 are supplied', () => {
+      const html = renderTownPage(townData({ nearby: eightNearby }));
+      expect(html).toContain('<section class="nearbyAreas">');
+      const section = html.match(/<section class="nearbyAreas">[\s\S]*?<\/section>/)[0];
+      const liCount = (section.match(/<li>/g) ?? []).length;
+      expect(liCount).toBe(8);
+    });
+
+    it('renders fewer than 8 links when fewer are supplied', () => {
+      const html = renderTownPage(
+        townData({ nearby: eightNearby.slice(0, 3) }),
+      );
+      const section = html.match(/<section class="nearbyAreas">[\s\S]*?<\/section>/)[0];
+      const liCount = (section.match(/<li>/g) ?? []).length;
+      expect(liCount).toBe(3);
+    });
+
+    it('links each nearby town to its own nested /planning/<authority>/<town> path', () => {
+      const html = renderTownPage(townData({ nearby: eightNearby }));
+      expect(html).toContain('<a href="/planning/cornwall/falmouth">Falmouth, Cornwall</a>');
+      expect(html).toContain('<a href="/planning/plymouth/plymouth">Plymouth, Plymouth</a>');
+    });
+
+    it('includes a cross-authority neighbour, labelled with ITS OWN authority (a border-town case)', () => {
+      const html = renderTownPage(townData({ nearby: eightNearby }));
+      // Truro's own authority is Cornwall; Plymouth is a DIFFERENT authority —
+      // the label must read "Plymouth, Plymouth", never "Plymouth, Cornwall".
+      expect(html).toContain('Plymouth, Plymouth');
+      expect(html).not.toContain('Plymouth, Cornwall');
+    });
+
+    it('HTML-escapes the town and authority names', () => {
+      const html = renderTownPage(
+        townData({
+          nearby: [
+            {
+              name: 'Stoke & <b>Bramley</b>',
+              slug: 'stoke-bramley',
+              authoritySlug: 'somewhere',
+              authorityName: 'Some & <i>Council</i>',
+            },
+          ],
+        }),
+      );
+      expect(html).not.toContain('<b>Bramley</b>');
+      expect(html).not.toContain('<i>Council</i>');
+      expect(html).toContain('Stoke &amp; &lt;b&gt;Bramley&lt;/b&gt;');
+      expect(html).toContain('Some &amp; &lt;i&gt;Council&lt;/i&gt;');
+    });
+
+    it('renders the section before the bottom CTA banner', () => {
+      const html = renderTownPage(townData({ nearby: eightNearby }));
+      expect(html.indexOf('<section class="nearbyAreas">')).toBeLessThan(
+        html.indexOf('<section class="cta">'),
+      );
+    });
+  });
 });
