@@ -548,7 +548,11 @@ describe('pageStyles townLinks', () => {
     expect(css).toContain('.townLinks__list');
     expect(css).toContain('.townLinks__list a');
     // Uses design tokens (var(--tc-*)), never hard-coded colours/spacing.
-    expect(css).toMatch(/\.townLinks__list a \{[^}]*var\(--tc-/);
+    // tc-gyw1q: the rule's selector may now be grouped with the sibling
+    // nearby-areas/neighbouring-councils pill lists (`.townLinks__list a,
+    // .nearbyAreas__list a { ... }`), so match anything up to the opening
+    // brace rather than requiring it immediately after this one selector.
+    expect(css).toMatch(/\.townLinks__list a[^{]*\{[^}]*var\(--tc-/);
   });
 });
 

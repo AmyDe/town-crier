@@ -360,6 +360,75 @@ export function renderPlanningCrossLinks() {
 }
 
 /**
+ * Render the "Nearby areas" section on a town page (tc-gyw1q, GH #990 slice
+ * 3): up to 8 links to the nearest published town pages by great-circle
+ * distance, crossing authority boundaries where geography puts a neighbour in
+ * a different council area. Each link is labelled with the neighbour's OWN
+ * parent authority ("Saltash, Cornwall") so a cross-council entry reads
+ * sensibly to a reader on, say, a Plymouth page. Returns `''` (renders
+ * nothing) when there are no nearby towns to show, so the section is omitted
+ * rather than rendered empty — the caller (`prerender-planning.mjs`) has
+ * already resolved this list from the full published set, so every href here
+ * points at a real page.
+ *
+ * @param {ReadonlyArray<{ name: string, slug: string, authoritySlug: string, authorityName: string }>} [nearby]
+ * @returns {string}
+ */
+export function renderNearbyAreas(nearby) {
+  if (!Array.isArray(nearby) || nearby.length === 0) {
+    return '';
+  }
+  const items = nearby
+    .map(
+      (town) =>
+        `          <li><a href="/planning/${town.authoritySlug}/${town.slug}">${escapeHtml(town.name)}, ${escapeHtml(town.authorityName)}</a></li>`,
+    )
+    .join('\n');
+  return `
+        <section class="nearbyAreas">
+          <h2>Nearby areas</h2>
+          <p>Planning applications in the towns nearest here, including neighbouring council areas.</p>
+          <ul class="nearbyAreas__list">
+${items}
+          </ul>
+        </section>
+`;
+}
+
+/**
+ * Render the "Neighbouring councils" section on an authority page (tc-gyw1q,
+ * GH #990 slice 4): up to 6 links to the nearest published authorities, by
+ * the great-circle distance between each authority's own centroid (the mean
+ * of its published towns). Returns `''` (renders nothing, no error) when this
+ * authority has no neighbours to show — either it has zero published towns of
+ * its own (no honest centroid to measure from) or the published set is too
+ * thin to have any other authority with a centroid to measure to.
+ *
+ * @param {ReadonlyArray<{ name: string, slug: string }>} [neighbours]
+ * @returns {string}
+ */
+export function renderNeighbouringCouncils(neighbours) {
+  if (!Array.isArray(neighbours) || neighbours.length === 0) {
+    return '';
+  }
+  const items = neighbours
+    .map(
+      (authority) =>
+        `          <li><a href="/planning/${authority.slug}">${escapeHtml(authority.name)}</a></li>`,
+    )
+    .join('\n');
+  return `
+        <section class="neighbouringCouncils">
+          <h2>Neighbouring councils</h2>
+          <p>Planning applications in the councils nearest here.</p>
+          <ul class="neighbouringCouncils__list">
+${items}
+          </ul>
+        </section>
+`;
+}
+
+/**
  * Render the QR block for the bottom CTA banner (tc-fgoyj). Hidden on touch
  * devices by the stylesheet (see `.cta__qr`) and shown only where the primary
  * pointer is a mouse/trackpad: a desktop visitor who clicks the App Store link
@@ -573,8 +642,13 @@ export function pageStyles() {
     .statusSummary__otherList { list-style: none; margin: var(--tc-space-sm) 0 0; padding: 0; display: grid; gap: var(--tc-space-sm); }
     .statusSummary__otherList li { display: flex; justify-content: space-between; gap: var(--tc-space-md); }
     .statusSummary__otherCount { font-weight: 700; }
-    .townLinks__list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--tc-space-sm); }
-    .townLinks__list a {
+    /* Nearby-area / neighbouring-council links (tc-gyw1q, GH #990 slices 3+4)
+       share the exact same pill vocabulary as the town-links list above — one
+       grouped rule rather than a near-duplicate per section. */
+    .townLinks__list, .nearbyAreas__list, .neighbouringCouncils__list {
+      list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--tc-space-sm);
+    }
+    .townLinks__list a, .nearbyAreas__list a, .neighbouringCouncils__list a {
       display: inline-block;
       padding: var(--tc-space-sm) var(--tc-space-md);
       background: var(--tc-surface);
@@ -584,7 +658,9 @@ export function pageStyles() {
       text-decoration: none;
       font-weight: 600;
     }
-    .townLinks__list a:hover { color: var(--tc-amber-hover); border-color: var(--tc-amber); }
+    .townLinks__list a:hover, .nearbyAreas__list a:hover, .neighbouringCouncils__list a:hover {
+      color: var(--tc-amber-hover); border-color: var(--tc-amber);
+    }
     /* /planning/ authority hub (tc-geq7h.1): an A-Z jump nav plus one
        <section> per letter, each holding a flat list of authority links with
        a small mono metadata line (application/town counts) — the same

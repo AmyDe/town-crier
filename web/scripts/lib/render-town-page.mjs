@@ -29,7 +29,18 @@ import {
   renderInlineCta,
   renderQrBlock,
   renderAttributionList,
+  renderNearbyAreas,
 } from './render-shared.mjs';
+
+/**
+ * @typedef {Object} NearbyTown
+ * @property {string} name           display name, e.g. "Saltash"
+ * @property {string} slug           lowercase-hyphenated town slug
+ * @property {string} authoritySlug  the NEIGHBOUR's own parent authority slug
+ *   (may differ from this page's own authoritySlug — nearest-neighbour
+ *   selection crosses authority boundaries, GH #990 decision)
+ * @property {string} authorityName  the neighbour's own parent authority name
+ */
 
 /**
  * @typedef {Object} TownPageData
@@ -41,6 +52,9 @@ import {
  * @property {number} total
  * @property {Array<{ appState: string | null, count: number }>} statusBreakdown
  * @property {import('./render-shared.mjs').PlanningApplicationItem[]} applications
+ * @property {NearbyTown[]} [nearby]  up to 8 nearest published town pages
+ *   (tc-gyw1q, GH #990 slice 3), crossing authority boundaries; omitted/empty
+ *   renders no "Nearby areas" section.
  */
 
 /**
@@ -218,7 +232,7 @@ ${applicationsList}
             authoritative source and the place to submit formal comments.
           </p>
         </section>
-
+${renderNearbyAreas(data.nearby)}
         <section class="cta">
           <h2 class="cta__heading">Get push alerts for ${town}</h2>
           <p>

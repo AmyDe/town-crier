@@ -10,6 +10,7 @@ import {
   renderQrBlock,
   renderAttributionList,
   renderPlanningCrossLinks,
+  renderNeighbouringCouncils,
 } from './render-shared.mjs';
 
 /**
@@ -23,6 +24,12 @@ import {
  */
 
 /**
+ * @typedef {Object} NeighbourAuthority
+ * @property {string} name display name of the neighbouring authority
+ * @property {string} slug the neighbouring authority's own URL slug
+ */
+
+/**
  * @typedef {Object} PlanningPageData
  * @property {string} slug
  * @property {string} areaName
@@ -32,6 +39,10 @@ import {
  * @property {PlanningApplicationItem[]} applications
  * @property {TownLink[]} [towns] published town children, for the internal link
  *   list. Omitted/empty for authorities with no published towns.
+ * @property {NeighbourAuthority[]} [neighbours] up to 6 nearest published
+ *   authorities (tc-gyw1q, GH #990 slice 4), by centroid distance. Omitted/
+ *   empty for an authority with no published towns of its own (no honest
+ *   centroid to measure from) — renders no "Neighbouring councils" section.
  */
 
 /**
@@ -218,7 +229,7 @@ ${townLinks}
             and the place to submit formal comments.
           </p>
         </section>
-
+${renderNeighbouringCouncils(data.neighbours)}
         <section class="cta">
           <h2 class="cta__heading">Get push alerts for ${area}</h2>
           <p>
