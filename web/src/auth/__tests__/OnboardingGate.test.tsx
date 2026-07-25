@@ -1,5 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { MemoryRouter, Routes, Route } from 'react-router';
 import { ProfileRepositoryProvider } from '../profile-context.ts';
 import { AuthProvider } from '../auth-context.ts';
 import { OnboardingGate } from '../OnboardingGate.tsx';

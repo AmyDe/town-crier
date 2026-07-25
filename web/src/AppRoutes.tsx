@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route } from 'react-router';
 import { LandingPage } from './features/LandingPage/LandingPage';
 import { CallbackPage } from './auth/CallbackPage';
 import { ConnectedLegalPage } from './features/legal/ConnectedLegalPage';

@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { useAuth } from '../../auth/auth-context';
 import { useTheme } from '../../hooks/useTheme';
 import { useUserProfile } from './useUserProfile';

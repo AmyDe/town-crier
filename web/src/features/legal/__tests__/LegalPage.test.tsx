@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router';
 import { describe, it, expect } from 'vitest';
 import { LegalPage } from '../LegalPage';
 import { SpyLegalDocumentPort } from './spies/spy-legal-document-port';

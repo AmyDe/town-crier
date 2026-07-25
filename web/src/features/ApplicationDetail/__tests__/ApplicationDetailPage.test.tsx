@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect } from 'vitest';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router';
 import { ApplicationDetailPage } from '../ApplicationDetailPage';
 import { SpyApplicationRepository } from './spies/spy-application-repository';
 import { SpyDesignationRepository } from './spies/spy-designation-repository';

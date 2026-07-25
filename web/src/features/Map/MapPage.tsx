@@ -1,5 +1,5 @@
 import { useCallback, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-leaflet';
 import type { MapPort, MapBounds } from '../../domain/ports/map-port';
 import type { ApplicationStatus, ClusterMember, MapCluster, WatchZoneSummary } from '../../domain/types';

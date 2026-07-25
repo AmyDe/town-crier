@@ -1,4 +1,4 @@
-import { useLocation, useParams } from 'react-router-dom';
+import { useLocation, useParams } from 'react-router';
 import { asApplicationUid } from '../../domain/types';
 import type { ApplicationRepository } from '../../domain/ports/application-repository';
 import type { DesignationRepository } from '../../domain/ports/designation-repository';

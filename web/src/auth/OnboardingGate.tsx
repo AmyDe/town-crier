@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Outlet, Navigate } from 'react-router-dom';
+import { Outlet, Navigate } from 'react-router';
 import { FullPageLoader } from '../components/FullPageLoader/FullPageLoader.tsx';
 import { FullPageError } from '../components/FullPageError/FullPageError.tsx';
 import { useProfileRepository } from './profile-context.ts';

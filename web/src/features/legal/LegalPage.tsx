@@ -1,4 +1,4 @@
-import { useParams } from 'react-router-dom';
+import { useParams } from 'react-router';
 import type { LegalDocumentPort } from '../../domain/ports/legal-document-port';
 import { useLegalDocument } from './useLegalDocument';
 import styles from './LegalPage.module.css';
