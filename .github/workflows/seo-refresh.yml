@@ -13,10 +13,15 @@
 # Per environment, each job runs the following flow:
 #   1. Build the SPA only (build-web with an EMPTY site-build-key, so the
 #      build-time prerender step skips — produces an SPA-only web/dist).
-#   2. Azure OIDC login.
-#   3. FETCH: `prerender-planning.mjs --fetch` calls the gated Go API for all
+#   2. FETCH: `prerender-planning.mjs --fetch` calls the gated Go API for all
 #      authorities + population-eligible towns and writes web/seo-snapshot.json.
 #      This is the ONLY Go API call in the whole pipeline.
+#   3. Azure OIDC login — deliberately AFTER fetch, not before (tc-xukdb). The
+#      federated client assertion GitHub hands to Azure AD is only valid ~5
+#      minutes; fetch alone now runs 9.5-13 minutes (418 authorities + 1550
+#      towns), so logging in beforehand left the assertion stale by the time
+#      the upload step below needed a storage-scoped token, failing with
+#      AADSTS700024. Login right before the first Azure call instead.
 #   4. UPLOAD: push seo-snapshot.json to the environment's Azure Blob container
 #      (seo-snapshot/seo-snapshot.json). The storage account has shared-key
 #      access DISABLED, so blob I/O uses `--auth-mode login` (AAD/RBAC); the CI
@@ -125,12 +130,6 @@ jobs:
           site-build-key: ""
           seo-town-min-population: ${{ vars.SEO_TOWN_MIN_POPULATION || '5000' }}
 
-      - uses: ./.github/actions/azure-login
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
       # The ONLY Go API call in the pipeline: write web/seo-snapshot.json.
       - name: Fetch SEO snapshot from the API
         working-directory: web
@@ -139,6 +138,13 @@ jobs:
           SITE_BUILD_KEY: ${{ secrets.SITE_BUILD_KEY }}
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
           SEO_TOWN_MIN_POPULATION: ${{ vars.SEO_TOWN_MIN_POPULATION || '5000' }}
+
+      # Login right before the first Azure call (tc-xukdb) — see flow comment above.
+      - uses: ./.github/actions/azure-login
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       # Shared-key access is disabled on the account, so --auth-mode login (AAD).
       - name: Upload snapshot to Azure Blob
@@ -220,12 +226,6 @@ jobs:
           site-build-key: ""
           seo-town-min-population: ${{ vars.SEO_TOWN_MIN_POPULATION || '5000' }}
 
-      - uses: ./.github/actions/azure-login
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
       # The ONLY Go API call in the pipeline: write web/seo-snapshot.json.
       - name: Fetch SEO snapshot from the API
         working-directory: web
@@ -234,6 +234,13 @@ jobs:
           SITE_BUILD_KEY: ${{ secrets.SITE_BUILD_KEY }}
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
           SEO_TOWN_MIN_POPULATION: ${{ vars.SEO_TOWN_MIN_POPULATION || '5000' }}
+
+      # Login right before the first Azure call (tc-xukdb) — see flow comment above.
+      - uses: ./.github/actions/azure-login
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       # Shared-key access is disabled on the account, so --auth-mode login (AAD).
       - name: Upload snapshot to Azure Blob
