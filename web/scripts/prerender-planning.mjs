@@ -50,6 +50,7 @@ import { resolveAuthority, townPagePath } from './lib/town-path.mjs';
 import { renderSitemap } from './lib/render-sitemap.mjs';
 import { isSameNameAsAuthority } from './lib/same-name.mjs';
 import { mergeRedirects } from './lib/redirect-config.mjs';
+import { nearestK, centroidOf } from './lib/nearest.mjs';
 import {
   renderTownsIndexPage,
   assertNoTownsSlugCollision,
@@ -78,6 +79,21 @@ const DEFAULT_NEAR_RADIUS_METERS = 5000;
  * @type {number}
  */
 const SNAPSHOT_VERSION = 1;
+
+/**
+ * How many nearest published town pages a town's "Nearby areas" section links
+ * to (GH #990 slice 3, tc-gyw1q's Pre-Resolved Design Decisions).
+ * @type {number}
+ */
+const NEARBY_TOWNS_COUNT = 8;
+
+/**
+ * How many nearest published authorities an authority's "Neighbouring
+ * councils" section links to (GH #990 slice 4, tc-gyw1q's Pre-Resolved Design
+ * Decisions).
+ * @type {number}
+ */
+const NEIGHBOUR_AUTHORITIES_COUNT = 6;
 
 /**
  * Derive a page's content `lastmod` from the applications it actually shows: the
@@ -479,14 +495,28 @@ async function writeRedirectConfig({ outDir, redirects, baseConfigPath }) {
 }
 
 /**
- * Render and write a page if the authority qualifies and clears the gate.
- * Mutates `published`/`excluded`/`seenSlugs` and returns nothing.
+ * @typedef {Object} PublishedAuthorityRecord
+ * @property {string} slug
+ * @property {string} areaName
+ * @property {number} authorityId
+ * @property {number} total
+ * @property {object[]} statusBreakdown
+ * @property {object[]} applications
+ * @property {Array<{ name: string, slug: string }>} towns
+ */
+
+/**
+ * DECIDE an authority: gate (coverage, slug dedup), resolve its published town
+ * children, and — if it qualifies — collect a full page-data record. Mutates
+ * `published`/`excluded`/`seenSlugs`/`hubEntries`/`publishedAuthorityRecords`;
+ * writes NOTHING (GH #990 slice 4, tc-gyw1q two-pass split). A page can only
+ * be written once every OTHER authority has also been decided, so its nearest
+ * neighbours can be resolved from the complete published set — see
+ * {@link writeAuthorityPagesWithNeighbours}, the second pass.
  *
  * @param {Object} args
- * @param {string} args.outDir
  * @param {number} args.authorityId
  * @param {string} args.name
- * @param {string} args.areaType
  * @param {string} args.areaName
  * @param {number} args.total
  * @param {object[]} args.statusBreakdown
@@ -503,12 +533,14 @@ async function writeRedirectConfig({ outDir, redirects, baseConfigPath }) {
  *   accumulates one entry per PUBLISHED authority for the `/planning/` hub
  *   page (tc-geq7h.1) — never a non-qualifying or coverage-gated-out one, so
  *   the hub can never link to a 404.
+ * @param {PublishedAuthorityRecord[]} [args.publishedAuthorityRecords]
+ *   accumulates one full page-data record per published authority, consumed
+ *   by the second (write) pass once every authority has been decided.
  * @param {{ warn: (msg: string) => void }} args.logger
  * @returns {Promise<void>}
  */
 async function considerAuthority(args) {
   const {
-    outDir,
     authorityId,
     name,
     total,
@@ -522,6 +554,7 @@ async function considerAuthority(args) {
     seenSlugs,
     townsByAuthority,
     hubEntries,
+    publishedAuthorityRecords,
     logger,
   } = args;
 
@@ -546,19 +579,11 @@ async function considerAuthority(args) {
   const towns = [...(townsByAuthority?.get(authorityId) ?? [])].sort((a, b) =>
     a.name.localeCompare(b.name),
   );
-  await writePage(outDir, {
-    slug,
-    areaName: areaName || name,
-    authorityId,
-    total,
-    statusBreakdown,
-    applications: shown,
-    towns,
-  });
+  const displayName = areaName || name;
+
   published.push(slug);
   sitemapEntries.push({ path: slug, lastmod: maxLastmod(shown) });
   if (hubEntries) {
-    const displayName = areaName || name;
     hubEntries.push({
       name: displayName,
       slug,
@@ -566,6 +591,168 @@ async function considerAuthority(args) {
       townCount: towns.length,
     });
   }
+  if (publishedAuthorityRecords) {
+    publishedAuthorityRecords.push({
+      slug,
+      areaName: displayName,
+      authorityId,
+      total,
+      statusBreakdown,
+      applications: shown,
+      towns,
+    });
+  }
+}
+
+/**
+ * Derive each authority's centroid — the arithmetic mean lat/lng of ONLY its
+ * own PUBLISHED town records (GH #990 slice 4) — computed once, after the
+ * town decide-loop, from every {@link PublishedTownRecord}. An authority with
+ * no entries here (zero published towns) simply has no key in the returned
+ * map: a missing centroid means "no honest centroid", never a guessed one.
+ *
+ * @param {ReadonlyArray<{ authorityId: number, lat: number, lng: number }>} records
+ * @returns {Map<number, import('./lib/nearest.mjs').GeoPoint>}
+ */
+function authorityCentroidsFromTowns(records) {
+  /** @type {Map<number, import('./lib/nearest.mjs').GeoPoint[]>} */
+  const byAuthority = new Map();
+  for (const record of records) {
+    const group = byAuthority.get(record.authorityId);
+    if (group) {
+      group.push(record);
+    } else {
+      byAuthority.set(record.authorityId, [record]);
+    }
+  }
+  /** @type {Map<number, import('./lib/nearest.mjs').GeoPoint>} */
+  const centroids = new Map();
+  for (const [authorityId, points] of byAuthority) {
+    const centroid = centroidOf(points);
+    if (centroid) {
+      centroids.set(authorityId, centroid);
+    }
+  }
+  return centroids;
+}
+
+/**
+ * WRITE every decided authority page (the second pass, GH #990 slice 4): for
+ * each record that has a centroid, resolve its up-to-
+ * {@link NEIGHBOUR_AUTHORITIES_COUNT} nearest neighbouring authorities from
+ * every OTHER published authority that ALSO has a centroid — an authority
+ * with zero published towns has no honest centroid and is excluded not just
+ * from having its own section, but from being a neighbour CANDIDATE for
+ * anyone else. Ties break by authority slug ascending (deterministic,
+ * reproducible builds).
+ *
+ * @param {string} outDir
+ * @param {ReadonlyArray<PublishedAuthorityRecord>} records
+ * @param {Map<number, import('./lib/nearest.mjs').GeoPoint>} authorityCentroids
+ * @returns {Promise<void>}
+ */
+async function writeAuthorityPagesWithNeighbours(outDir, records, authorityCentroids) {
+  // Only authorities with an honest centroid are valid neighbour CANDIDATES —
+  // never merely omitted from having their own section (GH #990 decision).
+  const candidates = [];
+  for (const record of records) {
+    const centroid = authorityCentroids.get(record.authorityId);
+    if (centroid) {
+      candidates.push({
+        slug: record.slug,
+        name: record.areaName,
+        lat: centroid.lat,
+        lng: centroid.lng,
+      });
+    }
+  }
+
+  for (const record of records) {
+    const centroid = authorityCentroids.get(record.authorityId);
+    let neighbours = [];
+    if (centroid) {
+      const origin = { slug: record.slug, lat: centroid.lat, lng: centroid.lng };
+      neighbours = nearestK(origin, candidates, NEIGHBOUR_AUTHORITIES_COUNT, {
+        identity: (c) => c.slug,
+      }).map((c) => ({ name: c.name, slug: c.slug }));
+    }
+    await writePage(outDir, { ...record, neighbours });
+  }
+}
+
+/**
+ * Render every authority that qualifies (areaType) and clears the coverage
+ * gate, across the two-pass split (GH #990 slices 3+4, tc-gyw1q): decide
+ * every candidate first (gate, slug/dedup, resolve its published town
+ * children), THEN write every page once each authority's up-to-
+ * {@link NEIGHBOUR_AUTHORITIES_COUNT} nearest NEIGHBOURING authorities can be
+ * resolved from the complete published set (`authorityCentroids`, computed by
+ * the earlier town pass, {@link renderTownPages}). Both `renderEntries` and
+ * `runLiveMode` share this — only `getApplications` (how one authority's
+ * bounded recent-applications projection is resolved: an inline lookup vs. a
+ * live fetch) differs between them.
+ *
+ * @param {Object} args
+ * @param {string} args.outDir
+ * @param {ReadonlyArray<{ id: number, name: string, areaType: string, areaName?: string }>} args.authorityEntries
+ * @param {(entry: { id: number, name: string, areaType: string, areaName?: string }) => Promise<{ areaName?: string, total: number, statusBreakdown?: object[], applications?: object[] }>} args.getApplications
+ * @param {number} args.limit
+ * @param {Map<number, Array<{ name: string, slug: string }>>} args.townsByAuthority
+ * @param {Map<number, import('./lib/nearest.mjs').GeoPoint>} args.authorityCentroids
+ * @param {import('./lib/render-planning-index.mjs').PlanningIndexEntry[]} [args.hubEntries]
+ * @param {{ warn: (msg: string) => void }} args.logger
+ * @returns {Promise<{ published: string[], sitemapEntries: SitemapEntry[], excluded: Array<{ name: string, reason: string }> }>}
+ */
+async function renderAuthorityPages(args) {
+  const {
+    outDir,
+    authorityEntries,
+    getApplications,
+    limit,
+    townsByAuthority,
+    authorityCentroids,
+    hubEntries,
+    logger,
+  } = args;
+
+  /** @type {string[]} */
+  const published = [];
+  /** @type {SitemapEntry[]} */
+  const sitemapEntries = [];
+  /** @type {Array<{ name: string, reason: string }>} */
+  const excluded = [];
+  const seenSlugs = new Set();
+  /** @type {PublishedAuthorityRecord[]} */
+  const publishedAuthorityRecords = [];
+
+  for (const entry of authorityEntries) {
+    if (!isQualifyingAreaType(entry.areaType)) {
+      excluded.push({ name: entry.name, reason: 'areaType' });
+      continue;
+    }
+    const data = await getApplications(entry);
+    await considerAuthority({
+      authorityId: entry.id,
+      name: entry.name,
+      areaName: data.areaName || entry.name,
+      total: data.total,
+      statusBreakdown: Array.isArray(data.statusBreakdown) ? data.statusBreakdown : [],
+      applications: Array.isArray(data.applications) ? data.applications : [],
+      limit,
+      published,
+      sitemapEntries,
+      excluded,
+      seenSlugs,
+      townsByAuthority,
+      hubEntries,
+      publishedAuthorityRecords,
+      logger,
+    });
+  }
+
+  await writeAuthorityPagesWithNeighbours(outDir, publishedAuthorityRecords, authorityCentroids);
+
+  return { published, sitemapEntries, excluded };
 }
 
 /**
@@ -668,11 +855,31 @@ function townsIndexLastmod(townSitemapEntries) {
 }
 
 /**
- * Render and write a town page if it clears the coverage gate, after resolving
- * its parent authority slug. Mutates `publishedTowns`/`excludedTowns`/`seenPaths`.
+ * @typedef {Object} PublishedTownRecord
+ * @property {string} townName
+ * @property {string} townSlug
+ * @property {string} authorityName
+ * @property {string} authoritySlug
+ * @property {number} authorityId
+ * @property {number} lat
+ * @property {number} lng
+ * @property {number} total
+ * @property {object[]} statusBreakdown
+ * @property {object[]} applications
+ */
+
+/**
+ * DECIDE a town: gate (coverage, same-name dedup, duplicate-path dedup),
+ * resolve its parent authority, and — if it qualifies — collect a full
+ * page-data record (including its centroid `lat`/`lng`). Mutates
+ * `publishedTowns`/`excludedTowns`/`redirects`/`seenPaths`/`townsByAuthority`/
+ * `townIndexEntries`/`publishedTownRecords`; writes NOTHING (GH #990 slice 3,
+ * tc-gyw1q two-pass split). A page can only be written once every OTHER town
+ * has also been decided, so its nearest neighbours (crossing authority
+ * boundaries) can be resolved from the complete published set — see
+ * {@link writeTownPagesWithNeighbours}, the second pass.
  *
  * @param {Object} args
- * @param {string} args.outDir
  * @param {Town} args.town
  * @param {ReadonlyArray<{ id: number, name: string }>} args.authorities
  * @param {number} args.total
@@ -692,12 +899,14 @@ function townsIndexLastmod(townSitemapEntries) {
  *   accumulates one entry per published town, in whatever order towns are
  *   considered — the town INDEX page (`/planning/towns`, GH #821 Phase 2)
  *   sorts and groups this flat list itself.
+ * @param {PublishedTownRecord[]} [args.publishedTownRecords]
+ *   accumulates one full page-data record per published town, consumed by
+ *   the second (write) pass once every town has been decided.
  * @param {{ warn: (msg: string) => void }} args.logger
  * @returns {Promise<void>}
  */
 async function considerTown(args) {
   const {
-    outDir,
     town,
     authorities,
     total,
@@ -711,6 +920,7 @@ async function considerTown(args) {
     seenPaths,
     townsByAuthority,
     townIndexEntries,
+    publishedTownRecords,
     logger,
   } = args;
 
@@ -750,16 +960,7 @@ async function considerTown(args) {
   // ordered by GREATEST(decidedDate, startDate) DESC (tc-s0yf) — like the
   // authority read (considerAuthority, above), so no re-sort here.
   const shown = applications.slice(0, limit);
-  await writeTownPage(outDir, {
-    townName: town.name,
-    townSlug: town.slug,
-    authorityName,
-    authoritySlug,
-    authorityId: town.authorityId,
-    total,
-    statusBreakdown,
-    applications: shown,
-  });
+
   publishedTowns.push(path);
   sitemapEntries.push({ path, lastmod: maxLastmod(shown) });
   // Record this published town for the town INDEX page (GH #821 Phase 2) —
@@ -786,11 +987,63 @@ async function considerTown(args) {
       ]);
     }
   }
+  if (publishedTownRecords) {
+    publishedTownRecords.push({
+      townName: town.name,
+      townSlug: town.slug,
+      authorityName,
+      authoritySlug,
+      authorityId: town.authorityId,
+      lat: town.lat,
+      lng: town.lng,
+      total,
+      statusBreakdown,
+      applications: shown,
+    });
+  }
 }
 
 /**
- * Render every town that clears the coverage gate. `getGeo` resolves a town to
- * its bounded recent-nearby projection (a live geo fetch, or inline fixture
+ * WRITE every decided town page (the second pass, GH #990 slice 3): for each
+ * record, resolve its up-to-{@link NEARBY_TOWNS_COUNT} nearest neighbouring
+ * town pages from every OTHER published town record — crossing authority
+ * boundaries where geography puts a neighbour in a different council area
+ * (GH #990 decision). Self-exclusion compares the FULL nested page path
+ * (`<authoritySlug>/<townSlug>`), never a bare slug alone, so two towns that
+ * merely SHARE a bare slug in different authorities (e.g. two "Richmond"s)
+ * never wrongly exclude each other. Ties break by town slug ascending
+ * (deterministic, reproducible builds).
+ *
+ * @param {string} outDir
+ * @param {ReadonlyArray<PublishedTownRecord>} records
+ * @returns {Promise<void>}
+ */
+async function writeTownPagesWithNeighbours(outDir, records) {
+  for (const record of records) {
+    const nearby = nearestK(record, records, NEARBY_TOWNS_COUNT, {
+      identity: (r) => townPagePath(r.authoritySlug, r.townSlug),
+      tieBreakKey: (r) => r.townSlug,
+    }).map((r) => ({
+      name: r.townName,
+      slug: r.townSlug,
+      authoritySlug: r.authoritySlug,
+      authorityName: r.authorityName,
+    }));
+
+    await writeTownPage(outDir, { ...record, nearby });
+  }
+}
+
+/**
+ * Render every town that clears the coverage gate, across the two-pass split
+ * (GH #990 slices 3+4, tc-gyw1q): decide every candidate first ({@link
+ * considerTown}), THEN write every page once each town's up-to-
+ * {@link NEARBY_TOWNS_COUNT} nearest neighbours can be resolved from the
+ * complete published set ({@link writeTownPagesWithNeighbours}). Also derives
+ * `authorityCentroids` — each authority's centroid, the arithmetic mean of
+ * ONLY its own published towns — for the (later) authority pass to resolve
+ * ITS neighbours from (GH #990 slice 4). `getGeo` resolves a town to its
+ * bounded recent-nearby projection (a live geo fetch, or inline fixture
  * data). The parent authority slug is resolved from `authorities`.
  *
  * @param {Object} args
@@ -800,7 +1053,7 @@ async function considerTown(args) {
  * @param {(town: Town) => Promise<{ applications: object[], total: number, statusBreakdown: object[] }>} args.getGeo
  * @param {number} args.limit
  * @param {{ warn: (msg: string) => void }} args.logger
- * @returns {Promise<{ publishedTowns: string[], townSitemapEntries: SitemapEntry[], excludedTowns: Array<{ name: string, reason: string }>, townsByAuthority: Map<number, Array<{ name: string, slug: string }>>, redirects: string[], townIndexEntries: import('./lib/render-towns-index.mjs').TownIndexEntry[] }>}
+ * @returns {Promise<{ publishedTowns: string[], townSitemapEntries: SitemapEntry[], excludedTowns: Array<{ name: string, reason: string }>, townsByAuthority: Map<number, Array<{ name: string, slug: string }>>, redirects: string[], townIndexEntries: import('./lib/render-towns-index.mjs').TownIndexEntry[], authorityCentroids: Map<number, import('./lib/nearest.mjs').GeoPoint> }>}
  */
 async function renderTownPages(args) {
   const { outDir, towns, authorities, getGeo, limit, logger } = args;
@@ -824,11 +1077,15 @@ async function renderTownPages(args) {
   // exact same gates (coverage, same-name dedup, duplicate-path).
   /** @type {import('./lib/render-towns-index.mjs').TownIndexEntry[]} */
   const townIndexEntries = [];
+  // Every decided-published town's full page-data record, incl. its centroid
+  // (lat/lng) — the candidate pool for the second (write) pass below, and the
+  // raw material for each authority's own centroid (GH #990 slices 3+4).
+  /** @type {PublishedTownRecord[]} */
+  const publishedTownRecords = [];
 
   for (const town of towns) {
     const geo = await getGeo(town);
     await considerTown({
-      outDir,
       town,
       authorities,
       total: geo.total,
@@ -844,9 +1101,17 @@ async function renderTownPages(args) {
       seenPaths,
       townsByAuthority,
       townIndexEntries,
+      publishedTownRecords,
       logger,
     });
   }
+
+  const authorityCentroids = authorityCentroidsFromTowns(publishedTownRecords);
+
+  // Second pass: every town has been decided, so each record's nearest
+  // neighbours (crossing authority boundaries) can be safely resolved before
+  // any town page is actually written (GH #990 slice 3).
+  await writeTownPagesWithNeighbours(outDir, publishedTownRecords);
 
   return {
     publishedTowns,
@@ -855,6 +1120,7 @@ async function renderTownPages(args) {
     excludedTowns,
     townsByAuthority,
     redirects,
+    authorityCentroids,
   };
 }
 
@@ -907,6 +1173,7 @@ async function renderEntries(args) {
     excludedTowns,
     townsByAuthority,
     redirects,
+    authorityCentroids,
   } = await renderTownPages({
     outDir,
     towns: townEntries,
@@ -922,42 +1189,28 @@ async function renderEntries(args) {
     logger,
   });
 
-  /** @type {string[]} */
-  const published = [];
-  /** @type {SitemapEntry[]} */
-  const authoritySitemapEntries = [];
-  /** @type {Array<{ name: string, reason: string }>} */
-  const excluded = [];
-  const seenSlugs = new Set();
   /** @type {import('./lib/render-planning-index.mjs').PlanningIndexEntry[]} */
   const hubEntries = [];
 
-  for (const entry of authorityEntries) {
-    if (!isQualifyingAreaType(entry.areaType)) {
-      excluded.push({ name: entry.name, reason: 'areaType' });
-      continue;
-    }
-    await considerAuthority({
-      outDir,
-      authorityId: entry.id,
-      name: entry.name,
-      areaType: entry.areaType,
+  const {
+    published,
+    sitemapEntries: authoritySitemapEntries,
+    excluded,
+  } = await renderAuthorityPages({
+    outDir,
+    authorityEntries,
+    getApplications: async (entry) => ({
       areaName: entry.areaName ?? entry.name,
       total: entry.total,
-      statusBreakdown: Array.isArray(entry.statusBreakdown)
-        ? entry.statusBreakdown
-        : [],
-      applications: Array.isArray(entry.applications) ? entry.applications : [],
-      limit,
-      published,
-      sitemapEntries: authoritySitemapEntries,
-      excluded,
-      seenSlugs,
-      townsByAuthority,
-      hubEntries,
-      logger,
-    });
-  }
+      statusBreakdown: entry.statusBreakdown,
+      applications: entry.applications,
+    }),
+    limit,
+    townsByAuthority,
+    authorityCentroids,
+    hubEntries,
+    logger,
+  });
 
   // Town INDEX page (GH #821 Phase 2) — always written, even with zero
   // entries, so /planning/towns is never a soft-404 (see writeTownsIndexPage).
@@ -1132,6 +1385,7 @@ async function runLiveMode(args) {
     excludedTowns,
     townsByAuthority,
     redirects,
+    authorityCentroids,
   } = await renderTownPages({
     outDir,
     towns: eligibleTowns,
@@ -1150,44 +1404,23 @@ async function runLiveMode(args) {
   });
   excludedTowns.push(...populationExcludedTowns);
 
-  /** @type {string[]} */
-  const published = [];
-  /** @type {SitemapEntry[]} */
-  const authoritySitemapEntries = [];
-  /** @type {Array<{ name: string, reason: string }>} */
-  const excluded = [];
-  const seenSlugs = new Set();
-
-  for (const authority of authorities) {
-    if (!isQualifyingAreaType(authority.areaType)) {
-      excluded.push({ name: authority.name, reason: 'areaType' });
-      continue;
-    }
-    const recent = await fetchRecentApplications(
-      apiBase,
-      authority.id,
-      buildKey,
-      limit,
-      fetchImpl,
-    );
-    await considerAuthority({
-      outDir,
-      authorityId: authority.id,
-      name: authority.name,
-      areaType: authority.areaType,
-      areaName: recent.areaName || authority.name,
-      total: recent.total,
-      statusBreakdown: recent.statusBreakdown,
-      applications: recent.applications,
-      limit,
-      published,
-      sitemapEntries: authoritySitemapEntries,
-      excluded,
-      seenSlugs,
-      townsByAuthority,
-      logger,
-    });
-  }
+  // NOTE: no `hubEntries` here — live mode has never written the `/planning/`
+  // hub page (a pre-existing asymmetry against the fixture/`--render` pipeline
+  // below, predating this bead; tracked separately, out of scope for tc-gyw1q).
+  const {
+    published,
+    sitemapEntries: authoritySitemapEntries,
+    excluded,
+  } = await renderAuthorityPages({
+    outDir,
+    authorityEntries: authorities,
+    getApplications: (authority) =>
+      fetchRecentApplications(apiBase, authority.id, buildKey, limit, fetchImpl),
+    limit,
+    townsByAuthority,
+    authorityCentroids,
+    logger,
+  });
 
   // Town INDEX page (GH #821 Phase 2) — always written, even with zero
   // entries, so /planning/towns is never a soft-404 (see writeTownsIndexPage).
