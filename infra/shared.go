@@ -553,52 +553,6 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		return err
 	}
 
-	// Scheduled query (log) alert — prod PlanIt daily request-volume budget guard rail (GH #955
-	// PR C / tc-oeoga). PlanIt is a free, single-operator service; hammering it is a
-	// non-negotiable red line, measured at ~1,500 requests/day (see CLAUDE.md's PlanIt-red-line
-	// framing and GH #955's Motivation). 1,450 sits just under that red line so this fires with
-	// headroom to react (e.g. step POLLING_PLANIT_PAGE_SIZE back down, GH #955 PR B's documented
-	// rollback lever) before the fleet actually crosses it. Same shape as the PlanIt failure-rate
-	// rule above: the query itself computes the daily count and emits a row only when the
-	// threshold is breached, so the alert condition is just "did the query return anything"
-	// (threshold 0, Count aggregation).
-	const planitRequestBudgetQuery = `AppDependencies
-| where Target == "PlanIt search"
-| where tostring(Properties["deployment.environment"]) == "prod"
-| summarize RequestCount = count()
-| where RequestCount > 1450`
-
-	_, err = monitor.NewScheduledQueryRule(ctx, "alert-planit-request-budget-shared", &monitor.ScheduledQueryRuleArgs{
-		RuleName:            pulumi.String("alert-planit-request-budget-shared"),
-		ResourceGroupName:   resourceGroup.Name,
-		Location:            pulumi.String("uksouth"),
-		Kind:                pulumi.String("LogAlert"),
-		Description:         pulumi.String("Prod PlanIt request volume exceeded 1,450 calls in the last 24 hours — approaching the ~1,500/day red line for this free, single-operator service. See GH #955."),
-		DisplayName:         pulumi.String("PlanIt daily request budget"),
-		Severity:            pulumi.Float64(2), // Warning
-		Enabled:             pulumi.Bool(true),
-		EvaluationFrequency: pulumi.String("PT1H"),
-		WindowSize:          pulumi.String("P1D"),
-		Scopes:              pulumi.StringArray{logAnalytics.ID()},
-		Criteria: monitor.ScheduledQueryRuleCriteriaArgs{
-			AllOf: monitor.ConditionArray{
-				monitor.ConditionArgs{
-					Query:           pulumi.String(planitRequestBudgetQuery),
-					TimeAggregation: pulumi.String("Count"),
-					Operator:        pulumi.String("GreaterThan"),
-					Threshold:       pulumi.Float64(0),
-				},
-			},
-		},
-		Actions: monitor.ActionsArgs{
-			ActionGroups: pulumi.StringArray{actionGroup.ID()},
-		},
-		Tags: tags,
-	})
-	if err != nil {
-		return err
-	}
-
 	// Azure Communication Services (Email) — UK data location.
 	emailServiceUk, err := communication.NewEmailService(ctx, "email-town-crier-uk", &communication.EmailServiceArgs{
 		EmailServiceName:  pulumi.String("email-town-crier-uk"),

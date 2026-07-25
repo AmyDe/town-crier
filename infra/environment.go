@@ -862,11 +862,26 @@ func createServiceBusPollingInfra(ctx *pulumi.Context, env string, resourceGroup
 }
 
 // createPollQueueDepthAlert creates the metric alert (prod only) that fires when the poll
-// queue's total Messages (active + scheduled + dead-lettered) exceeds 1 for a sustained 15
-// minutes. Steady state holds exactly one in-flight trigger, so this single threshold catches
-// both a forked trigger chain and dead-letter accumulation without needing separate rules per
-// sub-count (tc-ttjor / GH #938 PR3). Wired to the action group created in the shared stack —
-// see the rationale comment on its creation in shared.go.
+// queue's total Messages (active + scheduled + dead-lettered) averages above 1.5 over a
+// trailing 1-hour window. Steady state holds exactly one in-flight trigger, so this single
+// threshold catches both a forked trigger chain and dead-letter accumulation without needing
+// separate rules per sub-count (tc-ttjor / GH #938 PR3).
+//
+// TimeAggregation is Average (not Maximum) and WindowSize is PT1H (not PT15M), tuned by
+// alert-noise pass 2 (tc-vflm7) after this alert fired twice in 30 days (2026-07-16,
+// 2026-07-24) with no corresponding job failures, forked executions, or 429-storm signature —
+// i.e. not real incidents. Maximum aggregation over a short window means a single brief metric
+// sample above threshold stays visible in the trailing window well after the blip itself has
+// passed, so a one-off reads as a sustained breach purely from window/evaluation-frequency
+// mechanics. Average over a longer window requires the elevated depth to actually persist.
+// Threshold is raised from 1 to 1.5 because steady state (1) sits exactly on the old threshold,
+// so any excursion at all, however brief, already counted as a breach; 1.5 gives a brief blip
+// room to dilute below threshold while a genuinely stuck queue (depth 2) stays comfortably
+// above it. There's no historical per-minute Service Bus queue-depth metric to backtest these
+// exact numbers against (az monitor metrics list doesn't support Service Bus queues) — the
+// window is instead sized for headroom against the real incident class this alert guards
+// against, which ran 2.5+ hours. Wired to the action group created in the shared stack — see
+// the rationale comment on its creation in shared.go.
 func createPollQueueDepthAlert(ctx *pulumi.Context, env string, resourceGroupName pulumi.StringOutput, pollingBus *serviceBusPollingInfra, actionGroupID pulumi.StringOutput, tags pulumi.StringMap) error {
 	name := fmt.Sprintf("alert-poll-queue-depth-%s", env)
 	_, err := monitor.NewMetricAlert(ctx, name, &monitor.MetricAlertArgs{
@@ -877,11 +892,11 @@ func createPollQueueDepthAlert(ctx *pulumi.Context, env string, resourceGroupNam
 		// be created on a custom metric", broke the v0.19.3 deploy). Without this
 		// the provider defaults to the resource group's region.
 		Location:            pulumi.String("global"),
-		Description:         pulumi.String("Poll Service Bus queue holds more than 1 message (active + scheduled + dead-lettered); steady state is exactly 1. Indicates a forked trigger chain or dead-letter accumulation. See GH #938."),
+		Description:         pulumi.String("Poll Service Bus queue's total Messages (active + scheduled + dead-lettered) averaged above 1.5 over the last hour; steady state is exactly 1. Indicates a forked trigger chain or dead-letter accumulation. See GH #938."),
 		Severity:            pulumi.Int(2),
 		Enabled:             pulumi.Bool(true),
 		EvaluationFrequency: pulumi.String("PT5M"),
-		WindowSize:          pulumi.String("PT15M"),
+		WindowSize:          pulumi.String("PT1H"),
 		Scopes:              pulumi.StringArray{pollingBus.namespaceID},
 		Criteria: monitor.MetricAlertSingleResourceMultipleMetricCriteriaArgs{
 			OdataType: pulumi.String("Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria"),
@@ -899,8 +914,8 @@ func createPollQueueDepthAlert(ctx *pulumi.Context, env string, resourceGroupNam
 						},
 					},
 					Operator:        pulumi.String("GreaterThan"),
-					Threshold:       pulumi.Float64(1),
-					TimeAggregation: pulumi.String("Maximum"),
+					Threshold:       pulumi.Float64(1.5),
+					TimeAggregation: pulumi.String("Average"),
 				},
 			},
 		},
