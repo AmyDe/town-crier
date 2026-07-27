@@ -58,6 +58,8 @@ type Registry struct {
 	watchZonesCreated metric.Int64Counter
 	watchZonesUpdated metric.Int64Counter
 	watchZonesDeleted metric.Int64Counter
+
+	pushDeliveryFailed metric.Int64Counter
 }
 
 // New builds the registry from a meter. Construction errors are deliberately
@@ -156,6 +158,11 @@ func New(meter metric.Meter) *Registry {
 	r.watchZonesCreated = counter("towncrier.watchzones.created")
 	r.watchZonesUpdated = counter("towncrier.watchzones.updated")
 	r.watchZonesDeleted = counter("towncrier.watchzones.deleted")
+
+	r.pushDeliveryFailed = counter(
+		"towncrier.push.delivery_failed",
+		metric.WithDescription("Per-device push send delivery failures (APNs or FCM), tagged by platform. Excludes routine invalid-token rejections (410/BadDeviceToken/UNREGISTERED etc.), which are expected churn the caller prunes, not a failure."),
+	)
 
 	return r
 }
@@ -339,6 +346,18 @@ func (r *Registry) WatchZoneDeleted(ctx context.Context) {
 		return
 	}
 	r.watchZonesDeleted.Add(ctx, 1)
+}
+
+// PushDeliveryFailed counts a per-device push send delivery failure (JWT/token
+// mint failure, transport error, or exhausted retries) for the given platform
+// ("apns" | "fcm"). Deliberately excludes a routine invalid-token rejection
+// (410 Unregistered, 400 BadDeviceToken, UNREGISTERED, ...) — that is expected
+// token churn the caller prunes, not a failure worth alerting on.
+func (r *Registry) PushDeliveryFailed(ctx context.Context, platform string) {
+	if r == nil || r.pushDeliveryFailed == nil {
+		return
+	}
+	r.pushDeliveryFailed.Add(ctx, 1, metric.WithAttributes(attribute.String("platform", platform)))
 }
 
 // boolStr renders a bool as the lowercase "true"/"false" string used in App
