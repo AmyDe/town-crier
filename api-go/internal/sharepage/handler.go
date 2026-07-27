@@ -13,6 +13,7 @@ package sharepage
 import (
 	"bytes"
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -64,6 +65,14 @@ func (h *handler) serve(w http.ResponseWriter, r *http.Request) {
 
 	app, found, err := h.store.GetByAuthorityAndName(r.Context(), strconv.Itoa(areaID), ref)
 	if err != nil {
+		// A context.Canceled error means the caller disconnected before the
+		// response was ready (e.g. a rapid map pan cancelling an in-flight
+		// fetch) rather than a genuine server fault — deliberately not logged
+		// at error level and not given a 500: the caller is already gone, so
+		// nothing meaningfully needs to be written back (tc-ftccw).
+		if errors.Is(err, context.Canceled) {
+			return
+		}
 		h.logger.ErrorContext(r.Context(), "share page read failed", "op", "read application by slug", "slug", slug, "ref", ref, "error", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
