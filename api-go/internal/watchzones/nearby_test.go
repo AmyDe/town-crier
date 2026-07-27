@@ -1650,6 +1650,9 @@ func TestClusters_ContextCanceled_NoServerErrorNoErrorLog(t *testing.T) {
 	if rec.Code == http.StatusInternalServerError {
 		t.Fatalf("status: got %d, want NOT 500 on a client-cancelled read", rec.Code)
 	}
+	if rec.Body.Len() != 0 {
+		t.Errorf("body = %q, want empty", rec.Body.String())
+	}
 	if _, ok := capture.find(slog.LevelError, "watch-zone request failed"); ok {
 		t.Error("expected no error-level log for a client-cancelled read")
 	}
