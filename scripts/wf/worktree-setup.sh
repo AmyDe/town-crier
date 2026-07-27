@@ -21,6 +21,16 @@
 #
 # Prints the worktree path as the final line. Remove steps 3-4 when the upstream
 # bd fixes ship. Anchored to the repo root, so a drifted CWD can't misfire it.
+#
+# bd's SEC-003 safety check rejects a BEADS_DIR under /home/* or /Users/* that
+# doesn't have $HOME as a prefix. A normal local checkout is always under the
+# real $HOME, so this never fires there. It does fire in sandboxes that run as
+# root with HOME=/root while the repo is checked out under /home/<user>/... —
+# there, bd worktree create fails with "BEADS_DIR points to unsafe location"
+# even though the path is perfectly safe. Only override HOME for that one
+# subprocess, and only when $root isn't already under $HOME, so a real local
+# dev setup (where git/ssh/credential lookups must keep using the real $HOME)
+# is untouched.
 set -eo pipefail
 
 name="${1:?usage: worktree-setup.sh <name> [--branch <branch>]}"
@@ -48,10 +58,16 @@ git -C "$root" fetch origin --quiet
 # on stdout, which would corrupt `wt=$(worktree-setup.sh <name>)`.
 git -C "$root" branch -f main origin/main >/dev/null 2>&1 || true
 
+bd_home="$HOME"
+case "$root" in
+  "$HOME"/*|"$HOME") ;;                             # already safe — leave $HOME alone
+  /home/*|/Users/*) bd_home=$(dirname "$root") ;;   # HOME/checkout mismatch — fall back
+esac
+
 if [ -n "$branch" ]; then
-  (cd "$root" && bd worktree create "$rel" --branch "$branch" >/dev/null)
+  (cd "$root" && HOME="$bd_home" bd worktree create "$rel" --branch "$branch" >/dev/null)
 else
-  (cd "$root" && bd worktree create "$rel" >/dev/null)
+  (cd "$root" && HOME="$bd_home" bd worktree create "$rel" >/dev/null)
 fi
 
 # Confirm git registered it where we asked — EnterWorktree requires both the
