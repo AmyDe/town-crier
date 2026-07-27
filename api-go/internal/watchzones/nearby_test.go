@@ -128,6 +128,14 @@ type nearbyDeps struct {
 
 func newNearbyMux(t *testing.T, d nearbyDeps) *http.ServeMux {
 	t.Helper()
+	return newNearbyMuxWithLogger(t, d, slog.New(slog.DiscardHandler))
+}
+
+// newNearbyMuxWithLogger is newNearbyMux with an injectable logger, so a test
+// can substitute a capturingHandler to assert on (or the absence of) a
+// particular log line.
+func newNearbyMuxWithLogger(t *testing.T, d nearbyDeps, logger *slog.Logger) *http.ServeMux {
+	t.Helper()
 	mux := http.NewServeMux()
 	// The CAS gate is the only create path, so every create test wires a CAS
 	// fake seeded from the same profile the reader returns. With a legacy (nil
@@ -137,7 +145,7 @@ func newNearbyMux(t *testing.T, d nearbyDeps) *http.ServeMux {
 	cas := newFakeProfileCAS(d.profiles.profile)
 	NearbyRoutes(mux, d.store, d.profiles, d.resolver, d.apps, d.unread,
 		func() string { return "zone-123" }, func() time.Time { return nearbyNow },
-		slog.New(slog.DiscardHandler), WithProfileCAS(cas))
+		logger, WithProfileCAS(cas))
 	return mux
 }
 
@@ -1624,5 +1632,25 @@ func TestClusters_StoreErrorIs500(t *testing.T) {
 	rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications/clusters"+validClusterQuery, "")
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("status: got %d, want 500", rec.Code)
+	}
+}
+
+// TestClusters_ContextCanceled_NoServerErrorNoErrorLog proves a client
+// disconnect (context.Canceled from the store, wrapped as a real caller would
+// wrap it) is NOT treated as a server fault: no 500 is written and no
+// error-level log line is emitted (tc-ftccw). A disconnected caller is
+// already gone, so nothing meaningfully needs to be sent back.
+func TestClusters_ContextCanceled_NoServerErrorNoErrorLog(t *testing.T) {
+	t.Parallel()
+	apps := &fakeAppFinder{clusterErr: fmt.Errorf("find clusters in zone near (51.5,-0.12): %w", context.Canceled)}
+	capture := &capturingHandler{}
+	mux := newNearbyMuxWithLogger(t, clusterDeps(t, apps), slog.New(capture))
+	rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications/clusters"+validClusterQuery, "")
+
+	if rec.Code == http.StatusInternalServerError {
+		t.Fatalf("status: got %d, want NOT 500 on a client-cancelled read", rec.Code)
+	}
+	if _, ok := capture.find(slog.LevelError, "watch-zone request failed"); ok {
+		t.Error("expected no error-level log for a client-cancelled read")
 	}
 }
