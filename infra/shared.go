@@ -308,6 +308,13 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		Storage: &dbforpostgresql.StorageArgs{
 			StorageSizeGB: pulumi.Int(32),
 			Type:          dbforpostgresql.StorageType_Premium_LRS,
+			// AutoGrow defaults to Disabled, which turns storage exhaustion into a silent
+			// full-outage path (the server stops accepting writes with no automatic remediation).
+			// Enabled lets Azure grow storage automatically as free space nears zero. This is an
+			// in-place property update, not a replace — see tc-97k35.3 handoff notes for the
+			// preview verification. The storage_percent > 80% alert below (alert-pg-storage-shared)
+			// stays as a second line of defence even with auto-grow on.
+			AutoGrow: dbforpostgresql.StorageAutoGrowEnabled,
 		},
 		HighAvailability: &dbforpostgresql.HighAvailabilityArgs{
 			Mode: dbforpostgresql.PostgreSqlFlexibleServerHighAvailabilityModeDisabled,
@@ -665,7 +672,9 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 	// Phase 3: platform metric alerts.
 
 	// Postgres — scoped to the shared Flexible Server provisioned above (B1ms burstable, 32GB,
-	// auto-grow disabled, so storage/CPU-credit exhaustion are real operational risks here).
+	// storage auto-grow enabled per tc-97k35.3 — so storage exhaustion now self-remediates, but
+	// CPU-credit exhaustion is still a real operational risk here, and the storage alert below
+	// stays as an early-warning/cost signal even with auto-grow on).
 	type postgresAlertSpec struct {
 		suffix     string // resource-name suffix, e.g. "storage" -> alert-pg-storage-shared
 		metricName string
