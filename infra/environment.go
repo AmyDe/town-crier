@@ -23,6 +23,16 @@ const (
 	containerMemory = "0.5Gi"
 	// apnsBundleID is the iOS app identifier; not user-configurable per stack.
 	apnsBundleID = "uk.towncrierapp.mobile"
+	// apiContainerPort is the port the Go API listens on (api-go/internal/platform/config.go
+	// defaults PORT to "8080"). Shared by the ingress target port and the health probes below
+	// so the two can't drift.
+	apiContainerPort = 8080
+	// apiHealthPath is the health-check route the liveness/readiness probes hit. It is
+	// registered anonymously (no Auth0 bearer token required — see
+	// api-go/internal/auth/middleware.go's anonymousPatterns) and does no work per request: a
+	// pre-encoded static body with no dependency calls (api-go/internal/health/handler.go), so
+	// probing it on every cycle costs nothing and can't itself fail from a downstream outage.
+	apiHealthPath = "/health"
 )
 
 // cloudflareIPv4Ranges is Cloudflare's published list of IPv4 origin-pull ranges.
@@ -77,6 +87,30 @@ func cloudflareIngressIPRestrictions() app.IpSecurityRestrictionRuleArray {
 		})
 	}
 	return rules
+}
+
+// apiHealthProbes builds the liveness and readiness probes for the Go API's Container App
+// (tc-97k35.2, GH #943 scope-out item). Both hit GET /health on apiContainerPort: it is
+// registered anonymously (no bearer token) and returns a pre-encoded static body with no
+// downstream calls, so it is safe and cheap to probe on every cycle and can't itself flap from
+// a dependency outage. Timing/threshold fields are left unset so ACA applies its own defaults
+// (10s period, 3 failure threshold, 1s timeout) — the endpoint does no work, so there is no
+// latency profile here that would justify overriding them.
+func apiHealthProbes() app.ContainerAppProbeArray {
+	httpGet := &app.ContainerAppProbeHttpGetArgs{
+		Path: pulumi.String(apiHealthPath),
+		Port: pulumi.Int(apiContainerPort),
+	}
+	return app.ContainerAppProbeArray{
+		&app.ContainerAppProbeArgs{
+			Type:    pulumi.String(string(app.TypeLiveness)),
+			HttpGet: httpGet,
+		},
+		&app.ContainerAppProbeArgs{
+			Type:    pulumi.String(string(app.TypeReadiness)),
+			HttpGet: httpGet,
+		},
+	}
 }
 
 // serviceBusPollingInfra captures the Service Bus resources used by the adaptive polling
@@ -376,7 +410,7 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 		ActiveRevisionsMode: pulumi.String(string(app.ActiveRevisionsModeMultiple)),
 		Ingress: &app.IngressArgs{
 			External:      pulumi.Bool(true),
-			TargetPort:    pulumi.Int(8080),
+			TargetPort:    pulumi.Int(apiContainerPort),
 			Transport:     pulumi.String(string(app.IngressTransportMethodHttp)),
 			CustomDomains: goApiCustomDomains,
 			// Lock the *.azurecontainerapps.io origin to Cloudflare IPv4 ranges so it can
@@ -423,6 +457,12 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 						Memory: pulumi.String(containerMemory),
 					},
 					Env: apiEnvVars,
+					// Liveness + readiness against GET /health (tc-97k35.2). Without an explicit
+					// Probes list ACA falls back to a bare TCP check, which only proves the port
+					// is open, not that the process can serve a request. Applies to both env
+					// stacks (this same function builds both dev and prod's API Container App) —
+					// there's no reason to gate prod's traffic on real health but leave dev on TCP.
+					Probes: apiHealthProbes(),
 				},
 			},
 			Scale: &app.ScaleArgs{
