@@ -710,7 +710,8 @@ func TestRunWeekly_DuplicateNewApplicationAndDecisionUpdate_RendersOnceWithUniqu
 	if got := strings.Count(msg.HTMLBody, "addr uid-A"); got != 1 {
 		t.Errorf("address should render exactly once, got %d occurrences in:\n%s", got, msg.HTMLBody)
 	}
-	if want := buildDigestSubject(1); msg.Subject != want {
+	wantSections := []watchZoneDigest{{name: "Home"}}
+	if want := buildDigestSubject(1, wantSections, nil); msg.Subject != want {
 		t.Errorf("subject should count unique applications: got %q, want %q", msg.Subject, want)
 	}
 	if !contains(msg.HTMLBody, "1 new application ") {
