@@ -441,8 +441,16 @@ func (h *handler) writeError(w http.ResponseWriter, r *http.Request, status int,
 }
 
 // serverError logs and emits a bodyless 500; the error envelope (with Detail) is
-// backfilled by middleware.ErrorBody, mirroring the rest of the API.
+// backfilled by middleware.ErrorBody, mirroring the rest of the API. A
+// context.Canceled error means the caller disconnected before the response was
+// ready (e.g. a rapid map pan cancelling an in-flight fetch) rather than a
+// genuine server fault — that case is deliberately not logged at error level
+// and not given a 500: the caller is already gone, so nothing meaningfully
+// needs to be written back (tc-ftccw).
 func (h *handler) serverError(w http.ResponseWriter, r *http.Request, op string, err error) {
+	if errors.Is(err, context.Canceled) {
+		return
+	}
 	h.logger.ErrorContext(r.Context(), "watch-zone request failed", "op", op, "error", err)
 	w.WriteHeader(http.StatusInternalServerError)
 }
