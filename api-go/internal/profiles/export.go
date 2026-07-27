@@ -69,17 +69,21 @@ type ExportedWatchZone struct {
 }
 
 type ExportedNotification struct {
-	ID                     string              `json:"id"`
-	ApplicationName        string              `json:"applicationName"`
-	WatchZoneID            *string             `json:"watchZoneId"`
-	ApplicationAddress     string              `json:"applicationAddress"`
-	ApplicationDescription string              `json:"applicationDescription"`
-	ApplicationType        *string             `json:"applicationType"`
-	AuthorityID            int                 `json:"authorityId"`
-	Decision               *string             `json:"decision"`
-	PushSent               bool                `json:"pushSent"`
-	EmailSent              bool                `json:"emailSent"`
-	CreatedAt              platform.DotNetTime `json:"createdAt"`
+	ID                     string  `json:"id"`
+	ApplicationName        string  `json:"applicationName"`
+	WatchZoneID            *string `json:"watchZoneId"`
+	ApplicationAddress     string  `json:"applicationAddress"`
+	ApplicationDescription string  `json:"applicationDescription"`
+	ApplicationType        *string `json:"applicationType"`
+	AuthorityID            int     `json:"authorityId"`
+	Decision               *string `json:"decision"`
+	// PushSent mirrors notifications.DigestNotification.PushSent: it means "a
+	// push was queued for this notification", not "confirmed delivered" (a
+	// deliberate choice, tc-97k35.4). A user reading their own data export
+	// should not take "true" here as proof a push reached their device.
+	PushSent  bool                `json:"pushSent"`
+	EmailSent bool                `json:"emailSent"`
+	CreatedAt platform.DotNetTime `json:"createdAt"`
 }
 
 type ExportedSavedApplication struct {

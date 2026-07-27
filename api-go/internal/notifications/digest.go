@@ -29,12 +29,19 @@ type DigestNotification struct {
 	Decision               *string
 	EventType              EventType
 	Sources                string
-	// PushSent records whether an instant push was queued (optimistically —
-	// set once the user was determined push-eligible, not once APNs actually
-	// delivered) for this notification during its poll cycle. The poll-cycle
-	// coalescer (GH#784) flushes queued pushes as at most one per (user, watch
-	// zone) after this record is written, so a device-less or later-failed send
-	// still reads true here. Audit-only: no business logic reads this field.
+	// PushSent means "a push was queued for this notification", never
+	// "delivered" — it is set true the moment the user is determined
+	// push-eligible, before the poll-cycle coalescer (GH#784) has attempted
+	// any send. The coalescer flushes queued pushes as at most one per
+	// (user, watch zone) after this record is written, so a device-less
+	// send, an APNs/FCM delivery failure, or a partial multi-device/
+	// multi-platform failure all still leave this true. This is a
+	// deliberate, permanent choice (tc-97k35.4): reconciling it against the
+	// coalescer's batched, per-platform delivery outcome is materially more
+	// complex than the field's one audience — a user's own data export
+	// (profiles.ExportedNotification, "pushSent") — justifies. No business
+	// logic reads this field; treat every "true" as "queued", not "confirmed
+	// delivered".
 	PushSent  bool
 	EmailSent bool
 	CreatedAt time.Time

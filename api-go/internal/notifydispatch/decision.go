@@ -165,8 +165,10 @@ func (d *DecisionDispatcher) dispatchForUser(ctx context.Context, app applicatio
 		now:         d.now().UTC(),
 	})
 
-	// PushSent is set optimistically (queued, not delivered) the moment the user
-	// is push-eligible; the coalescer flushes the actual send at cycle end.
+	// PushSent means "queued", not "delivered": it is set true here, before the
+	// coalescer has attempted any send, and is never reconciled against the
+	// actual delivery outcome (a deliberate choice, tc-97k35.4 — see
+	// notifications.DigestNotification.PushSent's doc comment).
 	if d.canPush(profile, m) {
 		n.PushSent = true
 		d.push.Add(userID, n)
