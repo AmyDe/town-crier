@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -397,5 +398,32 @@ func TestClustersHandler_StoreErrorIs500(t *testing.T) {
 	}
 	if rec.Body.Len() != 0 {
 		t.Errorf("body = %q, want empty (bodyless 500)", rec.Body.String())
+	}
+}
+
+// TestClustersHandler_ContextCanceled_NoServerErrorNoErrorLog proves a client
+// disconnect (context.Canceled from the store, wrapped as a real caller would
+// wrap it) is NOT treated as a server fault: no 500 is written and no
+// error-level log line is emitted (tc-ftccw). A disconnected caller is
+// already gone, so nothing meaningfully needs to be sent back.
+func TestClustersHandler_ContextCanceled_NoServerErrorNoErrorLog(t *testing.T) {
+	t.Parallel()
+
+	store := &fakeClustersStore{err: fmt.Errorf("find clusters in zone near (51.5,-0.1): %w", context.Canceled)}
+	capture := &capturingHandler{}
+	mux := http.NewServeMux()
+	ClustersRoutes(mux, store, testResolver(), slog.New(capture))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/v1/applications/clusters"+validClustersQuery, nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code == http.StatusInternalServerError {
+		t.Fatalf("status = %d, want NOT 500 on a client-cancelled read", rec.Code)
+	}
+	if rec.Body.Len() != 0 {
+		t.Errorf("body = %q, want empty", rec.Body.String())
+	}
+	if _, ok := capture.find(slog.LevelError, "application request failed"); ok {
+		t.Error("expected no error-level log for a client-cancelled read")
 	}
 }
