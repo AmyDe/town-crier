@@ -11,10 +11,17 @@ import (
 	"net/http"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
 	"golang.org/x/net/http2"
 
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
 )
+
+// tracerName labels the "APNs delivery" wrapper span this package emits,
+// distinct from the transport-level "APNs push" HTTP client spans
+// platform.WrapHTTPClient attaches to each individual request/retry.
+const tracerName = "github.com/AmyDe/town-crier/api-go/internal/apns"
 
 const (
 	// maxAttempts bounds retries per device on transient (5xx / transport)
@@ -46,6 +53,24 @@ type Client struct {
 	bundleID string
 	logger   *slog.Logger
 	now      func() time.Time
+	metrics  pushMetricsRecorder
+}
+
+// pushMetricsRecorder is the consumer-side slice of the metrics registry the
+// client records towncrier.push.delivery_failed on. *metrics.Registry
+// satisfies it; nil (the default) leaves the counter dark, matching the
+// notifydispatch.Enqueuer.WithMetrics convention.
+type pushMetricsRecorder interface {
+	PushDeliveryFailed(ctx context.Context, platform string)
+}
+
+// WithMetrics wires the recorder Send calls PushDeliveryFailed on for a
+// genuine per-device delivery failure (never for a routine invalid-token
+// rejection). Returns c for chaining; the default nil recorder leaves the
+// counter dark.
+func (c *Client) WithMetrics(rec pushMetricsRecorder) *Client {
+	c.metrics = rec
+	return c
 }
 
 // NewClient builds a production APNs client from validated options. The HTTP
@@ -105,7 +130,7 @@ func (c *Client) Send(ctx context.Context, tokens []string, payload json.RawMess
 
 	invalid := make([]string, 0, len(tokens))
 	for _, token := range tokens {
-		rejected, err := c.sendOne(ctx, token, payload)
+		rejected, err := c.sendOneTraced(ctx, token, payload)
 		if err != nil {
 			c.logger.ErrorContext(ctx, "apns send failed", "token", redactToken(token), "error", err)
 			continue
@@ -118,6 +143,33 @@ func (c *Client) Send(ctx context.Context, tokens []string, payload json.RawMess
 		return nil, nil
 	}
 	return invalid, nil
+}
+
+// sendOneTraced wraps sendOne in an "APNs delivery" span — distinct from the
+// transport-level "APNs push" HTTP client spans platform.WrapHTTPClient
+// attaches to each individual request/retry — so a genuine per-device
+// delivery failure is visible as a single dependency with Error status even
+// when the failure happened before any HTTP request was made (e.g. a JWT
+// signing failure). On failure it also records
+// towncrier.push.delivery_failed (platform=apns) so the same failure is
+// queryable/alertable through AppMetrics, not just the "apns send failed"
+// slog line Send still emits. A routine permanently-invalid-token rejection
+// (rejected=true, err=nil) is expected churn the caller prunes, not a
+// failure — it is deliberately left off both the span's error status and the
+// counter.
+func (c *Client) sendOneTraced(ctx context.Context, token string, payload json.RawMessage) (rejected bool, err error) {
+	ctx, span := otel.Tracer(tracerName).Start(ctx, "APNs delivery")
+	defer span.End()
+
+	rejected, err = c.sendOne(ctx, token, payload)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		if c.metrics != nil {
+			c.metrics.PushDeliveryFailed(ctx, "apns")
+		}
+	}
+	return rejected, err
 }
 
 // sendOne posts payload to a single device token, returning rejected=true when
