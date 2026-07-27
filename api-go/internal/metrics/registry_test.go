@@ -65,6 +65,7 @@ func TestRegistry_RecordsAllInstrumentNames(t *testing.T) {
 	reg.WatchZoneCreated(ctx)
 	reg.WatchZoneUpdated(ctx)
 	reg.WatchZoneDeleted(ctx)
+	reg.PushDeliveryFailed(ctx, "apns")
 
 	got := metricNames(collect())
 
@@ -87,6 +88,7 @@ func TestRegistry_RecordsAllInstrumentNames(t *testing.T) {
 		"towncrier.watchzones.created",
 		"towncrier.watchzones.updated",
 		"towncrier.watchzones.deleted",
+		"towncrier.push.delivery_failed",
 	}
 	for _, name := range want {
 		if _, ok := got[name]; !ok {
@@ -120,6 +122,7 @@ func TestRegistry_NilIsNoOp(t *testing.T) {
 	reg.WatchZoneCreated(ctx)
 	reg.WatchZoneUpdated(ctx)
 	reg.WatchZoneDeleted(ctx)
+	reg.PushDeliveryFailed(ctx, "apns")
 }
 
 func TestRegistry_RetryAfterTagsHeaderPresence(t *testing.T) {
@@ -152,5 +155,41 @@ func TestRegistry_RetryAfterTagsHeaderPresence(t *testing.T) {
 	}
 	if !foundHeaderPresent {
 		t.Error("retry_after_seconds missing header_present tag")
+	}
+}
+
+// TestRegistry_PushDeliveryFailedTagsPlatform pins tc-97k35.4: the counter must
+// carry the platform tag ("apns" | "fcm") so a dashboard/alert can distinguish
+// which sender is failing, mirroring PlanItHTTPError's status-code tag.
+func TestRegistry_PushDeliveryFailedTagsPlatform(t *testing.T) {
+	t.Parallel()
+	reg, collect := newTestRegistry(t)
+	ctx := context.Background()
+
+	reg.PushDeliveryFailed(ctx, "fcm")
+
+	rm := collect()
+	var foundPlatform bool
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if m.Name != "towncrier.push.delivery_failed" {
+				continue
+			}
+			sum, ok := m.Data.(metricdata.Sum[int64])
+			if !ok {
+				t.Fatalf("push.delivery_failed is not an int64 sum: %T", m.Data)
+			}
+			for _, dp := range sum.DataPoints {
+				if v, ok := dp.Attributes.Value("platform"); ok {
+					foundPlatform = true
+					if v.AsString() != "fcm" {
+						t.Errorf("platform = %q, want fcm", v.AsString())
+					}
+				}
+			}
+		}
+	}
+	if !foundPlatform {
+		t.Error("push.delivery_failed missing platform tag")
 	}
 }

@@ -181,7 +181,7 @@ func run() int {
 	// unconditionally now Postgres is always present. The email and push senders
 	// fall back to NoOp when their credentials are absent, so a job without
 	// ACS/APNs config still boots cleanly.
-	digester := buildDigester(cfg, st, logger)
+	digester := buildDigester(cfg, registry, st, logger)
 	dormantRunner := buildDormant(cfg, st, logger)
 	sweepRunner := buildSweep(cfg, st, logger)
 
@@ -218,7 +218,7 @@ func run() int {
 	// and any dev job before that infra bead deploys) leaves devSeeder a
 	// genuinely nil interface; dev-seed then refuses to run rather than
 	// crashing.
-	devSeeder := buildDevSeeder(cfg, st, logger)
+	devSeeder := buildDevSeeder(cfg, registry, st, logger)
 
 	return worker.Run(context.Background(), mode, bootstrapper, digester, dormantRunner, poller, sweepRunner, purger, devSeeder, logger)
 }
@@ -443,7 +443,7 @@ func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, reg
 // fields are extracted under a nil guard so the fan-out wires with no other
 // store dependency.
 func wirePollFanOut(cfg platform.Config, laneA, laneB *polling.NationalLaneHandler, laneC *polling.InverseMaskLaneHandler, handler *polling.NationalPollHandler, zoneStore watchzones.Store, registry *metrics.Registry, st *stores, logger *slog.Logger) {
-	dispatcher, enqueuer, coalescer := buildNotifyFanOut(cfg, zoneStore, st, logger)
+	dispatcher, enqueuer, coalescer := buildNotifyFanOut(cfg, registry, zoneStore, st, logger)
 
 	// Record towncrier.notifications.created on each dispatcher (tc-21np). Only
 	// the real poll-sb path is on this KPI surface, so metrics wiring is this
@@ -478,14 +478,20 @@ func wirePollFanOut(cfg platform.Config, laneA, laneB *polling.NationalLaneHandl
 // dev-seed job, dev-only, tc-grvu.5/GH#808) so both feed applications through
 // byte-for-byte the same notification pipeline, whatever their application
 // source (PlanIt poll vs. the read-only prod mirror). Metrics wiring
-// (WithMetrics) is left to the caller: dev-seed is a QA aid, not part of the
-// towncrier.notifications.* KPI surface poll-sb's real cycle feeds, so it
-// deliberately skips it.
+// (WithMetrics) on the enqueuer/dispatcher themselves is left to the caller:
+// dev-seed is a QA aid, not part of the towncrier.notifications.* KPI surface
+// poll-sb's real cycle feeds, so it deliberately skips that.
+//
+// registry is, however, always wired onto the underlying APNs/FCM push
+// senders (towncrier.push.delivery_failed, tc-97k35.4): dev-seed still sends
+// real pushes to real device tokens, so a delivery failure there is as
+// genuine an operational signal as one from the poll-sb path — unlike
+// notifications.created, it isn't a KPI reserved to the real cycle.
 //
 // st may be nil in tests that only exercise the zone-containment path; the
 // store fields are extracted under a nil guard so the fan-out wires with no
 // other store dependency.
-func buildNotifyFanOut(cfg platform.Config, zoneStore watchzones.Store, st *stores, logger *slog.Logger) (*notifydispatch.DecisionDispatcher, *notifydispatch.Enqueuer, *notifydispatch.PushCoalescer) {
+func buildNotifyFanOut(cfg platform.Config, registry *metrics.Registry, zoneStore watchzones.Store, st *stores, logger *slog.Logger) (*notifydispatch.DecisionDispatcher, *notifydispatch.Enqueuer, *notifydispatch.PushCoalescer) {
 	var (
 		notifStore     *notifications.PostgresStore
 		profileStore   *profiles.PostgresStore
@@ -501,7 +507,7 @@ func buildNotifyFanOut(cfg platform.Config, zoneStore watchzones.Store, st *stor
 		savedStore = st.savedApp
 	}
 
-	pushDispatcher := buildPlatformDispatcher(cfg, logger)
+	pushDispatcher := buildPlatformDispatcher(cfg, registry, logger)
 	coalescer := notifydispatch.NewPushCoalescer(deviceStore, statePushStore, pushDispatcher, zoneStore, logger)
 	enqueuer := notifydispatch.NewEnqueuer(
 		notifStore, zoneStore, profileStore, coalescer,
@@ -534,7 +540,7 @@ func buildNotifyFanOut(cfg platform.Config, zoneStore watchzones.Store, st *stor
 // unconfigured (logged, nil returned) rather than fatal, since a malformed
 // managed-identity/DSN input at boot must not crash the OTHER modes this same
 // binary dispatches (digest, dormant-cleanup, etc.) when they share a process.
-func buildDevSeeder(cfg platform.Config, st *stores, logger *slog.Logger) worker.DevSeedRunner {
+func buildDevSeeder(cfg platform.Config, registry *metrics.Registry, st *stores, logger *slog.Logger) worker.DevSeedRunner {
 	if cfg.DevSeedProdAzureClientID == "" || cfg.DevSeedProdPostgresUser == "" {
 		logger.Info("dev-seed unconfigured (DEV_SEED_PROD_AZURE_CLIENT_ID / DEV_SEED_PROD_POSTGRES_USER unset); dev-seed mode will refuse to run")
 		return nil
@@ -561,10 +567,11 @@ func buildDevSeeder(cfg platform.Config, st *stores, logger *slog.Logger) worker
 
 	prodApps := applications.NewPostgresStore(prodPool)
 
-	// registry is deliberately nil here: buildNotifyFanOut's metrics wiring is
-	// wirePollFanOut's job (the poll-sb KPI surface); dev-seed's ingestion is a
-	// QA aid and skips it.
-	decision, enqueuer, coalescer := buildNotifyFanOut(cfg, st.zone, st, logger)
+	// registry is threaded through for the push-sender delivery-failure metrics
+	// only (tc-97k35.4) — the towncrier.notifications.created KPI wiring on
+	// enqueuer/decision below is still skipped: that's wirePollFanOut's job (the
+	// poll-sb KPI surface), and dev-seed's ingestion is a QA aid, not part of it.
+	decision, enqueuer, coalescer := buildNotifyFanOut(cfg, registry, st.zone, st, logger)
 	ingester := polling.NewIngester(st.app, decision, enqueuer)
 
 	return devseed.NewSeeder(st.zone, prodApps, ingester, coalescer, cfg.DevSeedLimit, logger)
@@ -629,7 +636,7 @@ func maxInt(a, b int) int {
 // buildDigester constructs the digest handler, wiring the per-feature Postgres
 // stores and the email/push senders (real when their credentials are present,
 // NoOp otherwise so a job without ACS/APNs boots cleanly).
-func buildDigester(cfg platform.Config, st *stores, logger *slog.Logger) *digest.Handler {
+func buildDigester(cfg platform.Config, registry *metrics.Registry, st *stores, logger *slog.Logger) *digest.Handler {
 	// digestProfiles combines the cross-user admin selector (ByDigestDay) and the
 	// point-read store (Get).
 	profileStore := digestProfiles{
@@ -641,7 +648,7 @@ func buildDigester(cfg platform.Config, st *stores, logger *slog.Logger) *digest
 	// "Email send" span (tagged email.kind) distinct from the underlying "ACS
 	// email send" HTTP client spans (tc-3jx8d).
 	emailSender := acsemail.NewInstrumentedSender(buildEmailSender(cfg, logger))
-	dispatcher := buildPlatformDispatcher(cfg, logger)
+	dispatcher := buildPlatformDispatcher(cfg, registry, logger)
 
 	return digest.NewHandler(
 		profileStore,
@@ -775,8 +782,10 @@ func buildEmailSender(cfg platform.Config, logger *slog.Logger) acsemail.EmailSe
 }
 
 // buildPushSender returns the real APNs sender when APNs is enabled, else a NoOp
-// so a job without a .p8 auth key boots cleanly.
-func buildPushSender(cfg platform.Config, logger *slog.Logger) apns.PushSender {
+// so a job without a .p8 auth key boots cleanly. registry wires
+// towncrier.push.delivery_failed (tc-97k35.4) onto the real client; a nil
+// registry is a safe no-op (matches every other WithMetrics call site).
+func buildPushSender(cfg platform.Config, registry *metrics.Registry, logger *slog.Logger) apns.PushSender {
 	if !cfg.APNsEnabled {
 		logger.Info("apns disabled; digest pushes disabled (NoOp sender)")
 		return apns.NewNoOpSender()
@@ -793,13 +802,14 @@ func buildPushSender(cfg platform.Config, logger *slog.Logger) apns.PushSender {
 		logger.Error("build apns client; falling back to NoOp sender", "error", err)
 		return apns.NewNoOpSender()
 	}
-	return client
+	return client.WithMetrics(registry)
 }
 
 // buildFCMSender returns the real FCM sender when FCM is enabled, else a NoOp so
 // a job without a service-account key boots cleanly (the mirror of
-// buildPushSender for Android delivery).
-func buildFCMSender(cfg platform.Config, logger *slog.Logger) fcm.PushSender {
+// buildPushSender for Android delivery). registry wires
+// towncrier.push.delivery_failed (tc-97k35.4) onto the real client.
+func buildFCMSender(cfg platform.Config, registry *metrics.Registry, logger *slog.Logger) fcm.PushSender {
 	if !cfg.FCMEnabled {
 		logger.Info("fcm disabled; android pushes disabled (NoOp sender)")
 		return fcm.NewNoOpSender()
@@ -814,7 +824,7 @@ func buildFCMSender(cfg platform.Config, logger *slog.Logger) fcm.PushSender {
 		return fcm.NewNoOpSender()
 	}
 	logger.Info("fcm enabled", "projectId", cfg.FCMProjectID)
-	return client
+	return client.WithMetrics(registry)
 }
 
 // buildPlatformDispatcher wires the platform-aware push dispatcher over the APNs
@@ -822,10 +832,10 @@ func buildFCMSender(cfg platform.Config, logger *slog.Logger) fcm.PushSender {
 // and the weekly-digest handler — swap their single push sender for this one
 // dispatcher, which splits a recipient's tokens by platform and prunes the union
 // of tokens either sender reports invalid.
-func buildPlatformDispatcher(cfg platform.Config, logger *slog.Logger) *notifydispatch.PlatformDispatcher {
+func buildPlatformDispatcher(cfg platform.Config, registry *metrics.Registry, logger *slog.Logger) *notifydispatch.PlatformDispatcher {
 	return notifydispatch.NewPlatformDispatcher(
-		buildPushSender(cfg, logger),
-		buildFCMSender(cfg, logger),
+		buildPushSender(cfg, registry, logger),
+		buildFCMSender(cfg, registry, logger),
 		logger,
 	)
 }

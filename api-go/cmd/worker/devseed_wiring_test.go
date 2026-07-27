@@ -27,7 +27,7 @@ func TestBuildDevSeeder_UnconfiguredReturnsNil(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			runner := buildDevSeeder(tc.cfg, &stores{}, discardLogger())
+			runner := buildDevSeeder(tc.cfg, nil, &stores{}, discardLogger())
 			if runner != nil {
 				t.Fatalf("buildDevSeeder: got non-nil runner, want nil (job unconfigured)")
 			}
@@ -57,7 +57,7 @@ func TestBuildDevSeeder_ConfiguredReturnsNonNilSeeder(t *testing.T) {
 		zone: watchzones.NewPostgresStore(nil),
 	}
 
-	runner := buildDevSeeder(cfg, st, discardLogger())
+	runner := buildDevSeeder(cfg, nil, st, discardLogger())
 
 	if runner == nil {
 		t.Fatal("buildDevSeeder: got nil runner, want a configured Seeder")
