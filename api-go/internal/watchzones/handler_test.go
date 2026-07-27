@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -15,6 +16,43 @@ import (
 )
 
 const testUser = "auth0|user"
+
+// capturingHandler is a hand-written slog.Handler that records emitted records so
+// a test can assert a specific log line (and its attributes/level) was, or was
+// not, produced.
+type capturingHandler struct {
+	mu      sync.Mutex
+	records []slog.Record
+}
+
+func (h *capturingHandler) Enabled(context.Context, slog.Level) bool { return true }
+
+func (h *capturingHandler) Handle(_ context.Context, r slog.Record) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.records = append(h.records, r.Clone())
+	return nil
+}
+
+func (h *capturingHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
+func (h *capturingHandler) WithGroup(string) slog.Handler      { return h }
+
+// find returns the attributes of the first record matching level and message.
+func (h *capturingHandler) find(level slog.Level, msg string) (map[string]any, bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, r := range h.records {
+		if r.Level == level && r.Message == msg {
+			attrs := map[string]any{}
+			r.Attrs(func(a slog.Attr) bool {
+				attrs[a.Key] = a.Value.Any()
+				return true
+			})
+			return attrs, true
+		}
+	}
+	return nil, false
+}
 
 // fakeZoneStore is a hand-written zoneStore. It holds zones in an ordered slice
 // so list order is deterministic, and exposes hooks for forced errors.
