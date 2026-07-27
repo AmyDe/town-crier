@@ -4,15 +4,48 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
 )
+
+// capturingHandler is a hand-written slog.Handler that records emitted records so
+// a test can assert a specific log line (and its level) was, or was not, produced.
+type capturingHandler struct {
+	mu      sync.Mutex
+	records []slog.Record
+}
+
+func (h *capturingHandler) Enabled(context.Context, slog.Level) bool { return true }
+
+func (h *capturingHandler) Handle(_ context.Context, r slog.Record) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.records = append(h.records, r.Clone())
+	return nil
+}
+
+func (h *capturingHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
+func (h *capturingHandler) WithGroup(string) slog.Handler      { return h }
+
+// find reports whether a record at level matching msg was captured.
+func (h *capturingHandler) find(level slog.Level, msg string) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, r := range h.records {
+		if r.Level == level && r.Message == msg {
+			return true
+		}
+	}
+	return false
+}
 
 // fakeStore is a hand-written double for the application point read. It records
 // how it was called so tests can assert the (authorityCode, ref) it received.
@@ -84,8 +117,15 @@ func fullApp(t *testing.T) applications.PlanningApplication {
 // token — the page is anonymous.
 func serve(t *testing.T, store appStore, resolver slugResolver, path string) *httptest.ResponseRecorder {
 	t.Helper()
+	return serveWithLogger(t, store, resolver, path, slog.New(slog.DiscardHandler))
+}
+
+// serveWithLogger is serve with an injectable logger, so a test can substitute
+// a capturingHandler to assert on (or the absence of) a particular log line.
+func serveWithLogger(t *testing.T, store appStore, resolver slugResolver, path string, logger *slog.Logger) *httptest.ResponseRecorder {
+	t.Helper()
 	mux := http.NewServeMux()
-	Routes(mux, store, resolver, slog.New(slog.DiscardHandler))
+	Routes(mux, store, resolver, logger)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil)
 	mux.ServeHTTP(rec, req)
@@ -561,6 +601,27 @@ func TestServe_StoreError_Returns500(t *testing.T) {
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500", rec.Code)
+	}
+}
+
+// TestServe_ContextCanceled_NoServerErrorNoErrorLog proves a client disconnect
+// (context.Canceled from the store, wrapped as a real caller would wrap it) is
+// NOT treated as a server fault: no 500 is written and no error-level log line
+// is emitted (tc-ftccw). A disconnected caller is already gone, so nothing
+// meaningfully needs to be sent back.
+func TestServe_ContextCanceled_NoServerErrorNoErrorLog(t *testing.T) {
+	t.Parallel()
+	store := &fakeStore{err: fmt.Errorf(`read application "165"/"23/0001/FUL": %w`, context.Canceled)}
+	resolver := &fakeResolver{slugs: map[string]int{"croydon": 165}}
+	capture := &capturingHandler{}
+
+	rec := serveWithLogger(t, store, resolver, "/a/croydon/23/0001/FUL", slog.New(capture))
+
+	if rec.Code == http.StatusInternalServerError {
+		t.Fatalf("status = %d, want NOT 500 on a client-cancelled read", rec.Code)
+	}
+	if capture.find(slog.LevelError, "share page read failed") {
+		t.Error("expected no error-level log for a client-cancelled read")
 	}
 }
 
