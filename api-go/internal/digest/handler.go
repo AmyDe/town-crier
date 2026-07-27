@@ -385,7 +385,7 @@ func (h *Handler) sendDigestEmail(ctx context.Context, kind, userID, email strin
 	msg := acsemail.Message{
 		Sender:    senderAddress,
 		Recipient: email,
-		Subject:   buildDigestSubject(total),
+		Subject:   buildDigestSubject(total, sections, saved),
 		HTMLBody:  buildDigestHTML(sections, saved, total, showFreeTierNotice),
 	}
 	if err := h.email.Send(ctx, kind, msg); err != nil {

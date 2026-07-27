@@ -130,9 +130,38 @@ type watchZoneDigest struct {
 	notifications []notifications.DigestNotification
 }
 
-// buildDigestSubject renders the digest email subject line.
-func buildDigestSubject(totalCount int) string {
-	return fmt.Sprintf("Planning update: %d new applications near you", totalCount)
+// buildDigestSubject renders the digest email subject line: the count leads,
+// with no "Planning update:" boilerplate (the sender is already "Town
+// Crier", so the prefix is dead text in an inbox preview), followed by the
+// zone(s) the updates fall in. A single zone with no saved-only
+// notifications names it directly. Saved-only notifications with no zone at
+// all (WatchZoneID == nil) get their own fallback, since "near {zone}"
+// doesn't apply to them. Anything spanning more than one group — multiple
+// zones, or a zone plus a saved-only group — leads with the first zone name
+// and folds the remaining groups into "+K more" rather than trying to list
+// them all and risk truncation in a notification/inbox preview.
+func buildDigestSubject(totalCount int, sections []watchZoneDigest, saved []notifications.DigestNotification) string {
+	plural := "s"
+	if totalCount == 1 {
+		plural = ""
+	}
+
+	groups := len(sections)
+	if len(saved) > 0 {
+		groups++
+	}
+
+	switch {
+	case groups == 0:
+		return fmt.Sprintf("%d update%s near your zones", totalCount, plural)
+	case len(sections) == 1 && len(saved) == 0:
+		return fmt.Sprintf("%d update%s near %s", totalCount, plural, sections[0].name)
+	case len(sections) == 0:
+		return fmt.Sprintf("%d update%s on your saved applications", totalCount, plural)
+	default:
+		more := groups - 1
+		return fmt.Sprintf("%d update%s near %s +%d more", totalCount, plural, sections[0].name, more)
+	}
 }
 
 // buildDigestHTML renders the full digest email body as a Public Notice
