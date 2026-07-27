@@ -35,10 +35,67 @@ func testNotification(uid, zoneID, address, appType, desc string) notifications.
 
 func TestBuildDigestSubject(t *testing.T) {
 	t.Parallel()
-	got := buildDigestSubject(3)
-	want := "Planning update: 3 new applications near you"
-	if got != want {
-		t.Errorf("subject: got %q, want %q", got, want)
+
+	oneZone := []watchZoneDigest{{name: "Camden Zone"}}
+	twoZones := []watchZoneDigest{{name: "Camden Zone"}, {name: "Islington Zone"}}
+	oneSaved := []notifications.DigestNotification{testNotification("20/00045/FUL", "", "5 Mill Ln", "Full", "New dwelling")}
+	twoSaved := []notifications.DigestNotification{
+		testNotification("20/00045/FUL", "", "5 Mill Ln", "Full", "New dwelling"),
+		testNotification("20/00046/FUL", "", "7 Mill Ln", "Full", "Loft conversion"),
+	}
+
+	tests := []struct {
+		name       string
+		totalCount int
+		sections   []watchZoneDigest
+		saved      []notifications.DigestNotification
+		want       string
+	}{
+		{
+			name:       "single zone, no saved-only notifications",
+			totalCount: 3,
+			sections:   oneZone,
+			saved:      nil,
+			want:       "3 updates near Camden Zone",
+		},
+		{
+			name:       "singular count uses singular noun",
+			totalCount: 1,
+			sections:   oneZone,
+			saved:      nil,
+			want:       "1 update near Camden Zone",
+		},
+		{
+			name:       "multiple zones leads with the first and folds the rest",
+			totalCount: 5,
+			sections:   twoZones,
+			saved:      nil,
+			want:       "5 updates near Camden Zone +1 more",
+		},
+		{
+			name:       "zone plus saved-only notifications counts the saved group",
+			totalCount: 4,
+			sections:   oneZone,
+			saved:      oneSaved,
+			want:       "4 updates near Camden Zone +1 more",
+		},
+		{
+			name:       "saved-only notifications with no zone get their own fallback",
+			totalCount: 2,
+			sections:   nil,
+			saved:      twoSaved,
+			want:       "2 updates on your saved applications",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := buildDigestSubject(tc.totalCount, tc.sections, tc.saved)
+			if got != tc.want {
+				t.Errorf("subject: got %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 
