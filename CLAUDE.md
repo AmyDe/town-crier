@@ -236,13 +236,13 @@ Keep the working set (open + in-progress) under ~200 issues.
 
 - **`bd flatten --force`** — squash Dolt commit history when `bd` gets sluggish (main speed lever; prefer over `bd compact`, whose squash can fail on a churned DB).
 - **`bd admin compact`** — semantic decay of old closed issues; run ~quarterly: `bd compact --analyze --json` → write summaries → `bd compact --apply --id <id> --summary -`.
-- Stay on **stable bd 1.0.4**; do not upgrade to pre-releases (1.0.5's schema migration corrupts this DB).
+- Pinned to **stable bd 1.1.2** (upgraded 2026-07-27 from 1.0.4 — see ADR 0046). Before bumping further, check `gastownhall/beads#4800` and `#4176` — open server-mode schema-migration bugs that match this repo's exact config (external dolt sql-server) — for their fix status.
 
 ## Beads: Dolt is the sole source of truth (DO NOT re-add issues.jsonl)
 
-bd 1.0.4 server mode re-imports `.beads/issues.jsonl` on every command and can clobber just-made writes (gastownhall/beads #3849). The fix in place: the jsonl is **removed** from `.beads/` (archived at `~/.beads-archive/town-crier/`), `export.auto = false` and `export.git-add = false` in `.beads/config.yaml`, and only the pinned `~/.local/bin/bd` 1.0.4 exists (never `brew install beads`). Sync is **Dolt only**: `bd dolt push` / `bd dolt pull` against the DoltHub remote (`amyde/town-crier`); a fresh clone hydrates via `bd dolt pull`, never a jsonl import.
+bd 1.0.4 server mode used to re-import `.beads/issues.jsonl` on every command and could clobber just-made writes (gastownhall/beads #3849, fixed upstream 2026-05-26 via #4170 — see ADR 0046). The workaround stays in force regardless: the jsonl is **removed** from `.beads/` (archived at `~/.beads-archive/town-crier/`), `export.auto = false` and `export.git-add = false` in `.beads/config.yaml`, and only the pinned `~/.local/bin/bd` binary exists (never `brew install beads`, to avoid silent version drift). Sync is **Dolt only**: `bd dolt push` / `bd dolt pull` against the DoltHub remote (`amyde/town-crier`); a fresh clone hydrates via `bd bootstrap`/`bd dolt pull`, never a jsonl import.
 
-**Rules:** never re-create `.beads/issues.jsonl`, never re-enable `export.auto`/`export.git-add`, never run `bd export` to the default path, never re-track the jsonl, never upgrade off 1.0.4. Full root cause + recovery recipe: `docs/memo/0011-beads-dolt-write-thrash-root-cause.md` and auto-memory `project_bd_thrash_and_105_breakage`.
+**Rules:** never re-create `.beads/issues.jsonl`, never re-enable `export.auto`/`export.git-add`, never run `bd export` to the default path, never re-track the jsonl. Full root cause + recovery recipe: `docs/memo/0011-beads-dolt-write-thrash-root-cause.md`, the version-upgrade decision in `docs/adr/0046-upgrade-bd-to-1.1.2.md`, and auto-memory `project_bd_thrash_and_105_breakage`.
 
 After a squash-merge, never `git pull --rebase` local main onto origin/main. Use `git fetch origin && git reset --hard origin/main` instead.
 

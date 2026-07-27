@@ -4,10 +4,14 @@ Date: 2026-06-26
 
 ## Status
 
-Open. The recommended keystone fix (commit `export.auto: false` / `export.git-add: false` into
-`.beads/config.yaml`, bead `tc-okn8`) ships in the same PR as this memo. The defence-in-depth guard
-(bead `tc-53wo`) is a follow-up. May graduate to an ADR if the owner wants the "pin bd 1.0.4 + commit
-anti-thrash config" decision formalised. Anchor issue: [#650](https://github.com/AmyDe/town-crier/issues/650).
+Superseded by [ADR 0046](../adr/0046-upgrade-bd-to-1.1.2.md) on 2026-07-27 for the version-pin
+half of this memo's recommendation only. The upstream write-thrash bug (#3849, analysed below) was
+fixed 2026-05-26 and the pin was moved from 1.0.4 to 1.1.2 after direct verification against this
+repo's live database — see the ADR for what was re-checked and why "Option B — Rejected" no longer
+holds. The `export.auto: false` / `export.git-add: false` config and the rest of this memo's
+analysis remain accurate and in force; only the "never upgrade off 1.0.4" conclusion changed.
+
+Anchor issue: [#650](https://github.com/AmyDe/town-crier/issues/650).
 
 ## Question
 
@@ -199,8 +203,10 @@ table until a bd release ships #4170 without a hostile migration; until then the
 
 This PR ships A (the committed config) alongside this memo. C is filed as `tc-53wo`.
 
-### Guardrails (unchanged, restated)
+### Guardrails (updated 2026-07-27, see ADR 0046)
 
-Never `brew install beads`; never upgrade off 1.0.4; never re-create `.beads/issues.jsonl`, re-track it, or set
-`export.auto`/`export.git-add` back to `true`; never `bd export` to the default path. Sync is Dolt only
-(`bd dolt push`/`pull`). Treat the bd DB as fragile — experiment on a copy.
+Never `brew install beads` (install pinned releases explicitly, to avoid silent drift); never re-create
+`.beads/issues.jsonl`, re-track it, or set `export.auto`/`export.git-add` back to `true`; never `bd export`
+to the default path. Sync is Dolt only (`bd dolt push`/`pull`). Treat the bd DB as fragile — experiment on
+a copy before any future version bump. The blanket "never upgrade off 1.0.4" guardrail is superseded: the
+pin now tracks 1.1.2 (ADR 0046); re-verify against `gastownhall/beads#4800`/`#4176` before moving further.
