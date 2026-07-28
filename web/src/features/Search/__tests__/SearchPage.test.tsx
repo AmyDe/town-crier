@@ -119,6 +119,20 @@ describe('SearchPage', () => {
     expect(marker.getAttribute('data-lon')).toBe('-0.1');
   });
 
+  it('cancels a reopened picker via Change without discarding the confirmed location', () => {
+    renderPage(new SpySearchPort());
+    confirmALocationViaMap();
+
+    fireEvent.click(screen.getByRole('button', { name: /change/i }));
+    expect(screen.getByTestId('map-container')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+    expect(screen.queryByTestId('map-container')).not.toBeInTheDocument();
+    expect(screen.getByText(/near custom pin/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/search/i)).not.toBeDisabled();
+  });
+
   it('re-confirming after Change updates the chip label', () => {
     renderPage(new SpySearchPort());
     confirmALocationViaMap();

@@ -94,6 +94,13 @@ export function useSearch(port: SearchPort) {
     setIsLocationPickerOpen(true);
   }, []);
 
+  // Abandons a reopened picker (the "Change" flow) without touching the
+  // already-confirmed location. Only ever exposed once a location exists —
+  // there is no way to back out of the mandatory first-time gate.
+  const closeLocationPicker = useCallback(() => {
+    setIsLocationPickerOpen(false);
+  }, []);
+
   const confirmLocation = useCallback((newLocation: SearchLocation, label: string) => {
     setLocation(newLocation);
     setLocationLabel(label);
@@ -127,6 +134,7 @@ export function useSearch(port: SearchPort) {
     locationLabel,
     isLocationPickerOpen,
     changeLocation,
+    closeLocationPicker,
     confirmLocation,
     ...state,
   };

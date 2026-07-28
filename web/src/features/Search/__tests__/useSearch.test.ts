@@ -54,6 +54,25 @@ describe('useSearch', () => {
     expect(result.current.isLocationPickerOpen).toBe(true);
   });
 
+  it('closeLocationPicker closes the picker without touching the confirmed location', () => {
+    const spy = new SpySearchPort();
+    const { result } = renderHook(() => useSearch(spy));
+
+    act(() => {
+      result.current.confirmLocation(aLocation, 'SW1A 1AA');
+    });
+    act(() => {
+      result.current.changeLocation();
+    });
+    act(() => {
+      result.current.closeLocationPicker();
+    });
+
+    expect(result.current.isLocationPickerOpen).toBe(false);
+    expect(result.current.location).toEqual(aLocation);
+    expect(result.current.locationLabel).toBe('SW1A 1AA');
+  });
+
   it('confirmLocation sets the location, label, and closes the picker', () => {
     const spy = new SpySearchPort();
     const { result } = renderHook(() => useSearch(spy));

@@ -38,6 +38,7 @@ export function SearchPage({ port, postcodePort }: Props) {
     locationLabel,
     isLocationPickerOpen,
     changeLocation,
+    closeLocationPicker,
     confirmLocation,
     results,
     isLoading,
@@ -74,11 +75,22 @@ export function SearchPage({ port, postcodePort }: Props) {
 
       <div className={styles.locationBar}>
         {isLocationPickerOpen ? (
-          <LocationPicker
-            postcodePort={postcodePort}
-            initialLocation={location}
-            onConfirm={confirmLocation}
-          />
+          <>
+            <LocationPicker
+              postcodePort={postcodePort}
+              initialLocation={location}
+              onConfirm={confirmLocation}
+            />
+            {location !== null && (
+              <button
+                type="button"
+                className={styles.cancelPickerButton}
+                onClick={closeLocationPicker}
+              >
+                Cancel
+              </button>
+            )}
+          </>
         ) : location !== null ? (
           <div className={styles.locationChipRow}>
             <span className={styles.locationChip}>📍 Near {locationLabel}</span>
