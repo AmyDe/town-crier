@@ -2,6 +2,17 @@
 # PreToolUse hook: block code edits outside a git worktree.
 # Ensures isolation when multiple conversations run in parallel.
 
+# Cloud (web) sessions are exempt. This hook exists because parallel
+# conversations sharing one checkout conflict; a cloud session runs alone in an
+# ephemeral container, on its own fresh clone and its own feature branch, so the
+# container already provides the isolation a worktree would. Worktrees are also
+# impossible there: bd's SEC-003 boundary check (1.1.2,
+# internal/beads/context.go isPathInSafeBoundary) resolves the current user's
+# home from the account database rather than $HOME, and cloud containers run as
+# root (passwd home /root) with the repo under /home/user, so bd rejects
+# .beads as an "unsafe location" no matter what $HOME is set to. See tc-aj2pn.
+[ "${CLAUDE_CODE_REMOTE:-}" = "true" ] && exit 0
+
 file_path=$(jq -r '.tool_input.file_path // empty')
 [ -z "$file_path" ] && exit 0
 
