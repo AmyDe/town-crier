@@ -23,14 +23,22 @@
 # bd fixes ship. Anchored to the repo root, so a drifted CWD can't misfire it.
 #
 # bd's SEC-003 safety check rejects a BEADS_DIR under /home/* or /Users/* that
-# doesn't have $HOME as a prefix. A normal local checkout is always under the
-# real $HOME, so this never fires there. It does fire in sandboxes that run as
-# root with HOME=/root while the repo is checked out under /home/<user>/... —
-# there, bd worktree create fails with "BEADS_DIR points to unsafe location"
-# even though the path is perfectly safe. Only override HOME for that one
-# subprocess, and only when $root isn't already under $HOME, so a real local
-# dev setup (where git/ssh/credential lookups must keep using the real $HOME)
-# is untouched.
+# falls outside the current user's home. A normal local checkout is always under
+# the real home, so this never fires there.
+#
+# The HOME override below NO LONGER DEFEATS IT and is kept only as a harmless
+# no-op for older bd versions. As of 1.1.2 (internal/beads/context.go,
+# isPathInSafeBoundary) bd resolves the home directory from the account database
+# via user.Current(), which the source comments say is deliberately "not
+# affected by $HOME manipulation". So in a sandbox running as root (passwd home
+# /root) with the repo under /home/<user>/..., bd worktree create fails with
+# "BEADS_DIR points to unsafe location" whatever HOME is set to — verified under
+# both HOME=/root and HOME=/home/user (tc-aj2pn). Don't re-test it.
+#
+# That is why cloud sessions skip worktrees entirely: .claude/require-worktree.sh
+# exits early when CLAUDE_CODE_REMOTE=true, since an ephemeral single-session
+# container already provides the isolation worktrees give locally. This script
+# is therefore a local-only path in practice.
 set -eo pipefail
 
 name="${1:?usage: worktree-setup.sh <name> [--branch <branch>]}"
