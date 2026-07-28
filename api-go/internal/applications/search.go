@@ -298,18 +298,29 @@ const searchPoint = "ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography"
 // per-tier cap captures it. Capping at limit+1, not limit, is what lets
 // Search still detect "more matches exist" after the merge/dedup (the
 // RefineQuery signal) exactly as searchQuery's old limit+1 did.
+//
+// "AND location IS NOT NULL" in every tier's WHERE is required, not
+// optional: "nearest" is undefined for an application PlanIt never geocoded,
+// mirroring how findNearbyFirstPageQuery's ST_DWithin already implicitly
+// excludes a NULL location (ST_DWithin against NULL evaluates to NULL, which
+// WHERE treats as false). Without it, a NULL location's computed "location <->
+// point" is SQL NULL, which nearbyRow.dist (a non-pointer float64, scanned via
+// scanNearbyRow) cannot scan.
 const searchTier1Query = "SELECT " + appColumns + ", location <-> " + searchPoint + " AS distance " +
-	"FROM applications WHERE (lower(uid) = lower($3) OR lower(uid) LIKE $4 ESCAPE '\\') " +
+	"FROM applications WHERE location IS NOT NULL " +
+	"AND (lower(uid) = lower($3) OR lower(uid) LIKE $4 ESCAPE '\\') " +
 	"AND ($5::text IS NULL OR authority_code = $5) " +
 	"ORDER BY location <-> " + searchPoint + ", planit_name LIMIT $6"
 
 const searchTier2Query = "SELECT " + appColumns + ", location <-> " + searchPoint + " AS distance " +
-	"FROM applications WHERE lower($3) <% lower(address) " +
+	"FROM applications WHERE location IS NOT NULL " +
+	"AND lower($3) <% lower(address) " +
 	"AND ($4::text IS NULL OR authority_code = $4) " +
 	"ORDER BY location <-> " + searchPoint + ", planit_name LIMIT $5"
 
 const searchTier3Query = "SELECT " + appColumns + ", location <-> " + searchPoint + " AS distance " +
-	"FROM applications WHERE to_tsvector('english', description) @@ plainto_tsquery('english', $3) " +
+	"FROM applications WHERE location IS NOT NULL " +
+	"AND to_tsvector('english', description) @@ plainto_tsquery('english', $3) " +
 	"AND ($4::text IS NULL OR authority_code = $4) " +
 	"ORDER BY location <-> " + searchPoint + ", planit_name LIMIT $5"
 
