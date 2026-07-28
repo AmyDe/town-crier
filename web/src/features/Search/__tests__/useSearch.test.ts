@@ -4,7 +4,18 @@ import { useSearch } from '../useSearch';
 import { SpySearchPort } from './spies/spy-search-port';
 import { aSearchResult, anotherSearchResult } from './fixtures/search-result.fixtures';
 
+const aLocation = { lat: 51.5074, lon: -0.1278 };
+
 describe('useSearch', () => {
+  it('starts with no location set and the picker closed', () => {
+    const spy = new SpySearchPort();
+    const { result } = renderHook(() => useSearch(spy));
+
+    expect(result.current.location).toBeNull();
+    expect(result.current.locationLabel).toBeNull();
+    expect(result.current.isLocationPickerOpen).toBe(false);
+  });
+
   it('does not call the port while the query is empty', async () => {
     const spy = new SpySearchPort();
 
@@ -18,9 +29,102 @@ describe('useSearch', () => {
     expect(result.current.hasSearched).toBe(false);
   });
 
+  it('never calls the port while location is null, regardless of query text', async () => {
+    const spy = new SpySearchPort();
+    const { result } = renderHook(() => useSearch(spy));
+
+    act(() => {
+      result.current.setQuery('mill road');
+    });
+
+    // Give the debounce window time to elapse — it must not fire without a location.
+    await new Promise((r) => setTimeout(r, 600));
+    expect(spy.searchCalls).toHaveLength(0);
+    expect(result.current.hasSearched).toBe(false);
+  });
+
+  it('changeLocation opens the picker', () => {
+    const spy = new SpySearchPort();
+    const { result } = renderHook(() => useSearch(spy));
+
+    act(() => {
+      result.current.changeLocation();
+    });
+
+    expect(result.current.isLocationPickerOpen).toBe(true);
+  });
+
+  it('confirmLocation sets the location, label, and closes the picker', () => {
+    const spy = new SpySearchPort();
+    const { result } = renderHook(() => useSearch(spy));
+
+    act(() => {
+      result.current.changeLocation();
+    });
+    act(() => {
+      result.current.confirmLocation(aLocation, 'SW1A 1AA');
+    });
+
+    expect(result.current.location).toEqual(aLocation);
+    expect(result.current.locationLabel).toBe('SW1A 1AA');
+    expect(result.current.isLocationPickerOpen).toBe(false);
+  });
+
+  it('confirming a location triggers the first search using the already-typed query', async () => {
+    const spy = new SpySearchPort();
+    const { result } = renderHook(() => useSearch(spy));
+
+    act(() => {
+      result.current.setQuery('mill road');
+    });
+    act(() => {
+      result.current.confirmLocation(aLocation, 'SW1A 1AA');
+    });
+
+    await waitFor(
+      () => {
+        expect(spy.searchCalls).toHaveLength(1);
+      },
+      { timeout: 2000 },
+    );
+    expect(spy.searchCalls[0]).toEqual({ query: 'mill road', authority: null, location: aLocation });
+  });
+
+  it('re-runs the search with the new location when the location is changed mid-session', async () => {
+    const spy = new SpySearchPort();
+    const { result } = renderHook(() => useSearch(spy));
+
+    act(() => {
+      result.current.setQuery('mill road');
+      result.current.confirmLocation(aLocation, 'SW1A 1AA');
+    });
+
+    await waitFor(() => {
+      expect(spy.searchCalls).toHaveLength(1);
+    });
+
+    const secondLocation = { lat: 52.2, lon: 0.1 };
+    act(() => {
+      result.current.confirmLocation(secondLocation, 'CB1 2AD');
+    });
+
+    await waitFor(() => {
+      expect(spy.searchCalls).toHaveLength(2);
+    });
+    expect(spy.searchCalls[1]).toEqual({
+      query: 'mill road',
+      authority: null,
+      location: secondLocation,
+    });
+  });
+
   it('debounces rapid typing into a single search call with the final query', async () => {
     const spy = new SpySearchPort();
     const { result } = renderHook(() => useSearch(spy));
+
+    act(() => {
+      result.current.confirmLocation(aLocation, 'SW1A 1AA');
+    });
 
     act(() => {
       result.current.setQuery('m');
@@ -38,7 +142,7 @@ describe('useSearch', () => {
       },
       { timeout: 2000 },
     );
-    expect(spy.searchCalls[0]).toEqual({ query: 'mill road', authority: null });
+    expect(spy.searchCalls[0]).toEqual({ query: 'mill road', authority: null, location: aLocation });
   });
 
   it('populates results after a successful search', async () => {
@@ -47,6 +151,7 @@ describe('useSearch', () => {
     const { result } = renderHook(() => useSearch(spy));
 
     act(() => {
+      result.current.confirmLocation(aLocation, 'SW1A 1AA');
       result.current.setQuery('mill road');
     });
 
@@ -68,6 +173,7 @@ describe('useSearch', () => {
     const { result } = renderHook(() => useSearch(spy));
 
     act(() => {
+      result.current.confirmLocation(aLocation, 'SW1A 1AA');
       result.current.setQuery('a common word');
     });
 
@@ -85,6 +191,7 @@ describe('useSearch', () => {
     const { result } = renderHook(() => useSearch(spy));
 
     act(() => {
+      result.current.confirmLocation(aLocation, 'SW1A 1AA');
       result.current.setQuery('zz');
     });
 
@@ -104,6 +211,7 @@ describe('useSearch', () => {
     const { result } = renderHook(() => useSearch(spy));
 
     act(() => {
+      result.current.confirmLocation(aLocation, 'SW1A 1AA');
       result.current.setAuthority('  cambridge  ');
       result.current.setQuery('mill road');
     });
@@ -114,7 +222,11 @@ describe('useSearch', () => {
       },
       { timeout: 2000 },
     );
-    expect(spy.searchCalls[0]).toEqual({ query: 'mill road', authority: 'cambridge' });
+    expect(spy.searchCalls[0]).toEqual({
+      query: 'mill road',
+      authority: 'cambridge',
+      location: aLocation,
+    });
 
     act(() => {
       result.current.setAuthority('');
@@ -127,14 +239,18 @@ describe('useSearch', () => {
       },
       { timeout: 2000 },
     );
-    expect(spy.searchCalls[1]).toEqual({ query: 'mill road again', authority: null });
+    expect(spy.searchCalls[1]).toEqual({
+      query: 'mill road again',
+      authority: null,
+      location: aLocation,
+    });
   });
 
   it('resets to idle and ignores a stale in-flight response when the query is cleared', async () => {
     let resolveSearch: ((outcome: { results: never[]; refineQuery: boolean }) => void) | null = null;
     const spy = new SpySearchPort();
-    spy.search = (query: string, authority: string | null) => {
-      spy.searchCalls.push({ query, authority });
+    spy.search = (query: string, authority: string | null, location) => {
+      spy.searchCalls.push({ query, authority, location });
       return new Promise((resolve) => {
         resolveSearch = resolve;
       });
@@ -143,6 +259,7 @@ describe('useSearch', () => {
     const { result } = renderHook(() => useSearch(spy));
 
     act(() => {
+      result.current.confirmLocation(aLocation, 'SW1A 1AA');
       result.current.setQuery('mill road');
     });
 
