@@ -4,6 +4,76 @@
   padding: var(--tc-space-xl) var(--tc-space-md);
 }
 
+/* ---------- Location gate: disabled bar + inline gate (never a modal/full page) ---------- */
+
+.locationBar {
+  margin-bottom: var(--tc-space-md);
+}
+
+.locationPrompt {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tc-space-xs);
+  min-height: 44px;
+  padding: var(--tc-space-sm) var(--tc-space-md);
+  border: 1.5px dashed var(--tc-border);
+  border-radius: var(--tc-radius-md);
+  background: transparent;
+  color: var(--tc-text-secondary);
+  font-size: var(--tc-text-body);
+  cursor: pointer;
+}
+
+.locationPrompt:hover {
+  border-color: var(--tc-amber);
+  color: var(--tc-text-primary);
+}
+
+.locationChipRow {
+  display: flex;
+  align-items: center;
+  gap: var(--tc-space-sm);
+}
+
+/* Stamp language (Public Notice component vocabulary): outlined, uppercase,
+   letter-spaced — matches ApplicationCard's status stamp. */
+.locationChip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tc-space-xs);
+  padding: var(--tc-space-xs) var(--tc-space-sm);
+  border: 1.5px solid var(--tc-border-focused);
+  border-radius: var(--tc-radius-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: var(--tc-text-caption);
+  font-weight: var(--tc-weight-semibold);
+  color: var(--tc-text-primary);
+}
+
+.changeButton {
+  min-height: 44px;
+  padding: var(--tc-space-xs) var(--tc-space-md);
+  border: 1px solid var(--tc-border);
+  border-radius: var(--tc-radius-md);
+  background: var(--tc-surface);
+  color: var(--tc-text-primary);
+  font-size: var(--tc-text-caption);
+  cursor: pointer;
+}
+
+.cancelPickerButton {
+  align-self: flex-start;
+  border: none;
+  background: transparent;
+  color: var(--tc-text-secondary);
+  font-size: var(--tc-text-caption);
+  text-decoration: underline;
+  cursor: pointer;
+  padding: var(--tc-space-xs) 0;
+  margin-top: var(--tc-space-xs);
+}
+
 .heading {
   font-size: var(--tc-text-display-small);
   font-weight: var(--tc-weight-semibold);
@@ -49,6 +119,11 @@
 .input:focus-visible {
   outline: 2px solid var(--tc-border-focused);
   outline-offset: 2px;
+}
+
+.input:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .status {

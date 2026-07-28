@@ -1,11 +1,14 @@
 import { useEffect } from 'react';
 import type { SearchPort } from '../../domain/ports/search-port';
+import type { PostcodeLookupPort } from '../../domain/ports/postcode-lookup-port';
 import { useSearch } from './useSearch';
 import { SearchResultCard } from './components/SearchResultCard';
+import { LocationPicker } from './components/LocationPicker';
 import styles from './SearchPage.module.css';
 
 interface Props {
   port: SearchPort;
+  postcodePort: PostcodeLookupPort;
 }
 
 const PAGE_TITLE = 'Search UK planning applications | Town Crier';
@@ -17,13 +20,25 @@ const PAGE_DESCRIPTION =
  * fully logged out. Sets its own `<title>`/meta description on mount so the
  * page is indexable in its own right, distinct from the landing page; results
  * are client-rendered and deliberately never added to `sitemap.xml`.
+ *
+ * A location is mandatory before a search can run (GH#863, tc-rrv7i.2): the
+ * search input carries a real `disabled` attribute until one is confirmed.
+ * This is the "disabled bar + inline gate" pattern — a prompt expands an
+ * inline `LocationPicker` in place, never a full-page picker or a blocking
+ * modal. Once confirmed, the prompt becomes a location chip with a "Change"
+ * action that reopens the picker, prefilled with the current selection.
  */
-export function SearchPage({ port }: Props) {
+export function SearchPage({ port, postcodePort }: Props) {
   const {
     query,
     setQuery,
     authority,
     setAuthority,
+    location,
+    locationLabel,
+    isLocationPickerOpen,
+    changeLocation,
+    confirmLocation,
     results,
     isLoading,
     error,
@@ -57,6 +72,27 @@ export function SearchPage({ port }: Props) {
         link to share it.
       </p>
 
+      <div className={styles.locationBar}>
+        {isLocationPickerOpen ? (
+          <LocationPicker
+            postcodePort={postcodePort}
+            initialLocation={location}
+            onConfirm={confirmLocation}
+          />
+        ) : location !== null ? (
+          <div className={styles.locationChipRow}>
+            <span className={styles.locationChip}>📍 Near {locationLabel}</span>
+            <button type="button" className={styles.changeButton} onClick={changeLocation}>
+              Change
+            </button>
+          </div>
+        ) : (
+          <button type="button" className={styles.locationPrompt} onClick={changeLocation}>
+            📍 Set a location to search
+          </button>
+        )}
+      </div>
+
       <form className={styles.form} onSubmit={(event) => event.preventDefault()}>
         <div className={styles.field}>
           <label className={styles.label} htmlFor="search-query">
@@ -69,6 +105,7 @@ export function SearchPage({ port }: Props) {
             placeholder="Reference, address, or description"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
+            disabled={location === null}
           />
         </div>
 

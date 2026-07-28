@@ -3,11 +3,17 @@ import { Routes, Route } from 'react-router';
 import { LandingPage } from './features/LandingPage/LandingPage';
 import { CallbackPage } from './auth/CallbackPage';
 import { ConnectedLegalPage } from './features/legal/ConnectedLegalPage';
-import { ConnectedSearchPage } from './features/Search/ConnectedSearchPage';
 import { AuthGuard } from './auth/AuthGuard';
 import { OnboardingGate } from './auth/OnboardingGate';
 import { AppShell } from './components/AppShell/AppShell';
 
+// Lazy (GH#863, tc-rrv7i.2): the location gate's LocationPicker pulls in
+// react-leaflet/leaflet, same as the other map-carrying routes below. /search
+// used to be a light eager import, but now needs the same treatment — every
+// visitor to any page would otherwise pay for leaflet in the main bundle.
+const ConnectedSearchPage = lazy(() =>
+  import('./features/Search/ConnectedSearchPage').then((m) => ({ default: m.ConnectedSearchPage })),
+);
 const ConnectedOnboardingPage = lazy(() =>
   import('./features/onboarding/ConnectedOnboardingPage').then((m) => ({ default: m.ConnectedOnboardingPage })),
 );
@@ -52,7 +58,7 @@ export function AppRoutes() {
       <Route path="/" element={<LandingPage />} />
       <Route path="/callback" element={<CallbackPage />} />
       <Route path="/legal/:type" element={<ConnectedLegalPage />} />
-      <Route path="/search" element={<ConnectedSearchPage />} />
+      <Route path="/search" element={<Suspense fallback={null}><ConnectedSearchPage /></Suspense>} />
 
       {/* Authenticated routes */}
       <Route element={<AuthGuard />}>
