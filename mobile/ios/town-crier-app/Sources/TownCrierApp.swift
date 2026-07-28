@@ -221,7 +221,7 @@ struct TownCrierApp: App {
       Group {
         if forceUpdateViewModel.requiresUpdate {
           ForceUpdateView(
-            appStoreURL: URL(string: "https://apps.apple.com/app/town-crier/id000000000")
+            appStoreURL: URL(string: AppCoordinator.appStoreForceUpdateURLString)
           )
         } else if loginViewModel.isAuthenticated {
           authenticatedRootView
