@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -45,16 +46,17 @@ const (
 // gateway timeout.
 const searchTimeout = 8 * time.Second
 
-// searchStore is the consumer-side store the search handler needs: a single
-// ranked, capped read across the three match tiers (#821 Phase 3) — reference
-// exact/prefix match on uid, address fuzzy match (pg_trgm), description
-// full-text match (tsvector). authorityCode "" means no authority filter (a
-// bare reference legitimately matches across authorities — application_uid is
-// only unique within a council). The bool return reports whether more matches
-// exist beyond limit (RefineQuery on the wire); the concrete *PostgresStore
-// satisfies it structurally.
+// searchStore is the consumer-side store the search handler needs: a
+// nearest-first, capped read across the three match tiers (GH#863 API
+// section) — reference exact/prefix match on uid, address fuzzy match
+// (pg_trgm), description full-text match (tsvector) — merged, deduplicated by
+// identity, and ordered by distance from (lat, lon) ascending. authorityCode
+// "" means no authority filter (a bare reference legitimately matches across
+// authorities — application_uid is only unique within a council). The bool
+// return reports whether more matches exist beyond limit (RefineQuery on the
+// wire); the concrete *PostgresStore satisfies it structurally.
 type searchStore interface {
-	Search(ctx context.Context, query, authorityCode string, limit int) ([]PlanningApplication, bool, error)
+	Search(ctx context.Context, query, authorityCode string, lat, lon float64, limit int) ([]PlanningApplication, bool, error)
 }
 
 // searchHandler serves the anonymous application search endpoint.
@@ -73,17 +75,31 @@ func SearchRoutes(mux *http.ServeMux, store searchStore, resolver authoritySlugR
 	mux.HandleFunc("GET /v1/applications/search", h.search)
 }
 
-// search validates q (and the optional authority filter + limit), then returns
-// the ranked match set: reference exact/prefix on uid, ranked above address
-// fuzzy match, ranked above description full-text match. A missing/too-short q
-// (unless it looks like a reference) or an unresolvable authority slug is a
-// bodyless 400; a store failure is a bodyless 500 (both envelopes backfilled by
-// middleware.ErrorBody).
+// search validates q, the mandatory lat/lon query point, and the optional
+// authority filter + limit, then returns the nearest-first match set: the
+// union of the three match tiers (reference exact/prefix on uid, address
+// fuzzy match, description full-text match), deduplicated by identity and
+// ordered by distance from (lat, lon) ascending (GH#863 API section — KNN
+// nearest-first, mandatory location). A missing/too-short q (unless it looks
+// like a reference), a missing/unparseable lat or lon, or an unresolvable
+// authority slug is a bodyless 400; a store failure is a bodyless 500 (both
+// envelopes backfilled by middleware.ErrorBody).
 func (h *searchHandler) search(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 
 	query := strings.TrimSpace(q.Get("q"))
 	if !validSearchQuery(query) {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	lat, ok := parseRequiredCoord(q.Get("lat"))
+	if !ok {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	lon, ok := parseRequiredCoord(q.Get("lon"))
+	if !ok {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -103,7 +119,7 @@ func (h *searchHandler) search(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), searchTimeout)
 	defer cancel()
 
-	apps, refine, err := h.store.Search(ctx, query, authorityCode, limit)
+	apps, refine, err := h.store.Search(ctx, query, authorityCode, lat, lon, limit)
 	if err != nil {
 		serverError(w, r, h.logger, "search applications", err)
 		return
@@ -164,6 +180,24 @@ func parseSearchLimit(raw string) int {
 		return searchMaxLimit
 	}
 	return n
+}
+
+// parseRequiredCoord parses a mandatory lat/lon query parameter as a float64,
+// reporting false for a missing, empty, or unparseable value (-> bodyless 400
+// via search's callers). lat/lon are mandatory as of GH#863 — the KNN
+// nearest-first redesign has no meaning without a query point — unlike
+// validSearchQuery's q or resolveAuthorityParam's optional authority filter,
+// so this has no "absent means default" branch.
+func parseRequiredCoord(raw string) (float64, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0, false
+	}
+	v, err := strconv.ParseFloat(raw, 64)
+	if err != nil {
+		return 0, false
+	}
+	return v, true
 }
 
 // resolveAuthorityParam resolves the authority=<id-or-slug> filter to an
@@ -227,131 +261,57 @@ type SearchResponse struct {
 	RefineQuery bool           `json:"refineQuery"`
 }
 
-// searchQuery ranks applications matching q across three tiers in a single
-// statement (#821 Phase 3), each computed once over the whole table and unioned:
-//
-//  1. Reference exact/prefix match on uid (case-insensitive): an exact match
-//     scores 2.0, a prefix-only match 1.0, so within tier 1 an exact hit still
-//     ranks first. uid — NOT planit_name — is the fuller, human-recognisable
-//     council reference (tc-geq7h.3 decision 2026-07-05); it may legitimately
-//     match rows in more than one authority, since a bare reference is only
-//     unique within a council.
-//  2. Address fuzzy match via pg_trgm word_similarity (<%): the query is
-//     typically a short fragment of a much longer address, so word_similarity
-//     (matching against any word-boundary substring of address) is used
-//     instead of whole-string similarity (%), which would under-score a short,
-//     otherwise-exact fragment.
-//  3. Description full-text match via the english tsvector config, ranked by
-//     ts_rank.
-//
-// matched unions the three tiers (each row tagged with its tier and an
-// in-tier score); best keeps only the single best-tier match per application
-// (DISTINCT ON (area_id, planit_name), the natural-key equivalent already
-// present in appColumns) — an application matching more than one tier is never
-// duplicated, it surfaces once under its highest-priority tier. The final
-// SELECT re-applies the tier/score order (a plain column reference survives
-// DISTINCT ON's row selection but not its projection, so the ORDER BY must be
-// restated) plus a planit_name tie-break for determinism, and the LIMIT is the
-// caller's requested limit+1 — the extra row is how Search detects "more
-// matches exist than the limit" without a second query.
-//
-// Each of the three UNION ALL branches is independently bounded by its own
-// "ORDER BY <tier's score> DESC, planit_name ASC LIMIT $3" (tc-z5i5j — the
-// parentheses around each branch are required Postgres syntax for a
-// per-branch ORDER BY/LIMIT inside a UNION). The planit_name secondary key
-// matters as much as the LIMIT itself: without it, when many rows in one tier
-// tie on score (a common shape — e.g. every uid prefix match scores exactly
-// 1.0), the branch's own LIMIT can keep an ARBITRARY limit+1-sized subset of
-// the tied rows (whichever the scan happens to visit first), and the final
-// query's planit_name tie-break can then only resolve ties among whatever
-// arbitrary subset survived — not the true full set, as the old unbounded
-// query always had available. Matching the branch's secondary sort key to the
-// final query's tie-break guarantees the specific limit+1 rows each branch
-// keeps are the same ones the old unbounded query would have handed to
-// DISTINCT ON, tie for tie. See
-// TestPostgresStore_Search_TiedScoresStayDeterministicUnderCap.
-//
-// Without this, best's required DISTINCT ON ordering
-// (area_id, planit_name, tier, score) differs from the final ORDER BY (tier,
-// score, planit_name), so Postgres cannot push the final LIMIT down through
-// DISTINCT ON: for any term the trigram/tsvector indexes consider common
-// (e.g. "extension"), all three branches can each match a large fraction of
-// applications, forcing a full materialize-and-sort of the entire unbounded
-// candidate set TWICE before the caller's limit is ever applied — this was
-// the prod incident (?q=extension: 15-53s; tc-z5i5j).
-//
-// Capping each branch at limit+1 (the same $3 already bound for the outer
-// LIMIT) is provably equivalent to the old unbounded query, not an
-// approximation: the final SELECT can never emit more than limit+1 rows, and
-// DISTINCT ON only ever keeps a matched row for a given (area_id,
-// planit_name) if no higher-priority (lower tier) row exists for it — so a
-// row this query ultimately returns from tier T is always among the top
-// limit+1 tier-T-scored rows in the FULL unbounded tier-T branch (any
-// tier-T row that also has a higher-tier match is going to lose to that
-// higher-tier row in DISTINCT ON regardless, "wasting" at most as many
-// tier-T slots as there are such higher-tier rows — and the higher tiers are
-// themselves capped at limit+1, so at most limit+1 slots can ever be wasted
-// this way). Capping each branch at limit+1 therefore never drops a row the
-// uncapped query would have returned; it only stops materializing/sorting
-// candidates that were never going to survive DISTINCT ON or the final LIMIT
-// in the first place. See search_integration_test.go for the regression
-// tests that pin this down (a tier-1-only multi-match case proving the "+1"
-// is load-bearing for RefineQuery, and a cross-tier case proving a
-// higher-tier duplicate occupying a slot in a lower tier's capped branch does
-// not crowd out a genuine lower-tier winner).
-//
-// searchSelectColumns (not appColumns) backs the three UNION branches: it
-// aliases the two computed geometry accessors to lat/lon. appColumns' raw form
-// (ST_Y(location::geometry) with no alias) only resolves because those
-// branches SELECT directly FROM applications, where the location column is in
-// scope — but matched/best are CTEs, and a CTE's exposed columns are named
-// from their SELECT list (an unaliased function call is named after the
-// function, not "location"), so location does not exist there. The outer
-// SELECT list (searchOutputColumns) therefore reads the already-computed lat/
-// lon straight off best, rather than re-deriving them from a location column
-// that was never carried through the CTE chain.
-const searchSelectColumns = "planit_name, uid, area_name, area_id, address, postcode, " +
-	"description, app_type, app_state, app_size, start_date, decided_date, " +
-	"consulted_date, ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lon, url, link, last_different"
+// searchPoint is the KNN query point for the three search tiers, built from
+// $1 (longitude) and $2 (latitude) — matching nearbyPoint's (store_postgres.go)
+// $-numbering convention for every other authority-agnostic spatial read.
+const searchPoint = "ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography"
 
-const searchOutputColumns = "planit_name, uid, area_name, area_id, address, postcode, " +
-	"description, app_type, app_state, app_size, start_date, decided_date, " +
-	"consulted_date, lat, lon, url, link, last_different"
+// searchTier1Query, searchTier2Query, searchTier3Query each answer one match
+// tier of GET /v1/applications/search (GH#863 API section — mandatory
+// lat/lon, KNN nearest-first): reference exact/prefix match on uid, address
+// pg_trgm fuzzy match, description tsvector full-text match. Each is shaped
+// exactly like findNearbyFirstPageQuery (store_postgres.go) — appColumns plus
+// a computed "location <-> point AS distance", ordered by that KNN distance
+// then planit_name, capped at $6 — but with the tier's own text-match WHERE
+// predicate in place of findNearbyFirstPageQuery's ST_DWithin, and NO radius
+// bound: a nearest-first search has no reason to exclude a genuine match just
+// because it is far away, unlike the radius-bounded browse endpoints.
+//
+// Search runs the three queries separately (not unioned) and merges their
+// results in Go, deduplicating by identity and re-sorting by distance — a
+// deliberate departure from the pre-GH#863 shape, which unioned all three
+// tiers into one statement and ranked by a fixed tier priority (reference >
+// address > description, tc-z5i5j) rather than distance.
+//
+// Each query independently asks for the caller's requested limit+1 rows
+// (nearest-first, planit_name tie-break) via $6. This mirrors the old
+// per-branch cap's correctness argument, re-derived for distance instead of
+// tier/score: every tier's row set is a subset of the true global
+// distance-ordered candidate set S (an application matching tier T is, by
+// definition, a member of S), so an application's RANK within tier T's own
+// distance ordering can never exceed its rank within the global order of S.
+// Concretely: if application A is among the globally-nearest limit+1
+// distinct matches, then within ANY tier T it matches, at most limit other
+// tier-T matches can be nearer than A (each of those would also need to be
+// globally nearer than A, and A is already at global rank <= limit+1) — so A
+// is guaranteed to be within tier T's own top limit+1 by distance, and this
+// per-tier cap captures it. Capping at limit+1, not limit, is what lets
+// Search still detect "more matches exist" after the merge/dedup (the
+// RefineQuery signal) exactly as searchQuery's old limit+1 did.
+const searchTier1Query = "SELECT " + appColumns + ", location <-> " + searchPoint + " AS distance " +
+	"FROM applications WHERE (lower(uid) = lower($3) OR lower(uid) LIKE $4 ESCAPE '\\') " +
+	"AND ($5::text IS NULL OR authority_code = $5) " +
+	"ORDER BY location <-> " + searchPoint + ", planit_name LIMIT $6"
 
-const searchQuery = `
-WITH matched AS (
-	(SELECT ` + searchSelectColumns + `, 1 AS tier,
-	        CASE WHEN lower(uid) = lower($1) THEN 2.0 ELSE 1.0 END AS score
-	FROM applications
-	WHERE (lower(uid) = lower($1) OR lower(uid) LIKE $4 ESCAPE '\')
-	  AND ($2::text IS NULL OR authority_code = $2)
-	ORDER BY score DESC, planit_name ASC
-	LIMIT $3)
-	UNION ALL
-	(SELECT ` + searchSelectColumns + `, 2 AS tier, word_similarity(lower($1), lower(address)) AS score
-	FROM applications
-	WHERE lower($1) <% lower(address)
-	  AND ($2::text IS NULL OR authority_code = $2)
-	ORDER BY score DESC, planit_name ASC
-	LIMIT $3)
-	UNION ALL
-	(SELECT ` + searchSelectColumns + `, 3 AS tier,
-	        ts_rank(to_tsvector('english', description), plainto_tsquery('english', $1)) AS score
-	FROM applications
-	WHERE to_tsvector('english', description) @@ plainto_tsquery('english', $1)
-	  AND ($2::text IS NULL OR authority_code = $2)
-	ORDER BY score DESC, planit_name ASC
-	LIMIT $3)
-),
-best AS (
-	SELECT DISTINCT ON (area_id, planit_name) *
-	FROM matched
-	ORDER BY area_id, planit_name, tier ASC, score DESC
-)
-SELECT ` + searchOutputColumns + `
-FROM best
-ORDER BY tier ASC, score DESC, planit_name ASC
-LIMIT $3`
+const searchTier2Query = "SELECT " + appColumns + ", location <-> " + searchPoint + " AS distance " +
+	"FROM applications WHERE lower($3) <% lower(address) " +
+	"AND ($4::text IS NULL OR authority_code = $4) " +
+	"ORDER BY location <-> " + searchPoint + ", planit_name LIMIT $5"
+
+const searchTier3Query = "SELECT " + appColumns + ", location <-> " + searchPoint + " AS distance " +
+	"FROM applications WHERE to_tsvector('english', description) @@ plainto_tsquery('english', $3) " +
+	"AND ($4::text IS NULL OR authority_code = $4) " +
+	"ORDER BY location <-> " + searchPoint + ", planit_name LIMIT $5"
 
 // escapeLikeWildcards backslash-escapes the LIKE metacharacters (\, %, _) in a
 // user-supplied query before it is used to build a prefix pattern, so a query
@@ -362,31 +322,84 @@ func escapeLikeWildcards(s string) string {
 	return replacer.Replace(s)
 }
 
-// Search runs searchQuery and reports whether more matches exist beyond limit:
-// it asks for limit+1 rows, and if that many come back, truncates to limit and
+// appIdentity is the natural-key dedup key for merging the three tiers'
+// results: an application matching more than one tier (e.g. its address AND
+// its description both mention the query) must surface exactly once, keeping
+// whichever tier's copy is found first — the identity is what matters, not
+// which tier matched, since GH#863 dropped tier-priority ranking in favour of
+// pure distance ordering.
+type appIdentity struct {
+	areaID int
+	name   string
+}
+
+// Search runs the three match tiers' KNN queries (searchTier1Query,
+// searchTier2Query, searchTier3Query — sequentially, not concurrently, a
+// deliberate GH#863 scope decision) against the mandatory (lat, lon) query
+// point, merges their rows deduplicated by (area_id, planit_name), sorts the
+// deduplicated set by distance ascending then planit_name ascending, and
+// reports whether more matches exist beyond limit: each tier query already
+// asks for limit+1 rows (see the tier query doc comment for why that cap is
+// still correct under distance-first merging), so if the deduplicated,
+// re-sorted set has more than limit rows, Search truncates to limit and
 // returns true (the v1 "no cursor — tell the caller to refine" signal,
 // SearchResponse.RefineQuery). authorityCode "" applies no authority filter,
-// passed to the query as a genuine SQL NULL (not empty-string equality) so
-// "($2::text IS NULL OR ...)" reads naturally.
-func (s *PostgresStore) Search(ctx context.Context, query, authorityCode string, limit int) ([]PlanningApplication, bool, error) {
+// passed to each query as a genuine SQL NULL (not empty-string equality) so
+// "($n::text IS NULL OR ...)" reads naturally.
+func (s *PostgresStore) Search(ctx context.Context, query, authorityCode string, lat, lon float64, limit int) ([]PlanningApplication, bool, error) {
 	var authorityArg any
 	if authorityCode != "" {
 		authorityArg = authorityCode
 	}
 	likePattern := strings.ToLower(escapeLikeWildcards(query)) + "%"
+	perTierCap := limit + 1
 
-	rows, err := s.db.Query(ctx, searchQuery, query, authorityArg, limit+1, likePattern)
-	if err != nil {
-		return nil, false, fmt.Errorf("search applications %q: %w", query, err)
-	}
-	apps, err := pgx.CollectRows(rows, scanAppRow)
-	if err != nil {
-		return nil, false, fmt.Errorf("search applications %q: %w", query, err)
+	tiers := []struct {
+		sql  string
+		args []any
+	}{
+		{searchTier1Query, []any{lon, lat, query, likePattern, authorityArg, perTierCap}},
+		{searchTier2Query, []any{lon, lat, query, authorityArg, perTierCap}},
+		{searchTier3Query, []any{lon, lat, query, authorityArg, perTierCap}},
 	}
 
-	refine := len(apps) > limit
+	merged := make(map[appIdentity]nearbyRow)
+	for i, t := range tiers {
+		rows, err := s.db.Query(ctx, t.sql, t.args...)
+		if err != nil {
+			return nil, false, fmt.Errorf("search applications %q (tier %d): %w", query, i+1, err)
+		}
+		tierRows, err := pgx.CollectRows(rows, scanNearbyRow)
+		if err != nil {
+			return nil, false, fmt.Errorf("search applications %q (tier %d): %w", query, i+1, err)
+		}
+		for _, r := range tierRows {
+			id := appIdentity{areaID: r.app.AreaID, name: r.app.Name}
+			if _, exists := merged[id]; !exists {
+				merged[id] = r
+			}
+		}
+	}
+
+	deduped := make([]nearbyRow, 0, len(merged))
+	for _, r := range merged {
+		deduped = append(deduped, r)
+	}
+	sort.Slice(deduped, func(i, j int) bool {
+		if deduped[i].dist != deduped[j].dist {
+			return deduped[i].dist < deduped[j].dist
+		}
+		return deduped[i].app.Name < deduped[j].app.Name
+	})
+
+	refine := len(deduped) > limit
 	if refine {
-		apps = apps[:limit]
+		deduped = deduped[:limit]
+	}
+
+	apps := make([]PlanningApplication, len(deduped))
+	for i, r := range deduped {
+		apps[i] = r.app
 	}
 	return apps, refine, nil
 }
