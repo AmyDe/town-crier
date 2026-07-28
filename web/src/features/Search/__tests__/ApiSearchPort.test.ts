@@ -26,6 +26,8 @@ class StubFetch {
   };
 }
 
+const aLocation = { lat: 51.5074, lon: -0.1278 };
+
 describe('ApiSearchPort', () => {
   let stub: StubFetch;
   let port: ApiSearchPort;
@@ -36,22 +38,28 @@ describe('ApiSearchPort', () => {
     port = new ApiSearchPort(baseUrl, stub.fetch);
   });
 
-  it('fetches from the search endpoint with the query string', async () => {
-    await port.search('mill road', null);
+  it('fetches from the search endpoint with the query string and location', async () => {
+    await port.search('mill road', null, aLocation);
 
-    expect(stub.lastUrl).toBe('https://api.example.com/v1/applications/search?q=mill+road');
+    const url = new URL(stub.lastUrl!);
+    expect(url.pathname).toBe('/v1/applications/search');
+    expect(url.searchParams.get('q')).toBe('mill road');
+    expect(url.searchParams.get('lat')).toBe('51.5074');
+    expect(url.searchParams.get('lon')).toBe('-0.1278');
   });
 
-  it('adds the authority filter when provided', async () => {
-    await port.search('mill road', 'cambridge');
+  it('sends lat/lon on every call, including when an authority filter is set', async () => {
+    await port.search('mill road', 'cambridge', aLocation);
 
     const url = new URL(stub.lastUrl!);
     expect(url.searchParams.get('q')).toBe('mill road');
     expect(url.searchParams.get('authority')).toBe('cambridge');
+    expect(url.searchParams.get('lat')).toBe('51.5074');
+    expect(url.searchParams.get('lon')).toBe('-0.1278');
   });
 
   it('never attaches an Authorization header — this endpoint is anonymous', async () => {
-    await port.search('mill road', null);
+    await port.search('mill road', null, aLocation);
 
     const headers = stub.lastInit?.headers;
     expect(headers).toBeUndefined();
@@ -74,7 +82,7 @@ describe('ApiSearchPort', () => {
       refineQuery: true,
     };
 
-    const outcome = await port.search('mill road', null);
+    const outcome = await port.search('mill road', null, aLocation);
 
     expect(outcome.refineQuery).toBe(true);
     expect(outcome.results).toEqual([
@@ -107,7 +115,7 @@ describe('ApiSearchPort', () => {
       refineQuery: false,
     };
 
-    const outcome = await port.search('ref', null);
+    const outcome = await port.search('ref', null, aLocation);
 
     expect(outcome.results[0]).toEqual({
       reference: '24/0001/FUL',
@@ -123,7 +131,7 @@ describe('ApiSearchPort', () => {
   it('throws when the API returns a non-ok status', async () => {
     stub.responseStatus = 400;
 
-    await expect(port.search('a', null)).rejects.toThrow('Failed to search applications');
+    await expect(port.search('a', null, aLocation)).rejects.toThrow('Failed to search applications');
   });
 
   it('throws a friendly message when fetch itself fails (offline, DNS, CORS, etc.)', async () => {
@@ -134,7 +142,7 @@ describe('ApiSearchPort', () => {
     stub.shouldReject = true;
     stub.rejectError = new TypeError('Failed to fetch');
 
-    await expect(port.search('mill road', null)).rejects.toThrow(
+    await expect(port.search('mill road', null, aLocation)).rejects.toThrow(
       'Could not reach the search service. Check your connection and try again.',
     );
   });

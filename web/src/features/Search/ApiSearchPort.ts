@@ -1,4 +1,4 @@
-import type { SearchOutcome, SearchPort } from '../../domain/ports/search-port';
+import type { SearchLocation, SearchOutcome, SearchPort } from '../../domain/ports/search-port';
 import type { SearchResult } from '../../domain/types';
 
 interface SearchResultDto {
@@ -46,8 +46,16 @@ export class ApiSearchPort implements SearchPort {
     this.fetchFn = fetchFn;
   }
 
-  async search(query: string, authority: string | null): Promise<SearchOutcome> {
-    const params = new URLSearchParams({ q: query });
+  async search(
+    query: string,
+    authority: string | null,
+    location: SearchLocation,
+  ): Promise<SearchOutcome> {
+    const params = new URLSearchParams({
+      q: query,
+      lat: String(location.lat),
+      lon: String(location.lon),
+    });
     if (authority !== null && authority !== '') {
       params.set('authority', authority);
     }
