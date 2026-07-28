@@ -1,0 +1,79 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tc-space-sm);
+  padding: var(--tc-space-md);
+  border: 1px solid var(--tc-border);
+  border-radius: var(--tc-radius-md);
+  background: var(--tc-surface);
+  margin-bottom: var(--tc-space-md);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tc-space-xs);
+}
+
+.label {
+  font-size: var(--tc-text-caption);
+  font-weight: var(--tc-weight-medium);
+  color: var(--tc-text-secondary);
+}
+
+.input {
+  min-height: 44px;
+  padding: var(--tc-space-sm) var(--tc-space-md);
+  border: 1px solid var(--tc-border);
+  border-radius: var(--tc-radius-md);
+  background: var(--tc-surface);
+  color: var(--tc-text-primary);
+  font-size: var(--tc-text-body);
+}
+
+.input:focus-visible {
+  outline: 2px solid var(--tc-border-focused);
+  outline-offset: 2px;
+}
+
+.status {
+  font-size: var(--tc-text-caption);
+  color: var(--tc-text-secondary);
+  margin: 0;
+}
+
+.error {
+  font-size: var(--tc-text-caption);
+  color: var(--tc-status-rejected);
+  margin: 0;
+}
+
+.locateButton {
+  align-self: flex-start;
+  min-height: 44px;
+  padding: var(--tc-space-sm) var(--tc-space-md);
+  border: 1px solid var(--tc-border);
+  border-radius: var(--tc-radius-md);
+  background: var(--tc-surface);
+  color: var(--tc-text-primary);
+  font-size: var(--tc-text-body);
+  cursor: pointer;
+}
+
+.locateButton:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.hint {
+  font-size: var(--tc-text-caption);
+  color: var(--tc-text-secondary);
+  margin: 0;
+}
+
+.mapWrapper {
+  height: 240px;
+  border-radius: var(--tc-radius-md);
+  overflow: hidden;
+  border: 1px solid var(--tc-border);
+}

@@ -1,8 +1,9 @@
-import type { SearchOutcome, SearchPort } from '../../../../domain/ports/search-port';
+import type { SearchLocation, SearchOutcome, SearchPort } from '../../../../domain/ports/search-port';
 
 interface SearchCall {
   readonly query: string;
   readonly authority: string | null;
+  readonly location: SearchLocation;
 }
 
 export class SpySearchPort implements SearchPort {
@@ -10,8 +11,12 @@ export class SpySearchPort implements SearchPort {
   searchResult: SearchOutcome = { results: [], refineQuery: false };
   searchError: Error | null = null;
 
-  async search(query: string, authority: string | null): Promise<SearchOutcome> {
-    this.searchCalls.push({ query, authority });
+  async search(
+    query: string,
+    authority: string | null,
+    location: SearchLocation,
+  ): Promise<SearchOutcome> {
+    this.searchCalls.push({ query, authority, location });
     if (this.searchError) {
       throw this.searchError;
     }

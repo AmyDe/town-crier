@@ -6,13 +6,10 @@ import type { ApplicationStatus, ClusterMember, MapCluster, WatchZoneSummary } f
 import { clusterMemberStatus } from '../../domain/types';
 import { useMapData } from './useMapData';
 import { countBubbleIcon, statusPinIcon } from './markerIcons';
+import { OSM_TILE_URL, OSM_ATTRIBUTION } from '../../components/osmTiles';
 import styles from './MapPage.module.css';
 import 'leaflet/dist/leaflet.css';
 import './leaflet-overrides.css';
-
-const OSM_TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-const OSM_ATTRIBUTION =
-  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
 const UK_CENTER: [number, number] = [54.5, -2.5];
 const ZONE_ZOOM = 13;
