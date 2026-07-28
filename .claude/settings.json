@@ -120,6 +120,12 @@
       {
         "hooks": [
           {
+            "command": "\"$CLAUDE_PROJECT_DIR\"/scripts/wf/cloud-session-init.sh",
+            "statusMessage": "Cloud session init (dolt creds, fingerprint, beads hydration)...",
+            "timeout": 600,
+            "type": "command"
+          },
+          {
             "command": "bd prime",
             "type": "command"
           }
