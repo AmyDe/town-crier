@@ -17,8 +17,8 @@ import (
 var errBoom = errors.New("boom")
 
 // fakeSearchStore is a hand-written searchStore fake: it records the exact
-// arguments the handler passed through (query, authorityCode, limit) and
-// returns a fixed result set, refine flag and error.
+// arguments the handler passed through (query, authorityCode, lat, lon, limit)
+// and returns a fixed result set, refine flag and error.
 type fakeSearchStore struct {
 	apps   []PlanningApplication
 	refine bool
@@ -26,15 +26,19 @@ type fakeSearchStore struct {
 
 	lastQuery         string
 	lastAuthorityCode string
+	lastLat           float64
+	lastLon           float64
 	lastLimit         int
 	lastCtx           context.Context
 	calls             int
 }
 
-func (f *fakeSearchStore) Search(ctx context.Context, query, authorityCode string, limit int) ([]PlanningApplication, bool, error) {
+func (f *fakeSearchStore) Search(ctx context.Context, query, authorityCode string, lat, lon float64, limit int) ([]PlanningApplication, bool, error) {
 	f.calls++
 	f.lastQuery = query
 	f.lastAuthorityCode = authorityCode
+	f.lastLat = lat
+	f.lastLon = lon
 	f.lastLimit = limit
 	f.lastCtx = ctx
 	return f.apps, f.refine, f.err
@@ -50,9 +54,19 @@ func serveSearch(t *testing.T, store searchStore, resolver authoritySlugResolver
 	return rec
 }
 
-// searchPath builds the search endpoint path with q query-escaped.
+// defaultSearchLat and defaultSearchLon are valid coordinates (central London)
+// used by tests that don't specifically exercise lat/lon validation, so the
+// mandatory-location requirement doesn't need repeating in every test case.
+const (
+	defaultSearchLat = "51.5074"
+	defaultSearchLon = "-0.1278"
+)
+
+// searchPath builds the search endpoint path with q query-escaped and valid
+// default lat/lon params (mandatory since GH#863 API section).
 func searchPath(q string) string {
-	return "/v1/applications/search?q=" + url.QueryEscape(q)
+	return "/v1/applications/search?q=" + url.QueryEscape(q) +
+		"&lat=" + defaultSearchLat + "&lon=" + defaultSearchLon
 }
 
 // TestSearchHandler_ValidatesQuery proves the <3-char minimum, its "looks like a
@@ -108,6 +122,77 @@ func TestSearchHandler_RejectsOversizeQuery(t *testing.T) {
 	}
 	if store.calls != 0 {
 		t.Errorf("store calls: got %d, want 0", store.calls)
+	}
+}
+
+// TestSearchHandler_ValidatesCoordinates proves lat/lon are mandatory
+// (GH#863 API section — the nearest-first redesign has no meaning without a
+// query point): a missing, empty, or unparseable lat or lon is a bodyless 400
+// that never reaches the store, mirroring validSearchQuery/
+// resolveAuthorityParam's existing failure convention. A valid pair reaches
+// the store unchanged.
+func TestSearchHandler_ValidatesCoordinates(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		lat       string
+		lon       string
+		omitLat   bool
+		omitLon   bool
+		wantCalls int
+		wantOK    bool
+	}{
+		{name: "valid coordinates", lat: "51.5074", lon: "-0.1278", wantCalls: 1, wantOK: true},
+		{name: "missing lat", omitLat: true, lon: "-0.1278", wantCalls: 0, wantOK: false},
+		{name: "missing lon", lat: "51.5074", omitLon: true, wantCalls: 0, wantOK: false},
+		{name: "empty lat", lat: "", lon: "-0.1278", wantCalls: 0, wantOK: false},
+		{name: "empty lon", lat: "51.5074", lon: "", wantCalls: 0, wantOK: false},
+		{name: "unparseable lat", lat: "not-a-number", lon: "-0.1278", wantCalls: 0, wantOK: false},
+		{name: "unparseable lon", lat: "51.5074", lon: "not-a-number", wantCalls: 0, wantOK: false},
+		{name: "negative coordinates are valid floats", lat: "-33.8688", lon: "151.2093", wantCalls: 1, wantOK: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			store := &fakeSearchStore{}
+			path := "/v1/applications/search?q=abc"
+			if !tc.omitLat {
+				path += "&lat=" + url.QueryEscape(tc.lat)
+			}
+			if !tc.omitLon {
+				path += "&lon=" + url.QueryEscape(tc.lon)
+			}
+			rec := serveSearch(t, store, testResolver(), path)
+
+			if store.calls != tc.wantCalls {
+				t.Errorf("store calls: got %d, want %d", store.calls, tc.wantCalls)
+			}
+			wantStatus := http.StatusBadRequest
+			if tc.wantOK {
+				wantStatus = http.StatusOK
+			}
+			if rec.Code != wantStatus {
+				t.Errorf("status: got %d, want %d", rec.Code, wantStatus)
+			}
+		})
+	}
+}
+
+// TestSearchHandler_ForwardsCoordinatesToStore proves the parsed lat/lon reach
+// searchStore.Search unchanged.
+func TestSearchHandler_ForwardsCoordinatesToStore(t *testing.T) {
+	t.Parallel()
+	store := &fakeSearchStore{}
+	rec := serveSearch(t, store, testResolver(), "/v1/applications/search?q=abc&lat=51.5074&lon=-0.1278")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	if store.lastLat != 51.5074 {
+		t.Errorf("lat: got %v, want %v", store.lastLat, 51.5074)
+	}
+	if store.lastLon != -0.1278 {
+		t.Errorf("lon: got %v, want %v", store.lastLon, -0.1278)
 	}
 }
 

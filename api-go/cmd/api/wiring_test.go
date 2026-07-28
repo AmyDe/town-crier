@@ -133,7 +133,7 @@ func (fakeAppStore) RecentNearestTown(context.Context, string, float64, float64,
 func (fakeAppStore) BreakdownNearby(context.Context, string, float64, float64, float64) ([]applications.StateCount, error) {
 	return nil, nil
 }
-func (fakeAppStore) Search(context.Context, string, string, int) ([]applications.PlanningApplication, bool, error) {
+func (fakeAppStore) Search(context.Context, string, string, float64, float64, int) ([]applications.PlanningApplication, bool, error) {
 	return nil, false, nil
 }
 
@@ -155,9 +155,10 @@ func (f foundAppStore) GetByAuthorityAndName(_ context.Context, authorityCode, _
 }
 
 // Search unconditionally returns the fixture application, ignoring the query/
-// authority/limit args — this fake exists only to give the anonymous search
-// route's end-to-end wiring test a real record to render and serialise.
-func (f foundAppStore) Search(context.Context, string, string, int) ([]applications.PlanningApplication, bool, error) {
+// authority/lat/lon/limit args — this fake exists only to give the anonymous
+// search route's end-to-end wiring test a real record to render and
+// serialise.
+func (f foundAppStore) Search(context.Context, string, string, float64, float64, int) ([]applications.PlanningApplication, bool, error) {
 	return []applications.PlanningApplication{f.app}, false, nil
 }
 
@@ -428,7 +429,7 @@ func TestRouter_ApplicationSearchAnonymous(t *testing.T) {
 	appStore := foundAppStore{app: app}
 	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, appStore, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "", nil, nil, "", nil, nil, nil, 60, 60, logger)
 
-	rec := serveReq(t, h, http.MethodGet, "/v1/applications/search?q=downing", "", "")
+	rec := serveReq(t, h, http.MethodGet, "/v1/applications/search?q=downing&lat=51.5074&lon=-0.1278", "", "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("GET /v1/applications/search status = %d, want 200 (anonymous); body = %s", rec.Code, rec.Body.String())
 	}

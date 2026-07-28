@@ -41,7 +41,7 @@ type Store interface {
 	FindClustersInZone(ctx context.Context, q ClusterQuery) ([]Cluster, error)
 	RecentNearestTown(ctx context.Context, authorityCode string, lat, lng, radiusMetres float64, siblings []TownCentroid, cap int) ([]PlanningApplication, error)
 	BreakdownNearby(ctx context.Context, authorityCode string, lat, lng, radiusMetres float64) ([]StateCount, error)
-	Search(ctx context.Context, query, authorityCode string, limit int) ([]PlanningApplication, bool, error)
+	Search(ctx context.Context, query, authorityCode string, lat, lon float64, limit int) ([]PlanningApplication, bool, error)
 }
 
 // Compile-time check: the Postgres store satisfies the per-handler consumer-side
