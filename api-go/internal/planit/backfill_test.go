@@ -58,6 +58,9 @@ func TestBuildBackfillPath(t *testing.T) {
 	if !containsString(fields, "reference") || !containsString(fields, "last_scraped") {
 		t.Errorf("select must be the full ingest projection (GH#935 fields included): got %v", fields)
 	}
+	if !containsString(fields, "other_fields") {
+		t.Errorf("select must contain other_fields (GH#1027 regression: an absent select field nulls the stored value on every re-poll): got %v", fields)
+	}
 }
 
 // TestFetchBackfillPage_SendsExpectedQueryAndParsesResponse drives the client
