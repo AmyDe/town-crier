@@ -92,8 +92,9 @@ When looking up user data or entity information, query our own Postgres database
 The **Auto-merge** GitHub Actions workflow (`.github/workflows/auto-merge.yml`) is deliberately disabled (`disabled_manually`, confirmed 2026-07-29). This is by design, not an outage: Claude routines now watch open PRs, triage CodeRabbit review comments, and handle merging themselves. A green PR Gate means **ready for triage**, not **ready to merge**.
 
 - Do not re-enable the Auto-merge workflow.
-- Do not `gh pr merge` a green PR by hand to route around it appearing "stuck" — that undercuts the triage step. If a PR looks stuck, ask before merging it manually.
-- The `ship` skill's auto-merge-watch steps predate this decision and are stale until updated — treat "gate passed" as the skill's stopping point, not "PR merged," until it's revised.
+- **In an automated or scheduled context** (a cron routine, an unattended `/loop`, or any session not driven live by the user) — never merge a PR yourself, even with all checks green. Stop at "PR Gate passed" and leave it for the triage routine. Work done on a schedule can land at a time the user isn't available to test it; that is exactly the case this control exists for.
+- **In an interactive local session** — a human-directed manual merge is a judgment call, not a hard rule; ask first by default, since this is a live product with paying customers, but the user may reasonably say go ahead for a small, well-tested change.
+- The `ship` skill stops at "PR Gate passed" and does not merge — it no longer assumes Auto-merge will finish the job.
 
 ## Release Process
 

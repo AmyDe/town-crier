@@ -1,19 +1,19 @@
 ---
 name: ship
-description: Automate the push-to-main flow when you have local commits and/or unstaged changes on main, or when you're on a feature branch (e.g., from a worktree) ready to PR and merge. Creates a feature branch (if on main), opens a PR via `gh`, then watches for the PR Gate CI check to pass — auto-merge is enabled automatically by a GitHub Actions workflow. MUST use this skill whenever the user says "ship", "ship it", "push to main", "push my changes", "get this on main", "merge to main", "create a PR and merge", or any variation of wanting to get local work merged. Also trigger when the user has been working on main and wants to push but can't due to branch protection, or when work on a feature branch/worktree is ready to ship. Do NOT use for: creating PRs without merging.
+description: Automate the push-to-PR flow when you have local commits and/or unstaged changes on main, or when you're on a feature branch (e.g., from a worktree) ready to PR. Creates a feature branch (if on main), opens a PR via `gh`, and watches for the PR Gate CI check to pass. Stops there by default and reports status — the repo's Auto-merge workflow is intentionally disabled so Claude PR-triage routines can review comments (e.g. CodeRabbit) before merge, so this skill does not merge the PR itself unless the user explicitly asks for it in a live session. MUST use this skill whenever the user says "ship", "ship it", "push to main", "push my changes", "get this on main", "create a PR", or any variation of wanting to get local work through CI and up for review. Also trigger when the user has been working on main and wants to push but can't due to branch protection, or when work on a feature branch/worktree is ready to ship. Do NOT use for: merging a PR on request (see Step 7a) or for automated/scheduled contexts wanting a merge (never merge in those — see CLAUDE.md).
 ---
 
 # Ship to Main
 
-Route local work on `main` through a PR, because direct pushes to main are blocked by branch protection and a local pre-push hook. This skill handles the flow: branch, push, create PR, wait for CI, and merge — fully hands-off by default.
+Route local work on `main` through a PR, because direct pushes to main are blocked by branch protection and a local pre-push hook. This skill handles branch, push, create PR, and wait for CI — then **stops**. Merging is a separate, explicit step (Step 7a), never automatic.
 
 ## How merging works
 
-There are no reviewer approvals required. The merge flow is entirely CI-driven:
+There are no reviewer approvals required by GitHub itself — CI is the sole required status check. But this repo does not auto-merge on green CI:
 
-1. **`auto-merge.yml`** — A GitHub Actions workflow that automatically enables squash auto-merge on every newly opened PR. The skill does NOT need to run `gh pr merge --auto`.
-2. **`pr-gate.yml`** — The CI pipeline. It detects which areas changed (API, iOS, web, infra) and runs only the relevant checks. A single **`gate`** job aggregates all results — this is the sole required status check for branch protection.
-3. When `gate` passes, auto-merge fires and the PR is squash-merged automatically.
+1. **`pr-gate.yml`** — The CI pipeline. It detects which areas changed (API, iOS, web, infra) and runs only the relevant checks. A single **`gate`** job aggregates all results — this is the sole required status check for branch protection.
+2. **`auto-merge.yml` is intentionally disabled.** Claude PR-triage routines watch open PRs and handle merging themselves once they've reviewed CodeRabbit and other review comments — see CLAUDE.md, "PR merge — no auto-merge, Claude-routine triage". A green `gate` means **ready for triage**, not merged.
+3. This skill's default stopping point is therefore "PR Gate passed, PR open" — not "merged." Only merge yourself (Step 7a) when the user is live in the session and explicitly asks you to; never in an automated or scheduled context (cron routine, unattended `/loop`).
 
 ## Workflow
 
@@ -81,11 +81,11 @@ EOF
 
 **PR body:** List each commit as a bullet point under "## Changes".
 
-**Default behavior:** Report the PR URL and proceed straight to Step 6 (watch CI). Do not ask — just do it. The user expects to walk away after typing "ship it". Auto-merge is enabled automatically by the `auto-merge.yml` workflow — do not run `gh pr merge --auto` yourself.
+**Default behavior:** Report the PR URL and proceed straight to Step 6 (watch CI). Do not ask — just do it. The user expects to walk away after typing "ship it", to a PR that's through CI and waiting for triage, not necessarily merged. Do not run `gh pr merge` at this point — that's Step 7a, and only on explicit request.
 
 > PR created: <url>
 >
-> Auto-merge will be enabled by CI. Watching for PR Gate...
+> Watching for PR Gate...
 
 **Exception:** If the user explicitly says "leave it open", "don't merge", or similar — report the PR URL and stop. The skill ends here.
 
@@ -102,7 +102,7 @@ The **PR Gate** (`gate` job in `pr-gate.yml`) is the sole required status check.
 
 The `gate` job passes if every triggered check passes (skipped checks are fine).
 
-**Watch for checks to complete.** Preferred: run `scripts/wf/watch-pr.sh <pr-number>` as a **background** Bash task — it blocks on the gate and prints one verdict (`MERGED` / `MERGED_PENDING` / `FAILED: <checks>` / `TIMEOUT`), so you don't hold a live model turn babysitting the watch; re-engage only on the result and diagnose only on `FAILED`. It wraps the same underlying command, which stays the direct fallback:
+**Watch for checks to complete.** Preferred: run `scripts/wf/watch-pr.sh <pr-number>` as a **background** Bash task — it blocks on the gate and prints one verdict (`GATE_PASSED` / `FAILED: <checks>` / `TIMEOUT`), so you don't hold a live model turn babysitting the watch; re-engage only on the result and diagnose only on `FAILED`. It only watches the gate — it never polls for or performs a merge, since auto-merge is disabled. It wraps the same underlying command, which stays the direct fallback:
 
 ```bash
 gh pr checks <pr-number> --watch --fail-fast
@@ -112,7 +112,7 @@ Run this with the Bash tool's **timeout set to 600000ms** (10 minutes). The comm
 
 - **Exit 0** → all checks passed. Proceed to Step 7.
 - **Non-zero exit** → a check failed. Enter the **failure handling** below.
-- **Timeout** → report the PR URL and stop. Auto-merge remains enabled — no work is lost.
+- **Timeout** → report the PR URL and stop. Nothing is lost — the PR stays open, checks keep running server-side, and you (or a later invocation) can re-check with `gh pr checks <pr-number>`.
 
 If you need to inspect individual check statuses (e.g., after a failure), query with JSON:
 
@@ -146,20 +146,30 @@ If any check fails:
    ```
    This re-triggers the CI pipeline. Return to the poll loop in Step 6.
 
-4. **Limit:** Make at most **3 rounds** of fixes. If the gate still hasn't passed after 3 rounds, report the outstanding failures and the PR URL, then stop. Auto-merge remains enabled.
+4. **Limit:** Make at most **3 rounds** of fixes. If the gate still hasn't passed after 3 rounds, report the outstanding failures and the PR URL, then stop. The PR stays open either way.
 
-### Step 7: Confirm merge and clean up
+### Step 7: Report and stop
 
-Once the gate passes, auto-merge will squash-merge the PR. Wait for it:
+Once `gate` passes, **stop here by default.** Report:
+
+> PR Gate passed: <url>
+>
+> Ready for triage — not merged. This repo's Auto-merge is intentionally disabled so Claude PR-triage routines can review CodeRabbit and other comments before merge (CLAUDE.md, "PR merge — no auto-merge, Claude-routine triage"). Say so if you'd like me to merge it now.
+
+Do not run `gh pr merge`, do not clean up the worktree/branch, and do not touch beads sync here — none of that is appropriate until the PR is actually merged, and merging isn't this skill's default job anymore. The skill ends here unless Step 7a applies.
+
+### Step 7a: Merge on explicit request (interactive sessions only)
+
+Only do this when the user is live in the session and explicitly asks for the PR to be merged now (e.g. "merge it", "go ahead and merge #1028"). **Never do this in an automated or scheduled context** — a cron routine, an unattended `/loop`, or any invocation not driven by the user typing in real time. Work completed on a schedule can land while the user has no chance to look at it first; that's exactly the case the disabled Auto-merge workflow and the triage routines exist to cover. If you're unsure whether the current invocation counts as "live," don't merge — report gate-passed (Step 7) and ask.
 
 ```bash
-# Confirm the PR merged (poll briefly if needed)
-gh pr view <pr-number> --json state -q '.state'
+gh pr merge <pr-number> --squash
 ```
 
-Once state is `"MERGED"`, detect your context before cleanup:
+Then clean up:
 
 ```bash
+gh pr view <pr-number> --json state -q '.state'   # confirm MERGED
 bd worktree list
 ```
 
@@ -206,7 +216,7 @@ bd worktree list
    git branch -a
    ```
 
-### Step 8: Sync beads and verify
+### Step 8: Sync beads and verify (after Step 7a only)
 
 Push beads data to the Dolt remote — this is separate from git and must happen after every merge:
 
@@ -225,5 +235,5 @@ Report success with the PR URL.
 - **Not on main or a feature branch:** Stop. Tell the user which branch they're on and ask what to do.
 - **Nothing to ship:** Tell the user. Don't create empty PRs.
 - **CI gate failed:** Report which checks failed, show relevant log output, and the PR URL. Fix mechanical issues (format, lint, tests) up to 3 rounds. For infrastructure/environment failures, stop and report.
-- **Timeout (15 min, gate not complete):** Report current check states and PR URL. Auto-merge remains enabled — no work lost.
+- **Timeout (15 min, gate not complete):** Report current check states and PR URL. The PR stays open — no work lost.
 - **gh CLI not authenticated:** Tell the user to run `gh auth login`.

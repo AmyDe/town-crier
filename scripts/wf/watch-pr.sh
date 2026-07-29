@@ -5,29 +5,24 @@
 # Usage: watch-pr.sh <pr-number>
 #   Best run as a background Bash task; re-engage the model on the result.
 #
+# auto-merge.yml is intentionally disabled in this repo (Claude PR-triage
+# routines merge after reviewing CodeRabbit/other comments — see CLAUDE.md,
+# "PR merge — no auto-merge, Claude-routine triage"), so a green gate does not
+# imply an imminent merge. This script only watches the gate; it never polls
+# for or performs a merge itself.
+#
 # Prints exactly one of:
-#   MERGED           — gate passed and the PR was squash-merged by auto-merge.yml
-#   MERGED_PENDING   — gate passed; merge not yet observed (auto-merge will finish)
+#   GATE_PASSED      — gate passed; PR is open, ready for triage/merge
 #   FAILED: <checks> — one or more checks failed (comma-separated names)
 #   TIMEOUT          — checks did not resolve
-# Exit code mirrors the verdict (0 merged/pending, 1 failed, 2 timeout).
+# Exit code mirrors the verdict (0 passed, 1 failed, 2 timeout).
 set -eo pipefail
 
 pr="${1:?usage: watch-pr.sh <pr-number>}"
 
 # Block until every check resolves; --fail-fast exits non-zero on first failure.
 if gh pr checks "$pr" --watch --fail-fast >/dev/null 2>&1; then
-  # Gate green — auto-merge.yml squash-merges shortly. Poll briefly for MERGED.
-  i=0
-  while [ "$i" -lt 30 ]; do
-    state=$(gh pr view "$pr" --json state -q '.state' 2>/dev/null || echo "")
-    if [ "$state" = "MERGED" ]; then
-      echo "MERGED"; exit 0
-    fi
-    i=$((i + 1))
-    sleep 5
-  done
-  echo "MERGED_PENDING"; exit 0
+  echo "GATE_PASSED"; exit 0
 fi
 
 # Non-zero: a check failed (or none exist). List the failing check names.
