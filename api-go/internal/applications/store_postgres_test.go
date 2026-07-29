@@ -423,6 +423,14 @@ func TestPostgresStore_Upsert_NilOtherFields_OverwritesPreviousValue(t *testing.
 		t.Fatalf("Upsert first: %v", err)
 	}
 
+	gotFirst, found, err := store.GetByUID(ctx, "nil-overwrite-uid", "100")
+	if err != nil || !found {
+		t.Fatalf("GetByUID after first upsert: found=%v err=%v", found, err)
+	}
+	if gotFirst.OtherFields["comment_url"] != "https://example.test/comment" {
+		t.Fatalf("first OtherFields was not persisted: %+v", gotFirst.OtherFields)
+	}
+
 	second := first
 	second.OtherFields = nil
 	if err := store.Upsert(ctx, second); err != nil {
