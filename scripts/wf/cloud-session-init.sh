@@ -26,8 +26,9 @@
 #      insteadOf rewrite. Never "fix" this with bd migrate --update-repo-id
 #      from a cloud session — repo_id syncs via DoltHub and rewriting it
 #      would break the Mac on its next pull.
-#   3. Hydrate the Dolt-backed issue DB from the DoltHub remote (fresh
-#      clone), or pull to freshen one restored from the environment cache.
+#   3. Hydrate the Dolt-backed issue DB as a fresh clone from the DoltHub
+#      remote, discarding any clone restored from the environment cache.
+#      Never merge with a cached clone — see the long note at step 3.
 
 [ "${CLAUDE_CODE_REMOTE:-}" = "true" ] || exit 0
 set -euo pipefail
@@ -60,16 +61,41 @@ if [ "$current_origin" != "$canonical" ]; then
   git -C "$repo_root" config url."$proxy_prefix".insteadOf "git@github.com-amyde:"
 fi
 
-# 3. Beads DB: hydrate or freshen
+# 3. Beads DB: always a fresh clone of the DoltHub remote.
+#
+# This deliberately discards any .beads/dolt restored from the environment
+# cache rather than merging with it. The cache can carry a clone from an
+# earlier session holding Dolt commits that never reached DoltHub — a run
+# whose push failed, or one killed mid-flight. `bd dolt pull` on such a clone
+# is a three-way merge: it hits per-row conflicts on the issues table, aborts
+# with "merge conflicts in issues require operator resolution", and restores
+# the working set. Nothing changes, so the next session repeats the same
+# failed merge. The clone can never self-heal and every scheduled run dies in
+# preflight. Observed 2026-07-29 against a clone cached on 2026-07-28 that
+# held 16 unpushed commits (tc-812ni's own, made while creds were still
+# broken — the session fixing the push bug stranded its own history).
+#
+# Local-only history is never worth preserving here. The routines push after
+# every bd mutation and abort if the push fails, so anything of value is
+# already on the remote by construction; whatever is local-only is the
+# residue of a failed run. Re-cloning is ~1 minute against this DB and is the
+# only path, so it stays exercised and cannot rot.
 chmod 700 "$repo_root/.beads"
 cd "$repo_root"
-if [ -d .beads/dolt/town_crier ]; then
-  bd dolt pull
-else
-  # bd bootstrap's metadata-reconcile step reads the server port file, which
-  # doesn't exist yet on a fresh clone — start the server first to write it.
-  bd dolt start
-  bd bootstrap
+bd dolt stop >/dev/null 2>&1 || true
+rm -rf "$repo_root/.beads/dolt"
+# bd bootstrap's metadata-reconcile step reads the server port file, which
+# doesn't exist yet on a fresh clone — start the server first to write it.
+bd dolt start
+bd bootstrap
+
+# Fail loudly rather than hand a routine a DB that isn't actually current:
+# a clean clone must pull as a no-op.
+if ! bd dolt pull; then
+  echo "cloud-session-init FATAL: freshly cloned beads DB still cannot pull" >&2
+  echo "from origin. Do NOT work around this by skipping preflight — the" >&2
+  echo "backlog would be stale or diverged and bead decisions unsafe." >&2
+  exit 1
 fi
 
 echo "cloud-session-init: dolt creds installed, origin fingerprint set, beads DB ready"
