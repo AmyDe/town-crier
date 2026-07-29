@@ -216,6 +216,7 @@ func (h *handler) runVerify(ctx context.Context, userID string, signedTransactio
 		}
 		return verifyResponse{}, fmt.Errorf("load profile %q: %w", userID, err)
 	}
+	tierBefore := profile.Tier
 
 	now := h.now()
 	highestTier := profiles.TierFree
@@ -285,6 +286,17 @@ func (h *handler) runVerify(ctx context.Context, userID string, signedTransactio
 	// it through EffectiveTier keeps the contract that no entitlement read trusts
 	// the raw stored Tier.
 	effective := profile.EffectiveTier(now)
+
+	// tc-mqa4: log the verify outcome at info so we can confirm from server logs
+	// alone whether a verify call arrived and what it resolved to, without
+	// logging anything user-identifying (no userID, no JWS/transaction content,
+	// no Apple original transaction id).
+	h.logger.InfoContext(ctx, "subscription verify completed",
+		"tier", effective.String(),
+		"transactionCount", len(signedTransactions),
+		"tierChanged", profile.Tier != tierBefore,
+	)
+
 	return verifyResponse{
 		Tier:               effective.String(),
 		SubscriptionExpiry: platform.DotNetTimePtr(profile.SubscriptionExpiry),
