@@ -1,6 +1,7 @@
 package subscriptions
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -138,6 +139,13 @@ func newTestDeps() *testDeps {
 }
 
 func newTestDepsWithEnvs(allowedEnvs []string) *testDeps {
+	return newTestDepsWithEnvsAndLogger(allowedEnvs, slog.New(slog.DiscardHandler))
+}
+
+// newTestDepsWithEnvsAndLogger wires the handler exactly like
+// newTestDepsWithEnvs but with a caller-supplied logger, so tests can assert
+// on emitted log lines.
+func newTestDepsWithEnvsAndLogger(allowedEnvs []string, logger *slog.Logger) *testDeps {
 	d := &testDeps{
 		verifier:    &fakeVerifier{results: map[string]string{}, errs: map[string]error{}},
 		byUser:      &fakeProfileByUser{},
@@ -147,7 +155,7 @@ func newTestDepsWithEnvs(allowedEnvs []string) *testDeps {
 		mux:         http.NewServeMux(),
 	}
 	Routes(d.mux, d.verifier, d.byUser, d.byTxn, d.auth0, d.idempotency, testBundleID, allowedEnvs,
-		func() time.Time { return testNow }, slog.New(slog.DiscardHandler))
+		func() time.Time { return testNow }, logger)
 	return d
 }
 
@@ -890,6 +898,142 @@ func TestWebhook_RejectsOversizedPayloadBeforeVerify(t *testing.T) {
 	}
 	if d.verifier.callCount != 0 {
 		t.Errorf("verifier called %d time(s), want 0 — expensive crypto must not run on oversized input", d.verifier.callCount)
+	}
+}
+
+// --- observability tests (tc-mqa4) ---
+
+// decodeJSONLogLines splits newline-delimited JSON log output into decoded
+// records, skipping blank lines.
+func decodeJSONLogLines(t *testing.T, raw []byte) []map[string]any {
+	t.Helper()
+	var lines []map[string]any
+	for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+		if line == "" {
+			continue
+		}
+		var m map[string]any
+		if err := json.Unmarshal([]byte(line), &m); err != nil {
+			t.Fatalf("decode log line %q: %v", line, err)
+		}
+		lines = append(lines, m)
+	}
+	return lines
+}
+
+// findLogLine returns the first decoded log record whose "msg" field matches
+// msg, and whether one was found.
+func findLogLine(lines []map[string]any, msg string) (map[string]any, bool) {
+	for _, l := range lines {
+		if l["msg"] == msg {
+			return l, true
+		}
+	}
+	return nil, false
+}
+
+// TestVerify_LogsOutcomeOnSuccess pins the tc-mqa4 observability requirement:
+// a successful verify must emit a single info-level "subscription verify
+// completed" log line reporting the resulting tier, how many signed
+// transactions were submitted, and whether the call changed the stored tier
+// — with no userID, JWS/transaction content, or Apple original transaction id
+// anywhere in the record.
+func TestVerify_LogsOutcomeOnSuccess(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+	d := newTestDepsWithEnvsAndLogger(testAllowedEnvs, logger)
+	d.byUser.profile = freshProfile(t) // starts Free
+	d.verifier.results["JWS_PRO"] = txnJSON(ProductProMonthly, testBundleID, "orig-1", futureExpiryMs())
+
+	rec := d.serve(t, "/v1/subscriptions/verify", `{"signedTransaction":"JWS_PRO"}`, true)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+
+	line, ok := findLogLine(decodeJSONLogLines(t, buf.Bytes()), "subscription verify completed")
+	if !ok {
+		t.Fatalf("expected info log %q not found in log output: %s", "subscription verify completed", buf.String())
+	}
+	if line["tier"] != "Pro" {
+		t.Errorf("tier = %v, want %q", line["tier"], "Pro")
+	}
+	if line["transactionCount"] != float64(1) {
+		t.Errorf("transactionCount = %v, want 1", line["transactionCount"])
+	}
+	if line["tierChanged"] != true {
+		t.Errorf("tierChanged = %v, want true (Free -> Pro)", line["tierChanged"])
+	}
+	for _, forbidden := range []string{"userID", "user", "signedTransaction", "originalTransactionId", "jws"} {
+		if _, present := line[forbidden]; present {
+			t.Errorf("log line must not contain %q, got %v", forbidden, line[forbidden])
+		}
+	}
+	if strings.Contains(buf.String(), testUserID) {
+		t.Errorf("log output must not contain the userID %q: %s", testUserID, buf.String())
+	}
+	if strings.Contains(buf.String(), "orig-1") {
+		t.Errorf("log output must not contain the Apple original transaction id: %s", buf.String())
+	}
+}
+
+// TestVerify_LogsNoChangeOnIdempotentReVerify pins tierChanged=false for a
+// re-verify that resolves to the same tier the profile already had.
+func TestVerify_LogsNoChangeOnIdempotentReVerify(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+	d := newTestDepsWithEnvsAndLogger(testAllowedEnvs, logger)
+	p := freshProfile(t) // UserID = testUserID
+	d.byUser.profile = p
+	d.byTxn.profilesByTxnID = map[string]*profiles.UserProfile{"orig-1": p}
+	d.verifier.results["JWS_REVERIFY"] = txnJSON(ProductProMonthly, testBundleID, "orig-1", futureExpiryMs())
+
+	// First verify: Free -> Pro.
+	rec := d.serve(t, "/v1/subscriptions/verify", `{"signedTransaction":"JWS_REVERIFY"}`, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("first verify status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	buf.Reset()
+
+	// Second verify with the same already-active transaction: Pro -> Pro, a no-op.
+	rec = d.serve(t, "/v1/subscriptions/verify", `{"signedTransaction":"JWS_REVERIFY"}`, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("second verify status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+
+	line, ok := findLogLine(decodeJSONLogLines(t, buf.Bytes()), "subscription verify completed")
+	if !ok {
+		t.Fatalf("expected info log not found in log output: %s", buf.String())
+	}
+	if line["tier"] != "Pro" {
+		t.Errorf("tier = %v, want %q", line["tier"], "Pro")
+	}
+	if line["tierChanged"] != false {
+		t.Errorf("tierChanged = %v, want false (Pro -> Pro re-verify)", line["tierChanged"])
+	}
+}
+
+// TestVerify_LogsOnly_NoInfoLogOnFailure asserts that a verify request that
+// fails before reaching the success path (e.g. JWS verification failure)
+// does not emit the "subscription verify completed" info log — only the
+// existing error-path logging behaviour is preserved.
+func TestVerify_LogsOnly_NoInfoLogOnFailure(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+	d := newTestDepsWithEnvsAndLogger(testAllowedEnvs, logger)
+	d.byUser.profile = freshProfile(t)
+	d.verifier.errs["BAD"] = &JWSVerificationError{Message: "tampered"}
+
+	rec := d.serve(t, "/v1/subscriptions/verify", `{"signedTransaction":"BAD"}`, true)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401 (body=%s)", rec.Code, rec.Body.String())
+	}
+	if _, ok := findLogLine(decodeJSONLogLines(t, buf.Bytes()), "subscription verify completed"); ok {
+		t.Errorf("success log must not be emitted on a failed verify: %s", buf.String())
 	}
 }
 
