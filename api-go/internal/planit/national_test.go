@@ -67,6 +67,9 @@ func TestBuildNationalDeltaPath(t *testing.T) {
 			if !containsString(fields, "last_different") {
 				t.Errorf("select must contain the sort field last_different: got %v", fields)
 			}
+			if !containsString(fields, "other_fields") {
+				t.Errorf("select must contain other_fields (GH#1027 regression: an absent select field nulls the stored value on every re-poll): got %v", fields)
+			}
 		})
 	}
 }
@@ -214,6 +217,9 @@ func TestBuildUIDPath(t *testing.T) {
 	fields := strings.Split(got.Get("select"), ",")
 	if !containsString(fields, "area_id") {
 		t.Errorf("uid hydration must request the full ingest set (area_id needed for authority partitioning): got %v", fields)
+	}
+	if !containsString(fields, "other_fields") {
+		t.Errorf("select must contain other_fields (GH#1027 regression: an absent select field nulls the stored value on every re-poll): got %v", fields)
 	}
 }
 

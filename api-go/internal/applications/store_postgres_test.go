@@ -405,6 +405,47 @@ func TestPostgresStore_Upsert_OverwritesOtherFieldsOnSecondUpsert(t *testing.T) 
 	}
 }
 
+// TestPostgresStore_Upsert_NilOtherFields_OverwritesPreviousValue is a
+// characterization test for GH#1027 / tc-vealu: upserting a record whose
+// incoming OtherFields is nil (e.g. because the caller's select projection
+// didn't request it) NULLs a previously-stored non-nil value. This is
+// intentional, not a bug — see GH#1027's "open question" for the rationale —
+// and is deliberately NOT mitigated with a COALESCE in upsertQuery, so this
+// test exists to catch anyone changing that decision silently.
+func TestPostgresStore_Upsert_NilOtherFields_OverwritesPreviousValue(t *testing.T) {
+	ctx := context.Background()
+	store := newAppPGStore(t)
+
+	first := pgApp("24/0009/FUL", 100)
+	first.UID = "nil-overwrite-uid"
+	first.OtherFields = map[string]any{"comment_url": "https://example.test/comment"}
+	if err := store.Upsert(ctx, first); err != nil {
+		t.Fatalf("Upsert first: %v", err)
+	}
+
+	gotFirst, found, err := store.GetByUID(ctx, "nil-overwrite-uid", "100")
+	if err != nil || !found {
+		t.Fatalf("GetByUID after first upsert: found=%v err=%v", found, err)
+	}
+	if gotFirst.OtherFields["comment_url"] != "https://example.test/comment" {
+		t.Fatalf("first OtherFields was not persisted: %+v", gotFirst.OtherFields)
+	}
+
+	second := first
+	second.OtherFields = nil
+	if err := store.Upsert(ctx, second); err != nil {
+		t.Fatalf("Upsert second: %v", err)
+	}
+
+	got, found, err := store.GetByUID(ctx, "nil-overwrite-uid", "100")
+	if err != nil || !found {
+		t.Fatalf("GetByUID: found=%v err=%v", found, err)
+	}
+	if got.OtherFields != nil {
+		t.Errorf("OtherFields: got %v, want nil (a nil incoming value must overwrite the previously-stored one)", got.OtherFields)
+	}
+}
+
 // TestPostgresStore_Upsert_FullFieldsNullRoundTripAsNil proves an application
 // with none of the seven new fields set stores and reads back all of them as
 // nil/empty, not the JSON literal "null" or an empty (non-nil) map.

@@ -2,9 +2,8 @@
 // query shapes the old per-authority drain (client.go) never needed: a
 // national (no-auth) query masked by start_date or decided_start so the
 // re-index churn that dominates the raw last_different axis is filtered out
-// upstream, a select projection (mandatory on every one of these requests —
-// PlanIt's other_fields is ~60% of a record's bytes and nothing here reads it
-// back), and compress=on. FetchApplicationsPage (client.go) is unchanged and
+// upstream, a select projection (mandatory on every one of these requests),
+// and compress=on. FetchApplicationsPage (client.go) is unchanged and
 // untouched by this file.
 package planit
 
@@ -37,7 +36,7 @@ var ingestSelectFields = []string{
 	"name", "uid", "area_name", "area_id", "address", "postcode", "description",
 	"app_type", "app_state", "app_size", "start_date", "decided_date", "consulted_date",
 	"location_x", "location_y", "url", "link", "last_different", "reference", "altid",
-	"associated_id", "last_changed", "last_scraped", "scraper_name",
+	"associated_id", "last_changed", "last_scraped", "scraper_name", "other_fields",
 }
 
 // inverseMaskSelectFields is ADR 0044 Lane C's light national projection:
