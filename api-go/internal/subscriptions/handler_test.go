@@ -956,6 +956,9 @@ func TestVerify_LogsOutcomeOnSuccess(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected info log %q not found in log output: %s", "subscription verify completed", buf.String())
 	}
+	if line["level"] != "INFO" {
+		t.Errorf("level = %v, want %q", line["level"], "INFO")
+	}
 	if line["tier"] != "Pro" {
 		t.Errorf("tier = %v, want %q", line["tier"], "Pro")
 	}
@@ -975,6 +978,9 @@ func TestVerify_LogsOutcomeOnSuccess(t *testing.T) {
 	}
 	if strings.Contains(buf.String(), "orig-1") {
 		t.Errorf("log output must not contain the Apple original transaction id: %s", buf.String())
+	}
+	if strings.Contains(buf.String(), "JWS_PRO") {
+		t.Errorf("log output must not contain the raw signed transaction: %s", buf.String())
 	}
 }
 
