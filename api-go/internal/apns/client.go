@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/codes"
 	"golang.org/x/net/http2"
@@ -94,8 +95,19 @@ func NewClient(opts Options, logger *slog.Logger, now func() time.Time) (*Client
 	transport := &http2.Transport{
 		TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12},
 	}
+	httpClient := tracedPushClient(transport)
+	return newClientWithBaseURL(opts, opts.baseURL(), httpClient, logger, now)
+}
+
+// tracedPushClient wraps base with the same redaction-then-tracing chain
+// NewClient applies in production, so tests can exercise the real
+// construction seam against a stub transport instead of re-assembling it by
+// hand — a regression that drops either wrapper here is caught by both. opts
+// forwards to WrapHTTPClient; production passes none (global tracer
+// provider), tests pass otelhttp.WithTracerProvider for hermetic assertions.
+func tracedPushClient(base http.RoundTripper, opts ...otelhttp.Option) *http.Client {
 	httpClient := &http.Client{
-		Transport: transport,
+		Transport: base,
 		Timeout:   requestTimeout,
 	}
 	// Redact the device token from the request URL before otelhttp records it
@@ -104,13 +116,12 @@ func NewClient(opts Options, logger *slog.Logger, now func() time.Time) (*Client
 	// (applied next, by WrapHTTPClient) still starts the span first and calls
 	// this RoundTripper afterwards, letting it overwrite url.full before the
 	// request reaches transport for the real network call.
-	httpClient.Transport = &platform.RedactingTransport{Next: transport, Redact: redactPushURL}
+	httpClient.Transport = &platform.RedactingTransport{Next: base, Redact: redactPushURL}
 	// Wrap the transport so every APNs push emits an OTel client span
 	// (Type=HTTP in AppDependencies) named "APNs push". api.push.apple.com lands
 	// in server.address; the static span name keeps cardinality low (no per-device
 	// token in the name).
-	httpClient = platform.WrapHTTPClient(httpClient, func(string, *http.Request) string { return "APNs push" })
-	return newClientWithBaseURL(opts, opts.baseURL(), httpClient, logger, now)
+	return platform.WrapHTTPClient(httpClient, func(string, *http.Request) string { return "APNs push" }, opts...)
 }
 
 // newClientWithBaseURL is the constructor seam shared by NewClient and tests. It

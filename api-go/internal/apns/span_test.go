@@ -95,8 +95,11 @@ func TestSendOne_EmitsClientSpan(t *testing.T) {
 // span's url.full attribute never carries the raw device token — otelhttp
 // records the real request URL (including /3/device/<token>) into url.full
 // before the request reaches the transport, so the client must wrap its base
-// transport with platform.RedactingTransport (as NewClient does) to overwrite
-// it with the same 8-char-prefix redaction the logging layer uses.
+// transport with platform.RedactingTransport to overwrite it with the same
+// 8-char-prefix redaction the logging layer uses. It builds the client
+// through tracedPushClient, the same construction seam NewClient uses in
+// production, so a regression that drops either wrapper from NewClient fails
+// this test too.
 func TestSendOne_RedactsDeviceTokenFromSpanURL(t *testing.T) {
 	t.Parallel()
 
@@ -115,14 +118,7 @@ func TestSendOne_RedactsDeviceTokenFromSpanURL(t *testing.T) {
 		TeamID:   "4574VQ7N2X",
 		BundleID: "uk.towncrierapp.mobile",
 	}
-	traced := platform.WrapHTTPClient(
-		&http.Client{Transport: &platform.RedactingTransport{
-			Next:   srv.Client().Transport,
-			Redact: redactPushURL,
-		}},
-		func(string, *http.Request) string { return "APNs push" },
-		otelhttp.WithTracerProvider(tp),
-	)
+	traced := tracedPushClient(srv.Client().Transport, otelhttp.WithTracerProvider(tp))
 	client, err := newClientWithBaseURL(opts, srv.URL, traced, testLogger(), func() time.Time {
 		return time.Unix(1_700_000_000, 0).UTC()
 	})
