@@ -290,7 +290,27 @@ func (h *InverseMaskLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 		// exact-instant skips above — so both the cursor and last_poll_time
 		// advance even on a mid-page bail, and the next pass resumes past
 		// what this one already handled instead of re-walking it forever.
-		newCursor := &PollCursor{DifferentStart: epochLower, NextIndex: startIndex + i, KnownTotal: res.Total}
+		nextIndex := startIndex + i
+		// tc-6u4da: a cluster of permanently-unhydratable rows (FetchByUID
+		// genuinely has no matching record for them, forever) never dedupes
+		// via GetByUID/inverseMaskDiffers, so every one of them burns a
+		// hydration-cap slot on every single pass. Because
+		// resumeOverlapRecords (100) is much bigger than maxHydrationsPerPass
+		// (25), a resume that lands near such a cluster can hit the cap
+		// after attempting only maxHydrationsPerPass hydrations — i banked
+		// well short of the overlap this resume already subtracted — so the
+		// raw startIndex+i checkpoint can land BELOW the cursor this call
+		// loaded. Left alone that retreats the persisted cursor, and since
+		// the same cluster is still there next pass, it retreats again,
+		// spiralling the epoch drain backward indefinitely instead of
+		// stalling in place. Clamp to the loaded cursor's own NextIndex (only
+		// meaningful when a cursor was actually loaded — a freshly-anchored
+		// epoch has no prior checkpoint to protect) so a stuck cluster can at
+		// worst flatline the checkpoint, never walk it backward.
+		if cursor != nil && nextIndex < cursor.NextIndex {
+			nextIndex = cursor.NextIndex
+		}
+		newCursor := &PollCursor{DifferentStart: epochLower, NextIndex: nextIndex, KnownTotal: res.Total}
 		if serr := h.watermark.save(ctx, now, epochUpper, newCursor); serr != nil && out.err == nil {
 			out.err = serr
 		}
@@ -311,6 +331,16 @@ func (h *InverseMaskLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 			out.err = serr
 		}
 	} else {
+		// tc-6u4da: same clamp as the stoppedEarly branch above, applied here
+		// for consistency/defense-in-depth. In practice a fully-consumed
+		// page's nextIndex is normally well past the prior checkpoint
+		// already, so this branch is unlikely to ever need it — but nothing
+		// stops a caller from getting here with a small page and a large
+		// loaded cursor, and monotonic advance should hold everywhere this
+		// lane persists NextIndex, not just on the hydration-cap path.
+		if cursor != nil && nextIndex < cursor.NextIndex {
+			nextIndex = cursor.NextIndex
+		}
 		newCursor := &PollCursor{DifferentStart: epochLower, NextIndex: nextIndex, KnownTotal: res.Total}
 		if serr := h.watermark.save(ctx, now, epochUpper, newCursor); serr != nil && out.err == nil {
 			out.err = serr
