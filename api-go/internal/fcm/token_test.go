@@ -54,8 +54,8 @@ func newTestServiceAccountJSON(t *testing.T, tokenURI string, pemBytes []byte) s
 	return string(raw)
 }
 
-func fixedClock(unix int64) func() time.Time {
-	return func() time.Time { return time.Unix(unix, 0).UTC() }
+func fixedClock() func() time.Time {
+	return func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }
 }
 
 func TestTokenProvider_MintsValidRS256Assertion(t *testing.T) {
@@ -139,7 +139,7 @@ func TestTokenProvider_ExchangesAssertionForAccessToken(t *testing.T) {
 	defer srv.Close()
 
 	saJSON := newTestServiceAccountJSON(t, srv.URL, pemBytes)
-	provider, err := newTokenProvider([]byte(saJSON), srv.Client(), fixedClock(1_700_000_000))
+	provider, err := newTokenProvider([]byte(saJSON), srv.Client(), fixedClock())
 	if err != nil {
 		t.Fatalf("newTokenProvider: %v", err)
 	}

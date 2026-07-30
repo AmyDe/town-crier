@@ -77,7 +77,7 @@ func TestSendOne_EmitsClientSpan(t *testing.T) {
 		func(string, *http.Request) string { return "FCM push" },
 		otelhttp.WithTracerProvider(tp),
 	)
-	client, err := newClientWithBaseURL(opts, fcmSrv.URL, traced, testLogger(), fixedClock(1_700_000_000))
+	client, err := newClientWithBaseURL(opts, fcmSrv.URL, traced, testLogger(), fixedClock())
 	if err != nil {
 		t.Fatalf("newClientWithBaseURL: %v", err)
 	}
@@ -129,7 +129,7 @@ func TestSendOne_SpanURLDoesNotCarryDeviceToken(t *testing.T) {
 		func(string, *http.Request) string { return "FCM push" },
 		otelhttp.WithTracerProvider(tp),
 	)
-	client, err := newClientWithBaseURL(opts, fcmSrv.URL, traced, testLogger(), fixedClock(1_700_000_000))
+	client, err := newClientWithBaseURL(opts, fcmSrv.URL, traced, testLogger(), fixedClock())
 	if err != nil {
 		t.Fatalf("newClientWithBaseURL: %v", err)
 	}

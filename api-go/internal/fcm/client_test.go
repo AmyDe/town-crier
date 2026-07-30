@@ -43,7 +43,7 @@ func newTestClient(t *testing.T, fcmSrv, tokenSrv *httptest.Server) *Client {
 		ProjectID:          "town-crier-test",
 		ServiceAccountJSON: newTestServiceAccountJSON(t, tokenSrv.URL, pemBytes),
 	}
-	client, err := newClientWithBaseURL(opts, fcmSrv.URL, &http.Client{}, testLogger(), fixedClock(1_700_000_000))
+	client, err := newClientWithBaseURL(opts, fcmSrv.URL, &http.Client{}, testLogger(), fixedClock())
 	if err != nil {
 		t.Fatalf("newClientWithBaseURL: %v", err)
 	}
