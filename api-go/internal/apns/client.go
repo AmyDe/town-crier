@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -17,6 +18,11 @@ import (
 
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
 )
+
+// devicePathPrefix is the APNs URL path segment do() places the raw device
+// token after; redactPushURL uses it to find and redact the token before the
+// URL is recorded into the "APNs push" client span's url.full attribute.
+const devicePathPrefix = "/3/device/"
 
 // tracerName labels the "APNs delivery" wrapper span this package emits,
 // distinct from the transport-level "APNs push" HTTP client spans
@@ -92,6 +98,13 @@ func NewClient(opts Options, logger *slog.Logger, now func() time.Time) (*Client
 		Transport: transport,
 		Timeout:   requestTimeout,
 	}
+	// Redact the device token from the request URL before otelhttp records it
+	// into the span's url.full attribute (see redactPushURL). This must sit
+	// INNERMOST — wrapping transport, not httpClient — so otelhttp.NewTransport
+	// (applied next, by WrapHTTPClient) still starts the span first and calls
+	// this RoundTripper afterwards, letting it overwrite url.full before the
+	// request reaches transport for the real network call.
+	httpClient.Transport = &platform.RedactingTransport{Next: transport, Redact: redactPushURL}
 	// Wrap the transport so every APNs push emits an OTel client span
 	// (Type=HTTP in AppDependencies) named "APNs push". api.push.apple.com lands
 	// in server.address; the static span name keeps cardinality low (no per-device
@@ -288,6 +301,24 @@ func redactToken(token string) string {
 		return "***"
 	}
 	return token[:8] + "..."
+}
+
+// redactPushURL rewrites an APNs request URL for telemetry so the device
+// token in the /3/device/<token> path (see do()) is reduced to the same
+// 8-char-prefix redaction the logging layer already uses, instead of shipping
+// the raw token into the "APNs push" client span's url.full attribute
+// (App Insights, 90d retention). Wired as a platform.URLRedactor via
+// platform.RedactingTransport in NewClient. If the expected path prefix isn't
+// present — defensive, since do() always builds the URL this way — the URL is
+// returned unchanged rather than guessing at a redaction.
+func redactPushURL(r *http.Request) string {
+	full := r.URL.String()
+	idx := strings.Index(full, devicePathPrefix)
+	if idx < 0 {
+		return full
+	}
+	tokenStart := idx + len(devicePathPrefix)
+	return full[:tokenStart] + redactToken(full[tokenStart:])
 }
 
 // compile-time assertions that both senders satisfy the consumer contract.
