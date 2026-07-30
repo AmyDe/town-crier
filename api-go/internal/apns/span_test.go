@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -87,5 +88,69 @@ func TestSendOne_EmitsClientSpan(t *testing.T) {
 	}
 	if _, ok := spanAttr(span.Attributes(), "server.address"); !ok {
 		t.Errorf("missing server.address attribute (Target source); attrs=%v", span.Attributes())
+	}
+}
+
+// TestSendOne_RedactsDeviceTokenFromSpanURL asserts the "APNs push" client
+// span's url.full attribute never carries the raw device token — otelhttp
+// records the real request URL (including /3/device/<token>) into url.full
+// before the request reaches the transport, so the client must wrap its base
+// transport with platform.RedactingTransport (as NewClient does) to overwrite
+// it with the same 8-char-prefix redaction the logging layer uses.
+func TestSendOne_RedactsDeviceTokenFromSpanURL(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	tp, rec := recorderProvider(t)
+
+	pemBytes, _ := newTestKeyPEM(t)
+	opts := Options{
+		Enabled:  true,
+		AuthKey:  string(pemBytes),
+		KeyID:    "L2J5PQASN5",
+		TeamID:   "4574VQ7N2X",
+		BundleID: "uk.towncrierapp.mobile",
+	}
+	traced := platform.WrapHTTPClient(
+		&http.Client{Transport: &platform.RedactingTransport{
+			Next:   srv.Client().Transport,
+			Redact: redactPushURL,
+		}},
+		func(string, *http.Request) string { return "APNs push" },
+		otelhttp.WithTracerProvider(tp),
+	)
+	client, err := newClientWithBaseURL(opts, srv.URL, traced, testLogger(), func() time.Time {
+		return time.Unix(1_700_000_000, 0).UTC()
+	})
+	if err != nil {
+		t.Fatalf("newClientWithBaseURL: %v", err)
+	}
+
+	const token = "device-token-abc123"
+	if _, err := client.Send(context.Background(), []string{token}, []byte(`{"aps":{}}`)); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+
+	spans := rec.Ended()
+	if len(spans) != 1 {
+		t.Fatalf("expected 1 client span, got %d", len(spans))
+	}
+	span := spans[0]
+
+	got, ok := spanAttr(span.Attributes(), "url.full")
+	if !ok {
+		t.Fatalf("missing url.full attribute; attrs=%v", span.Attributes())
+	}
+	url := got.AsString()
+	if strings.Contains(url, token) {
+		t.Errorf("url.full leaked the raw device token: %q", url)
+	}
+	wantPrefix := redactToken(token)
+	if !strings.Contains(url, wantPrefix) {
+		t.Errorf("url.full %q does not contain redacted prefix %q", url, wantPrefix)
 	}
 }
