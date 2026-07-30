@@ -826,8 +826,8 @@ func TestInverseMaskLane_HydrationCapNeverRegressesCursor(t *testing.T) {
 	if got == nil {
 		t.Fatal("cursor: got nil, want a checkpoint")
 	}
-	if rawCheckpoint := startIndex + maxHydrationsPerPass; got.NextIndex < priorNextIndex {
-		t.Errorf("cursor.NextIndex regressed: got %d (raw startIndex+i would have been %d), want >= the prior checkpoint %d", got.NextIndex, rawCheckpoint, priorNextIndex)
+	if got.NextIndex != priorNextIndex {
+		t.Errorf("cursor.NextIndex: got %d, want exactly the prior checkpoint %d (raw startIndex+i would have been %d)", got.NextIndex, priorNextIndex, startIndex+maxHydrationsPerPass)
 	}
 }
 
@@ -888,8 +888,8 @@ func TestInverseMaskLane_HydrationCapFlatlinesAcrossRepeatedPasses(t *testing.T)
 		t.Fatal("second pass cursor: got nil, want a checkpoint")
 	}
 
-	if secondCursor.NextIndex < firstCursor.NextIndex {
-		t.Errorf("cursor regressed on the second pass: got %d, want >= the first pass's %d", secondCursor.NextIndex, firstCursor.NextIndex)
+	if secondCursor.NextIndex != firstCursor.NextIndex {
+		t.Errorf("cursor changed on the second pass: got %d, want exactly the first pass's %d", secondCursor.NextIndex, firstCursor.NextIndex)
 	}
 }
 
