@@ -18,9 +18,9 @@ import (
 func TestRedactingTransport_OverwritesURLFullWithoutTouchingRequest(t *testing.T) {
 	t.Parallel()
 
-	var gotPath string
+	pathCh := make(chan string, 1)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotPath = r.URL.Path
+		pathCh <- r.URL.Path
 		w.WriteHeader(http.StatusOK)
 	}))
 	t.Cleanup(srv.Close)
@@ -48,7 +48,7 @@ func TestRedactingTransport_OverwritesURLFullWithoutTouchingRequest(t *testing.T
 	_ = resp.Body.Close()
 
 	// The real network request must be untouched by the redaction.
-	if gotPath != "/3/device/super-secret-token" {
+	if gotPath := <-pathCh; gotPath != "/3/device/super-secret-token" {
 		t.Fatalf("server saw path %q, want unredacted /3/device/super-secret-token", gotPath)
 	}
 
