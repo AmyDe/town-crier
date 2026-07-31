@@ -1021,6 +1021,12 @@ expected
 		return err
 	}
 
+	// Share-page bot-filtered volume by slug (tc-kg77x / GH #1020). Analytics-layer only: two
+	// saved KQL functions over existing AppRequests telemetry, no new logging or stored data.
+	if err = createSharePageAnalytics(ctx, resourceGroup, logAnalytics); err != nil {
+		return err
+	}
+
 	// Phase 5: subscription-level hygiene.
 
 	// Service Health — replaces reliance on the auto-created azureapp-auto action group, which
@@ -1622,5 +1628,113 @@ func createLogAlert(ctx *pulumi.Context, resourceGroup *resources.ResourceGroup,
 		},
 		Tags: tags,
 	})
+	return err
+}
+
+// isLikelyBotQuery is the body of the IsLikelyBot(ua: string): bool saved KQL function
+// (tc-kg77x / GH #1020). Case-insensitive substring/token match against a maintained
+// bot/crawler UA list. To extend: add a new "|token" alternative to the regex below and
+// re-run `pulumi up` for the shared stack — no other file needs to change. Regex-escape any
+// character that is special in RE2 (e.g. the literal "+" in "\\+http").
+//
+// The list starts from the ad hoc regex used in the GH #1020 investigation
+// (bot|spider|crawl|slurp|facebookexternalhit|whatsapp|telegrambot|slackbot|discordbot|
+// preview|headless|curl|python-requests|go-http-client — 91% of /a/ traffic over a 27-day
+// sample), plus two confirmed misses from that same investigation (Google's screen-reader
+// crawler, which carries no "bot" substring, and Facebook's own crawler, which
+// self-identifies via an embedded "+http" URL rather than a "bot" token), plus common SEO/
+// security scanners, plus the AI-crawler allowlist from web/public/robots.txt (deliberately
+// welcomed there for SEO/AI-discoverability — welcomed still means bot traffic for the
+// purposes of this volume count, not organic).
+const isLikelyBotQuery = `// IsLikelyBot(ua: string): bool — see infra/shared.go createSharePageAnalytics for how
+// this function is maintained (tc-kg77x / GH #1020).
+tolower(ua) matches regex @"(bot|spider|crawl|slurp|facebookexternalhit|whatsapp|telegrambot|slackbot|discordbot|preview|headless|curl|python-requests|go-http-client|read-aloud|webindexer|\+http|ahrefsbot|semrushbot|mj12bot|dotbot|censys|zgrab|masscan|gptbot|oai-searchbot|chatgpt-user|google-extended|claudebot|claude-user|anthropic-ai|perplexitybot|perplexity-user|ccbot|applebot-extended)"`
+
+// sharePageHumanTrafficQuery is the body of the SharePageHumanTraffic() saved KQL function
+// (tc-kg77x / GH #1020). Combines IsLikelyBot(ua) with a burst/behavioral heuristic to catch
+// browser-spoofed crawlers presenting a generic desktop UA (the GH #1020 investigation found a
+// 2,243-hit cluster on an all-zero-build Chrome UA — real browsers never report an all-zero
+// patch/build number — hitting the same path dozens of times within minutes), then reports the
+// residual likely-organic AppRequests volume to the share-page routes
+// (`/a/{authoritySlug}/{ref...}` and `/og/{authoritySlug}/{ref...}`, ADR 0037), bucketed by
+// slug and day.
+//
+// IMPORTANT — burst threshold is an unvalidated starting estimate, not a tuned value: more
+// than 5 requests to the same url.path within a rolling 10-minute window, bucketed by UA+day.
+// Chosen because the GH #1020 sample's confirmed-bot cluster showed dozens of hits within
+// minutes to the same path, while plausible human traffic was single-digit and spread out
+// across a session — but nobody has run this function against live prod data yet (no `az`
+// CLI / Log Analytics access from the environment this was authored in). Before relying on the
+// organic-count output: run it against 30+ days of prod data from a local session with `az`
+// access, sanity-check the result against known usage, and adjust burstThreshold/burstWindow
+// below if it's over- or under-flagging.
+//
+// Where this lives: saved function "SharePageHumanTraffic" in the log-town-crier-shared Log
+// Analytics workspace (Azure Portal > Log Analytics workspaces > log-town-crier-shared > Logs >
+// Functions, or query it directly as `SharePageHumanTraffic()`). Depends on the IsLikelyBot
+// saved function existing in the same workspace (see createSharePageAnalytics below).
+const sharePageHumanTrafficQuery = `// SharePageHumanTraffic(): likely-organic AppRequests volume to the share-page routes,
+// by slug and day. See infra/shared.go createSharePageAnalytics for how this function is
+// maintained and how the burst threshold was chosen (tc-kg77x / GH #1020).
+let burstThreshold = 5;
+let burstWindow = 10m;
+let burstFlaggedUaDays =
+    AppRequests
+    | extend Ua = tostring(Properties["user_agent.original"])
+    | extend Path = tostring(Properties["url.path"])
+    | where Path startswith "/a/" or Path startswith "/og/"
+    | summarize RequestsInWindow = count() by Ua, Path, Day = bin(TimeGenerated, 1d), Window = bin(TimeGenerated, burstWindow)
+    | where RequestsInWindow > burstThreshold
+    | summarize by Ua, Day;
+AppRequests
+| extend Ua = tostring(Properties["user_agent.original"])
+| extend Path = tostring(Properties["url.path"])
+| where Path startswith "/a/" or Path startswith "/og/"
+| extend Day = bin(TimeGenerated, 1d)
+| extend Slug = extract(@"^/(?:a|og)/([^/]+)/", 1, Path)
+| where not(IsLikelyBot(Ua))
+| join kind=leftanti burstFlaggedUaDays on Ua, Day
+| summarize OrganicHits = count() by Slug, Day
+| order by Day desc, OrganicHits desc`
+
+// createSharePageAnalytics provisions the two saved KQL functions backing "genuine share-page
+// volume by slug" (tc-kg77x / GH #1020): IsLikelyBot(ua) and SharePageHumanTraffic(), which
+// calls IsLikelyBot — hence the explicit DependsOn below, so a fresh shared-stack apply creates
+// IsLikelyBot first. Analytics-layer only: both read existing AppRequests telemetry
+// (user_agent.original, url.path, TimeGenerated), which is already privacy-clean (client IPs
+// are already collapsed to the shared ingress IP, PR #998/tc-ig52w) — this adds no new logging,
+// no new stored data, nothing new tracked.
+//
+// SavedSearch's Tags field is Azure's per-search portal categorization (Name/Value pairs used
+// to help a human find a saved search), not the ARM resource-tag convention (project/managedBy)
+// used by every other resource in this file — SavedSearch has no top-level ARM tags, so there is
+// no tags parameter here. Category and the function/query names carry that identification
+// instead.
+func createSharePageAnalytics(ctx *pulumi.Context, resourceGroup *resources.ResourceGroup, logAnalytics *operationalinsights.Workspace) error {
+	isLikelyBot, err := operationalinsights.NewSavedSearch(ctx, "saved-search-is-likely-bot", &operationalinsights.SavedSearchArgs{
+		SavedSearchId:      pulumi.String("share-page-is-likely-bot"),
+		ResourceGroupName:  resourceGroup.Name,
+		WorkspaceName:      logAnalytics.Name,
+		Category:           pulumi.String("Town Crier/Share Page Analytics"),
+		DisplayName:        pulumi.String("IsLikelyBot"),
+		FunctionAlias:      pulumi.String("IsLikelyBot"),
+		FunctionParameters: pulumi.String("ua:string"),
+		Query:              pulumi.String(isLikelyBotQuery),
+		Version:            pulumi.Float64(2),
+	})
+	if err != nil {
+		return err
+	}
+
+	_, err = operationalinsights.NewSavedSearch(ctx, "saved-search-share-page-human-traffic", &operationalinsights.SavedSearchArgs{
+		SavedSearchId:     pulumi.String("share-page-human-traffic"),
+		ResourceGroupName: resourceGroup.Name,
+		WorkspaceName:     logAnalytics.Name,
+		Category:          pulumi.String("Town Crier/Share Page Analytics"),
+		DisplayName:       pulumi.String("SharePageHumanTraffic"),
+		FunctionAlias:     pulumi.String("SharePageHumanTraffic"),
+		Query:             pulumi.String(sharePageHumanTrafficQuery),
+		Version:           pulumi.Float64(2),
+	}, pulumi.DependsOn([]pulumi.Resource{isLikelyBot}))
 	return err
 }
