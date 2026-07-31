@@ -11,7 +11,7 @@
 .backLink {
   color: var(--tc-text-primary);
   text-decoration: none;
-  font-weight: var(--tc-font-semibold);
+  font-weight: var(--tc-weight-semibold);
   font-size: var(--tc-text-caption);
 }
 
@@ -34,7 +34,7 @@
 .fieldLabel {
   display: block;
   font-size: var(--tc-text-caption);
-  font-weight: var(--tc-font-semibold);
+  font-weight: var(--tc-weight-semibold);
   color: var(--tc-text-secondary);
   margin-bottom: var(--tc-space-xs);
 }
@@ -69,7 +69,7 @@
   padding: var(--tc-space-sm) var(--tc-space-md);
   margin-top: var(--tc-space-md);
   font-size: var(--tc-text-body);
-  font-weight: var(--tc-font-semibold);
+  font-weight: var(--tc-weight-semibold);
   color: var(--tc-text-on-accent);
   background: var(--tc-amber);
   border: none;
@@ -104,14 +104,14 @@
 
 .sectionTitle {
   font-size: var(--tc-text-body);
-  font-weight: var(--tc-font-semibold);
+  font-weight: var(--tc-weight-semibold);
   color: var(--tc-text-primary);
   margin: 0 0 var(--tc-space-md) 0;
 }
 
 .preferencesGroupTitle {
   font-size: var(--tc-text-caption);
-  font-weight: var(--tc-font-semibold);
+  font-weight: var(--tc-weight-semibold);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--tc-text-secondary);
