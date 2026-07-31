@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
@@ -157,12 +158,28 @@ func (f *fakeDevSeed) Run(context.Context) (int, error) {
 	return f.ingested, f.err
 }
 
+// fakeAppStoreReconcile is a hand-written double for the AppStoreReconcileRunner
+// the dispatcher invokes. It records the call and can be primed with
+// scanned/gap/applied counts or an error.
+type fakeAppStoreReconcile struct {
+	calls   int
+	scanned int
+	gaps    int
+	applied int
+	err     error
+}
+
+func (f *fakeAppStoreReconcile) Run(context.Context) (int, int, int, error) {
+	f.calls++
+	return f.scanned, f.gaps, f.applied, f.err
+}
+
 func TestRun_UnsetModeFailsFast(t *testing.T) {
 	t.Parallel()
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, nil))
 
-	code := Run(context.Background(), "", nil, nil, nil, nil, nil, nil, nil, logger)
+	code := Run(context.Background(), "", nil, nil, nil, nil, nil, nil, nil, nil, logger)
 
 	if code != 1 {
 		t.Errorf("exit code: got %d, want 1 for unset mode", code)
@@ -177,7 +194,7 @@ func TestRun_DigestModeRunsWeeklyAndExitsZero(t *testing.T) {
 	d := &fakeDigester{}
 	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
 
-	code := Run(context.Background(), "digest", nil, d, nil, nil, nil, nil, nil, logger)
+	code := Run(context.Background(), "digest", nil, d, nil, nil, nil, nil, nil, nil, logger)
 
 	if code != 0 {
 		t.Errorf("exit code: got %d, want 0", code)
@@ -192,7 +209,7 @@ func TestRun_HourlyDigestModeRunsHourlyAndExitsZero(t *testing.T) {
 	d := &fakeDigester{}
 	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
 
-	code := Run(context.Background(), "hourly-digest", nil, d, nil, nil, nil, nil, nil, logger)
+	code := Run(context.Background(), "hourly-digest", nil, d, nil, nil, nil, nil, nil, nil, logger)
 
 	if code != 0 {
 		t.Errorf("exit code: got %d, want 0", code)
@@ -209,7 +226,7 @@ func TestRun_DigestModeWithoutHandlerExitsOne(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, nil))
 
-	code := Run(context.Background(), "digest", nil, nil, nil, nil, nil, nil, nil, logger)
+	code := Run(context.Background(), "digest", nil, nil, nil, nil, nil, nil, nil, nil, logger)
 
 	if code != 1 {
 		t.Errorf("exit code: got %d, want 1 when digest handler is unconfigured", code)
@@ -221,7 +238,7 @@ func TestRun_DigestCycleErrorExitsOne(t *testing.T) {
 	d := &fakeDigester{weeklyErr: errors.New("cosmos down")}
 	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
 
-	code := Run(context.Background(), "digest", nil, d, nil, nil, nil, nil, nil, logger)
+	code := Run(context.Background(), "digest", nil, d, nil, nil, nil, nil, nil, nil, logger)
 
 	if code != 1 {
 		t.Errorf("exit code: got %d, want 1 on digest cycle error", code)
@@ -252,7 +269,7 @@ func TestRun_PollSBRunsOrchestratorAndExitsZeroOnSuccess(t *testing.T) {
 	}}
 	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
 
-	code := Run(context.Background(), "poll-sb", nil, nil, nil, o, nil, nil, nil, logger)
+	code := Run(context.Background(), "poll-sb", nil, nil, nil, o, nil, nil, nil, nil, logger)
 
 	if code != 0 {
 		t.Errorf("exit code: got %d, want 0 for a successful poll cycle", code)
@@ -269,7 +286,7 @@ func TestRun_PollSBWithoutOrchestratorExitsOne(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, nil))
 
-	code := Run(context.Background(), "poll-sb", nil, nil, nil, nil, nil, nil, nil, logger)
+	code := Run(context.Background(), "poll-sb", nil, nil, nil, nil, nil, nil, nil, nil, logger)
 
 	if code != 1 {
 		t.Errorf("exit code: got %d, want 1 when poll-sb is unconfigured", code)
@@ -309,7 +326,7 @@ func TestRun_PollSBExitsOneOnlyWhenNoAppsAndAuthorityErrors(t *testing.T) {
 			t.Parallel()
 			o := &fakePollOrchestrator{result: tc.result}
 			logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
-			code := Run(context.Background(), "poll-sb", nil, nil, nil, o, nil, nil, nil, logger)
+			code := Run(context.Background(), "poll-sb", nil, nil, nil, o, nil, nil, nil, nil, logger)
 			if code != tc.wantExit {
 				t.Errorf("exit code: got %d, want %d", code, tc.wantExit)
 			}
@@ -331,7 +348,7 @@ func TestRun_PollSBStampsOldestHWMAttributesOnSpan(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
 
 	span := recordSingleSpan(t, func() {
-		Run(context.Background(), "poll-sb", nil, nil, nil, o, nil, nil, nil, logger)
+		Run(context.Background(), "poll-sb", nil, nil, nil, o, nil, nil, nil, nil, logger)
 	})
 
 	if span.Name() != "Polling Cycle (SB)" {
@@ -361,7 +378,7 @@ func TestRun_PollSBOmitsOldestHWMAttributesWhenAbsent(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
 
 	span := recordSingleSpan(t, func() {
-		Run(context.Background(), "poll-sb", nil, nil, nil, o, nil, nil, nil, logger)
+		Run(context.Background(), "poll-sb", nil, nil, nil, o, nil, nil, nil, nil, logger)
 	})
 
 	if _, ok := attrFloat64(span, "polling.oldest_hwm_age_seconds"); ok {
@@ -381,7 +398,7 @@ func TestRun_PollSBStampsCycleTypeOnSpan(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
 
 	span := recordSingleSpan(t, func() {
-		Run(context.Background(), "poll-sb", nil, nil, nil, o, nil, nil, nil, logger)
+		Run(context.Background(), "poll-sb", nil, nil, nil, o, nil, nil, nil, nil, logger)
 	})
 
 	if span.Name() != "Polling Cycle (SB)" {
@@ -403,7 +420,7 @@ func TestRun_PollSBExitsOneOnOrchestratorError(t *testing.T) {
 	o := &fakePollOrchestrator{err: errors.New("orchestrator blew up")}
 	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
 
-	code := Run(context.Background(), "poll-sb", nil, nil, nil, o, nil, nil, nil, logger)
+	code := Run(context.Background(), "poll-sb", nil, nil, nil, o, nil, nil, nil, nil, logger)
 
 	if code != 1 {
 		t.Errorf("exit code: got %d, want 1 on orchestrator error", code)
@@ -415,7 +432,7 @@ func TestRun_DormantCleanupRunsAndExitsZero(t *testing.T) {
 	d := &fakeDormant{deleted: 3}
 	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
 
-	code := Run(context.Background(), "dormant-cleanup", nil, nil, d, nil, nil, nil, nil, logger)
+	code := Run(context.Background(), "dormant-cleanup", nil, nil, d, nil, nil, nil, nil, nil, logger)
 
 	if code != 0 {
 		t.Errorf("exit code: got %d, want 0 (successful dormant cleanup)", code)
@@ -432,7 +449,7 @@ func TestRun_DormantCleanupWithoutHandlerExitsOne(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, nil))
 
-	code := Run(context.Background(), "dormant-cleanup", nil, nil, nil, nil, nil, nil, nil, logger)
+	code := Run(context.Background(), "dormant-cleanup", nil, nil, nil, nil, nil, nil, nil, nil, logger)
 
 	if code != 1 {
 		t.Errorf("exit code: got %d, want 1 when dormant handler is unconfigured", code)
@@ -444,7 +461,7 @@ func TestRun_DormantCleanupCycleErrorExitsOne(t *testing.T) {
 	d := &fakeDormant{err: errors.New("cosmos down")}
 	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
 
-	code := Run(context.Background(), "dormant-cleanup", nil, nil, d, nil, nil, nil, nil, logger)
+	code := Run(context.Background(), "dormant-cleanup", nil, nil, d, nil, nil, nil, nil, nil, logger)
 
 	if code != 1 {
 		t.Errorf("exit code: got %d, want 1 on dormant cleanup error", code)
@@ -456,7 +473,7 @@ func TestRun_SubscriptionSweepRunsAndExitsZero(t *testing.T) {
 	s := &fakeSweep{downgraded: 4}
 	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
 
-	code := Run(context.Background(), "subscription-sweep", nil, nil, nil, nil, s, nil, nil, logger)
+	code := Run(context.Background(), "subscription-sweep", nil, nil, nil, nil, s, nil, nil, nil, logger)
 
 	if code != 0 {
 		t.Errorf("exit code: got %d, want 0 (successful subscription sweep)", code)
@@ -473,7 +490,7 @@ func TestRun_SubscriptionSweepWithoutHandlerExitsOne(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, nil))
 
-	code := Run(context.Background(), "subscription-sweep", nil, nil, nil, nil, nil, nil, nil, logger)
+	code := Run(context.Background(), "subscription-sweep", nil, nil, nil, nil, nil, nil, nil, nil, logger)
 
 	if code != 1 {
 		t.Errorf("exit code: got %d, want 1 when sweep handler is unconfigured", code)
@@ -485,7 +502,7 @@ func TestRun_SubscriptionSweepCycleErrorExitsOne(t *testing.T) {
 	s := &fakeSweep{err: errors.New("cosmos down")}
 	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
 
-	code := Run(context.Background(), "subscription-sweep", nil, nil, nil, nil, s, nil, nil, logger)
+	code := Run(context.Background(), "subscription-sweep", nil, nil, nil, nil, s, nil, nil, nil, logger)
 
 	if code != 1 {
 		t.Errorf("exit code: got %d, want 1 on subscription sweep error", code)
@@ -497,7 +514,7 @@ func TestRun_PgPurgeRunsAndExitsZero(t *testing.T) {
 	p := &fakePurge{notifsPurged: 12, devicesPurged: 3}
 	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
 
-	code := Run(context.Background(), "pg-purge", nil, nil, nil, nil, nil, p, nil, logger)
+	code := Run(context.Background(), "pg-purge", nil, nil, nil, nil, nil, p, nil, nil, logger)
 
 	if code != 0 {
 		t.Errorf("exit code: got %d, want 0 (successful pg-purge)", code)
@@ -514,7 +531,7 @@ func TestRun_PgPurgeWithNilRunnerExitsZero(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, nil))
 
-	code := Run(context.Background(), "pg-purge", nil, nil, nil, nil, nil, nil, nil, logger)
+	code := Run(context.Background(), "pg-purge", nil, nil, nil, nil, nil, nil, nil, nil, logger)
 
 	if code != 0 {
 		t.Errorf("exit code: got %d, want 0 when purger is nil (Cosmos TTL active)", code)
@@ -529,7 +546,7 @@ func TestRun_PgPurgeCycleErrorExitsOne(t *testing.T) {
 	p := &fakePurge{err: errors.New("postgres down")}
 	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
 
-	code := Run(context.Background(), "pg-purge", nil, nil, nil, nil, nil, p, nil, logger)
+	code := Run(context.Background(), "pg-purge", nil, nil, nil, nil, nil, p, nil, nil, logger)
 
 	if code != 1 {
 		t.Errorf("exit code: got %d, want 1 on pg-purge error", code)
@@ -541,7 +558,7 @@ func TestRun_UnknownModeExitsOne(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, nil))
 
-	code := Run(context.Background(), "banana", nil, nil, nil, nil, nil, nil, nil, logger)
+	code := Run(context.Background(), "banana", nil, nil, nil, nil, nil, nil, nil, nil, logger)
 
 	if code != 1 {
 		t.Errorf("exit code: got %d, want 1 for unknown mode", code)
@@ -554,7 +571,7 @@ func TestRun_PollBootstrapSeedsAndExitsZero(t *testing.T) {
 	b := newTestBootstrapper(t, q)
 	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
 
-	code := Run(context.Background(), "poll-bootstrap", b, nil, nil, nil, nil, nil, nil, logger)
+	code := Run(context.Background(), "poll-bootstrap", b, nil, nil, nil, nil, nil, nil, nil, logger)
 
 	if code != 0 {
 		t.Errorf("exit code: got %d, want 0 (successful bootstrap)", code)
@@ -571,7 +588,7 @@ func TestRun_PollBootstrapWithoutQueueExitsOne(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, nil))
 
-	code := Run(context.Background(), "poll-bootstrap", nil, nil, nil, nil, nil, nil, nil, logger)
+	code := Run(context.Background(), "poll-bootstrap", nil, nil, nil, nil, nil, nil, nil, nil, logger)
 
 	if code != 1 {
 		t.Errorf("exit code: got %d, want 1 when Service Bus is unconfigured", code)
@@ -586,7 +603,7 @@ func TestRun_PollBootstrapProbeFailureStillExitsZero(t *testing.T) {
 	b := newTestBootstrapper(t, q)
 	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
 
-	code := Run(context.Background(), "poll-bootstrap", b, nil, nil, nil, nil, nil, nil, logger)
+	code := Run(context.Background(), "poll-bootstrap", b, nil, nil, nil, nil, nil, nil, nil, logger)
 
 	if code != 0 {
 		t.Errorf("exit code: got %d, want 0 (absorbed probe failure is not a job failure)", code)
@@ -615,7 +632,7 @@ func TestRunPollBootstrap_TagsReconciliationAttributes(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
 
 	span := recordBootstrapSpan(t, func() {
-		code := Run(context.Background(), "poll-bootstrap", b, nil, nil, nil, nil, nil, nil, logger)
+		code := Run(context.Background(), "poll-bootstrap", b, nil, nil, nil, nil, nil, nil, nil, logger)
 		if code != 0 {
 			t.Errorf("exit code: got %d, want 0", code)
 		}
@@ -650,7 +667,7 @@ func TestRunPollBootstrap_TagsLeaseUnavailableAttribute(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
 
 	span := recordBootstrapSpan(t, func() {
-		code := Run(context.Background(), "poll-bootstrap", b, nil, nil, nil, nil, nil, nil, logger)
+		code := Run(context.Background(), "poll-bootstrap", b, nil, nil, nil, nil, nil, nil, nil, logger)
 		if code != 0 {
 			t.Errorf("exit code: got %d, want 0", code)
 		}
@@ -672,7 +689,7 @@ func TestRun_DevSeedRunsAndExitsZero(t *testing.T) {
 	ds := &fakeDevSeed{ingested: 3}
 	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
 
-	code := Run(context.Background(), "dev-seed", nil, nil, nil, nil, nil, nil, ds, logger)
+	code := Run(context.Background(), "dev-seed", nil, nil, nil, nil, nil, nil, ds, nil, logger)
 
 	if code != 0 {
 		t.Errorf("exit code: got %d, want 0 (successful dev-seed cycle)", code)
@@ -690,7 +707,7 @@ func TestRun_DevSeedWithoutRunnerExitsOne(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, nil))
 
-	code := Run(context.Background(), "dev-seed", nil, nil, nil, nil, nil, nil, nil, logger)
+	code := Run(context.Background(), "dev-seed", nil, nil, nil, nil, nil, nil, nil, nil, logger)
 
 	if code != 1 {
 		t.Errorf("exit code: got %d, want 1 when dev-seed is unconfigured", code)
@@ -702,9 +719,105 @@ func TestRun_DevSeedCycleErrorExitsOne(t *testing.T) {
 	ds := &fakeDevSeed{err: errors.New("postgres down")}
 	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
 
-	code := Run(context.Background(), "dev-seed", nil, nil, nil, nil, nil, nil, ds, logger)
+	code := Run(context.Background(), "dev-seed", nil, nil, nil, nil, nil, nil, ds, nil, logger)
 
 	if code != 1 {
 		t.Errorf("exit code: got %d, want 1 on dev-seed cycle error", code)
+	}
+}
+
+func TestRun_AppStoreReconcileRunsAndExitsZero(t *testing.T) {
+	t.Parallel()
+	r := &fakeAppStoreReconcile{scanned: 10, gaps: 2, applied: 1}
+	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
+
+	code := Run(context.Background(), "appstore-reconcile", nil, nil, nil, nil, nil, nil, nil, r, logger)
+
+	if code != 0 {
+		t.Errorf("exit code: got %d, want 0 (successful appstore-reconcile cycle)", code)
+	}
+	if r.calls != 1 {
+		t.Errorf("appstore-reconcile Run calls: got %d, want 1", r.calls)
+	}
+}
+
+// TestRun_AppStoreReconcileWithNilRunnerExitsZero pins the deliberate
+// deviation from runSweep/runDormant (nil = fatal): appstore-reconcile is a
+// genuinely optional feature during rollout, so unconfigured App Store Server
+// API key material must log and exit 0, not crash-loop the job.
+func TestRun_AppStoreReconcileWithNilRunnerExitsZero(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+
+	code := Run(context.Background(), "appstore-reconcile", nil, nil, nil, nil, nil, nil, nil, nil, logger)
+
+	if code != 0 {
+		t.Errorf("exit code: got %d, want 0 when appstore-reconcile is unconfigured", code)
+	}
+	if !strings.Contains(buf.String(), "appstore-reconcile") {
+		t.Errorf("log should mention appstore-reconcile, got: %s", buf.String())
+	}
+}
+
+func TestRun_AppStoreReconcileCycleErrorExitsOne(t *testing.T) {
+	t.Parallel()
+	r := &fakeAppStoreReconcile{err: errors.New("apple unreachable")}
+	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
+
+	code := Run(context.Background(), "appstore-reconcile", nil, nil, nil, nil, nil, nil, nil, r, logger)
+
+	if code != 1 {
+		t.Errorf("exit code: got %d, want 1 on appstore-reconcile cycle error", code)
+	}
+}
+
+// TestRun_AppStoreReconcileStampsSpanAttributes proves the scanned/gaps/applied
+// counts land on the "App Store Reconcile Cycle" span so they're queryable in
+// App Insights.
+func TestRun_AppStoreReconcileStampsSpanAttributes(t *testing.T) {
+	r := &fakeAppStoreReconcile{scanned: 7, gaps: 3, applied: 2}
+	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
+
+	span := recordSingleSpan(t, func() {
+		code := Run(context.Background(), "appstore-reconcile", nil, nil, nil, nil, nil, nil, nil, r, logger)
+		if code != 0 {
+			t.Errorf("exit code: got %d, want 0", code)
+		}
+	})
+
+	if span.Name() != "App Store Reconcile Cycle" {
+		t.Fatalf("span name: got %q, want %q", span.Name(), "App Store Reconcile Cycle")
+	}
+	if got, ok := attrInt(span, "appstore_reconcile.scanned_count"); !ok || got != 7 {
+		t.Errorf("appstore_reconcile.scanned_count: got %d (ok=%v), want 7", got, ok)
+	}
+	if got, ok := attrInt(span, "appstore_reconcile.gaps_count"); !ok || got != 3 {
+		t.Errorf("appstore_reconcile.gaps_count: got %d (ok=%v), want 3", got, ok)
+	}
+	if got, ok := attrInt(span, "appstore_reconcile.applied_count"); !ok || got != 2 {
+		t.Errorf("appstore_reconcile.applied_count: got %d (ok=%v), want 2", got, ok)
+	}
+}
+
+// TestRun_AppStoreReconcileErrorRecordsSpanError proves a runner error is
+// recorded on the "App Store Reconcile Cycle" span (in addition to the exit
+// code), mirroring every other cycle's error-recording behaviour.
+func TestRun_AppStoreReconcileErrorRecordsSpanError(t *testing.T) {
+	r := &fakeAppStoreReconcile{err: errors.New("apple unreachable")}
+	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
+
+	span := recordSingleSpan(t, func() {
+		code := Run(context.Background(), "appstore-reconcile", nil, nil, nil, nil, nil, nil, nil, r, logger)
+		if code != 1 {
+			t.Errorf("exit code: got %d, want 1", code)
+		}
+	})
+
+	if span.Status().Code != codes.Error {
+		t.Errorf("span status code: got %v, want codes.Error", span.Status().Code)
+	}
+	if span.Status().Description == "" {
+		t.Error("span status description: got empty, want the runner error message")
 	}
 }

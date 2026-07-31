@@ -54,6 +54,13 @@ const purgeBudget = 10 * time.Minute
 // process exits cleanly and flushes telemetry.
 const devSeedBudget = 5 * time.Minute
 
+// reconcileBudget is the soft self-cancel for a single appstore-reconcile run.
+// The cycle is one paginated App Store Server API call plus, in apply mode, a
+// handful of NotificationProcessor.Process calls for the (small) gap set; 10
+// minutes is generous while still bounded well under the Container Apps
+// replicaTimeout so the process exits cleanly and flushes telemetry.
+const reconcileBudget = 10 * time.Minute
+
 // DigestRunner is the consumer-side slice of the digest handler the dispatcher
 // invokes. *digest.Handler satisfies it; the worker depends only on these two
 // methods so it need not know the handler's internals. It is exported so main()
@@ -142,24 +149,42 @@ type DevSeedRunner interface {
 	Run(ctx context.Context) (int, error)
 }
 
+// AppStoreReconcileRunner is the consumer-side slice of the appstore-reconcile
+// handler the dispatcher invokes. *appstorereconcile.Handler satisfies it;
+// Run returns the scanned/gap/applied counts so the dispatcher can record
+// them as telemetry tags. It is exported so main() can hold a genuinely nil
+// interface value when the job is missing its App Store Server API key
+// material — passing a typed-nil *appstorereconcile.Handler would defeat the
+// nil guard below. Unlike SweepRunner/DormantRunner (nil = fatal), a nil
+// AppStoreReconcileRunner is a deliberate, non-fatal no-op: this feature is
+// genuinely optional during rollout, and unconfigured key material must not
+// crash-loop the job.
+type AppStoreReconcileRunner interface {
+	Run(ctx context.Context) (scanned, gaps, applied int, err error)
+}
+
 // Run dispatches on WORKER_MODE and returns the process exit code. It is the
 // testable core of cmd/worker/main.go — main() only loads config, wires the
 // Service Bus client + bootstrapper, sets up telemetry, and propagates this
 // code.
 //
 // poll-bootstrap, digest, hourly-digest, dormant-cleanup, subscription-sweep,
-// and pg-purge are implemented; poll-sb remains a loud stub that exits 1 until
-// its own bead (tc-yng2) lands. The Go worker image is not deployed to any job
-// until the final cutover bead, so a stub can never run in production. An unset
-// or unknown mode is a deployment accident and also fails fast.
+// pg-purge, and appstore-reconcile are implemented; poll-sb remains a loud
+// stub that exits 1 until its own bead (tc-yng2) lands. The Go worker image is
+// not deployed to any job until the final cutover bead, so a stub can never
+// run in production. An unset or unknown mode is a deployment accident and
+// also fails fast.
 //
 // bootstrapper may be nil when the job has no Service Bus config; poll-bootstrap
 // then refuses to run rather than nil-panicking. purger may be nil when no purge
 // runner is configured; pg-purge then logs and exits 0, so this is never an
 // error. devSeeder may be nil when the job is missing its dedicated prod-read
 // config; dev-seed then refuses to run rather than nil-panicking (it is a
-// dev-only job — tc-grvu.6 — so this never fires in prod).
-func Run(ctx context.Context, mode string, bootstrapper *Bootstrapper, digester DigestRunner, dormant DormantRunner, poller PollOrchestrator, sweeper SweepRunner, purger PurgeRunner, devSeeder DevSeedRunner, logger *slog.Logger) int {
+// dev-only job — tc-grvu.6 — so this never fires in prod). reconciler may be
+// nil when the job is missing its App Store Server API key material;
+// appstore-reconcile then logs and exits 0 rather than crash-looping — this
+// feature is genuinely optional during rollout.
+func Run(ctx context.Context, mode string, bootstrapper *Bootstrapper, digester DigestRunner, dormant DormantRunner, poller PollOrchestrator, sweeper SweepRunner, purger PurgeRunner, devSeeder DevSeedRunner, reconciler AppStoreReconcileRunner, logger *slog.Logger) int {
 	switch mode {
 	case "":
 		// WORKER_MODE is always set by infra; an unset value is a deployment
@@ -190,6 +215,9 @@ func Run(ctx context.Context, mode string, bootstrapper *Bootstrapper, digester 
 
 	case "dev-seed":
 		return runDevSeed(ctx, devSeeder, logger)
+
+	case "appstore-reconcile":
+		return runAppStoreReconcile(ctx, reconciler, logger)
 
 	default:
 		logger.ErrorContext(ctx, "unknown WORKER_MODE; refusing to run", "mode", mode)
@@ -407,6 +435,45 @@ func runDevSeed(ctx context.Context, runner DevSeedRunner, logger *slog.Logger) 
 		return 1
 	}
 	span.SetAttributes(attribute.Int("dev_seed.ingested_count", ingested))
+	return 0
+}
+
+// runAppStoreReconcile executes one appstore-reconcile cycle under a soft
+// self-cancel budget, inside a telemetry span named "App Store Reconcile
+// Cycle". It tags the span with the scanned/gap/applied counts. Unlike
+// runSweep/runDormant (nil runner = fatal), a nil runner here logs and exits 0
+// — mirroring runPurge's "backend doesn't apply here" pattern — because this
+// is a genuinely optional feature during rollout: unconfigured App Store
+// Server API key material must not crash-loop the job. A non-nil runner error
+// (Apple unreachable, retries exhausted) exits 1 so the job surfaces the
+// failure.
+func runAppStoreReconcile(ctx context.Context, runner AppStoreReconcileRunner, logger *slog.Logger) int {
+	tracer := otel.Tracer(tracerName)
+	ctx, span := tracer.Start(ctx, "App Store Reconcile Cycle")
+	defer span.End()
+
+	if runner == nil {
+		logger.InfoContext(ctx, "appstore-reconcile unconfigured (APPSTORE_RECONCILE_ENABLED / key material unset); skipping")
+		return 0
+	}
+
+	cycleCtx, cancel := context.WithTimeout(ctx, reconcileBudget)
+	defer cancel()
+
+	scanned, gaps, applied, err := runner.Run(cycleCtx)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		logger.ErrorContext(ctx, "appstore-reconcile cycle failed", "error", err)
+		return 1
+	}
+	span.SetAttributes(
+		attribute.Int("appstore_reconcile.scanned_count", scanned),
+		attribute.Int("appstore_reconcile.gaps_count", gaps),
+		attribute.Int("appstore_reconcile.applied_count", applied),
+	)
+	logger.InfoContext(ctx, "appstore-reconcile cycle completed",
+		"scanned", scanned, "gaps", gaps, "applied", applied)
 	return 0
 }
 
