@@ -1635,7 +1635,8 @@ func createLogAlert(ctx *pulumi.Context, resourceGroup *resources.ResourceGroup,
 // (tc-kg77x / GH #1020). Case-insensitive substring/token match against a maintained
 // bot/crawler UA list. To extend: add a new "|token" alternative to the regex below and
 // re-run `pulumi up` for the shared stack — no other file needs to change. Regex-escape any
-// character that is special in RE2 (e.g. the literal "+" in "\\+http").
+// character that is special in RE2 (e.g. the literal "+" in "\+http"). The regex sits inside a
+// KQL verbatim string (@"..."), so write a single backslash, not a doubled one.
 //
 // The list starts from the ad hoc regex used in the GH #1020 investigation
 // (bot|spider|crawl|slurp|facebookexternalhit|whatsapp|telegrambot|slackbot|discordbot|
@@ -1690,6 +1691,7 @@ let burstThreshold = 5;
 let burstWindow = 10m;
 let candidateRequests =
     AppRequests
+    | where tostring(Properties["deployment.environment"]) == "prod"
     | extend Ua = tostring(Properties["user_agent.original"])
     | extend Path = tostring(Properties["url.path"])
     | where Path startswith "/a/" or Path startswith "/og/"
@@ -1702,11 +1704,13 @@ let burstFlaggedUaDays =
     | where RequestsInWindow > burstThreshold
     | summarize by Ua, Day;
 AppRequests
+| where tostring(Properties["deployment.environment"]) == "prod"
 | extend Ua = tostring(Properties["user_agent.original"])
 | extend Path = tostring(Properties["url.path"])
 | where Path startswith "/a/" or Path startswith "/og/"
 | extend Day = bin(TimeGenerated, 1d)
-| extend Slug = extract(@"^/(?:a|og)/([^/]+)/", 1, Path)
+| extend Slug = extract(@"^/(?:a|og)/([^/]+)", 1, Path)
+| where isnotempty(Slug)
 | where not(IsLikelyBot(Ua))
 | join kind=leftanti burstFlaggedUaDays on Ua, Day
 | summarize OrganicHits = count() by Slug, Day
