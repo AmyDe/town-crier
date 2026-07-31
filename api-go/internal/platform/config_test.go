@@ -373,34 +373,34 @@ func TestLoadConfig_CorsAllowedOrigins(t *testing.T) {
 }
 
 func TestLoadConfig_AnonRateLimitDefaults(t *testing.T) {
-	t.Setenv("ANON_RATE_LIMIT_REQUESTS", "")
-	t.Setenv("ANON_RATE_LIMIT_WINDOW_SECONDS", "")
+	t.Setenv("ANON_RATE_LIMIT_BURST", "")
+	t.Setenv("ANON_RATE_LIMIT_REFILL_PER_MINUTE", "")
 
 	cfg, err := LoadConfig()
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}
-	if cfg.AnonRateLimitRequests != 60 {
-		t.Errorf("AnonRateLimitRequests default: got %d, want 60", cfg.AnonRateLimitRequests)
+	if cfg.AnonRateLimitBurst != 120 {
+		t.Errorf("AnonRateLimitBurst default: got %d, want 120", cfg.AnonRateLimitBurst)
 	}
-	if cfg.AnonRateLimitWindowSeconds != 60 {
-		t.Errorf("AnonRateLimitWindowSeconds default: got %d, want 60", cfg.AnonRateLimitWindowSeconds)
+	if cfg.AnonRateLimitRefillPerMinute != 60 {
+		t.Errorf("AnonRateLimitRefillPerMinute default: got %d, want 60", cfg.AnonRateLimitRefillPerMinute)
 	}
 }
 
 func TestLoadConfig_AnonRateLimitOverrides(t *testing.T) {
-	t.Setenv("ANON_RATE_LIMIT_REQUESTS", "30")
-	t.Setenv("ANON_RATE_LIMIT_WINDOW_SECONDS", "10")
+	t.Setenv("ANON_RATE_LIMIT_BURST", "30")
+	t.Setenv("ANON_RATE_LIMIT_REFILL_PER_MINUTE", "10")
 
 	cfg, err := LoadConfig()
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}
-	if cfg.AnonRateLimitRequests != 30 {
-		t.Errorf("AnonRateLimitRequests override: got %d, want 30", cfg.AnonRateLimitRequests)
+	if cfg.AnonRateLimitBurst != 30 {
+		t.Errorf("AnonRateLimitBurst override: got %d, want 30", cfg.AnonRateLimitBurst)
 	}
-	if cfg.AnonRateLimitWindowSeconds != 10 {
-		t.Errorf("AnonRateLimitWindowSeconds override: got %d, want 10", cfg.AnonRateLimitWindowSeconds)
+	if cfg.AnonRateLimitRefillPerMinute != 10 {
+		t.Errorf("AnonRateLimitRefillPerMinute override: got %d, want 10", cfg.AnonRateLimitRefillPerMinute)
 	}
 }
 

@@ -26,11 +26,12 @@ func anonRateLimitRequest(t *testing.T, h http.Handler, path, remoteAddr string)
 }
 
 // newRouterWithAnonLimit builds a minimal store-less router with a
-// caller-chosen anonymous rate-limit budget, so tests can drive the limiter
-// past its threshold without waiting out the production 60-request default.
-func newRouterWithAnonLimit(t *testing.T, logger *slog.Logger, anonRequests, anonWindowSeconds int) http.Handler {
+// caller-chosen anonymous token-bucket budget (burst capacity + refill rate),
+// so tests can drive the limiter past its threshold without waiting out the
+// production defaults.
+func newRouterWithAnonLimit(t *testing.T, logger *slog.Logger, anonBurst, anonRefillPerMinute int) http.Handler {
 	t.Helper()
-	return newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, nil, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "", nil, nil, "", nil, nil, nil, anonRequests, anonWindowSeconds, logger)
+	return newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, nil, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "", nil, nil, "", nil, nil, nil, anonBurst, anonRefillPerMinute, logger)
 }
 
 // TestRouter_AnonRateLimitAppliesToAnonymousRoutes proves AnonRateLimit is
