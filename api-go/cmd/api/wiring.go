@@ -240,8 +240,8 @@ func newRouter(
 	appleEnvironments []string,
 	registry *metrics.Registry,
 	shareCardCache *blobstore.Store,
-	anonRateLimitRequests int,
-	anonRateLimitWindowSeconds int,
+	anonRateLimitBurst int,
+	anonRateLimitRefillPerMinute int,
 	logger *slog.Logger,
 ) http.Handler {
 	mux := http.NewServeMux()
@@ -273,12 +273,13 @@ func newRouter(
 			middleware.RecordActivity(profiles.NewActivityRecorder(store), time.Now, logger)(mux),
 		)
 	}
-	// AnonRateLimit (GH#868 Phase 1) always wraps whatever dispatch chain was
-	// built above — unlike RateLimit/RecordActivity, it needs no profile store,
-	// so it must not be skipped on a store-less boot: that would leave every
-	// anonymous route (a scraping target for a future public geo endpoint, and
-	// load that ultimately lands on PlanIt) completely unmetered. It is a no-op
-	// for authenticated requests, so it never interferes with the per-subject
+	// AnonRateLimit (GH#868 Phase 1, reworked to a token bucket tc-vwobf)
+	// always wraps whatever dispatch chain was built above — unlike
+	// RateLimit/RecordActivity, it needs no profile store, so it must not be
+	// skipped on a store-less boot: that would leave every anonymous route (a
+	// scraping target for a future public geo endpoint, and load that
+	// ultimately lands on PlanIt) completely unmetered. It is a no-op for
+	// authenticated requests, so it never interferes with the per-subject
 	// RateLimit it wraps.
 	//
 	// The exemption predicate recognises a valid X-Build-Key via
@@ -288,9 +289,9 @@ func newRouter(
 	// including the CI seo-refresh job's ~418 sequential requests from one
 	// runner IP — is wrongly metered as anonymous. A missing or wrong key still
 	// exempts nothing, preserving the anti-scraping posture for everyone else.
-	anonWindow := time.Duration(anonRateLimitWindowSeconds) * time.Second
+	anonRefillPerSecond := float64(anonRateLimitRefillPerMinute) / 60
 	buildKeyExempt := func(r *http.Request) bool { return applications.BuildKeyMatches(r, siteBuildKey) }
-	dispatch = middleware.AnonRateLimit(middleware.NewAnonRateLimitStore(anonWindow), anonRateLimitRequests, buildKeyExempt, logger)(dispatch)
+	dispatch = middleware.AnonRateLimit(middleware.NewAnonRateLimitStore(anonRefillPerSecond), anonRateLimitBurst, buildKeyExempt, logger)(dispatch)
 	if deviceStore != nil {
 		devicetokens.Routes(mux, deviceStore, time.Now, logger)
 	}
