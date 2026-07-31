@@ -12,8 +12,8 @@
 }
 
 .title {
-  font-size: var(--tc-text-h2);
-  font-weight: var(--tc-font-bold);
+  font-size: var(--tc-text-display-large);
+  font-weight: var(--tc-weight-bold);
   color: var(--tc-text-primary);
   margin: 0;
 }
@@ -25,7 +25,7 @@
   background: var(--tc-amber);
   color: var(--tc-text-on-accent);
   border-radius: var(--tc-radius-md);
-  font-weight: var(--tc-font-semibold);
+  font-weight: var(--tc-weight-semibold);
   text-decoration: none;
   transition: background var(--tc-duration-fast);
 }
@@ -67,7 +67,7 @@
 
 .zoneName {
   font-size: var(--tc-text-body);
-  font-weight: var(--tc-font-semibold);
+  font-weight: var(--tc-weight-semibold);
   color: var(--tc-text-primary);
   margin: 0;
 }
@@ -111,7 +111,7 @@
 .editLink {
   padding: var(--tc-space-xs) var(--tc-space-sm);
   color: var(--tc-text-primary);
-  font-weight: var(--tc-font-semibold);
+  font-weight: var(--tc-weight-semibold);
   font-size: var(--tc-text-caption);
   text-decoration: none;
   border-radius: var(--tc-radius-sm);
@@ -125,7 +125,7 @@
 .deleteButton {
   padding: var(--tc-space-xs) var(--tc-space-sm);
   color: var(--tc-status-rejected);
-  font-weight: var(--tc-font-semibold);
+  font-weight: var(--tc-weight-semibold);
   font-size: var(--tc-text-caption);
   background: none;
   border: none;
@@ -156,7 +156,7 @@
   background: var(--tc-amber);
   color: var(--tc-text-on-accent);
   border-radius: var(--tc-radius-md);
-  font-weight: var(--tc-font-semibold);
+  font-weight: var(--tc-weight-semibold);
   text-decoration: none;
   transition: background var(--tc-duration-fast);
 }

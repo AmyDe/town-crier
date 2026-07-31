@@ -12,8 +12,8 @@
 }
 
 .title {
-  font-size: var(--tc-text-h2);
-  font-weight: var(--tc-font-bold);
+  font-size: var(--tc-text-display-large);
+  font-weight: var(--tc-weight-bold);
   color: var(--tc-text-primary);
   margin: 0;
 }
@@ -46,7 +46,7 @@
 
 .label {
   display: block;
-  font-weight: var(--tc-font-semibold);
+  font-weight: var(--tc-weight-semibold);
   color: var(--tc-text-primary);
   margin-bottom: var(--tc-space-xs);
   font-size: var(--tc-text-body);
@@ -87,7 +87,7 @@
   color: var(--tc-text-on-accent);
   border: none;
   border-radius: var(--tc-radius-md);
-  font-weight: var(--tc-font-semibold);
+  font-weight: var(--tc-weight-semibold);
   font-size: var(--tc-text-body);
   cursor: pointer;
   transition: background var(--tc-duration-fast);
@@ -122,6 +122,6 @@
 
 .confirmValue {
   font-size: var(--tc-text-body);
-  font-weight: var(--tc-font-semibold);
+  font-weight: var(--tc-weight-semibold);
   color: var(--tc-text-primary);
 }
