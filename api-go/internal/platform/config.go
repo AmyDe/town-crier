@@ -37,16 +37,35 @@ type Config struct {
 	// Defaults to localhost dev origin.
 	CorsAllowedOrigins []string
 
-	// AnonRateLimitRequests and AnonRateLimitWindowSeconds configure the
-	// per-IP anonymous rate limiter (middleware.AnonRateLimit, GH#868 Phase 1):
-	// the request budget and fixed window applied to every unauthenticated
-	// request, keyed on the client IP resolved via internal/clientip. Loaded
-	// from ANON_RATE_LIMIT_REQUESTS / ANON_RATE_LIMIT_WINDOW_SECONDS,
-	// defaulting to 60 requests per 60-second window so an unset env never
-	// leaves anonymous routes (a scraping target for a public geo endpoint,
-	// and load that ultimately lands on PlanIt) unmetered.
-	AnonRateLimitRequests      int
-	AnonRateLimitWindowSeconds int
+	// AnonRateLimitBurst and AnonRateLimitRefillPerMinute configure the per-IP
+	// anonymous token-bucket rate limiter (middleware.AnonRateLimit, GH#868
+	// Phase 1, reworked tc-vwobf), keyed on the client IP resolved via
+	// internal/clientip: AnonRateLimitBurst is the bucket capacity (how many
+	// requests an IP can make back-to-back before it starts drawing on the
+	// steady refill rate), AnonRateLimitRefillPerMinute is that steady rate.
+	// Loaded from ANON_RATE_LIMIT_BURST / ANON_RATE_LIMIT_REFILL_PER_MINUTE.
+	//
+	// tc-vwobf: the previous flat 60-requests-per-60-second sliding window
+	// throttled ordinary anonymous map browsing — panning the map fans a
+	// single pan/zoom settle event out across several endpoints
+	// (GET /v1/applications/clusters, GET /v1/me/watch-zones/{id}/
+	// applications/clusters, GET /v1/applications/near-point, ...) even
+	// though both clients already debounce pan/zoom at ~250ms client-side, so
+	// a real session hit 41+ 429s in 9 minutes with no scraping involved.
+	//
+	// Defaults: burst 120, refill 60/minute (1 token/second).
+	//   - Burst=120 is double the old flat budget: generous enough to absorb
+	//     a single active map session's fan-out — several endpoints firing
+	//     roughly every 250ms while the user is actively panning — as one
+	//     instantaneous burst, without needing to wait on the refill rate at
+	//     all for a normal browsing session.
+	//   - Refill=60/minute exactly matches the old default's long-run rate
+	//     (60 requests / 60 seconds), so sustained/scraping-shaped load past
+	//     the initial burst is capped at the same steady-state rate as
+	//     before; only the front-loaded tolerance changed, not the ceiling on
+	//     continuous abuse.
+	AnonRateLimitBurst           int
+	AnonRateLimitRefillPerMinute int
 
 	// AzureClientID pins the user-assigned managed identity used for AAD auth
 	// (azidentity) by the Postgres pool (passwordless Entra token) and the Service
@@ -348,8 +367,8 @@ func LoadConfig() (Config, error) {
 		Auth0Audience:      os.Getenv("AUTH0_AUDIENCE"),
 		CorsAllowedOrigins: parseOrigins(os.Getenv("CORS_ALLOWED_ORIGINS")),
 
-		AnonRateLimitRequests:      getenvInt("ANON_RATE_LIMIT_REQUESTS", 60),
-		AnonRateLimitWindowSeconds: getenvInt("ANON_RATE_LIMIT_WINDOW_SECONDS", 60),
+		AnonRateLimitBurst:           getenvInt("ANON_RATE_LIMIT_BURST", 120),
+		AnonRateLimitRefillPerMinute: getenvInt("ANON_RATE_LIMIT_REFILL_PER_MINUTE", 60),
 
 		AzureClientID: os.Getenv("AZURE_CLIENT_ID"),
 
