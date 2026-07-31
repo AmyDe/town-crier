@@ -35,7 +35,7 @@ func TestAnonRateLimit_AllowedRequestSetsHeaders(t *testing.T) {
 	t.Parallel()
 
 	clock := &fixedClock{t: time.Unix(2000, 0)}
-	store := newAnonRateLimitStore(clock.now, time.Minute)
+	store := newAnonRateLimitStore(clock.now, 1)
 	mw := AnonRateLimit(store, 60, nil, slogDiscard())
 
 	rec := httptest.NewRecorder()
@@ -52,11 +52,11 @@ func TestAnonRateLimit_AllowedRequestSetsHeaders(t *testing.T) {
 	}
 }
 
-func TestAnonRateLimit_RequestsBelowLimitAreUnaffected(t *testing.T) {
+func TestAnonRateLimit_RequestsUpToBurstCapacitySucceed(t *testing.T) {
 	t.Parallel()
 
 	clock := &fixedClock{t: time.Unix(2000, 0)}
-	store := newAnonRateLimitStore(clock.now, time.Minute)
+	store := newAnonRateLimitStore(clock.now, 1)
 	mw := AnonRateLimit(store, 5, nil, slogDiscard())
 	h := mw(okHandler())
 
@@ -64,16 +64,16 @@ func TestAnonRateLimit_RequestsBelowLimitAreUnaffected(t *testing.T) {
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, anonRequest("203.0.113.12:51000"))
 		if rec.Code != http.StatusOK {
-			t.Fatalf("request %d: got %d, want 200 (below limit)", i, rec.Code)
+			t.Fatalf("request %d: got %d, want 200 (within burst capacity)", i, rec.Code)
 		}
 	}
 }
 
-func TestAnonRateLimit_ExceededReturns429WithHeaders(t *testing.T) {
+func TestAnonRateLimit_ExceedsBurstReturns429WithHeaders(t *testing.T) {
 	t.Parallel()
 
 	clock := &fixedClock{t: time.Unix(2000, 0)}
-	store := newAnonRateLimitStore(clock.now, time.Minute)
+	store := newAnonRateLimitStore(clock.now, 1)
 	mw := AnonRateLimit(store, 60, nil, slogDiscard())
 	h := mw(okHandler())
 
@@ -104,12 +104,12 @@ func TestAnonRateLimit_ExceededReturns429WithHeaders(t *testing.T) {
 // TestAnonRateLimit_AuthenticatedRequestPassesThrough is the acceptance-
 // criterion test: authenticated traffic must never be touched by the
 // anonymous limiter, even when it shares an IP with an anonymous caller who
-// has exhausted the (deliberately tiny, limit=1) anonymous budget.
+// has exhausted the (deliberately tiny, burst=1) anonymous budget.
 func TestAnonRateLimit_AuthenticatedRequestPassesThrough(t *testing.T) {
 	t.Parallel()
 
 	clock := &fixedClock{t: time.Unix(2000, 0)}
-	store := newAnonRateLimitStore(clock.now, time.Minute)
+	store := newAnonRateLimitStore(clock.now, 1)
 	mw := AnonRateLimit(store, 1, nil, slogDiscard())
 	h := mw(okHandler())
 
@@ -128,7 +128,7 @@ func TestAnonRateLimit_AuthenticatedRequestPassesThrough(t *testing.T) {
 
 	// The same IP, now making its first genuinely anonymous request, still has
 	// its full budget — proving the authenticated loop above never touched the
-	// IP's counter.
+	// IP's bucket.
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, anonRequest("203.0.113.13:51000"))
 	if rec.Code != http.StatusOK {
@@ -145,7 +145,7 @@ func TestAnonRateLimit_ExemptPredicatePassesThroughUnmetered(t *testing.T) {
 	t.Parallel()
 
 	clock := &fixedClock{t: time.Unix(2000, 0)}
-	store := newAnonRateLimitStore(clock.now, time.Minute)
+	store := newAnonRateLimitStore(clock.now, 1)
 	exempt := func(r *http.Request) bool { return r.Header.Get("X-Build-Key") == "s3cret" }
 	mw := AnonRateLimit(store, 1, exempt, slogDiscard())
 	h := mw(okHandler())
@@ -169,7 +169,7 @@ func TestAnonRateLimit_ExemptPredicatePassesThroughUnmetered(t *testing.T) {
 
 	// The same IP, now making its first genuinely anonymous (keyless) request,
 	// still has its full budget — proving the exempt loop above never touched
-	// the IP's counter.
+	// the IP's bucket.
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, anonRequest("203.0.113.70:51000"))
 	if rec.Code != http.StatusOK {
@@ -185,7 +185,7 @@ func TestAnonRateLimit_ExemptPredicateFalseIsMeteredNormally(t *testing.T) {
 	t.Parallel()
 
 	clock := &fixedClock{t: time.Unix(2000, 0)}
-	store := newAnonRateLimitStore(clock.now, time.Minute)
+	store := newAnonRateLimitStore(clock.now, 1)
 	exempt := func(r *http.Request) bool { return r.Header.Get("X-Build-Key") == "s3cret" }
 	mw := AnonRateLimit(store, 1, exempt, slogDiscard())
 	h := mw(okHandler())
@@ -216,7 +216,7 @@ func TestAnonRateLimit_DifferentIPsHaveIndependentBudgets(t *testing.T) {
 	t.Parallel()
 
 	clock := &fixedClock{t: time.Unix(2000, 0)}
-	store := newAnonRateLimitStore(clock.now, time.Minute)
+	store := newAnonRateLimitStore(clock.now, 1)
 	mw := AnonRateLimit(store, 1, nil, slogDiscard())
 	h := mw(okHandler())
 
@@ -250,7 +250,7 @@ func TestAnonRateLimit_UnresolvableIPsShareOneConservativeBucket(t *testing.T) {
 	t.Parallel()
 
 	clock := &fixedClock{t: time.Unix(2000, 0)}
-	store := newAnonRateLimitStore(clock.now, time.Minute)
+	store := newAnonRateLimitStore(clock.now, 1)
 	mw := AnonRateLimit(store, 1, nil, slogDiscard())
 	h := mw(okHandler())
 
@@ -281,7 +281,7 @@ func TestAnonRateLimit_HealthCheckPathsExempt(t *testing.T) {
 	t.Parallel()
 
 	clock := &fixedClock{t: time.Unix(2000, 0)}
-	store := newAnonRateLimitStore(clock.now, time.Minute)
+	store := newAnonRateLimitStore(clock.now, 1)
 	mw := AnonRateLimit(store, 1, nil, slogDiscard())
 	h := mw(okHandler())
 
@@ -299,11 +299,15 @@ func TestAnonRateLimit_HealthCheckPathsExempt(t *testing.T) {
 	}
 }
 
-func TestAnonRateLimit_WindowResets(t *testing.T) {
+// TestAnonRateLimit_PartialRefillRestoresPartialCapacity is the token-bucket
+// behaviour that replaces the old fixed-window's all-or-nothing reset: after
+// the burst is exhausted, a partial idle period restores only the tokens the
+// refill rate actually earned, not the full bucket.
+func TestAnonRateLimit_PartialRefillRestoresPartialCapacity(t *testing.T) {
 	t.Parallel()
 
 	clock := &fixedClock{t: time.Unix(2000, 0)}
-	store := newAnonRateLimitStore(clock.now, time.Minute)
+	store := newAnonRateLimitStore(clock.now, 1) // 1 token/second refill
 	mw := AnonRateLimit(store, 2, nil, slogDiscard())
 	h := mw(okHandler())
 
@@ -313,14 +317,54 @@ func TestAnonRateLimit_WindowResets(t *testing.T) {
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, anonRequest("203.0.113.50:1"))
 	if rec.Code != http.StatusTooManyRequests {
-		t.Fatalf("expected throttle before window reset, got %d", rec.Code)
+		t.Fatalf("expected throttle once burst is exhausted, got %d", rec.Code)
+	}
+
+	// Only 1 second passes: exactly 1 of the 2 burst tokens is earned back.
+	clock.t = clock.t.Add(1 * time.Second)
+
+	allowed := httptest.NewRecorder()
+	h.ServeHTTP(allowed, anonRequest("203.0.113.50:1"))
+	if allowed.Code != http.StatusOK {
+		t.Fatalf("after partial refill: got %d, want 200 (1 token earned back)", allowed.Code)
+	}
+
+	// The single earned-back token was just spent; immediately trying again
+	// (no further time elapsed) must throttle again.
+	immediatelyAfter := httptest.NewRecorder()
+	h.ServeHTTP(immediatelyAfter, anonRequest("203.0.113.50:1"))
+	if immediatelyAfter.Code != http.StatusTooManyRequests {
+		t.Fatalf("immediately after spending the earned token: got %d, want 429", immediatelyAfter.Code)
+	}
+}
+
+// TestAnonRateLimit_FullIdleRestoresFullBurstCapacity confirms that idling
+// long enough to earn back the whole burst behaves like a fresh bucket.
+func TestAnonRateLimit_FullIdleRestoresFullBurstCapacity(t *testing.T) {
+	t.Parallel()
+
+	clock := &fixedClock{t: time.Unix(2000, 0)}
+	store := newAnonRateLimitStore(clock.now, 1) // 1 token/second refill
+	mw := AnonRateLimit(store, 2, nil, slogDiscard())
+	h := mw(okHandler())
+
+	for range 2 {
+		h.ServeHTTP(httptest.NewRecorder(), anonRequest("203.0.113.51:1"))
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, anonRequest("203.0.113.51:1"))
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected throttle before idling, got %d", rec.Code)
 	}
 
 	clock.t = clock.t.Add(61 * time.Second)
 	rec2 := httptest.NewRecorder()
-	h.ServeHTTP(rec2, anonRequest("203.0.113.50:1"))
+	h.ServeHTTP(rec2, anonRequest("203.0.113.51:1"))
 	if rec2.Code != http.StatusOK {
-		t.Errorf("after window reset: got %d, want 200", rec2.Code)
+		t.Errorf("after long idle: got %d, want 200", rec2.Code)
+	}
+	if got := rec2.Header().Get("X-RateLimit-Remaining"); got != "1" {
+		t.Errorf("after long idle: X-RateLimit-Remaining got %q, want 1 (fresh bucket minus this request)", got)
 	}
 }
 
@@ -336,7 +380,7 @@ func TestAnonRateLimit_NoClientIPInLogs(t *testing.T) {
 
 	spy := &logSpy{}
 	clock := &fixedClock{t: time.Unix(2000, 0)}
-	store := newAnonRateLimitStore(clock.now, time.Minute)
+	store := newAnonRateLimitStore(clock.now, 1)
 	mw := AnonRateLimit(store, 1, nil, slog.New(spy))
 	h := mw(okHandler())
 
@@ -361,32 +405,35 @@ func TestAnonRateLimit_NoClientIPInLogs(t *testing.T) {
 	}
 }
 
-// hasKey and keyLen are test-only accessors mirroring rateLimitStore's (see
-// ratelimit_test.go), used to assert eviction behaviour without exposing them
-// in production code.
+// hasKey and tokensFor are test-only accessors used to assert eviction and
+// refill behaviour without exposing them in production code.
 func (s *anonRateLimitStore) hasKey(addr netip.Addr) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_, ok := s.requests[addr]
+	_, ok := s.buckets[addr]
 	return ok
 }
 
-func (s *anonRateLimitStore) keyLen(addr netip.Addr) int {
+func (s *anonRateLimitStore) tokensFor(addr netip.Addr) float64 {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return len(s.requests[addr])
+	return s.buckets[addr].tokens
 }
 
 // TestAnonRateLimitStore_EvictsIdleIPKey is the GH#518 regression guard for the
-// per-IP store: once an IP's in-window timestamps have all aged out, the next
-// checkAndIncrement call for that IP must reclaim the map key (delete) rather
-// than leave a stale entry sitting in memory forever.
+// per-IP store, ported to token-bucket semantics: once an IP's bucket has
+// fully refilled (idle long enough that it holds no information beyond "no
+// entry"), the next checkAndIncrement call for that IP must reclaim the map
+// key (delete) rather than leave a stale full bucket sitting in memory
+// forever. burst=0 on the follow-up call forces the denied path (capacity 0
+// clamps tokens to 0, which is also >= capacity so the delete fires) without
+// re-adding an entry, making the deletion observable immediately.
 func TestAnonRateLimitStore_EvictsIdleIPKey(t *testing.T) {
 	t.Parallel()
 
 	addr := netip.MustParseAddr("203.0.113.60")
 	clock := &fixedClock{t: time.Unix(2000, 0)}
-	store := newAnonRateLimitStore(clock.now, time.Minute)
+	store := newAnonRateLimitStore(clock.now, 1)
 
 	store.checkAndIncrement(addr, 60)
 	if !store.hasKey(addr) {
@@ -395,27 +442,25 @@ func TestAnonRateLimitStore_EvictsIdleIPKey(t *testing.T) {
 
 	clock.t = clock.t.Add(61 * time.Second)
 
-	// limit=0 forces the denied path with kept==0 in a single call, making the
-	// deletion observable immediately (mirrors TestRateLimitStore_EvictsIdleUserKey).
 	store.checkAndIncrement(addr, 0)
 
 	if store.hasKey(addr) {
-		t.Error("expected map key deleted after all timestamps aged out, but key still present")
+		t.Error("expected map key deleted after bucket fully refilled, but key still present")
 	}
 }
 
-// TestAnonRateLimitStore_MapStaysBoundedAcrossWindows is the acceptance-
-// criterion test that the store's size shrinks/stays bounded after window
-// expiry, not merely "doesn't grow in the happy path": it seeds several IPs,
-// lets the window expire, then drives a second wave of one request per IP —
-// exactly what continuing real traffic looks like — and asserts the store
-// neither accumulates a second stale timestamp per IP nor grows beyond the
-// active population.
-func TestAnonRateLimitStore_MapStaysBoundedAcrossWindows(t *testing.T) {
+// TestAnonRateLimitStore_MapStaysBoundedAcrossRefills is the acceptance-
+// criterion test that the store's size shrinks/stays bounded after full
+// refill, not merely "doesn't grow in the happy path": it seeds several IPs,
+// lets each bucket fully refill, then drives a second wave of one request per
+// IP — exactly what continuing real traffic looks like — and asserts the
+// store neither accumulates stale per-IP state nor grows beyond the active
+// population.
+func TestAnonRateLimitStore_MapStaysBoundedAcrossRefills(t *testing.T) {
 	t.Parallel()
 
 	clock := &fixedClock{t: time.Unix(2000, 0)}
-	store := newAnonRateLimitStore(clock.now, time.Minute)
+	store := newAnonRateLimitStore(clock.now, 1)
 
 	addrs := []netip.Addr{
 		netip.MustParseAddr("203.0.113.61"),
@@ -425,23 +470,23 @@ func TestAnonRateLimitStore_MapStaysBoundedAcrossWindows(t *testing.T) {
 	for _, a := range addrs {
 		store.checkAndIncrement(a, 60)
 	}
-	if got := len(store.requests); got != len(addrs) {
+	if got := len(store.buckets); got != len(addrs) {
 		t.Fatalf("setup: store size = %d, want %d", got, len(addrs))
 	}
 
-	// Advance past the window: every seeded timestamp is now stale.
+	// Advance well past full refill for every seeded bucket.
 	clock.t = clock.t.Add(2 * time.Minute)
 
 	for _, a := range addrs {
 		store.checkAndIncrement(a, 60)
 	}
 
-	if got := len(store.requests); got != len(addrs) {
-		t.Errorf("store size after second window = %d, want %d (bounded, not accumulating)", got, len(addrs))
+	if got := len(store.buckets); got != len(addrs) {
+		t.Errorf("store size after refill wave = %d, want %d (bounded, not accumulating)", got, len(addrs))
 	}
 	for _, a := range addrs {
-		if got := store.keyLen(a); got != 1 {
-			t.Errorf("addr %v: stored len = %d, want 1 (stale timestamp evicted before recording the new one)", a, got)
+		if got := store.tokensFor(a); got != 59 {
+			t.Errorf("addr %v: tokens = %v, want 59 (fresh bucket minus the one request just made)", a, got)
 		}
 	}
 }
