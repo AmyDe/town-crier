@@ -1660,14 +1660,24 @@ tolower(ua) matches regex @"(bot|spider|crawl|slurp|facebookexternalhit|whatsapp
 // slug and day.
 //
 // IMPORTANT — burst threshold is an unvalidated starting estimate, not a tuned value: more
-// than 5 requests to the same url.path within a rolling 10-minute window, bucketed by UA+day.
-// Chosen because the GH #1020 sample's confirmed-bot cluster showed dozens of hits within
-// minutes to the same path, while plausible human traffic was single-digit and spread out
-// across a session — but nobody has run this function against live prod data yet (no `az`
+// than 5 requests to the same (Ua, Path) within any genuine rolling 10-minute window, bucketed
+// by UA+day. Chosen because the GH #1020 sample's confirmed-bot cluster showed dozens of hits
+// within minutes to the same path, while plausible human traffic was single-digit and spread
+// out across a session — but nobody has run this function against live prod data yet (no `az`
 // CLI / Log Analytics access from the environment this was authored in). Before relying on the
 // organic-count output: run it against 30+ days of prod data from a local session with `az`
 // access, sanity-check the result against known usage, and adjust burstThreshold/burstWindow
 // below if it's over- or under-flagging.
+//
+// The window is a genuine per-request rolling window (self-join: for each candidate request,
+// count same-Ua+Path requests in [TimeGenerated, TimeGenerated+burstWindow)), not a fixed
+// bin(TimeGenerated, burstWindow) bucket — bin() would let a burst straddling a bucket boundary
+// (e.g. 4 hits just before the boundary, 4 just after) dodge the threshold in both buckets even
+// though all 8 fall inside a real 10-minute span. The self-join is the standard KQL pattern for
+// this (matches the sliding-window intent of api-go/internal/middleware/anonratelimit.go and
+// ratelimit.go, translated to KQL since there's no native rolling-window aggregate); it's O(n^2)
+// over the candidate set, which is fine at share-page traffic volumes but worth knowing if this
+// function is ever pointed at a much larger AppRequests slice.
 //
 // Where this lives: saved function "SharePageHumanTraffic" in the log-town-crier-shared Log
 // Analytics workspace (Azure Portal > Log Analytics workspaces > log-town-crier-shared > Logs >
@@ -1678,12 +1688,17 @@ const sharePageHumanTrafficQuery = `// SharePageHumanTraffic(): likely-organic A
 // maintained and how the burst threshold was chosen (tc-kg77x / GH #1020).
 let burstThreshold = 5;
 let burstWindow = 10m;
-let burstFlaggedUaDays =
+let candidateRequests =
     AppRequests
     | extend Ua = tostring(Properties["user_agent.original"])
     | extend Path = tostring(Properties["url.path"])
     | where Path startswith "/a/" or Path startswith "/og/"
-    | summarize RequestsInWindow = count() by Ua, Path, Day = bin(TimeGenerated, 1d), Window = bin(TimeGenerated, burstWindow)
+    | project Ua, Path, TimeGenerated, Day = bin(TimeGenerated, 1d);
+let burstFlaggedUaDays =
+    candidateRequests
+    | join kind=inner (candidateRequests | project Ua2 = Ua, Path2 = Path, TimeGenerated2 = TimeGenerated) on $left.Ua == $right.Ua2, $left.Path == $right.Path2
+    | where TimeGenerated2 between (TimeGenerated .. TimeGenerated + burstWindow)
+    | summarize RequestsInWindow = count() by Ua, Path, TimeGenerated, Day
     | where RequestsInWindow > burstThreshold
     | summarize by Ua, Day;
 AppRequests
