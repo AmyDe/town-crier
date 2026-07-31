@@ -24,6 +24,8 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/acsemail"
 	"github.com/AmyDe/town-crier/api-go/internal/apns"
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
+	"github.com/AmyDe/town-crier/api-go/internal/appstorereconcile"
+	"github.com/AmyDe/town-crier/api-go/internal/appstoreserverapi"
 	"github.com/AmyDe/town-crier/api-go/internal/devicetokens"
 	"github.com/AmyDe/town-crier/api-go/internal/devseed"
 	"github.com/AmyDe/town-crier/api-go/internal/digest"
@@ -43,6 +45,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 	"github.com/AmyDe/town-crier/api-go/internal/savedapplications"
 	"github.com/AmyDe/town-crier/api-go/internal/servicebus"
+	"github.com/AmyDe/town-crier/api-go/internal/subscriptions"
 	"github.com/AmyDe/town-crier/api-go/internal/subscriptionsweep"
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
 	"github.com/AmyDe/town-crier/api-go/internal/worker"
@@ -65,6 +68,7 @@ type stores struct {
 	pollState    *polling.PostgresPollStateStore
 	lease        *polling.PostgresLeaseStore
 	backfill     *polling.PostgresBackfillStateStore
+	appleNotif   *subscriptions.PostgresNotificationStore
 }
 
 func main() {
@@ -144,6 +148,7 @@ func run() int {
 		pollState:    polling.NewPostgresPollStateStore(pool),
 		lease:        polling.NewPostgresLeaseStore(pool, time.Now),
 		backfill:     polling.NewPostgresBackfillStateStore(pool),
+		appleNotif:   subscriptions.NewPostgresNotificationStore(pool, time.Now),
 	}
 
 	// The Service Bus client (and thus the bootstrapper and the poll-sb
@@ -220,7 +225,17 @@ func run() int {
 	// crashing.
 	devSeeder := buildDevSeeder(cfg, registry, st, logger)
 
-	return worker.Run(context.Background(), mode, bootstrapper, digester, dormantRunner, poller, sweepRunner, purger, devSeeder, logger)
+	// The appstore-reconcile runner is built only when APPSTORE_RECONCILE_ENABLED
+	// is set and its App Store Server API key material parses. A job missing
+	// either leaves reconciler a genuinely nil interface; appstore-reconcile then
+	// logs and exits 0 rather than crash-looping — this feature is genuinely
+	// optional during rollout (tc-97k35.6, GH#1011).
+	var reconciler worker.AppStoreReconcileRunner
+	if r := buildAppStoreReconcile(cfg, st, logger); r != nil {
+		reconciler = r
+	}
+
+	return worker.Run(context.Background(), mode, bootstrapper, digester, dormantRunner, poller, sweepRunner, purger, devSeeder, reconciler, logger)
 }
 
 // buildPollOrchestrator wires the poll-sb orchestrator: the PlanIt client,
@@ -763,6 +778,65 @@ func buildAuth0Syncer(cfg platform.Config, logger *slog.Logger) subscriptionswee
 		cfg.Auth0M2MClientID,
 		cfg.Auth0M2MClientSecret,
 	)
+}
+
+// buildAppStoreReconcile constructs the appstore-reconcile handler: the App
+// Store Server API client (JWT-authed via the .p8 signing key), the same
+// subscriptions.JWSVerifier and subscriptions.NotificationProcessor the live
+// POST /v1/webhooks/appstore handler uses (so a recovered notification can
+// never double-apply against a concurrent live delivery), and the Postgres
+// idempotency store built into st.appleNotif.
+//
+// It returns nil — logged, not fatal — when APPSTORE_RECONCILE_ENABLED is
+// unset or the key material fails to parse, following the same
+// "unconfigured optional job" template as buildDevSeeder: this feature is
+// genuinely optional during rollout (tc-97k35.6, GH#1011), so a malformed or
+// absent key must not crash-loop the job's OTHER modes (digest,
+// dormant-cleanup, etc.) that share this process.
+func buildAppStoreReconcile(cfg platform.Config, st *stores, logger *slog.Logger) *appstorereconcile.Handler {
+	if !cfg.AppStoreReconcileEnabled {
+		logger.Info("appstore-reconcile unconfigured (APPSTORE_RECONCILE_ENABLED unset); appstore-reconcile mode will refuse to run")
+		return nil
+	}
+
+	appleRoots, err := subscriptions.LoadAppleRootCertificates()
+	if err != nil {
+		logger.Error("appstore-reconcile: load apple root certificates; appstore-reconcile mode will refuse to run", "error", err)
+		return nil
+	}
+	jwsVerifier, err := subscriptions.NewJWSVerifier(appleRoots, time.Now)
+	if err != nil {
+		logger.Error("appstore-reconcile: build jws verifier; appstore-reconcile mode will refuse to run", "error", err)
+		return nil
+	}
+
+	apiClient, err := appstoreserverapi.NewClient(appstoreserverapi.Options{
+		SigningKey:  cfg.AppStoreServerAPIKey.Expose(),
+		KeyID:       cfg.AppStoreServerAPIKeyID,
+		IssuerID:    cfg.AppStoreServerAPIIssuerID,
+		BundleID:    cfg.AppleBundleID,
+		Environment: cfg.AppStoreServerAPIEnvironment,
+	}, time.Now)
+	if err != nil {
+		logger.Error("appstore-reconcile: build app store server api client; appstore-reconcile mode will refuse to run", "error", err)
+		return nil
+	}
+
+	// adminStore backs profileByTxn (GetByOriginalTransactionID + Save), the
+	// same store the live webhook path uses to locate a subscriber
+	// cross-partition.
+	adminStore := st.profileAdmin
+	processor := subscriptions.NewNotificationProcessor(
+		jwsVerifier,
+		adminStore,
+		buildAuth0Syncer(cfg, logger),
+		st.appleNotif,
+		cfg.AppleEnvironments,
+		logger,
+	)
+
+	lookback := time.Duration(cfg.AppStoreReconcileLookbackHours) * time.Hour
+	return appstorereconcile.New(apiClient, jwsVerifier, st.appleNotif, processor, lookback, cfg.AppStoreReconcileApplyEnabled, logger, time.Now)
 }
 
 // buildEmailSender returns the real ACS email sender when a connection string is
