@@ -178,7 +178,7 @@ func (c *Client) FetchNotificationHistory(ctx context.Context, start, end time.T
 			return nil, err
 		}
 		for _, it := range resp.NotificationHistory {
-			items = append(items, NotificationHistoryItem{SignedPayload: it.SignedPayload})
+			items = append(items, NotificationHistoryItem(it))
 		}
 		if !resp.HasMore {
 			return items, nil

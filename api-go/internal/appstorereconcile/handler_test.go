@@ -218,7 +218,6 @@ func TestRun_ApplyModeCountsAppliedOnlyWhenApplierReportsWasNew(t *testing.T) {
 func TestRun_AllAlreadyProcessedIsZeroGapsRegardlessOfMode(t *testing.T) {
 	t.Parallel()
 	for _, applyEnabled := range []bool{false, true} {
-		applyEnabled := applyEnabled
 		t.Run(fmt.Sprintf("applyEnabled=%v", applyEnabled), func(t *testing.T) {
 			t.Parallel()
 			h, d := newTestHandler(applyEnabled)

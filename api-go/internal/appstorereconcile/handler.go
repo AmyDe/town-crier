@@ -141,7 +141,7 @@ func (h *Handler) processOne(ctx context.Context, item appstoreserverapi.Notific
 	processed, err := h.idempotency.IsProcessed(ctx, notification.NotificationUUID)
 	if err != nil {
 		h.logger.WarnContext(ctx, "app store reconcile: skipping item; idempotency check failed",
-			"notificationUUID", notification.NotificationUUID, "error", err)
+			"notificationUuid", notification.NotificationUUID, "error", err)
 		return false, false
 	}
 	if processed {
@@ -152,7 +152,7 @@ func (h *Handler) processOne(ctx context.Context, item appstoreserverapi.Notific
 	// idempotency table, full stop — regardless of whether applying it would
 	// actually change anything.
 	h.logger.WarnContext(ctx, "app store reconcile: gap detected",
-		"notificationUUID", notification.NotificationUUID,
+		"notificationUuid", notification.NotificationUUID,
 		"notificationType", notification.NotificationType,
 		"subtype", notification.Subtype,
 	)
@@ -164,7 +164,7 @@ func (h *Handler) processOne(ctx context.Context, item appstoreserverapi.Notific
 	wasNew, err := h.applier.Process(ctx, item.SignedPayload)
 	if err != nil {
 		h.logger.WarnContext(ctx, "app store reconcile: apply failed for detected gap",
-			"notificationUUID", notification.NotificationUUID, "error", err)
+			"notificationUuid", notification.NotificationUUID, "error", err)
 		return true, false
 	}
 	return true, wasNew
