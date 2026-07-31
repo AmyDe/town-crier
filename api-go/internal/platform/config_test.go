@@ -574,6 +574,71 @@ func TestLoadConfig_AppleEnvironments(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_AppStoreReconcile(t *testing.T) {
+	t.Run("set", func(t *testing.T) {
+		t.Setenv("APPSTORE_RECONCILE_ENABLED", "true")
+		t.Setenv("APPSTORE_SERVER_API_KEY", "-----BEGIN PRIVATE KEY-----\nMIG...\n-----END PRIVATE KEY-----")
+		t.Setenv("APPSTORE_SERVER_API_KEY_ID", "ABCDE12345")
+		t.Setenv("APPSTORE_SERVER_API_ISSUER_ID", "57246542-96fe-1a63-e053-0824d011072a")
+		t.Setenv("APPSTORE_SERVER_API_ENVIRONMENT", "Sandbox")
+		t.Setenv("APPSTORE_RECONCILE_APPLY_ENABLED", "true")
+		t.Setenv("APPSTORE_RECONCILE_LOOKBACK_HOURS", "48")
+
+		cfg, err := LoadConfig()
+		if err != nil {
+			t.Fatalf("LoadConfig: %v", err)
+		}
+		if !cfg.AppStoreReconcileEnabled {
+			t.Error("AppStoreReconcileEnabled: got false, want true")
+		}
+		if cfg.AppStoreServerAPIKey.Expose() == "" {
+			t.Error("AppStoreServerAPIKey: got empty")
+		}
+		if cfg.AppStoreServerAPIKeyID != "ABCDE12345" {
+			t.Errorf("AppStoreServerAPIKeyID: got %q", cfg.AppStoreServerAPIKeyID)
+		}
+		if cfg.AppStoreServerAPIIssuerID != "57246542-96fe-1a63-e053-0824d011072a" {
+			t.Errorf("AppStoreServerAPIIssuerID: got %q", cfg.AppStoreServerAPIIssuerID)
+		}
+		if cfg.AppStoreServerAPIEnvironment != "Sandbox" {
+			t.Errorf("AppStoreServerAPIEnvironment: got %q", cfg.AppStoreServerAPIEnvironment)
+		}
+		if !cfg.AppStoreReconcileApplyEnabled {
+			t.Error("AppStoreReconcileApplyEnabled: got false, want true")
+		}
+		if cfg.AppStoreReconcileLookbackHours != 48 {
+			t.Errorf("AppStoreReconcileLookbackHours: got %d, want 48", cfg.AppStoreReconcileLookbackHours)
+		}
+	})
+
+	t.Run("absent defaults to observe-only and unconfigured", func(t *testing.T) {
+		t.Setenv("APPSTORE_RECONCILE_ENABLED", "")
+		t.Setenv("APPSTORE_SERVER_API_KEY", "")
+		t.Setenv("APPSTORE_SERVER_API_KEY_ID", "")
+		t.Setenv("APPSTORE_SERVER_API_ISSUER_ID", "")
+		t.Setenv("APPSTORE_SERVER_API_ENVIRONMENT", "")
+		t.Setenv("APPSTORE_RECONCILE_APPLY_ENABLED", "")
+		t.Setenv("APPSTORE_RECONCILE_LOOKBACK_HOURS", "")
+
+		cfg, err := LoadConfig()
+		if err != nil {
+			t.Fatalf("LoadConfig: %v", err)
+		}
+		if cfg.AppStoreReconcileEnabled {
+			t.Error("AppStoreReconcileEnabled: got true, want false by default")
+		}
+		if cfg.AppStoreServerAPIEnvironment != "Production" {
+			t.Errorf("AppStoreServerAPIEnvironment default: got %q, want Production", cfg.AppStoreServerAPIEnvironment)
+		}
+		if cfg.AppStoreReconcileApplyEnabled {
+			t.Error("AppStoreReconcileApplyEnabled: got true, want false by default (observe-only)")
+		}
+		if cfg.AppStoreReconcileLookbackHours != 30 {
+			t.Errorf("AppStoreReconcileLookbackHours default: got %d, want 30", cfg.AppStoreReconcileLookbackHours)
+		}
+	})
+}
+
 func TestLoadConfig_DevSeed(t *testing.T) {
 	t.Run("set", func(t *testing.T) {
 		t.Setenv("DEV_SEED_LIMIT", "10")

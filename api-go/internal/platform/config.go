@@ -118,6 +118,34 @@ type Config struct {
 	// testing phase. Matching is case-insensitive at use-time.
 	AppleEnvironments []string
 
+	// AppStoreReconcile* configure the WORKER_MODE=appstore-reconcile job (GH
+	// #1011, tc-97k35.6): a periodic poll of Apple's Get Notification History
+	// API that detects (and, once soaked, recovers) a missed ASSN webhook
+	// delivery. AppStoreReconcileEnabled gates whether the job's App Store
+	// Server API client is constructed at all; when false (or when the key
+	// material is missing/malformed) cmd/worker's builder returns nil and the
+	// mode logs and exits 0 rather than crash-looping an optional,
+	// still-rolling-out feature. AppStoreServerAPIKey is the PEM contents of
+	// the .p8 signing key (the appstore-server-api-key secret);
+	// AppStoreServerAPIKeyID and AppStoreServerAPIIssuerID are the matching
+	// Apple-issued identifiers. AppStoreServerAPIEnvironment selects
+	// "Sandbox" or "Production" — dev talks to Sandbox, prod talks to
+	// Production, driven by config, not hardcoded. There is no separate
+	// bundle-id config: the client reuses AppleBundleID above.
+	// AppStoreReconcileApplyEnabled gates whether a detected gap is actually
+	// replayed through the NotificationProcessor; it defaults to false
+	// (observe-only) and this bead never flips it — a later, separate
+	// decision does. AppStoreReconcileLookbackHours sizes the
+	// [now-lookback, now) scan window each cycle (default 30, a few hours of
+	// slack over a daily cadence).
+	AppStoreReconcileEnabled       bool
+	AppStoreServerAPIKey           SecretString
+	AppStoreServerAPIKeyID         string
+	AppStoreServerAPIIssuerID      string
+	AppStoreServerAPIEnvironment   string
+	AppStoreReconcileApplyEnabled  bool
+	AppStoreReconcileLookbackHours int
+
 	// APNs* configure the direct APNs HTTP/2 push client the digest worker modes
 	// use to deliver instant and digest alerts (epic tc-wad3, enabler tc-qlqn).
 	// APNsEnabled gates whether the real sender is constructed; when false the
@@ -341,6 +369,14 @@ func LoadConfig() (Config, error) {
 
 		AppleBundleID:     getenv("APPLE_BUNDLE_ID", defaultAppleBundleID),
 		AppleEnvironments: parseAppleEnvironments(os.Getenv("APPLE_ENVIRONMENT")),
+
+		AppStoreReconcileEnabled:       getenvBool("APPSTORE_RECONCILE_ENABLED"),
+		AppStoreServerAPIKey:           NewSecret(os.Getenv("APPSTORE_SERVER_API_KEY")),
+		AppStoreServerAPIKeyID:         os.Getenv("APPSTORE_SERVER_API_KEY_ID"),
+		AppStoreServerAPIIssuerID:      os.Getenv("APPSTORE_SERVER_API_ISSUER_ID"),
+		AppStoreServerAPIEnvironment:   getenv("APPSTORE_SERVER_API_ENVIRONMENT", defaultAppleEnvironment),
+		AppStoreReconcileApplyEnabled:  getenvBool("APPSTORE_RECONCILE_APPLY_ENABLED"),
+		AppStoreReconcileLookbackHours: getenvInt("APPSTORE_RECONCILE_LOOKBACK_HOURS", 30),
 
 		APNsEnabled:    getenvBool("APNS_ENABLED"),
 		APNsAuthKey:    NewSecret(os.Getenv("APNS_AUTH_KEY")),
