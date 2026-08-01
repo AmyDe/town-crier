@@ -23,7 +23,8 @@ public final class APIWatchZoneRepository: WatchZoneRepository, Sendable {
       radiusMetres: zone.radiusMetres,
       authorityId: zone.authorityId > 0 ? zone.authorityId : nil,
       pushEnabled: zone.pushEnabled,
-      emailInstantEnabled: zone.emailInstantEnabled
+      emailInstantEnabled: zone.emailInstantEnabled,
+      boundary: zone.boundary.map { GeoJSONPolygon(boundary: $0) }
     )
     do {
       let _: EmptyResponse = try await apiClient.request(.post("/v1/me/watch-zones", body: body))
@@ -57,7 +58,8 @@ public final class APIWatchZoneRepository: WatchZoneRepository, Sendable {
       longitude: zone.centre.longitude,
       radiusMetres: zone.radiusMetres,
       pushEnabled: zone.pushEnabled,
-      emailInstantEnabled: zone.emailInstantEnabled
+      emailInstantEnabled: zone.emailInstantEnabled,
+      boundary: zone.boundary.map { GeoJSONPolygon(boundary: $0) }
     )
     do {
       let _: EmptyResponse = try await apiClient.request(
@@ -119,6 +121,7 @@ struct CreateWatchZoneRequest: Encodable, Sendable {
   let authorityId: Int?
   let pushEnabled: Bool
   let emailInstantEnabled: Bool
+  let boundary: GeoJSONPolygon?
 }
 
 struct UpdateWatchZoneRequest: Encodable, Sendable {
@@ -128,10 +131,50 @@ struct UpdateWatchZoneRequest: Encodable, Sendable {
   let radiusMetres: Double
   let pushEnabled: Bool
   let emailInstantEnabled: Bool
+  let boundary: GeoJSONPolygon?
 }
 
 struct ListWatchZonesResponse: Decodable, Sendable {
   let zones: [WatchZoneSummaryDTO]
+}
+
+/// The wire shape of a custom-shape watch zone boundary: a GeoJSON Polygon
+/// with a single outer ring, first vertex repeated last to close it —
+/// mirrors the server's `geoJSONPolygon` (`api-go/internal/watchzones/handler.go`)
+/// exactly. `coordinates` is `[ring][vertex][longitude, latitude]`, GeoJSON's
+/// (lon, lat) ordering.
+struct GeoJSONPolygon: Codable, Sendable {
+  let type: String
+  let coordinates: [[[Double]]]
+
+  init(type: String = "Polygon", coordinates: [[[Double]]]) {
+    self.type = type
+    self.coordinates = coordinates
+  }
+
+  /// Builds the wire shape from a validated domain boundary.
+  init(boundary: WatchZoneBoundary) {
+    type = "Polygon"
+    coordinates = [boundary.vertices.map { [$0.longitude, $0.latitude] }]
+  }
+
+  /// Parses the wire shape back into a validated domain boundary. Throws
+  /// `DomainError.invalidWatchZoneBoundaryVertexCount` for a missing outer
+  /// ring, `DomainError.invalidCoordinate` for a malformed vertex pair, or
+  /// whichever `DomainError` `WatchZoneBoundary.init(vertices:)` raises for
+  /// an invalid ring.
+  func toDomain() throws -> WatchZoneBoundary {
+    guard let ring = coordinates.first else {
+      throw DomainError.invalidWatchZoneBoundaryVertexCount
+    }
+    let vertices = try ring.map { vertex -> Coordinate in
+      guard vertex.count == 2 else {
+        throw DomainError.invalidCoordinate
+      }
+      return try Coordinate(latitude: vertex[1], longitude: vertex[0])
+    }
+    return try WatchZoneBoundary(vertices: vertices)
+  }
 }
 
 struct WatchZoneSummaryDTO: Decodable, Sendable {
@@ -149,6 +192,10 @@ struct WatchZoneSummaryDTO: Decodable, Sendable {
   /// `false` (an unpaused zone) — same forward/back-compat treatment as
   /// `pushEnabled`/`emailInstantEnabled` above.
   let paused: Bool
+  /// The custom-shape polygon boundary, or `nil` for a circle zone
+  /// (GH#1031). Absent on responses predating this field, so it hydrates to
+  /// `nil` (a circle) — same back-compat treatment as `paused` above.
+  let boundary: GeoJSONPolygon?
 
   init(
     id: String,
@@ -159,7 +206,8 @@ struct WatchZoneSummaryDTO: Decodable, Sendable {
     authorityId: Int,
     pushEnabled: Bool = true,
     emailInstantEnabled: Bool = true,
-    paused: Bool = false
+    paused: Bool = false,
+    boundary: GeoJSONPolygon? = nil
   ) {
     self.id = id
     self.name = name
@@ -170,6 +218,7 @@ struct WatchZoneSummaryDTO: Decodable, Sendable {
     self.pushEnabled = pushEnabled
     self.emailInstantEnabled = emailInstantEnabled
     self.paused = paused
+    self.boundary = boundary
   }
 
   init(from decoder: Decoder) throws {
@@ -186,15 +235,18 @@ struct WatchZoneSummaryDTO: Decodable, Sendable {
       try container.decodeIfPresent(Bool.self, forKey: .emailInstantEnabled) ?? true
     // GH#889 P2: absent (older API/back-compat) hydrates to false (not paused).
     self.paused = try container.decodeIfPresent(Bool.self, forKey: .paused) ?? false
+    // GH#1031: absent (older API/back-compat, or a plain circle zone) hydrates to nil.
+    self.boundary = try container.decodeIfPresent(GeoJSONPolygon.self, forKey: .boundary)
   }
 
   private enum CodingKeys: String, CodingKey {
     case id, name, latitude, longitude, radiusMetres, authorityId
-    case pushEnabled, emailInstantEnabled, paused
+    case pushEnabled, emailInstantEnabled, paused, boundary
   }
 
   func toDomain() throws -> WatchZone {
     let centre = try Coordinate(latitude: latitude, longitude: longitude)
+    let domainBoundary = try boundary?.toDomain()
     return try WatchZone(
       id: WatchZoneId(id),
       name: name,
@@ -203,7 +255,8 @@ struct WatchZoneSummaryDTO: Decodable, Sendable {
       authorityId: authorityId,
       pushEnabled: pushEnabled,
       emailInstantEnabled: emailInstantEnabled,
-      paused: paused
+      paused: paused,
+      boundary: domainBoundary
     )
   }
 }
