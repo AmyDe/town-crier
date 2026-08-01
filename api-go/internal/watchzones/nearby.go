@@ -63,10 +63,17 @@ type authorityResolver interface {
 // breakdown) for a viewport, so the map renders a handful of aggregates instead
 // of eager-draining every application. *applications.PostgresStore satisfies all
 // three.
+// FindInBoundaryPage and FindClustersInBoundary (GH#1031, tc-6he3x.5) are the
+// custom-shape counterparts to FindNearbyPage and FindClustersInZone: the
+// containment test is ST_Covers against the zone's polygon rather than
+// ST_DWithin against its circle. See findZonePage and clusters for the
+// zone.IsCustomShape() branch that routes to them.
 type appFinder interface {
 	FindNearbyPage(ctx context.Context, latitude, longitude, radiusMetres float64, limit int, cursor string) ([]applications.PlanningApplication, string, error)
 	FindInZonePage(ctx context.Context, q applications.InZoneQuery) ([]applications.PlanningApplication, string, error)
 	FindClustersInZone(ctx context.Context, q applications.ClusterQuery) ([]applications.Cluster, error)
+	FindInBoundaryPage(ctx context.Context, latitude, longitude float64, boundary []applications.Coordinate, limit int, cursor string) ([]applications.PlanningApplication, string, error)
+	FindClustersInBoundary(ctx context.Context, q applications.BoundaryClusterQuery) ([]applications.Cluster, error)
 }
 
 // unreadReader batches the per-application latest-unread lookup (read_at IS NULL,
@@ -503,6 +510,16 @@ func (h *handler) applications(w http.ResponseWriter, r *http.Request) {
 // polygon-scoped finder (FindInBoundaryPage) replaces this fallback in
 // tc-6he3x.5.
 func (h *handler) findZonePage(ctx context.Context, userID string, zone WatchZone, sort applications.Sort, sortPresent bool, status string, unread bool, rawLimit, cursor string) ([]applications.PlanningApplication, string, error) {
+	// Custom-shape zones (GH#1031, tc-6he3x.5) always take the plain boundary-
+	// scoped page, regardless of ?sort=/?status=/?unread=: there is no
+	// boundary-aware counterpart to FindInZonePage yet, so those params are a
+	// silent no-op here (escalated and decided 2026-08-01 — option A). Circle
+	// zones are completely unaffected; a follow-up bead tracks the
+	// boundary-aware sort/filter equivalent.
+	if zone.IsCustomShape() {
+		limit := parseLimit(rawLimit, defaultNearbyLimit)
+		return h.apps.FindInBoundaryPage(ctx, zone.Latitude, zone.Longitude, boundaryCoordinates(zone.Boundary), limit, cursor)
+	}
 	if !sortPresent && status == "" && !unread {
 		limit := parseLimit(rawLimit, defaultNearbyLimit)
 		return h.apps.FindNearbyPage(ctx, zone.Latitude, zone.Longitude, zone.RadiusMetres, limit, cursor)
@@ -568,23 +585,43 @@ func (h *handler) clusters(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	clusters, err := h.apps.FindClustersInZone(r.Context(), applications.ClusterQuery{
-		Latitude:        zone.Latitude,
-		Longitude:       zone.Longitude,
-		RadiusMetres:    zone.RadiusMetres,
-		West:            box.West,
-		South:           box.South,
-		East:            box.East,
-		North:           box.North,
-		GridSizeDegrees: gridSize,
-		Status:          status,
-		// The coalesce threshold is the finest (zoom-20) grid cell size, not the
-		// request's own grid: a multi-member cell whose member points already span
-		// less than this can never be split by zooming, so the store attaches an
-		// applicationIds member list. applications.FinestGridDegrees() keeps it
-		// tracking the shared zoom -> grid policy (GH#924) with no separate constant.
-		CoalesceThresholdDegrees: applications.FinestGridDegrees(),
-	})
+	// Custom-shape zones (GH#1031, tc-6he3x.5) branch to the boundary-scoped
+	// cluster query: ST_Covers against the polygon rather than ST_DWithin
+	// against the circle. Every other param (viewport, status, coalesce
+	// threshold) carries the same meaning as the circle path unchanged.
+	var clusters []applications.Cluster
+	if zone.IsCustomShape() {
+		clusters, err = h.apps.FindClustersInBoundary(r.Context(), applications.BoundaryClusterQuery{
+			Boundary:        boundaryCoordinates(zone.Boundary),
+			West:            box.West,
+			South:           box.South,
+			East:            box.East,
+			North:           box.North,
+			GridSizeDegrees: gridSize,
+			Status:          status,
+			// See the circle path below for the coalesce-threshold rationale --
+			// identical here.
+			CoalesceThresholdDegrees: applications.FinestGridDegrees(),
+		})
+	} else {
+		clusters, err = h.apps.FindClustersInZone(r.Context(), applications.ClusterQuery{
+			Latitude:        zone.Latitude,
+			Longitude:       zone.Longitude,
+			RadiusMetres:    zone.RadiusMetres,
+			West:            box.West,
+			South:           box.South,
+			East:            box.East,
+			North:           box.North,
+			GridSizeDegrees: gridSize,
+			Status:          status,
+			// The coalesce threshold is the finest (zoom-20) grid cell size, not the
+			// request's own grid: a multi-member cell whose member points already span
+			// less than this can never be split by zooming, so the store attaches an
+			// applicationIds member list. applications.FinestGridDegrees() keeps it
+			// tracking the shared zoom -> grid policy (GH#924) with no separate constant.
+			CoalesceThresholdDegrees: applications.FinestGridDegrees(),
+		})
+	}
 	if err != nil {
 		h.serverError(w, r, "find clusters in zone", err)
 		return
@@ -758,6 +795,18 @@ func (h *handler) atomicQuotaIncrement(ctx context.Context, userID string, limit
 	}
 	// Exhausted retries: conservative 403.
 	return false, nil
+}
+
+// boundaryCoordinates converts a watch zone's Boundary ring into the
+// applications package's own Coordinate slice. applications cannot import
+// watchzones (which already imports applications), so each polygon-scoped
+// store call re-encodes the ring into that package's boundary parameter type.
+func boundaryCoordinates(b Boundary) []applications.Coordinate {
+	out := make([]applications.Coordinate, len(b))
+	for i, v := range b {
+		out[i] = applications.Coordinate{Longitude: v.Longitude, Latitude: v.Latitude}
+	}
+	return out
 }
 
 // boolOrTrue resolves an optional bool flag, defaulting an absent value to true.
