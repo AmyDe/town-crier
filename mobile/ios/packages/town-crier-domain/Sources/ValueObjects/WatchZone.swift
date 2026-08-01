@@ -16,6 +16,14 @@ public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
   /// automatically revived (server-side, with no client action) once the
   /// user upgrades or deletes older zones.
   public let paused: Bool
+  /// The custom-shape polygon for this zone, or `nil` for a circle
+  /// (GH#1031). `centre`/`radiusMetres` remain always-present: for a
+  /// custom-shape zone they hold the polygon's derived centroid and
+  /// enclosing radius, so every existing circle-shaped read path (map
+  /// centring, list rows, distance sort) keeps working unchanged. A
+  /// non-nil boundary is the sole "this is a custom shape" discriminator —
+  /// see ``isCustomShape``.
+  public let boundary: WatchZoneBoundary?
 
   public init(
     id: WatchZoneId = WatchZoneId(),
@@ -25,7 +33,8 @@ public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
     authorityId: Int = 0,
     pushEnabled: Bool = true,
     emailInstantEnabled: Bool = true,
-    paused: Bool = false
+    paused: Bool = false,
+    boundary: WatchZoneBoundary? = nil
   ) throws {
     let trimmed = name.trimmingCharacters(in: .whitespaces)
     guard !trimmed.isEmpty else {
@@ -42,6 +51,7 @@ public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
     self.pushEnabled = pushEnabled
     self.emailInstantEnabled = emailInstantEnabled
     self.paused = paused
+    self.boundary = boundary
   }
 
   /// Convenience initializer that derives the zone name from a validated postcode.
@@ -53,7 +63,8 @@ public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
     authorityId: Int = 0,
     pushEnabled: Bool = true,
     emailInstantEnabled: Bool = true,
-    paused: Bool = false
+    paused: Bool = false,
+    boundary: WatchZoneBoundary? = nil
   ) throws {
     try self.init(
       id: id,
@@ -63,7 +74,8 @@ public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
       authorityId: authorityId,
       pushEnabled: pushEnabled,
       emailInstantEnabled: emailInstantEnabled,
-      paused: paused
+      paused: paused,
+      boundary: boundary
     )
   }
 
@@ -79,6 +91,12 @@ public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
   /// stable comparator across the domain layer.
   public func distance(to coordinate: Coordinate) -> Double {
     haversineDistance(from: centre, to: coordinate)
+  }
+
+  /// Whether this is a custom-shape (polygon) zone rather than a circle
+  /// (GH#1031). Mirrors the server's `WatchZone.IsCustomShape()`.
+  public var isCustomShape: Bool {
+    boundary != nil
   }
 
   private func haversineDistance(from a: Coordinate, to b: Coordinate) -> Double {
