@@ -96,15 +96,47 @@ func scanZone(row pgx.Row) (WatchZone, error) {
 	return zone, nil
 }
 
-// pgBoundaryGeoJSON is the GeoJSON Polygon encoding of a Boundary ring
-// exchanged with Postgres: a single exterior ring, [longitude, latitude]
-// coordinate order (GeoJSON/RFC 7946 convention), matching what
-// ST_GeomFromGeoJSON expects on write and what ST_AsGeoJSON produces on read.
-// Single outer ring only -- no holes, no multi-polygon, mirroring the
-// domain's Boundary type.
-type pgBoundaryGeoJSON struct {
+// boundaryGeoJSON is the GeoJSON Polygon wire representation of a Boundary
+// ring: a single exterior ring, [longitude, latitude] coordinate order
+// (GeoJSON/RFC 7946 convention). It is shared by two layers: this store, which
+// round-trips it as a JSON string for ST_GeomFromGeoJSON (write) and
+// ST_AsGeoJSON (read), and the HTTP handlers (handler.go, nearby.go) plus the
+// GDPR export adapter (cmd/api/export_adapters.go), which round-trip it
+// directly as a JSON value in request/response bodies. Single outer ring only
+// -- no holes, no multi-polygon, mirroring the domain's Boundary type.
+type boundaryGeoJSON struct {
 	Type        string         `json:"type"`
 	Coordinates [][][2]float64 `json:"coordinates"`
+}
+
+// boundaryToGeoJSON renders b as its GeoJSON Polygon wire representation, or
+// nil for a circle zone (nil/empty Boundary) -- the "no shape" value at every
+// layer that uses this type, matching a NULL boundary column here and a null
+// "boundary" JSON field at the HTTP layer.
+func boundaryToGeoJSON(b Boundary) *boundaryGeoJSON {
+	if len(b) == 0 {
+		return nil
+	}
+	ring := make([][2]float64, len(b))
+	for i, v := range b {
+		ring[i] = [2]float64{v.Longitude, v.Latitude}
+	}
+	return &boundaryGeoJSON{Type: "Polygon", Coordinates: [][][2]float64{ring}}
+}
+
+// vertices extracts the outer ring as raw, UNVALIDATED Coordinates -- callers
+// must pass them through NewBoundary (directly, or via WithBoundary /
+// WithUpdates) before trusting them as a valid shape.
+func (g boundaryGeoJSON) vertices() []Coordinate {
+	if len(g.Coordinates) == 0 {
+		return nil
+	}
+	ring := g.Coordinates[0]
+	out := make([]Coordinate, len(ring))
+	for i, pt := range ring {
+		out[i] = Coordinate{Longitude: pt[0], Latitude: pt[1]}
+	}
+	return out
 }
 
 // encodeBoundaryGeoJSON renders b as the GeoJSON text ST_GeomFromGeoJSON(...)
@@ -112,14 +144,11 @@ type pgBoundaryGeoJSON struct {
 // which the caller binds as SQL NULL so ST_GeomFromGeoJSON(NULL)::geography
 // also yields NULL -- clearing any previously-persisted boundary on update.
 func encodeBoundaryGeoJSON(b Boundary) (*string, error) {
-	if len(b) == 0 {
+	g := boundaryToGeoJSON(b)
+	if g == nil {
 		return nil, nil
 	}
-	ring := make([][2]float64, len(b))
-	for i, v := range b {
-		ring[i] = [2]float64{v.Longitude, v.Latitude}
-	}
-	raw, err := json.Marshal(pgBoundaryGeoJSON{Type: "Polygon", Coordinates: [][][2]float64{ring}})
+	raw, err := json.Marshal(g)
 	if err != nil {
 		return nil, fmt.Errorf("encode boundary geojson: %w", err)
 	}
@@ -132,17 +161,13 @@ func encodeBoundaryGeoJSON(b Boundary) (*string, error) {
 // string in practice -- scanZone only calls this when the boundary column
 // scanned non-NULL.
 func decodeBoundaryGeoJSON(raw string) (Boundary, error) {
-	var g pgBoundaryGeoJSON
+	var g boundaryGeoJSON
 	if err := json.Unmarshal([]byte(raw), &g); err != nil {
 		return nil, fmt.Errorf("decode boundary geojson: %w", err)
 	}
-	if len(g.Coordinates) == 0 || len(g.Coordinates[0]) == 0 {
+	vertices := g.vertices()
+	if len(vertices) == 0 {
 		return nil, nil
-	}
-	ring := g.Coordinates[0]
-	vertices := make([]Coordinate, len(ring))
-	for i, pt := range ring {
-		vertices[i] = Coordinate{Longitude: pt[0], Latitude: pt[1]}
 	}
 	return NewBoundary(vertices)
 }
