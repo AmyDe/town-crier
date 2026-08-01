@@ -1193,7 +1193,7 @@ func TestApplications_CircleZoneStillUsesLegacyDistancePath(t *testing.T) {
 // FindNearbyPage/FindInZonePage.
 func TestApplications_CustomShapeZoneUsesBoundaryPath(t *testing.T) {
 	t.Parallel()
-	zone := mustCustomShapeZone(t, 471)
+	zone := mustCustomShapeZone(t)
 	apps := &fakeAppFinder{}
 	d := nearbyDeps{
 		store:    &fakeZoneStore{zones: []WatchZone{zone}},
@@ -1242,7 +1242,7 @@ func TestApplications_CustomShapeZoneUsesBoundaryPath(t *testing.T) {
 // to the plain boundary page or the circle-zone FindInZonePage.
 func TestApplications_CustomShapeZoneSortAndFilterRoutesToBoundaryZonePage(t *testing.T) {
 	t.Parallel()
-	zone := mustCustomShapeZone(t, 471)
+	zone := mustCustomShapeZone(t)
 	apps := &fakeAppFinder{}
 	d := nearbyDeps{
 		store:    &fakeZoneStore{zones: []WatchZone{zone}},
@@ -1293,7 +1293,7 @@ func TestApplications_CustomShapeZoneSortAndFilterRoutesToBoundaryZonePage(t *te
 // just ?sort=/?status=.
 func TestApplications_CustomShapeZoneUnreadFilterRoutesToBoundaryZonePage(t *testing.T) {
 	t.Parallel()
-	zone := mustCustomShapeZone(t, 471)
+	zone := mustCustomShapeZone(t)
 	apps := &fakeAppFinder{}
 	d := nearbyDeps{
 		store:    &fakeZoneStore{zones: []WatchZone{zone}},
@@ -1324,7 +1324,7 @@ func TestApplications_CustomShapeZoneUnreadFilterRoutesToBoundaryZonePage(t *tes
 // as 400, exactly like the circle-zone FindInZonePage path.
 func TestApplications_CustomShapeZoneBoundaryZoneCursorMismatchIs400(t *testing.T) {
 	t.Parallel()
-	zone := mustCustomShapeZone(t, 471)
+	zone := mustCustomShapeZone(t)
 	apps := &fakeAppFinder{boundaryZoneErr: applications.ErrCursorSortMismatch}
 	d := nearbyDeps{
 		store:    &fakeZoneStore{zones: []WatchZone{zone}},
@@ -1765,11 +1765,12 @@ func mustZone(t *testing.T, id string, authorityID int) WatchZone {
 
 // mustCustomShapeZone builds a custom-shape zone (londonSquare, from
 // zone_test.go) over the same base fields as mustZone, for the polygon-branch
-// tests in findZonePage and clusters. id is always "zone-1" across callers
-// (unparam), so it is fixed here rather than threaded through.
-func mustCustomShapeZone(t *testing.T, authorityID int) WatchZone {
+// tests in findZonePage and clusters. id and authorityID are always "zone-1"
+// and 471 across callers (unparam), so they are fixed here rather than
+// threaded through.
+func mustCustomShapeZone(t *testing.T) WatchZone {
 	t.Helper()
-	z := mustZone(t, "zone-1", authorityID)
+	z := mustZone(t, "zone-1", 471)
 	z, err := z.WithBoundary(londonSquare(t))
 	if err != nil {
 		t.Fatalf("WithBoundary: %v", err)
@@ -1859,7 +1860,7 @@ func TestClusters_PassesZoneAndParamsToStore(t *testing.T) {
 // circle path -- and never falls through to FindClustersInZone.
 func TestClusters_CustomShapeZoneUsesBoundaryClusterQuery(t *testing.T) {
 	t.Parallel()
-	zone := mustCustomShapeZone(t, 471)
+	zone := mustCustomShapeZone(t)
 	apps := &fakeAppFinder{}
 	d := nearbyDeps{
 		store:    &fakeZoneStore{zones: []WatchZone{zone}},
