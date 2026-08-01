@@ -173,6 +173,35 @@ func TestSubscriptionTier_IsPaid(t *testing.T) {
 	}
 }
 
+func TestSubscriptionTier_AllowsCustomBoundary(t *testing.T) {
+	t.Parallel()
+
+	if TierFree.AllowsCustomBoundary() {
+		t.Error("Free should not allow a custom boundary")
+	}
+	if !TierPersonal.AllowsCustomBoundary() || !TierPro.AllowsCustomBoundary() {
+		t.Error("Personal and Pro should allow a custom boundary")
+	}
+}
+
+func TestSubscriptionTier_MaxZoneRadiusMetres(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		tier SubscriptionTier
+		want float64
+	}{
+		{TierFree, 2000},
+		{TierPersonal, 5000},
+		{TierPro, 10000},
+	}
+	for _, tc := range tests {
+		if got := tc.tier.MaxZoneRadiusMetres(); got != tc.want {
+			t.Errorf("%v.MaxZoneRadiusMetres(): got %v, want %v", tc.tier, got, tc.want)
+		}
+	}
+}
+
 func TestUserProfile_EffectiveTier(t *testing.T) {
 	t.Parallel()
 

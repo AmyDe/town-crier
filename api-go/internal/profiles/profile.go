@@ -91,6 +91,28 @@ func (t SubscriptionTier) WatchZoneLimit() int {
 	}
 }
 
+// AllowsCustomBoundary reports whether the tier may draw a custom-shape
+// (polygon) watch zone boundary rather than a plain circle: Personal and Pro,
+// never Free. Part of the custom-shape watch zones entitlement (epic GH#1031).
+func (t SubscriptionTier) AllowsCustomBoundary() bool { return t.IsPaid() }
+
+// MaxZoneRadiusMetres returns the maximum enclosing-circle radius, in metres,
+// permitted for a custom-shape polygon boundary: Free=2000, Personal=5000,
+// Pro=10000, mirroring mobile/ios/packages/town-crier-domain/Sources/
+// ValueObjects/WatchZoneLimits.swift. This bounds only the polygon's
+// enclosing radius — it is unrelated to the existing flat circle-zone radius
+// ceiling in internal/watchzones/nearby.go, which this method does not touch.
+func (t SubscriptionTier) MaxZoneRadiusMetres() float64 {
+	switch t {
+	case TierPersonal:
+		return 5000
+	case TierPro:
+		return 10000
+	default:
+		return 2000
+	}
+}
+
 // ErrUnknownTier is returned by ParseSubscriptionTier for an unrecognised value.
 var ErrUnknownTier = errors.New("unknown subscription tier")
 
