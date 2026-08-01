@@ -153,7 +153,7 @@ func TestDecisionDispatcher_ZoneMatch_PolygonZone_CreatesDecisionRecord(t *testi
 	// Dispatch never branches on shape.
 	// proWithZonePrefs hardcodes its opt-in against zone id "zone-1" (matching
 	// every other test in this file), so the polygon fixture reuses that id.
-	zone := testPolygonZoneAt(t, "zone-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+	zone := testPolygonZoneAt(t, "zone-1", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
 	zones := &fakeZones{zones: []watchzones.WatchZone{zone}}
 	saved := &fakeSaved{}
 	profs := &fakeProfiles{byID: map[string]*profiles.UserProfile{

@@ -122,9 +122,9 @@ func testZoneAt(t *testing.T, id, userID string, createdAt time.Time) watchzones
 // interchangeable in the fan-out tests apart from shape. The dispatchers under
 // test never inspect Boundary directly, so the fake stores are free to return
 // this without any real geometric containment check.
-func testPolygonZoneAt(t *testing.T, id, userID string, createdAt time.Time) watchzones.WatchZone {
+func testPolygonZoneAt(t *testing.T, id string, createdAt time.Time) watchzones.WatchZone {
 	t.Helper()
-	z := testZoneAt(t, id, userID, createdAt)
+	z := testZoneAt(t, id, "auth0|alice", createdAt)
 	vertices := []watchzones.Coordinate{
 		{Longitude: -0.11, Latitude: 51.49},
 		{Longitude: -0.09, Latitude: 51.49},
@@ -550,7 +550,7 @@ func TestEnqueuer_EnqueueForApplication_FansOutToContainingPolygonZone(t *testin
 	// A custom-shape (polygon) zone that FindZonesContaining returns must fan
 	// out exactly like a circle zone (tc-6he3x.6): the fan-out loop is
 	// shape-agnostic, so it must not require a circle's radius/lat/lng.
-	zone := testPolygonZoneAt(t, "zone-polygon-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+	zone := testPolygonZoneAt(t, "zone-polygon-1", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
 	zones := &fakeZones{zones: []watchzones.WatchZone{zone}}
 	enq, notifs, _, _ := newEnqueuerHarnessWithZones(t, profiles.TierPro, zones)
 	app := testApplication(t, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
@@ -573,9 +573,9 @@ func TestEnqueuer_PausedPolygonZone_NoFanOutAndZoneUnchanged(t *testing.T) {
 	// circle zone would be. Per the epic's "Quota / downgrade" section, a
 	// downgraded polygon zone must pause, never convert to a circle or get
 	// deleted — assert the fake store's copy is untouched afterward.
-	z1 := testPolygonZoneAt(t, "zone-polygon-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
-	z2 := testPolygonZoneAt(t, "zone-polygon-2", "auth0|alice", time.Date(2026, 6, 2, 0, 0, 0, 0, time.UTC))
-	z3 := testPolygonZoneAt(t, "zone-polygon-3", "auth0|alice", time.Date(2026, 6, 3, 0, 0, 0, 0, time.UTC))
+	z1 := testPolygonZoneAt(t, "zone-polygon-1", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+	z2 := testPolygonZoneAt(t, "zone-polygon-2", time.Date(2026, 6, 2, 0, 0, 0, 0, time.UTC))
+	z3 := testPolygonZoneAt(t, "zone-polygon-3", time.Date(2026, 6, 3, 0, 0, 0, 0, time.UTC))
 	allZones := []watchzones.WatchZone{z1, z2, z3}
 	zones := &fakeZones{zones: allZones}
 	enq, notifs, queue, _ := newEnqueuerHarnessWithZones(t, profiles.TierFree, zones)
