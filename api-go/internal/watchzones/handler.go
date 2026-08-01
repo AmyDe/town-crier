@@ -1,6 +1,7 @@
 package watchzones
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -24,6 +25,52 @@ const maxBodyBytes = 1 << 20
 // invalidPayloadMessage is the error text for a watch-zone validation failure
 // (Create/Update endpoints).
 const invalidPayloadMessage = "Invalid watch zone payload."
+
+// Custom-shape boundary error codes and messages (tc-6he3x.4). Unlike
+// invalidPayloadMessage above (whose text IS the apiErrorResponse "error"
+// field, an established watchzones convention this bead does not touch),
+// these carry a stable machine-readable code separately from the human
+// message -- the same (code, message) shape internal/offercodes and
+// internal/subscriptions already use -- because a client (iOS/web) needs to
+// tell "wrong tier" apart from "bad shape" apart from "too big" to route to
+// the right UX (paywall vs. a validation error vs. a resize prompt).
+const (
+	// boundaryRequiresPaidTierCode/-Message: 403, a Free-tier caller supplied a
+	// non-null boundary on create, or on a PATCH that sets one.
+	boundaryRequiresPaidTierCode    = "boundary_requires_paid_tier"
+	boundaryRequiresPaidTierMessage = "Custom-shape watch zones require a paid subscription."
+	// boundaryInvalidCode/-Message: 400, the supplied boundary failed the
+	// domain's own shape validation (NewBoundary's sentinel errors in zone.go
+	// -- vertex count, duplicate vertex, self-intersection, out of UK bounds)
+	// or was not well-formed GeoJSON.
+	boundaryInvalidCode    = "boundary_invalid"
+	boundaryInvalidMessage = "The supplied boundary is not a valid shape."
+	// boundaryTooLargeCode/-Message: 400, the boundary's enclosing radius
+	// exceeds either the hard server ceiling (maxRadiusMetres, nearby.go) or
+	// the caller's tier cap (profiles.SubscriptionTier.MaxZoneRadiusMetres).
+	boundaryTooLargeCode    = "boundary_too_large"
+	boundaryTooLargeMessage = "The boundary is too large for your subscription tier."
+)
+
+// errProfileReaderNotWired signals a wiring bug: setting a watch-zone boundary
+// requires the profile reader to check the caller's tier entitlement, and the
+// handler refuses to run an unverified tier check without it. Unreachable in
+// production, where Routes/NearbyRoutes are always wired WithProfileReader
+// whenever a profile store is configured (cmd/api/wiring.go).
+var errProfileReaderNotWired = errors.New("profile reader not wired for boundary tier gate")
+
+// isBoundaryValidationError reports whether err is one of the shape-validation
+// sentinels NewBoundary returns (see zone.go), which WithUpdates propagates
+// unwrapped from a PATCH that sets an invalid boundary. The handler maps these
+// to a 400 boundary_invalid rather than the generic 500 a merge failure (e.g.
+// a blank name) gets -- reusing the domain's own validation rather than
+// re-implementing geometry checks at the HTTP layer.
+func isBoundaryValidationError(err error) bool {
+	return errors.Is(err, ErrBoundaryVertexCount) ||
+		errors.Is(err, ErrBoundaryDuplicateVertex) ||
+		errors.Is(err, ErrBoundarySelfIntersecting) ||
+		errors.Is(err, ErrBoundaryOutOfBounds)
+}
 
 // zoneStore is the consumer-side store the handlers use. *CosmosStore satisfies
 // it; tests substitute a hand-written fake.
@@ -131,6 +178,11 @@ type watchZoneSummary struct {
 	PushEnabled         bool    `json:"pushEnabled"`
 	EmailInstantEnabled bool    `json:"emailInstantEnabled"`
 	Paused              bool    `json:"paused"`
+	// Boundary is null for a circle zone and a GeoJSON Polygon for a
+	// custom-shape one (tc-6he3x.4); Latitude/Longitude/RadiusMetres remain
+	// the polygon's derived centroid/enclosing radius either way, so every
+	// pre-existing circle-shaped consumer keeps working unchanged.
+	Boundary *boundaryGeoJSON `json:"boundary"`
 }
 
 func summaryOf(z WatchZone, paused bool) watchZoneSummary {
@@ -144,6 +196,7 @@ func summaryOf(z WatchZone, paused bool) watchZoneSummary {
 		PushEnabled:         z.PushEnabled,
 		EmailInstantEnabled: z.EmailInstantEnabled,
 		Paused:              paused,
+		Boundary:            boundaryToGeoJSON(z.Boundary),
 	}
 }
 
@@ -229,14 +282,20 @@ func pausedIDs(zones []WatchZone, limit int) map[string]bool {
 }
 
 // patchRequest is the PATCH body: every field optional (nil = unchanged).
+// Boundary is tri-state (absent/null/value, see decodeBoundaryUpdate and
+// ZoneUpdate.Boundary) so it cannot be a plain pointer-to-value like the rest
+// of the fields; json.RawMessage captures the field's exact presence and raw
+// bytes, which a *boundaryGeoJSON cannot: that would collapse absent and
+// explicit null to the same nil value.
 type patchRequest struct {
-	Name                *string  `json:"name"`
-	Latitude            *float64 `json:"latitude"`
-	Longitude           *float64 `json:"longitude"`
-	RadiusMetres        *float64 `json:"radiusMetres"`
-	AuthorityID         *int     `json:"authorityId"`
-	PushEnabled         *bool    `json:"pushEnabled"`
-	EmailInstantEnabled *bool    `json:"emailInstantEnabled"`
+	Name                *string         `json:"name"`
+	Latitude            *float64        `json:"latitude"`
+	Longitude           *float64        `json:"longitude"`
+	RadiusMetres        *float64        `json:"radiusMetres"`
+	AuthorityID         *int            `json:"authorityId"`
+	PushEnabled         *bool           `json:"pushEnabled"`
+	EmailInstantEnabled *bool           `json:"emailInstantEnabled"`
+	Boundary            json.RawMessage `json:"boundary"`
 }
 
 // rangeValid reports whether the present coordinate/radius/authority fields are
@@ -261,12 +320,9 @@ func (req patchRequest) rangeValid() bool {
 	return true
 }
 
-func (req patchRequest) toUpdate() ZoneUpdate {
-	// ZoneUpdate.Boundary is domain-only for now (tc-6he3x.1): patchRequest
-	// does not yet expose a boundary field, so a field-by-field copy is
-	// required instead of the old field-identical type conversion. Wiring
-	// json.RawMessage tri-state boundary decoding into patchRequest is
-	// tc-6he3x.4.
+// toUpdate builds the domain ZoneUpdate, threading the already-decoded
+// tri-state boundary (see decodeBoundaryUpdate) into ZoneUpdate.Boundary.
+func (req patchRequest) toUpdate(boundary *Boundary) ZoneUpdate {
 	return ZoneUpdate{
 		Name:                req.Name,
 		Latitude:            req.Latitude,
@@ -275,13 +331,49 @@ func (req patchRequest) toUpdate() ZoneUpdate {
 		AuthorityID:         req.AuthorityID,
 		PushEnabled:         req.PushEnabled,
 		EmailInstantEnabled: req.EmailInstantEnabled,
+		Boundary:            boundary,
 	}
 }
 
+// decodeBoundaryUpdate resolves the PATCH body's tri-state "boundary" field
+// (raw, exactly as captured by patchRequest.Boundary's json.RawMessage) into
+// ZoneUpdate.Boundary's pointer-to-slice shape (see that field's doc comment):
+//
+//   - raw is nil (the JSON key was absent): (nil, nil) -- leave the zone's
+//     shape alone.
+//   - raw is the 4-byte JSON literal null (the key was present, explicitly
+//     null): a pointer to an empty Boundary -- revert to a circle.
+//   - raw is a GeoJSON Polygon value: a pointer to its raw, UNVALIDATED
+//     vertices. WithUpdates validates them (via NewBoundary) when it applies
+//     the merge; this function does not re-implement that check.
+//
+// A value that is valid JSON but not a GeoJSON-shaped object (e.g. a bare
+// string or number) returns an error; the caller maps it to the
+// boundary_invalid response, matching the malformed-shape case WithUpdates
+// itself would otherwise report.
+func decodeBoundaryUpdate(raw json.RawMessage) (*Boundary, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	if bytes.Equal(raw, []byte("null")) {
+		empty := Boundary{}
+		return &empty, nil
+	}
+	var g boundaryGeoJSON
+	if err := json.Unmarshal(raw, &g); err != nil {
+		return nil, fmt.Errorf("decode boundary update: %w", err)
+	}
+	b := Boundary(g.vertices())
+	return &b, nil
+}
+
 // patch implements PATCH /v1/me/watch-zones/{zoneId}: range-validate the body
-// (400), load the zone (404 if absent), apply the merge, persist, and return the
-// updated summary. A merge that violates a domain invariant (e.g. a blank name)
-// is a 500.
+// (400), decode the tri-state boundary field (400 boundary_invalid on
+// malformed GeoJSON), gate a boundary-setting update on the caller's tier
+// (403 boundary_requires_paid_tier), load the zone (404 if absent), apply the
+// merge (400 boundary_invalid on an invalid shape, 500 on any other domain
+// invariant violation e.g. a blank name), gate the resulting radius (400
+// boundary_too_large), persist, and return the updated summary.
 func (h *handler) patch(w http.ResponseWriter, r *http.Request) {
 	userID := auth.Subject(r.Context())
 	zoneID := r.PathValue("zoneId")
@@ -297,6 +389,37 @@ func (h *handler) patch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	boundaryUpdate, err := decodeBoundaryUpdate(req.Boundary)
+	if err != nil {
+		h.writeErrorCode(w, r, http.StatusBadRequest, boundaryInvalidCode, boundaryInvalidMessage)
+		return
+	}
+	// "Setting" a boundary (as opposed to leaving it alone, or explicitly
+	// nulling it back to a circle) is the only case the paid-tier gate and the
+	// radius ceiling apply to (tc-6he3x.4 acceptance criteria 4 and 6).
+	settingBoundary := boundaryUpdate != nil && len(*boundaryUpdate) > 0
+
+	var tier profiles.SubscriptionTier
+	if settingBoundary {
+		if h.profiles == nil {
+			h.serverError(w, r, "boundary tier gate", errProfileReaderNotWired)
+			return
+		}
+		profile, perr := h.profiles.Get(r.Context(), userID)
+		if perr != nil || profile == nil {
+			// A missing profile for an authenticated caller is a server-side
+			// inconsistency (the iOS app always registers on first launch) --
+			// mirroring nearby.go's create-path quota check.
+			h.serverError(w, r, "load profile for boundary tier gate", perr)
+			return
+		}
+		tier = profile.EffectiveTier(h.now())
+		if !tier.AllowsCustomBoundary() {
+			h.writeErrorCode(w, r, http.StatusForbidden, boundaryRequiresPaidTierCode, boundaryRequiresPaidTierMessage)
+			return
+		}
+	}
+
 	zone, err := h.store.Get(r.Context(), userID, zoneID)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
@@ -307,11 +430,25 @@ func (h *handler) patch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updated, err := zone.WithUpdates(req.toUpdate())
+	updated, err := zone.WithUpdates(req.toUpdate(boundaryUpdate))
 	if err != nil {
+		if isBoundaryValidationError(err) {
+			h.writeErrorCode(w, r, http.StatusBadRequest, boundaryInvalidCode, boundaryInvalidMessage)
+			return
+		}
 		h.serverError(w, r, "apply watch-zone update", err)
 		return
 	}
+
+	// Gate A (hard server ceiling) and Gate B (per-tier cap) both apply only
+	// when this update actually set a new shape -- reverting to a circle or
+	// leaving the shape alone never re-checks a radius that was already
+	// accepted (or is unrelated to a boundary) on a prior write.
+	if settingBoundary && (updated.RadiusMetres > maxRadiusMetres || updated.RadiusMetres > tier.MaxZoneRadiusMetres()) {
+		h.writeErrorCode(w, r, http.StatusBadRequest, boundaryTooLargeCode, boundaryTooLargeMessage)
+		return
+	}
+
 	if err := h.store.Save(r.Context(), updated); err != nil {
 		h.serverError(w, r, "save watch zone", err)
 		return
@@ -440,6 +577,27 @@ func (h *handler) writeJSON(w http.ResponseWriter, r *http.Request, status int, 
 // application/json; charset=utf-8 content type.
 func (h *handler) writeError(w http.ResponseWriter, r *http.Request, status int, message string) {
 	body, err := httputil.EncodeJSON(apiErrorResponse{Error: message})
+	if err != nil {
+		h.serverError(w, r, "encode error", err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	if _, err := w.Write(body); err != nil {
+		h.logger.ErrorContext(r.Context(), "write error body", "error", err)
+	}
+}
+
+// writeErrorCode emits the error envelope with a stable, machine-readable code
+// in the "error" field and a human message in "message" -- the same shape
+// internal/offercodes and internal/subscriptions use. writeError (above) stays
+// exactly as-is for its pre-existing call sites, whose "error" field carries
+// prose text with "message" always null; this is for new call sites (the
+// boundary_* errors, tc-6he3x.4) that need a stable discriminator a client can
+// branch on.
+func (h *handler) writeErrorCode(w http.ResponseWriter, r *http.Request, status int, code, message string) {
+	msg := message
+	body, err := httputil.EncodeJSON(apiErrorResponse{Error: code, Message: &msg})
 	if err != nil {
 		h.serverError(w, r, "encode error", err)
 		return
