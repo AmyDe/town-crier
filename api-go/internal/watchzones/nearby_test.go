@@ -58,6 +58,13 @@ type fakeAppFinder struct {
 	clusterErr       error
 	clustersCalled   bool
 	lastClusterQuery applications.ClusterQuery
+
+	boundaryCalled           bool
+	lastBoundaryLatitude     float64
+	lastBoundaryLongitude    float64
+	lastBoundary             []applications.Coordinate
+	boundaryClustersCalled   bool
+	lastBoundaryClusterQuery applications.BoundaryClusterQuery
 }
 
 func (f *fakeAppFinder) FindNearbyPage(_ context.Context, _, _, _ float64, limit int, cursor string) ([]applications.PlanningApplication, string, error) {
@@ -99,6 +106,32 @@ func (f *fakeAppFinder) FindInZonePage(_ context.Context, q applications.InZoneQ
 func (f *fakeAppFinder) FindClustersInZone(_ context.Context, q applications.ClusterQuery) ([]applications.Cluster, error) {
 	f.clustersCalled = true
 	f.lastClusterQuery = q
+	if f.clusterErr != nil {
+		return nil, f.clusterErr
+	}
+	return f.clusters, nil
+}
+
+func (f *fakeAppFinder) FindInBoundaryPage(_ context.Context, latitude, longitude float64, boundary []applications.Coordinate, limit int, cursor string) ([]applications.PlanningApplication, string, error) {
+	f.boundaryCalled = true
+	f.lastBoundaryLatitude = latitude
+	f.lastBoundaryLongitude = longitude
+	f.lastBoundary = boundary
+	f.lastLimit = limit
+	f.lastCursor = cursor
+	if f.err != nil {
+		return nil, "", f.err
+	}
+	apps := f.apps
+	if limit > 0 && len(apps) > limit {
+		apps = apps[:limit]
+	}
+	return apps, f.next, nil
+}
+
+func (f *fakeAppFinder) FindClustersInBoundary(_ context.Context, q applications.BoundaryClusterQuery) ([]applications.Cluster, error) {
+	f.boundaryClustersCalled = true
+	f.lastBoundaryClusterQuery = q
 	if f.clusterErr != nil {
 		return nil, f.clusterErr
 	}
@@ -842,6 +875,106 @@ func TestApplications_ParamlessUsesLegacyDistancePath(t *testing.T) {
 	if apps.lastLimit != 500 {
 		t.Errorf("legacy default limit: got %d, want 500", apps.lastLimit)
 	}
+	if apps.boundaryCalled {
+		t.Error("a circle zone must never route to the boundary-scoped finder")
+	}
+}
+
+// TestApplications_CircleZoneStillUsesLegacyDistancePath is the explicit
+// regression this bead calls for (tc-6he3x.5): a circle zone's applications
+// list is completely unaffected by the new polygon branch, sort/filter
+// requests included -- it keeps routing to FindNearbyPage/FindInZonePage
+// exactly as before, never FindInBoundaryPage.
+func TestApplications_CircleZoneStillUsesLegacyDistancePath(t *testing.T) {
+	t.Parallel()
+	apps := &fakeAppFinder{}
+	mux := newNearbyMux(t, sortDeps(t, apps))
+
+	rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications?sort=newest", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200", rec.Code)
+	}
+	if !apps.inZoneCalled {
+		t.Error("a circle zone's ?sort= request must still use FindInZonePage")
+	}
+	if apps.boundaryCalled {
+		t.Error("a circle zone must never route to the boundary-scoped finder")
+	}
+}
+
+// TestApplications_CustomShapeZoneUsesBoundaryPath proves a custom-shape zone's
+// applications list branches to FindInBoundaryPage, threading the zone's
+// derived centroid and its boundary ring -- and never falls through to
+// FindNearbyPage/FindInZonePage.
+func TestApplications_CustomShapeZoneUsesBoundaryPath(t *testing.T) {
+	t.Parallel()
+	zone := mustCustomShapeZone(t, "zone-1", 471)
+	apps := &fakeAppFinder{}
+	d := nearbyDeps{
+		store:    &fakeZoneStore{zones: []WatchZone{zone}},
+		apps:     apps,
+		profiles: &fakeProfileReader{},
+		resolver: &fakeResolver{},
+		unread:   &fakeUnread{},
+	}
+	mux := newNearbyMux(t, d)
+
+	rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	if !apps.boundaryCalled {
+		t.Fatal("a custom-shape zone must route to FindInBoundaryPage")
+	}
+	if apps.called || apps.inZoneCalled {
+		t.Error("a custom-shape zone must never route to FindNearbyPage/FindInZonePage")
+	}
+	if apps.lastBoundaryLatitude != zone.Latitude || apps.lastBoundaryLongitude != zone.Longitude {
+		t.Errorf("boundary centre: got (%v, %v), want the zone's derived centroid (%v, %v)",
+			apps.lastBoundaryLatitude, apps.lastBoundaryLongitude, zone.Latitude, zone.Longitude)
+	}
+	if len(apps.lastBoundary) != len(zone.Boundary) {
+		t.Fatalf("boundary ring length: got %d, want %d", len(apps.lastBoundary), len(zone.Boundary))
+	}
+	for i, v := range zone.Boundary {
+		got := apps.lastBoundary[i]
+		if got.Longitude != v.Longitude || got.Latitude != v.Latitude {
+			t.Errorf("boundary[%d]: got %+v, want %+v", i, got, v)
+		}
+	}
+	if apps.lastLimit != defaultNearbyLimit {
+		t.Errorf("boundary path default limit: got %d, want %d", apps.lastLimit, defaultNearbyLimit)
+	}
+}
+
+// TestApplications_CustomShapeZoneIgnoresSortAndFilterParams proves the
+// documented interim gap (tc-6he3x.5; a boundary-aware FindInZonePage
+// equivalent is a follow-up, per the escalated decision): a custom-shape
+// zone's ?sort=/?status=/?unread= are silent no-ops, always serving the plain
+// boundary page rather than erroring or falling through to FindInZonePage.
+func TestApplications_CustomShapeZoneIgnoresSortAndFilterParams(t *testing.T) {
+	t.Parallel()
+	zone := mustCustomShapeZone(t, "zone-1", 471)
+	apps := &fakeAppFinder{}
+	d := nearbyDeps{
+		store:    &fakeZoneStore{zones: []WatchZone{zone}},
+		apps:     apps,
+		profiles: &fakeProfileReader{},
+		resolver: &fakeResolver{},
+		unread:   &fakeUnread{},
+	}
+	mux := newNearbyMux(t, d)
+
+	rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications?sort=newest&status=Permitted", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	if !apps.boundaryCalled {
+		t.Fatal("a custom-shape zone must still route to FindInBoundaryPage even with ?sort=/?status=")
+	}
+	if apps.inZoneCalled {
+		t.Error("?sort=/?status= must be a no-op for a custom-shape zone, not route to FindInZonePage")
+	}
 }
 
 // TestApplications_SortRoutesToSortAwarePath proves ?sort= routes to
@@ -1265,6 +1398,19 @@ func mustZone(t *testing.T, id string, authorityID int) WatchZone {
 	return z
 }
 
+// mustCustomShapeZone builds a custom-shape zone (londonSquare, from
+// zone_test.go) over the same base fields as mustZone, for the polygon-branch
+// tests in findZonePage and clusters.
+func mustCustomShapeZone(t *testing.T, id string, authorityID int) WatchZone {
+	t.Helper()
+	z := mustZone(t, id, authorityID)
+	z, err := z.WithBoundary(londonSquare(t))
+	if err != nil {
+		t.Fatalf("WithBoundary: %v", err)
+	}
+	return z
+}
+
 // clusterDeps builds a standard dependency set for the clusters-endpoint tests:
 // one seeded zone (lat 51.5, lng -0.12, radius 1000) and a configurable finder.
 func clusterDeps(t *testing.T, apps *fakeAppFinder) nearbyDeps {
@@ -1333,6 +1479,62 @@ func TestClusters_PassesZoneAndParamsToStore(t *testing.T) {
 	// request's own zoom: it is the "zooming can never separate these" boundary
 	// below which a multi-member cell gets an applicationIds member list.
 	wantThreshold := 45.0 / float64(uint64(1)<<20) // 360/2^(20+3)
+	if q.CoalesceThresholdDegrees != wantThreshold {
+		t.Errorf("coalesce threshold: got %v, want the finest-grid size %v", q.CoalesceThresholdDegrees, wantThreshold)
+	}
+	if apps.boundaryClustersCalled {
+		t.Error("a circle zone must never route to the boundary-scoped cluster query")
+	}
+}
+
+// TestClusters_CustomShapeZoneUsesBoundaryClusterQuery proves a custom-shape
+// zone's clusters endpoint branches to FindClustersInBoundary, threading the
+// zone's boundary ring plus the same viewport/status/coalesce params as the
+// circle path -- and never falls through to FindClustersInZone.
+func TestClusters_CustomShapeZoneUsesBoundaryClusterQuery(t *testing.T) {
+	t.Parallel()
+	zone := mustCustomShapeZone(t, "zone-1", 471)
+	apps := &fakeAppFinder{}
+	d := nearbyDeps{
+		store:    &fakeZoneStore{zones: []WatchZone{zone}},
+		apps:     apps,
+		profiles: &fakeProfileReader{},
+		resolver: &fakeResolver{},
+		unread:   &fakeUnread{},
+	}
+	mux := newNearbyMux(t, d)
+
+	rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications/clusters?bbox=-0.2,51.4,-0.05,51.6&zoom=12&status=Permitted", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	if !apps.boundaryClustersCalled {
+		t.Fatal("a custom-shape zone must route to FindClustersInBoundary")
+	}
+	if apps.clustersCalled {
+		t.Error("a custom-shape zone must never route to FindClustersInZone")
+	}
+	q := apps.lastBoundaryClusterQuery
+	if len(q.Boundary) != len(zone.Boundary) {
+		t.Fatalf("boundary ring length: got %d, want %d", len(q.Boundary), len(zone.Boundary))
+	}
+	for i, v := range zone.Boundary {
+		got := q.Boundary[i]
+		if got.Longitude != v.Longitude || got.Latitude != v.Latitude {
+			t.Errorf("boundary[%d]: got %+v, want %+v", i, got, v)
+		}
+	}
+	if q.West != -0.2 || q.South != 51.4 || q.East != -0.05 || q.North != 51.6 {
+		t.Errorf("bbox: got (%v,%v,%v,%v), want (-0.2,51.4,-0.05,51.6)", q.West, q.South, q.East, q.North)
+	}
+	if q.Status != "Permitted" {
+		t.Errorf("status: got %q, want %q", q.Status, "Permitted")
+	}
+	wantGrid := 45.0 / float64(uint64(1)<<12)
+	if q.GridSizeDegrees != wantGrid {
+		t.Errorf("grid size for zoom 12: got %v, want %v", q.GridSizeDegrees, wantGrid)
+	}
+	wantThreshold := 45.0 / float64(uint64(1)<<20)
 	if q.CoalesceThresholdDegrees != wantThreshold {
 		t.Errorf("coalesce threshold: got %v, want the finest-grid size %v", q.CoalesceThresholdDegrees, wantThreshold)
 	}
