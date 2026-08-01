@@ -139,4 +139,30 @@ struct DomainErrorMessageTests {
   @Test func geocodingFailed_isRetryable() {
     #expect(DomainError.geocodingFailed("SW1A 1AA").isRetryable)
   }
+
+  // MARK: - Custom-shape watch zone boundary (GH#1031, tc-6he3x.7)
+
+  @Test func invalidWatchZoneBoundaryVertexCount_hasInvalidAreaTitle() {
+    let error = DomainError.invalidWatchZoneBoundaryVertexCount
+    #expect(error.userTitle == "Invalid Area")
+    #expect(!error.isRetryable)
+  }
+
+  @Test func invalidWatchZoneBoundaryDuplicateVertex_hasInvalidAreaTitle() {
+    let error = DomainError.invalidWatchZoneBoundaryDuplicateVertex
+    #expect(error.userTitle == "Invalid Area")
+    #expect(!error.isRetryable)
+  }
+
+  @Test func invalidWatchZoneBoundarySelfIntersecting_hasInvalidAreaTitle() {
+    let error = DomainError.invalidWatchZoneBoundarySelfIntersecting
+    #expect(error.userTitle == "Invalid Area")
+    #expect(!error.isRetryable)
+  }
+
+  @Test func invalidWatchZoneBoundaryOutOfBounds_hasInvalidAreaTitle() {
+    let error = DomainError.invalidWatchZoneBoundaryOutOfBounds
+    #expect(error.userTitle == "Invalid Area")
+    #expect(!error.isRetryable)
+  }
 }
