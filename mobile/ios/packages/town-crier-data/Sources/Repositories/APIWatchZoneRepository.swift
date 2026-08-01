@@ -124,6 +124,17 @@ struct CreateWatchZoneRequest: Encodable, Sendable {
   let boundary: GeoJSONPolygon?
 }
 
+/// PATCH always sends every field, including `boundary`: unlike a partial
+/// update, `update(_:)` always encodes the zone's complete desired state (see
+/// `APIWatchZoneRepository.update(_:)`), matching every other field on this
+/// request. A custom `encode(to:)` is required because Swift's synthesized
+/// `Encodable` conformance calls `encodeIfPresent` for `Optional` properties,
+/// which would omit `boundary` from the payload entirely when `nil` rather
+/// than sending an explicit JSON `null` — the server's PATCH handler
+/// (`decodeBoundaryUpdate`, `api-go/internal/watchzones/handler.go`) treats
+/// an absent `boundary` key as "leave the shape untouched" and an explicit
+/// `null` as "revert to a circle", so this distinction matters: a circle
+/// zone (`boundary == nil`) always needs the latter.
 struct UpdateWatchZoneRequest: Encodable, Sendable {
   let name: String
   let latitude: Double
@@ -132,6 +143,22 @@ struct UpdateWatchZoneRequest: Encodable, Sendable {
   let pushEnabled: Bool
   let emailInstantEnabled: Bool
   let boundary: GeoJSONPolygon?
+
+  private enum CodingKeys: String, CodingKey {
+    case name, latitude, longitude, radiusMetres, pushEnabled, emailInstantEnabled, boundary
+  }
+
+  func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(name, forKey: .name)
+    try container.encode(latitude, forKey: .latitude)
+    try container.encode(longitude, forKey: .longitude)
+    try container.encode(radiusMetres, forKey: .radiusMetres)
+    try container.encode(pushEnabled, forKey: .pushEnabled)
+    try container.encode(emailInstantEnabled, forKey: .emailInstantEnabled)
+    // `encode`, not `encodeIfPresent`: see the type's doc comment.
+    try container.encode(boundary, forKey: .boundary)
+  }
 }
 
 struct ListWatchZonesResponse: Decodable, Sendable {

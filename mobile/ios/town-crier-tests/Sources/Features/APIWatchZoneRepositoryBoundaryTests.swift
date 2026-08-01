@@ -109,8 +109,8 @@ struct APIWatchZoneRepositoryBoundaryTests {
     #expect(boundaryJSON["type"] as? String == "Polygon")
   }
 
-  @Test("update omits the boundary key when the zone is a circle")
-  func update_withoutBoundary_omitsBoundaryKey() async throws {
+  @Test("update sends an explicit null boundary when the zone is a circle, to revert any stored shape")
+  func update_withoutBoundary_sendsExplicitNull() async throws {
     let zone = WatchZone.cambridge
     let (sut, transport) = makeSUT(responses: [
       (Data("{}".utf8), httpResponse(statusCode: 200))
@@ -120,7 +120,12 @@ struct APIWatchZoneRepositoryBoundaryTests {
 
     let body = try #require(transport.requests[0].httpBody)
     let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
-    #expect(json["boundary"] == nil)
+    // The key must be present with an explicit JSON null, not omitted: the
+    // server's PATCH handler treats an absent key as "leave alone" and only
+    // an explicit null as "revert to a circle" (see UpdateWatchZoneRequest's
+    // doc comment).
+    #expect(json.keys.contains("boundary"))
+    #expect(json["boundary"] is NSNull)
   }
 
   // MARK: - loadAll (round trip)

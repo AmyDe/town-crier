@@ -169,9 +169,11 @@ struct WatchZoneBoundaryTests {
     // A staircase/L-shape: (lat,lon) (0,0),(0,6),(2,6),(2,2),(4,2),(4,0).
     // True polygon centroid is (1.5, 2.5); the naive vertex average is
     // (2.0, 2.667) — different enough to fail a naive-average implementation.
-    // Shifted into UK bounds by a +51 latitude, -1 longitude offset.
+    // Shifted into UK bounds by a +51 latitude, -7 longitude offset (the
+    // shape spans 6 degrees of longitude, so the offset must keep both ends
+    // within ukMinLongitude/ukMaxLongitude, not just the starting vertex).
     let baseLat = 51.0
-    let baseLon = -1.0
+    let baseLon = -7.0
     let shape = try [
       Coordinate(latitude: baseLat, longitude: baseLon),
       Coordinate(latitude: baseLat, longitude: baseLon + 6),
