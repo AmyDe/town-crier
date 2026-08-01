@@ -117,6 +117,30 @@ func testZoneAt(t *testing.T, id, userID string, createdAt time.Time) watchzones
 	return z
 }
 
+// testPolygonZoneAt builds a custom-shape (polygon) watch zone: a small square
+// ring around the same point testZoneAt uses, so the two fixtures are
+// interchangeable in the fan-out tests apart from shape. The dispatchers under
+// test never inspect Boundary directly, so the fake stores are free to return
+// this without any real geometric containment check.
+func testPolygonZoneAt(t *testing.T, id, userID string, createdAt time.Time) watchzones.WatchZone {
+	t.Helper()
+	z := testZoneAt(t, id, userID, createdAt)
+	vertices := []watchzones.Coordinate{
+		{Longitude: -0.11, Latitude: 51.49},
+		{Longitude: -0.09, Latitude: 51.49},
+		{Longitude: -0.09, Latitude: 51.51},
+		{Longitude: -0.11, Latitude: 51.51},
+	}
+	polygon, err := z.WithBoundary(vertices)
+	if err != nil {
+		t.Fatalf("WithBoundary: %v", err)
+	}
+	if !polygon.IsCustomShape() {
+		t.Fatalf("testPolygonZoneAt: fixture must be a custom shape")
+	}
+	return polygon
+}
+
 func newEnqueuerHarness(t *testing.T, tier profiles.SubscriptionTier) (*Enqueuer, *fakeNotifications, *fakePushQueue) {
 	t.Helper()
 	enq, notifs, queue, _ := newEnqueuerHarnessWithZones(t, tier, nil)
@@ -518,6 +542,72 @@ func TestEnqueuer_LapsedPaidTier_RankedAgainstFreeLimit(t *testing.T) {
 	}
 	if len(notifs.created) != 0 {
 		t.Errorf("a lapsed paid tier must be ranked against the Free limit, got %d records for rank-2 zone", len(notifs.created))
+	}
+}
+
+func TestEnqueuer_EnqueueForApplication_FansOutToContainingPolygonZone(t *testing.T) {
+	t.Parallel()
+	// A custom-shape (polygon) zone that FindZonesContaining returns must fan
+	// out exactly like a circle zone (tc-6he3x.6): the fan-out loop is
+	// shape-agnostic, so it must not require a circle's radius/lat/lng.
+	zone := testPolygonZoneAt(t, "zone-polygon-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+	zones := &fakeZones{zones: []watchzones.WatchZone{zone}}
+	enq, notifs, _, _ := newEnqueuerHarnessWithZones(t, profiles.TierPro, zones)
+	app := testApplication(t, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
+
+	if err := enq.EnqueueForApplication(context.Background(), app); err != nil {
+		t.Fatalf("EnqueueForApplication: %v", err)
+	}
+	if len(notifs.created) != 1 {
+		t.Fatalf("a within-quota polygon zone must fan out exactly once, got %d", len(notifs.created))
+	}
+	if notifs.created[0].WatchZoneID == nil || *notifs.created[0].WatchZoneID != "zone-polygon-1" {
+		t.Errorf("record should carry the matching polygon zone id: %+v", notifs.created[0].WatchZoneID)
+	}
+}
+
+func TestEnqueuer_PausedPolygonZone_NoFanOutAndZoneUnchanged(t *testing.T) {
+	t.Parallel()
+	// Free tier (limit 1) with 3 polygon zones ranked oldest-first: rank 2
+	// (zone-polygon-2) is paused per the existing GH#889 ranking, exactly as a
+	// circle zone would be. Per the epic's "Quota / downgrade" section, a
+	// downgraded polygon zone must pause, never convert to a circle or get
+	// deleted — assert the fake store's copy is untouched afterward.
+	z1 := testPolygonZoneAt(t, "zone-polygon-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+	z2 := testPolygonZoneAt(t, "zone-polygon-2", "auth0|alice", time.Date(2026, 6, 2, 0, 0, 0, 0, time.UTC))
+	z3 := testPolygonZoneAt(t, "zone-polygon-3", "auth0|alice", time.Date(2026, 6, 3, 0, 0, 0, 0, time.UTC))
+	allZones := []watchzones.WatchZone{z1, z2, z3}
+	zones := &fakeZones{zones: allZones}
+	enq, notifs, queue, _ := newEnqueuerHarnessWithZones(t, profiles.TierFree, zones)
+	app := testApplication(t, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
+
+	if err := enq.Enqueue(context.Background(), app, z2); err != nil {
+		t.Fatalf("Enqueue: %v", err)
+	}
+	if len(notifs.created) != 0 {
+		t.Errorf("paused (over-quota) polygon zone must create NO record, got %d", len(notifs.created))
+	}
+	if len(queue.queued) != 0 {
+		t.Errorf("paused polygon zone must not queue a push, got %d", len(queue.queued))
+	}
+
+	// The paused zone must still exist in the store, unmodified: still a
+	// custom shape, with its boundary intact — never deleted, never silently
+	// downgraded to a circle.
+	var found *watchzones.WatchZone
+	for i, z := range zones.zones {
+		if z.ID == "zone-polygon-2" {
+			found = &zones.zones[i]
+		}
+	}
+	if found == nil {
+		t.Fatal("paused polygon zone must still exist in the store")
+	}
+	if !found.IsCustomShape() {
+		t.Error("paused polygon zone must still report IsCustomShape() == true, not have been converted to a circle")
+	}
+	if len(found.Boundary) != len(z2.Boundary) {
+		t.Errorf("paused polygon zone's boundary must be untouched: got %d vertices, want %d", len(found.Boundary), len(z2.Boundary))
 	}
 }
 
