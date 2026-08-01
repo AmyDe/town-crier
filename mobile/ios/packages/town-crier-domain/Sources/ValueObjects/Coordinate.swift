@@ -19,8 +19,10 @@ public struct Coordinate: Equatable, Hashable, Sendable {
   /// haversine calculation.
   public func distanceMetres(to other: Coordinate) -> Double {
     Self.haversineMetres(
-      latitude1: latitude, longitude1: longitude,
-      latitude2: other.latitude, longitude2: other.longitude
+      latitude1: latitude,
+      longitude1: longitude,
+      latitude2: other.latitude,
+      longitude2: other.longitude
     )
   }
 
@@ -30,8 +32,10 @@ public struct Coordinate: Equatable, Hashable, Sendable {
   /// derived point rather than a user-supplied one — don't need to
   /// re-validate it through `Coordinate.init` just to measure a distance.
   static func haversineMetres(
-    latitude1: Double, longitude1: Double,
-    latitude2: Double, longitude2: Double
+    latitude1: Double,
+    longitude1: Double,
+    latitude2: Double,
+    longitude2: Double
   ) -> Double {
     let earthRadiusMetres = 6_371_000.0
     let degToRad = Double.pi / 180
@@ -42,7 +46,11 @@ public struct Coordinate: Equatable, Hashable, Sendable {
     let haversine =
       sin(deltaPhi / 2) * sin(deltaPhi / 2)
       + cos(phi1) * cos(phi2) * sin(deltaLambda / 2) * sin(deltaLambda / 2)
-    let angularDistance = 2 * atan2(sqrt(haversine), sqrt(1 - haversine))
+    // Clamp before the sqrts: floating-point round-off can push `haversine`
+    // fractionally above 1 for near-antipodal coordinates, which would make
+    // `1 - haversine` negative and `sqrt` return NaN.
+    let clampedHaversine = min(1.0, haversine)
+    let angularDistance = 2 * atan2(sqrt(clampedHaversine), sqrt(1 - clampedHaversine))
     return earthRadiusMetres * angularDistance
   }
 }
