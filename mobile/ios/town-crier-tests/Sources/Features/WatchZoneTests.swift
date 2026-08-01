@@ -161,4 +161,32 @@ struct WatchZoneTests {
     let zone = try WatchZone(name: "Home", centre: centre, radiusMetres: 1000)
     #expect(zone.distance(to: near) < zone.distance(to: far))
   }
+
+  // MARK: - Custom-shape boundary (GH#1031, tc-6he3x.7)
+
+  @Test("a zone with no boundary is not a custom shape")
+  func isCustomShape_nilBoundary_isFalse() throws {
+    let centre = try Coordinate(latitude: 52.2053, longitude: 0.1218)
+    let zone = try WatchZone(name: "Home", centre: centre, radiusMetres: 1000)
+    #expect(zone.boundary == nil)
+    #expect(!zone.isCustomShape)
+  }
+
+  @Test("a zone with a boundary is a custom shape")
+  func isCustomShape_withBoundary_isTrue() throws {
+    let centre = try Coordinate(latitude: 51.5074, longitude: -0.1278)
+    let boundary = try WatchZoneBoundary(vertices: [
+      Coordinate(latitude: 51.50, longitude: -0.10),
+      Coordinate(latitude: 51.51, longitude: -0.09),
+      Coordinate(latitude: 51.50, longitude: -0.09),
+    ])
+    let zone = try WatchZone(
+      name: "Custom Area",
+      centre: centre,
+      radiusMetres: 1000,
+      boundary: boundary
+    )
+    #expect(zone.boundary == boundary)
+    #expect(zone.isCustomShape)
+  }
 }
