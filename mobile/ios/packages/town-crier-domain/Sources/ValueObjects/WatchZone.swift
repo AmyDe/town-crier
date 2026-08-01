@@ -81,8 +81,7 @@ public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
 
   /// Returns true if the given coordinate falls within this watch zone.
   public func contains(_ coordinate: Coordinate) -> Bool {
-    let distance = haversineDistance(from: centre, to: coordinate)
-    return distance <= radiusMetres
+    centre.distanceMetres(to: coordinate) <= radiusMetres
   }
 
   /// Great-circle distance in metres from this zone's centre to the given
@@ -90,25 +89,12 @@ public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
   /// (tc-mso6) and any future "near me"-style features that need a
   /// stable comparator across the domain layer.
   public func distance(to coordinate: Coordinate) -> Double {
-    haversineDistance(from: centre, to: coordinate)
+    centre.distanceMetres(to: coordinate)
   }
 
   /// Whether this is a custom-shape (polygon) zone rather than a circle
   /// (GH#1031). Mirrors the server's `WatchZone.IsCustomShape()`.
   public var isCustomShape: Bool {
     boundary != nil
-  }
-
-  private func haversineDistance(from a: Coordinate, to b: Coordinate) -> Double {
-    let earthRadius: Double = 6_371_000
-    let dLat = (b.latitude - a.latitude) * .pi / 180
-    let dLon = (b.longitude - a.longitude) * .pi / 180
-    let lat1 = a.latitude * .pi / 180
-    let lat2 = b.latitude * .pi / 180
-
-    let sinHalfDLat = sin(dLat / 2)
-    let sinHalfDLon = sin(dLon / 2)
-    let h = sinHalfDLat * sinHalfDLat + cos(lat1) * cos(lat2) * sinHalfDLon * sinHalfDLon
-    return 2 * earthRadius * asin(sqrt(h))
   }
 }

@@ -102,7 +102,7 @@ public struct WatchZoneBoundary: Equatable, Hashable, Sendable {
     let centre = centroid
     var maxDistance = 0.0
     for vertex in vertices.dropLast() {
-      let distance = Self.haversineMetres(
+      let distance = Coordinate.haversineMetres(
         latitude1: centre.latitude,
         longitude1: centre.longitude,
         latitude2: vertex.latitude,
@@ -198,25 +198,5 @@ public struct WatchZoneBoundary: Equatable, Hashable, Sendable {
       && point.longitude <= max(segmentStart.longitude, segmentEnd.longitude)
       && point.latitude >= min(segmentStart.latitude, segmentEnd.latitude)
       && point.latitude <= max(segmentStart.latitude, segmentEnd.latitude)
-  }
-
-  /// Great-circle distance between two lat/lon points, in metres.
-  private static func haversineMetres(
-    latitude1: Double,
-    longitude1: Double,
-    latitude2: Double,
-    longitude2: Double
-  ) -> Double {
-    let earthRadiusMetres = 6_371_000.0
-    let degToRad = Double.pi / 180
-    let phi1 = latitude1 * degToRad
-    let phi2 = latitude2 * degToRad
-    let deltaPhi = (latitude2 - latitude1) * degToRad
-    let deltaLambda = (longitude2 - longitude1) * degToRad
-    let haversine =
-      sin(deltaPhi / 2) * sin(deltaPhi / 2)
-      + cos(phi1) * cos(phi2) * sin(deltaLambda / 2) * sin(deltaLambda / 2)
-    let angularDistance = 2 * atan2(sqrt(haversine), sqrt(1 - haversine))
-    return earthRadiusMetres * angularDistance
   }
 }
