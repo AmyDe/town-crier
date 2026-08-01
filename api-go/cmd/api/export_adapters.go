@@ -59,9 +59,24 @@ func (r watchZoneExportReader) WatchZonesByUser(ctx context.Context, userID stri
 			RadiusMetres: z.RadiusMetres,
 			AuthorityID:  z.AuthorityID,
 			CreatedAt:    platform.DotNetTime(z.CreatedAt),
+			Boundary:     exportedBoundaryOf(z.Boundary),
 		})
 	}
 	return rows, nil
+}
+
+// exportedBoundaryOf converts a watch zone's domain Boundary to its GDPR
+// export wire representation (tc-6he3x.4), or nil for a circle zone (nil or
+// empty Boundary) -- matching a null "boundary" field on the exported row.
+func exportedBoundaryOf(b watchzones.Boundary) *profiles.ExportedBoundary {
+	if len(b) == 0 {
+		return nil
+	}
+	ring := make([][2]float64, len(b))
+	for i, v := range b {
+		ring[i] = [2]float64{v.Longitude, v.Latitude}
+	}
+	return &profiles.ExportedBoundary{Type: "Polygon", Coordinates: [][][2]float64{ring}}
 }
 
 // allByUserReader is the narrowest consumer-side interface

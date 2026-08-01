@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -297,6 +298,226 @@ func TestHandler_Patch_BlankNameIsServerError(t *testing.T) {
 	}
 }
 
+// --- PATCH boundary tri-state tests (tc-6he3x.4) ----------------------------
+
+// TestHandler_Patch_Boundary_AbsentLeavesShapeUnchanged proves an absent
+// "boundary" key leaves an existing custom shape untouched (acceptance
+// criteria 3, the "absent" tri-state branch), and does not require a profile
+// reader to be wired.
+func TestHandler_Patch_Boundary_AbsentLeavesShapeUnchanged(t *testing.T) {
+	t.Parallel()
+	base := testZone(t)
+	z, err := base.WithBoundary(squareVertices(base.Latitude, base.Longitude, 500))
+	if err != nil {
+		t.Fatalf("WithBoundary: %v", err)
+	}
+	store := &fakeZoneStore{zones: []WatchZone{z}}
+	rec := doReq(t, testMux(t, store), http.MethodPatch, "/v1/me/watch-zones/"+z.ID, `{"name":"Renamed"}`)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200 (body %s)", rec.Code, rec.Body)
+	}
+	if store.saved == nil || !store.saved.IsCustomShape() {
+		t.Fatalf("boundary must be untouched by an absent field: %+v", store.saved)
+	}
+	if !reflect.DeepEqual(store.saved.Boundary, z.Boundary) {
+		t.Errorf("boundary changed: got %+v, want %+v", store.saved.Boundary, z.Boundary)
+	}
+	var got struct {
+		Zone watchZoneSummary `json:"zone"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Zone.Boundary == nil {
+		t.Error("response boundary must remain non-null")
+	}
+}
+
+// TestHandler_Patch_Boundary_ExplicitNullConvertsToCircle proves a literal
+// `"boundary":null` reverts a custom-shape zone to a circle while preserving
+// its existing centre and radius (acceptance criteria 3), and that this
+// revert path needs no tier check at all -- testMux wires no profile reader,
+// and the request still succeeds, because the tier gate only applies to
+// setting a non-null boundary (acceptance criteria 4).
+func TestHandler_Patch_Boundary_ExplicitNullConvertsToCircle(t *testing.T) {
+	t.Parallel()
+	base := testZone(t)
+	z, err := base.WithBoundary(squareVertices(base.Latitude, base.Longitude, 500))
+	if err != nil {
+		t.Fatalf("WithBoundary: %v", err)
+	}
+	wantLat, wantLon, wantRadius := z.Latitude, z.Longitude, z.RadiusMetres
+	store := &fakeZoneStore{zones: []WatchZone{z}}
+	rec := doReq(t, testMux(t, store), http.MethodPatch, "/v1/me/watch-zones/"+z.ID, `{"boundary":null}`)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200 (body %s)", rec.Code, rec.Body)
+	}
+	if store.saved == nil || store.saved.IsCustomShape() {
+		t.Fatalf("zone must revert to a circle: %+v", store.saved)
+	}
+	if store.saved.Latitude != wantLat || store.saved.Longitude != wantLon || store.saved.RadiusMetres != wantRadius {
+		t.Errorf("centre/radius must be preserved on revert: got (%v,%v,%v), want (%v,%v,%v)",
+			store.saved.Latitude, store.saved.Longitude, store.saved.RadiusMetres, wantLat, wantLon, wantRadius)
+	}
+	var got struct {
+		Zone watchZoneSummary `json:"zone"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Zone.Boundary != nil {
+		t.Error("response boundary must be null after reverting to a circle")
+	}
+}
+
+// TestHandler_Patch_Boundary_ValueRequiresPaidTier403 proves a Free-tier
+// caller's PATCH that sets a non-null boundary is rejected with 403
+// boundary_requires_paid_tier (acceptance criteria 4) and never persisted.
+func TestHandler_Patch_Boundary_ValueRequiresPaidTier403(t *testing.T) {
+	t.Parallel()
+	z := testZone(t)
+	store := &fakeZoneStore{zones: []WatchZone{z}}
+	mux := http.NewServeMux()
+	Routes(mux, store, slog.New(slog.DiscardHandler), WithProfileReader(&fakeProfileReader{profile: freeProfile(t)}))
+
+	body := mustJSON(t, struct {
+		Boundary *boundaryGeoJSON `json:"boundary"`
+	}{Boundary: boundaryToGeoJSON(mustBoundary(t, squareVertices(z.Latitude, z.Longitude, 500)))})
+	rec := doReq(t, mux, http.MethodPatch, "/v1/me/watch-zones/"+z.ID, body)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status: got %d, want 403 (body %s)", rec.Code, rec.Body)
+	}
+	var env apiErrorResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatalf("decode error envelope: %v", err)
+	}
+	if env.Error != boundaryRequiresPaidTierCode {
+		t.Errorf("error code: got %q, want %q", env.Error, boundaryRequiresPaidTierCode)
+	}
+	if store.saved != nil {
+		t.Error("must not save a zone when the boundary tier gate rejects the request")
+	}
+}
+
+// TestHandler_Patch_Boundary_ValueSetsShape proves a paid-tier caller's PATCH
+// that sets a valid boundary derives and persists the new centroid/enclosing
+// radius (acceptance criteria 3's "value" branch).
+func TestHandler_Patch_Boundary_ValueSetsShape(t *testing.T) {
+	t.Parallel()
+	z := testZone(t)
+	b := mustBoundary(t, squareVertices(z.Latitude, z.Longitude, 500))
+	wantLat, wantLon := b.Centroid()
+	wantRadius := b.EnclosingRadiusMetres()
+
+	store := &fakeZoneStore{zones: []WatchZone{z}}
+	mux := http.NewServeMux()
+	Routes(mux, store, slog.New(slog.DiscardHandler), WithProfileReader(&fakeProfileReader{profile: personalProfile(t)}))
+
+	body := mustJSON(t, struct {
+		Boundary *boundaryGeoJSON `json:"boundary"`
+	}{Boundary: boundaryToGeoJSON(b)})
+	rec := doReq(t, mux, http.MethodPatch, "/v1/me/watch-zones/"+z.ID, body)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200 (body %s)", rec.Code, rec.Body)
+	}
+	if store.saved == nil || !store.saved.IsCustomShape() {
+		t.Fatalf("zone must become a custom shape: %+v", store.saved)
+	}
+	if store.saved.Latitude != wantLat || store.saved.Longitude != wantLon || store.saved.RadiusMetres != wantRadius {
+		t.Errorf("derived fields: got (%v,%v,%v), want (%v,%v,%v)",
+			store.saved.Latitude, store.saved.Longitude, store.saved.RadiusMetres, wantLat, wantLon, wantRadius)
+	}
+}
+
+// TestHandler_Patch_Boundary_TooLargeIs400 proves a paid-tier caller's PATCH
+// that sets a boundary exceeding their own tier's radius cap (but under the
+// hard server ceiling) is rejected with 400 boundary_too_large and never
+// persisted (acceptance criteria 6, Gate B).
+func TestHandler_Patch_Boundary_TooLargeIs400(t *testing.T) {
+	t.Parallel()
+	z := testZone(t)
+	// Personal tier caps at 5000m; a 4000m half-extent square's corner-derived
+	// enclosing radius (~5657m) exceeds it while staying under the hard 10000m
+	// ceiling, isolating Gate B (the tier cap) from Gate A (the hard ceiling).
+	b := mustBoundary(t, squareVertices(z.Latitude, z.Longitude, 4000))
+	store := &fakeZoneStore{zones: []WatchZone{z}}
+	mux := http.NewServeMux()
+	Routes(mux, store, slog.New(slog.DiscardHandler), WithProfileReader(&fakeProfileReader{profile: personalProfile(t)}))
+
+	body := mustJSON(t, struct {
+		Boundary *boundaryGeoJSON `json:"boundary"`
+	}{Boundary: boundaryToGeoJSON(b)})
+	rec := doReq(t, mux, http.MethodPatch, "/v1/me/watch-zones/"+z.ID, body)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status: got %d, want 400 (body %s)", rec.Code, rec.Body)
+	}
+	var env apiErrorResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatalf("decode error envelope: %v", err)
+	}
+	if env.Error != boundaryTooLargeCode {
+		t.Errorf("error code: got %q, want %q", env.Error, boundaryTooLargeCode)
+	}
+	if store.saved != nil {
+		t.Error("must not save a zone whose boundary is too large")
+	}
+}
+
+// TestHandler_Patch_Boundary_InvalidShapeIs400 proves a paid-tier caller's
+// PATCH that sets a malformed shape (here, fewer than the domain's minimum 3
+// vertices) surfaces as 400 boundary_invalid via WithUpdates' own NewBoundary
+// validation, not a re-implemented HTTP-layer check (acceptance criteria 5).
+func TestHandler_Patch_Boundary_InvalidShapeIs400(t *testing.T) {
+	t.Parallel()
+	z := testZone(t)
+	store := &fakeZoneStore{zones: []WatchZone{z}}
+	mux := http.NewServeMux()
+	Routes(mux, store, slog.New(slog.DiscardHandler), WithProfileReader(&fakeProfileReader{profile: proProfile(t)}))
+
+	body := `{"boundary":{"type":"Polygon","coordinates":[[[-0.12,51.5],[-0.11,51.51]]]}}`
+	rec := doReq(t, mux, http.MethodPatch, "/v1/me/watch-zones/"+z.ID, body)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status: got %d, want 400 (body %s)", rec.Code, rec.Body)
+	}
+	var env apiErrorResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatalf("decode error envelope: %v", err)
+	}
+	if env.Error != boundaryInvalidCode {
+		t.Errorf("error code: got %q, want %q", env.Error, boundaryInvalidCode)
+	}
+	if store.saved != nil {
+		t.Error("must not save a zone with an invalid boundary")
+	}
+}
+
+// TestHandler_Patch_Boundary_NoProfileReaderWiredIs500 proves that attempting
+// to SET a boundary without a profile reader wired is a 500 (a wiring bug,
+// never reachable in production), not a silent allow or a false 403 -- the
+// tier entitlement genuinely cannot be checked.
+func TestHandler_Patch_Boundary_NoProfileReaderWiredIs500(t *testing.T) {
+	t.Parallel()
+	z := testZone(t)
+	store := &fakeZoneStore{zones: []WatchZone{z}}
+	body := mustJSON(t, struct {
+		Boundary *boundaryGeoJSON `json:"boundary"`
+	}{Boundary: boundaryToGeoJSON(mustBoundary(t, squareVertices(z.Latitude, z.Longitude, 500)))})
+	rec := doReq(t, testMux(t, store), http.MethodPatch, "/v1/me/watch-zones/"+z.ID, body)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status: got %d, want 500", rec.Code)
+	}
+	if store.saved != nil {
+		t.Error("must not save when the tier gate cannot be verified")
+	}
+}
+
 func TestHandler_Delete(t *testing.T) {
 	t.Parallel()
 	z := testZone(t)
@@ -365,7 +586,8 @@ func TestHandler_List_MarksPausedZonesOverEffectiveTierLimit(t *testing.T) {
 	}
 
 	// Golden-check first: every pre-existing field must round-trip unchanged,
-	// and "paused" must be the only addition (9 keys total per zone).
+	// and "paused" plus "boundary" (tc-6he3x.4) are the only additions (10
+	// keys total per zone).
 	var raw struct {
 		Zones []map[string]any `json:"zones"`
 	}
@@ -375,7 +597,7 @@ func TestHandler_List_MarksPausedZonesOverEffectiveTierLimit(t *testing.T) {
 	if len(raw.Zones) != 3 {
 		t.Fatalf("zones: got %d, want 3", len(raw.Zones))
 	}
-	wantKeys := []string{"id", "name", "latitude", "longitude", "radiusMetres", "authorityId", "pushEnabled", "emailInstantEnabled", "paused"}
+	wantKeys := []string{"id", "name", "latitude", "longitude", "radiusMetres", "authorityId", "pushEnabled", "emailInstantEnabled", "paused", "boundary"}
 	for i, obj := range raw.Zones {
 		if len(obj) != len(wantKeys) {
 			t.Errorf("zone %d: got %d keys %v, want %d keys %v", i, len(obj), keysOf(obj), len(wantKeys), wantKeys)
