@@ -1,6 +1,9 @@
 package watchzones
 
 import (
+	"errors"
+	"math"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -159,7 +162,419 @@ func TestWatchZone_WithUpdates_EmptyUpdateIsIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("WithUpdates: %v", err)
 	}
-	if updated != z {
+	// WatchZone now carries a slice field (Boundary), so it is no longer
+	// comparable with == / !=; reflect.DeepEqual is the structural equivalent.
+	if !reflect.DeepEqual(updated, z) {
 		t.Errorf("empty update changed zone: got %+v, want %+v", updated, z)
 	}
+}
+
+// --- Boundary (custom-shape) tests ---------------------------------------
+
+// londonSquare is a small closed square near central London, well within UK
+// bounds, symmetric about (51.5074, -0.1278) with an offset chosen so it is
+// roughly a 1km-radius shape (matching the boundingBox test's precomputed
+// formula: dLat = r/111320, dLon = r/(111320*cos(lat))).
+func londonSquare(t *testing.T) []Coordinate {
+	t.Helper()
+	const (
+		centreLat = 51.5074
+		centreLon = -0.1278
+		dLat      = 0.0089831
+		dLon      = 0.0144328
+	)
+	return []Coordinate{
+		{Longitude: centreLon + dLon, Latitude: centreLat + dLat},
+		{Longitude: centreLon - dLon, Latitude: centreLat + dLat},
+		{Longitude: centreLon - dLon, Latitude: centreLat - dLat},
+		{Longitude: centreLon + dLon, Latitude: centreLat - dLat},
+	}
+}
+
+func TestNewBoundary_RejectsFewerThanThreeVertices(t *testing.T) {
+	t.Parallel()
+	_, err := NewBoundary([]Coordinate{
+		{Longitude: -0.1, Latitude: 51.5},
+		{Longitude: -0.11, Latitude: 51.51},
+	})
+	if err == nil {
+		t.Fatal("NewBoundary must reject a 2-vertex ring")
+	}
+	if !errors.Is(err, ErrBoundaryVertexCount) {
+		t.Errorf("got err=%v, want ErrBoundaryVertexCount", err)
+	}
+}
+
+func TestNewBoundary_RejectsMoreThanFiftyVertices(t *testing.T) {
+	t.Parallel()
+	vertices := make([]Coordinate, 0, 51)
+	for i := range 51 {
+		vertices = append(vertices, Coordinate{
+			Longitude: -0.5 + float64(i)*0.001,
+			Latitude:  51.5,
+		})
+	}
+	_, err := NewBoundary(vertices)
+	if err == nil {
+		t.Fatal("NewBoundary must reject a 51-vertex ring")
+	}
+	if !errors.Is(err, ErrBoundaryVertexCount) {
+		t.Errorf("got err=%v, want ErrBoundaryVertexCount", err)
+	}
+}
+
+func TestNewBoundary_AcceptsExactlyFiftyVertices(t *testing.T) {
+	t.Parallel()
+	const (
+		centreLat = 51.5074
+		centreLon = -0.1278
+		radiusDeg = 0.05
+		n         = 50
+	)
+	// Points on a small circle, not a collinear run, so this exercises the
+	// vertex-count boundary independently of the self-intersection/area checks.
+	vertices := make([]Coordinate, n)
+	for i := range n {
+		angle := 2 * math.Pi * float64(i) / float64(n)
+		vertices[i] = Coordinate{
+			Longitude: centreLon + radiusDeg*math.Cos(angle),
+			Latitude:  centreLat + radiusDeg*math.Sin(angle),
+		}
+	}
+	if _, err := NewBoundary(vertices); err != nil {
+		t.Fatalf("NewBoundary must accept a 50-vertex ring: %v", err)
+	}
+}
+
+func TestNewBoundary_RejectsSelfIntersectingRing(t *testing.T) {
+	t.Parallel()
+	// A bowtie: the two diagonals of this quadrilateral cross in the middle.
+	_, err := NewBoundary([]Coordinate{
+		{Longitude: -0.10, Latitude: 51.50},
+		{Longitude: -0.09, Latitude: 51.51},
+		{Longitude: -0.09, Latitude: 51.50},
+		{Longitude: -0.10, Latitude: 51.51},
+	})
+	if err == nil {
+		t.Fatal("NewBoundary must reject a self-intersecting ring")
+	}
+	if !errors.Is(err, ErrBoundarySelfIntersecting) {
+		t.Errorf("got err=%v, want ErrBoundarySelfIntersecting", err)
+	}
+}
+
+func TestNewBoundary_RejectsOutOfUKBoundsVertex(t *testing.T) {
+	t.Parallel()
+	_, err := NewBoundary([]Coordinate{
+		{Longitude: -0.1, Latitude: 51.5},
+		{Longitude: -0.11, Latitude: 51.51},
+		{Longitude: 40.0, Latitude: 51.5}, // well east of the UK
+	})
+	if err == nil {
+		t.Fatal("NewBoundary must reject a vertex outside UK bounds")
+	}
+	if !errors.Is(err, ErrBoundaryOutOfBounds) {
+		t.Errorf("got err=%v, want ErrBoundaryOutOfBounds", err)
+	}
+}
+
+func TestNewBoundary_RejectsNonFiniteVertex(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		vertex Coordinate
+	}{
+		{"NaN latitude", Coordinate{Longitude: -0.1, Latitude: math.NaN()}},
+		{"NaN longitude", Coordinate{Longitude: math.NaN(), Latitude: 51.5}},
+		{"+Inf latitude", Coordinate{Longitude: -0.1, Latitude: math.Inf(1)}},
+		{"-Inf longitude", Coordinate{Longitude: math.Inf(-1), Latitude: 51.5}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := NewBoundary([]Coordinate{
+				{Longitude: -0.10, Latitude: 51.50},
+				{Longitude: -0.09, Latitude: 51.51},
+				tc.vertex,
+			})
+			if err == nil {
+				t.Fatal("NewBoundary must reject a non-finite vertex")
+			}
+			if !errors.Is(err, ErrBoundaryOutOfBounds) {
+				t.Errorf("got err=%v, want ErrBoundaryOutOfBounds", err)
+			}
+		})
+	}
+}
+
+func TestNewBoundary_RejectsZeroAreaRing(t *testing.T) {
+	t.Parallel()
+	// Three distinct but collinear points: no two non-adjacent edges to
+	// cross-check, so selfIntersects alone would accept this degenerate ring.
+	_, err := NewBoundary([]Coordinate{
+		{Longitude: -0.10, Latitude: 51.50},
+		{Longitude: -0.09, Latitude: 51.50},
+		{Longitude: -0.08, Latitude: 51.50},
+	})
+	if err == nil {
+		t.Fatal("NewBoundary must reject a zero-area (collinear) ring")
+	}
+	if !errors.Is(err, ErrBoundarySelfIntersecting) {
+		t.Errorf("got err=%v, want ErrBoundarySelfIntersecting", err)
+	}
+}
+
+func TestNewBoundary_RejectsDuplicateVertex(t *testing.T) {
+	t.Parallel()
+	_, err := NewBoundary([]Coordinate{
+		{Longitude: -0.10, Latitude: 51.50},
+		{Longitude: -0.09, Latitude: 51.51},
+		{Longitude: -0.09, Latitude: 51.51}, // duplicate of the previous vertex
+		{Longitude: -0.08, Latitude: 51.50},
+	})
+	if err == nil {
+		t.Fatal("NewBoundary must reject a duplicate interior vertex")
+	}
+	if !errors.Is(err, ErrBoundaryDuplicateVertex) {
+		t.Errorf("got err=%v, want ErrBoundaryDuplicateVertex", err)
+	}
+}
+
+func TestNewBoundary_AutoClosesUnclosedRing(t *testing.T) {
+	t.Parallel()
+	triangle := []Coordinate{
+		{Longitude: -0.10, Latitude: 51.50},
+		{Longitude: -0.09, Latitude: 51.51},
+		{Longitude: -0.09, Latitude: 51.50},
+	}
+	b, err := NewBoundary(triangle)
+	if err != nil {
+		t.Fatalf("NewBoundary: %v", err)
+	}
+	if len(b) != len(triangle)+1 {
+		t.Fatalf("got %d vertices, want %d (auto-closed)", len(b), len(triangle)+1)
+	}
+	if b[0] != b[len(b)-1] {
+		t.Errorf("ring not closed: first=%v last=%v", b[0], b[len(b)-1])
+	}
+}
+
+func TestNewBoundary_AlreadyClosedRingIsNotDoubled(t *testing.T) {
+	t.Parallel()
+	closed := []Coordinate{
+		{Longitude: -0.10, Latitude: 51.50},
+		{Longitude: -0.09, Latitude: 51.51},
+		{Longitude: -0.09, Latitude: 51.50},
+		{Longitude: -0.10, Latitude: 51.50}, // already closes the ring
+	}
+	b, err := NewBoundary(closed)
+	if err != nil {
+		t.Fatalf("NewBoundary: %v", err)
+	}
+	if len(b) != len(closed) {
+		t.Fatalf("got %d vertices, want %d (should not double the closing vertex)", len(b), len(closed))
+	}
+}
+
+func TestBoundary_Centroid_KnownSquare(t *testing.T) {
+	t.Parallel()
+	square := Boundary{
+		{Longitude: 0, Latitude: 0},
+		{Longitude: 0, Latitude: 10},
+		{Longitude: 10, Latitude: 10},
+		{Longitude: 10, Latitude: 0},
+		{Longitude: 0, Latitude: 0},
+	}
+	lat, lon := square.Centroid()
+	const want = 5.0
+	if diff := lat - want; diff > 1e-9 || diff < -1e-9 {
+		t.Errorf("lat: got %v, want %v", lat, want)
+	}
+	if diff := lon - want; diff > 1e-9 || diff < -1e-9 {
+		t.Errorf("lon: got %v, want %v", lon, want)
+	}
+}
+
+func TestBoundary_Centroid_AsymmetricPolygonNotVertexAverage(t *testing.T) {
+	t.Parallel()
+	// A staircase/L-shape: (0,0),(6,0),(6,2),(2,2),(2,4),(0,4) in (lon,lat).
+	// The true polygon centroid is (2.5, 1.5); the naive vertex average is
+	// (2.667, 2.0) — different enough that a naive-average implementation
+	// fails this test.
+	shape := Boundary{
+		{Longitude: 0, Latitude: 0},
+		{Longitude: 6, Latitude: 0},
+		{Longitude: 6, Latitude: 2},
+		{Longitude: 2, Latitude: 2},
+		{Longitude: 2, Latitude: 4},
+		{Longitude: 0, Latitude: 4},
+		{Longitude: 0, Latitude: 0},
+	}
+	lat, lon := shape.Centroid()
+	const (
+		wantLat = 1.5
+		wantLon = 2.5
+		tol     = 1e-9
+	)
+	if diff := lat - wantLat; diff > tol || diff < -tol {
+		t.Errorf("lat: got %v, want %v", lat, wantLat)
+	}
+	if diff := lon - wantLon; diff > tol || diff < -tol {
+		t.Errorf("lon: got %v, want %v", lon, wantLon)
+	}
+}
+
+func TestBoundary_EnclosingRadiusMetres_KnownSquare(t *testing.T) {
+	t.Parallel()
+	square, err := NewBoundary(londonSquare(t))
+	if err != nil {
+		t.Fatalf("NewBoundary: %v", err)
+	}
+	got := square.EnclosingRadiusMetres()
+	const (
+		want = 1412.694247415168
+		tol  = 0.5
+	)
+	if diff := got - want; diff > tol || diff < -tol {
+		t.Errorf("got %v, want %v (±%v)", got, want, tol)
+	}
+}
+
+func TestBoundary_EnclosingRadiusMetres_EmptyBoundaryDoesNotPanic(t *testing.T) {
+	t.Parallel()
+	var nilBoundary Boundary
+	if got := nilBoundary.EnclosingRadiusMetres(); got != 0 {
+		t.Errorf("nil boundary: got %v, want 0", got)
+	}
+	if got := (Boundary{}).EnclosingRadiusMetres(); got != 0 {
+		t.Errorf("empty boundary: got %v, want 0", got)
+	}
+}
+
+func TestWatchZone_IsCustomShape(t *testing.T) {
+	t.Parallel()
+	circle := testZone(t)
+	if circle.IsCustomShape() {
+		t.Error("a circle zone (nil Boundary) must not report IsCustomShape")
+	}
+
+	shape, err := circle.WithBoundary(londonSquare(t))
+	if err != nil {
+		t.Fatalf("WithBoundary: %v", err)
+	}
+	if !shape.IsCustomShape() {
+		t.Error("a zone with a non-nil Boundary must report IsCustomShape")
+	}
+}
+
+func TestWatchZone_WithBoundary_DerivesCentroidAndRadius(t *testing.T) {
+	t.Parallel()
+	z := testZone(t)
+	shape, err := z.WithBoundary(londonSquare(t))
+	if err != nil {
+		t.Fatalf("WithBoundary: %v", err)
+	}
+	const (
+		wantLat    = 51.5074
+		wantLon    = -0.1278
+		wantRadius = 1412.694247415168
+		tol        = 0.5
+	)
+	if diff := shape.Latitude - wantLat; diff > 1e-4 || diff < -1e-4 {
+		t.Errorf("latitude: got %v, want %v", shape.Latitude, wantLat)
+	}
+	if diff := shape.Longitude - wantLon; diff > 1e-4 || diff < -1e-4 {
+		t.Errorf("longitude: got %v, want %v", shape.Longitude, wantLon)
+	}
+	if diff := shape.RadiusMetres - wantRadius; diff > tol || diff < -tol {
+		t.Errorf("radiusMetres: got %v, want %v", shape.RadiusMetres, wantRadius)
+	}
+	// Identity and every non-derived field carry over unchanged.
+	if shape.ID != z.ID || shape.UserID != z.UserID || shape.Name != z.Name ||
+		shape.AuthorityID != z.AuthorityID || !shape.CreatedAt.Equal(z.CreatedAt) ||
+		shape.PushEnabled != z.PushEnabled || shape.EmailInstantEnabled != z.EmailInstantEnabled {
+		t.Errorf("non-derived fields changed: got %+v, want %+v", shape, z)
+	}
+}
+
+func TestWatchZone_WithBoundary_InvalidVerticesReturnsError(t *testing.T) {
+	t.Parallel()
+	z := testZone(t)
+	if _, err := z.WithBoundary([]Coordinate{{Longitude: -0.1, Latitude: 51.5}}); err == nil {
+		t.Fatal("WithBoundary must reject an invalid ring")
+	}
+}
+
+func TestWatchZone_WithUpdates_BoundaryTriState(t *testing.T) {
+	t.Parallel()
+	circleZone := testZone(t)
+	shapeZone, err := circleZone.WithBoundary(londonSquare(t))
+	if err != nil {
+		t.Fatalf("WithBoundary: %v", err)
+	}
+
+	t.Run("absent leaves shape untouched", func(t *testing.T) {
+		t.Parallel()
+		updated, err := shapeZone.WithUpdates(ZoneUpdate{})
+		if err != nil {
+			t.Fatalf("WithUpdates: %v", err)
+		}
+		if !reflect.DeepEqual(updated.Boundary, shapeZone.Boundary) {
+			t.Errorf("boundary changed by an absent update: got %v, want %v", updated.Boundary, shapeZone.Boundary)
+		}
+	})
+
+	t.Run("explicit null clears the boundary and keeps the derived centroid/radius", func(t *testing.T) {
+		t.Parallel()
+		cleared := Boundary{}
+		updated, err := shapeZone.WithUpdates(ZoneUpdate{Boundary: &cleared})
+		if err != nil {
+			t.Fatalf("WithUpdates: %v", err)
+		}
+		if updated.IsCustomShape() {
+			t.Errorf("boundary not cleared: %v", updated.Boundary)
+		}
+		if updated.Latitude != shapeZone.Latitude || updated.Longitude != shapeZone.Longitude {
+			t.Errorf("centre changed on clear: got (%v,%v), want (%v,%v)",
+				updated.Latitude, updated.Longitude, shapeZone.Latitude, shapeZone.Longitude)
+		}
+		if updated.RadiusMetres != shapeZone.RadiusMetres {
+			t.Errorf("radius changed on clear: got %v, want %v", updated.RadiusMetres, shapeZone.RadiusMetres)
+		}
+	})
+
+	t.Run("a value sets a new boundary and recomputes centroid/radius", func(t *testing.T) {
+		t.Parallel()
+		newShape := Boundary(londonSquare(t))
+		updated, err := circleZone.WithUpdates(ZoneUpdate{Boundary: &newShape})
+		if err != nil {
+			t.Fatalf("WithUpdates: %v", err)
+		}
+		if !updated.IsCustomShape() {
+			t.Fatal("boundary not set")
+		}
+		want, err := NewBoundary(londonSquare(t))
+		if err != nil {
+			t.Fatalf("NewBoundary: %v", err)
+		}
+		wantLat, wantLon := want.Centroid()
+		if updated.Latitude != wantLat || updated.Longitude != wantLon {
+			t.Errorf("centre: got (%v,%v), want (%v,%v)",
+				updated.Latitude, updated.Longitude, wantLat, wantLon)
+		}
+		if wantRadius := want.EnclosingRadiusMetres(); updated.RadiusMetres != wantRadius {
+			t.Errorf("radius: got %v, want %v", updated.RadiusMetres, wantRadius)
+		}
+		if updated.RadiusMetres == circleZone.RadiusMetres {
+			t.Error("radius was not recomputed from the new boundary")
+		}
+	})
+
+	t.Run("an invalid value is rejected", func(t *testing.T) {
+		t.Parallel()
+		tooFew := Boundary{{Longitude: -0.1, Latitude: 51.5}}
+		if _, err := circleZone.WithUpdates(ZoneUpdate{Boundary: &tooFew}); err == nil {
+			t.Fatal("WithUpdates must reject an invalid boundary value")
+		}
+	})
 }

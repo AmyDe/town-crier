@@ -262,9 +262,20 @@ func (req patchRequest) rangeValid() bool {
 }
 
 func (req patchRequest) toUpdate() ZoneUpdate {
-	// patchRequest and ZoneUpdate are field-identical; the request type exists
-	// only to carry the JSON tags, so a direct conversion is exact.
-	return ZoneUpdate(req)
+	// ZoneUpdate.Boundary is domain-only for now (tc-6he3x.1): patchRequest
+	// does not yet expose a boundary field, so a field-by-field copy is
+	// required instead of the old field-identical type conversion. Wiring
+	// json.RawMessage tri-state boundary decoding into patchRequest is
+	// tc-6he3x.4.
+	return ZoneUpdate{
+		Name:                req.Name,
+		Latitude:            req.Latitude,
+		Longitude:           req.Longitude,
+		RadiusMetres:        req.RadiusMetres,
+		AuthorityID:         req.AuthorityID,
+		PushEnabled:         req.PushEnabled,
+		EmailInstantEnabled: req.EmailInstantEnabled,
+	}
 }
 
 // patch implements PATCH /v1/me/watch-zones/{zoneId}: range-validate the body
