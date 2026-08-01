@@ -14,6 +14,6 @@ describe('AppShell.module.css (mobile overflow regression, tc-q2h0s)', () => {
     // keeps the flexbox default `min-width: auto`, which prevents it from
     // shrinking below its content's min-content width — causing horizontal
     // overflow on narrow viewports (e.g. /watch-zones/new at 390px).
-    expect(block).toContain('min-width: 0');
+    expect(block).toMatch(/\bmin-width\s*:\s*0\s*;/);
   });
 });
