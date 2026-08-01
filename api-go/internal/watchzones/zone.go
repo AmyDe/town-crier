@@ -43,9 +43,9 @@ var (
 // Longitude and RadiusMetres — they hold the polygon's derived centroid and
 // enclosing radius (see WithBoundary) so every existing circle-shaped read
 // path (map centring, list rows, boundingBox, GDPR export) keeps working
-// unchanged; Boundary == nil is the sole "this is a circle" discriminator.
-// Exported fields keep it a plain Go value; the constructor enforces all
-// invariants.
+// unchanged; a zero-length Boundary (nil or empty) is the sole "this is a
+// circle" discriminator — see IsCustomShape. Exported fields keep it a plain
+// Go value; the constructor enforces all invariants.
 type WatchZone struct {
 	ID                  string
 	UserID              string
@@ -120,7 +120,8 @@ func (z WatchZone) boundingBox() (minLat, maxLat, minLon, maxLon float64) {
 }
 
 // IsCustomShape reports whether z is a custom-shape (polygon) zone rather
-// than a circle. Boundary == nil (the zero value) is the sole discriminator.
+// than a circle. A zero-length Boundary — nil or an empty non-nil slice — is
+// the sole discriminator, since the check is on length, not nilness.
 func (z WatchZone) IsCustomShape() bool {
 	return len(z.Boundary) > 0
 }
@@ -206,15 +207,38 @@ func NewBoundary(vertices []Coordinate) (Boundary, error) {
 		seen[v] = struct{}{}
 	}
 	for _, v := range distinct {
+		if math.IsNaN(v.Latitude) || math.IsNaN(v.Longitude) ||
+			math.IsInf(v.Latitude, 0) || math.IsInf(v.Longitude, 0) {
+			return nil, ErrBoundaryOutOfBounds
+		}
 		if v.Latitude < ukMinLatitude || v.Latitude > ukMaxLatitude ||
 			v.Longitude < ukMinLongitude || v.Longitude > ukMaxLongitude {
 			return nil, ErrBoundaryOutOfBounds
 		}
 	}
+	if ring.signedArea() == 0 {
+		// A collinear ring has no interior, so no point can ever be covered
+		// by it; treat it as a degenerate (self-touching) shape.
+		return nil, ErrBoundarySelfIntersecting
+	}
 	if ring.selfIntersects() {
 		return nil, ErrBoundarySelfIntersecting
 	}
 	return ring, nil
+}
+
+// signedArea returns twice the signed shoelace area of the closed ring. It
+// is zero only for a degenerate (zero-area, e.g. collinear) ring.
+func (b Boundary) signedArea() float64 {
+	n := len(b) - 1
+	if n < 1 {
+		return 0
+	}
+	var sum float64
+	for i := range n {
+		sum += b[i].Longitude*b[i+1].Latitude - b[i+1].Longitude*b[i].Latitude
+	}
+	return sum
 }
 
 // selfIntersects reports whether any two non-adjacent edges of the closed
@@ -344,8 +368,11 @@ func (b Boundary) Centroid() (latitude, longitude float64) {
 // columns (see WithBoundary) so every read path built for circles keeps
 // working unchanged.
 func (b Boundary) EnclosingRadiusMetres() float64 {
-	lat, lon := b.Centroid()
 	n := len(b) - 1
+	if n < 1 {
+		return 0
+	}
+	lat, lon := b.Centroid()
 	var maxDistance float64
 	for _, v := range b[:n] {
 		if d := haversineMetres(lat, lon, v.Latitude, v.Longitude); d > maxDistance {
@@ -364,7 +391,10 @@ func (b Boundary) EnclosingRadiusMetres() float64 {
 //   - non-nil, pointing to len-0   — explicit null: convert back to a circle,
 //     keeping the zone's existing centre and radius.
 //   - non-nil, pointing to len>0  — set this custom shape: the centre and
-//     radius are recomputed from it via NewBoundary.
+//     radius are recomputed from it via NewBoundary, overriding any
+//     Latitude/Longitude/RadiusMetres also present on the same update — the
+//     derived geometry always wins so the circle fields stay consistent with
+//     the polygon.
 //
 // This is the domain-level representation of the tri-state; decoding the
 // HTTP PATCH body's `"boundary": null` vs absent vs a value into this shape

@@ -2,6 +2,7 @@ package watchzones
 
 import (
 	"errors"
+	"math"
 	"reflect"
 	"testing"
 	"time"
@@ -222,6 +223,29 @@ func TestNewBoundary_RejectsMoreThanFiftyVertices(t *testing.T) {
 	}
 }
 
+func TestNewBoundary_AcceptsExactlyFiftyVertices(t *testing.T) {
+	t.Parallel()
+	const (
+		centreLat = 51.5074
+		centreLon = -0.1278
+		radiusDeg = 0.05
+		n         = 50
+	)
+	// Points on a small circle, not a collinear run, so this exercises the
+	// vertex-count boundary independently of the self-intersection/area checks.
+	vertices := make([]Coordinate, n)
+	for i := range n {
+		angle := 2 * math.Pi * float64(i) / float64(n)
+		vertices[i] = Coordinate{
+			Longitude: centreLon + radiusDeg*math.Cos(angle),
+			Latitude:  centreLat + radiusDeg*math.Sin(angle),
+		}
+	}
+	if _, err := NewBoundary(vertices); err != nil {
+		t.Fatalf("NewBoundary must accept a 50-vertex ring: %v", err)
+	}
+}
+
 func TestNewBoundary_RejectsSelfIntersectingRing(t *testing.T) {
 	t.Parallel()
 	// A bowtie: the two diagonals of this quadrilateral cross in the middle.
@@ -251,6 +275,52 @@ func TestNewBoundary_RejectsOutOfUKBoundsVertex(t *testing.T) {
 	}
 	if !errors.Is(err, ErrBoundaryOutOfBounds) {
 		t.Errorf("got err=%v, want ErrBoundaryOutOfBounds", err)
+	}
+}
+
+func TestNewBoundary_RejectsNonFiniteVertex(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		vertex Coordinate
+	}{
+		{"NaN latitude", Coordinate{Longitude: -0.1, Latitude: math.NaN()}},
+		{"NaN longitude", Coordinate{Longitude: math.NaN(), Latitude: 51.5}},
+		{"+Inf latitude", Coordinate{Longitude: -0.1, Latitude: math.Inf(1)}},
+		{"-Inf longitude", Coordinate{Longitude: math.Inf(-1), Latitude: 51.5}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := NewBoundary([]Coordinate{
+				{Longitude: -0.10, Latitude: 51.50},
+				{Longitude: -0.09, Latitude: 51.51},
+				tc.vertex,
+			})
+			if err == nil {
+				t.Fatal("NewBoundary must reject a non-finite vertex")
+			}
+			if !errors.Is(err, ErrBoundaryOutOfBounds) {
+				t.Errorf("got err=%v, want ErrBoundaryOutOfBounds", err)
+			}
+		})
+	}
+}
+
+func TestNewBoundary_RejectsZeroAreaRing(t *testing.T) {
+	t.Parallel()
+	// Three distinct but collinear points: no two non-adjacent edges to
+	// cross-check, so selfIntersects alone would accept this degenerate ring.
+	_, err := NewBoundary([]Coordinate{
+		{Longitude: -0.10, Latitude: 51.50},
+		{Longitude: -0.09, Latitude: 51.50},
+		{Longitude: -0.08, Latitude: 51.50},
+	})
+	if err == nil {
+		t.Fatal("NewBoundary must reject a zero-area (collinear) ring")
+	}
+	if !errors.Is(err, ErrBoundarySelfIntersecting) {
+		t.Errorf("got err=%v, want ErrBoundarySelfIntersecting", err)
 	}
 }
 
@@ -370,6 +440,17 @@ func TestBoundary_EnclosingRadiusMetres_KnownSquare(t *testing.T) {
 	}
 }
 
+func TestBoundary_EnclosingRadiusMetres_EmptyBoundaryDoesNotPanic(t *testing.T) {
+	t.Parallel()
+	var nilBoundary Boundary
+	if got := nilBoundary.EnclosingRadiusMetres(); got != 0 {
+		t.Errorf("nil boundary: got %v, want 0", got)
+	}
+	if got := (Boundary{}).EnclosingRadiusMetres(); got != 0 {
+		t.Errorf("empty boundary: got %v, want 0", got)
+	}
+}
+
 func TestWatchZone_IsCustomShape(t *testing.T) {
 	t.Parallel()
 	circle := testZone(t)
@@ -408,9 +489,11 @@ func TestWatchZone_WithBoundary_DerivesCentroidAndRadius(t *testing.T) {
 	if diff := shape.RadiusMetres - wantRadius; diff > tol || diff < -tol {
 		t.Errorf("radiusMetres: got %v, want %v", shape.RadiusMetres, wantRadius)
 	}
-	// Identity and other fields carry over unchanged.
-	if shape.ID != z.ID || shape.UserID != z.UserID || shape.Name != z.Name {
-		t.Errorf("identity fields changed: got %+v", shape)
+	// Identity and every non-derived field carry over unchanged.
+	if shape.ID != z.ID || shape.UserID != z.UserID || shape.Name != z.Name ||
+		shape.AuthorityID != z.AuthorityID || !shape.CreatedAt.Equal(z.CreatedAt) ||
+		shape.PushEnabled != z.PushEnabled || shape.EmailInstantEnabled != z.EmailInstantEnabled {
+		t.Errorf("non-derived fields changed: got %+v, want %+v", shape, z)
 	}
 }
 
@@ -470,8 +553,20 @@ func TestWatchZone_WithUpdates_BoundaryTriState(t *testing.T) {
 		if !updated.IsCustomShape() {
 			t.Fatal("boundary not set")
 		}
-		if updated.Latitude == circleZone.Latitude && updated.Longitude == circleZone.Longitude {
-			t.Error("centre was not recomputed from the new boundary")
+		want, err := NewBoundary(londonSquare(t))
+		if err != nil {
+			t.Fatalf("NewBoundary: %v", err)
+		}
+		wantLat, wantLon := want.Centroid()
+		if updated.Latitude != wantLat || updated.Longitude != wantLon {
+			t.Errorf("centre: got (%v,%v), want (%v,%v)",
+				updated.Latitude, updated.Longitude, wantLat, wantLon)
+		}
+		if wantRadius := want.EnclosingRadiusMetres(); updated.RadiusMetres != wantRadius {
+			t.Errorf("radius: got %v, want %v", updated.RadiusMetres, wantRadius)
+		}
+		if updated.RadiusMetres == circleZone.RadiusMetres {
+			t.Error("radius was not recomputed from the new boundary")
 		}
 	})
 
