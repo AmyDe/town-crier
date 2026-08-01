@@ -67,7 +67,8 @@ struct APIWatchZoneRepositoryBoundaryTests {
 
     try await sut.save(zone)
 
-    let body = try #require(transport.requests[0].httpBody)
+    let request = try #require(transport.requests.first)
+    let body = try #require(request.httpBody)
     let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
     let boundaryJSON = try #require(json["boundary"] as? [String: Any])
     #expect(boundaryJSON["type"] as? String == "Polygon")
@@ -87,7 +88,8 @@ struct APIWatchZoneRepositoryBoundaryTests {
 
     try await sut.save(zone)
 
-    let body = try #require(transport.requests[0].httpBody)
+    let request = try #require(transport.requests.first)
+    let body = try #require(request.httpBody)
     let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
     #expect(json["boundary"] == nil)
   }
@@ -103,7 +105,8 @@ struct APIWatchZoneRepositoryBoundaryTests {
 
     try await sut.update(zone)
 
-    let body = try #require(transport.requests[0].httpBody)
+    let request = try #require(transport.requests.first)
+    let body = try #require(request.httpBody)
     let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
     let boundaryJSON = try #require(json["boundary"] as? [String: Any])
     #expect(boundaryJSON["type"] as? String == "Polygon")
@@ -118,7 +121,8 @@ struct APIWatchZoneRepositoryBoundaryTests {
 
     try await sut.update(zone)
 
-    let body = try #require(transport.requests[0].httpBody)
+    let request = try #require(transport.requests.first)
+    let body = try #require(request.httpBody)
     let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
     // The key must be present with an explicit JSON null, not omitted: the
     // server's PATCH handler treats an absent key as "leave alone" and only
