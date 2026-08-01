@@ -186,6 +186,54 @@ func TestHandler_Patch_UpdatesAndReturnsZone(t *testing.T) {
 	}
 }
 
+func TestHandler_Patch_UpdatesEveryMappedField(t *testing.T) {
+	t.Parallel()
+	z := testZone(t)
+	store := &fakeZoneStore{zones: []WatchZone{z}}
+	body := `{
+		"name":"Renamed Office",
+		"latitude":52.4862,
+		"longitude":-1.8904,
+		"radiusMetres":3000,
+		"authorityId":999,
+		"pushEnabled":false,
+		"emailInstantEnabled":false
+	}`
+	rec := doReq(t, testMux(t, store), http.MethodPatch, "/v1/me/watch-zones/"+z.ID, body)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200 (body %s)", rec.Code, rec.Body)
+	}
+	var got struct {
+		Zone watchZoneSummary `json:"zone"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	want := watchZoneSummary{
+		ID:                  z.ID,
+		Name:                "Renamed Office",
+		Latitude:            52.4862,
+		Longitude:           -1.8904,
+		RadiusMetres:        3000,
+		AuthorityID:         999,
+		PushEnabled:         false,
+		EmailInstantEnabled: false,
+		Paused:              got.Zone.Paused,
+	}
+	if got.Zone != want {
+		t.Errorf("response zone: got %+v, want %+v", got.Zone, want)
+	}
+	if store.saved == nil {
+		t.Fatal("zone not persisted")
+	}
+	if store.saved.Name != "Renamed Office" || store.saved.Latitude != 52.4862 ||
+		store.saved.Longitude != -1.8904 || store.saved.RadiusMetres != 3000 ||
+		store.saved.AuthorityID != 999 || store.saved.PushEnabled || store.saved.EmailInstantEnabled {
+		t.Errorf("persisted zone: got %+v", store.saved)
+	}
+}
+
 func TestHandler_Patch_RangeInvalid(t *testing.T) {
 	t.Parallel()
 	z := testZone(t)
