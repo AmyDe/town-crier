@@ -1,0 +1,74 @@
+import SwiftUI
+import Testing
+
+@testable import TownCrierPresentation
+
+@Suite("CustomShapeUpsellGraphic")
+@MainActor
+struct CustomShapeUpsellGraphicTests {
+
+  @Test func init_rendersWithoutCrashing() {
+    let sut = CustomShapeUpsellGraphic()
+    _ = sut.body
+  }
+}
+
+@Suite("CustomShapePolygonGeometry")
+struct CustomShapePolygonGeometryTests {
+
+  @Test func vertices_returnsOnePointPerRadiusMultiplier() {
+    let rect = CGRect(x: 0, y: 0, width: 100, height: 100)
+
+    let vertices = CustomShapePolygonGeometry.vertices(in: rect)
+
+    #expect(vertices.count == CustomShapePolygonGeometry.radiusMultipliers.count)
+  }
+
+  @Test func vertices_isDeterministicForTheSameRect() {
+    let rect = CGRect(x: 0, y: 0, width: 100, height: 100)
+
+    let first = CustomShapePolygonGeometry.vertices(in: rect)
+    let second = CustomShapePolygonGeometry.vertices(in: rect)
+
+    #expect(first == second)
+  }
+
+  @Test func vertices_areContainedWithinTheRectsBoundingRadius() {
+    let rect = CGRect(x: 0, y: 0, width: 100, height: 100)
+    let center = CGPoint(x: rect.midX, y: rect.midY)
+    let maxRadius = min(rect.width, rect.height) / 2
+
+    let vertices = CustomShapePolygonGeometry.vertices(in: rect)
+
+    for vertex in vertices {
+      #expect(distanceBetween(vertex, center) <= maxRadius + 0.001)
+    }
+  }
+
+  @Test func vertices_areNotAllIdentical() {
+    let rect = CGRect(x: 0, y: 0, width: 100, height: 100)
+
+    let vertices = CustomShapePolygonGeometry.vertices(in: rect)
+    let distinctVertices = Set(vertices.map { "\($0.x),\($0.y)" })
+
+    #expect(distinctVertices.count == vertices.count)
+  }
+
+  @Test func vertices_scalesWithASmallerRect() {
+    let smallRect = CGRect(x: 0, y: 0, width: 10, height: 10)
+    let center = CGPoint(x: smallRect.midX, y: smallRect.midY)
+    let maxRadius = min(smallRect.width, smallRect.height) / 2
+
+    let vertices = CustomShapePolygonGeometry.vertices(in: smallRect)
+
+    for vertex in vertices {
+      #expect(distanceBetween(vertex, center) <= maxRadius + 0.001)
+    }
+  }
+}
+
+private func distanceBetween(_ lhs: CGPoint, _ rhs: CGPoint) -> CGFloat {
+  let deltaX = lhs.x - rhs.x
+  let deltaY = lhs.y - rhs.y
+  return (deltaX * deltaX + deltaY * deltaY).squareRoot()
+}
