@@ -30,109 +30,136 @@ type InBoundaryQuery struct {
 	Cursor    string
 }
 
-// boundaryZonePolygon mirrors boundaryPolygon (boundarypage.go) at the exact
-// parameter position zonepage.go's radius occupies ($3): every fast-path
-// query below keeps the identical shape (and parameter count) of its circle
-// counterpart in zonepage.go, with ST_Covers against the polygon replacing
-// ST_DWithin against the circle.
-const boundaryZonePolygon = "ST_GeomFromGeoJSON($3)::geography"
+// boundaryZonePolygonNoPoint is boundaryZonePolygon's (boundarypage.go)
+// counterpart for the non-distance sorts below: ST_Covers containment against
+// the polygon needs no centroid, so -- unlike the KNN/distance queries in
+// boundarypage.go, which keep the circle-mirroring $1/$2 (longitude,
+// latitude) positions because they order by distance from that point -- these
+// queries have no use for a centroid at all. Consequently they do NOT reuse
+// zonepage.go's shared dateFromWhere/statusFirstQuery/activityFromWhere/
+// activityUnreadSubquery/*OrderBy constants: those hardcode $1/$2 as the
+// circle's centroid (referenced inside their ST_DWithin predicate) and $4/$5
+// as the following slots. Reusing them here would carry $1/$2 positions that
+// nothing in an ST_Covers predicate ever references -- Postgres cannot infer
+// an unreferenced placeholder's type ("could not determine data type of
+// parameter $1"), a real prepare-time failure, not a style choice. So this
+// file defines its own ORDER BY/LIMIT and join-subquery constants with
+// positions that start at $1 for what these queries actually use: the
+// boundary GeoJSON, then the limit, then (for recent-activity) the userID.
+const boundaryZonePolygonNoPoint = "ST_GeomFromGeoJSON($1)::geography"
 
-// boundaryDateFromWhere mirrors dateFromWhere: same projection (dateColumns),
-// same $1/$2 centroid (via nearbyPoint), same $4 limit slot -- ST_Covers
-// against the polygon ($3) replacing ST_DWithin against the circle ($3
-// radius).
+// boundaryDateFromWhere mirrors dateFromWhere's shape (projection, ST_Covers
+// replacing ST_DWithin) but not its parameter numbering: $1 the boundary
+// GeoJSON, $2 the limit (via boundaryNewestOrderBy/boundaryOldestOrderBy).
 const boundaryDateFromWhere = "SELECT " + dateColumns +
-	" FROM applications WHERE ST_Covers(" + boundaryZonePolygon + ", location)"
+	" FROM applications WHERE ST_Covers(" + boundaryZonePolygonNoPoint + ", location)"
+
+// boundaryNewestOrderBy/boundaryOldestOrderBy mirror newestOrderBy/
+// oldestOrderBy with LIMIT at $2, not $4 (no centroid/radius slots to skip).
+const (
+	boundaryNewestOrderBy = " ORDER BY start_date DESC NULLS LAST, authority_code, planit_name LIMIT $2"
+	boundaryOldestOrderBy = " ORDER BY start_date ASC NULLS LAST, authority_code, planit_name LIMIT $2"
+)
 
 // First-page date-sort queries: polygon predicate only, ordered, limited.
 const (
-	boundaryNewestFirstQuery = boundaryDateFromWhere + newestOrderBy
-	boundaryOldestFirstQuery = boundaryDateFromWhere + oldestOrderBy
+	boundaryNewestFirstQuery = boundaryDateFromWhere + boundaryNewestOrderBy
+	boundaryOldestFirstQuery = boundaryDateFromWhere + boundaryOldestOrderBy
 )
 
 // Keyset date-sort queries resuming after a cursor on a NON-NULL start_date
-// row. Mirrors newestKeysetQuery/oldestKeysetQuery exactly. $5 the cursor's
-// start_date (::date), $6 authority_code, $7 planit_name.
+// row. Mirrors newestKeysetQuery/oldestKeysetQuery's predicate shape. $3 the
+// cursor's start_date (::date), $4 authority_code, $5 planit_name.
 const (
 	boundaryNewestKeysetQuery = boundaryDateFromWhere +
-		" AND (start_date < $5::date OR start_date IS NULL" +
-		" OR (start_date = $5::date AND (authority_code, planit_name) > ($6, $7)))" +
-		newestOrderBy
+		" AND (start_date < $3::date OR start_date IS NULL" +
+		" OR (start_date = $3::date AND (authority_code, planit_name) > ($4, $5)))" +
+		boundaryNewestOrderBy
 	boundaryOldestKeysetQuery = boundaryDateFromWhere +
-		" AND (start_date > $5::date OR start_date IS NULL" +
-		" OR (start_date = $5::date AND (authority_code, planit_name) > ($6, $7)))" +
-		oldestOrderBy
+		" AND (start_date > $3::date OR start_date IS NULL" +
+		" OR (start_date = $3::date AND (authority_code, planit_name) > ($4, $5)))" +
+		boundaryOldestOrderBy
 )
 
 // Keyset date-sort queries resuming after a cursor in the NULL-start_date
-// tail. Mirrors newestKeysetNullQuery/oldestKeysetNullQuery. $5 authority_code,
-// $6 planit_name.
+// tail. Mirrors newestKeysetNullQuery/oldestKeysetNullQuery. $3 authority_code,
+// $4 planit_name.
 const (
 	boundaryNewestKeysetNullQuery = boundaryDateFromWhere +
-		" AND start_date IS NULL AND (authority_code, planit_name) > ($5, $6)" +
-		newestOrderBy
+		" AND start_date IS NULL AND (authority_code, planit_name) > ($3, $4)" +
+		boundaryNewestOrderBy
 	boundaryOldestKeysetNullQuery = boundaryDateFromWhere +
-		" AND start_date IS NULL AND (authority_code, planit_name) > ($5, $6)" +
-		oldestOrderBy
+		" AND start_date IS NULL AND (authority_code, planit_name) > ($3, $4)" +
+		boundaryOldestOrderBy
 )
+
+// boundaryStatusOrderBy mirrors statusOrderBy with LIMIT at $2.
+const boundaryStatusOrderBy = " ORDER BY app_state ASC NULLS LAST, start_date DESC NULLS LAST, authority_code, planit_name LIMIT $2"
 
 // boundaryStatusFirstQuery is the status first page: polygon predicate only,
 // ordered, limited. It reuses boundaryDateFromWhere (same projection:
-// appColumns + authority_code), mirroring statusFirstQuery.
-const boundaryStatusFirstQuery = boundaryDateFromWhere + statusOrderBy
+// appColumns + authority_code), mirroring statusFirstQuery's shape.
+const boundaryStatusFirstQuery = boundaryDateFromWhere + boundaryStatusOrderBy
 
-// Status keyset queries. Mirror the four statusKeyset* constants exactly
-// (see their doc comments for the mixed-direction rationale), with the
-// polygon predicate replacing the radius.
+// Status keyset queries. Mirror the four statusKeyset* constants' predicate
+// shape exactly (see their doc comments in zonepage.go for the
+// mixed-direction rationale), with the polygon predicate replacing the
+// radius and parameters starting at $3 (no centroid slots to skip).
 const (
-	// $5 app_state, $6 start_date(::date), $7 authority_code, $8 planit_name.
+	// $3 app_state, $4 start_date(::date), $5 authority_code, $6 planit_name.
 	boundaryStatusKeysetQuery = boundaryDateFromWhere +
-		" AND (app_state > $5 OR app_state IS NULL" +
-		" OR (app_state = $5 AND (start_date < $6::date OR start_date IS NULL))" +
-		" OR (app_state = $5 AND start_date = $6::date AND (authority_code, planit_name) > ($7, $8)))" +
-		statusOrderBy
-	// $5 app_state, $6 authority_code, $7 planit_name.
+		" AND (app_state > $3 OR app_state IS NULL" +
+		" OR (app_state = $3 AND (start_date < $4::date OR start_date IS NULL))" +
+		" OR (app_state = $3 AND start_date = $4::date AND (authority_code, planit_name) > ($5, $6)))" +
+		boundaryStatusOrderBy
+	// $3 app_state, $4 authority_code, $5 planit_name.
 	boundaryStatusKeysetDateNullQuery = boundaryDateFromWhere +
-		" AND (app_state > $5 OR app_state IS NULL" +
-		" OR (app_state = $5 AND start_date IS NULL AND (authority_code, planit_name) > ($6, $7)))" +
-		statusOrderBy
-	// $5 start_date(::date), $6 authority_code, $7 planit_name.
+		" AND (app_state > $3 OR app_state IS NULL" +
+		" OR (app_state = $3 AND start_date IS NULL AND (authority_code, planit_name) > ($4, $5)))" +
+		boundaryStatusOrderBy
+	// $3 start_date(::date), $4 authority_code, $5 planit_name.
 	boundaryStatusKeysetStateNullQuery = boundaryDateFromWhere +
-		" AND app_state IS NULL AND ((start_date < $5::date OR start_date IS NULL)" +
-		" OR (start_date = $5::date AND (authority_code, planit_name) > ($6, $7)))" +
-		statusOrderBy
-	// $5 authority_code, $6 planit_name.
+		" AND app_state IS NULL AND ((start_date < $3::date OR start_date IS NULL)" +
+		" OR (start_date = $3::date AND (authority_code, planit_name) > ($4, $5)))" +
+		boundaryStatusOrderBy
+	// $3 authority_code, $4 planit_name.
 	boundaryStatusKeysetBothNullQuery = boundaryDateFromWhere +
-		" AND app_state IS NULL AND start_date IS NULL AND (authority_code, planit_name) > ($5, $6)" +
-		statusOrderBy
+		" AND app_state IS NULL AND start_date IS NULL AND (authority_code, planit_name) > ($3, $4)" +
+		boundaryStatusOrderBy
 )
 
-// boundaryActivityFromWhere mirrors activityFromWhere: same projection
-// (dateColumns + activity_ts), same LEFT JOIN to the caller's unread
-// notifications ($5 userID), same $1/$2 centroid and $4 limit slot --
-// ST_Covers against the polygon ($3) replacing ST_DWithin against the circle.
+// boundaryActivityFromWhere mirrors activityFromWhere's shape (projection,
+// LEFT JOIN to the caller's unread notifications, ST_Covers replacing
+// ST_DWithin) but not its parameter numbering: $1 the boundary GeoJSON, $2
+// the limit, $3 the userID (in the join subquery) -- no centroid slots.
 const boundaryActivityFromWhere = "SELECT " + dateColumns + ", " + activityExpr + " AS activity_ts" +
 	" FROM applications" +
-	" LEFT JOIN (" + activityUnreadSubquery + ") u" +
+	" LEFT JOIN (SELECT n.application_uid, n.authority_id, MAX(n.created_at) AS created_at" +
+	" FROM notifications n WHERE n.user_id = $3 AND n.read_at IS NULL" +
+	" GROUP BY n.application_uid, n.authority_id) u" +
 	" ON applications.uid = u.application_uid AND applications.area_id = u.authority_id" +
-	" WHERE ST_Covers(" + boundaryZonePolygon + ", location)"
+	" WHERE ST_Covers(" + boundaryZonePolygonNoPoint + ", location)"
+
+// boundaryActivityOrderBy mirrors activityOrderBy with LIMIT at $2.
+const boundaryActivityOrderBy = " ORDER BY " + activityExpr + " DESC NULLS LAST, authority_code, planit_name LIMIT $2"
 
 // boundaryRecentActivityFirstQuery is the recent-activity first page: join +
 // polygon predicate, ordered, limited.
-const boundaryRecentActivityFirstQuery = boundaryActivityFromWhere + activityOrderBy
+const boundaryRecentActivityFirstQuery = boundaryActivityFromWhere + boundaryActivityOrderBy
 
 // Keyset recent-activity queries. Mirror recentActivityKeysetQuery /
-// recentActivityKeysetNullQuery exactly.
+// recentActivityKeysetNullQuery's predicate shape, with parameters starting
+// at $4 (after boundary GeoJSON $1, limit $2, userID $3).
 const (
-	// $6 the cursor's activity_ts (::timestamptz), $7 authority_code, $8 planit_name.
+	// $4 the cursor's activity_ts (::timestamptz), $5 authority_code, $6 planit_name.
 	boundaryRecentActivityKeysetQuery = boundaryActivityFromWhere +
-		" AND (" + activityExpr + " < $6::timestamptz OR " + activityExpr + " IS NULL" +
-		" OR (" + activityExpr + " = $6::timestamptz AND (authority_code, planit_name) > ($7, $8)))" +
-		activityOrderBy
-	// $6 authority_code, $7 planit_name.
+		" AND (" + activityExpr + " < $4::timestamptz OR " + activityExpr + " IS NULL" +
+		" OR (" + activityExpr + " = $4::timestamptz AND (authority_code, planit_name) > ($5, $6)))" +
+		boundaryActivityOrderBy
+	// $4 authority_code, $5 planit_name.
 	boundaryRecentActivityKeysetNullQuery = boundaryActivityFromWhere +
-		" AND " + activityExpr + " IS NULL AND (authority_code, planit_name) > ($6, $7)" +
-		activityOrderBy
+		" AND " + activityExpr + " IS NULL AND (authority_code, planit_name) > ($4, $5)" +
+		boundaryActivityOrderBy
 )
 
 // FindInBoundaryZonePage is FindInZonePage's custom-shape counterpart
@@ -241,17 +268,19 @@ func (s *PostgresStore) findDistanceBoundaryZonePage(ctx context.Context, latitu
 // dateCursorOf unchanged, only the query selection (boundaryDateZoneQuery)
 // differs.
 func (s *PostgresStore) findDateBoundaryZonePage(ctx context.Context, latitude, longitude float64, boundaryJSON string, sort Sort, limit int, c *pageCursor) ([]PlanningApplication, string, error) {
-	query, args := boundaryDateZoneQuery(sort, latitude, longitude, boundaryJSON, limit, c)
+	query, args := boundaryDateZoneQuery(sort, boundaryJSON, limit, c)
 	return s.collectKeysetPage(ctx, sort, latitude, longitude, query, args, limit, func(last datePageRow) pageCursor {
 		return dateCursorOf(sort, last)
 	})
 }
 
-// boundaryDateZoneQuery mirrors dateZoneQuery: the base args ($1..$4) are
-// longitude, latitude, the boundary GeoJSON, limit; the keyset args extend
-// them exactly as dateZoneQuery's do.
-func boundaryDateZoneQuery(sort Sort, latitude, longitude float64, boundaryJSON string, limit int, c *pageCursor) (string, []any) {
-	base := []any{longitude, latitude, boundaryJSON, limit}
+// boundaryDateZoneQuery mirrors dateZoneQuery's predicate/keyset shape, not
+// its parameter numbering: the base args ($1, $2) are the boundary GeoJSON
+// and limit -- no centroid, since ST_Covers containment doesn't need one; the
+// keyset args extend them exactly as dateZoneQuery's do, just starting two
+// slots earlier.
+func boundaryDateZoneQuery(sort Sort, boundaryJSON string, limit int, c *pageCursor) (string, []any) {
+	base := []any{boundaryJSON, limit}
 	switch {
 	case c == nil:
 		if sort == SortNewest {
@@ -277,15 +306,16 @@ func boundaryDateZoneQuery(sort Sort, latitude, longitude float64, boundaryJSON 
 // findStatusZonePage: it reuses collectKeysetPage and statusCursorOf
 // unchanged, only the query selection (boundaryStatusZoneQuery) differs.
 func (s *PostgresStore) findStatusBoundaryZonePage(ctx context.Context, latitude, longitude float64, boundaryJSON string, limit int, c *pageCursor) ([]PlanningApplication, string, error) {
-	query, args := boundaryStatusZoneQuery(latitude, longitude, boundaryJSON, limit, c)
+	query, args := boundaryStatusZoneQuery(boundaryJSON, limit, c)
 	return s.collectKeysetPage(ctx, SortStatus, latitude, longitude, query, args, limit, statusCursorOf)
 }
 
-// boundaryStatusZoneQuery mirrors statusZoneQuery: the base args ($1..$4) are
-// longitude, latitude, the boundary GeoJSON, limit; the keyset args extend
-// them exactly as statusZoneQuery's do.
-func boundaryStatusZoneQuery(latitude, longitude float64, boundaryJSON string, limit int, c *pageCursor) (string, []any) {
-	base := []any{longitude, latitude, boundaryJSON, limit}
+// boundaryStatusZoneQuery mirrors statusZoneQuery's predicate/keyset shape,
+// not its parameter numbering: the base args ($1, $2) are the boundary
+// GeoJSON and limit -- no centroid; the keyset args extend them exactly as
+// statusZoneQuery's do, just starting two slots earlier.
+func boundaryStatusZoneQuery(boundaryJSON string, limit int, c *pageCursor) (string, []any) {
+	base := []any{boundaryJSON, limit}
 	switch {
 	case c == nil:
 		return boundaryStatusFirstQuery, base
@@ -306,7 +336,7 @@ func boundaryStatusZoneQuery(latitude, longitude float64, boundaryJSON string, l
 // (boundaryRecentActivityZoneQuery) differs. userID scopes the joined unread
 // notifications.
 func (s *PostgresStore) findRecentActivityBoundaryZonePage(ctx context.Context, userID string, latitude, longitude float64, boundaryJSON string, limit int, c *pageCursor) ([]PlanningApplication, string, error) {
-	query, args := boundaryRecentActivityZoneQuery(userID, latitude, longitude, boundaryJSON, limit, c)
+	query, args := boundaryRecentActivityZoneQuery(userID, boundaryJSON, limit, c)
 	wrap := func(err error) error {
 		return fmt.Errorf("find applications by %s near (%v, %v): %w", SortRecentActivity, latitude, longitude, err)
 	}
@@ -325,11 +355,13 @@ func (s *PostgresStore) findRecentActivityBoundaryZonePage(ctx context.Context, 
 		limit, wrap)
 }
 
-// boundaryRecentActivityZoneQuery mirrors recentActivityZoneQuery: the base
-// args ($1..$5) are longitude, latitude, the boundary GeoJSON, limit, userID;
-// the keyset args extend them exactly as recentActivityZoneQuery's do.
-func boundaryRecentActivityZoneQuery(userID string, latitude, longitude float64, boundaryJSON string, limit int, c *pageCursor) (string, []any) {
-	base := []any{longitude, latitude, boundaryJSON, limit, userID}
+// boundaryRecentActivityZoneQuery mirrors recentActivityZoneQuery's
+// predicate/keyset shape, not its parameter numbering: the base args ($1,
+// $2, $3) are the boundary GeoJSON, limit, userID -- no centroid; the keyset
+// args extend them exactly as recentActivityZoneQuery's do, just starting two
+// slots earlier.
+func boundaryRecentActivityZoneQuery(userID, boundaryJSON string, limit int, c *pageCursor) (string, []any) {
+	base := []any{boundaryJSON, limit, userID}
 	switch {
 	case c == nil:
 		return boundaryRecentActivityFirstQuery, base
@@ -373,15 +405,25 @@ func (s *PostgresStore) findFilteredBoundaryZonePage(ctx context.Context, q InBo
 
 // buildFilteredBoundaryZoneQuery mirrors buildFilteredZoneQuery: the shape --
 // projection, optional unread join, optional status predicate, keyset
-// predicate, ORDER BY, LIMIT -- is byte-identical, built via the exact same
-// shared orderByExpr/keysetPredicate helpers. Only the spatial predicate
-// differs: ST_Covers against the polygon (boundaryJSON) replacing ST_DWithin
-// against the circle (q.RadiusMetres).
+// predicate, ORDER BY, LIMIT -- is otherwise identical, built via the exact
+// same shared orderByExpr/keysetPredicate helpers. Two things differ: the
+// spatial predicate (ST_Covers against the polygon replacing ST_DWithin
+// against the circle), and, following from that, the centroid point is only
+// added as a query argument for SortDistance -- the one sort that still
+// orders by it. orderByExpr/keysetPredicate never reference point for any
+// other sort, so adding it unconditionally (as the circle version does, where
+// the centroid is also the ST_DWithin containment test and so is always
+// used) would leave it an unreferenced placeholder; Postgres cannot infer an
+// unreferenced parameter's type ("could not determine data type of parameter
+// $1").
 func buildFilteredBoundaryZoneQuery(q InBoundaryQuery, boundaryJSON string, c *pageCursor) (string, []any, error) {
 	b := &argBuilder{}
-	lonP := b.add(q.Longitude)
-	latP := b.add(q.Latitude)
-	point := "ST_SetSRID(ST_MakePoint(" + lonP + ", " + latP + "), 4326)::geography"
+	var point string
+	if q.Sort == SortDistance {
+		lonP := b.add(q.Longitude)
+		latP := b.add(q.Latitude)
+		point = "ST_SetSRID(ST_MakePoint(" + lonP + ", " + latP + "), 4326)::geography"
+	}
 
 	var projection string
 	switch q.Sort {
