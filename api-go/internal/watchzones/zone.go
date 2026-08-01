@@ -225,7 +225,7 @@ func (b Boundary) selfIntersects() bool {
 	if n < 3 {
 		return false
 	}
-	for i := 0; i < n; i++ {
+	for i := range n {
 		a1, a2 := b[i], b[i+1]
 		for j := i + 2; j < n; j++ {
 			if i == 0 && j == n-1 {
@@ -314,7 +314,7 @@ func (b Boundary) Centroid() (latitude, longitude float64) {
 		return 0, 0
 	}
 	var area, cx, cy float64
-	for i := 0; i < n; i++ {
+	for i := range n {
 		p0, p1 := b[i], b[i+1]
 		cross := p0.Longitude*p1.Latitude - p1.Longitude*p0.Latitude
 		area += cross

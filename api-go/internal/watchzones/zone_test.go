@@ -207,7 +207,7 @@ func TestNewBoundary_RejectsFewerThanThreeVertices(t *testing.T) {
 func TestNewBoundary_RejectsMoreThanFiftyVertices(t *testing.T) {
 	t.Parallel()
 	vertices := make([]Coordinate, 0, 51)
-	for i := 0; i < 51; i++ {
+	for i := range 51 {
 		vertices = append(vertices, Coordinate{
 			Longitude: -0.5 + float64(i)*0.001,
 			Latitude:  51.5,
