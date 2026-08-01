@@ -67,8 +67,8 @@ struct CustomShapePolygonGeometryTests {
   }
 }
 
-private func distanceBetween(_ a: CGPoint, _ b: CGPoint) -> CGFloat {
-  let dx = a.x - b.x
-  let dy = a.y - b.y
-  return (dx * dx + dy * dy).squareRoot()
+private func distanceBetween(_ lhs: CGPoint, _ rhs: CGPoint) -> CGFloat {
+  let deltaX = lhs.x - rhs.x
+  let deltaY = lhs.y - rhs.y
+  return (deltaX * deltaX + deltaY * deltaY).squareRoot()
 }
