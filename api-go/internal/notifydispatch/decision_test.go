@@ -146,6 +146,40 @@ func TestDecisionDispatcher_ZoneMatch_CreatesDecisionRecordAndQueuesPush(t *test
 	}
 }
 
+func TestDecisionDispatcher_ZoneMatch_PolygonZone_CreatesDecisionRecord(t *testing.T) {
+	t.Parallel()
+	// A custom-shape (polygon) zone that FindZonesContaining returns must fan
+	// out through the decision path exactly like a circle zone (tc-6he3x.6):
+	// Dispatch never branches on shape.
+	// proWithZonePrefs hardcodes its opt-in against zone id "zone-1" (matching
+	// every other test in this file), so the polygon fixture reuses that id.
+	zone := testPolygonZoneAt(t, "zone-1", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+	zones := &fakeZones{zones: []watchzones.WatchZone{zone}}
+	saved := &fakeSaved{}
+	profs := &fakeProfiles{byID: map[string]*profiles.UserProfile{
+		"auth0|alice": proWithZonePrefs(t, true),
+	}}
+	d, notifs, queue := newDecisionHarness(t, zones, saved, profs)
+	app := decisionApp(t, "Permitted", coord(51.5), coord(-0.1))
+
+	if err := d.Dispatch(context.Background(), app); err != nil {
+		t.Fatalf("Dispatch: %v", err)
+	}
+	if len(notifs.created) != 1 {
+		t.Fatalf("expected 1 decision record for the matching polygon zone, got %d", len(notifs.created))
+	}
+	rec := notifs.created[0]
+	if rec.WatchZoneID == nil || *rec.WatchZoneID != "zone-1" {
+		t.Errorf("zone id: got %v, want zone-1", rec.WatchZoneID)
+	}
+	if !zone.IsCustomShape() {
+		t.Fatal("fixture must be a custom shape")
+	}
+	if len(queue.queued) != 1 {
+		t.Errorf("paid tier with decision push opted in should queue exactly one push, got %d", len(queue.queued))
+	}
+}
+
 func TestDecisionDispatcher_Dispatch_MatchesZoneRegardlessOfAuthority(t *testing.T) {
 	t.Parallel()
 	// Decision fan-out is now boundary-agnostic (tc-b179): the zone lookup is purely
