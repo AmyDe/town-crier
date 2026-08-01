@@ -1,3 +1,4 @@
+-- +goose NO TRANSACTION
 -- +goose Up
 
 -- Custom-shape (polygon) watch zones (epic #1031, tc-6he3x). A watch zone is
@@ -18,11 +19,21 @@ ALTER TABLE watch_zones
 -- GiST index serving the ST_Covers polygon-containment branch of the notify
 -- hot path (FindZonesContaining, store_postgres.go) -- the polygon
 -- counterpart to watch_zones_location_gist's ST_DWithin circle branch.
-CREATE INDEX watch_zones_boundary_gist ON watch_zones USING gist (boundary);
+--
+-- CONCURRENTLY (tc-5i07d precedent, migration 0018): plain CREATE INDEX
+-- takes a lock that blocks writes to watch_zones for the whole build, and
+-- this table is on a live write path (zone create/update/delete) for a
+-- product with paying customers. CONCURRENTLY avoids that lock at the cost
+-- of a longer build (two table scans) and requires running outside a
+-- transaction -- see the NO TRANSACTION directive above, which also means
+-- this file's statements are NOT atomic as a group: a failed CONCURRENTLY
+-- build can leave behind an INVALID index that IF NOT EXISTS will not
+-- replace (see incident notes on tc-5i07d).
+CREATE INDEX CONCURRENTLY IF NOT EXISTS watch_zones_boundary_gist ON watch_zones USING gist (boundary);
 
 -- +goose Down
 
-DROP INDEX IF EXISTS watch_zones_boundary_gist;
+DROP INDEX CONCURRENTLY IF EXISTS watch_zones_boundary_gist;
 
 ALTER TABLE watch_zones
     DROP COLUMN IF EXISTS boundary;
