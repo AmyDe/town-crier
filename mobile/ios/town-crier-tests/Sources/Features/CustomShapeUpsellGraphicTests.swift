@@ -41,8 +41,7 @@ struct CustomShapePolygonGeometryTests {
     let vertices = CustomShapePolygonGeometry.vertices(in: rect)
 
     for vertex in vertices {
-      let distance = (vertex - center).magnitude
-      #expect(distance <= maxRadius + 0.001)
+      #expect(distanceBetween(vertex, center) <= maxRadius + 0.001)
     }
   }
 
@@ -63,20 +62,13 @@ struct CustomShapePolygonGeometryTests {
     let vertices = CustomShapePolygonGeometry.vertices(in: smallRect)
 
     for vertex in vertices {
-      let distance = (vertex - center).magnitude
-      #expect(distance <= maxRadius + 0.001)
+      #expect(distanceBetween(vertex, center) <= maxRadius + 0.001)
     }
   }
 }
 
-extension CGPoint {
-  private static func - (lhs: CGPoint, rhs: CGPoint) -> CGVector {
-    CGVector(dx: lhs.x - rhs.x, dy: lhs.y - rhs.y)
-  }
-}
-
-extension CGVector {
-  private var magnitude: CGFloat {
-    (dx * dx + dy * dy).squareRoot()
-  }
+private func distanceBetween(_ a: CGPoint, _ b: CGPoint) -> CGFloat {
+  let dx = a.x - b.x
+  let dy = a.y - b.y
+  return (dx * dx + dy * dy).squareRoot()
 }
