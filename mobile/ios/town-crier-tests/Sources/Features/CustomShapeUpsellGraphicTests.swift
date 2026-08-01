@@ -70,13 +70,13 @@ struct CustomShapePolygonGeometryTests {
 }
 
 extension CGPoint {
-  fileprivate static func - (lhs: CGPoint, rhs: CGPoint) -> CGVector {
+  private static func - (lhs: CGPoint, rhs: CGPoint) -> CGVector {
     CGVector(dx: lhs.x - rhs.x, dy: lhs.y - rhs.y)
   }
 }
 
 extension CGVector {
-  fileprivate var magnitude: CGFloat {
+  private var magnitude: CGFloat {
     (dx * dx + dy * dy).squareRoot()
   }
 }
