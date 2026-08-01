@@ -186,12 +186,14 @@ struct GeoJSONPolygon: Codable, Sendable {
   }
 
   /// Parses the wire shape back into a validated domain boundary. Throws
-  /// `DomainError.invalidWatchZoneBoundaryVertexCount` for a missing outer
-  /// ring, `DomainError.invalidCoordinate` for a malformed vertex pair, or
-  /// whichever `DomainError` `WatchZoneBoundary.init(vertices:)` raises for
-  /// an invalid ring.
+  /// `DomainError.invalidWatchZoneBoundaryVertexCount` for a wrong `type`, a
+  /// missing outer ring, or more than one ring (the server only ever emits a
+  /// single-outer-ring Polygon; this is a defensive guard against decoding
+  /// an inner/hole ring as if it were the shape), `DomainError.invalidCoordinate`
+  /// for a malformed vertex pair, or whichever `DomainError`
+  /// `WatchZoneBoundary.init(vertices:)` raises for an invalid ring.
   func toDomain() throws -> WatchZoneBoundary {
-    guard let ring = coordinates.first else {
+    guard type == "Polygon", coordinates.count == 1, let ring = coordinates.first else {
       throw DomainError.invalidWatchZoneBoundaryVertexCount
     }
     let vertices = try ring.map { vertex -> Coordinate in

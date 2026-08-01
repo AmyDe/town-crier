@@ -288,4 +288,62 @@ struct WatchZoneSummaryDTOTests {
     #expect(!zone.isCustomShape)
     #expect(zone.boundary == nil)
   }
+
+  @Test("toDomain throws invalidWatchZoneBoundaryVertexCount for an empty coordinates array")
+  func toDomain_emptyBoundaryCoordinates_throwsInvalidVertexCount() {
+    let dto = WatchZoneSummaryDTO(
+      id: "zone-bad-boundary",
+      name: "Custom Area",
+      latitude: 51.5074,
+      longitude: -0.1278,
+      radiusMetres: 1500,
+      authorityId: 123,
+      boundary: GeoJSONPolygon(coordinates: [])
+    )
+
+    #expect(throws: DomainError.invalidWatchZoneBoundaryVertexCount) {
+      try dto.toDomain()
+    }
+  }
+
+  @Test("toDomain throws invalidCoordinate for a malformed vertex pair")
+  func toDomain_malformedVertex_throwsInvalidCoordinate() {
+    let dto = WatchZoneSummaryDTO(
+      id: "zone-bad-boundary",
+      name: "Custom Area",
+      latitude: 51.5074,
+      longitude: -0.1278,
+      radiusMetres: 1500,
+      authorityId: 123,
+      boundary: GeoJSONPolygon(coordinates: [[[-0.10, 51.50, 3.0]]])
+    )
+
+    #expect(throws: DomainError.invalidCoordinate) {
+      try dto.toDomain()
+    }
+  }
+
+  @Test("toDomain propagates the boundary's own validation error for a self-intersecting ring")
+  func toDomain_selfIntersectingRing_throwsSelfIntersecting() {
+    let dto = WatchZoneSummaryDTO(
+      id: "zone-bad-boundary",
+      name: "Custom Area",
+      latitude: 51.5074,
+      longitude: -0.1278,
+      radiusMetres: 1500,
+      authorityId: 123,
+      boundary: GeoJSONPolygon(coordinates: [
+        [
+          [-0.10, 51.50],
+          [-0.09, 51.51],
+          [-0.09, 51.50],
+          [-0.10, 51.51],
+        ]
+      ])
+    )
+
+    #expect(throws: DomainError.invalidWatchZoneBoundarySelfIntersecting) {
+      try dto.toDomain()
+    }
+  }
 }
