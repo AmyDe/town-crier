@@ -54,14 +54,23 @@ type fakeAppFinder struct {
 	lastStatus   string
 	lastUnread   bool
 
+	// lastLatitude/lastLongitude/lastRadiusMetres capture the circle FindNearbyPage
+	// was called with -- for a custom-shape zone these are the polygon's derived
+	// centroid/enclosing radius (tc-6he3x.4's documented interim fallback in
+	// findZonePage/clusters, ahead of tc-6he3x.5's boundary-scoped finder).
+	lastLatitude, lastLongitude, lastRadiusMetres float64
+
 	clusters         []applications.Cluster
 	clusterErr       error
 	clustersCalled   bool
 	lastClusterQuery applications.ClusterQuery
 }
 
-func (f *fakeAppFinder) FindNearbyPage(_ context.Context, _, _, _ float64, limit int, cursor string) ([]applications.PlanningApplication, string, error) {
+func (f *fakeAppFinder) FindNearbyPage(_ context.Context, latitude, longitude, radiusMetres float64, limit int, cursor string) ([]applications.PlanningApplication, string, error) {
 	f.called = true
+	f.lastLatitude = latitude
+	f.lastLongitude = longitude
+	f.lastRadiusMetres = radiusMetres
 	f.lastLimit = limit
 	f.lastCursor = cursor
 	if f.err != nil {
@@ -166,6 +175,59 @@ func freeProfile(t *testing.T) *profiles.UserProfile {
 		t.Fatalf("NewProfile: %v", err)
 	}
 	return p
+}
+
+func personalProfile(t *testing.T) *profiles.UserProfile {
+	t.Helper()
+	p, err := profiles.NewProfile(testUser, "", nearbyNow)
+	if err != nil {
+		t.Fatalf("NewProfile: %v", err)
+	}
+	p.Tier = profiles.TierPersonal
+	return p
+}
+
+// mustJSON marshals v (typically a createRequest/patchRequest literal) to a
+// JSON string for a request body, failing the test on a marshal error.
+func mustJSON(t *testing.T, v any) string {
+	t.Helper()
+	raw, err := json.Marshal(v)
+	if err != nil {
+		t.Fatalf("marshal %T: %v", v, err)
+	}
+	return string(raw)
+}
+
+// mustBoundary validates vertices through NewBoundary, failing the test on any
+// validation error -- a test-only convenience for building a known-good
+// Boundary fixture.
+func mustBoundary(t *testing.T, vertices []Coordinate) Boundary {
+	t.Helper()
+	b, err := NewBoundary(vertices)
+	if err != nil {
+		t.Fatalf("NewBoundary: %v", err)
+	}
+	return b
+}
+
+// squareVertices returns a closed square ring centred at (centreLat,
+// centreLon) whose half-extent along each axis is approximately
+// halfExtentMetres, using the same lat/lon-degree scaling as zone.go's
+// boundingBox. It is a test-only shape generator for building a boundary with
+// a roughly-known EnclosingRadiusMetres (the corner-to-centre distance, a
+// factor of sqrt(2) above halfExtentMetres for a square) -- callers needing an
+// exact figure should read it back off the constructed Boundary rather than
+// assume the multiplier.
+func squareVertices(centreLat, centreLon, halfExtentMetres float64) []Coordinate {
+	const metresPerDegreeLat = 111320
+	dLat := halfExtentMetres / metresPerDegreeLat
+	dLon := halfExtentMetres / (metresPerDegreeLat * math.Cos(centreLat*math.Pi/180))
+	return []Coordinate{
+		{Longitude: centreLon + dLon, Latitude: centreLat + dLat},
+		{Longitude: centreLon - dLon, Latitude: centreLat + dLat},
+		{Longitude: centreLon - dLon, Latitude: centreLat - dLat},
+		{Longitude: centreLon + dLon, Latitude: centreLat - dLat},
+	}
 }
 
 func testApp(uid, name string) applications.PlanningApplication {
@@ -805,6 +867,267 @@ func TestValid_RejectsNonFiniteCoordinates(t *testing.T) {
 				t.Errorf("%s: valid() returned true, want false", tc.name)
 			}
 		})
+	}
+}
+
+// --- Boundary (custom-shape) create tests (tc-6he3x.4) ---------------------
+
+// TestCreate_Boundary_FreeTierIs403 proves a Free-tier caller supplying a
+// non-null boundary on create is rejected with 403 boundary_requires_paid_tier
+// before any shape validation or persistence -- the entitlement gate runs
+// first (acceptance criteria 4).
+func TestCreate_Boundary_FreeTierIs403(t *testing.T) {
+	t.Parallel()
+	authorityID := 471
+	d := nearbyDeps{
+		store:    &fakeZoneStore{},
+		profiles: &fakeProfileReader{profile: freeProfile(t)},
+		resolver: &fakeResolver{},
+		apps:     &fakeAppFinder{},
+		unread:   &fakeUnread{},
+	}
+	mux := newNearbyMux(t, d)
+
+	body := mustJSON(t, createRequest{
+		Name:        "My Shape",
+		AuthorityID: &authorityID,
+		Boundary:    boundaryToGeoJSON(mustBoundary(t, squareVertices(51.5, -0.12, 500))),
+	})
+	rec := doReq(t, mux, http.MethodPost, "/v1/me/watch-zones", body)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status: got %d, want 403 (body %s)", rec.Code, rec.Body)
+	}
+	var env apiErrorResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatalf("decode error envelope: %v", err)
+	}
+	if env.Error != boundaryRequiresPaidTierCode {
+		t.Errorf("error code: got %q, want %q", env.Error, boundaryRequiresPaidTierCode)
+	}
+	if d.store.saved != nil {
+		t.Error("must not save a zone when the boundary tier gate rejects the request")
+	}
+}
+
+// TestCreate_Boundary_DerivesLatLonRadiusAndPersistsShape proves a paid-tier
+// caller's boundary-carrying create derives latitude/longitude/radiusMetres
+// server-side from the shape, returns all of them plus the boundary in the
+// response (acceptance criteria 2), and persists a custom-shape zone.
+func TestCreate_Boundary_DerivesLatLonRadiusAndPersistsShape(t *testing.T) {
+	t.Parallel()
+	authorityID := 471
+	vertices := squareVertices(51.5, -0.12, 500)
+	b := mustBoundary(t, vertices)
+	wantLat, wantLon := b.Centroid()
+	wantRadius := b.EnclosingRadiusMetres()
+
+	d := nearbyDeps{
+		store:    &fakeZoneStore{},
+		profiles: &fakeProfileReader{profile: personalProfile(t)},
+		resolver: &fakeResolver{},
+		apps:     &fakeAppFinder{},
+		unread:   &fakeUnread{},
+	}
+	mux := newNearbyMux(t, d)
+
+	body := mustJSON(t, createRequest{
+		Name:        "My Shape",
+		AuthorityID: &authorityID,
+		Boundary:    boundaryToGeoJSON(b),
+	})
+	rec := doReq(t, mux, http.MethodPost, "/v1/me/watch-zones", body)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status: got %d, want 201 (body %s)", rec.Code, rec.Body)
+	}
+	if d.store.saved == nil {
+		t.Fatal("zone not persisted")
+	}
+	if !d.store.saved.IsCustomShape() {
+		t.Errorf("saved zone must be a custom shape: %+v", d.store.saved)
+	}
+	if d.store.saved.Latitude != wantLat || d.store.saved.Longitude != wantLon || d.store.saved.RadiusMetres != wantRadius {
+		t.Errorf("saved derived fields: got (%v,%v,%v), want (%v,%v,%v)",
+			d.store.saved.Latitude, d.store.saved.Longitude, d.store.saved.RadiusMetres, wantLat, wantLon, wantRadius)
+	}
+
+	var got struct {
+		Latitude     float64          `json:"latitude"`
+		Longitude    float64          `json:"longitude"`
+		RadiusMetres float64          `json:"radiusMetres"`
+		Boundary     *boundaryGeoJSON `json:"boundary"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v; raw=%s", err, rec.Body.String())
+	}
+	if got.Latitude != wantLat || got.Longitude != wantLon || got.RadiusMetres != wantRadius {
+		t.Errorf("response derived fields: got (%v,%v,%v), want (%v,%v,%v)",
+			got.Latitude, got.Longitude, got.RadiusMetres, wantLat, wantLon, wantRadius)
+	}
+	if got.Boundary == nil {
+		t.Fatal("response boundary must be non-null for a custom-shape create")
+	}
+}
+
+// TestCreate_Boundary_TooLarge proves the two radius-ceiling gates (acceptance
+// criteria 6): a Pro-tier caller whose boundary exceeds the hard server
+// ceiling (maxRadiusMetres) is rejected, and a Personal-tier caller whose
+// boundary is under that hard ceiling but over their own tier's cap
+// (MaxZoneRadiusMetres) is also rejected -- both as 400 boundary_too_large.
+func TestCreate_Boundary_TooLarge(t *testing.T) {
+	t.Parallel()
+	authorityID := 471
+	tests := []struct {
+		name             string
+		profile          *profiles.UserProfile
+		halfExtentMetres float64
+	}{
+		{"Pro tier over the hard server ceiling", proProfile(t), 8000},
+		{"Personal tier over its own tier cap but under the hard ceiling", personalProfile(t), 4000},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			b := mustBoundary(t, squareVertices(51.5, -0.12, tc.halfExtentMetres))
+			d := nearbyDeps{
+				store:    &fakeZoneStore{},
+				profiles: &fakeProfileReader{profile: tc.profile},
+				resolver: &fakeResolver{},
+				apps:     &fakeAppFinder{},
+				unread:   &fakeUnread{},
+			}
+			mux := newNearbyMux(t, d)
+			body := mustJSON(t, createRequest{Name: "Big Shape", AuthorityID: &authorityID, Boundary: boundaryToGeoJSON(b)})
+			rec := doReq(t, mux, http.MethodPost, "/v1/me/watch-zones", body)
+
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("status: got %d, want 400 (body %s)", rec.Code, rec.Body)
+			}
+			var env apiErrorResponse
+			if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+				t.Fatalf("decode error envelope: %v", err)
+			}
+			if env.Error != boundaryTooLargeCode {
+				t.Errorf("error code: got %q, want %q", env.Error, boundaryTooLargeCode)
+			}
+			if d.store.saved != nil {
+				t.Error("must not save a zone whose boundary is too large")
+			}
+		})
+	}
+}
+
+// TestCreate_Boundary_InvalidShapeIs400 proves a paid-tier caller's malformed
+// shape (here, fewer than the domain's minimum 3 vertices) surfaces as 400
+// boundary_invalid, reusing zone.go's own NewBoundary validation rather than
+// re-implementing a geometry check at the HTTP layer (acceptance criteria 5).
+func TestCreate_Boundary_InvalidShapeIs400(t *testing.T) {
+	t.Parallel()
+	authorityID := 471
+	d := nearbyDeps{
+		store:    &fakeZoneStore{},
+		profiles: &fakeProfileReader{profile: proProfile(t)},
+		resolver: &fakeResolver{},
+		apps:     &fakeAppFinder{},
+		unread:   &fakeUnread{},
+	}
+	mux := newNearbyMux(t, d)
+
+	body := mustJSON(t, createRequest{
+		Name:        "Too Few Vertices",
+		AuthorityID: &authorityID,
+		Boundary: &boundaryGeoJSON{
+			Type: "Polygon",
+			Coordinates: [][][2]float64{{
+				{-0.12, 51.5}, {-0.11, 51.51},
+			}},
+		},
+	})
+	rec := doReq(t, mux, http.MethodPost, "/v1/me/watch-zones", body)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status: got %d, want 400 (body %s)", rec.Code, rec.Body)
+	}
+	var env apiErrorResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatalf("decode error envelope: %v", err)
+	}
+	if env.Error != boundaryInvalidCode {
+		t.Errorf("error code: got %q, want %q", env.Error, boundaryInvalidCode)
+	}
+	if d.store.saved != nil {
+		t.Error("must not save a zone with an invalid boundary")
+	}
+}
+
+// TestApplications_CustomShapeZone_UsesEnclosingRadiusInterimFallback pins the
+// documented interim behaviour (tc-6he3x.4, replaced by tc-6he3x.5): a
+// custom-shape zone's applications page still runs through the legacy circle
+// finder (FindNearbyPage) using the polygon's derived centroid and ENCLOSING
+// radius, never a boundary-scoped query.
+func TestApplications_CustomShapeZone_UsesEnclosingRadiusInterimFallback(t *testing.T) {
+	t.Parallel()
+	base := mustZone(t, "zone-1", 471)
+	zone, err := base.WithBoundary(squareVertices(51.5, -0.12, 500))
+	if err != nil {
+		t.Fatalf("WithBoundary: %v", err)
+	}
+	if !zone.IsCustomShape() {
+		t.Fatal("fixture zone must be a custom shape")
+	}
+	apps := &fakeAppFinder{}
+	d := nearbyDeps{
+		store:    &fakeZoneStore{zones: []WatchZone{zone}},
+		apps:     apps,
+		profiles: &fakeProfileReader{},
+		resolver: &fakeResolver{},
+		unread:   &fakeUnread{},
+	}
+	mux := newNearbyMux(t, d)
+
+	rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200 (body %s)", rec.Code, rec.Body)
+	}
+	if !apps.called || apps.inZoneCalled {
+		t.Fatalf("a param-less request for a custom-shape zone must still use the legacy FindNearbyPage path: called=%v inZone=%v", apps.called, apps.inZoneCalled)
+	}
+	if apps.lastLatitude != zone.Latitude || apps.lastLongitude != zone.Longitude || apps.lastRadiusMetres != zone.RadiusMetres {
+		t.Errorf("interim fallback must query the polygon's derived centroid/enclosing radius: got (%v,%v,%v), want (%v,%v,%v)",
+			apps.lastLatitude, apps.lastLongitude, apps.lastRadiusMetres, zone.Latitude, zone.Longitude, zone.RadiusMetres)
+	}
+}
+
+// TestClusters_CustomShapeZone_UsesEnclosingRadiusInterimFallback is the
+// clusters-endpoint sibling of the applications test above: the cluster query
+// threads the same polygon-derived centroid/enclosing radius, never a
+// boundary-scoped query (tc-6he3x.5 replaces this).
+func TestClusters_CustomShapeZone_UsesEnclosingRadiusInterimFallback(t *testing.T) {
+	t.Parallel()
+	base := mustZone(t, "zone-1", 471)
+	zone, err := base.WithBoundary(squareVertices(51.5, -0.12, 500))
+	if err != nil {
+		t.Fatalf("WithBoundary: %v", err)
+	}
+	apps := &fakeAppFinder{}
+	d := nearbyDeps{
+		store:    &fakeZoneStore{zones: []WatchZone{zone}},
+		apps:     apps,
+		profiles: &fakeProfileReader{},
+		resolver: &fakeResolver{},
+		unread:   &fakeUnread{},
+	}
+	mux := newNearbyMux(t, d)
+
+	rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications/clusters"+validClusterQuery, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200 (body %s)", rec.Code, rec.Body)
+	}
+	q := apps.lastClusterQuery
+	if q.Latitude != zone.Latitude || q.Longitude != zone.Longitude || q.RadiusMetres != zone.RadiusMetres {
+		t.Errorf("interim fallback must query the polygon's derived centroid/enclosing radius: got (%v,%v,%v), want (%v,%v,%v)",
+			q.Latitude, q.Longitude, q.RadiusMetres, zone.Latitude, zone.Longitude, zone.RadiusMetres)
 	}
 }
 
