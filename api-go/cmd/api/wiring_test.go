@@ -133,6 +133,9 @@ func (fakeAppStore) FindInBoundaryPage(context.Context, float64, float64, []appl
 func (fakeAppStore) FindClustersInBoundary(context.Context, applications.BoundaryClusterQuery) ([]applications.Cluster, error) {
 	return nil, nil
 }
+func (fakeAppStore) FindInBoundaryZonePage(context.Context, applications.InBoundaryQuery) ([]applications.PlanningApplication, string, error) {
+	return nil, "", nil
+}
 func (fakeAppStore) RecentNearestTown(context.Context, string, float64, float64, float64, []applications.TownCentroid, int) ([]applications.PlanningApplication, error) {
 	return nil, nil
 }

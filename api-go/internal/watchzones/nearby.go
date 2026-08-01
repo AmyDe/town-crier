@@ -66,14 +66,18 @@ type authorityResolver interface {
 // FindInBoundaryPage and FindClustersInBoundary (GH#1031, tc-6he3x.5) are the
 // custom-shape counterparts to FindNearbyPage and FindClustersInZone: the
 // containment test is ST_Covers against the zone's polygon rather than
-// ST_DWithin against its circle. See findZonePage and clusters for the
-// zone.IsCustomShape() branch that routes to them.
+// ST_DWithin against its circle. FindInBoundaryZonePage (GH#1031, tc-acbsh) is
+// the custom-shape counterpart to FindInZonePage: the same {distance, newest,
+// oldest, status, recent-activity} sorts and status/unread filters, ST_Covers-
+// scoped. See findZonePage and clusters for the zone.IsCustomShape() branches
+// that route to them.
 type appFinder interface {
 	FindNearbyPage(ctx context.Context, latitude, longitude, radiusMetres float64, limit int, cursor string) ([]applications.PlanningApplication, string, error)
 	FindInZonePage(ctx context.Context, q applications.InZoneQuery) ([]applications.PlanningApplication, string, error)
 	FindClustersInZone(ctx context.Context, q applications.ClusterQuery) ([]applications.Cluster, error)
 	FindInBoundaryPage(ctx context.Context, latitude, longitude float64, boundary []applications.Coordinate, limit int, cursor string) ([]applications.PlanningApplication, string, error)
 	FindClustersInBoundary(ctx context.Context, q applications.BoundaryClusterQuery) ([]applications.Cluster, error)
+	FindInBoundaryZonePage(ctx context.Context, q applications.InBoundaryQuery) ([]applications.PlanningApplication, string, error)
 }
 
 // unreadReader batches the per-application latest-unread lookup (read_at IS NULL,
@@ -502,23 +506,31 @@ func (h *handler) applications(w http.ResponseWriter, r *http.Request) {
 // restricts on. rawLimit is the unparsed ?limit= value; cursor is the
 // transport-unwrapped continuation token.
 //
-// INTERIM (tc-6he3x.4): neither finder is boundary-aware yet. For a
-// custom-shape zone (zone.IsCustomShape()) both branches below run against
-// zone.Latitude/Longitude/RadiusMetres -- the polygon's derived centroid and
-// ENCLOSING radius (see WithBoundary), i.e. a circle no smaller than the true
-// shape, so results are a safe over-fetch, never an under-fetch. A
-// polygon-scoped finder (FindInBoundaryPage) replaces this fallback in
-// tc-6he3x.5.
+// Custom-shape zones (GH#1031, tc-6he3x.5 / tc-acbsh) mirror the circle-zone
+// branching below exactly, one level up: the plain boundary-scoped page
+// (FindInBoundaryPage) for a truly param-less request, and the sort-and-
+// filter-aware boundary page (FindInBoundaryZonePage) as soon as a sort or a
+// filter is requested -- full parity with a circle zone, just ST_Covers
+// against the polygon replacing ST_DWithin against the circle. Circle zones
+// are completely unaffected by either branch.
 func (h *handler) findZonePage(ctx context.Context, userID string, zone WatchZone, sort applications.Sort, sortPresent bool, status string, unread bool, rawLimit, cursor string) ([]applications.PlanningApplication, string, error) {
-	// Custom-shape zones (GH#1031, tc-6he3x.5) always take the plain boundary-
-	// scoped page, regardless of ?sort=/?status=/?unread=: there is no
-	// boundary-aware counterpart to FindInZonePage yet, so those params are a
-	// silent no-op here (escalated and decided 2026-08-01 — option A). Circle
-	// zones are completely unaffected; a follow-up bead tracks the
-	// boundary-aware sort/filter equivalent.
 	if zone.IsCustomShape() {
-		limit := parseLimit(rawLimit, defaultNearbyLimit)
-		return h.apps.FindInBoundaryPage(ctx, zone.Latitude, zone.Longitude, boundaryCoordinates(zone.Boundary), limit, cursor)
+		if !sortPresent && status == "" && !unread {
+			limit := parseLimit(rawLimit, defaultNearbyLimit)
+			return h.apps.FindInBoundaryPage(ctx, zone.Latitude, zone.Longitude, boundaryCoordinates(zone.Boundary), limit, cursor)
+		}
+		limit := parseLimit(rawLimit, defaultSortedLimit)
+		return h.apps.FindInBoundaryZonePage(ctx, applications.InBoundaryQuery{
+			UserID:    userID,
+			Latitude:  zone.Latitude,
+			Longitude: zone.Longitude,
+			Boundary:  boundaryCoordinates(zone.Boundary),
+			Sort:      sort,
+			Status:    status,
+			Unread:    unread,
+			Limit:     limit,
+			Cursor:    cursor,
+		})
 	}
 	if !sortPresent && status == "" && !unread {
 		limit := parseLimit(rawLimit, defaultNearbyLimit)
