@@ -254,12 +254,14 @@ struct WatchZoneSummaryDTOTests {
       authorityId: 123,
       boundary: GeoJSONPolygon(
         type: "Polygon",
-        coordinates: [[
-          [-0.10, 51.50],
-          [-0.09, 51.51],
-          [-0.09, 51.50],
-          [-0.10, 51.50],
-        ]]
+        coordinates: [
+          [
+            [-0.10, 51.50],
+            [-0.09, 51.51],
+            [-0.09, 51.50],
+            [-0.10, 51.50],
+          ]
+        ]
       )
     )
 

@@ -155,29 +155,29 @@ public struct WatchZoneBoundary: Equatable, Hashable, Sendable {
     return false
   }
 
-  /// Whether segments p1-p2 and p3-p4 intersect, including one touching the
-  /// other at an endpoint or lying collinearly on it. Standard
+  /// Whether segments pt1-pt2 and pt3-pt4 intersect, including one touching
+  /// the other at an endpoint or lying collinearly on it. Standard
   /// orientation-based test (see e.g. CLRS §33.1).
   private static func segmentsIntersect(
-    _ p1: Coordinate,
-    _ p2: Coordinate,
-    _ p3: Coordinate,
-    _ p4: Coordinate
+    _ pt1: Coordinate,
+    _ pt2: Coordinate,
+    _ pt3: Coordinate,
+    _ pt4: Coordinate
   ) -> Bool {
-    let d1 = orientation(p3, p4, p1)
-    let d2 = orientation(p3, p4, p2)
-    let d3 = orientation(p1, p2, p3)
-    let d4 = orientation(p1, p2, p4)
+    let ori1 = orientation(pt3, pt4, pt1)
+    let ori2 = orientation(pt3, pt4, pt2)
+    let ori3 = orientation(pt1, pt2, pt3)
+    let ori4 = orientation(pt1, pt2, pt4)
 
-    let straddlesFirstEdge = (d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)
-    let straddlesSecondEdge = (d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0)
+    let straddlesFirstEdge = (ori1 > 0 && ori2 < 0) || (ori1 < 0 && ori2 > 0)
+    let straddlesSecondEdge = (ori3 > 0 && ori4 < 0) || (ori3 < 0 && ori4 > 0)
     if straddlesFirstEdge && straddlesSecondEdge {
       return true
     }
-    if d1 == 0 && onSegment(p3, p4, p1) { return true }
-    if d2 == 0 && onSegment(p3, p4, p2) { return true }
-    if d3 == 0 && onSegment(p1, p2, p3) { return true }
-    if d4 == 0 && onSegment(p1, p2, p4) { return true }
+    if ori1 == 0 && onSegment(pt3, pt4, pt1) { return true }
+    if ori2 == 0 && onSegment(pt3, pt4, pt2) { return true }
+    if ori3 == 0 && onSegment(pt1, pt2, pt3) { return true }
+    if ori4 == 0 && onSegment(pt1, pt2, pt4) { return true }
     return false
   }
 
