@@ -1,0 +1,66 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--tc-space-md);
+  padding: var(--tc-space-lg);
+  background: var(--tc-surface);
+  border: 1px solid var(--tc-border);
+  border-radius: var(--tc-radius-md);
+  text-align: center;
+}
+
+.graphic {
+  width: 100%;
+  max-width: 220px;
+  height: auto;
+}
+
+/* The circle represents the old, fixed-radius zone: a plain, muted outline. */
+.circleOutline {
+  fill: none;
+  stroke: var(--tc-text-tertiary);
+  stroke-width: 2;
+  stroke-dasharray: 6 6;
+}
+
+/* The irregular polygon represents the new custom-shape zone: drawn in the
+   brand accent so it reads as the thing being promoted. */
+.polygonShape {
+  fill: var(--tc-amber-muted);
+  stroke: var(--tc-amber);
+  stroke-width: 3;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.heading {
+  margin: 0;
+  font-size: var(--tc-text-headline);
+  font-weight: var(--tc-weight-semibold);
+  color: var(--tc-text-primary);
+}
+
+.body {
+  margin: 0;
+  max-width: 40ch;
+  font-size: var(--tc-text-body);
+  color: var(--tc-text-secondary);
+  line-height: var(--tc-leading-relaxed);
+}
+
+.cta {
+  padding: var(--tc-space-sm) var(--tc-space-lg);
+  background: var(--tc-amber);
+  color: var(--tc-text-on-accent);
+  border: none;
+  border-radius: var(--tc-radius-md);
+  font-weight: var(--tc-weight-semibold);
+  font-size: var(--tc-text-body);
+  cursor: pointer;
+  transition: background var(--tc-duration-fast);
+}
+
+.cta:hover {
+  background: var(--tc-amber-hover);
+}
