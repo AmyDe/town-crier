@@ -128,6 +128,23 @@ export interface ZoneNotificationPreferences {
 // Watch zones
 // ---------------------------------------------------------------------------
 
+/**
+ * GeoJSON `Polygon` wire shape for a custom-shape watch zone's boundary
+ * (tc-6he3x, paid-tier entitlement). Mirrors the API's `boundaryGeoJSON`
+ * (`api-go/internal/watchzones/store_postgres.go`) byte-for-byte — this
+ * layer does no client-side transformation, matching how every other domain
+ * type in this file passes the wire shape straight through.
+ *
+ * `coordinates` holds exactly one ring (the outer boundary; no holes, no
+ * multi-polygon — see GH#1031 "Out of Scope"), and each vertex tuple is
+ * `[longitude, latitude]` — GeoJSON/RFC 7946 order, the reverse of this
+ * file's `Coordinates` type. Easy to get backwards; do not flip it.
+ */
+export interface WatchZoneBoundary {
+  readonly type: 'Polygon';
+  readonly coordinates: readonly (readonly (readonly [number, number])[])[];
+}
+
 export interface WatchZoneSummary {
   readonly id: WatchZoneId;
   readonly name: string;
@@ -144,6 +161,13 @@ export interface WatchZoneSummary {
    * never computed client-side. Additive, always present on the wire.
    */
   readonly paused: boolean;
+  /**
+   * `null` for a plain circle zone, a GeoJSON `Polygon` for a custom-shape
+   * one (tc-6he3x). Always present on the wire — `latitude`/`longitude`/
+   * `radiusMetres` remain the shape's derived centroid/enclosing radius
+   * either way, so every circle-only consumer keeps working unchanged.
+   */
+  readonly boundary: WatchZoneBoundary | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -373,6 +397,13 @@ export interface CreateWatchZoneRequest {
   readonly authorityId?: number;
   readonly pushEnabled?: boolean;
   readonly emailInstantEnabled?: boolean;
+  /**
+   * Optional GeoJSON `Polygon`. When present, `latitude`/`longitude`/
+   * `radiusMetres` above are ignored — the server derives them from the
+   * boundary's centroid/enclosing radius. Omitted entirely for a plain
+   * circle create (unchanged existing behaviour).
+   */
+  readonly boundary?: WatchZoneBoundary;
 }
 
 export interface UpdateProfileRequest {
@@ -388,6 +419,16 @@ export interface UpdateWatchZoneRequest {
   readonly radiusMetres?: number;
   readonly pushEnabled?: boolean;
   readonly emailInstantEnabled?: boolean;
+  /**
+   * Tri-state, matching the API's `json.RawMessage` PATCH field: the key
+   * being absent from the serialised body means "leave the shape untouched"
+   * (do not set this to `undefined` explicitly — `JSON.stringify` must see
+   * the key genuinely missing, not present with an `undefined` value); an
+   * explicit `null` means "convert this zone back to a circle, preserving
+   * its current centre/radius"; a `WatchZoneBoundary` value means "set/
+   * replace the shape".
+   */
+  readonly boundary?: WatchZoneBoundary | null;
 }
 
 export interface UpdateZonePreferencesRequest {

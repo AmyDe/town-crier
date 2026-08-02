@@ -1,4 +1,5 @@
 import type {
+  WatchZoneBoundary,
   WatchZoneSummary,
   ZoneNotificationPreferences,
 } from '../../../../domain/types';
@@ -15,6 +16,7 @@ export function aWatchZone(overrides?: Partial<WatchZoneSummary>): WatchZoneSumm
     pushEnabled: true,
     emailInstantEnabled: true,
     paused: false,
+    boundary: null,
     ...overrides,
   };
 }
@@ -30,6 +32,28 @@ export function aSecondWatchZone(overrides?: Partial<WatchZoneSummary>): WatchZo
     pushEnabled: true,
     emailInstantEnabled: true,
     paused: false,
+    boundary: null,
+    ...overrides,
+  };
+}
+
+/**
+ * A small closed square ring, [longitude, latitude] tuple order — matches
+ * the wire shape `WatchZoneBoundary` mirrors. First and last vertex are
+ * identical, per the GeoJSON closed-ring convention.
+ */
+export function aWatchZoneBoundary(overrides?: Partial<WatchZoneBoundary>): WatchZoneBoundary {
+  return {
+    type: 'Polygon',
+    coordinates: [
+      [
+        [0.1, 52.2],
+        [0.12, 52.2],
+        [0.12, 52.21],
+        [0.1, 52.21],
+        [0.1, 52.2],
+      ],
+    ],
     ...overrides,
   };
 }
