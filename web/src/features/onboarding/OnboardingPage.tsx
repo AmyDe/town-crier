@@ -4,6 +4,9 @@ import type { GeocodingPort } from '../../domain/ports/geocoding-port';
 import { ConfirmMap } from '../../components/ConfirmMap/ConfirmMap';
 import { PostcodeInput } from '../../components/PostcodeInput/PostcodeInput';
 import { RadiusPicker } from '../../components/RadiusPicker/RadiusPicker';
+import { BoundaryMap } from '../../components/BoundaryMap/BoundaryMap';
+import { CustomShapeUpsell } from '../../components/CustomShapeUpsell/CustomShapeUpsell';
+import { useBoundaryDrawing } from '../../hooks/useBoundaryDrawing';
 import { useOnboarding } from './useOnboarding';
 import styles from './OnboardingPage.module.css';
 
@@ -18,6 +21,7 @@ export function OnboardingPage({ onboardingPort, geocodingPort }: Props) {
     geocode,
     postcode,
     radiusMetres,
+    tier,
     isSubmitting,
     error,
     isComplete,
@@ -25,8 +29,11 @@ export function OnboardingPage({ onboardingPort, geocodingPort }: Props) {
     handleGeocode,
     selectRadius,
     confirmRadius,
+    confirmDrawing,
     finish,
   } = useOnboarding(onboardingPort);
+
+  const drawing = useBoundaryDrawing();
 
   if (isComplete) {
     return <Navigate to="/dashboard" replace />;
@@ -68,6 +75,7 @@ export function OnboardingPage({ onboardingPort, geocodingPort }: Props) {
               selectedMetres={radiusMetres}
               onSelect={selectRadius}
             />
+            {tier === 'Free' && <CustomShapeUpsell />}
             <button
               type="button"
               className={styles.primaryButton}
@@ -78,15 +86,56 @@ export function OnboardingPage({ onboardingPort, geocodingPort }: Props) {
           </>
         )}
 
+        {step === 'drawing' && geocode && (
+          <>
+            <h2 className={styles.stepLabel}>Draw your watch zone</h2>
+            <BoundaryMap
+              centre={geocode}
+              vertices={drawing.vertices}
+              isClosed={drawing.isClosed}
+              onAddVertex={drawing.addVertex}
+              onMoveVertex={drawing.moveVertex}
+              onCloseRing={drawing.closeRing}
+              onUndo={drawing.undo}
+              onReset={drawing.reset}
+            />
+            <button
+              type="button"
+              className={styles.primaryButton}
+              onClick={() => confirmDrawing(drawing.boundary)}
+            >
+              Next
+            </button>
+            {error && (
+              <p className={styles.error} role="alert">
+                {error}
+              </p>
+            )}
+          </>
+        )}
+
         {step === 'confirm' && (
           <>
             <h2 className={styles.stepLabel}>Confirm your watch zone</h2>
             {geocode && (
-              <ConfirmMap
-                latitude={geocode.latitude}
-                longitude={geocode.longitude}
-                radiusMetres={radiusMetres}
-              />
+              drawing.boundary ? (
+                <BoundaryMap
+                  centre={geocode}
+                  vertices={drawing.vertices}
+                  isClosed={drawing.isClosed}
+                  onAddVertex={drawing.addVertex}
+                  onMoveVertex={drawing.moveVertex}
+                  onCloseRing={drawing.closeRing}
+                  onUndo={drawing.undo}
+                  onReset={drawing.reset}
+                />
+              ) : (
+                <ConfirmMap
+                  latitude={geocode.latitude}
+                  longitude={geocode.longitude}
+                  radiusMetres={radiusMetres}
+                />
+              )
             )}
             <div className={styles.confirmDetails}>
               <div className={styles.confirmRow}>
@@ -94,16 +143,20 @@ export function OnboardingPage({ onboardingPort, geocodingPort }: Props) {
                 <span className={styles.confirmValue}>{postcode}</span>
               </div>
               <div className={styles.confirmRow}>
-                <span className={styles.confirmLabel}>Radius</span>
+                <span className={styles.confirmLabel}>
+                  {drawing.boundary ? 'Shape' : 'Radius'}
+                </span>
                 <span className={styles.confirmValue}>
-                  {radiusMetres >= 1000 ? `${radiusMetres / 1000} km` : `${radiusMetres} m`}
+                  {drawing.boundary
+                    ? 'Custom shape'
+                    : radiusMetres >= 1000 ? `${radiusMetres / 1000} km` : `${radiusMetres} m`}
                 </span>
               </div>
             </div>
             <button
               type="button"
               className={styles.primaryButton}
-              onClick={finish}
+              onClick={() => finish(drawing.boundary)}
               disabled={isSubmitting}
             >
               {isSubmitting ? 'Setting up...' : 'Confirm'}

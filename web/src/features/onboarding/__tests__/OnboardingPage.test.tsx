@@ -13,9 +13,12 @@ vi.mock('react-leaflet', () => ({
   TileLayer: () => <div data-testid="tile-layer" />,
   Marker: () => <div data-testid="map-marker" />,
   Circle: () => <div data-testid="map-circle" />,
+  Polygon: () => <div data-testid="boundary-polygon" />,
+  Polyline: () => <div data-testid="boundary-polyline" />,
   useMap: () => ({
     fitBounds: vi.fn(),
   }),
+  useMapEvents: () => null,
 }));
 
 vi.mock('leaflet', () => ({
@@ -155,6 +158,27 @@ describe('OnboardingPage', () => {
       longitude: -0.1278,
       radiusMetres: 2000,
     });
+  });
+
+  it('shows the custom-shape upsell alongside the radius picker for a Free-tier user', async () => {
+    const user = userEvent.setup();
+    const geocodingSpy = new SpyGeocodingPort();
+    renderOnboarding(new SpyOnboardingPort(), geocodingSpy);
+
+    await user.click(screen.getByRole('button', { name: /get started/i }));
+    await user.type(screen.getByLabelText(/postcode/i), 'SW1A 1AA');
+    await user.click(screen.getByRole('button', { name: /look up/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('radiogroup', { name: /radius/i })).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getByRole('heading', { name: /draw any shape/i }),
+    ).toBeInTheDocument();
+    // No purchase/checkout route exists on web yet (GH#1031 section 8) —
+    // the upsell must not render an "Upgrade" CTA button.
+    expect(screen.queryByRole('button', { name: /upgrade/i })).not.toBeInTheDocument();
   });
 
   it('shows error when API call fails', async () => {
