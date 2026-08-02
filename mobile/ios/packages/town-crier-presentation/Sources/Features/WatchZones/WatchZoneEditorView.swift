@@ -18,8 +18,15 @@ public struct WatchZoneEditorView: View {
           postcodeSection
         }
         if viewModel.geocodedCoordinate != nil {
-          radiusSection
-          mapPreviewSection
+          shapeModeSection
+          if viewModel.shapeMode == .circle {
+            radiusSection
+            mapPreviewSection
+          } else if viewModel.canDrawCustomShape {
+            boundaryDrawingSection
+          } else {
+            lockedCustomShapeSection
+          }
         }
         if viewModel.areNotificationTogglesVisible {
           notificationsSection
@@ -53,6 +60,7 @@ public struct WatchZoneEditorView: View {
           .disabled(
             viewModel.geocodedCoordinate == nil || viewModel.isLoading
               || viewModel.nameInput.trimmingCharacters(in: .whitespaces).isEmpty
+              || (viewModel.shapeMode == .custom && !viewModel.canFinishCustomShape)
           )
         }
       }
@@ -139,6 +147,153 @@ public struct WatchZoneEditorView: View {
           LargeRadiusWarningView()
             .padding(.top, TCSpacing.small)
         }
+      }
+    }
+  }
+
+  // MARK: - Shape mode (GH#1031)
+
+  /// The Circle/Custom shape control, shown only once a coordinate exists
+  /// (mirrors `radiusSection`/`mapPreviewSection`'s visibility gate). Paid
+  /// tiers get the segmented control; Free tier sees a minimal upsell
+  /// affordance instead (the full onboarding graphic, `CustomShapeUpsellGraphic`,
+  /// is a separate bead — tc-6he3x.10 — this is deliberately a plain-text
+  /// extension point, not that graphic). Free tier editing an existing
+  /// locked custom shape (``WatchZoneEditorViewModel/isCustomShapeLocked``)
+  /// gets nothing here — ``lockedCustomShapeSection`` below is the sole,
+  /// non-duplicated explanation for that state.
+  @ViewBuilder
+  private var shapeModeSection: some View {
+    if viewModel.canDrawCustomShape {
+      Section {
+        Picker(
+          "Shape",
+          selection: Binding(
+            get: { viewModel.shapeMode },
+            set: { viewModel.selectShapeMode($0) }
+          )
+        ) {
+          Text("Circle").tag(WatchZoneShapeMode.circle)
+          Text("Custom").tag(WatchZoneShapeMode.custom)
+        }
+        .pickerStyle(.segmented)
+        .accessibilityLabel("Zone shape")
+      }
+    } else if !viewModel.isCustomShapeLocked {
+      Section {
+        customShapeUpsellPlaceholder
+      }
+    }
+  }
+
+  /// Minimal upsell affordance for a Free-tier user who hasn't drawn a
+  /// custom shape yet — text plus a "View Plans" tap-through, not the
+  /// richer onboarding graphic (tc-6he3x.10).
+  private var customShapeUpsellPlaceholder: some View {
+    Button {
+      viewModel.viewPlans()
+    } label: {
+      HStack(spacing: TCSpacing.small) {
+        Image(systemName: "hexagon.fill")
+          .foregroundStyle(Color.tcAmber)
+          .accessibilityHidden(true)
+        Text("Draw a custom shape on Personal or Pro, instead of just a circle.")
+          .font(TCTypography.caption)
+          .foregroundStyle(Color.tcTextSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+        Spacer(minLength: 0)
+        Image(systemName: "chevron.right")
+          .font(TCTypography.caption)
+          .foregroundStyle(Color.tcTextSecondary)
+          .accessibilityHidden(true)
+      }
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel("Draw a custom shape on Personal or Pro, instead of just a circle.")
+    .accessibilityHint("Opens subscription plans")
+  }
+
+  @ViewBuilder
+  private var boundaryDrawingSection: some View {
+    if let coordinate = viewModel.geocodedCoordinate {
+      Section {
+        #if canImport(UIKit)
+          BoundaryDrawingMapView(viewModel: viewModel, initialCentre: coordinate)
+            .frame(height: 260)
+            .clipShape(RoundedRectangle(cornerRadius: TCCornerRadius.medium))
+            .listRowInsets(
+              EdgeInsets(
+                top: TCSpacing.small,
+                leading: TCSpacing.medium,
+                bottom: TCSpacing.small,
+                trailing: TCSpacing.medium
+              ))
+        #else
+          // BoundaryDrawingMapView wraps UIKit's MKMapView and is
+          // unavailable on this SPM compile-time-only macOS target (the app
+          // ships on iOS; macOS here exists only so `swift build`/`swift
+          // test` can exercise the shared code without Xcode).
+          Text("Custom-shape drawing is available on iOS.")
+            .font(TCTypography.body)
+            .foregroundStyle(Color.tcTextSecondary)
+        #endif
+        HStack {
+          Text(vertexCountLabel)
+            .font(TCTypography.caption)
+            .foregroundStyle(Color.tcTextSecondary)
+          Spacer()
+          Button("Undo") {
+            viewModel.undoLastVertex()
+          }
+          .disabled(viewModel.boundaryVertices.isEmpty)
+        }
+      } header: {
+        Text("Custom Shape")
+      } footer: {
+        Text("Tap the map to add points. Drag a point to move it, and tap the first point again to finish.")
+          .font(TCTypography.caption)
+          .foregroundStyle(Color.tcTextSecondary)
+      }
+    }
+  }
+
+  private var vertexCountLabel: String {
+    let count = viewModel.boundaryVertices.count
+    if count < 3 {
+      return "\(count) of at least 3 points"
+    }
+    return "\(count) points"
+  }
+
+  /// Shown instead of ``boundaryDrawingSection`` when editing an existing
+  /// custom-shape zone on a tier that can no longer draw one
+  /// (``WatchZoneEditorViewModel/isCustomShapeLocked``) — a static preview
+  /// with no drawing affordance, so a downgraded Free-tier user has no path
+  /// to the vertex editor while the zone's shape stays untouched.
+  @ViewBuilder
+  private var lockedCustomShapeSection: some View {
+    if let coordinate = viewModel.geocodedCoordinate {
+      Section {
+        ZoneMapPreview(
+          centre: coordinate,
+          radiusMetres: viewModel.selectedRadiusMetres,
+          strokeWidth: 2
+        )
+        .frame(height: 220)
+        .clipShape(RoundedRectangle(cornerRadius: TCCornerRadius.medium))
+        .listRowInsets(
+          EdgeInsets(
+            top: TCSpacing.small,
+            leading: TCSpacing.medium,
+            bottom: TCSpacing.small,
+            trailing: TCSpacing.medium
+          ))
+      } header: {
+        Text("Custom Shape")
+      } footer: {
+        Text("This zone's custom shape is locked. Upgrade to Personal or Pro to edit it.")
+          .font(TCTypography.caption)
+          .foregroundStyle(Color.tcTextSecondary)
       }
     }
   }
