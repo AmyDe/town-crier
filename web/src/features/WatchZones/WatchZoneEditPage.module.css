@@ -63,6 +63,16 @@
   margin: var(--tc-space-xs) 0 0 0;
 }
 
+.lockedShapeNotice {
+  font-size: var(--tc-text-caption);
+  color: var(--tc-text-secondary);
+  background: var(--tc-background);
+  border: 1px solid var(--tc-border);
+  border-radius: var(--tc-radius-md);
+  padding: var(--tc-space-sm) var(--tc-space-md);
+  margin: 0;
+}
+
 .saveButton {
   display: block;
   width: 100%;

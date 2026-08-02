@@ -1,10 +1,58 @@
-import { render, screen } from '@testing-library/react';
+import React from 'react';
+import { render, screen, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { WatchZoneEditPage } from '../WatchZoneEditPage';
 import { SpyWatchZoneRepository } from './spies/spy-watch-zone-repository';
-import { aWatchZone, zonePreferences } from './fixtures/watch-zone.fixtures';
+import { aWatchZone, aWatchZoneBoundary, zonePreferences } from './fixtures/watch-zone.fixtures';
+
+interface LatLngPayload {
+  latlng: { lat: number; lng: number };
+}
+
+interface MockMarkerEventHandlers {
+  click?: () => void;
+}
+
+interface MockMarkerProps {
+  position: [number, number];
+  eventHandlers?: MockMarkerEventHandlers;
+}
+
+interface PathLayerProps {
+  positions: [number, number][];
+}
+
+const { capturedMapEvents } = vi.hoisted(() => ({
+  capturedMapEvents: { click: undefined as ((event: LatLngPayload) => void) | undefined },
+}));
+
+vi.mock('react-leaflet', () => ({
+  MapContainer: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="map-container">{children}</div>
+  ),
+  TileLayer: () => <div data-testid="tile-layer" />,
+  Marker: ({ position, eventHandlers }: MockMarkerProps) => (
+    <div data-testid="map-marker" data-lat={position[0]} data-lng={position[1]}>
+      {eventHandlers?.click && (
+        <button type="button" data-testid="marker-click" onClick={eventHandlers.click}>
+          marker
+        </button>
+      )}
+    </div>
+  ),
+  Polygon: ({ positions }: PathLayerProps) => (
+    <div data-testid="boundary-polygon" data-count={positions.length} />
+  ),
+  Polyline: ({ positions }: PathLayerProps) => (
+    <div data-testid="boundary-polyline" data-count={positions.length} />
+  ),
+  useMapEvents: (handlers: { click?: (event: LatLngPayload) => void }) => {
+    capturedMapEvents.click = handlers.click;
+    return null;
+  },
+}));
 
 function renderWithRouter(ui: React.ReactElement) {
   return render(<MemoryRouter>{ui}</MemoryRouter>);
@@ -384,6 +432,132 @@ describe('WatchZoneEditPage', () => {
 
       expect(spy.updateZoneCalls).toHaveLength(1);
       expect(spy.updateZoneCalls[0]?.data).toEqual({ emailInstantEnabled: false });
+    });
+  });
+
+  describe('shape mode', () => {
+    it('shows RadiusPicker and the custom-shape upsell, with no shape toggle, for Free tier', () => {
+      spy.getPreferencesResult = zonePreferences();
+
+      renderWithRouter(
+        <WatchZoneEditPage repository={spy} zone={aWatchZone()} tier="Free" />,
+      );
+
+      expect(screen.getByRole('radiogroup', { name: /radius/i })).toBeInTheDocument();
+      expect(screen.queryByRole('radiogroup', { name: /shape/i })).not.toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /draw any shape/i })).toBeInTheDocument();
+    });
+
+    it('surfaces a locked notice, not the radius picker, for a Free-tier user holding a pre-existing custom-shape zone', () => {
+      spy.getPreferencesResult = zonePreferences();
+      const boundary = aWatchZoneBoundary();
+
+      renderWithRouter(
+        <WatchZoneEditPage repository={spy} zone={aWatchZone({ boundary })} tier="Free" />,
+      );
+
+      expect(screen.getByText(/this zone uses a custom shape/i)).toBeInTheDocument();
+      expect(screen.queryByRole('radiogroup', { name: /radius/i })).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('heading', { name: /draw any shape/i }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByTestId('boundary-polygon')).not.toBeInTheDocument();
+    });
+
+    it('shows the shape toggle in circle mode for a paid tier with a plain circle zone', () => {
+      spy.getPreferencesResult = zonePreferences();
+
+      renderWithRouter(
+        <WatchZoneEditPage repository={spy} zone={aWatchZone({ boundary: null })} tier="Pro" />,
+      );
+
+      const toggle = screen.getByRole('radiogroup', { name: /shape/i });
+      expect(toggle).toBeInTheDocument();
+      expect(screen.getByRole('radio', { name: /^circle$/i })).toBeChecked();
+      expect(screen.getByRole('radiogroup', { name: /radius/i })).toBeInTheDocument();
+      expect(
+        screen.queryByRole('heading', { name: /draw any shape/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('initialises custom mode and renders the existing boundary for a custom-shape zone', () => {
+      spy.getPreferencesResult = zonePreferences();
+      const boundary = aWatchZoneBoundary();
+
+      renderWithRouter(
+        <WatchZoneEditPage repository={spy} zone={aWatchZone({ boundary })} tier="Personal" />,
+      );
+
+      expect(screen.getByRole('radio', { name: /^custom shape$/i })).toBeChecked();
+      expect(screen.queryByRole('radiogroup', { name: /radius/i })).not.toBeInTheDocument();
+      expect(screen.getByTestId('boundary-polygon')).toBeInTheDocument();
+      expect(screen.getAllByTestId('map-marker')).toHaveLength(4);
+    });
+
+    it('sends an explicit null boundary when switching a custom zone back to circle', async () => {
+      const user = userEvent.setup();
+      spy.getPreferencesResult = zonePreferences();
+      const boundary = aWatchZoneBoundary();
+      spy.updateZoneResult = aWatchZone({ boundary: null });
+
+      renderWithRouter(
+        <WatchZoneEditPage repository={spy} zone={aWatchZone({ boundary })} tier="Personal" />,
+      );
+
+      await user.click(screen.getByRole('radio', { name: /^circle$/i }));
+
+      const saveButton = screen.getByRole('button', { name: /save/i });
+      await user.click(saveButton);
+
+      expect(spy.updateZoneCalls).toHaveLength(1);
+      expect(spy.updateZoneCalls[0]?.data).toEqual({ boundary: null });
+    });
+
+    it('draws a polygon and saves the zone with the new boundary', async () => {
+      const user = userEvent.setup();
+      spy.getPreferencesResult = zonePreferences();
+      spy.updateZoneResult = aWatchZone({ boundary: aWatchZoneBoundary() });
+
+      renderWithRouter(
+        <WatchZoneEditPage
+          repository={spy}
+          zone={aWatchZone({ boundary: null })}
+          tier="Personal"
+        />,
+      );
+
+      await user.click(screen.getByRole('radio', { name: /^custom shape$/i }));
+
+      act(() => {
+        capturedMapEvents.click?.({ latlng: { lat: 52.2, lng: 0.1 } });
+      });
+      act(() => {
+        capturedMapEvents.click?.({ latlng: { lat: 52.2, lng: 0.12 } });
+      });
+      act(() => {
+        capturedMapEvents.click?.({ latlng: { lat: 52.21, lng: 0.12 } });
+      });
+
+      const closeButton = screen.getAllByTestId('marker-click')[0];
+      await user.click(closeButton!);
+
+      const saveButton = screen.getByRole('button', { name: /save/i });
+      await user.click(saveButton);
+
+      expect(spy.updateZoneCalls).toHaveLength(1);
+      expect(spy.updateZoneCalls[0]?.data).toEqual({
+        boundary: {
+          type: 'Polygon',
+          coordinates: [
+            [
+              [0.1, 52.2],
+              [0.12, 52.2],
+              [0.12, 52.21],
+              [0.1, 52.2],
+            ],
+          ],
+        },
+      });
     });
   });
 });
