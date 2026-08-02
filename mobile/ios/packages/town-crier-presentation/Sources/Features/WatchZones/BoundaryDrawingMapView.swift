@@ -9,18 +9,24 @@
   /// (once at least 3 exist) to close the ring.
   ///
   /// The representable is a thin adapter (MVVM-C): all vertex state lives on
-  /// ``WatchZoneEditorViewModel``; this view translates taps/drags into
-  /// ViewModel calls and renders the vertex pins plus a preview
-  /// polygon/polyline overlay. Structure mirrors `ClusteredMapView`.
+  /// the driving ViewModel; this view translates taps/drags into ViewModel
+  /// calls and renders the vertex pins plus a preview polygon/polyline
+  /// overlay. Structure mirrors `ClusteredMapView`.
+  ///
+  /// Generic over ``BoundaryDrawingViewModel`` rather than tied to the
+  /// concrete `WatchZoneEditorViewModel` (tc-6he3x.10): the onboarding
+  /// wizard drives its own boundary-drawing state on `OnboardingViewModel`,
+  /// and this view only needs the narrow vertex-editing surface both
+  /// ViewModels share, not the rest of either one.
   @MainActor
-  struct BoundaryDrawingMapView: UIViewRepresentable {
+  struct BoundaryDrawingMapView<ViewModel: BoundaryDrawingViewModel>: UIViewRepresentable {
     /// Observed so `updateUIView` re-runs to re-diff vertices whenever the
     /// ViewModel publishes a change (add/move/remove/undo) — a plain stored
     /// reference is NOT enough: SwiftUI treats the representable as
-    /// unchanged when its only stored property is the same
-    /// `WatchZoneEditorViewModel` instance, so it skips `updateUIView` and
-    /// new vertices never reach the map (mirrors `ClusteredMapView`).
-    @ObservedObject var viewModel: WatchZoneEditorViewModel
+    /// unchanged when its only stored property is the same ViewModel
+    /// instance, so it skips `updateUIView` and new vertices never reach the
+    /// map (mirrors `ClusteredMapView`).
+    @ObservedObject var viewModel: ViewModel
 
     /// Where the map centres on first appearance — the postcode-geocoded
     /// coordinate the user already entered before switching to Custom.
@@ -65,21 +71,21 @@
   extension BoundaryDrawingMapView {
     /// `MKMapViewDelegate` + tap-gesture target for ``BoundaryDrawingMapView``.
     /// Holds no business logic of its own beyond translating a screen tap or
-    /// a pin drag into the corresponding ``WatchZoneEditorViewModel`` call —
+    /// a pin drag into the corresponding ``BoundaryDrawingViewModel`` call —
     /// all validation (minimum vertices, self-intersection, UK bounds) stays
     /// in the domain/ViewModel layer.
     @MainActor
     final class Coordinator: NSObject, MKMapViewDelegate {
       static let vertexReuseIdentifier = "watch-zone-boundary-vertex"
 
-      private let viewModel: WatchZoneEditorViewModel
+      private let viewModel: ViewModel
 
       /// The shape preview overlay currently on the map (a polygon once at
       /// least 3 vertices exist, otherwise an open polyline), so it can be
       /// swapped rather than left to accumulate stale overlays.
       private var shapeOverlay: MKOverlay?
 
-      init(viewModel: WatchZoneEditorViewModel) {
+      init(viewModel: ViewModel) {
         self.viewModel = viewModel
       }
 
@@ -230,7 +236,7 @@
   /// A reference-type `MKAnnotation` for a single boundary vertex pin,
   /// carrying its ordinal position in the ring so the coordinator can route
   /// a drag, or a "tap first vertex to close", back to the right index in
-  /// ``WatchZoneEditorViewModel/boundaryVertices``.
+  /// ``BoundaryDrawingViewModel/boundaryVertices``.
   final class BoundaryVertexAnnotation: NSObject, MKAnnotation {
     let index: Int
     @objc dynamic var coordinate: CLLocationCoordinate2D
@@ -240,4 +246,12 @@
       self.coordinate = coordinate
     }
   }
+
+  /// `WatchZoneEditorViewModel` (tc-6he3x.8) already exposes exactly the
+  /// vertex-editing surface ``BoundaryDrawingViewModel`` requires, so no
+  /// changes to that type are needed. The conformance is declared here,
+  /// alongside its sole reason for existing, rather than on the type
+  /// itself, so the already-shipped `WatchZoneEditorViewModel.swift` stays
+  /// untouched (tc-6he3x.10).
+  extension WatchZoneEditorViewModel: BoundaryDrawingViewModel {}
 #endif

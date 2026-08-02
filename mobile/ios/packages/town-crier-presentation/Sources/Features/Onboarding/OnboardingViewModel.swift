@@ -6,12 +6,18 @@ public enum OnboardingStep: CaseIterable, Equatable, Sendable {
   case welcome
   case postcodeEntry
   case radiusPicker
+  /// Custom-shape boundary drawing (GH#1031, tc-6he3x.10). Reached only via
+  /// ``OnboardingViewModel/reconcileTierAfterCustomShapeUpgrade()`` after a
+  /// successful in-wizard purchase from the radius step's custom-shape
+  /// upsell — never part of the default welcome → postcode → radius →
+  /// notification sequence.
+  case boundaryDrawing
   case notificationPermission
 }
 
 /// Drives the onboarding flow: welcome → postcode entry → radius picker → notification permission → complete.
 @MainActor
-public final class OnboardingViewModel: ObservableObject, ErrorHandlingViewModel {
+public final class OnboardingViewModel: ObservableObject, ErrorHandlingViewModel, BoundaryDrawingViewModel {
   @Published public private(set) var currentStep: OnboardingStep = .welcome
   @Published public var postcodeInput: String = ""
   @Published public private(set) var isLoading = false
@@ -40,6 +46,34 @@ public final class OnboardingViewModel: ObservableObject, ErrorHandlingViewModel
   /// *over* the wizard so the StateObject — and the in-progress postcode/geocode
   /// — survives the purchase round-trip.
   @Published public var isRadiusUpsellPresented = false
+
+  /// Circle (the default) vs. custom polygon shape (GH#1031). Mirrors
+  /// `WatchZoneEditorViewModel.shapeMode`: stays `.circle` for the whole
+  /// default flow, and is only ever set to `.custom` by
+  /// ``reconcileTierAfterCustomShapeUpgrade()`` when a mid-flow purchase
+  /// unlocks ``currentStep`` == ``OnboardingStep/boundaryDrawing``. Tracked
+  /// so ``goBack()`` can route `.notificationPermission` back to whichever
+  /// of the radius or boundary step the zone was actually built from.
+  @Published public private(set) var shapeMode: WatchZoneShapeMode = .circle
+
+  /// The custom-shape ring being drawn, as an OPEN sequence of vertices in
+  /// drop order — NOT closed. Mirrors
+  /// `WatchZoneEditorViewModel.boundaryVertices`; see
+  /// ``BoundaryDrawingViewModel`` for the shared surface `BoundaryDrawingMapView`
+  /// needs to render it.
+  @Published public private(set) var boundaryVertices: [Coordinate] = []
+
+  /// Mirrors `WatchZoneBoundary`'s geometric minimum (3 distinct vertices
+  /// are required to form a polygon) so the UI can gate "Continue" without
+  /// constructing (and discarding) a throwaway boundary just to check the
+  /// count.
+  private static let minimumBoundaryVertexCount = 3
+
+  /// Drives the in-wizard custom-shape upsell paywall (GH#1031, tc-6he3x.10),
+  /// presented from the radius step alongside (but distinct from)
+  /// ``isRadiusUpsellPresented``. Also a sheet *over* the wizard so the
+  /// in-progress postcode/geocode survives the purchase round-trip.
+  @Published public var isCustomShapeUpsellPresented = false
 
   var onComplete: ((WatchZone) -> Void)?
 
@@ -80,6 +114,8 @@ public final class OnboardingViewModel: ObservableObject, ErrorHandlingViewModel
       currentStep = .radiusPicker
     case .radiusPicker:
       currentStep = .notificationPermission
+    case .boundaryDrawing:
+      currentStep = .notificationPermission
     case .notificationPermission:
       break
     }
@@ -93,8 +129,18 @@ public final class OnboardingViewModel: ObservableObject, ErrorHandlingViewModel
       currentStep = .welcome
     case .radiusPicker:
       currentStep = .postcodeEntry
-    case .notificationPermission:
+    case .boundaryDrawing:
+      // Stepping back out of drawing returns to the radius step as a plain
+      // circle pick — the in-progress boundary is discarded rather than
+      // resumed, mirroring the editor's `selectShapeMode(.circle)`.
+      shapeMode = .circle
       currentStep = .radiusPicker
+    case .notificationPermission:
+      // Which step precedes notification depends on which shape the zone
+      // was actually built from (tc-6he3x.10) — `shapeMode` is the source of
+      // truth for that, since it's only ever `.custom` after a genuine
+      // mid-flow tier change routed here via ``boundaryDrawing``.
+      currentStep = shapeMode == .custom ? .boundaryDrawing : .radiusPicker
     }
   }
 
@@ -214,6 +260,119 @@ public final class OnboardingViewModel: ObservableObject, ErrorHandlingViewModel
       currentStep = .notificationPermission
     } catch {
       self.error = .invalidWatchZoneRadius
+    }
+  }
+
+  // MARK: - Custom-shape boundary drawing (GH#1031, tc-6he3x.10)
+
+  /// Whether the user's tier may draw a custom-shape zone at all — gates
+  /// showing the custom-shape upsell on the radius step. Mirrors
+  /// `WatchZoneEditorViewModel.canDrawCustomShape` via the same
+  /// ``WatchZoneLimits`` source of truth.
+  public var canDrawCustomShape: Bool {
+    WatchZoneLimits(tier: subscriptionTier).allowsCustomBoundary
+  }
+
+  /// Whether ``boundaryVertices`` currently has enough points to form a
+  /// valid polygon (the domain layer's geometric minimum of 3). Drives the
+  /// boundary step's "Continue" button.
+  public var hasMinimumBoundaryVertices: Bool {
+    boundaryVertices.count >= Self.minimumBoundaryVertexCount
+  }
+
+  /// Appends a new vertex at the end of the ring being drawn.
+  public func addVertex(_ coordinate: Coordinate) {
+    boundaryVertices.append(coordinate)
+  }
+
+  /// Moves the vertex at `index` to `coordinate` (e.g. after a drag). A
+  /// stale or out-of-range index is a no-op rather than a crash.
+  public func moveVertex(at index: Int, to coordinate: Coordinate) {
+    guard boundaryVertices.indices.contains(index) else { return }
+    boundaryVertices[index] = coordinate
+  }
+
+  /// Removes the vertex at `index`. A stale or out-of-range index is a
+  /// no-op rather than a crash.
+  public func removeVertex(at index: Int) {
+    guard boundaryVertices.indices.contains(index) else { return }
+    boundaryVertices.remove(at: index)
+  }
+
+  /// Removes the most recently added vertex. A no-op on an empty ring.
+  public func undoLastVertex() {
+    guard !boundaryVertices.isEmpty else { return }
+    boundaryVertices.removeLast()
+  }
+
+  /// Validates the current vertices as a closed ring without saving —
+  /// invoked when the user taps the first vertex to close the shape while
+  /// drawing (``BoundaryDrawingMapView``). Surfaces problems (self-
+  /// intersection, an out-of-UK vertex, a duplicate point) immediately via
+  /// ``error``; below the minimum vertex count this is a silent no-op since
+  /// there's nothing yet to validate. Mirrors
+  /// `WatchZoneEditorViewModel.finishDrawing()`.
+  public func finishDrawing() {
+    guard hasMinimumBoundaryVertices else { return }
+    do {
+      _ = try WatchZoneBoundary(vertices: boundaryVertices)
+      error = nil
+    } catch {
+      handleError(error)
+    }
+  }
+
+  /// Surfaces the in-wizard custom-shape paywall when the user taps the
+  /// upsell on the radius step.
+  public func requestCustomShapeUpgrade() {
+    isCustomShapeUpsellPresented = true
+  }
+
+  /// Called when the custom-shape paywall sheet dismisses. Re-resolves the
+  /// tier via the same ``onUpgradeFlowCompleted`` hook
+  /// ``reconcileTierAfterUpgrade()`` uses, then — if the purchase actually
+  /// unlocked custom shapes and the wizard is still sitting on the radius
+  /// step — swaps it for the boundary-drawing step in place, preserving the
+  /// already-entered postcode/geocode exactly as the radius upsell's live
+  /// unlock does (tc-w3cb.3). This upsell's payoff is immediate drawing
+  /// rather than a wider radius range, so unlike the radius flow it also
+  /// moves ``currentStep`` on success.
+  public func reconcileTierAfterCustomShapeUpgrade() async {
+    await onUpgradeFlowCompleted?()
+    if currentStep == .radiusPicker, canDrawCustomShape {
+      shapeMode = .custom
+      currentStep = .boundaryDrawing
+    }
+  }
+
+  /// Builds a custom-shape ``WatchZone`` from ``boundaryVertices`` and
+  /// advances to the notification step — the ``boundaryDrawing`` step's
+  /// counterpart to ``confirmRadius()``. The centre and radius are derived
+  /// from the boundary's centroid and enclosing radius, exactly as
+  /// `WatchZoneEditorViewModel.save()` does in `.custom` mode, so every
+  /// existing circle-shaped read path (map centring, list rows) keeps
+  /// working unchanged.
+  public func confirmBoundary() {
+    guard geocodedCoordinate != nil, hasMinimumBoundaryVertices else { return }
+    do {
+      let boundary = try WatchZoneBoundary(vertices: boundaryVertices)
+      let centroid = boundary.centroid
+      let centre = try Coordinate(latitude: centroid.latitude, longitude: centroid.longitude)
+      let radius = boundary.enclosingRadiusMetres
+      let zone: WatchZone
+      if let prefillZoneName {
+        zone = try WatchZone(
+          name: prefillZoneName, centre: centre, radiusMetres: radius, boundary: boundary)
+      } else if let postcode = validatedPostcode {
+        zone = try WatchZone(
+          postcode: postcode, centre: centre, radiusMetres: radius, boundary: boundary)
+      } else {
+        return
+      }
+      createdWatchZone = zone
+      currentStep = .notificationPermission
+    } catch {
+      handleError(error)
     }
   }
 
