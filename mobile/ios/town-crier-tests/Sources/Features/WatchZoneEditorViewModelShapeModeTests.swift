@@ -104,6 +104,52 @@ struct WatchZoneEditorViewModelShapeModeTests {
     #expect(makeSUT(tier: .pro).canDrawCustomShape)
   }
 
+  // MARK: - isCustomShapeLocked (downgraded Free tier holding a custom-shape zone)
+
+  @Test func isCustomShapeLocked_falseByDefault() {
+    #expect(!makeSUT().isCustomShapeLocked)
+  }
+
+  @Test func isCustomShapeLocked_falseOnPersonalTier_editingCustomShapeZone() throws {
+    let boundary = try WatchZoneBoundary(vertices: triangle())
+    let zone = try WatchZone(
+      id: WatchZoneId("zone-custom"),
+      name: "Custom Area",
+      centre: Coordinate(latitude: 51.5033, longitude: -0.0933),
+      radiusMetres: 500,
+      boundary: boundary
+    )
+
+    let sut = makeSUT(tier: .personal, editing: zone)
+
+    #expect(!sut.isCustomShapeLocked)
+  }
+
+  @Test func isCustomShapeLocked_trueOnFreeTier_editingCustomShapeZone() throws {
+    let boundary = try WatchZoneBoundary(vertices: triangle())
+    let zone = try WatchZone(
+      id: WatchZoneId("zone-custom"),
+      name: "Custom Area",
+      centre: Coordinate(latitude: 51.5033, longitude: -0.0933),
+      radiusMetres: 500,
+      boundary: boundary
+    )
+
+    // A downgraded Free-tier user reopening the editor for a polygon zone
+    // they drew before downgrading (GH#1031's paused-zone posture: the zone
+    // stays listed and editable, never silently converted).
+    let sut = makeSUT(tier: .free, editing: zone)
+
+    #expect(sut.shapeMode == .custom)
+    #expect(sut.isCustomShapeLocked)
+  }
+
+  @Test func isCustomShapeLocked_falseOnFreeTier_editingCircleZone() {
+    let sut = makeSUT(tier: .free, editing: .cambridge)
+
+    #expect(!sut.isCustomShapeLocked)
+  }
+
   // MARK: - selectShapeMode
 
   @Test func selectShapeMode_custom_allowedOnPersonalTier() {

@@ -22,8 +22,10 @@ public struct WatchZoneEditorView: View {
           if viewModel.shapeMode == .circle {
             radiusSection
             mapPreviewSection
-          } else {
+          } else if viewModel.canDrawCustomShape {
             boundaryDrawingSection
+          } else {
+            lockedCustomShapeSection
           }
         }
         if viewModel.areNotificationTogglesVisible {
@@ -156,11 +158,14 @@ public struct WatchZoneEditorView: View {
   /// tiers get the segmented control; Free tier sees a minimal upsell
   /// affordance instead (the full onboarding graphic, `CustomShapeUpsellGraphic`,
   /// is a separate bead — tc-6he3x.10 — this is deliberately a plain-text
-  /// extension point, not that graphic).
+  /// extension point, not that graphic). Free tier editing an existing
+  /// locked custom shape (``WatchZoneEditorViewModel/isCustomShapeLocked``)
+  /// gets nothing here — ``lockedCustomShapeSection`` below is the sole,
+  /// non-duplicated explanation for that state.
   @ViewBuilder
   private var shapeModeSection: some View {
-    Section {
-      if viewModel.canDrawCustomShape {
+    if viewModel.canDrawCustomShape {
+      Section {
         Picker(
           "Shape",
           selection: Binding(
@@ -173,14 +178,17 @@ public struct WatchZoneEditorView: View {
         }
         .pickerStyle(.segmented)
         .accessibilityLabel("Zone shape")
-      } else {
+      }
+    } else if !viewModel.isCustomShapeLocked {
+      Section {
         customShapeUpsellPlaceholder
       }
     }
   }
 
-  /// Minimal upsell affordance for Free-tier users — text plus a "View
-  /// Plans" tap-through, not the richer onboarding graphic (tc-6he3x.10).
+  /// Minimal upsell affordance for a Free-tier user who hasn't drawn a
+  /// custom shape yet — text plus a "View Plans" tap-through, not the
+  /// richer onboarding graphic (tc-6he3x.10).
   private var customShapeUpsellPlaceholder: some View {
     Button {
       viewModel.viewPlans()
@@ -255,6 +263,39 @@ public struct WatchZoneEditorView: View {
       return "\(count) of at least 3 points"
     }
     return "\(count) points"
+  }
+
+  /// Shown instead of ``boundaryDrawingSection`` when editing an existing
+  /// custom-shape zone on a tier that can no longer draw one
+  /// (``WatchZoneEditorViewModel/isCustomShapeLocked``) — a static preview
+  /// with no drawing affordance, so a downgraded Free-tier user has no path
+  /// to the vertex editor while the zone's shape stays untouched.
+  @ViewBuilder
+  private var lockedCustomShapeSection: some View {
+    if let coordinate = viewModel.geocodedCoordinate {
+      Section {
+        ZoneMapPreview(
+          centre: coordinate,
+          radiusMetres: viewModel.selectedRadiusMetres,
+          strokeWidth: 2
+        )
+        .frame(height: 220)
+        .clipShape(RoundedRectangle(cornerRadius: TCCornerRadius.medium))
+        .listRowInsets(
+          EdgeInsets(
+            top: TCSpacing.small,
+            leading: TCSpacing.medium,
+            bottom: TCSpacing.small,
+            trailing: TCSpacing.medium
+          ))
+      } header: {
+        Text("Custom Shape")
+      } footer: {
+        Text("This zone's custom shape is locked. Upgrade to Personal or Pro to edit it.")
+          .font(TCTypography.caption)
+          .foregroundStyle(Color.tcTextSecondary)
+      }
+    }
   }
 
   private var notificationsSection: some View {

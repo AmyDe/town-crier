@@ -238,4 +238,57 @@ struct WatchZoneEditorViewTests {
 
     #expect(!vm.canFinishCustomShape)
   }
+
+  // MARK: - Locked custom shape (downgraded Free tier, GH#1031)
+
+  /// A Free-tier user reopening the editor for a polygon zone they drew
+  /// before downgrading (GH#1031's paused-zone posture: stays listed and
+  /// editable, never silently converted) must render without crashing, and
+  /// — the entitlement gap this covers — must not reach the boundary-
+  /// drawing UI: `shapeMode` is `.custom` (it reflects the zone's actual
+  /// stored shape) but `canDrawCustomShape` is `false`, so the View takes
+  /// the locked branch, not `boundaryDrawingSection`.
+  @Test func body_renders_freeTier_editingCustomShapeZone_locked() throws {
+    let boundary = try WatchZoneBoundary(vertices: [
+      Coordinate(latitude: 51.50, longitude: -0.10),
+      Coordinate(latitude: 51.51, longitude: -0.09),
+      Coordinate(latitude: 51.50, longitude: -0.09),
+    ])
+    let zone = try WatchZone(
+      id: WatchZoneId("zone-custom-downgraded"),
+      name: "Custom Area",
+      centre: Coordinate(latitude: 51.5033, longitude: -0.0933),
+      radiusMetres: 500,
+      boundary: boundary
+    )
+    let vm = makeViewModel(tier: .free, editing: zone)
+    #expect(vm.shapeMode == .custom)
+    #expect(!vm.canDrawCustomShape)
+    #expect(vm.isCustomShapeLocked)
+
+    let sut = WatchZoneEditorView(viewModel: vm)
+    _ = sut.body
+  }
+
+  /// Save must stay reachable for a locked custom-shape zone (renaming or
+  /// toggling notifications on a paused zone is still allowed — only the
+  /// shape itself is locked) since `boundaryVertices` is untouched and
+  /// already meets the minimum.
+  @Test func saveDisabledCondition_lockedCustomShape_notBlockedByVertexCount() throws {
+    let boundary = try WatchZoneBoundary(vertices: [
+      Coordinate(latitude: 51.50, longitude: -0.10),
+      Coordinate(latitude: 51.51, longitude: -0.09),
+      Coordinate(latitude: 51.50, longitude: -0.09),
+    ])
+    let zone = try WatchZone(
+      id: WatchZoneId("zone-custom-downgraded"),
+      name: "Custom Area",
+      centre: Coordinate(latitude: 51.5033, longitude: -0.0933),
+      radiusMetres: 500,
+      boundary: boundary
+    )
+    let vm = makeViewModel(tier: .free, editing: zone)
+
+    #expect(vm.canFinishCustomShape)
+  }
 }

@@ -162,6 +162,17 @@ public final class WatchZoneEditorViewModel: ObservableObject, EntitlementGating
     boundaryVertices.count >= Self.minimumBoundaryVertexCount
   }
 
+  /// True when editing an existing custom-shape zone on a tier that can no
+  /// longer draw one (a Free-tier user who downgraded after saving a
+  /// polygon zone — GH#1031's paused-zone posture keeps the zone editable,
+  /// never silently converted). ``shapeMode`` is `.custom` here because it
+  /// reflects the zone's actual stored shape, not the tier's entitlement —
+  /// see the `editing:` initializer — so the View must check this
+  /// separately to keep the drawing UI out of a Free tier's reach.
+  public var isCustomShapeLocked: Bool {
+    shapeMode == .custom && !canDrawCustomShape
+  }
+
   /// Switches between Circle and Custom. A request to switch to `.custom`
   /// on a tier that doesn't allow it (``canDrawCustomShape`` is `false`) is
   /// silently ignored — defense in depth behind the View only offering the
