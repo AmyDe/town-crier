@@ -156,6 +156,32 @@ struct AppCoordinatorOnboardingTests {
     #expect(!vm.canUnlockLargerRadius)
   }
 
+  // MARK: - In-wizard custom-shape upsell, mid-flow tier change (GH#1031, tc-6he3x.10)
+
+  @Test func reconcileTierAfterCustomShapeUpgrade_swapsRadiusStepForBoundaryDrawing() async {
+    let resolver = FakeSubscriptionTierResolver()
+    resolver.resolveResult = (.personal, false)
+    let sut = makeSUT(tierResolver: resolver)
+    let vm = sut.makeOnboardingViewModel()
+    vm.advance()  // -> postcodeEntry
+    vm.postcodeInput = "CB1 2AD"
+    await vm.submitPostcode()  // -> radiusPicker
+    #expect(vm.currentStep == .radiusPicker)
+    #expect(!vm.canDrawCustomShape)
+
+    // Simulates the custom-shape paywall dismissing after a successful
+    // purchase, routed through the same coordinator wiring
+    // `makeOnboardingViewModel()` sets up for the radius upsell.
+    await vm.reconcileTierAfterCustomShapeUpgrade()
+
+    #expect(vm.subscriptionTier == .personal)
+    // Swaps in place, without restarting onboarding.
+    #expect(vm.currentStep == .boundaryDrawing)
+    // The already-entered postcode/geocode survives the swap.
+    #expect(vm.postcodeInput == "CB1 2AD")
+    #expect(vm.geocodedCoordinate != nil)
+  }
+
   // MARK: - Anonymous browse post-signup handoff (GH#868 Phase 3.5)
 
   @Test func makeOnboardingViewModel_withAnonymousState_prefillsAndClearsState() throws {
