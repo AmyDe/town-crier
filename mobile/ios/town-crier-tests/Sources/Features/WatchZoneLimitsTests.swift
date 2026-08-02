@@ -59,4 +59,21 @@ struct WatchZoneLimitsTests {
     #expect(limits.clampRadius(8000) == 5000)
   }
 
+  // MARK: - allowsCustomBoundary (GH#1031, tc-6he3x.7)
+
+  @Test func freeTier_allowsCustomBoundaryIsFalse() {
+    let limits = WatchZoneLimits(tier: .free)
+    #expect(!limits.allowsCustomBoundary)
+  }
+
+  @Test func personalTier_allowsCustomBoundaryIsTrue() {
+    let limits = WatchZoneLimits(tier: .personal)
+    #expect(limits.allowsCustomBoundary)
+  }
+
+  @Test func proTier_allowsCustomBoundaryIsTrue() {
+    let limits = WatchZoneLimits(tier: .pro)
+    #expect(limits.allowsCustomBoundary)
+  }
+
 }

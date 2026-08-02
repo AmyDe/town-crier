@@ -139,4 +139,36 @@ struct DomainErrorMessageTests {
   @Test func geocodingFailed_isRetryable() {
     #expect(DomainError.geocodingFailed("SW1A 1AA").isRetryable)
   }
+
+  // MARK: - Custom-shape watch zone boundary (GH#1031, tc-6he3x.7)
+
+  @Test func invalidWatchZoneBoundaryVertexCount_hasInvalidAreaTitle() {
+    let error = DomainError.invalidWatchZoneBoundaryVertexCount
+    #expect(error.userTitle == "Invalid Area")
+    #expect(error.userMessage == "A custom area needs between 3 and 50 points.")
+    #expect(!error.isRetryable)
+  }
+
+  @Test func invalidWatchZoneBoundaryDuplicateVertex_hasInvalidAreaTitle() {
+    let error = DomainError.invalidWatchZoneBoundaryDuplicateVertex
+    #expect(error.userTitle == "Invalid Area")
+    #expect(error.userMessage == "A custom area can't have two points in the same place.")
+    #expect(!error.isRetryable)
+  }
+
+  @Test func invalidWatchZoneBoundarySelfIntersecting_hasInvalidAreaTitle() {
+    let error = DomainError.invalidWatchZoneBoundarySelfIntersecting
+    #expect(error.userTitle == "Invalid Area")
+    #expect(
+      error.userMessage == "This shape crosses itself. Try drawing it again without crossing lines."
+    )
+    #expect(!error.isRetryable)
+  }
+
+  @Test func invalidWatchZoneBoundaryOutOfBounds_hasInvalidAreaTitle() {
+    let error = DomainError.invalidWatchZoneBoundaryOutOfBounds
+    #expect(error.userTitle == "Invalid Area")
+    #expect(error.userMessage == "A custom area must be drawn within the UK.")
+    #expect(!error.isRetryable)
+  }
 }

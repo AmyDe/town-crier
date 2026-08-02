@@ -6,6 +6,21 @@ public enum DomainError: Error, Equatable, Sendable {
   case invalidCoordinate
   case invalidWatchZoneRadius
   case invalidWatchZoneName
+  /// A custom-shape watch zone boundary has fewer than 3 or more than 50
+  /// distinct vertices. Mirrors the server's `ErrBoundaryVertexCount`
+  /// (`watchzones.NewBoundary`).
+  case invalidWatchZoneBoundaryVertexCount
+  /// A custom-shape watch zone boundary has two non-adjacent vertices with
+  /// identical coordinates. Mirrors the server's `ErrBoundaryDuplicateVertex`.
+  case invalidWatchZoneBoundaryDuplicateVertex
+  /// A custom-shape watch zone boundary has two non-adjacent edges that
+  /// cross, or is degenerate (zero-area/collinear). Mirrors the server's
+  /// `ErrBoundarySelfIntersecting`.
+  case invalidWatchZoneBoundarySelfIntersecting
+  /// A custom-shape watch zone boundary has a vertex outside the UK bounding
+  /// box (or a non-finite coordinate). Mirrors the server's
+  /// `ErrBoundaryOutOfBounds`.
+  case invalidWatchZoneBoundaryOutOfBounds
   case networkUnavailable
   case serverError(statusCode: Int, message: String?)
   case authenticationFailed(String)
@@ -53,6 +68,9 @@ public enum DomainError: Error, Equatable, Sendable {
       return "Invalid Postcode"
     case .geocodingFailed:
       return "Postcode Not Found"
+    case .invalidWatchZoneBoundaryVertexCount, .invalidWatchZoneBoundaryDuplicateVertex,
+      .invalidWatchZoneBoundarySelfIntersecting, .invalidWatchZoneBoundaryOutOfBounds:
+      return "Invalid Area"
     case .invalidCoordinate, .invalidWatchZoneRadius,
       .invalidWatchZoneName, .invalidStatusTransition,
       .notificationPermissionDenied, .unexpected:
@@ -87,6 +105,14 @@ public enum DomainError: Error, Equatable, Sendable {
       return "The postcode '\(raw)' doesn't look right. Please enter a valid UK postcode."
     case .geocodingFailed:
       return "We couldn't find the location for that postcode. Please check and try again."
+    case .invalidWatchZoneBoundaryVertexCount:
+      return "A custom area needs between 3 and 50 points."
+    case .invalidWatchZoneBoundaryDuplicateVertex:
+      return "A custom area can't have two points in the same place."
+    case .invalidWatchZoneBoundarySelfIntersecting:
+      return "This shape crosses itself. Try drawing it again without crossing lines."
+    case .invalidWatchZoneBoundaryOutOfBounds:
+      return "A custom area must be drawn within the UK."
     case .invalidCoordinate, .invalidWatchZoneRadius,
       .invalidWatchZoneName, .invalidStatusTransition, .unexpected:
       return "An unexpected error occurred. Please try again."
@@ -103,7 +129,9 @@ public enum DomainError: Error, Equatable, Sendable {
       .invalidCoordinate, .invalidWatchZoneRadius, .invalidWatchZoneName,
       .invalidStatusTransition, .applicationNotFound, .notificationPermissionDenied,
       .purchaseCancelled, .productNotFound, .insufficientEntitlement,
-      .deviceLocalZoneLimitReached:
+      .deviceLocalZoneLimitReached, .invalidWatchZoneBoundaryVertexCount,
+      .invalidWatchZoneBoundaryDuplicateVertex, .invalidWatchZoneBoundarySelfIntersecting,
+      .invalidWatchZoneBoundaryOutOfBounds:
       return false
     }
   }

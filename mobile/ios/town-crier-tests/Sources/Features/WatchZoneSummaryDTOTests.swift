@@ -198,4 +198,153 @@ struct WatchZoneSummaryDTOTests {
     let dto = try JSONDecoder().decode(WatchZoneSummaryDTO.self, from: Data(json.utf8))
     #expect(dto.paused)
   }
+
+  // MARK: - Custom-shape boundary (GH#1031, tc-6he3x.7)
+
+  @Test("decoding DTO without boundary hydrates to nil (back-compat)")
+  func decoding_missingBoundary_hydratesToNil() throws {
+    let json = """
+      {
+          "id": "zone-001",
+          "name": "CB1 2AD",
+          "latitude": 52.2053,
+          "longitude": 0.1218,
+          "radiusMetres": 2000,
+          "authorityId": 123
+      }
+      """
+    let dto = try JSONDecoder().decode(WatchZoneSummaryDTO.self, from: Data(json.utf8))
+    #expect(dto.boundary == nil)
+  }
+
+  @Test("decoding DTO with a boundary parses the GeoJSON Polygon")
+  func decoding_withBoundary_parsesGeoJSONPolygon() throws {
+    let json = """
+      {
+          "id": "zone-001",
+          "name": "Custom Area",
+          "latitude": 51.5074,
+          "longitude": -0.1278,
+          "radiusMetres": 1500,
+          "authorityId": 123,
+          "boundary": {
+              "type": "Polygon",
+              "coordinates": [[
+                  [-0.10, 51.50],
+                  [-0.09, 51.51],
+                  [-0.09, 51.50],
+                  [-0.10, 51.50]
+              ]]
+          }
+      }
+      """
+    let dto = try JSONDecoder().decode(WatchZoneSummaryDTO.self, from: Data(json.utf8))
+    #expect(dto.boundary?.type == "Polygon")
+    #expect(dto.boundary?.coordinates.first?.count == 4)
+  }
+
+  @Test("toDomain converts a boundary-bearing DTO to a custom-shape WatchZone")
+  func toDomain_withBoundary_producesCustomShapeZone() throws {
+    let dto = WatchZoneSummaryDTO(
+      id: "zone-custom",
+      name: "Custom Area",
+      latitude: 51.5074,
+      longitude: -0.1278,
+      radiusMetres: 1500,
+      authorityId: 123,
+      boundary: GeoJSONPolygon(
+        type: "Polygon",
+        coordinates: [
+          [
+            [-0.10, 51.50],
+            [-0.09, 51.51],
+            [-0.09, 51.50],
+            [-0.10, 51.50],
+          ]
+        ]
+      )
+    )
+
+    let zone = try dto.toDomain()
+
+    #expect(zone.isCustomShape)
+    #expect(zone.boundary?.vertices.count == 4)
+    #expect(zone.boundary?.vertices.first == (try? Coordinate(latitude: 51.50, longitude: -0.10)))
+  }
+
+  @Test("toDomain without a boundary produces a circle WatchZone")
+  func toDomain_withoutBoundary_producesCircleZone() throws {
+    let dto = WatchZoneSummaryDTO(
+      id: "zone-circle",
+      name: "CB1 2AD",
+      latitude: 52.2053,
+      longitude: 0.1218,
+      radiusMetres: 2000,
+      authorityId: 123
+    )
+
+    let zone = try dto.toDomain()
+
+    #expect(!zone.isCustomShape)
+    #expect(zone.boundary == nil)
+  }
+
+  @Test("toDomain throws invalidWatchZoneBoundaryVertexCount for an empty coordinates array")
+  func toDomain_emptyBoundaryCoordinates_throwsInvalidVertexCount() {
+    let dto = WatchZoneSummaryDTO(
+      id: "zone-bad-boundary",
+      name: "Custom Area",
+      latitude: 51.5074,
+      longitude: -0.1278,
+      radiusMetres: 1500,
+      authorityId: 123,
+      boundary: GeoJSONPolygon(coordinates: [])
+    )
+
+    #expect(throws: DomainError.invalidWatchZoneBoundaryVertexCount) {
+      try dto.toDomain()
+    }
+  }
+
+  @Test("toDomain throws invalidCoordinate for a malformed vertex pair")
+  func toDomain_malformedVertex_throwsInvalidCoordinate() {
+    let dto = WatchZoneSummaryDTO(
+      id: "zone-bad-boundary",
+      name: "Custom Area",
+      latitude: 51.5074,
+      longitude: -0.1278,
+      radiusMetres: 1500,
+      authorityId: 123,
+      boundary: GeoJSONPolygon(coordinates: [[[-0.10, 51.50, 3.0]]])
+    )
+
+    #expect(throws: DomainError.invalidCoordinate) {
+      try dto.toDomain()
+    }
+  }
+
+  @Test("toDomain propagates the boundary's own validation error for a self-intersecting ring")
+  func toDomain_selfIntersectingRing_throwsSelfIntersecting() {
+    let dto = WatchZoneSummaryDTO(
+      id: "zone-bad-boundary",
+      name: "Custom Area",
+      latitude: 51.5074,
+      longitude: -0.1278,
+      radiusMetres: 1500,
+      authorityId: 123,
+      boundary: GeoJSONPolygon(coordinates: [
+        [
+          [-0.10, 51.50],
+          [-0.09, 51.51],
+          [-0.09, 51.50],
+          [-0.10, 51.51],
+          [-0.10, 51.50],
+        ]
+      ])
+    )
+
+    #expect(throws: DomainError.invalidWatchZoneBoundarySelfIntersecting) {
+      try dto.toDomain()
+    }
+  }
 }

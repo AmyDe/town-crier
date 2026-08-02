@@ -6,6 +6,10 @@ public struct WatchZoneLimits: Equatable, Sendable {
   public let tier: SubscriptionTier
   public let maxZones: Int
   public let maxRadiusMetres: Double
+  /// Whether this tier can draw a custom-shape (polygon) zone rather than
+  /// only a circle (GH#1031). Mirrors the server's
+  /// `SubscriptionTier.AllowsCustomBoundary()` (`t.IsPaid()`).
+  public let allowsCustomBoundary: Bool
 
   public init(tier: SubscriptionTier) {
     self.tier = tier
@@ -13,10 +17,13 @@ public struct WatchZoneLimits: Equatable, Sendable {
     switch tier {
     case .free:
       maxRadiusMetres = 2000
+      allowsCustomBoundary = false
     case .personal:
       maxRadiusMetres = 5000
+      allowsCustomBoundary = true
     case .pro:
       maxRadiusMetres = 10000
+      allowsCustomBoundary = true
     }
   }
 
