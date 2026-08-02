@@ -122,8 +122,8 @@
           self.shapeOverlay = nil
         }
         guard desired.count >= 2 else { return }
-        let points = desired.map {
-          CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
+        let points = desired.map { vertex in
+          CLLocationCoordinate2D(latitude: vertex.latitude, longitude: vertex.longitude)
         }
         let overlay: MKOverlay =
           desired.count >= 3
@@ -165,7 +165,7 @@
         var closestIndex: Int?
         var closestDistance = BoundaryDrawingMapView.vertexHitTestTolerance
         for vertex in vertices {
-          let vertexPoint = mapView.convert(vertex.coordinate, toPointIn: mapView)
+          let vertexPoint = mapView.convert(vertex.coordinate, toPointTo: mapView)
           let distance = hypot(vertexPoint.x - point.x, vertexPoint.y - point.y)
           if distance <= closestDistance {
             closestDistance = distance
