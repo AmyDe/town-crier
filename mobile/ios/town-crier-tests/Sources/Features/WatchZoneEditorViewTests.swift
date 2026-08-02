@@ -160,4 +160,82 @@ struct WatchZoneEditorViewTests {
     let sut = WatchZoneEditorView(viewModel: vm)
     _ = sut.body
   }
+
+  // MARK: - Circle/Custom shape mode (GH#1031, tc-6he3x.8)
+
+  /// A paid tier with a geocoded coordinate must render the segmented
+  /// Circle/Custom control without crashing.
+  @Test func body_renders_personalTier_inCircleMode() {
+    let vm = makeViewModel(tier: .personal, editing: .cambridge)
+    #expect(vm.shapeMode == .circle)
+    let sut = WatchZoneEditorView(viewModel: vm)
+    _ = sut.body
+  }
+
+  /// Switching to Custom swaps the radius slider/map preview for the
+  /// boundary-drawing map; the View must still render.
+  @Test func body_renders_personalTier_inCustomMode() {
+    let vm = makeViewModel(tier: .personal, editing: .cambridge)
+    vm.selectShapeMode(.custom)
+    #expect(vm.shapeMode == .custom)
+    let sut = WatchZoneEditorView(viewModel: vm)
+    _ = sut.body
+  }
+
+  @Test func body_renders_proTier_inCustomMode() {
+    let vm = makeViewModel(tier: .pro, editing: .cambridge)
+    vm.selectShapeMode(.custom)
+    let sut = WatchZoneEditorView(viewModel: vm)
+    _ = sut.body
+  }
+
+  /// Free tier never offers the segmented control — it must render the
+  /// upsell placeholder instead, without crashing.
+  @Test func body_renders_freeTier_showsUpsellPlaceholderInsteadOfShapeToggle() {
+    let vm = makeViewModel(tier: .free, editing: .cambridge)
+    #expect(!vm.canDrawCustomShape)
+    let sut = WatchZoneEditorView(viewModel: vm)
+    _ = sut.body
+  }
+
+  /// A free-tier attempt to select Custom is ignored by the ViewModel, so
+  /// the View stays on the circle layout.
+  @Test func selectShapeMode_custom_onFreeTier_staysCircle() {
+    let vm = makeViewModel(tier: .free, editing: .cambridge)
+
+    vm.selectShapeMode(.custom)
+
+    #expect(vm.shapeMode == .circle)
+  }
+
+  /// Editing an existing custom-shape zone must open the editor already in
+  /// Custom mode with its vertices populated, and render.
+  @Test func body_renders_editingCustomShapeZone() throws {
+    let boundary = try WatchZoneBoundary(vertices: [
+      Coordinate(latitude: 51.50, longitude: -0.10),
+      Coordinate(latitude: 51.51, longitude: -0.09),
+      Coordinate(latitude: 51.50, longitude: -0.09),
+    ])
+    let zone = try WatchZone(
+      id: WatchZoneId("zone-custom"),
+      name: "Custom Area",
+      centre: Coordinate(latitude: 51.5033, longitude: -0.0933),
+      radiusMetres: 500,
+      boundary: boundary
+    )
+    let vm = makeViewModel(tier: .personal, editing: zone)
+    #expect(vm.shapeMode == .custom)
+    #expect(vm.boundaryVertices.count == 3)
+
+    let sut = WatchZoneEditorView(viewModel: vm)
+    _ = sut.body
+  }
+
+  /// Save stays disabled in Custom mode until the minimum vertex count is met.
+  @Test func saveDisabledCondition_customMode_belowMinimumVertices() {
+    let vm = makeViewModel(tier: .personal, editing: .cambridge)
+    vm.selectShapeMode(.custom)
+
+    #expect(!vm.canFinishCustomShape)
+  }
 }

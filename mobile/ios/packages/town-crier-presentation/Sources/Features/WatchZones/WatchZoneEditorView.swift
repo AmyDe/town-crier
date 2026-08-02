@@ -18,8 +18,13 @@ public struct WatchZoneEditorView: View {
           postcodeSection
         }
         if viewModel.geocodedCoordinate != nil {
-          radiusSection
-          mapPreviewSection
+          shapeModeSection
+          if viewModel.shapeMode == .circle {
+            radiusSection
+            mapPreviewSection
+          } else {
+            boundaryDrawingSection
+          }
         }
         if viewModel.areNotificationTogglesVisible {
           notificationsSection
@@ -53,6 +58,7 @@ public struct WatchZoneEditorView: View {
           .disabled(
             viewModel.geocodedCoordinate == nil || viewModel.isLoading
               || viewModel.nameInput.trimmingCharacters(in: .whitespaces).isEmpty
+              || (viewModel.shapeMode == .custom && !viewModel.canFinishCustomShape)
           )
         }
       }
@@ -141,6 +147,114 @@ public struct WatchZoneEditorView: View {
         }
       }
     }
+  }
+
+  // MARK: - Shape mode (GH#1031)
+
+  /// The Circle/Custom shape control, shown only once a coordinate exists
+  /// (mirrors `radiusSection`/`mapPreviewSection`'s visibility gate). Paid
+  /// tiers get the segmented control; Free tier sees a minimal upsell
+  /// affordance instead (the full onboarding graphic, `CustomShapeUpsellGraphic`,
+  /// is a separate bead — tc-6he3x.10 — this is deliberately a plain-text
+  /// extension point, not that graphic).
+  @ViewBuilder
+  private var shapeModeSection: some View {
+    Section {
+      if viewModel.canDrawCustomShape {
+        Picker(
+          "Shape",
+          selection: Binding(
+            get: { viewModel.shapeMode },
+            set: { viewModel.selectShapeMode($0) }
+          )
+        ) {
+          Text("Circle").tag(WatchZoneShapeMode.circle)
+          Text("Custom").tag(WatchZoneShapeMode.custom)
+        }
+        .pickerStyle(.segmented)
+        .accessibilityLabel("Zone shape")
+      } else {
+        customShapeUpsellPlaceholder
+      }
+    }
+  }
+
+  /// Minimal upsell affordance for Free-tier users — text plus a "View
+  /// Plans" tap-through, not the richer onboarding graphic (tc-6he3x.10).
+  private var customShapeUpsellPlaceholder: some View {
+    Button {
+      viewModel.viewPlans()
+    } label: {
+      HStack(spacing: TCSpacing.small) {
+        Image(systemName: "hexagon.fill")
+          .foregroundStyle(Color.tcAmber)
+          .accessibilityHidden(true)
+        Text("Draw a custom shape on Personal or Pro, instead of just a circle.")
+          .font(TCTypography.caption)
+          .foregroundStyle(Color.tcTextSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+        Spacer(minLength: 0)
+        Image(systemName: "chevron.right")
+          .font(TCTypography.caption)
+          .foregroundStyle(Color.tcTextSecondary)
+          .accessibilityHidden(true)
+      }
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel("Draw a custom shape on Personal or Pro, instead of just a circle.")
+    .accessibilityHint("Opens subscription plans")
+  }
+
+  @ViewBuilder
+  private var boundaryDrawingSection: some View {
+    if let coordinate = viewModel.geocodedCoordinate {
+      Section {
+        #if canImport(UIKit)
+          BoundaryDrawingMapView(viewModel: viewModel, initialCentre: coordinate)
+            .frame(height: 260)
+            .clipShape(RoundedRectangle(cornerRadius: TCCornerRadius.medium))
+            .listRowInsets(
+              EdgeInsets(
+                top: TCSpacing.small,
+                leading: TCSpacing.medium,
+                bottom: TCSpacing.small,
+                trailing: TCSpacing.medium
+              ))
+        #else
+          // BoundaryDrawingMapView wraps UIKit's MKMapView and is
+          // unavailable on this SPM compile-time-only macOS target (the app
+          // ships on iOS; macOS here exists only so `swift build`/`swift
+          // test` can exercise the shared code without Xcode).
+          Text("Custom-shape drawing is available on iOS.")
+            .font(TCTypography.body)
+            .foregroundStyle(Color.tcTextSecondary)
+        #endif
+        HStack {
+          Text(vertexCountLabel)
+            .font(TCTypography.caption)
+            .foregroundStyle(Color.tcTextSecondary)
+          Spacer()
+          Button("Undo") {
+            viewModel.undoLastVertex()
+          }
+          .disabled(viewModel.boundaryVertices.isEmpty)
+        }
+      } header: {
+        Text("Custom Shape")
+      } footer: {
+        Text("Tap the map to add points. Drag a point to move it, and tap the first point again to finish.")
+          .font(TCTypography.caption)
+          .foregroundStyle(Color.tcTextSecondary)
+      }
+    }
+  }
+
+  private var vertexCountLabel: String {
+    let count = viewModel.boundaryVertices.count
+    if count < 3 {
+      return "\(count) of at least 3 points"
+    }
+    return "\(count) points"
   }
 
   private var notificationsSection: some View {

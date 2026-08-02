@@ -2,6 +2,15 @@ import Combine
 import Foundation
 import TownCrierDomain
 
+/// Whether a watch zone is drawn as a circle (radius-based, the default) or a
+/// custom polygon shape (GH#1031). Free tier is locked to `.circle`;
+/// Personal/Pro may switch to `.custom` — see
+/// ``WatchZoneEditorViewModel/canDrawCustomShape``.
+public enum WatchZoneShapeMode: Hashable, Sendable {
+  case circle
+  case custom
+}
+
 /// Drives create/edit of a single watch zone with postcode geocoding and tier-based radius limits.
 @MainActor
 public final class WatchZoneEditorViewModel: ObservableObject, EntitlementGatingViewModel {
@@ -13,6 +22,23 @@ public final class WatchZoneEditorViewModel: ObservableObject, EntitlementGating
   @Published public private(set) var geocodedCoordinate: Coordinate?
   @Published public private(set) var isLoading = false
   @Published public internal(set) var error: DomainError?
+
+  /// Circle (radius-based) vs. custom polygon shape (GH#1031). Defaults to
+  /// `.circle`; populated from the edited zone's `boundary` when present.
+  @Published public private(set) var shapeMode: WatchZoneShapeMode = .circle
+
+  /// The custom-shape ring being drawn, as an OPEN sequence of vertices in
+  /// drop order — NOT closed (the first vertex is not repeated at the end).
+  /// ``BoundaryDrawingMapView`` renders these as pins plus a preview
+  /// polygon/polyline; ``save()`` closes and validates the ring via
+  /// `WatchZoneBoundary.init` when ``shapeMode`` is `.custom`.
+  @Published public private(set) var boundaryVertices: [Coordinate] = []
+
+  /// Mirrors `WatchZoneBoundary`'s geometric minimum (3 distinct vertices
+  /// are required to form a polygon) so the UI can gate "finish drawing"
+  /// without constructing (and discarding) a throwaway boundary just to
+  /// check the count.
+  private static let minimumBoundaryVertexCount = 3
 
   /// Drives the in-editor subscription upsell sheet. Non-nil while the gate is
   /// presented for the given entitlement; cleared when the sheet dismisses.
@@ -52,6 +78,12 @@ public final class WatchZoneEditorViewModel: ObservableObject, EntitlementGating
       self.geocodedCoordinate = zone.centre
       self.pushEnabled = zone.pushEnabled
       self.emailInstantEnabled = zone.emailInstantEnabled
+      if let boundary = zone.boundary {
+        self.shapeMode = .custom
+        // The ring is closed (last vertex repeats the first); the editor
+        // works with the open sequence and re-closes on save.
+        self.boundaryVertices = Array(boundary.vertices.dropLast())
+      }
     }
   }
 
@@ -113,6 +145,73 @@ public final class WatchZoneEditorViewModel: ObservableObject, EntitlementGating
     selectedRadiusMetres >= LargeRadiusWarning.thresholdMetres
   }
 
+  // MARK: - Shape mode (GH#1031)
+
+  /// Whether the current tier may draw a custom-shape zone at all — gates
+  /// showing the Circle/Custom segmented control in the View. Free tier is
+  /// always `false`; Personal/Pro are `true`. Mirrors the server's
+  /// `SubscriptionTier.AllowsCustomBoundary()` via `WatchZoneLimits`.
+  public var canDrawCustomShape: Bool {
+    limits.allowsCustomBoundary
+  }
+
+  /// Whether ``boundaryVertices`` currently has enough points to form a
+  /// valid polygon (the domain layer's geometric minimum of 3). Drives the
+  /// Save button's enabled state while ``shapeMode`` is `.custom`.
+  public var canFinishCustomShape: Bool {
+    boundaryVertices.count >= Self.minimumBoundaryVertexCount
+  }
+
+  /// Switches between Circle and Custom. A request to switch to `.custom`
+  /// on a tier that doesn't allow it (``canDrawCustomShape`` is `false`) is
+  /// silently ignored — defense in depth behind the View only offering the
+  /// control on paid tiers.
+  public func selectShapeMode(_ mode: WatchZoneShapeMode) {
+    guard mode != .custom || canDrawCustomShape else { return }
+    shapeMode = mode
+  }
+
+  /// Appends a new vertex at the end of the ring being drawn.
+  public func addVertex(_ coordinate: Coordinate) {
+    boundaryVertices.append(coordinate)
+  }
+
+  /// Moves the vertex at `index` to `coordinate` (e.g. after a drag). A
+  /// stale or out-of-range index is a no-op rather than a crash.
+  public func moveVertex(at index: Int, to coordinate: Coordinate) {
+    guard boundaryVertices.indices.contains(index) else { return }
+    boundaryVertices[index] = coordinate
+  }
+
+  /// Removes the vertex at `index`. A stale or out-of-range index is a
+  /// no-op rather than a crash.
+  public func removeVertex(at index: Int) {
+    guard boundaryVertices.indices.contains(index) else { return }
+    boundaryVertices.remove(at: index)
+  }
+
+  /// Removes the most recently added vertex. A no-op on an empty ring.
+  public func undoLastVertex() {
+    guard !boundaryVertices.isEmpty else { return }
+    boundaryVertices.removeLast()
+  }
+
+  /// Validates the current vertices as a closed ring without saving —
+  /// invoked when the user taps the first vertex to close the shape while
+  /// drawing (``BoundaryDrawingMapView``). Surfaces problems (self-
+  /// intersection, an out-of-UK vertex, a duplicate point) immediately via
+  /// ``error`` rather than waiting for Save; below the minimum vertex count
+  /// this is a silent no-op since there's nothing yet to validate.
+  public func finishDrawing() {
+    guard canFinishCustomShape else { return }
+    do {
+      _ = try WatchZoneBoundary(vertices: boundaryVertices)
+      error = nil
+    } catch {
+      handleError(error)
+    }
+  }
+
   public func submitPostcode() async {
     isLoading = true
     error = nil
@@ -141,25 +240,55 @@ public final class WatchZoneEditorViewModel: ObservableObject, EntitlementGating
   /// Persists the zone. Returns `true` on success so the View dismisses only
   /// when the save actually succeeded.
   ///
+  /// In `.circle` mode, behaves exactly as before: the geocoded coordinate
+  /// and (clamped) radius drive a circular zone with no boundary. In
+  /// `.custom` mode, ``boundaryVertices`` is closed and validated into a
+  /// `WatchZoneBoundary`, and the zone's `centre`/`radiusMetres` are derived
+  /// from the boundary's centroid/enclosing radius (per `WatchZone.boundary`'s
+  /// doc comment) so every existing circle-shaped read path keeps working.
+  ///
   /// On a quota breach (`DomainError.insufficientEntitlement`) the editor routes
   /// to the subscription paywall via `onUpgradeRequired` and leaves `error`
-  /// unset — the coordinator closes the sheet. All other failures set `error`
-  /// so the inline error section is shown and the editor stays open.
+  /// unset — the coordinator closes the sheet. All other failures (including an
+  /// invalid custom shape) set `error` so the inline error section is shown and
+  /// the editor stays open.
   @discardableResult
   public func save() async -> Bool {
-    guard let coordinate = geocodedCoordinate else { return false }
     error = nil
 
-    let clampedRadius = limits.clampRadius(selectedRadiusMetres)
+    let boundary: WatchZoneBoundary?
+    let centre: Coordinate
+    let radius: Double
+
+    switch shapeMode {
+    case .circle:
+      guard let coordinate = geocodedCoordinate else { return false }
+      boundary = nil
+      centre = coordinate
+      radius = limits.clampRadius(selectedRadiusMetres)
+    case .custom:
+      guard canFinishCustomShape else { return false }
+      do {
+        let builtBoundary = try WatchZoneBoundary(vertices: boundaryVertices)
+        let centroid = builtBoundary.centroid
+        centre = try Coordinate(latitude: centroid.latitude, longitude: centroid.longitude)
+        radius = builtBoundary.enclosingRadiusMetres
+        boundary = builtBoundary
+      } catch {
+        handleError(error)
+        return false
+      }
+    }
 
     do {
       let zone = try WatchZone(
         id: existingId ?? WatchZoneId(),
         name: nameInput,
-        centre: coordinate,
-        radiusMetres: clampedRadius,
+        centre: centre,
+        radiusMetres: radius,
         pushEnabled: pushEnabled,
-        emailInstantEnabled: emailInstantEnabled
+        emailInstantEnabled: emailInstantEnabled,
+        boundary: boundary
       )
       if isEditing {
         try await repository.update(zone)
