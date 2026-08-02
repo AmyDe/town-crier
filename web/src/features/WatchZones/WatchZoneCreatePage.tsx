@@ -3,14 +3,14 @@ import type { WatchZoneRepository } from '../../domain/ports/watch-zone-reposito
 import type { GeocodingPort } from '../../domain/ports/geocoding-port';
 import type { SubscriptionTier } from '../../domain/types';
 import { useCreateWatchZone } from './useCreateWatchZone';
-import { useBoundaryDrawing } from './useBoundaryDrawing';
+import { useBoundaryDrawing } from '../../hooks/useBoundaryDrawing';
 import { PostcodeInput } from '../../components/PostcodeInput/PostcodeInput';
 import { RadiusPicker } from '../../components/RadiusPicker/RadiusPicker';
 import { LargeRadiusWarning } from '../../components/LargeRadiusWarning/LargeRadiusWarning';
 import { ConfirmMap } from '../../components/ConfirmMap/ConfirmMap';
 import { ShapeModeToggle } from './ShapeModeToggle';
-import { BoundaryMap } from './BoundaryMap';
-import { CustomShapeUpsell } from './CustomShapeUpsell';
+import { BoundaryMap } from '../../components/BoundaryMap/BoundaryMap';
+import { CustomShapeUpsell } from '../../components/CustomShapeUpsell/CustomShapeUpsell';
 import styles from './WatchZoneCreatePage.module.css';
 
 interface Props {

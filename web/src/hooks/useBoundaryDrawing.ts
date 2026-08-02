@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from 'react';
-import type { Coordinates, WatchZoneBoundary } from '../../domain/types';
+import type { Coordinates, WatchZoneBoundary } from '../domain/types';
 
 /**
  * 3 is the geometric minimum for a polygon — matches the server-side

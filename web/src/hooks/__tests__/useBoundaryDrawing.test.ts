@@ -1,7 +1,26 @@
 import { renderHook, act } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
 import { useBoundaryDrawing } from '../useBoundaryDrawing';
-import { aWatchZoneBoundary } from './fixtures/watch-zone.fixtures';
+import type { WatchZoneBoundary } from '../../domain/types';
+
+// Local closed-square boundary literal — deliberately not shared with
+// WatchZones' `fixtures/watch-zone.fixtures.ts` (this hook lives under
+// `hooks/`, which must not depend on a feature-private fixture).
+function aWatchZoneBoundary(overrides?: Partial<WatchZoneBoundary>): WatchZoneBoundary {
+  return {
+    type: 'Polygon',
+    coordinates: [
+      [
+        [0.1, 52.2],
+        [0.12, 52.2],
+        [0.12, 52.21],
+        [0.1, 52.21],
+        [0.1, 52.2],
+      ],
+    ],
+    ...overrides,
+  };
+}
 
 describe('useBoundaryDrawing', () => {
   it('starts with no vertices and an open ring', () => {

@@ -3,13 +3,13 @@ import type { WatchZoneSummary, SubscriptionTier } from '../../domain/types';
 import type { WatchZoneRepository } from '../../domain/ports/watch-zone-repository';
 import { useZonePreferences } from './useZonePreferences';
 import { useZoneEdit } from './useZoneEdit';
-import { useBoundaryDrawing } from './useBoundaryDrawing';
+import { useBoundaryDrawing } from '../../hooks/useBoundaryDrawing';
 import { RadiusPicker } from '../../components/RadiusPicker/RadiusPicker';
 import { LargeRadiusWarning } from '../../components/LargeRadiusWarning/LargeRadiusWarning';
 import { Toggle } from '../../components/Toggle/Toggle';
 import { ShapeModeToggle } from './ShapeModeToggle';
-import { BoundaryMap } from './BoundaryMap';
-import { CustomShapeUpsell } from './CustomShapeUpsell';
+import { BoundaryMap } from '../../components/BoundaryMap/BoundaryMap';
+import { CustomShapeUpsell } from '../../components/CustomShapeUpsell/CustomShapeUpsell';
 import styles from './WatchZoneEditPage.module.css';
 
 interface Props {
