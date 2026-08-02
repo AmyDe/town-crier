@@ -27,6 +27,25 @@ struct RadiusPickerStepView: View {
         }
       }
 
+      if !viewModel.canDrawCustomShape {
+        // Custom-shape upsell (GH#1031, tc-6he3x.10): distinct from the
+        // larger-radius chip above — Free tier can see both together, since
+        // they sell different entitlements.
+        CustomShapeUpsellCard {
+          viewModel.requestCustomShapeUpgrade()
+        }
+      } else {
+        // Re-entry point for a user whose tier already allows custom shapes
+        // (tc-6he3x.10) — without this, backing out of the drawing step once
+        // would strand an already-paying user on a circle for the rest of
+        // onboarding, since the upsell card above only shows pre-purchase.
+        Button("Draw a custom shape instead") {
+          viewModel.selectCustomShape()
+        }
+        .font(TCTypography.body)
+        .foregroundStyle(Color.tcAmber)
+      }
+
       if viewModel.showsLargeRadiusWarning {
         LargeRadiusWarningView()
       }

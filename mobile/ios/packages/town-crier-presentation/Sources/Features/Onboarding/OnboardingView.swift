@@ -27,6 +27,8 @@ public struct OnboardingView: View {
             PostcodeEntryStepView(viewModel: viewModel)
           case .radiusPicker:
             RadiusPickerStepView(viewModel: viewModel)
+          case .boundaryDrawing:
+            BoundaryDrawingStepView(viewModel: viewModel)
           case .notificationPermission:
             NotificationPermissionStepView(viewModel: viewModel)
           }
@@ -49,6 +51,21 @@ public struct OnboardingView: View {
     .sheet(
       isPresented: $viewModel.isRadiusUpsellPresented,
       onDismiss: { Task { await viewModel.reconcileTierAfterUpgrade() } },
+      content: {
+        if let upsellViewModel = viewModel.makeUpsellViewModel?() {
+          NavigationStack {
+            SubscriptionView(viewModel: upsellViewModel)
+          }
+        }
+      }
+    )
+    // In-wizard custom-shape upsell (GH#1031, tc-6he3x.10): same "sheet over
+    // the wizard" pattern as the radius upsell above, so a successful
+    // purchase can swap the radius step for the boundary-drawing step in
+    // place without losing the in-progress postcode/geocode.
+    .sheet(
+      isPresented: $viewModel.isCustomShapeUpsellPresented,
+      onDismiss: { Task { await viewModel.reconcileTierAfterCustomShapeUpgrade() } },
       content: {
         if let upsellViewModel = viewModel.makeUpsellViewModel?() {
           NavigationStack {
