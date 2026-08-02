@@ -306,6 +306,25 @@ describe('WatchZoneCreatePage', () => {
       expect(screen.getByTestId('map-container')).toBeInTheDocument();
     });
 
+    it('undoes the last misplaced vertex without losing the earlier ones', async () => {
+      const user = await reachDetailsStep('Personal');
+
+      await user.click(screen.getByRole('radio', { name: /^custom shape$/i }));
+
+      act(() => {
+        capturedMapEvents.click?.({ latlng: { lat: 52.2, lng: 0.1 } });
+      });
+      act(() => {
+        capturedMapEvents.click?.({ latlng: { lat: 52.2, lng: 0.12 } });
+      });
+
+      expect(screen.getAllByTestId('map-marker')).toHaveLength(2);
+
+      await user.click(screen.getByRole('button', { name: 'Undo' }));
+
+      expect(screen.getAllByTestId('map-marker')).toHaveLength(1);
+    });
+
     it('draws a polygon, closes it, and saves the zone with the boundary', async () => {
       const user = await reachDetailsStep('Pro');
       repoSpy.createResult = aWatchZone();

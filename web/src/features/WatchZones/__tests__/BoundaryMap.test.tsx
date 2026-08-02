@@ -75,6 +75,8 @@ describe('BoundaryMap', () => {
         onAddVertex={() => {}}
         onMoveVertex={() => {}}
         onCloseRing={() => {}}
+        onUndo={() => {}}
+        onReset={() => {}}
       />,
     );
 
@@ -94,6 +96,8 @@ describe('BoundaryMap', () => {
         onAddVertex={() => {}}
         onMoveVertex={() => {}}
         onCloseRing={() => {}}
+        onUndo={() => {}}
+        onReset={() => {}}
       />,
     );
 
@@ -112,6 +116,8 @@ describe('BoundaryMap', () => {
         onAddVertex={() => {}}
         onMoveVertex={() => {}}
         onCloseRing={() => {}}
+        onUndo={() => {}}
+        onReset={() => {}}
       />,
     );
 
@@ -132,6 +138,8 @@ describe('BoundaryMap', () => {
         onAddVertex={() => {}}
         onMoveVertex={() => {}}
         onCloseRing={() => {}}
+        onUndo={() => {}}
+        onReset={() => {}}
       />,
     );
 
@@ -150,6 +158,8 @@ describe('BoundaryMap', () => {
         onAddVertex={onAddVertex}
         onMoveVertex={() => {}}
         onCloseRing={() => {}}
+        onUndo={() => {}}
+        onReset={() => {}}
       />,
     );
 
@@ -173,6 +183,8 @@ describe('BoundaryMap', () => {
         onAddVertex={() => {}}
         onMoveVertex={() => {}}
         onCloseRing={onCloseRing}
+        onUndo={() => {}}
+        onReset={() => {}}
       />,
     );
 
@@ -197,6 +209,8 @@ describe('BoundaryMap', () => {
         onAddVertex={() => {}}
         onMoveVertex={() => {}}
         onCloseRing={onCloseRing}
+        onUndo={() => {}}
+        onReset={() => {}}
       />,
     );
 
@@ -221,6 +235,8 @@ describe('BoundaryMap', () => {
         onAddVertex={() => {}}
         onMoveVertex={onMoveVertex}
         onCloseRing={() => {}}
+        onUndo={() => {}}
+        onReset={() => {}}
       />,
     );
 
@@ -228,5 +244,67 @@ describe('BoundaryMap', () => {
     await user.click(dragButtons[1]!);
 
     expect(onMoveVertex).toHaveBeenCalledWith(1, { latitude: 52.3, longitude: 0.2 });
+  });
+
+  it('disables Undo and Start over when there are no vertices', () => {
+    render(
+      <BoundaryMap
+        centre={centre}
+        vertices={[]}
+        isClosed={false}
+        onAddVertex={() => {}}
+        onMoveVertex={() => {}}
+        onCloseRing={() => {}}
+        onUndo={() => {}}
+        onReset={() => {}}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Start over' })).toBeDisabled();
+  });
+
+  it('calls onUndo when Undo is clicked', async () => {
+    const user = userEvent.setup();
+    const onUndo = vi.fn();
+
+    render(
+      <BoundaryMap
+        centre={centre}
+        vertices={[{ latitude: 52.2, longitude: 0.1 }]}
+        isClosed={false}
+        onAddVertex={() => {}}
+        onMoveVertex={() => {}}
+        onCloseRing={() => {}}
+        onUndo={onUndo}
+        onReset={() => {}}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Undo' }));
+
+    expect(onUndo).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls onReset when Start over is clicked', async () => {
+    const user = userEvent.setup();
+    const onReset = vi.fn();
+
+    render(
+      <BoundaryMap
+        centre={centre}
+        vertices={[{ latitude: 52.2, longitude: 0.1 }]}
+        isClosed={false}
+        onAddVertex={() => {}}
+        onMoveVertex={() => {}}
+        onCloseRing={() => {}}
+        onUndo={() => {}}
+        onReset={onReset}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Start over' }));
+
+    expect(onReset).toHaveBeenCalledTimes(1);
   });
 });

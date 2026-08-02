@@ -36,6 +36,10 @@ interface Props {
   onAddVertex: (coordinate: Coordinates) => void;
   onMoveVertex: (index: number, coordinate: Coordinates) => void;
   onCloseRing: () => void;
+  /** Reopens a closed ring, or removes the last vertex while still drawing. */
+  onUndo: () => void;
+  /** Clears the ring entirely so drawing can start over. */
+  onReset: () => void;
 }
 
 interface ClickCatcherProps {
@@ -61,54 +65,77 @@ export function BoundaryMap({
   onAddVertex,
   onMoveVertex,
   onCloseRing,
+  onUndo,
+  onReset,
 }: Props) {
   const positions = useMemo<[number, number][]>(
     () => vertices.map((vertex): [number, number] => [vertex.latitude, vertex.longitude]),
     [vertices],
   );
   const centrePosition: [number, number] = [centre.latitude, centre.longitude];
+  const hasVertices = vertices.length > 0;
 
   return (
-    <div className={styles.container}>
-      <MapContainer
-        center={centrePosition}
-        zoom={15}
-        style={{ height: '100%', width: '100%' }}
-        zoomControl={false}
-        attributionControl={true}
-      >
-        <TileLayer url={OSM_TILE_URL} attribution={OSM_ATTRIBUTION} />
-        <ClickCatcher onAddVertex={onAddVertex} />
+    <div>
+      <div className={styles.controls}>
+        <button
+          type="button"
+          className={styles.controlButton}
+          onClick={onUndo}
+          disabled={!hasVertices}
+        >
+          Undo
+        </button>
+        <button
+          type="button"
+          className={styles.controlButton}
+          onClick={onReset}
+          disabled={!hasVertices}
+        >
+          Start over
+        </button>
+      </div>
+      <div className={styles.container}>
+        <MapContainer
+          center={centrePosition}
+          zoom={15}
+          style={{ height: '100%', width: '100%' }}
+          zoomControl={false}
+          attributionControl={true}
+        >
+          <TileLayer url={OSM_TILE_URL} attribution={OSM_ATTRIBUTION} />
+          <ClickCatcher onAddVertex={onAddVertex} />
 
-        {isClosed && positions.length >= 3 && (
-          <Polygon positions={positions} pathOptions={CLOSED_RING_OPTIONS} />
-        )}
-        {!isClosed && positions.length >= 2 && (
-          <Polyline positions={positions} pathOptions={OPEN_RING_OPTIONS} />
-        )}
+          {isClosed && positions.length >= 3 && (
+            <Polygon positions={positions} pathOptions={CLOSED_RING_OPTIONS} />
+          )}
+          {!isClosed && positions.length >= 2 && (
+            <Polyline positions={positions} pathOptions={OPEN_RING_OPTIONS} />
+          )}
 
-        {vertices.map((vertex, index) => (
-          // Vertices are only ever appended/removed at the tail (drawing
-          // order), never reordered — index is a stable identity here, and
-          // using it (rather than the mutable lat/lng) is what lets a marker
-          // keep its React identity while it's being dragged.
-          <Marker
-            key={index}
-            position={[vertex.latitude, vertex.longitude]}
-            draggable
-            eventHandlers={{
-              dragend: (event: LeafletEvent) => {
-                const marker = event.target as LeafletMarkerInstance;
-                const { lat, lng } = marker.getLatLng();
-                onMoveVertex(index, { latitude: lat, longitude: lng });
-              },
-              // Only the first vertex closes the ring when clicked — every
-              // other marker click is a no-op (dragging is how you adjust it).
-              ...(index === 0 ? { click: () => onCloseRing() } : {}),
-            }}
-          />
-        ))}
-      </MapContainer>
+          {vertices.map((vertex, index) => (
+            // Vertices are only ever appended/removed at the tail (drawing
+            // order), never reordered — index is a stable identity here, and
+            // using it (rather than the mutable lat/lng) is what lets a marker
+            // keep its React identity while it's being dragged.
+            <Marker
+              key={index}
+              position={[vertex.latitude, vertex.longitude]}
+              draggable
+              eventHandlers={{
+                dragend: (event: LeafletEvent) => {
+                  const marker = event.target as LeafletMarkerInstance;
+                  const { lat, lng } = marker.getLatLng();
+                  onMoveVertex(index, { latitude: lat, longitude: lng });
+                },
+                // Only the first vertex closes the ring when clicked — every
+                // other marker click is a no-op (dragging is how you adjust it).
+                ...(index === 0 ? { click: () => onCloseRing() } : {}),
+              }}
+            />
+          ))}
+        </MapContainer>
+      </div>
     </div>
   );
 }

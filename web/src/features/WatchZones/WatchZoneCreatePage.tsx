@@ -93,6 +93,8 @@ export function WatchZoneCreatePage({ repository, geocodingPort, navigate, tier 
                 onAddVertex={drawing.addVertex}
                 onMoveVertex={drawing.moveVertex}
                 onCloseRing={drawing.closeRing}
+                onUndo={drawing.undo}
+                onReset={drawing.reset}
               />
             )
           ) : (
@@ -133,6 +135,8 @@ export function WatchZoneCreatePage({ repository, geocodingPort, navigate, tier 
                   onAddVertex={drawing.addVertex}
                   onMoveVertex={drawing.moveVertex}
                   onCloseRing={drawing.closeRing}
+                  onUndo={drawing.undo}
+                  onReset={drawing.reset}
                 />
               )
             : coordinates && (
