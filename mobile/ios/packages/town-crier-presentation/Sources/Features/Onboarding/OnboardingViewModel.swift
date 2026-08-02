@@ -63,12 +63,6 @@ public final class OnboardingViewModel: ObservableObject, ErrorHandlingViewModel
   /// needs to render it.
   @Published public private(set) var boundaryVertices: [Coordinate] = []
 
-  /// Mirrors `WatchZoneBoundary`'s geometric minimum (3 distinct vertices
-  /// are required to form a polygon) so the UI can gate "Continue" without
-  /// constructing (and discarding) a throwaway boundary just to check the
-  /// count.
-  private static let minimumBoundaryVertexCount = 3
-
   /// Drives the in-wizard custom-shape upsell paywall (GH#1031, tc-6he3x.10),
   /// presented from the radius step alongside (but distinct from)
   /// ``isRadiusUpsellPresented``. Also a sheet *over* the wizard so the
@@ -131,9 +125,10 @@ public final class OnboardingViewModel: ObservableObject, ErrorHandlingViewModel
       currentStep = .postcodeEntry
     case .boundaryDrawing:
       // Stepping back out of drawing returns to the radius step as a plain
-      // circle pick — the in-progress boundary is discarded rather than
-      // resumed, mirroring the editor's `selectShapeMode(.circle)`.
+      // circle pick — both shapeMode and any in-progress vertices are
+      // discarded, mirroring the editor's `selectShapeMode(.circle)`.
       shapeMode = .circle
+      boundaryVertices = []
       currentStep = .radiusPicker
     case .notificationPermission:
       // Which step precedes notification depends on which shape the zone
@@ -265,6 +260,10 @@ public final class OnboardingViewModel: ObservableObject, ErrorHandlingViewModel
 
   // MARK: - Custom-shape boundary drawing (GH#1031, tc-6he3x.10)
 
+  /// Mirrors `WatchZoneBoundary`'s geometric minimum (3 distinct vertices
+  /// are required to form a polygon).
+  private static let minimumBoundaryVertexCount = 3
+
   /// Whether the user's tier may draw a custom-shape zone at all — gates
   /// showing the custom-shape upsell on the radius step. Mirrors
   /// `WatchZoneEditorViewModel.canDrawCustomShape` via the same
@@ -328,15 +327,20 @@ public final class OnboardingViewModel: ObservableObject, ErrorHandlingViewModel
     isCustomShapeUpsellPresented = true
   }
 
+  /// Re-enters the drawing step for a tier that already allows custom
+  /// shapes — the way back in after ``goBack()`` leaves ``boundaryDrawing``,
+  /// since the upsell card that reaches it hides once already entitled.
+  public func selectCustomShape() {
+    guard canDrawCustomShape, currentStep == .radiusPicker else { return }
+    shapeMode = .custom
+    currentStep = .boundaryDrawing
+  }
+
   /// Called when the custom-shape paywall sheet dismisses. Re-resolves the
-  /// tier via the same ``onUpgradeFlowCompleted`` hook
-  /// ``reconcileTierAfterUpgrade()`` uses, then — if the purchase actually
-  /// unlocked custom shapes and the wizard is still sitting on the radius
-  /// step — swaps it for the boundary-drawing step in place, preserving the
-  /// already-entered postcode/geocode exactly as the radius upsell's live
-  /// unlock does (tc-w3cb.3). This upsell's payoff is immediate drawing
-  /// rather than a wider radius range, so unlike the radius flow it also
-  /// moves ``currentStep`` on success.
+  /// tier via the same ``onUpgradeFlowCompleted`` hook as
+  /// ``reconcileTierAfterUpgrade()``, then swaps `.radiusPicker` for
+  /// `.boundaryDrawing` in place if the purchase unlocked custom shapes —
+  /// preserving the already-entered postcode/geocode (tc-w3cb.3).
   public func reconcileTierAfterCustomShapeUpgrade() async {
     await onUpgradeFlowCompleted?()
     if currentStep == .radiusPicker, canDrawCustomShape {

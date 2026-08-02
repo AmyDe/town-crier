@@ -34,6 +34,16 @@ struct RadiusPickerStepView: View {
         CustomShapeUpsellCard {
           viewModel.requestCustomShapeUpgrade()
         }
+      } else {
+        // Re-entry point for a user whose tier already allows custom shapes
+        // (tc-6he3x.10) — without this, backing out of the drawing step once
+        // would strand an already-paying user on a circle for the rest of
+        // onboarding, since the upsell card above only shows pre-purchase.
+        Button("Draw a custom shape instead") {
+          viewModel.selectCustomShape()
+        }
+        .font(TCTypography.body)
+        .foregroundStyle(Color.tcAmber)
       }
 
       if viewModel.showsLargeRadiusWarning {

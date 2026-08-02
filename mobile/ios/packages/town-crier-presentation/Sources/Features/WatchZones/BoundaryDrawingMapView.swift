@@ -35,7 +35,10 @@
     /// Screen-point tolerance for treating a tap as "on an existing vertex"
     /// (closes the ring, if it's the first one, or is otherwise ignored —
     /// moving a vertex is a drag) rather than "add a new vertex here".
-    static let vertexHitTestTolerance: CGFloat = 22
+    ///
+    /// A computed property, not a stored one — Swift disallows stored
+    /// `static` properties on a generic type.
+    static var vertexHitTestTolerance: CGFloat { 22 }
 
     func makeCoordinator() -> Coordinator {
       Coordinator(viewModel: viewModel)
@@ -76,7 +79,9 @@
     /// in the domain/ViewModel layer.
     @MainActor
     final class Coordinator: NSObject, MKMapViewDelegate {
-      static let vertexReuseIdentifier = "watch-zone-boundary-vertex"
+      // A computed property, not a stored one — Swift disallows stored
+      // `static` properties on a type nested inside a generic type.
+      static var vertexReuseIdentifier: String { "watch-zone-boundary-vertex" }
 
       private let viewModel: ViewModel
 
