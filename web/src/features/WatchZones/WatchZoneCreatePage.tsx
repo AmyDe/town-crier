@@ -1,34 +1,52 @@
 import { Link } from 'react-router';
 import type { WatchZoneRepository } from '../../domain/ports/watch-zone-repository';
 import type { GeocodingPort } from '../../domain/ports/geocoding-port';
+import type { SubscriptionTier } from '../../domain/types';
 import { useCreateWatchZone } from './useCreateWatchZone';
+import { useBoundaryDrawing } from './useBoundaryDrawing';
 import { PostcodeInput } from '../../components/PostcodeInput/PostcodeInput';
 import { RadiusPicker } from '../../components/RadiusPicker/RadiusPicker';
 import { LargeRadiusWarning } from '../../components/LargeRadiusWarning/LargeRadiusWarning';
 import { ConfirmMap } from '../../components/ConfirmMap/ConfirmMap';
+import { ShapeModeToggle } from './ShapeModeToggle';
+import { BoundaryMap } from './BoundaryMap';
+import { CustomShapeUpsell } from './CustomShapeUpsell';
 import styles from './WatchZoneCreatePage.module.css';
 
 interface Props {
   repository: WatchZoneRepository;
   geocodingPort: GeocodingPort;
   navigate: (path: string) => void;
+  /**
+   * The current user's subscription tier. Only Personal/Pro can draw a
+   * custom shape (GH#1031) — Free sees the radius picker plus an upsell,
+   * with no drawing affordance. Optional so legacy call sites keep
+   * compiling; defaults to Free.
+   */
+  tier?: SubscriptionTier;
 }
 
-export function WatchZoneCreatePage({ repository, geocodingPort, navigate }: Props) {
+export function WatchZoneCreatePage({ repository, geocodingPort, navigate, tier = 'Free' }: Props) {
   const {
     step,
     name,
     postcode,
     coordinates,
     radiusMetres,
+    shapeMode,
     isSaving,
     error,
     setGeocode,
     setName,
     setRadiusMetres,
+    setShapeMode,
     confirmDetails,
     save,
   } = useCreateWatchZone(repository, navigate);
+
+  const drawing = useBoundaryDrawing();
+  const canDrawCustomShape = tier !== 'Free';
+  const isCustomShape = canDrawCustomShape && shapeMode === 'custom';
 
   return (
     <div className={styles.container}>
@@ -64,9 +82,27 @@ export function WatchZoneCreatePage({ repository, geocodingPort, navigate }: Pro
             />
           </div>
 
-          <RadiusPicker selectedMetres={radiusMetres} onSelect={setRadiusMetres} />
+          {canDrawCustomShape && <ShapeModeToggle mode={shapeMode} onSelect={setShapeMode} />}
 
-          <LargeRadiusWarning radiusMetres={radiusMetres} />
+          {isCustomShape ? (
+            coordinates && (
+              <BoundaryMap
+                centre={coordinates}
+                vertices={drawing.vertices}
+                isClosed={drawing.isClosed}
+                onAddVertex={drawing.addVertex}
+                onMoveVertex={drawing.moveVertex}
+                onCloseRing={drawing.closeRing}
+              />
+            )
+          ) : (
+            <>
+              <RadiusPicker selectedMetres={radiusMetres} onSelect={setRadiusMetres} />
+              <LargeRadiusWarning radiusMetres={radiusMetres} />
+            </>
+          )}
+
+          {!canDrawCustomShape && <CustomShapeUpsell />}
 
           {error && (
             <p className={styles.error} role="alert">
@@ -78,7 +114,7 @@ export function WatchZoneCreatePage({ repository, geocodingPort, navigate }: Pro
             <button
               type="button"
               className={styles.saveButton}
-              onClick={confirmDetails}
+              onClick={() => confirmDetails(drawing.boundary)}
             >
               Next
             </button>
@@ -88,13 +124,24 @@ export function WatchZoneCreatePage({ repository, geocodingPort, navigate }: Pro
 
       {step === 'confirm' && (
         <section className={styles.section}>
-          {coordinates && (
-            <ConfirmMap
-              latitude={coordinates.latitude}
-              longitude={coordinates.longitude}
-              radiusMetres={radiusMetres}
-            />
-          )}
+          {isCustomShape
+            ? coordinates && (
+                <BoundaryMap
+                  centre={coordinates}
+                  vertices={drawing.vertices}
+                  isClosed={drawing.isClosed}
+                  onAddVertex={drawing.addVertex}
+                  onMoveVertex={drawing.moveVertex}
+                  onCloseRing={drawing.closeRing}
+                />
+              )
+            : coordinates && (
+                <ConfirmMap
+                  latitude={coordinates.latitude}
+                  longitude={coordinates.longitude}
+                  radiusMetres={radiusMetres}
+                />
+              )}
           <div className={styles.confirmDetails}>
             <div className={styles.confirmRow}>
               <span className={styles.confirmLabel}>Postcode</span>
@@ -105,11 +152,19 @@ export function WatchZoneCreatePage({ repository, geocodingPort, navigate }: Pro
               <span className={styles.confirmValue}>{name}</span>
             </div>
             <div className={styles.confirmRow}>
-              <span className={styles.confirmLabel}>Radius</span>
+              <span className={styles.confirmLabel}>Shape</span>
               <span className={styles.confirmValue}>
-                {radiusMetres >= 1000 ? `${radiusMetres / 1000} km` : `${radiusMetres} m`}
+                {isCustomShape ? 'Custom shape' : 'Circle'}
               </span>
             </div>
+            {!isCustomShape && (
+              <div className={styles.confirmRow}>
+                <span className={styles.confirmLabel}>Radius</span>
+                <span className={styles.confirmValue}>
+                  {radiusMetres >= 1000 ? `${radiusMetres / 1000} km` : `${radiusMetres} m`}
+                </span>
+              </div>
+            )}
           </div>
           {error && (
             <p className={styles.error} role="alert">
@@ -120,7 +175,7 @@ export function WatchZoneCreatePage({ repository, geocodingPort, navigate }: Pro
             <button
               type="button"
               className={styles.saveButton}
-              onClick={save}
+              onClick={() => save(drawing.boundary)}
               disabled={isSaving}
             >
               {isSaving ? 'Saving...' : 'Confirm'}
