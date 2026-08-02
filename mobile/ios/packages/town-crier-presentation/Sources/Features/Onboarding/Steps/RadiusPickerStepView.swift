@@ -27,6 +27,15 @@ struct RadiusPickerStepView: View {
         }
       }
 
+      if !viewModel.canDrawCustomShape {
+        // Custom-shape upsell (GH#1031, tc-6he3x.10): distinct from the
+        // larger-radius chip above — Free tier can see both together, since
+        // they sell different entitlements.
+        CustomShapeUpsellCard {
+          viewModel.requestCustomShapeUpgrade()
+        }
+      }
+
       if viewModel.showsLargeRadiusWarning {
         LargeRadiusWarningView()
       }
