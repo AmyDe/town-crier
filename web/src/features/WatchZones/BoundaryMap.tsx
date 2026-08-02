@@ -92,7 +92,6 @@ export function BoundaryMap({
           // order), never reordered — index is a stable identity here, and
           // using it (rather than the mutable lat/lng) is what lets a marker
           // keep its React identity while it's being dragged.
-          // eslint-disable-next-line react/no-array-index-key
           <Marker
             key={index}
             position={[vertex.latitude, vertex.longitude]}
