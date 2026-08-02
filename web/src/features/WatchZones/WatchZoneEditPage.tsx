@@ -3,9 +3,13 @@ import type { WatchZoneSummary, SubscriptionTier } from '../../domain/types';
 import type { WatchZoneRepository } from '../../domain/ports/watch-zone-repository';
 import { useZonePreferences } from './useZonePreferences';
 import { useZoneEdit } from './useZoneEdit';
+import { useBoundaryDrawing } from './useBoundaryDrawing';
 import { RadiusPicker } from '../../components/RadiusPicker/RadiusPicker';
 import { LargeRadiusWarning } from '../../components/LargeRadiusWarning/LargeRadiusWarning';
 import { Toggle } from '../../components/Toggle/Toggle';
+import { ShapeModeToggle } from './ShapeModeToggle';
+import { BoundaryMap } from './BoundaryMap';
+import { CustomShapeUpsell } from './CustomShapeUpsell';
 import styles from './WatchZoneEditPage.module.css';
 
 interface Props {
@@ -27,8 +31,11 @@ export function WatchZoneEditPage({ repository, zone, tier = 'Free' }: Props) {
     zone.id,
   );
 
-  const zoneEdit = useZoneEdit(repository, zone);
+  const drawing = useBoundaryDrawing(zone.boundary);
+  const zoneEdit = useZoneEdit(repository, zone, drawing.boundary);
   const showZoneNotificationToggles = tier !== 'Free';
+  const canDrawCustomShape = tier !== 'Free';
+  const isCustomShape = canDrawCustomShape && zoneEdit.shapeMode === 'custom';
 
   type PreferenceField =
     | 'newApplicationPush'
@@ -82,12 +89,34 @@ export function WatchZoneEditPage({ repository, zone, tier = 'Free' }: Props) {
           )}
         </div>
 
-        <RadiusPicker
-          selectedMetres={zoneEdit.radiusMetres}
-          onSelect={zoneEdit.setRadiusMetres}
-        />
+        {canDrawCustomShape && (
+          <ShapeModeToggle mode={zoneEdit.shapeMode} onSelect={zoneEdit.setShapeMode} />
+        )}
 
-        <LargeRadiusWarning radiusMetres={zoneEdit.radiusMetres} />
+        {isCustomShape ? (
+          <BoundaryMap
+            centre={{ latitude: zone.latitude, longitude: zone.longitude }}
+            vertices={drawing.vertices}
+            isClosed={drawing.isClosed}
+            onAddVertex={drawing.addVertex}
+            onMoveVertex={drawing.moveVertex}
+            onCloseRing={drawing.closeRing}
+          />
+        ) : (
+          <>
+            <RadiusPicker
+              selectedMetres={zoneEdit.radiusMetres}
+              onSelect={zoneEdit.setRadiusMetres}
+            />
+            <LargeRadiusWarning radiusMetres={zoneEdit.radiusMetres} />
+          </>
+        )}
+
+        {!canDrawCustomShape && <CustomShapeUpsell />}
+
+        {zoneEdit.boundaryError && (
+          <p className={styles.fieldError}>{zoneEdit.boundaryError}</p>
+        )}
 
         {showZoneNotificationToggles && (
           <div className={styles.zoneNotifications}>
