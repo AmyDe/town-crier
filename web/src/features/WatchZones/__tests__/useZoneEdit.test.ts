@@ -2,7 +2,7 @@ import { renderHook, act } from '@testing-library/react';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useZoneEdit } from '../useZoneEdit';
 import { SpyWatchZoneRepository } from './spies/spy-watch-zone-repository';
-import { aWatchZone } from './fixtures/watch-zone.fixtures';
+import { aWatchZone, aWatchZoneBoundary } from './fixtures/watch-zone.fixtures';
 
 describe('useZoneEdit', () => {
   let spy: SpyWatchZoneRepository;
@@ -333,6 +333,168 @@ describe('useZoneEdit', () => {
 
       expect(result.current.isDirty).toBe(false);
       expect(result.current.pushEnabled).toBe(false);
+    });
+  });
+
+  describe('shape mode / boundary', () => {
+    it('initialises shapeMode as circle for a plain circle zone', () => {
+      const zone = aWatchZone({ boundary: null });
+
+      const { result } = renderHook(() => useZoneEdit(spy, zone));
+
+      expect(result.current.shapeMode).toBe('circle');
+      expect(result.current.isDirty).toBe(false);
+    });
+
+    it('initialises shapeMode as custom for a zone with an existing boundary', () => {
+      const boundary = aWatchZoneBoundary();
+      const zone = aWatchZone({ boundary });
+
+      const { result } = renderHook(() => useZoneEdit(spy, zone, boundary));
+
+      expect(result.current.shapeMode).toBe('custom');
+      expect(result.current.isDirty).toBe(false);
+    });
+
+    it('marks the form dirty when switching shape mode', () => {
+      const zone = aWatchZone({ boundary: null });
+
+      const { result } = renderHook(() => useZoneEdit(spy, zone));
+
+      act(() => {
+        result.current.setShapeMode('custom');
+      });
+
+      expect(result.current.isDirty).toBe(true);
+    });
+
+    it('blocks save with a boundaryError when custom mode has no boundary yet', () => {
+      const zone = aWatchZone({ boundary: null });
+
+      const { result } = renderHook(() => useZoneEdit(spy, zone));
+
+      act(() => {
+        result.current.setShapeMode('custom');
+      });
+
+      expect(result.current.boundaryError).toBe(
+        'Draw a shape with at least 3 points, then close it by clicking the first point again.',
+      );
+      expect(result.current.canSave).toBe(false);
+    });
+
+    it('sends an explicit null boundary when switching a custom zone back to circle', async () => {
+      const boundary = aWatchZoneBoundary();
+      const zone = aWatchZone({ boundary });
+      spy.updateZoneResult = aWatchZone({ boundary: null });
+
+      const { result } = renderHook(() => useZoneEdit(spy, zone, boundary));
+
+      act(() => {
+        result.current.setShapeMode('circle');
+      });
+
+      await act(async () => {
+        await result.current.save();
+      });
+
+      expect(spy.updateZoneCalls).toHaveLength(1);
+      expect(spy.updateZoneCalls[0]?.data).toEqual({ boundary: null });
+    });
+
+    it('sends the new boundary when switching a circle zone to custom', async () => {
+      const boundary = aWatchZoneBoundary();
+      const zone = aWatchZone({ boundary: null });
+      spy.updateZoneResult = aWatchZone({ boundary });
+
+      const { result, rerender } = renderHook(
+        ({ currentBoundary }) => useZoneEdit(spy, zone, currentBoundary),
+        { initialProps: { currentBoundary: null as typeof boundary | null } },
+      );
+
+      act(() => {
+        result.current.setShapeMode('custom');
+      });
+      rerender({ currentBoundary: boundary });
+
+      await act(async () => {
+        await result.current.save();
+      });
+
+      expect(spy.updateZoneCalls).toHaveLength(1);
+      expect(spy.updateZoneCalls[0]?.data).toEqual({ boundary });
+    });
+
+    it('omits boundary from the patch when shape mode and boundary are both unchanged', async () => {
+      const boundary = aWatchZoneBoundary();
+      const zone = aWatchZone({ name: 'Home', boundary });
+      spy.updateZoneResult = aWatchZone({ name: 'Office', boundary });
+
+      const { result } = renderHook(() => useZoneEdit(spy, zone, boundary));
+
+      act(() => {
+        result.current.setName('Office');
+      });
+
+      await act(async () => {
+        await result.current.save();
+      });
+
+      expect(spy.updateZoneCalls[0]?.data).toEqual({ name: 'Office' });
+    });
+
+    it('sends an updated boundary when a custom zone is redrawn', async () => {
+      const originalBoundary = aWatchZoneBoundary();
+      const redrawnBoundary = aWatchZoneBoundary({
+        coordinates: [
+          [
+            [0.2, 52.3],
+            [0.22, 52.3],
+            [0.22, 52.31],
+            [0.2, 52.3],
+          ],
+        ],
+      });
+      const zone = aWatchZone({ boundary: originalBoundary });
+      spy.updateZoneResult = aWatchZone({ boundary: redrawnBoundary });
+
+      const { result, rerender } = renderHook(
+        ({ currentBoundary }) => useZoneEdit(spy, zone, currentBoundary),
+        { initialProps: { currentBoundary: originalBoundary } },
+      );
+
+      expect(result.current.isDirty).toBe(false);
+
+      rerender({ currentBoundary: redrawnBoundary });
+
+      expect(result.current.isDirty).toBe(true);
+
+      await act(async () => {
+        await result.current.save();
+      });
+
+      expect(spy.updateZoneCalls[0]?.data).toEqual({ boundary: redrawnBoundary });
+    });
+
+    it('resets baseline shape state after a successful save', async () => {
+      const boundary = aWatchZoneBoundary();
+      const zone = aWatchZone({ boundary });
+      spy.updateZoneResult = aWatchZone({ boundary: null });
+
+      const { result } = renderHook(() => useZoneEdit(spy, zone, boundary));
+
+      act(() => {
+        result.current.setShapeMode('circle');
+      });
+
+      expect(result.current.isDirty).toBe(true);
+
+      await act(async () => {
+        await result.current.save();
+      });
+
+      expect(result.current.isDirty).toBe(false);
+      expect(result.current.shapeMode).toBe('circle');
     });
   });
 });
