@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -8,16 +8,55 @@ import { SpyWatchZoneRepository } from './spies/spy-watch-zone-repository';
 import { aWatchZone } from './fixtures/watch-zone.fixtures';
 import type { GeocodingPort } from '../../../domain/ports/geocoding-port';
 
+interface LatLngPayload {
+  latlng: { lat: number; lng: number };
+}
+
+interface MockMarkerEventHandlers {
+  click?: () => void;
+}
+
+interface MockMarkerProps {
+  position: [number, number];
+  eventHandlers?: MockMarkerEventHandlers;
+}
+
+interface PathLayerProps {
+  positions: [number, number][];
+}
+
+const { capturedMapEvents } = vi.hoisted(() => ({
+  capturedMapEvents: { click: undefined as ((event: LatLngPayload) => void) | undefined },
+}));
+
 vi.mock('react-leaflet', () => ({
   MapContainer: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="map-container">{children}</div>
   ),
   TileLayer: () => <div data-testid="tile-layer" />,
-  Marker: () => <div data-testid="map-marker" />,
+  Marker: ({ position, eventHandlers }: MockMarkerProps) => (
+    <div data-testid="map-marker" data-lat={position[0]} data-lng={position[1]}>
+      {eventHandlers?.click && (
+        <button type="button" data-testid="marker-click" onClick={eventHandlers.click}>
+          marker
+        </button>
+      )}
+    </div>
+  ),
   Circle: () => <div data-testid="map-circle" />,
+  Polygon: ({ positions }: PathLayerProps) => (
+    <div data-testid="boundary-polygon" data-count={positions.length} />
+  ),
+  Polyline: ({ positions }: PathLayerProps) => (
+    <div data-testid="boundary-polyline" data-count={positions.length} />
+  ),
   useMap: () => ({
     fitBounds: vi.fn(),
   }),
+  useMapEvents: (handlers: { click?: (event: LatLngPayload) => void }) => {
+    capturedMapEvents.click = handlers.click;
+    return null;
+  },
 }));
 
 vi.mock('leaflet', () => ({
@@ -216,5 +255,95 @@ describe('WatchZoneCreatePage', () => {
 
     const cancelLink = screen.getByRole('link', { name: /cancel/i });
     expect(cancelLink).toHaveAttribute('href', '/watch-zones');
+  });
+
+  describe('shape mode', () => {
+    async function reachDetailsStep(tier?: 'Free' | 'Personal' | 'Pro') {
+      const user = userEvent.setup();
+      renderWithRouter(
+        <WatchZoneCreatePage
+          repository={repoSpy}
+          geocodingPort={geocodingSpy}
+          navigate={navigate}
+          tier={tier}
+        />,
+      );
+
+      await user.type(screen.getByRole('textbox', { name: /postcode/i }), 'CB1 2AD');
+      await user.click(screen.getByRole('button', { name: /look up/i }));
+      await screen.findByLabelText(/zone name/i);
+
+      return user;
+    }
+
+    it('shows RadiusPicker and the custom-shape upsell, with no shape toggle, for Free tier', async () => {
+      await reachDetailsStep('Free');
+
+      expect(screen.getByRole('radiogroup', { name: /radius/i })).toBeInTheDocument();
+      expect(screen.queryByRole('radiogroup', { name: /shape/i })).not.toBeInTheDocument();
+      expect(
+        screen.getByRole('heading', { name: /draw any shape/i }),
+      ).toBeInTheDocument();
+    });
+
+    it('shows the shape toggle for Personal/Pro tier', async () => {
+      await reachDetailsStep('Pro');
+
+      expect(screen.getByRole('radiogroup', { name: /shape/i })).toBeInTheDocument();
+      // Defaults to circle mode, so the radius picker is still visible.
+      expect(screen.getByRole('radiogroup', { name: /radius/i })).toBeInTheDocument();
+      expect(
+        screen.queryByRole('heading', { name: /draw any shape/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('switching to custom shape hides the radius picker and shows the drawing map', async () => {
+      const user = await reachDetailsStep('Personal');
+
+      await user.click(screen.getByRole('radio', { name: /^custom shape$/i }));
+
+      expect(screen.queryByRole('radiogroup', { name: /radius/i })).not.toBeInTheDocument();
+      expect(screen.getByTestId('map-container')).toBeInTheDocument();
+    });
+
+    it('draws a polygon, closes it, and saves the zone with the boundary', async () => {
+      const user = await reachDetailsStep('Pro');
+      repoSpy.createResult = aWatchZone();
+
+      await user.type(screen.getByLabelText(/zone name/i), 'Home');
+      await user.click(screen.getByRole('radio', { name: /^custom shape$/i }));
+
+      act(() => {
+        capturedMapEvents.click?.({ latlng: { lat: 52.2, lng: 0.1 } });
+      });
+      act(() => {
+        capturedMapEvents.click?.({ latlng: { lat: 52.2, lng: 0.12 } });
+      });
+      act(() => {
+        capturedMapEvents.click?.({ latlng: { lat: 52.21, lng: 0.12 } });
+      });
+
+      const firstVertexClose = screen.getAllByTestId('marker-click')[0];
+      await user.click(firstVertexClose!);
+
+      expect(screen.getByTestId('boundary-polygon')).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: /next/i }));
+      await user.click(screen.getByRole('button', { name: /confirm/i }));
+
+      expect(repoSpy.createCalls).toHaveLength(1);
+      expect(repoSpy.createCalls[0]?.boundary).toEqual({
+        type: 'Polygon',
+        coordinates: [
+          [
+            [0.1, 52.2],
+            [0.12, 52.2],
+            [0.12, 52.21],
+            [0.1, 52.2],
+          ],
+        ],
+      });
+      expect(navigatedTo).toBe('/watch-zones');
+    });
   });
 });
