@@ -331,6 +331,38 @@ func TestPostgresAdminStore_GetByEmail(t *testing.T) {
 	}
 }
 
+// TestPostgresAdminStore_GetByEmail_DuplicateEmailPicksNewest verifies GetByEmail
+// is deterministic when two rows share an email — e.g. an account deleted and
+// recreated, where the old row was never cleaned up (tc-i0t8e). Without an
+// ORDER BY, Postgres can return either row nondeterministically, and which one
+// it returns can change between calls. The fix orders by created_at DESC so the
+// most-recently-created row (the live account) always wins.
+func TestPostgresAdminStore_GetByEmail_DuplicateEmailPicksNewest(t *testing.T) {
+	store, admin := newUserPGStore(t)
+	ctx := context.Background()
+
+	older := pgProfile(t, "auth0|dup-old", "dup@example.com")
+	if err := store.Save(ctx, older); err != nil {
+		t.Fatalf("Save older: %v", err)
+	}
+	// created_at is DB-stamped (DEFAULT CURRENT_TIMESTAMP, not written by Go) —
+	// sleep so the second insert's timestamp is unambiguously later than the
+	// first's.
+	time.Sleep(10 * time.Millisecond)
+	newer := pgProfile(t, "auth0|dup-new", "dup@example.com")
+	if err := store.Save(ctx, newer); err != nil {
+		t.Fatalf("Save newer: %v", err)
+	}
+
+	got, err := admin.GetByEmail(ctx, "dup@example.com")
+	if err != nil {
+		t.Fatalf("GetByEmail: %v", err)
+	}
+	if got.UserID != newer.UserID {
+		t.Errorf("GetByEmail with duplicate emails: got userID %q, want %q (the newest row)", got.UserID, newer.UserID)
+	}
+}
+
 // TestPostgresAdminStore_GetByOriginalTransactionID verifies lookup by Apple
 // transaction id and ErrNotFound for a missing id.
 func TestPostgresAdminStore_GetByOriginalTransactionID(t *testing.T) {

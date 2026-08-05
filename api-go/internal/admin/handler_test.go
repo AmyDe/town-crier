@@ -88,6 +88,11 @@ type fakeAdminStore struct {
 	gotSearch   string
 	gotPageSize int
 	gotToken    string
+
+	// order, when non-nil, has "save" appended on every Save call — shared with
+	// a fakeTierSync's order slice so a test can assert call ordering between
+	// the two collaborators (see TestGrant_Auth0FailureLeavesProfileUnsaved).
+	order *[]string
 }
 
 func (f *fakeAdminStore) PaidCandidates(_ context.Context) ([]*profiles.UserProfile, error) {
@@ -107,6 +112,9 @@ func (f *fakeAdminStore) GetByEmail(_ context.Context, email string) (*profiles.
 }
 
 func (f *fakeAdminStore) Save(_ context.Context, p *profiles.UserProfile) error {
+	if f.order != nil {
+		*f.order = append(*f.order, "save")
+	}
 	f.saved = p
 	return nil
 }
@@ -121,11 +129,22 @@ func (f *fakeAdminStore) List(_ context.Context, emailSearch string, pageSize in
 type fakeTierSync struct {
 	gotTier string
 	calls   int
+	err     error
+
+	// order, when non-nil, has "auth0" appended on every UpdateSubscriptionTier
+	// call — shared with a fakeAdminStore's order slice, see fakeAdminStore.order.
+	order *[]string
 }
 
 func (f *fakeTierSync) UpdateSubscriptionTier(_ context.Context, _, tier string) error {
 	f.calls++
 	f.gotTier = tier
+	if f.order != nil {
+		*f.order = append(*f.order, "auth0")
+	}
+	if f.err != nil {
+		return f.err
+	}
 	return nil
 }
 
@@ -264,6 +283,27 @@ func TestGrant_FreeExpiresSubscription(t *testing.T) {
 	}
 	if store.saved.Tier != profiles.TierFree || store.saved.SubscriptionExpiry != nil {
 		t.Errorf("subscription not expired: %+v", store.saved)
+	}
+}
+
+func TestGrant_Auth0FailureLeavesProfileUnsaved(t *testing.T) {
+	t.Parallel()
+
+	var order []string
+	store := &fakeAdminStore{byEmail: map[string]*profiles.UserProfile{"u@example.com": freeProfile(t)}, order: &order}
+	auth0 := &fakeTierSync{err: errBoom, order: &order}
+	h := newTestHandler(store, &fakeNotifCounts{}, auth0, &fakeOfferStore{}, &fakeGenerator{}, time.Now())
+
+	rec := serve(t, h.grantSubscription, http.MethodPut, "/v1/admin/subscriptions", `{"email":"u@example.com","tier":"Pro"}`)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", rec.Code)
+	}
+	if store.saved != nil {
+		t.Errorf("profile saved despite auth0 sync failure: %+v", store.saved)
+	}
+	if len(order) != 1 || order[0] != "auth0" {
+		t.Errorf("call order = %v, want [auth0] (save must never run after a failed sync)", order)
 	}
 }
 
