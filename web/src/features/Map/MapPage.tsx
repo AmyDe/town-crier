@@ -1,6 +1,6 @@
 import { useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Circle, Polygon, useMap, useMapEvents } from 'react-leaflet';
 import type { MapPort, MapBounds } from '../../domain/ports/map-port';
 import type { ApplicationStatus, ClusterMember, MapCluster, WatchZoneSummary } from '../../domain/types';
 import { clusterMemberStatus } from '../../domain/types';
@@ -14,6 +14,43 @@ import './leaflet-overrides.css';
 const UK_CENTER: [number, number] = [54.5, -2.5];
 const ZONE_ZOOM = 13;
 const MAX_ZOOM = 18;
+
+// Leaflet SVG layers accept raw colour values, not CSS custom properties —
+// this hex MUST be kept in sync BY HAND with --tc-amber in tokens.css (dark
+// theme value, #E9A620 / rgb(233, 166, 32)) whenever the palette changes.
+// Mirrors ConfirmMap's/BoundaryMap's read-only boundary convention.
+const ZONE_BOUNDARY_OPTIONS = {
+  color: 'rgba(233, 166, 32, 0.8)',
+  fillColor: 'rgb(233, 166, 32)',
+  fillOpacity: 0.08,
+  weight: 2,
+  dashArray: '6 4',
+};
+
+interface ZoneBoundaryLayerProps {
+  readonly zone: WatchZoneSummary;
+}
+
+/**
+ * Read-only boundary overlay for the currently selected zone — a `<Circle>`
+ * for a plain zone, a `<Polygon>` (outer ring only) for a custom shape.
+ * GeoJSON vertex tuples are `[longitude, latitude]`; Leaflet positions are
+ * `[latitude, longitude]` — this is the one place that conversion happens.
+ */
+function ZoneBoundaryLayer({ zone }: ZoneBoundaryLayerProps) {
+  if (zone.boundary) {
+    const outerRing = zone.boundary.coordinates[0] ?? [];
+    const positions: [number, number][] = outerRing.map(([lng, lat]) => [lat, lng]);
+    return <Polygon positions={positions} pathOptions={ZONE_BOUNDARY_OPTIONS} />;
+  }
+  return (
+    <Circle
+      center={[zone.latitude, zone.longitude]}
+      radius={zone.radiusMetres}
+      pathOptions={ZONE_BOUNDARY_OPTIONS}
+    />
+  );
+}
 
 interface StatusChip {
   readonly label: string;
@@ -216,6 +253,7 @@ export function MapPage({ port }: Props) {
           style={{ height: '100%', width: '100%' }}
         >
           <TileLayer url={OSM_TILE_URL} attribution={OSM_ATTRIBUTION} />
+          {selectedZone && <ZoneBoundaryLayer zone={selectedZone} />}
           <ClusterLayer
             clusters={clusters}
             onRegionChange={onRegionChange}
