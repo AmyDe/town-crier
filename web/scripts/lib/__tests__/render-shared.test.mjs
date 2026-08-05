@@ -337,12 +337,12 @@ describe('renderStatusSummary (tc-r4n9.3: compact Granted/Refused/Undecided stri
 });
 
 describe('renderDataUpdated (tc-r4n9.3: single line replacing per-card repetition)', () => {
-  it('renders one "Data updated" line from the freshest application date', () => {
+  it('renders one "Last application update" line from the freshest application date', () => {
     const html = renderDataUpdated([
       { lastDifferent: '2026-06-12T09:30:00+00:00' },
       { lastDifferent: '2026-06-15T10:00:00+00:00' },
     ]);
-    expect(html).toBe('<p class="dataUpdated">Data updated 15 Jun 2026</p>');
+    expect(html).toBe('<p class="dataUpdated">Last application update 15 Jun 2026</p>');
   });
 
   it('renders nothing when no application carries a parseable date', () => {

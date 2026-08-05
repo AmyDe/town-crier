@@ -366,7 +366,7 @@ describe('runRender — offline mode', () => {
     expect(authorityHtml).toContain(
       '<h1>Planning applications in Basingstoke and Deane</h1>',
     );
-    expect(authorityHtml).toContain('Data updated 15 Jun 2026');
+    expect(authorityHtml).toContain('Last application update 15 Jun 2026');
 
     // The nested town page renders, with the parent-authority slug resolved
     // offline from the embedded authority list (Cornwall id 52 -> "cornwall").

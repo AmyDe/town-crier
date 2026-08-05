@@ -69,8 +69,8 @@ describe('runPrerender — fixture mode', () => {
     expect(html).toContain('PlanIt');
     expect(html).toContain('Get push alerts for Basingstoke and Deane');
     // The freshest shown lastDifferent threads through to the single
-    // "Data updated" line near the H1 (tc-r4n9.3), not a per-card repeat.
-    expect(html).toContain('Data updated 15 Jun 2026');
+    // "Last application update" line near the H1 (tc-r4n9.3), not a per-card repeat.
+    expect(html).toContain('Last application update 15 Jun 2026');
     // The server breakdown (20 Granted) is threaded through and exceeds the three
     // cards rendered — proving the stats are server-driven, not card-counted.
     expect(html).toMatch(/20[\s\S]{0,20}Granted/);
