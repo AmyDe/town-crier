@@ -60,10 +60,12 @@ struct BoundaryDrawingRegionTests {
       #expect(abs(vertex.longitude - region.center.longitude) < lonHalfSpan)
     }
 
-    // Margin actually widens the span beyond the raw bounding box (0.01 deg
-    // in both directions here) rather than fitting it exactly flush.
-    #expect(region.span.latitudeDelta > 0.01)
-    #expect(region.span.longitudeDelta > 0.01)
+    // Margin actually applies the expected 30% widening (0.01deg raw box *
+    // 1.3 = 0.013deg) rather than merely exceeding the raw bounding box — a
+    // bare `> 0.01` check would still pass if marginFraction regressed to
+    // something far smaller than 0.3.
+    #expect(abs(region.span.latitudeDelta - 0.013) < 0.0001)
+    #expect(abs(region.span.longitudeDelta - 0.013) < 0.0001)
   }
 
   // MARK: - A single vertex / tight cluster — minimum span, not absurd zoom
