@@ -294,7 +294,7 @@ ${other
 }
 
 /**
- * Render the single "Data updated {date}" line (tc-r4n9.3, punch-list #794
+ * Render the single "Last application update {date}" line (tc-r4n9.3, punch-list #794
  * Phase 3) that replaces the old per-card "Last updated {date}" line, which
  * repeated the same handful of snapshot dates once per card (up to 30 times
  * on a full page) under a "Recent applications" heading — reading as

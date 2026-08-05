@@ -157,12 +157,15 @@ export function aggregateStatusSummary(statusBreakdown) {
 
 /**
  * Find the most recent (max) `lastDifferent` among the applications actually
- * shown on a page and render it as the single "Data updated" line that
- * replaces the old per-card "Last updated {date}" repetition (tc-r4n9.3):
- * the same honest freshness signal the sitemap's lastmod uses (derived from
- * what's shown, not the build clock), surfaced once near the H1 instead of
- * once per card. Returns '' when no shown application carries a parseable
- * date, so the caller can omit the line rather than show a broken one.
+ * shown on a page and render it as the single "Last application update" line
+ * that replaces the old per-card "Last updated {date}" repetition
+ * (tc-r4n9.3): the same honest freshness signal the sitemap's lastmod uses
+ * (derived from what's shown, not the build clock), surfaced once near the
+ * H1 instead of once per card. Worded around the application rather than
+ * the page, so it reads as "nothing's changed" rather than "this site is
+ * stale" during a quiet week. Returns '' when no shown application carries a
+ * parseable date, so the caller can omit the line rather than show a broken
+ * one.
  *
  * @param {ReadonlyArray<{ lastDifferent?: string | null }>} applications
  * @returns {string}
@@ -184,7 +187,7 @@ export function dataUpdatedLine(applications) {
   if (maxIso === undefined) {
     return '';
   }
-  return `Data updated ${formatDate(maxIso)}`;
+  return `Last application update ${formatDate(maxIso)}`;
 }
 
 /**

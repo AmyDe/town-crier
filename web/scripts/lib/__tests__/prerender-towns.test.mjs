@@ -300,9 +300,9 @@ describe('runPrerender — town live mode', () => {
     expect(html.indexOf('First In API Order, Truro')).toBeLessThan(
       html.indexOf('Second In API Order, Truro'),
     );
-    // The page-level "Data updated" line is unaffected by render order — still
-    // the freshest lastDifferent among the shown set.
-    expect(html).toContain('Data updated 20 Jun 2026');
+    // The page-level "Last application update" line is unaffected by render
+    // order — still the freshest lastDifferent among the shown set.
+    expect(html).toContain('Last application update 20 Jun 2026');
 
     // The sitemap lastmod is likewise the freshest shown app's lastDifferent,
     // independent of render order.

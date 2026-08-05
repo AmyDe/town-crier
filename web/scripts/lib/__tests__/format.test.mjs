@@ -157,14 +157,14 @@ describe('aggregateStatusSummary (tc-r4n9.3: compact Granted/Refused/Undecided s
   });
 });
 
-describe('dataUpdatedLine (tc-r4n9.3: single "Data updated" line replacing the per-card repetition)', () => {
+describe('dataUpdatedLine (tc-r4n9.3: single "Last application update" line replacing the per-card repetition)', () => {
   it('reports the freshest lastDifferent among the applications shown, formatted en-GB', () => {
     const applications = [
       { lastDifferent: '2026-06-12T09:30:00+00:00' },
       { lastDifferent: '2026-06-15T10:00:00+00:00' },
       { lastDifferent: '2026-06-09T08:00:00+00:00' },
     ];
-    expect(dataUpdatedLine(applications)).toBe('Data updated 15 Jun 2026');
+    expect(dataUpdatedLine(applications)).toBe('Last application update 15 Jun 2026');
   });
 
   it('ignores applications with no parseable lastDifferent when finding the max', () => {
@@ -173,7 +173,7 @@ describe('dataUpdatedLine (tc-r4n9.3: single "Data updated" line replacing the p
       { lastDifferent: '2026-06-01T08:00:00+00:00' },
       { lastDifferent: '' },
     ];
-    expect(dataUpdatedLine(applications)).toBe('Data updated 1 Jun 2026');
+    expect(dataUpdatedLine(applications)).toBe('Last application update 1 Jun 2026');
   });
 
   it('returns an empty string when no application carries a parseable date', () => {

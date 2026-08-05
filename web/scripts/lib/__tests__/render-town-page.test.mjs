@@ -241,12 +241,12 @@ describe('renderTownPage', () => {
     );
   });
 
-  describe('single "Data updated" line (tc-r4n9.3, replacing the per-card repetition)', () => {
-    it('renders exactly one "Data updated" line, near the H1, from the freshest shown application date', () => {
+  describe('single "Last application update" line (tc-r4n9.3, replacing the per-card repetition)', () => {
+    it('renders exactly one "Last application update" line, near the H1, from the freshest shown application date', () => {
       const html = renderTownPage(townData());
       const occurrences = (html.match(/class="dataUpdated"/g) ?? []).length;
       expect(occurrences).toBe(1);
-      expect(html).toContain('<p class="dataUpdated">Data updated 12 Jun 2026</p>');
+      expect(html).toContain('<p class="dataUpdated">Last application update 12 Jun 2026</p>');
       expect(html.indexOf('<h1>')).toBeLessThan(html.indexOf('class="dataUpdated"'));
       expect(html.indexOf('class="dataUpdated"')).toBeLessThan(html.indexOf('class="lead"'));
     });
