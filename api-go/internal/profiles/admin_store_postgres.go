@@ -48,10 +48,18 @@ func collectUsers(rows pgx.Rows) ([]*UserProfile, error) {
 
 const pgAdminSelectCols = "SELECT " + userSelectCols + " FROM users "
 
-// GetByEmail returns the first profile whose email matches exactly, or
-// ErrNotFound. Mirrors AdminStore.GetByEmail.
+// GetByEmail returns the profile whose email matches exactly, or ErrNotFound.
+// Email is not unique at the schema level (e.g. an account deleted and
+// recreated can leave a stale row behind), so the query orders by created_at
+// descending to deterministically pick the most-recently-created row — the
+// live account — rather than letting Postgres return an arbitrary match.
+// created_at alone is not a unique tiebreak: the 0016 backfill stamped every
+// pre-existing row with the same migration-run timestamp, so two duplicate
+// rows from before that migration can tie on created_at. user_id (the primary
+// key) breaks the tie deterministically, same as List's compound sort.
+// Mirrors AdminStore.GetByEmail.
 func (s *PostgresAdminStore) GetByEmail(ctx context.Context, email string) (*UserProfile, error) {
-	rows, err := s.db.Query(ctx, pgAdminSelectCols+"WHERE email = $1 LIMIT 1", email)
+	rows, err := s.db.Query(ctx, pgAdminSelectCols+"WHERE email = $1 ORDER BY created_at DESC, user_id DESC LIMIT 1", email)
 	if err != nil {
 		return nil, fmt.Errorf("query profile by email: %w", err)
 	}

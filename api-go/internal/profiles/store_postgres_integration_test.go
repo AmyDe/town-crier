@@ -331,6 +331,83 @@ func TestPostgresAdminStore_GetByEmail(t *testing.T) {
 	}
 }
 
+// TestPostgresAdminStore_GetByEmail_DuplicateEmailPicksNewest verifies GetByEmail
+// is deterministic when two rows share an email — e.g. an account deleted and
+// recreated, where the old row was never cleaned up (tc-i0t8e). Without an
+// ORDER BY, Postgres can return either row nondeterministically, and which one
+// it returns can change between calls. The fix orders by created_at DESC so the
+// most-recently-created row (the live account) always wins.
+func TestPostgresAdminStore_GetByEmail_DuplicateEmailPicksNewest(t *testing.T) {
+	store, admin := newUserPGStore(t)
+	ctx := context.Background()
+
+	older := pgProfile(t, "auth0|dup-old", "dup@example.com")
+	if err := store.Save(ctx, older); err != nil {
+		t.Fatalf("Save older: %v", err)
+	}
+	// created_at is DB-stamped (DEFAULT CURRENT_TIMESTAMP, not written by Go) —
+	// sleep so the second insert's timestamp is unambiguously later than the
+	// first's.
+	time.Sleep(10 * time.Millisecond)
+	newer := pgProfile(t, "auth0|dup-new", "dup@example.com")
+	if err := store.Save(ctx, newer); err != nil {
+		t.Fatalf("Save newer: %v", err)
+	}
+
+	got, err := admin.GetByEmail(ctx, "dup@example.com")
+	if err != nil {
+		t.Fatalf("GetByEmail: %v", err)
+	}
+	if got.UserID != newer.UserID {
+		t.Errorf("GetByEmail with duplicate emails: got userID %q, want %q (the newest row)", got.UserID, newer.UserID)
+	}
+}
+
+// TestPostgresAdminStore_GetByEmail_TiedCreatedAtPicksDeterministically verifies
+// GetByEmail stays deterministic across repeated calls even when two duplicate
+// rows share the exact same created_at — the case left open by ordering on
+// created_at alone (tc-i0t8e review follow-up). This is not hypothetical: the
+// 0016 migration backfilled every pre-existing row with the same migration-run
+// timestamp, so two old duplicate rows can tie. user_id is the tiebreak, so the
+// query result must stay pinned to the same row across repeated calls.
+func TestPostgresAdminStore_GetByEmail_TiedCreatedAtPicksDeterministically(t *testing.T) {
+	pool := pgtest.New(t)
+	pgtest.Truncate(t, pool, "users")
+	store := NewPostgresStore(pool)
+	admin := NewPostgresAdminStore(pool)
+	ctx := context.Background()
+
+	a := pgProfile(t, "auth0|dup-tied-a", "tied@example.com")
+	if err := store.Save(ctx, a); err != nil {
+		t.Fatalf("Save a: %v", err)
+	}
+	b := pgProfile(t, "auth0|dup-tied-b", "tied@example.com")
+	if err := store.Save(ctx, b); err != nil {
+		t.Fatalf("Save b: %v", err)
+	}
+	// Force an exact tie: pin both rows to the same created_at, reproducing the
+	// 0016 backfill scenario where the column has no natural distinguishing value.
+	tied := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	if _, err := pool.Exec(ctx, "UPDATE users SET created_at = $1 WHERE user_id IN ($2, $3)", tied, a.UserID, b.UserID); err != nil {
+		t.Fatalf("force tied created_at: %v", err)
+	}
+
+	want := a.UserID
+	if b.UserID > a.UserID {
+		want = b.UserID
+	}
+
+	for i := 0; i < 5; i++ {
+		got, err := admin.GetByEmail(ctx, "tied@example.com")
+		if err != nil {
+			t.Fatalf("GetByEmail call %d: %v", i, err)
+		}
+		if got.UserID != want {
+			t.Errorf("GetByEmail call %d with tied created_at: got userID %q, want %q (user_id DESC tiebreak)", i, got.UserID, want)
+		}
+	}
+}
+
 // TestPostgresAdminStore_GetByOriginalTransactionID verifies lookup by Apple
 // transaction id and ErrNotFound for a missing id.
 func TestPostgresAdminStore_GetByOriginalTransactionID(t *testing.T) {
