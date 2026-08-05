@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { WatchZoneListPage } from '../WatchZoneListPage';
 import { SpyWatchZoneRepository } from './spies/spy-watch-zone-repository';
-import { aWatchZone, aSecondWatchZone } from './fixtures/watch-zone.fixtures';
+import { aWatchZone, aSecondWatchZone, aWatchZoneBoundary } from './fixtures/watch-zone.fixtures';
 
 function renderWithRouter(ui: React.ReactElement) {
   return render(<MemoryRouter>{ui}</MemoryRouter>);
@@ -137,5 +137,24 @@ describe('WatchZoneListPage', () => {
     await screen.findByText('Home');
 
     expect(screen.queryByText('Paused')).not.toBeInTheDocument();
+  });
+
+  it('rounds an unrounded floating-point radius to a clean km value', async () => {
+    spy.listResult = [aWatchZone({ radiusMetres: 1999.2790775632876 })];
+
+    renderWithRouter(<WatchZoneListPage repository={spy} />);
+
+    expect(await screen.findByText('2 km')).toBeInTheDocument();
+    expect(screen.queryByText(/1\.9992790775632876/)).not.toBeInTheDocument();
+  });
+
+  it('shows "Custom shape" instead of a fabricated radius for a polygon zone', async () => {
+    spy.listResult = [aWatchZone({ boundary: aWatchZoneBoundary() })];
+
+    renderWithRouter(<WatchZoneListPage repository={spy} />);
+
+    expect(await screen.findByText('Custom shape')).toBeInTheDocument();
+    expect(screen.queryByText(/km/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/\bm\b/)).not.toBeInTheDocument();
   });
 });
