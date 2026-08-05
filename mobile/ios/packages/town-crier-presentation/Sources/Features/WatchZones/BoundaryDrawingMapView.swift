@@ -1,7 +1,70 @@
+import MapKit
+import TownCrierDomain
+
+/// Computes the map region ``BoundaryDrawingMapView`` shows on first
+/// appearance (GH#1031, bead tc-7se1w.2): a fixed close-in region centred
+/// on the postcode-geocoded centre when there are no vertices yet (a
+/// brand-new custom shape — today's behaviour, unchanged), or a region
+/// that fits the bounding box of the existing vertices with margin when
+/// re-opening a zone that already has a drawn polygon. Without this, the
+/// fixed 1000m default clips a large polygon's vertices/edges outside the
+/// visible map on reopen.
+///
+/// A free-standing, non-generic type (rather than a member of the generic
+/// `BoundaryDrawingMapView<ViewModel>`) so the zoom-to-fit math is
+/// directly unit-testable without a concrete `ViewModel` or a
+/// `UIViewRepresentable` context. Deliberately outside the `canImport(UIKit)`
+/// guard below — it only needs `MapKit`/`CoreLocation`, both available on
+/// macOS, so `swift test`'s bare-macOS build (no UIKit) can still see it.
+enum BoundaryDrawingRegion {
+  /// The fixed region size (metres) used when there are no vertices yet —
+  /// matches the region this view always used before tc-7se1w.2.
+  static let freshDrawRegionMetres: CLLocationDistance = 1000
+
+  /// Extra room around the tightest bounding box of the vertices, as a
+  /// fraction of the box's own span — keeps drawn edges/vertices from
+  /// sitting flush against the map's edge rather than comfortably inside it.
+  static let marginFraction = 0.3
+
+  /// Smallest span (degrees of latitude/longitude) the fitted region is
+  /// allowed to shrink to — stops a single vertex or a tightly clustered
+  /// few vertices from producing an absurdly close-in zoom.
+  static let minimumSpanDegrees = 0.006
+
+  static func fitting(vertices: [Coordinate], initialCentre: Coordinate) -> MKCoordinateRegion {
+    guard !vertices.isEmpty else {
+      return MKCoordinateRegion(
+        center: CLLocationCoordinate2D(
+          latitude: initialCentre.latitude, longitude: initialCentre.longitude),
+        latitudinalMeters: freshDrawRegionMetres,
+        longitudinalMeters: freshDrawRegionMetres
+      )
+    }
+
+    let latitudes = vertices.map(\.latitude)
+    let longitudes = vertices.map(\.longitude)
+    // Force-unwrap-free: `vertices` is non-empty here, so `min()`/`max()`
+    // always succeed; the `??` fallback only guards the type-checker.
+    let minLatitude = latitudes.min() ?? initialCentre.latitude
+    let maxLatitude = latitudes.max() ?? initialCentre.latitude
+    let minLongitude = longitudes.min() ?? initialCentre.longitude
+    let maxLongitude = longitudes.max() ?? initialCentre.longitude
+
+    let centre = CLLocationCoordinate2D(
+      latitude: (minLatitude + maxLatitude) / 2,
+      longitude: (minLongitude + maxLongitude) / 2
+    )
+    let span = MKCoordinateSpan(
+      latitudeDelta: max((maxLatitude - minLatitude) * (1 + marginFraction), minimumSpanDegrees),
+      longitudeDelta: max(
+        (maxLongitude - minLongitude) * (1 + marginFraction), minimumSpanDegrees)
+    )
+    return MKCoordinateRegion(center: centre, span: span)
+  }
+}
+
 #if canImport(UIKit)
-  import MapKit
   import SwiftUI
-  import TownCrierDomain
 
   /// A UIKit `MKMapView` wrapped for SwiftUI for drawing a custom-shape watch
   /// zone boundary (GH#1031, bead tc-6he3x.8): tap an empty area to drop a
@@ -49,12 +112,8 @@
       mapView.delegate = context.coordinator
       mapView.pointOfInterestFilter = .excludingAll
       mapView.setRegion(
-        MKCoordinateRegion(
-          center: CLLocationCoordinate2D(
-            latitude: initialCentre.latitude, longitude: initialCentre.longitude),
-          latitudinalMeters: 1000,
-          longitudinalMeters: 1000
-        ),
+        BoundaryDrawingRegion.fitting(
+          vertices: viewModel.boundaryVertices, initialCentre: initialCentre),
         animated: false
       )
 
