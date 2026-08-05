@@ -140,12 +140,12 @@ describe('WatchZoneListPage', () => {
   });
 
   it('rounds an unrounded floating-point radius to a clean km value', async () => {
-    spy.listResult = [aWatchZone({ radiusMetres: 1999.2790775632876 })];
+    spy.listResult = [aWatchZone({ radiusMetres: 1999.279077563 })];
 
     renderWithRouter(<WatchZoneListPage repository={spy} />);
 
     expect(await screen.findByText('2 km')).toBeInTheDocument();
-    expect(screen.queryByText(/1\.9992790775632876/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/1\.999279077563/)).not.toBeInTheDocument();
   });
 
   it('shows "Custom shape" instead of a fabricated radius for a polygon zone', async () => {
