@@ -37,6 +37,16 @@ datastorePreferences = "1.2.1"
 # listing on failure; tc-4jjw / #778).
 playReview = "2.0.2"
 
+# Google Maps SDK + maps-compose (GH#776, epic #770 pre-resolved decision).
+# Pinned below the newest release for the same compileSdk-35 reason as the
+# AndroidX block above: maps-compose 6.6.0+ transitively requests
+# androidx.core:core-ktx 1.16.0/1.17.0, which (like the AndroidX libs above)
+# declares a minCompileSdk 36 AAR-metadata floor. 6.5.0 is the newest release
+# whose own transitive core-ktx (1.15.0) matches this project's own pin and
+# targets compileSdk 35 cleanly.
+mapsCompose = "6.5.0"
+playServicesMaps = "19.2.0"
+
 # Lint (pinned like SwiftLint's curl-pinned-binary precedent — reproducibility over convenience)
 ktlintGradle = "14.2.0"
 ktlintCli = "1.8.0"
@@ -76,6 +86,8 @@ okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
 auth0 = { module = "com.auth0.android:auth0", version.ref = "auth0" }
 androidx-datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastorePreferences" }
 play-review-ktx = { module = "com.google.android.play:review-ktx", version.ref = "playReview" }
+maps-compose = { module = "com.google.maps.android:maps-compose", version.ref = "mapsCompose" }
+play-services-maps = { module = "com.google.android.gms:play-services-maps", version.ref = "playServicesMaps" }
 
 junit-bom = { module = "org.junit:junit-bom", version.ref = "junitBom" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
