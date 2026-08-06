@@ -7,6 +7,7 @@ import uk.towncrierapp.data.auth.CredentialsStore
 import uk.towncrierapp.data.auth.CurrentActivityProvider
 import uk.towncrierapp.data.legal.LegalDocumentAssetReader
 import uk.towncrierapp.domain.applications.FakeApplicationListPreferencesStore
+import uk.towncrierapp.domain.map.FakeMapPreferencesStore
 import uk.towncrierapp.domain.onboarding.FakeOnboardingRepository
 import uk.towncrierapp.domain.reviewprompt.FakeReviewPromptStore
 import uk.towncrierapp.domain.settings.FakeAppearanceStore
@@ -41,8 +42,12 @@ class AppGraphSmokeTest {
             credentialsStore = NoOpCredentialsStore,
             activityProvider = CurrentActivityProvider { null },
             tierCache = FakeSubscriptionTierCache(),
-            applicationListPreferencesStore = FakeApplicationListPreferencesStore(),
-            onboardingRepository = FakeOnboardingRepository(),
+            preferenceStores =
+                PreferenceStores(
+                    applicationListPreferencesStore = FakeApplicationListPreferencesStore(),
+                    onboardingRepository = FakeOnboardingRepository(),
+                    mapPreferencesStore = FakeMapPreferencesStore(),
+                ),
             settingsLeaves =
                 SettingsLeaves(
                     appearanceStore = FakeAppearanceStore(),
@@ -77,6 +82,7 @@ class AppGraphSmokeTest {
         assertNotNull(graph.savedApplicationRepository)
         assertNotNull(graph.notificationStateRepository)
         assertNotNull(graph.applicationListPreferencesStore)
+        assertNotNull(graph.mapPreferencesStore)
         assertNotNull(graph.onboardingRepository)
         assertNotNull(graph.appearanceCoordinator)
         assertNotNull(graph.legalDocumentRepository)
@@ -124,7 +130,6 @@ class AppGraphSmokeTest {
                 options = AppGraphOptions(callFactory = noOpCallFactory),
             )
 
-        assertEquals("http://10.0.2.2:8080", graph.baseUrl)
-        assertEquals("https://api-dev.towncrierapp.uk", graph.authAudience)
+        assertEquals(null, graph.deviceTokenRepository)
     }
 }
