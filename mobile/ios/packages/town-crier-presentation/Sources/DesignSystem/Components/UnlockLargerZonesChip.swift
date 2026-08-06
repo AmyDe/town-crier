@@ -10,20 +10,22 @@ import SwiftUI
 /// unlocks live. The richer "locked region on the track" gesture is an open
 /// question to be prototyped in TestFlight before release.
 ///
-/// The copy sells the whole upgrade, not just a bigger radius: bigger zones, more
-/// than one zone, and instant alerts by push and email (the free tier gets a
-/// weekly digest only). Uses the brand amber at 15% opacity so it reads as an
-/// invitation, not an error — mirrors ``LargeRadiusWarningView``.
+/// The copy sells the whole upgrade, not just a bigger radius: bigger zones, custom
+/// shapes instead of a circle, more than one zone, and instant alerts by push and
+/// email (the free tier gets a weekly digest only). Uses the brand amber at 15%
+/// opacity so it reads as an invitation, not an error — mirrors
+/// ``LargeRadiusWarningView``.
 public struct UnlockLargerZonesChip: View {
   /// User-facing copy, kept in one place so it can be unit-tested and reused.
   enum Copy {
     static let title = "Do more with a plan"
     static let benefits =
-      "Bigger watch zones up to 10 km, more than one zone, and instant alerts by "
-      + "push and email. Free gives you a weekly digest."
+      "Bigger watch zones up to 10 km, custom shapes instead of a circle, more than "
+      + "one zone, and instant alerts by push and email. Free gives you a weekly digest."
     static let accessibilityLabel =
-      "Do more with a plan. Bigger watch zones up to 10 kilometres, more than one "
-      + "watch zone, and instant alerts by push and email. Free gives you a weekly digest."
+      "Do more with a plan. Bigger watch zones up to 10 kilometres, custom shapes "
+      + "instead of a circle, more than one watch zone, and instant alerts by push and "
+      + "email. Free gives you a weekly digest."
     static let accessibilityHint = "Opens subscription plans"
   }
 

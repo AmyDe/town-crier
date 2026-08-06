@@ -4,9 +4,10 @@ import SwiftUI
 /// filling the space they would otherwise see empty once they hit their one-zone
 /// limit (tc-t8hc).
 ///
-/// It sells the whole plan, not just one feature: bigger zones, more than one
-/// zone, and instant alerts by push and email (the free tier gets a weekly digest
-/// only). Tapping "View Plans" opens the subscription paywall via the host's
+/// It sells the whole plan, not just one feature: bigger zones, custom shapes
+/// instead of a circle, more than one zone, and instant alerts by push and email
+/// (the free tier gets a weekly digest only). Tapping "View Plans" opens the
+/// subscription paywall via the host's
 /// `onViewPlans` closure, which the list wires to
 /// ``WatchZoneListViewModel/viewPlans()``.
 ///
@@ -26,12 +27,14 @@ public struct WatchZoneInlineUpsellCard: View {
     static let eyebrow = "Upgrade"
     static let title = "Do more with a plan"
     static let biggerZones = "Bigger watch zones, up to 10 km"
+    static let customShapes = "Custom shapes instead of a circle"
     static let moreThanOneZone = "More than one watch zone"
     static let instantAlerts = "Instant alerts by push and email"
     static let freeClarifier = "Free gives you a weekly digest."
     static let viewPlans = "View Plans"
     static let accessibilityLabel =
       "Do more with a plan. Bigger watch zones, up to 10 kilometres. "
+      + "Custom shapes instead of a circle. "
       + "More than one watch zone. Instant alerts by push and email. "
       + "Free gives you a weekly digest."
     static let accessibilityHint = "Opens subscription plans"
@@ -61,6 +64,7 @@ public struct WatchZoneInlineUpsellCard: View {
 
         VStack(alignment: .leading, spacing: TCSpacing.small) {
           benefitRow(icon: "arrow.up.left.and.arrow.down.right", text: Copy.biggerZones)
+          benefitRow(icon: "scribble", text: Copy.customShapes)
           benefitRow(icon: "square.on.square", text: Copy.moreThanOneZone)
           benefitRow(icon: "bell.badge", text: Copy.instantAlerts)
         }
