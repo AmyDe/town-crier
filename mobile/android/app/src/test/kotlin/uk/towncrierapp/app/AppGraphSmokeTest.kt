@@ -130,6 +130,7 @@ class AppGraphSmokeTest {
                 options = AppGraphOptions(callFactory = noOpCallFactory),
             )
 
-        assertEquals(null, graph.deviceTokenRepository)
+        assertEquals("http://10.0.2.2:8080", graph.baseUrl)
+        assertEquals("https://api-dev.towncrierapp.uk", graph.authAudience)
     }
 }
