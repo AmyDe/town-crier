@@ -96,6 +96,11 @@ public class MapViewModel(
 
     /** Switches the active zone: persists the choice, clears the status filter (server/iOS parity), and refetches immediately — never debounced. */
     public fun selectZone(zone: WatchZone) {
+        // Cancel any pending debounced pan-fetch (onCameraIdle) for the PREVIOUS zone's
+        // viewport — left running, it would land after this function's own fetch and
+        // overwrite lastViewport/lastZoom (and the map) with the old zone's stale
+        // bounding box, even though selectedZone has already moved on to the new one.
+        refetchJob?.cancel()
         _uiState.update { it.copy(selectedZone = zone, selectedStatusFilter = null, clusters = emptyList()) }
         viewModelScope.launch {
             mapPreferencesStore.writeLastSelectedZoneId(zone.id)
@@ -109,6 +114,9 @@ public class MapViewModel(
 
     /** Applies a status filter chip by refetching the current viewport's clusters server-side (`status=`) — never by filtering a held set. */
     public fun applyStatusFilter(status: ApplicationStatus?) {
+        // Same rationale as selectZone: an outstanding debounced pan-fetch must not be
+        // left to land after this immediate one and overwrite it with a stale viewport.
+        refetchJob?.cancel()
         _uiState.update { it.copy(selectedStatusFilter = status) }
         val viewport = lastViewport ?: return
         val zoom = lastZoom ?: return

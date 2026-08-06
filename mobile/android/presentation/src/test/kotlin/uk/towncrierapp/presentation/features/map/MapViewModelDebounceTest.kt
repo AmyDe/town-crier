@@ -12,11 +12,14 @@ import org.junit.jupiter.api.BeforeEach
 import uk.towncrierapp.domain.applications.FakePlanningApplicationRepository
 import uk.towncrierapp.domain.applications.FakeSavedApplicationRepository
 import uk.towncrierapp.domain.map.FakeMapPreferencesStore
+import uk.towncrierapp.domain.map.MapViewport
 import uk.towncrierapp.domain.map.aMapViewport
 import uk.towncrierapp.domain.watchzones.FakeWatchZoneRepository
+import uk.towncrierapp.domain.watchzones.WatchZoneId
 import uk.towncrierapp.domain.watchzones.aWatchZone
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /**
  * Camera-idle debounce (GH#776): a pan/zoom flurry coalesces into a single
@@ -89,6 +92,37 @@ class MapViewModelDebounceTest {
             runCurrent()
 
             assertEquals(callsAfterLoad, planningRepository.fetchClustersCalls.size)
+        }
+
+    @Test
+    fun `switching zones cancels a pending debounced pan-fetch so it never lands with the stale zone's viewport`() =
+        runTest(testDispatcher) {
+            val zoneA = aWatchZone(id = WatchZoneId("wz-a"))
+            val zoneB = aWatchZone(id = WatchZoneId("wz-b"))
+            val watchZoneRepository = FakeWatchZoneRepository(mutableListOf(zoneA, zoneB))
+            val planningRepository = FakePlanningApplicationRepository()
+            val sut =
+                MapViewModel(
+                    planningRepository,
+                    watchZoneRepository,
+                    FakeSavedApplicationRepository(),
+                    FakeMapPreferencesStore(),
+                )
+            sut.load()
+            runCurrent()
+            val zoneAPanViewport = aMapViewport(west = 5.0, south = 5.0, east = 5.1, north = 5.1)
+            sut.onCameraIdle(zoneAPanViewport, rawZoom = 10.0)
+
+            sut.selectZone(zoneB)
+            runCurrent()
+            advanceTimeBy(300)
+            runCurrent()
+
+            val zoneBInitialViewport = MapViewport.initial(zoneB.centre, zoneB.radiusMetres).first
+            assertTrue(planningRepository.fetchClustersCalls.none { it.viewport == zoneAPanViewport })
+            val lastCall = planningRepository.fetchClustersCalls.last()
+            assertEquals(zoneB.id, lastCall.zoneId)
+            assertEquals(zoneBInitialViewport, lastCall.viewport)
         }
 
     @Test
