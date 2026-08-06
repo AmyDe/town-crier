@@ -17,8 +17,13 @@ public struct OnboardingView: View {
         stepIndicator
           .padding(.top, TCSpacing.medium)
 
-        Spacer()
-
+        // A single `.frame(maxHeight: .infinity)` — rather than sandwiching
+        // the step between two `Spacer()`s — centres short steps exactly as
+        // before, but gives a scrolling step (``RadiusPickerStepView``,
+        // tc-7se1w.4) the whole remaining height to scroll within. Two
+        // flanking `Spacer()`s would instead tie with the step's own
+        // `ScrollView` for "infinite" flexibility and split the space
+        // between them, shrinking the very viewport that needed to grow.
         Group {
           switch viewModel.currentStep {
           case .welcome:
@@ -33,6 +38,7 @@ public struct OnboardingView: View {
             NotificationPermissionStepView(viewModel: viewModel)
           }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .transition(
           .asymmetric(
             insertion: .move(edge: .trailing).combined(with: .opacity),
@@ -40,8 +46,6 @@ public struct OnboardingView: View {
           )
         )
         .animation(.spring(response: 0.4), value: viewModel.currentStep)
-
-        Spacer()
       }
     }
     // In-wizard radius upsell (tc-w3cb.3): presented as a sheet *over* the
