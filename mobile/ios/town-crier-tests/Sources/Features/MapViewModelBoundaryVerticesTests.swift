@@ -12,19 +12,28 @@ import TownCrierDomain
 @Suite("MapViewModel boundary vertices")
 @MainActor
 struct MapViewModelBoundaryVerticesTests {
+  /// Isolated `UserDefaults` suite (not `.standard`) — a shared instance
+  /// across parallel `swift test` runs would let one test's persisted
+  /// zone-selection key (`selectZone(_:)` writes it) leak into another's
+  /// `resolveInitialZone` and pick the wrong starting zone.
   private func makeSUT(
     watchZones: [WatchZone]
-  ) -> (MapViewModel, SpyWatchZoneRepository) {
+  ) throws -> (MapViewModel, SpyWatchZoneRepository) {
     let spy = SpyPlanningApplicationRepository()
     spy.fetchClustersResult = .success([])
     let watchZoneSpy = SpyWatchZoneRepository()
     watchZoneSpy.loadAllResult = .success(watchZones)
-    let vm = MapViewModel(repository: spy, watchZoneRepository: watchZoneSpy)
+    let defaults = try #require(UserDefaults(suiteName: UUID().uuidString))
+    let vm = MapViewModel(
+      repository: spy,
+      watchZoneRepository: watchZoneSpy,
+      userDefaults: defaults,
+      zoneSelectionKey: "test.zone")
     return (vm, watchZoneSpy)
   }
 
-  @Test func boundaryVertices_nilForCircleZone() async {
-    let (sut, _) = makeSUT(watchZones: [.cambridge])
+  @Test func boundaryVertices_nilForCircleZone() async throws {
+    let (sut, _) = try makeSUT(watchZones: [.cambridge])
 
     await sut.loadApplications()
 
@@ -43,7 +52,7 @@ struct MapViewModelBoundaryVerticesTests {
       radiusMetres: 1000,
       boundary: boundary
     )
-    let (sut, _) = makeSUT(watchZones: [zone])
+    let (sut, _) = try makeSUT(watchZones: [zone])
 
     await sut.loadApplications()
 
@@ -63,7 +72,7 @@ struct MapViewModelBoundaryVerticesTests {
       radiusMetres: 1000,
       boundary: boundary
     )
-    let (sut, _) = makeSUT(watchZones: [.cambridge, customZone])
+    let (sut, _) = try makeSUT(watchZones: [.cambridge, customZone])
     await sut.loadApplications()
     #expect(sut.boundaryVertices == nil)
 
