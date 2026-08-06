@@ -17,6 +17,8 @@ import uk.towncrierapp.domain.applications.PlanningApplicationRepository
 import uk.towncrierapp.domain.applications.StatusEvent
 import uk.towncrierapp.domain.applications.isDecided
 import uk.towncrierapp.domain.applications.wireValue
+import uk.towncrierapp.domain.map.MapCluster
+import uk.towncrierapp.domain.map.MapViewport
 import uk.towncrierapp.domain.watchzones.Coordinate
 import uk.towncrierapp.domain.watchzones.WatchZoneId
 import java.time.LocalDate
@@ -74,6 +76,25 @@ public class ApiPlanningApplicationRepository(
                 ApiEndpoint.get("/v1/applications/by-slug/$authoritySlug/$ref"),
                 ApplicationDetailDto.serializer(),
             ).toDomain()
+
+    override suspend fun fetchClusters(
+        zoneId: WatchZoneId,
+        viewport: MapViewport,
+        zoom: Int,
+        status: ApplicationStatus?,
+    ): List<MapCluster> {
+        val query =
+            buildList {
+                add("bbox" to viewport.queryValue)
+                add("zoom" to zoom.toString())
+                status?.let { add("status" to it.wireValue) }
+            }
+        return apiClient
+            .request(
+                ApiEndpoint.get("/v1/me/watch-zones/${zoneId.value}/applications/clusters", query = query),
+                ListSerializer(MapClusterDto.serializer()),
+            ).map { it.toDomain() }
+    }
 
     public companion object {
         public const val PAGE_SIZE: Int = 150
@@ -177,6 +198,39 @@ internal fun ApplicationDetailDto.toDomain(): PlanningApplication {
         latestUnreadEvent = latestUnreadEvent?.toDomain(),
     )
 }
+
+// ── Map clusters (GH#698, GH#776) ──
+
+@Serializable
+internal data class MapClusterApplicationIdDto(
+    val authority: String,
+    val name: String,
+)
+
+// Server contract: api-go/internal/applications/zoneclusters.go's Cluster.
+// applicationId is `null` for every count>1 cell; applicationIds is OMITTED
+// (defaults to empty here) for every splittable cell — only an unsplittable
+// "stacked" cell carries it (GH#722).
+@Serializable
+internal data class MapClusterDto(
+    val latitude: Double,
+    val longitude: Double,
+    val count: Int,
+    val statusCounts: Map<String, Int>,
+    val applicationId: MapClusterApplicationIdDto? = null,
+    val applicationIds: List<MapClusterApplicationIdDto> = emptyList(),
+)
+
+internal fun MapClusterApplicationIdDto.toDomain(): PlanningApplicationId = PlanningApplicationId(authority, name)
+
+internal fun MapClusterDto.toDomain(): MapCluster =
+    MapCluster(
+        coordinate = Coordinate(latitude, longitude),
+        count = count,
+        statusCounts = statusCounts.mapKeys { (state, _) -> ApplicationStatus.fromWireValue(state) },
+        member = applicationId?.toDomain(),
+        members = applicationIds.map { it.toDomain() },
+    )
 
 // A missing/unparseable createdAt drops just the unread indicator, not the
 // whole row — a stale or malformed event server-side shouldn't hide an
