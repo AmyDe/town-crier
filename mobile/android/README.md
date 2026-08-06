@@ -139,6 +139,41 @@ environment mechanism (no `.env` files, no per-flavor secrets):
 | `dev` | `uk.towncrierapp.mobile.dev` | `https://api-dev.towncrierapp.uk` |
 | `prod` | `uk.towncrierapp.mobile` | `https://api.towncrierapp.uk` |
 
+## Google Maps API key (GH#776) — still-needed manual step
+
+The Map tab (`:presentation`'s `features/map/`) uses `com.google.maps.android:maps-compose`.
+The key itself is injected the same way as `auth0Domain`/`auth0Scheme` —
+`manifestPlaceholders["mapsApiKey"]` in `app/build.gradle.kts`, sourced from a
+`MAPS_API_KEY` Gradle property (never hardcoded) — so the build always succeeds with
+an empty placeholder (the map just won't render tiles) until a human does the
+one-time GCP setup below. This is an **operational step this repo's agents must not
+perform** (GCP project/billing/console access):
+
+1. **Create the key** in the same GCP project as FCM (#780). The Maps SDK for
+   Android render itself is free (unlimited, no per-load charge) — a billing
+   account is only unavoidable because GCP requires one to issue any Maps
+   Platform key.
+2. **Application restriction** → "Android apps" → one `(package_name, SHA-1
+   certificate fingerprint)` entry per flavor that renders a map, all on the
+   *same* key (GCP accepts an array, unlike Auth0's single `mobile.android`
+   field — dev/local/prod can coexist with no cutover step):
+   - `uk.towncrierapp.mobile.dev` + the debug keystore SHA-1:
+     `keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android -keypass android`
+   - `uk.towncrierapp.mobile` (prod) + the **Play App Signing** cert's SHA-1 —
+     pull this from Play Console's App Integrity page once #779 exists, **not**
+     the local release/upload keystore (Play re-signs the APK).
+   - `local` flavor's package (reuses `.dev`, see the flavor comment in
+     `app/build.gradle.kts`) + the debug SHA-1 too, if it renders a map.
+   - It's the 20-byte **SHA-1**, not SHA-256.
+3. **API restriction** → limit the key to "Maps SDK for Android" only, so a
+   scraped key can't be pointed at billed Maps Platform APIs (Places/Geocoding/
+   Directions/Static Maps) under this project.
+4. **Daily quota cap** on the key in the console, as a spend backstop.
+5. Set the key locally via `-PMAPS_API_KEY=...` or in `~/.gradle/gradle.properties`
+   (never committed) — the key is not secret in the APK once restricted (Google's
+   own guidance: the restrictions are the security boundary, not concealment), but
+   keep it out of git history anyway.
+
 ## Design system
 
 `:presentation`'s `designsystem/` package implements the Town Crier design language
