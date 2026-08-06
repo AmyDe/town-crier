@@ -194,9 +194,13 @@ private struct WatchZoneRow: View {
 
   var body: some View {
     HStack(spacing: TCSpacing.medium) {
-      ZoneMapPreview(centre: zone.centre, radiusMetres: zone.radiusMetres)
-        .frame(width: 56, height: 56)
-        .clipShape(RoundedRectangle(cornerRadius: TCCornerRadius.small))
+      ZoneMapPreview(
+        centre: zone.centre,
+        radiusMetres: zone.radiusMetres,
+        boundaryVertices: zone.boundary?.vertices
+      )
+      .frame(width: 56, height: 56)
+      .clipShape(RoundedRectangle(cornerRadius: TCCornerRadius.small))
 
       VStack(alignment: .leading, spacing: TCSpacing.extraSmall) {
         // Mono header strip: radius reads as the zone's metadata line,
