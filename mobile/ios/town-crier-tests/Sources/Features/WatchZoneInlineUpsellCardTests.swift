@@ -31,6 +31,12 @@ struct WatchZoneInlineUpsellCardTests {
     #expect(WatchZoneInlineUpsellCard.Copy.biggerZones == "Bigger watch zones, up to 10 km")
   }
 
+  @Test func benefit_customShapes() {
+    // Custom-shape (polygon) zones are a real Personal/Pro entitlement (GH#1031,
+    // tc-7se1w.5) and belong alongside radius and zone-count.
+    #expect(WatchZoneInlineUpsellCard.Copy.customShapes == "Custom shapes instead of a circle")
+  }
+
   @Test func benefit_moreThanOneZone() {
     #expect(WatchZoneInlineUpsellCard.Copy.moreThanOneZone == "More than one watch zone")
   }
@@ -60,6 +66,7 @@ struct WatchZoneInlineUpsellCardTests {
     let label = WatchZoneInlineUpsellCard.Copy.accessibilityLabel
     #expect(label.contains("Do more with a plan"))
     #expect(label.contains("Bigger watch zones, up to 10 kilometres"))
+    #expect(label.contains("Custom shapes instead of a circle"))
     #expect(label.contains("More than one watch zone"))
     #expect(label.contains("Instant alerts by push and email"))
     #expect(label.contains("Free gives you a weekly digest."))
