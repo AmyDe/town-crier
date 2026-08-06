@@ -11,6 +11,7 @@ import { ConfirmMap } from '../../components/ConfirmMap/ConfirmMap';
 import { ShapeModeToggle } from './ShapeModeToggle';
 import { BoundaryMap } from '../../components/BoundaryMap/BoundaryMap';
 import { CustomShapeUpsell } from '../../components/CustomShapeUpsell/CustomShapeUpsell';
+import { appStoreUrl } from '../../config/links';
 import styles from './WatchZoneCreatePage.module.css';
 
 interface Props {
@@ -104,7 +105,11 @@ export function WatchZoneCreatePage({ repository, geocodingPort, navigate, tier 
             </>
           )}
 
-          {!canDrawCustomShape && <CustomShapeUpsell />}
+          {!canDrawCustomShape && (
+            <CustomShapeUpsell
+              upgradeHref={appStoreUrl('web-watch-zone-create-custom-shape')}
+            />
+          )}
 
           {error && (
             <p className={styles.error} role="alert">

@@ -5,6 +5,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { OnboardingPage } from '../OnboardingPage';
 import { SpyOnboardingPort } from './spies/spy-onboarding-port';
 import { SpyGeocodingPort } from './spies/spy-geocoding-port';
+import { appStoreUrl } from '../../../config/links';
 
 vi.mock('react-leaflet', () => ({
   MapContainer: ({ children }: { children: React.ReactNode }) => (
@@ -176,9 +177,13 @@ describe('OnboardingPage', () => {
     expect(
       screen.getByRole('heading', { name: /draw any shape/i }),
     ).toBeInTheDocument();
-    // No purchase/checkout route exists on web yet (GH#1031 section 8) —
-    // the upsell must not render an "Upgrade" CTA button.
-    expect(screen.queryByRole('button', { name: /upgrade/i })).not.toBeInTheDocument();
+    // No web checkout exists (GH#1031) — the upsell CTA links out to the App
+    // Store instead of a web purchase flow, tagged so installs attribute
+    // back to this surface.
+    const cta = screen.getByRole('link', { name: /upgrade/i });
+    expect(cta).toHaveAttribute('href', appStoreUrl('web-onboarding-custom-shape'));
+    expect(cta).toHaveAttribute('target', '_blank');
+    expect(cta).toHaveAttribute('rel', 'noopener noreferrer');
   });
 
   it('shows error when API call fails', async () => {

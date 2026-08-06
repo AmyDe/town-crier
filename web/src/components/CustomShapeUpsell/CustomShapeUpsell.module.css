@@ -50,6 +50,10 @@
 }
 
 .cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
   padding: var(--tc-space-sm) var(--tc-space-lg);
   background: var(--tc-amber);
   color: var(--tc-text-on-accent);
@@ -57,10 +61,13 @@
   border-radius: var(--tc-radius-md);
   font-weight: var(--tc-weight-semibold);
   font-size: var(--tc-text-body);
+  text-decoration: none;
   cursor: pointer;
   transition: background var(--tc-duration-fast);
 }
 
 .cta:hover {
   background: var(--tc-amber-hover);
+  color: var(--tc-text-on-accent);
+  text-decoration: none;
 }

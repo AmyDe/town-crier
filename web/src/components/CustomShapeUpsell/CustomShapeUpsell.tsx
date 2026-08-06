@@ -1,10 +1,16 @@
 import styles from './CustomShapeUpsell.module.css';
 
 interface Props {
-  onUpgradeClick?: () => void;
+  /**
+   * App Store link (campaign-tagged, see `appStoreUrl` in `config/links.ts`)
+   * for the upgrade CTA. Web has no in-app checkout — subscriptions are an
+   * iOS in-app purchase — so this points out to the store listing, mirroring
+   * `Pricing.tsx`. No CTA renders when omitted.
+   */
+  upgradeHref?: string;
 }
 
-export function CustomShapeUpsell({ onUpgradeClick }: Props) {
+export function CustomShapeUpsell({ upgradeHref }: Props) {
   return (
     <div className={styles.container}>
       <svg
@@ -31,10 +37,15 @@ export function CustomShapeUpsell({ onUpgradeClick }: Props) {
         We&apos;ll watch it and notify you the moment something changes.
       </p>
 
-      {onUpgradeClick && (
-        <button type="button" className={styles.cta} onClick={onUpgradeClick}>
+      {upgradeHref && (
+        <a
+          className={styles.cta}
+          href={upgradeHref}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
           Upgrade to draw custom shapes
-        </button>
+        </a>
       )}
     </div>
   );
