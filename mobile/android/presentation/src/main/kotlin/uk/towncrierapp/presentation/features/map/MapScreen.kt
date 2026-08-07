@@ -1,14 +1,17 @@
 package uk.towncrierapp.presentation.features.map
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
@@ -28,6 +31,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.google.android.gms.maps.model.CameraPosition
@@ -41,8 +45,10 @@ import uk.towncrierapp.domain.applications.PlanningApplication
 import uk.towncrierapp.domain.applications.wireValue
 import uk.towncrierapp.domain.map.MapCluster
 import uk.towncrierapp.domain.map.MapViewport
+import uk.towncrierapp.domain.map.zoom
 import uk.towncrierapp.domain.watchzones.WatchZone
 import uk.towncrierapp.presentation.R
+import uk.towncrierapp.presentation.designsystem.TownCrierRadius
 import uk.towncrierapp.presentation.designsystem.TownCrierSpacing
 import uk.towncrierapp.presentation.designsystem.components.CapsuleChip
 import uk.towncrierapp.presentation.features.applicationlist.applicationErrorMessageRes
@@ -103,7 +109,10 @@ internal fun MapScreen(
                 title = { Text(text = stringResource(R.string.bottom_nav_map)) },
                 actions = {
                     IconButton(onClick = onSettingsClick) {
-                        Icon(imageVector = Icons.Filled.Settings, contentDescription = null)
+                        Icon(
+                            imageVector = Icons.Filled.Settings,
+                            contentDescription = stringResource(R.string.settings_content_description),
+                        )
                     }
                 },
             )
@@ -219,21 +228,10 @@ private fun BoxScope.MapBody(
             CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
         }
 
-        state.error != null -> {
-            Text(
-                text = stringResource(applicationErrorMessageRes(state.error)),
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.align(Alignment.Center).padding(TownCrierSpacing.md),
-            )
-        }
-
-        state.isEmpty -> {
-            Column(modifier = Modifier.align(Alignment.Center).padding(TownCrierSpacing.md)) {
-                Text(text = stringResource(R.string.map_empty_title), style = MaterialTheme.typography.titleLarge)
-                Text(text = stringResource(R.string.map_empty_description), style = MaterialTheme.typography.bodyMedium)
-            }
-        }
-
+        // The map itself always renders once something has loaded — an error or an
+        // empty viewport is an overlay ON TOP of it, never a replacement for it.
+        // Swapping the map out here would strand the user: with no map, there is no
+        // way left to pan or zoom back to an area that has applications.
         else -> {
             GoogleMapContent(
                 state = state,
@@ -241,11 +239,50 @@ private fun BoxScope.MapBody(
                 onCameraIdle = onCameraIdle,
                 onCameraTargetConsumed = onCameraTargetConsumed,
             )
+            when {
+                state.error != null -> {
+                    MapOverlayCard(modifier = Modifier.align(Alignment.Center).padding(TownCrierSpacing.md)) {
+                        Text(
+                            text = stringResource(applicationErrorMessageRes(state.error)),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                }
+
+                state.isEmpty -> {
+                    MapOverlayCard(modifier = Modifier.align(Alignment.Center).padding(TownCrierSpacing.md)) {
+                        Text(
+                            text = stringResource(R.string.map_empty_title),
+                            style = MaterialTheme.typography.titleLarge,
+                        )
+                        Text(
+                            text = stringResource(R.string.map_empty_description),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                }
+            }
             if (state.isLoading) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.TopCenter).padding(TownCrierSpacing.md))
             }
         }
     }
+}
+
+/** A legible surface behind text overlaid on the map — otherwise error/empty copy can land directly on map tiles of any colour. */
+@Composable
+private fun MapOverlayCard(
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(
+        modifier =
+            modifier
+                .clip(RoundedCornerShape(TownCrierRadius.md))
+                .background(MaterialTheme.colorScheme.surface)
+                .padding(TownCrierSpacing.md),
+        content = content,
+    )
 }
 
 /**
@@ -275,7 +312,7 @@ private fun GoogleMapContent(
     LaunchedEffect(state.pendingCameraTarget) {
         val target = state.pendingCameraTarget ?: return@LaunchedEffect
         cameraPositionState.position =
-            CameraPosition.fromLatLngZoom(target.toLatLngBounds().center, cameraPositionState.position.zoom)
+            CameraPosition.fromLatLngZoom(target.toLatLngBounds().center, target.zoom.toFloat())
         onCameraTargetConsumed()
     }
 

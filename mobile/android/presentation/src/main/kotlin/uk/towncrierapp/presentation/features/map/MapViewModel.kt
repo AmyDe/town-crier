@@ -3,6 +3,7 @@ package uk.towncrierapp.presentation.features.map
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -53,8 +54,15 @@ public class MapViewModel(
     private var lastViewport: MapViewport? = null
     private var lastZoom: Int? = null
 
-    /** The pending debounced refetch, cancelled and rescheduled on each camera-idle event. */
-    private var refetchJob: Job? = null
+    /**
+     * The in-flight (or pending) cluster fetch — [onCameraIdle], [selectZone], and
+     * [applyStatusFilter] each cancel this before launching their own replacement via
+     * [launchFetch]. That keeps exactly one fetch alive at a time, so the last
+     * *request* always wins the map, never whichever happens to be the last to
+     * *complete* (e.g. a debounced pan-fetch for the previous zone landing after an
+     * immediate zone-switch fetch, or two rapid zone switches racing each other).
+     */
+    private var fetchJob: Job? = null
 
     public fun load() {
         viewModelScope.launch {
@@ -84,43 +92,63 @@ public class MapViewModel(
         rawZoom: Double,
     ) {
         val zoom = MapViewport.clampZoom(rawZoom)
-        refetchJob?.cancel()
-        refetchJob =
-            viewModelScope.launch {
-                delay(debounceMillis)
-                lastViewport = viewport
-                lastZoom = zoom
+        fetchJob?.cancel()
+        fetchJob =
+            launchFetch(
+                scope = viewModelScope,
+                debounceMillis = debounceMillis,
+                debounce = true,
+                onViewportSettled = {
+                    lastViewport = viewport
+                    lastZoom = zoom
+                },
+            ) {
                 fetchClustersAndUpdateState(repository, _uiState, viewport, zoom)
             }
     }
 
     /** Switches the active zone: persists the choice, clears the status filter (server/iOS parity), and refetches immediately — never debounced. */
     public fun selectZone(zone: WatchZone) {
-        // Cancel any pending debounced pan-fetch (onCameraIdle) for the PREVIOUS zone's
-        // viewport — left running, it would land after this function's own fetch and
-        // overwrite lastViewport/lastZoom (and the map) with the old zone's stale
-        // bounding box, even though selectedZone has already moved on to the new one.
-        refetchJob?.cancel()
         _uiState.update { it.copy(selectedZone = zone, selectedStatusFilter = null, clusters = emptyList()) }
-        viewModelScope.launch {
-            mapPreferencesStore.writeLastSelectedZoneId(zone.id)
-            val (viewport, zoom) = MapViewport.initial(zone.centre, zone.radiusMetres)
-            _uiState.update { it.copy(pendingCameraTarget = viewport) }
-            lastViewport = viewport
-            lastZoom = zoom
-            fetchClustersAndUpdateState(repository, _uiState, viewport, zoom)
-        }
+        // Best-effort, independent of the fetch below: cancelling fetchJob (here or from
+        // a later call) must never take this write down with it, and a slow/failed write
+        // must never delay or block the map from refetching.
+        viewModelScope.launch { mapPreferencesStore.writeLastSelectedZoneId(zone.id) }
+        val (viewport, zoom) = MapViewport.initial(zone.centre, zone.radiusMetres)
+        _uiState.update { it.copy(pendingCameraTarget = viewport) }
+        fetchJob?.cancel()
+        fetchJob =
+            launchFetch(
+                scope = viewModelScope,
+                debounceMillis = debounceMillis,
+                debounce = false,
+                onViewportSettled = {
+                    lastViewport = viewport
+                    lastZoom = zoom
+                },
+            ) {
+                fetchClustersAndUpdateState(repository, _uiState, viewport, zoom)
+            }
     }
 
     /** Applies a status filter chip by refetching the current viewport's clusters server-side (`status=`) — never by filtering a held set. */
     public fun applyStatusFilter(status: ApplicationStatus?) {
-        // Same rationale as selectZone: an outstanding debounced pan-fetch must not be
-        // left to land after this immediate one and overwrite it with a stale viewport.
-        refetchJob?.cancel()
         _uiState.update { it.copy(selectedStatusFilter = status) }
         val viewport = lastViewport ?: return
         val zoom = lastZoom ?: return
-        viewModelScope.launch { fetchClustersAndUpdateState(repository, _uiState, viewport, zoom) }
+        fetchJob?.cancel()
+        fetchJob =
+            launchFetch(
+                scope = viewModelScope,
+                debounceMillis = debounceMillis,
+                debounce = false,
+                onViewportSettled = {
+                    lastViewport = viewport
+                    lastZoom = zoom
+                },
+            ) {
+                fetchClustersAndUpdateState(repository, _uiState, viewport, zoom)
+            }
     }
 
     /** Clears the one-shot [MapUiState.pendingCameraTarget] once the Screen has moved the camera. */
@@ -211,6 +239,27 @@ public class MapViewModel(
         const val DEBOUNCE_MILLIS = 250L
     }
 }
+
+/**
+ * Cancels-and-replaces are the caller's job (see [MapViewModel.fetchJob]) —
+ * this just launches one candidate fetch and, once it actually starts running
+ * (after the optional debounce, so a fetch cancelled mid-delay never touches
+ * either), reports [onViewportSettled] before running [fetch]. Top-level (not
+ * a [MapViewModel] member, see the class doc) since callers already hold
+ * everything it needs.
+ */
+private fun launchFetch(
+    scope: CoroutineScope,
+    debounceMillis: Long,
+    debounce: Boolean,
+    onViewportSettled: () -> Unit,
+    fetch: suspend () -> Unit,
+): Job =
+    scope.launch {
+        if (debounce) delay(debounceMillis)
+        onViewportSettled()
+        fetch()
+    }
 
 /**
  * Fetches the cluster aggregates for a viewport at a zoom and publishes them

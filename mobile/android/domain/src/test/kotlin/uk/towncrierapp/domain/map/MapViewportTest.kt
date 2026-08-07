@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test
 import uk.towncrierapp.domain.watchzones.Coordinate
 import uk.towncrierapp.domain.watchzones.aCoordinate
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 /** [MapViewport]'s wire encoding and the pure camera-geometry helpers — port of iOS `MapViewModelTests`' viewport-geometry suite. */
 class MapViewportTest {
@@ -46,6 +47,21 @@ class MapViewportTest {
         assertApprox(expectedHalfSpanDeg, viewport.east)
         assertApprox(-expectedHalfSpanDeg, viewport.south)
         assertApprox(expectedHalfSpanDeg, viewport.north)
+    }
+
+    @Test
+    fun `initial rejects a zero, negative, or non-finite radius rather than building a degenerate viewport`() {
+        val centre = Coordinate(latitude = 0.0, longitude = 0.0)
+
+        assertFailsWith<IllegalArgumentException> { MapViewport.initial(centre, radiusMetres = 0.0) }
+        assertFailsWith<IllegalArgumentException> { MapViewport.initial(centre, radiusMetres = -1.0) }
+        assertFailsWith<IllegalArgumentException> { MapViewport.initial(centre, radiusMetres = Double.NaN) }
+        assertFailsWith<IllegalArgumentException> {
+            MapViewport.initial(
+                centre,
+                radiusMetres = Double.POSITIVE_INFINITY,
+            )
+        }
     }
 
     @Test

@@ -126,6 +126,38 @@ class MapViewModelDebounceTest {
         }
 
     @Test
+    fun `two rapid zone switches cancel the first fetch so only the second zone's clusters land`() =
+        runTest(testDispatcher) {
+            val zoneA = aWatchZone(id = WatchZoneId("wz-a"))
+            val zoneB = aWatchZone(id = WatchZoneId("wz-b"))
+            val watchZoneRepository = FakeWatchZoneRepository(mutableListOf(zoneA, zoneB))
+            val planningRepository = FakePlanningApplicationRepository()
+            val sut =
+                MapViewModel(
+                    planningRepository,
+                    watchZoneRepository,
+                    FakeSavedApplicationRepository(),
+                    FakeMapPreferencesStore(),
+                )
+            sut.load()
+            runCurrent()
+            val callsAfterLoad = planningRepository.fetchClustersCalls.size
+
+            // No runCurrent() between these two — both launches are only scheduled,
+            // neither has executed yet, exactly the "rapid" race window in the bug.
+            sut.selectZone(zoneA)
+            sut.selectZone(zoneB)
+            runCurrent()
+
+            val newCalls = planningRepository.fetchClustersCalls.drop(callsAfterLoad)
+            assertTrue(newCalls.none { it.zoneId == zoneA.id })
+            val zoneBInitialViewport = MapViewport.initial(zoneB.centre, zoneB.radiusMetres).first
+            assertEquals(1, newCalls.size)
+            assertEquals(zoneB.id, newCalls.single().zoneId)
+            assertEquals(zoneBInitialViewport, newCalls.single().viewport)
+        }
+
+    @Test
     fun `a fractional or out-of-range camera zoom is rounded and clamped into 0 to 20 before fetching`() =
         runTest(testDispatcher) {
             val planningRepository = FakePlanningApplicationRepository()
