@@ -1,8 +1,14 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Polygon, Polyline, useMapEvents } from 'react-leaflet';
-import type { LeafletMouseEvent, LeafletEvent, Marker as LeafletMarkerInstance } from 'leaflet';
+import type {
+  LeafletMouseEvent,
+  LeafletEvent,
+  Marker as LeafletMarkerInstance,
+  LatLngBoundsExpression,
+} from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import type { Coordinates } from '../../domain/types';
+import { computeBoundaryMapView } from './boundaryMapView';
 import styles from './BoundaryMap.module.css';
 
 const OSM_TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
@@ -72,8 +78,27 @@ export function BoundaryMap({
     () => vertices.map((vertex): [number, number] => [vertex.latitude, vertex.longitude]),
     [vertices],
   );
-  const centrePosition: [number, number] = [centre.latitude, centre.longitude];
   const hasVertices = vertices.length > 0;
+
+  // Computed once from the vertices present when this component first
+  // mounts (the lazy initialiser runs exactly once) — re-opening a zone
+  // with an existing polygon fits the map to its bounding box, while a
+  // brand-new shape (no vertices yet) keeps the fixed default view for the
+  // whole drawing session, even as vertices are added. See
+  // `computeBoundaryMapView` (GH#1031, bead tc-7se1w.7).
+  const [mapView] = useState(() => computeBoundaryMapView(vertices, centre));
+  const mapViewProps =
+    mapView.kind === 'fixed'
+      ? {
+          center: [mapView.center.latitude, mapView.center.longitude] as [number, number],
+          zoom: mapView.zoom,
+        }
+      : {
+          bounds: [
+            [mapView.southWest.latitude, mapView.southWest.longitude],
+            [mapView.northEast.latitude, mapView.northEast.longitude],
+          ] as LatLngBoundsExpression,
+        };
 
   return (
     <div>
@@ -97,8 +122,7 @@ export function BoundaryMap({
       </div>
       <div className={styles.container}>
         <MapContainer
-          center={centrePosition}
-          zoom={15}
+          {...mapViewProps}
           style={{ height: '100%', width: '100%' }}
           zoomControl={false}
           attributionControl={true}
