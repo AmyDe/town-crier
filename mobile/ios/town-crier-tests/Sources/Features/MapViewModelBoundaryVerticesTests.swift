@@ -80,4 +80,32 @@ struct MapViewModelBoundaryVerticesTests {
 
     #expect(sut.boundaryVertices == boundary.vertices)
   }
+
+  /// The reverse of `boundaryVertices_updatesOnSelectZone`: starting on a
+  /// custom-shape zone and switching to a plain radius/circle zone must
+  /// resolve `boundaryVertices` back to `nil` — regression coverage for a
+  /// bug found in live simulator verification of tc-7se1w.3, where
+  /// switching from a custom-shape zone to a circle zone on the Map tab
+  /// drew a polygon instead of the expected circle.
+  @Test func boundaryVertices_updatesOnSelectZone_fromCustomShapeToCircle() async throws {
+    let boundary = try WatchZoneBoundary(vertices: [
+      Coordinate(latitude: 51.50, longitude: -0.10),
+      Coordinate(latitude: 51.51, longitude: -0.09),
+      Coordinate(latitude: 51.50, longitude: -0.09),
+    ])
+    let customZone = try WatchZone(
+      id: WatchZoneId("zone-custom"),
+      name: "Custom Area",
+      centre: Coordinate(latitude: 51.505, longitude: -0.095),
+      radiusMetres: 1000,
+      boundary: boundary
+    )
+    let (sut, _) = try makeSUT(watchZones: [customZone, .cambridge])
+    await sut.loadApplications()
+    #expect(sut.boundaryVertices == boundary.vertices)
+
+    await sut.selectZone(.cambridge)
+
+    #expect(sut.boundaryVertices == nil)
+  }
 }
