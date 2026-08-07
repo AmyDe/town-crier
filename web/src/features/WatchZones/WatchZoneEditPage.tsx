@@ -10,6 +10,7 @@ import { Toggle } from '../../components/Toggle/Toggle';
 import { ShapeModeToggle } from './ShapeModeToggle';
 import { BoundaryMap } from '../../components/BoundaryMap/BoundaryMap';
 import { CustomShapeUpsell } from '../../components/CustomShapeUpsell/CustomShapeUpsell';
+import { appStoreUrl } from '../../config/links';
 import styles from './WatchZoneEditPage.module.css';
 
 interface Props {
@@ -126,7 +127,11 @@ export function WatchZoneEditPage({ repository, zone, tier = 'Free' }: Props) {
           </>
         )}
 
-        {!canDrawCustomShape && !shapeLockedByTier && <CustomShapeUpsell />}
+        {!canDrawCustomShape && !shapeLockedByTier && (
+          <CustomShapeUpsell
+            upgradeHref={appStoreUrl('web-watch-zone-edit-custom-shape')}
+          />
+        )}
 
         {zoneEdit.boundaryError && (
           <p className={styles.fieldError}>{zoneEdit.boundaryError}</p>

@@ -7,6 +7,7 @@ import { RadiusPicker } from '../../components/RadiusPicker/RadiusPicker';
 import { BoundaryMap } from '../../components/BoundaryMap/BoundaryMap';
 import { CustomShapeUpsell } from '../../components/CustomShapeUpsell/CustomShapeUpsell';
 import { useBoundaryDrawing } from '../../hooks/useBoundaryDrawing';
+import { appStoreUrl } from '../../config/links';
 import { useOnboarding } from './useOnboarding';
 import styles from './OnboardingPage.module.css';
 
@@ -75,7 +76,11 @@ export function OnboardingPage({ onboardingPort, geocodingPort }: Props) {
               selectedMetres={radiusMetres}
               onSelect={selectRadius}
             />
-            {tier === 'Free' && <CustomShapeUpsell />}
+            {tier === 'Free' && (
+              <CustomShapeUpsell
+                upgradeHref={appStoreUrl('web-onboarding-custom-shape')}
+              />
+            )}
             <button
               type="button"
               className={styles.primaryButton}

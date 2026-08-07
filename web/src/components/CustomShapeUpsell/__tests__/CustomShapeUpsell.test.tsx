@@ -1,5 +1,4 @@
 import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { describe, it, expect } from 'vitest';
 import { CustomShapeUpsell } from '../CustomShapeUpsell';
 
@@ -21,21 +20,21 @@ describe('CustomShapeUpsell', () => {
     expect(svg).toHaveAttribute('aria-hidden', 'true');
   });
 
-  it('does not render a call-to-action button when no handler is given', () => {
+  it('does not render a call-to-action link when no upgradeHref is given', () => {
     render(<CustomShapeUpsell />);
 
-    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
   });
 
-  it('renders a call-to-action button that invokes onUpgradeClick when clicked', async () => {
-    const user = userEvent.setup();
-    let clicked = 0;
+  it('renders a call-to-action link pointing at upgradeHref, opening in a new tab', () => {
+    render(<CustomShapeUpsell upgradeHref="https://apps.apple.com/gb/app/town-crier-planning-alerts/id6764095657?ct=test" />);
 
-    render(<CustomShapeUpsell onUpgradeClick={() => (clicked += 1)} />);
-
-    const button = screen.getByRole('button', { name: /upgrade/i });
-    await user.click(button);
-
-    expect(clicked).toBe(1);
+    const link = screen.getByRole('link', { name: /upgrade/i });
+    expect(link).toHaveAttribute(
+      'href',
+      'https://apps.apple.com/gb/app/town-crier-planning-alerts/id6764095657?ct=test',
+    );
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
   });
 });

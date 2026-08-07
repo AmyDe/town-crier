@@ -7,6 +7,7 @@ import { WatchZoneCreatePage } from '../WatchZoneCreatePage';
 import { SpyWatchZoneRepository } from './spies/spy-watch-zone-repository';
 import { aWatchZone } from './fixtures/watch-zone.fixtures';
 import type { GeocodingPort } from '../../../domain/ports/geocoding-port';
+import { appStoreUrl } from '../../../config/links';
 
 interface LatLngPayload {
   latlng: { lat: number; lng: number };
@@ -284,6 +285,14 @@ describe('WatchZoneCreatePage', () => {
       expect(
         screen.getByRole('heading', { name: /draw any shape/i }),
       ).toBeInTheDocument();
+
+      const cta = screen.getByRole('link', { name: /upgrade/i });
+      expect(cta).toHaveAttribute(
+        'href',
+        appStoreUrl('web-watch-zone-create-custom-shape'),
+      );
+      expect(cta).toHaveAttribute('target', '_blank');
+      expect(cta).toHaveAttribute('rel', 'noopener noreferrer');
     });
 
     it('shows the shape toggle for Personal/Pro tier', async () => {
