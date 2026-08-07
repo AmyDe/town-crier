@@ -3,6 +3,7 @@ import type {
   PlanningApplication,
   MapCluster,
   ClusterMember,
+  WatchZoneBoundary,
 } from '../../../../domain/types';
 import { asWatchZoneId, asAuthorityId, asApplicationUid } from '../../../../domain/types';
 
@@ -16,6 +17,8 @@ export function aZone(overrides?: Partial<WatchZoneSummary>): WatchZoneSummary {
     authorityId: asAuthorityId(1),
     pushEnabled: true,
     emailInstantEnabled: false,
+    paused: false,
+    boundary: null,
     ...overrides,
   };
 }
@@ -30,6 +33,28 @@ export function aSecondZone(overrides?: Partial<WatchZoneSummary>): WatchZoneSum
     authorityId: asAuthorityId(2),
     pushEnabled: true,
     emailInstantEnabled: false,
+    paused: false,
+    boundary: null,
+    ...overrides,
+  };
+}
+
+/** A GeoJSON boundary for a custom-shape zone — vertex tuples are
+ * `[longitude, latitude]` (GeoJSON/RFC 7946 order), the reverse of this
+ * codebase's `Coordinates`/Leaflet convention. */
+export function aPolygonBoundary(
+  overrides?: Partial<WatchZoneBoundary>,
+): WatchZoneBoundary {
+  return {
+    type: 'Polygon',
+    coordinates: [
+      [
+        [0.1218, 52.2053],
+        [0.13, 52.21],
+        [0.125, 52.2],
+        [0.1218, 52.2053],
+      ],
+    ],
     ...overrides,
   };
 }
