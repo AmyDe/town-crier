@@ -92,6 +92,30 @@ describe('Pricing', () => {
     expect(screen.getAllByText('Notifications').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('Search').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('Historical Data').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('Custom Shapes').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('shows custom shapes as circle only on Free and available on Personal and Pro', () => {
+    render(<Pricing />);
+
+    const cards = screen.getAllByRole('article');
+    const freeCard = cards.find((card) => within(card).queryByText('Free'));
+    const personalCard = cards.find((card) => within(card).queryByText('Personal'));
+    const proCard = cards.find((card) => within(card).queryByText('Pro'));
+    expect(freeCard).toBeDefined();
+    expect(personalCard).toBeDefined();
+    expect(proCard).toBeDefined();
+
+    const freeRow = within(freeCard!).getByText('Custom Shapes').closest('li');
+    const personalRow = within(personalCard!).getByText('Custom Shapes').closest('li');
+    const proRow = within(proCard!).getByText('Custom Shapes').closest('li');
+    expect(freeRow).toBeDefined();
+    expect(personalRow).toBeDefined();
+    expect(proRow).toBeDefined();
+
+    expect(within(freeRow!).getByText('Circle only')).toBeInTheDocument();
+    expect(within(personalRow!).getByText('Yes')).toBeInTheDocument();
+    expect(within(proRow!).getByText('Yes')).toBeInTheDocument();
   });
 
   it('renders a section heading', () => {

@@ -1,6 +1,8 @@
 package uk.towncrierapp.domain.applications
 
 import uk.towncrierapp.domain.auth.DomainError
+import uk.towncrierapp.domain.map.MapCluster
+import uk.towncrierapp.domain.map.MapViewport
 import uk.towncrierapp.domain.watchzones.WatchZoneId
 
 /** One recorded call to [FakePlanningApplicationRepository.applications]. */
@@ -9,6 +11,14 @@ public data class ApplicationsCall(
     public val sort: ApplicationSortOrder,
     public val filter: ApplicationFilter,
     public val cursor: String?,
+)
+
+/** One recorded call to [FakePlanningApplicationRepository.fetchClusters]. */
+public data class FetchClustersCall(
+    public val zoneId: WatchZoneId,
+    public val viewport: MapViewport,
+    public val zoom: Int,
+    public val status: ApplicationStatus?,
 )
 
 /** Hand-written fake for [PlanningApplicationRepository] — state-based, per testing.md conventions. */
@@ -20,6 +30,17 @@ public class FakePlanningApplicationRepository : PlanningApplicationRepository {
     public var detailResult: PlanningApplication = aPlanningApplication()
     public var detailFailWith: DomainError? = null
     public val detailCalls: MutableList<Pair<String, String>> = mutableListOf()
+
+    /**
+     * Per-[PlanningApplicationId.value] overrides for [detail] — used by
+     * concurrent-fan-out tests (e.g. a stacked map cluster's point-reads,
+     * GH#776) that need distinct results/failures per id rather than one
+     * global [detailResult]/[detailFailWith]. A key present in
+     * [detailFailFor] takes priority over one present in [detailResults];
+     * either falls back to the global fields when the id isn't listed.
+     */
+    public val detailResults: MutableMap<String, PlanningApplication> = mutableMapOf()
+    public val detailFailFor: MutableMap<String, DomainError> = mutableMapOf()
 
     public var detailBySlugResult: PlanningApplication = aPlanningApplication()
     public var detailBySlugFailWith: DomainError? = null
@@ -51,8 +72,9 @@ public class FakePlanningApplicationRepository : PlanningApplicationRepository {
     ): PlanningApplication {
         detailCalls += authority to name
         beforeDetail()
-        detailFailWith?.let { throw it }
-        return detailResult
+        val key = PlanningApplicationId(authority, name).value
+        (detailFailFor[key] ?: detailFailWith)?.let { throw it }
+        return detailResults[key] ?: detailResult
     }
 
     override suspend fun detailBySlug(
@@ -62,5 +84,20 @@ public class FakePlanningApplicationRepository : PlanningApplicationRepository {
         detailBySlugCalls += authoritySlug to ref
         detailBySlugFailWith?.let { throw it }
         return detailBySlugResult
+    }
+
+    public var fetchClustersResult: List<MapCluster> = emptyList()
+    public var fetchClustersFailWith: DomainError? = null
+    public val fetchClustersCalls: MutableList<FetchClustersCall> = mutableListOf()
+
+    override suspend fun fetchClusters(
+        zoneId: WatchZoneId,
+        viewport: MapViewport,
+        zoom: Int,
+        status: ApplicationStatus?,
+    ): List<MapCluster> {
+        fetchClustersCalls += FetchClustersCall(zoneId, viewport, zoom, status)
+        fetchClustersFailWith?.let { throw it }
+        return fetchClustersResult
     }
 }

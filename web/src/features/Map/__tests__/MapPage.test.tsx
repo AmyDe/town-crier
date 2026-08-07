@@ -9,6 +9,7 @@ import {
   aBubbleCluster,
   aSinglePinCluster,
   anApplication,
+  aPolygonBoundary,
 } from './fixtures/map.fixtures';
 import { asApplicationUid } from '../../../domain/types';
 
@@ -29,6 +30,15 @@ const h = vi.hoisted(() => {
   };
 });
 
+interface CirclePathProps {
+  center: [number, number];
+  radius: number;
+}
+
+interface PolygonPathProps {
+  positions: [number, number][];
+}
+
 vi.mock('react-leaflet', () => ({
   MapContainer: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="map-container">{children}</div>
@@ -46,6 +56,21 @@ vi.mock('react-leaflet', () => ({
       data-icon-class={icon?.className}
       data-icon-html={icon?.html}
       onClick={() => eventHandlers?.click?.()}
+    />
+  ),
+  Circle: ({ center, radius }: CirclePathProps) => (
+    <div
+      data-testid="zone-circle"
+      data-lat={center[0]}
+      data-lng={center[1]}
+      data-radius={radius}
+    />
+  ),
+  Polygon: ({ positions }: PolygonPathProps) => (
+    <div
+      data-testid="zone-polygon"
+      data-count={positions.length}
+      data-positions={JSON.stringify(positions)}
     />
   ),
   useMap: () => h.mapInstance,
@@ -242,5 +267,49 @@ describe('MapPage', () => {
       expect(screen.getByTestId('map-container')).toBeInTheDocument();
     });
     expect(screen.queryByRole('combobox', { name: /watch zone/i })).not.toBeInTheDocument();
+  });
+
+  it('draws a circle overlay for a plain circle zone', async () => {
+    spy.fetchMyZonesResult = [aZone({ latitude: 52.2053, longitude: 0.1218, radiusMetres: 1000 })];
+
+    renderMap(spy);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('zone-circle')).toBeInTheDocument();
+    });
+    const circle = screen.getByTestId('zone-circle');
+    expect(circle.getAttribute('data-lat')).toBe('52.2053');
+    expect(circle.getAttribute('data-lng')).toBe('0.1218');
+    expect(circle.getAttribute('data-radius')).toBe('1000');
+    expect(screen.queryByTestId('zone-polygon')).not.toBeInTheDocument();
+  });
+
+  it('draws a polygon overlay for a custom-shape zone, converting lng/lat to lat/lng', async () => {
+    const boundary = aPolygonBoundary();
+    spy.fetchMyZonesResult = [aZone({ boundary })];
+
+    renderMap(spy);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('zone-polygon')).toBeInTheDocument();
+    });
+    const polygon = screen.getByTestId('zone-polygon');
+    const outerRing = boundary.coordinates[0]!;
+    expect(polygon.getAttribute('data-count')).toBe(String(outerRing.length));
+    const positions = JSON.parse(polygon.getAttribute('data-positions')!) as [number, number][];
+    expect(positions).toEqual(outerRing.map(([lng, lat]) => [lat, lng]));
+    expect(screen.queryByTestId('zone-circle')).not.toBeInTheDocument();
+  });
+
+  it('renders no boundary overlay when no zone is selected', async () => {
+    spy.fetchMyZonesResult = [];
+
+    renderMap(spy);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('map-container')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('zone-circle')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('zone-polygon')).not.toBeInTheDocument();
   });
 });

@@ -1,5 +1,7 @@
 package uk.towncrierapp.domain.applications
 
+import uk.towncrierapp.domain.map.MapCluster
+import uk.towncrierapp.domain.map.MapViewport
 import uk.towncrierapp.domain.watchzones.WatchZoneId
 
 /**
@@ -38,4 +40,17 @@ public interface PlanningApplicationRepository {
         authoritySlug: String,
         ref: String,
     ): PlanningApplication
+
+    /**
+     * The server-side grid-aggregated cluster cells for [zoneId]'s current
+     * map viewport at [zoom] (GH#698, GH#776). [status] filters on the raw
+     * `app_state` value; `null` means no filter — the map has NO unread
+     * filter, unlike [applications]'s [ApplicationFilter].
+     */
+    public suspend fun fetchClusters(
+        zoneId: WatchZoneId,
+        viewport: MapViewport,
+        zoom: Int,
+        status: ApplicationStatus? = null,
+    ): List<MapCluster>
 }

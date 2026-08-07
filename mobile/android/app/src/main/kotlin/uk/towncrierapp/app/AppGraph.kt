@@ -33,6 +33,7 @@ import uk.towncrierapp.domain.applications.SavedApplicationRepository
 import uk.towncrierapp.domain.auth.AuthenticationService
 import uk.towncrierapp.domain.devicetoken.DeviceTokenRepository
 import uk.towncrierapp.domain.legal.LegalDocumentRepository
+import uk.towncrierapp.domain.map.MapPreferencesStore
 import uk.towncrierapp.domain.onboarding.OnboardingRepository
 import uk.towncrierapp.domain.profile.UserProfileRepository
 import uk.towncrierapp.domain.reviewprompt.ReviewPromptStore
@@ -66,11 +67,25 @@ public class SettingsLeaves(
 )
 
 /**
+ * The plain DataStore-backed device latches — one per feature tab's own
+ * "remembered selection/sort" state (GH#776 grouping: adding
+ * [mapPreferencesStore] as a standalone [AndroidLeaves] parameter would have
+ * pushed that constructor over detekt's LongParameterList threshold, same
+ * rationale as [SettingsLeaves]).
+ */
+public class PreferenceStores(
+    public val applicationListPreferencesStore: ApplicationListPreferencesStore,
+    public val onboardingRepository: OnboardingRepository,
+    public val mapPreferencesStore: MapPreferencesStore,
+)
+
+/**
  * The leaves that genuinely need a real `Context` —
  * `TownCrierApplication` builds them (`SecureCredentialsManagerStore` over a
  * real `SecureCredentialsManager`, an `Application.ActivityLifecycleCallbacks`
- * tracker, a `DataStoreSubscriptionTierCache`, a `DataStoreApplicationListPreferencesStore`,
- * a `DataStoreOnboardingRepository`, and — via [SettingsLeaves] — a
+ * tracker, a `DataStoreSubscriptionTierCache`, and — via [PreferenceStores] —
+ * a `DataStoreApplicationListPreferencesStore`, a `DataStoreOnboardingRepository`,
+ * a `DataStoreMapPreferencesStore`, and — via [SettingsLeaves] — a
  * `DataStoreAppearanceStore`, a `DataStoreReviewPromptStore`, and an
  * `AssetManager`-backed [LegalDocumentAssetReader]) and hands them to the
  * otherwise Context-free [AppGraph].
@@ -79,8 +94,7 @@ public class AndroidLeaves(
     public val credentialsStore: CredentialsStore,
     public val activityProvider: CurrentActivityProvider,
     public val tierCache: SubscriptionTierCache,
-    public val applicationListPreferencesStore: ApplicationListPreferencesStore,
-    public val onboardingRepository: OnboardingRepository,
+    public val preferenceStores: PreferenceStores,
     public val settingsLeaves: SettingsLeaves,
 )
 
@@ -193,9 +207,14 @@ public class AppGraph(
     public val notificationStateRepository: NotificationStateRepository = ApiNotificationStateRepository(apiClient)
 
     public val applicationListPreferencesStore: ApplicationListPreferencesStore =
-        androidLeaves.applicationListPreferencesStore
+        androidLeaves.preferenceStores.applicationListPreferencesStore
 
-    public val onboardingRepository: OnboardingRepository = androidLeaves.onboardingRepository
+    // The Map tab's own zone-selection latch (GH#776) — distinct DataStore
+    // key from the Applications tab's applicationListPreferencesStore, same
+    // shared "town_crier_preferences" file (see TownCrierApplication).
+    public val mapPreferencesStore: MapPreferencesStore = androidLeaves.preferenceStores.mapPreferencesStore
+
+    public val onboardingRepository: OnboardingRepository = androidLeaves.preferenceStores.onboardingRepository
 
     public val appearanceCoordinator: AppearanceCoordinator =
         AppearanceCoordinator(androidLeaves.settingsLeaves.appearanceStore)

@@ -51,6 +51,14 @@ describe('HowItWorks', () => {
     }
   });
 
+  it('mentions custom shapes as an alternative to a circle in the watch zone step', () => {
+    render(<HowItWorks />);
+
+    const items = screen.getAllByRole('listitem');
+
+    expect(within(items[1]!).getByText(/custom shape/i)).toBeInTheDocument();
+  });
+
   it('marks step icons as aria-hidden', () => {
     render(<HowItWorks />);
 

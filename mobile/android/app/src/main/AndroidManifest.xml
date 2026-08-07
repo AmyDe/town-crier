@@ -63,6 +63,15 @@
             </intent-filter>
         </activity>
 
+        <!-- Google Maps SDK API key (GH#776) — injected per flavor via
+             manifestPlaceholders["mapsApiKey"] in app/build.gradle.kts,
+             sourced from a Gradle property (never hardcoded). Empty until
+             the key is created in GCP (see README.md); the map simply won't
+             render tiles until then. -->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="${mapsApiKey}" />
+
         <!-- The GDPR data-export share sheet's content:// bridge (tc-4jjw / #778).
              authorities uses ${applicationId} so the dev/prod/local flavors
              (different applicationIdSuffix) each get their own non-clashing

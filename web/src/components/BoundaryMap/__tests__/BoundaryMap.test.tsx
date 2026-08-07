@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi } from 'vitest';
 import { BoundaryMap } from '../BoundaryMap';
+import { computeBoundaryMapView } from '../boundaryMapView';
 
 interface LatLngPayload {
   latlng: { lat: number; lng: number };
@@ -26,13 +27,27 @@ interface PathLayerProps {
   positions: [number, number][];
 }
 
+interface MockMapContainerProps {
+  children: ReactNode;
+  center?: [number, number];
+  zoom?: number;
+  bounds?: [[number, number], [number, number]];
+}
+
 const { capturedMapEvents } = vi.hoisted(() => ({
   capturedMapEvents: { click: undefined as ((event: LatLngPayload) => void) | undefined },
 }));
 
 vi.mock('react-leaflet', () => ({
-  MapContainer: ({ children }: { children: ReactNode }) => (
-    <div data-testid="map-container">{children}</div>
+  MapContainer: ({ children, center, zoom, bounds }: MockMapContainerProps) => (
+    <div
+      data-testid="map-container"
+      data-center={center ? JSON.stringify(center) : undefined}
+      data-zoom={zoom}
+      data-bounds={bounds ? JSON.stringify(bounds) : undefined}
+    >
+      {children}
+    </div>
   ),
   TileLayer: () => <div data-testid="tile-layer" />,
   Marker: ({ position, eventHandlers }: MockMarkerProps) => (
@@ -82,6 +97,101 @@ describe('BoundaryMap', () => {
 
     expect(screen.getByTestId('map-container')).toBeInTheDocument();
     expect(screen.getByTestId('tile-layer')).toBeInTheDocument();
+  });
+
+  it('uses a fixed centre and zoom when there are no vertices at mount', () => {
+    render(
+      <BoundaryMap
+        centre={centre}
+        vertices={[]}
+        isClosed={false}
+        onAddVertex={() => {}}
+        onMoveVertex={() => {}}
+        onCloseRing={() => {}}
+        onUndo={() => {}}
+        onReset={() => {}}
+      />,
+    );
+
+    const mapContainer = screen.getByTestId('map-container');
+    expect(mapContainer).toHaveAttribute('data-center', JSON.stringify([centre.latitude, centre.longitude]));
+    expect(mapContainer).toHaveAttribute('data-zoom', '15');
+    expect(mapContainer).not.toHaveAttribute('data-bounds');
+  });
+
+  it('fits the map view to the vertices bounding box when vertices already exist at mount', () => {
+    const vertices = [
+      { latitude: 51.5, longitude: -0.1 },
+      { latitude: 51.51, longitude: -0.1 },
+      { latitude: 51.51, longitude: -0.09 },
+      { latitude: 51.5, longitude: -0.09 },
+    ];
+
+    render(
+      <BoundaryMap
+        centre={centre}
+        vertices={vertices}
+        isClosed={true}
+        onAddVertex={() => {}}
+        onMoveVertex={() => {}}
+        onCloseRing={() => {}}
+        onUndo={() => {}}
+        onReset={() => {}}
+      />,
+    );
+
+    const expected = computeBoundaryMapView(vertices, centre);
+    if (expected.kind !== 'fit-bounds') {
+      throw new Error('expected a fit-bounds view');
+    }
+
+    const mapContainer = screen.getByTestId('map-container');
+    expect(mapContainer).not.toHaveAttribute('data-center');
+    expect(mapContainer).toHaveAttribute(
+      'data-bounds',
+      JSON.stringify([
+        [expected.southWest.latitude, expected.southWest.longitude],
+        [expected.northEast.latitude, expected.northEast.longitude],
+      ]),
+    );
+  });
+
+  it('does not re-fit the view when vertices are added after mount', () => {
+    const initialVertices = [
+      { latitude: 51.5, longitude: -0.1 },
+      { latitude: 51.51, longitude: -0.1 },
+    ];
+
+    const { rerender } = render(
+      <BoundaryMap
+        centre={centre}
+        vertices={initialVertices}
+        isClosed={false}
+        onAddVertex={() => {}}
+        onMoveVertex={() => {}}
+        onCloseRing={() => {}}
+        onUndo={() => {}}
+        onReset={() => {}}
+      />,
+    );
+
+    const boundsBeforeAdd = screen.getByTestId('map-container').getAttribute('data-bounds');
+
+    rerender(
+      <BoundaryMap
+        centre={centre}
+        vertices={[...initialVertices, { latitude: 51.52, longitude: -0.08 }]}
+        isClosed={false}
+        onAddVertex={() => {}}
+        onMoveVertex={() => {}}
+        onCloseRing={() => {}}
+        onUndo={() => {}}
+        onReset={() => {}}
+      />,
+    );
+
+    const boundsAfterAdd = screen.getByTestId('map-container').getAttribute('data-bounds');
+    expect(boundsAfterAdd).toBe(boundsBeforeAdd);
   });
 
   it('renders one marker per vertex', () => {

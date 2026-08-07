@@ -66,6 +66,13 @@ dependencies {
     implementation(libs.androidx.activity.compose)
     debugImplementation(libs.compose.ui.tooling)
 
+    // Google Maps SDK + maps-compose for the Map tab (GH#776, epic #770
+    // pre-resolved decision). Neither module is `:data` — maps-compose is a
+    // pure Compose/GMS dependency, so it stays inside the "only :domain"
+    // module-dependency rule.
+    implementation(libs.maps.compose)
+    implementation(libs.play.services.maps)
+
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly(libs.junit.platform.launcher)

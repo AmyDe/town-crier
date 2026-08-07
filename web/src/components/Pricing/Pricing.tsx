@@ -11,6 +11,7 @@ interface Feature {
 const FEATURES: Feature[] = [
   { label: 'Watch Zones', free: '1', personal: '3', pro: 'Unlimited' },
   { label: 'Radius', free: '500m', personal: '2km', pro: '5km' },
+  { label: 'Custom Shapes', free: 'Circle only', personal: 'Yes', pro: 'Yes' },
   { label: 'Notifications', free: 'Weekly digest', personal: 'Instant', pro: 'Instant' },
   { label: 'Search', free: 'Basic', personal: 'Advanced', pro: 'Advanced + Filters' },
   { label: 'Historical Data', free: 'None', personal: '6 months', pro: '5 years' },

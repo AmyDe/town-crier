@@ -22,6 +22,15 @@ android {
         // per-flavor callback path (.../android/{applicationId}/callback).
         manifestPlaceholders["auth0Domain"] = "towncrierapp.uk.auth0.com"
         manifestPlaceholders["auth0Scheme"] = "https"
+
+        // Google Maps SDK API key (GH#776) — sourced from a Gradle property,
+        // never hardcoded, so the build never bakes in a secret and still
+        // succeeds (with an empty placeholder — the map just won't render
+        // tiles) when the property is absent, e.g. every CI/local build
+        // until the key is created (see README.md's "Google Maps API key"
+        // section for the still-needed manual GCP step). Same
+        // manifestPlaceholders pattern as auth0Domain/auth0Scheme above.
+        manifestPlaceholders["mapsApiKey"] = providers.gradleProperty("MAPS_API_KEY").getOrElse("")
     }
 
     compileOptions {
@@ -136,6 +145,11 @@ dependencies {
     implementation(libs.play.review.ktx)
     // The Settings gear glyph isn't in material-icons-core's small default subset.
     implementation(libs.compose.material.icons.extended)
+    // Google Maps SDK + maps-compose (GH#776) — see :presentation's own
+    // dependency block doc; :app needs the same pair transitively resolved
+    // at the app level for the manifest meta-data / merged AAR resources.
+    implementation(libs.maps.compose)
+    implementation(libs.play.services.maps)
 
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)

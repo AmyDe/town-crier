@@ -6,6 +6,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { WatchZoneEditPage } from '../WatchZoneEditPage';
 import { SpyWatchZoneRepository } from './spies/spy-watch-zone-repository';
 import { aWatchZone, aWatchZoneBoundary, zonePreferences } from './fixtures/watch-zone.fixtures';
+import { appStoreUrl } from '../../../config/links';
 
 interface LatLngPayload {
   latlng: { lat: number; lng: number };
@@ -446,6 +447,14 @@ describe('WatchZoneEditPage', () => {
       expect(screen.getByRole('radiogroup', { name: /radius/i })).toBeInTheDocument();
       expect(screen.queryByRole('radiogroup', { name: /shape/i })).not.toBeInTheDocument();
       expect(screen.getByRole('heading', { name: /draw any shape/i })).toBeInTheDocument();
+
+      const cta = screen.getByRole('link', { name: /upgrade/i });
+      expect(cta).toHaveAttribute(
+        'href',
+        appStoreUrl('web-watch-zone-edit-custom-shape'),
+      );
+      expect(cta).toHaveAttribute('target', '_blank');
+      expect(cta).toHaveAttribute('rel', 'noopener noreferrer');
     });
 
     it('surfaces a locked notice and the custom-shape upsell, not the radius picker, for a Free-tier user holding a pre-existing custom-shape zone', () => {

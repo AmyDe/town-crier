@@ -11,6 +11,7 @@ import com.auth0.android.authentication.storage.SharedPreferencesStorage
 import uk.towncrierapp.data.applications.DataStoreApplicationListPreferencesStore
 import uk.towncrierapp.data.auth.SecureCredentialsManagerStore
 import uk.towncrierapp.data.legal.LegalDocumentAssetReader
+import uk.towncrierapp.data.map.DataStoreMapPreferencesStore
 import uk.towncrierapp.data.onboarding.DataStoreOnboardingRepository
 import uk.towncrierapp.data.reviewprompt.DataStoreReviewPromptStore
 import uk.towncrierapp.data.settings.DataStoreAppearanceStore
@@ -51,6 +52,7 @@ public class TownCrierApplication : Application() {
         // DataStore Preferences is designed for several unrelated keys in one
         // file; a second file per feature isn't warranted (GH#775 / tc-7ttz).
         val applicationListPreferencesStore = DataStoreApplicationListPreferencesStore(tierPreferencesDataStore)
+        val mapPreferencesStore = DataStoreMapPreferencesStore(tierPreferencesDataStore)
         val onboardingRepository = DataStoreOnboardingRepository(tierPreferencesDataStore)
         val appearanceStore = DataStoreAppearanceStore(tierPreferencesDataStore)
         val reviewPromptStore = DataStoreReviewPromptStore(tierPreferencesDataStore)
@@ -67,8 +69,12 @@ public class TownCrierApplication : Application() {
                         credentialsStore = credentialsStore,
                         activityProvider = activityTracker,
                         tierCache = tierCache,
-                        applicationListPreferencesStore = applicationListPreferencesStore,
-                        onboardingRepository = onboardingRepository,
+                        preferenceStores =
+                            PreferenceStores(
+                                applicationListPreferencesStore = applicationListPreferencesStore,
+                                onboardingRepository = onboardingRepository,
+                                mapPreferencesStore = mapPreferencesStore,
+                            ),
                         settingsLeaves =
                             SettingsLeaves(
                                 appearanceStore = appearanceStore,
