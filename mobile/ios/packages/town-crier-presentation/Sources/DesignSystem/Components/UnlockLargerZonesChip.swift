@@ -21,7 +21,7 @@ public struct UnlockLargerZonesChip: View {
     static let title = "Do more with a plan"
     static let benefits =
       "Bigger watch zones up to 10 km, custom shapes instead of a circle, more than "
-      + "one zone, and instant alerts by push and email. Free gives you a weekly digest."
+      + "one watch zone, and instant alerts by push and email. Free gives you a weekly digest."
     static let accessibilityLabel =
       "Do more with a plan. Bigger watch zones up to 10 kilometres, custom shapes "
       + "instead of a circle, more than one watch zone, and instant alerts by push and "

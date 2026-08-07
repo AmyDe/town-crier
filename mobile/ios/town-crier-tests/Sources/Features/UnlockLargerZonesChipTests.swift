@@ -23,7 +23,7 @@ struct UnlockLargerZonesChipTests {
   }
 
   @Test func benefits_coverMoreThanOneZone() {
-    #expect(UnlockLargerZonesChip.Copy.benefits.contains("more than one zone"))
+    #expect(UnlockLargerZonesChip.Copy.benefits.contains("more than one watch zone"))
   }
 
   @Test func benefits_coverCustomShapes() {
@@ -45,7 +45,7 @@ struct UnlockLargerZonesChipTests {
     #expect(
       UnlockLargerZonesChip.Copy.benefits
         == "Bigger watch zones up to 10 km, custom shapes instead of a circle, more than "
-        + "one zone, and instant alerts by push and email. Free gives you a weekly digest."
+        + "one watch zone, and instant alerts by push and email. Free gives you a weekly digest."
     )
   }
 
