@@ -23,7 +23,13 @@ struct UnlockLargerZonesChipTests {
   }
 
   @Test func benefits_coverMoreThanOneZone() {
-    #expect(UnlockLargerZonesChip.Copy.benefits.contains("more than one zone"))
+    #expect(UnlockLargerZonesChip.Copy.benefits.contains("more than one watch zone"))
+  }
+
+  @Test func benefits_coverCustomShapes() {
+    // Custom-shape (polygon) zones are a real Personal/Pro entitlement (GH#1031,
+    // tc-7se1w.5) and belong alongside radius and zone-count.
+    #expect(UnlockLargerZonesChip.Copy.benefits.contains("custom shapes instead of a circle"))
   }
 
   @Test func benefits_phrasePushAndEmailAsOneAlert() {
@@ -38,8 +44,8 @@ struct UnlockLargerZonesChipTests {
   @Test func benefits_exactWording() {
     #expect(
       UnlockLargerZonesChip.Copy.benefits
-        == "Bigger watch zones up to 10 km, more than one zone, and instant alerts by "
-        + "push and email. Free gives you a weekly digest."
+        == "Bigger watch zones up to 10 km, custom shapes instead of a circle, more than "
+        + "one watch zone, and instant alerts by push and email. Free gives you a weekly digest."
     )
   }
 
@@ -48,8 +54,15 @@ struct UnlockLargerZonesChipTests {
   @Test func accessibilityLabel_describesTheWholeUpgrade() {
     #expect(
       UnlockLargerZonesChip.Copy.accessibilityLabel
-        == "Do more with a plan. Bigger watch zones up to 10 kilometres, more than one "
-        + "watch zone, and instant alerts by push and email. Free gives you a weekly digest."
+        == "Do more with a plan. Bigger watch zones up to 10 kilometres, custom shapes "
+        + "instead of a circle, more than one watch zone, and instant alerts by push and "
+        + "email. Free gives you a weekly digest."
+    )
+  }
+
+  @Test func accessibilityLabel_describesCustomShapes() {
+    #expect(
+      UnlockLargerZonesChip.Copy.accessibilityLabel.contains("custom shapes instead of a circle")
     )
   }
 
