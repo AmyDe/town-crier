@@ -21,9 +21,7 @@ struct ZoneMapPreview: View {
   init(
     centre: Coordinate,
     radiusMetres: Double,
-    // swiftlint:disable:next discouraged_default_parameter
     strokeWidth: CGFloat = 1,
-    // swiftlint:disable:next discouraged_default_parameter
     boundaryVertices: [Coordinate]? = nil
   ) {
     self.centre = centre
