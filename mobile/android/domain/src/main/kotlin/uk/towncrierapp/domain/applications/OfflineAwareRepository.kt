@@ -2,6 +2,8 @@ package uk.towncrierapp.domain.applications
 
 import kotlinx.coroutines.CancellationException
 import uk.towncrierapp.domain.auth.DomainError
+import uk.towncrierapp.domain.map.MapCluster
+import uk.towncrierapp.domain.map.MapViewport
 import uk.towncrierapp.domain.watchzones.WatchZoneId
 import java.time.Clock
 import java.time.Duration
@@ -59,6 +61,17 @@ public class OfflineAwareRepository(
         authoritySlug: String,
         ref: String,
     ): PlanningApplication = remote.detailBySlug(authoritySlug, ref)
+
+    // Plain, uncached pass-through — the map's cluster fetch is deliberately
+    // never cached (server-side clustering already keeps each call cheap,
+    // and caching a bbox/zoom/status-keyed result would need a very
+    // different cache shape than the zone-only page cache above).
+    override suspend fun fetchClusters(
+        zoneId: WatchZoneId,
+        viewport: MapViewport,
+        zoom: Int,
+        status: ApplicationStatus?,
+    ): List<MapCluster> = remote.fetchClusters(zoneId, viewport, zoom, status)
 
     private fun isFresh(cached: CachedApplicationPage): Boolean =
         Duration.between(cached.cachedAt, clock.instant()) < TTL

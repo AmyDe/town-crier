@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
@@ -113,6 +114,10 @@ internal data object WatchZones
 @Serializable
 internal data object Saved
 
+/** The Map tab (GH#776) — 4th bottom-nav destination. */
+@Serializable
+internal data object Map
+
 // A no-arg `@Serializable data object` route's KSerializer serialName is its
 // fully qualified class name — comparing against it is a simpler, equally
 // reliable way to tell "is this bottom-nav tab currently selected" than the
@@ -120,6 +125,7 @@ internal data object Saved
 private val APPLICATIONS_ROUTE = Applications::class.qualifiedName
 private val WATCH_ZONES_ROUTE = WatchZones::class.qualifiedName
 private val SAVED_ROUTE = Saved::class.qualifiedName
+private val MAP_ROUTE = Map::class.qualifiedName
 
 /**
  * Root routing: pre-login force-update gate, then Login, then - once
@@ -337,6 +343,9 @@ private fun AuthedNavHost(
         composable<Saved> {
             SavedTab(appGraph = appGraph, navController = navController, onSettingsClick = onSettingsClick)
         }
+        composable<Map> {
+            MapTab(appGraph = appGraph, navController = navController, onSettingsClick = onSettingsClick)
+        }
         composable<WatchZoneEditorDestination> { entry ->
             WatchZoneEditorDestinationContent(
                 entry = entry,
@@ -396,6 +405,12 @@ private fun AuthedBottomBar(
             onClick = { navController.navigateToTab(Saved) },
             icon = { Icon(imageVector = Icons.Filled.Star, contentDescription = null) },
             label = { Text(stringResource(PresentationR.string.bottom_nav_saved)) },
+        )
+        NavigationBarItem(
+            selected = currentRoute == MAP_ROUTE,
+            onClick = { navController.navigateToTab(Map) },
+            icon = { Icon(imageVector = Icons.Filled.Map, contentDescription = null) },
+            label = { Text(stringResource(PresentationR.string.bottom_nav_map)) },
         )
     }
 }

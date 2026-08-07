@@ -219,4 +219,14 @@
 
     <!-- Legal documents (tc-4jjw / #778) -->
     <string name="legal_back_content_description">Back</string>
+
+    <!-- Map tab (GH#776) -->
+    <string name="bottom_nav_map">Map</string>
+    <string name="map_status_filter_all">All</string>
+    <string name="map_empty_title">No Applications</string>
+    <string name="map_empty_description">No planning applications found in your watch zone yet. Check back soon.</string>
+    <string name="map_summary_received_date">Received %1$s</string>
+    <string name="map_summary_view_full_details">View full details</string>
+    <string name="map_stacked_title">Applications at this location</string>
+    <string name="map_stacked_subtitle">%1$d applications share this address</string>
 </resources>
