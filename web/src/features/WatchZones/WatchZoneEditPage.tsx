@@ -126,7 +126,7 @@ export function WatchZoneEditPage({ repository, zone, tier = 'Free' }: Props) {
           </>
         )}
 
-        {!canDrawCustomShape && !shapeLockedByTier && <CustomShapeUpsell />}
+        {!canDrawCustomShape && <CustomShapeUpsell />}
 
         {zoneEdit.boundaryError && (
           <p className={styles.fieldError}>{zoneEdit.boundaryError}</p>
