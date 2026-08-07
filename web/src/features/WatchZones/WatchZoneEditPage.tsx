@@ -127,7 +127,7 @@ export function WatchZoneEditPage({ repository, zone, tier = 'Free' }: Props) {
           </>
         )}
 
-        {!canDrawCustomShape && !shapeLockedByTier && (
+        {!canDrawCustomShape && (
           <CustomShapeUpsell
             upgradeHref={appStoreUrl('web-watch-zone-edit-custom-shape')}
           />

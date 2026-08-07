@@ -457,7 +457,7 @@ describe('WatchZoneEditPage', () => {
       expect(cta).toHaveAttribute('rel', 'noopener noreferrer');
     });
 
-    it('surfaces a locked notice, not the radius picker, for a Free-tier user holding a pre-existing custom-shape zone', () => {
+    it('surfaces a locked notice and the custom-shape upsell, not the radius picker, for a Free-tier user holding a pre-existing custom-shape zone', () => {
       spy.getPreferencesResult = zonePreferences();
       const boundary = aWatchZoneBoundary();
 
@@ -467,9 +467,7 @@ describe('WatchZoneEditPage', () => {
 
       expect(screen.getByText(/this zone uses a custom shape/i)).toBeInTheDocument();
       expect(screen.queryByRole('radiogroup', { name: /radius/i })).not.toBeInTheDocument();
-      expect(
-        screen.queryByRole('heading', { name: /draw any shape/i }),
-      ).not.toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /draw any shape/i })).toBeInTheDocument();
       expect(screen.queryByTestId('boundary-polygon')).not.toBeInTheDocument();
     });
 
