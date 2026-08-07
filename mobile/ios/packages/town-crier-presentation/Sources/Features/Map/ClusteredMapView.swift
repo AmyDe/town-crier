@@ -99,6 +99,10 @@
       /// The zone the camera is currently framed on, so we only reframe on a real
       /// zone change rather than on every cluster/filter update.
       private var framedZoneId: WatchZoneId?
+      /// The geometry the camera was last framed to, so a same-ID zone whose
+      /// boundary, centre, or radius changes (e.g. a mid-session edit) still
+      /// triggers a reframe.
+      private var framedZoneFraming: ClusteredZoneFraming?
       /// The currently-rendered radius circle (circle-shaped zones) and the
       /// centre/radius it was drawn for, so we redraw it only when the zone's
       /// geometry changes.
@@ -237,12 +241,13 @@
       ) {
         mapView.setRegion(Self.cameraRegion(framing: framing), animated: animated)
         framedZoneId = zoneId
+        framedZoneFraming = framing
       }
 
       func frameCameraIfZoneChanged(
         on mapView: MKMapView, framing: ClusteredZoneFraming, zoneId: WatchZoneId?
       ) {
-        guard zoneId != framedZoneId else { return }
+        guard zoneId != framedZoneId || framing != framedZoneFraming else { return }
         frameCamera(on: mapView, framing: framing, zoneId: zoneId, animated: true)
       }
 
