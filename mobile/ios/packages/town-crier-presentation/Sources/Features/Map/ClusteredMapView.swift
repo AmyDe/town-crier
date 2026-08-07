@@ -37,38 +37,48 @@
         forAnnotationViewWithReuseIdentifier: Self.markerReuseIdentifier)
 
       let coordinator = context.coordinator
+      let framing = zoneFraming
       coordinator.frameCamera(
-        on: mapView,
-        centre: CLLocationCoordinate2D(
-          latitude: viewModel.centreLat, longitude: viewModel.centreLon),
-        radius: viewModel.radiusMetres,
-        zoneId: viewModel.selectedZone?.id,
-        animated: false)
+        on: mapView, framing: framing, zoneId: viewModel.selectedZone?.id, animated: false)
       coordinator.syncAnnotations(on: mapView, desired: viewModel.clusters)
-      coordinator.applyRadiusOverlay(
-        to: mapView,
-        centreLat: viewModel.centreLat,
-        centreLon: viewModel.centreLon,
-        radius: viewModel.radiusMetres)
+      coordinator.applyZoneOverlay(to: mapView, framing: framing)
       return mapView
     }
 
     func updateUIView(_ mapView: MKMapView, context: Context) {
       let coordinator = context.coordinator
+      let framing = zoneFraming
       coordinator.syncAnnotations(on: mapView, desired: viewModel.clusters)
-      coordinator.applyRadiusOverlay(
-        to: mapView,
-        centreLat: viewModel.centreLat,
-        centreLon: viewModel.centreLon,
-        radius: viewModel.radiusMetres)
+      coordinator.applyZoneOverlay(to: mapView, framing: framing)
       // Reframe only when the selected zone actually changes, so a refetch or a
       // status-chip change never yanks the user's current pan/zoom back.
       coordinator.frameCameraIfZoneChanged(
-        on: mapView,
+        on: mapView, framing: framing, zoneId: viewModel.selectedZone?.id)
+    }
+
+    private var zoneFraming: ClusteredZoneFraming {
+      ClusteredZoneFraming(
         centreLat: viewModel.centreLat,
         centreLon: viewModel.centreLon,
         radius: viewModel.radiusMetres,
-        zoneId: viewModel.selectedZone?.id)
+        boundaryVertices: viewModel.boundaryVertices)
+    }
+  }
+
+  /// The zone geometry ``ClusteredMapView``'s overlay and camera-framing logic
+  /// need, bundled into one value so passing it to ``ClusteredMapView/Coordinator``
+  /// stays within SwiftLint's function-parameter-count limit. `boundaryVertices`
+  /// non-nil/non-empty means a custom-shape zone (GH#1031, tc-7se1w.3); `nil`
+  /// means a circle, framed/overlaid from `centreLat`/`centreLon`/`radius` as
+  /// before.
+  struct ClusteredZoneFraming: Equatable {
+    let centreLat: Double
+    let centreLon: Double
+    let radius: Double
+    let boundaryVertices: [Coordinate]?
+
+    var centre: CLLocationCoordinate2D {
+      CLLocationCoordinate2D(latitude: centreLat, longitude: centreLon)
     }
   }
 
@@ -78,9 +88,10 @@
     /// ``MapViewModel/selectCluster(_:)``, opens the disambiguation list for an
     /// unsplittable (stacked) multi-member cell via
     /// ``MapViewModel/selectStack(_:)`` while zooming into a splittable one,
-    /// debounces the region-change refetch, and renders the zone radius circle.
-    /// All callbacks run on the main thread (MapKit guarantees it), matching the
-    /// `@MainActor` isolation.
+    /// debounces the region-change refetch, and renders the zone overlay (a
+    /// circle, or an `MKPolygon` outline for a custom-shape zone). All callbacks
+    /// run on the main thread (MapKit guarantees it), matching the `@MainActor`
+    /// isolation.
     @MainActor
     final class Coordinator: NSObject, MKMapViewDelegate {
       private let viewModel: MapViewModel
@@ -88,16 +99,38 @@
       /// The zone the camera is currently framed on, so we only reframe on a real
       /// zone change rather than on every cluster/filter update.
       private var framedZoneId: WatchZoneId?
-      /// The currently-rendered radius circle and the centre/radius it was drawn
-      /// for, so we redraw it only when the zone's geometry changes.
+      /// The geometry the camera was last framed to, so a same-ID zone whose
+      /// boundary, centre, or radius changes (e.g. a mid-session edit) still
+      /// triggers a reframe.
+      private var framedZoneFraming: ClusteredZoneFraming?
+      /// The currently-rendered radius circle (circle-shaped zones) and the
+      /// centre/radius it was drawn for, so we redraw it only when the zone's
+      /// geometry changes.
       private var radiusOverlay: MKCircle?
       private var renderedCentreLat: Double?
       private var renderedCentreLon: Double?
       private var renderedRadius: Double?
+      /// The currently-rendered polygon (custom-shape zones, GH#1031) and the
+      /// vertices it was drawn for, so we redraw it only when the boundary
+      /// actually changes. ``applyZoneOverlay(to:framing:)`` shows at most one
+      /// of `radiusOverlay`/`polygonOverlay` at a time — the other is torn down
+      /// when the selected zone's shape mode differs from what's currently on
+      /// screen (tc-7se1w.3: the overlay must match whichever shape drives
+      /// application filtering for this zone).
+      private var polygonOverlay: MKPolygon?
+      private var renderedVertices: [Coordinate]?
 
       /// The pending debounced refetch, cancelled and rescheduled on each region
       /// change so a pan/zoom flurry issues a single fetch when it settles.
       private var refetchTask: Task<Void, Never>?
+
+      /// Extra room around the polygon's bounding box when framing the camera
+      /// for a custom-shape zone — mirrors `BoundaryDrawingRegion.marginFraction`,
+      /// which tc-7se1w.2 uses for the same "zoom to fit" need in the
+      /// boundary-drawing editor.
+      private static let polygonMarginFraction = 0.3
+      /// Mirrors `BoundaryDrawingRegion.minimumSpanDegrees`.
+      private static let polygonMinimumSpanDegrees = 0.006
 
       init(viewModel: MapViewModel) {
         self.viewModel = viewModel
@@ -127,9 +160,30 @@
         }
       }
 
-      // MARK: - Radius overlay
+      // MARK: - Zone overlay (circle or custom-shape polygon)
 
-      func applyRadiusOverlay(
+      /// Shows exactly one overlay for the selected zone: an `MKPolygon`
+      /// outline for a custom shape (GH#1031), or the existing `MKCircle`
+      /// radius overlay otherwise. Tears down the other kind first, so
+      /// switching between a circle zone and a custom-shape zone never leaves
+      /// a stale overlay of the wrong kind on screen (tc-7se1w.3 — the overlay
+      /// must match whichever shape actually drives application filtering for
+      /// this zone).
+      func applyZoneOverlay(to mapView: MKMapView, framing: ClusteredZoneFraming) {
+        guard let boundaryVertices = framing.boundaryVertices, !boundaryVertices.isEmpty else {
+          clearPolygonOverlay(from: mapView)
+          applyRadiusOverlay(
+            to: mapView,
+            centreLat: framing.centreLat,
+            centreLon: framing.centreLon,
+            radius: framing.radius)
+          return
+        }
+        clearRadiusOverlay(from: mapView)
+        applyPolygonOverlay(to: mapView, vertices: boundaryVertices)
+      }
+
+      private func applyRadiusOverlay(
         to mapView: MKMapView, centreLat: Double, centreLon: Double, radius: Double
       ) {
         if renderedRadius == radius, renderedCentreLat == centreLat, renderedCentreLon == centreLon {
@@ -148,38 +202,75 @@
         renderedRadius = radius
       }
 
+      private func applyPolygonOverlay(to mapView: MKMapView, vertices: [Coordinate]) {
+        if renderedVertices == vertices {
+          return
+        }
+        if let polygonOverlay {
+          mapView.removeOverlay(polygonOverlay)
+        }
+        let coordinates = vertices.map { vertex in
+          CLLocationCoordinate2D(latitude: vertex.latitude, longitude: vertex.longitude)
+        }
+        let polygon = MKPolygon(coordinates: coordinates, count: coordinates.count)
+        mapView.addOverlay(polygon, level: .aboveRoads)
+        polygonOverlay = polygon
+        renderedVertices = vertices
+      }
+
+      private func clearRadiusOverlay(from mapView: MKMapView) {
+        guard let radiusOverlay else { return }
+        mapView.removeOverlay(radiusOverlay)
+        self.radiusOverlay = nil
+        renderedCentreLat = nil
+        renderedCentreLon = nil
+        renderedRadius = nil
+      }
+
+      private func clearPolygonOverlay(from mapView: MKMapView) {
+        guard let polygonOverlay else { return }
+        mapView.removeOverlay(polygonOverlay)
+        self.polygonOverlay = nil
+        renderedVertices = nil
+      }
+
       // MARK: - Camera framing
 
       func frameCamera(
-        on mapView: MKMapView,
-        centre: CLLocationCoordinate2D,
-        radius: Double,
-        zoneId: WatchZoneId?,
-        animated: Bool
+        on mapView: MKMapView, framing: ClusteredZoneFraming, zoneId: WatchZoneId?, animated: Bool
       ) {
-        // Span 2.5x the zone radius so the whole circle plus a margin is visible.
-        let region = MKCoordinateRegion(
-          center: centre,
-          latitudinalMeters: radius * 2.5,
-          longitudinalMeters: radius * 2.5)
-        mapView.setRegion(region, animated: animated)
+        mapView.setRegion(Self.cameraRegion(framing: framing), animated: animated)
         framedZoneId = zoneId
+        framedZoneFraming = framing
       }
 
       func frameCameraIfZoneChanged(
-        on mapView: MKMapView,
-        centreLat: Double,
-        centreLon: Double,
-        radius: Double,
-        zoneId: WatchZoneId?
+        on mapView: MKMapView, framing: ClusteredZoneFraming, zoneId: WatchZoneId?
       ) {
-        guard zoneId != framedZoneId else { return }
-        frameCamera(
-          on: mapView,
-          centre: CLLocationCoordinate2D(latitude: centreLat, longitude: centreLon),
-          radius: radius,
-          zoneId: zoneId,
-          animated: true)
+        guard zoneId != framedZoneId || framing != framedZoneFraming else { return }
+        frameCamera(on: mapView, framing: framing, zoneId: zoneId, animated: true)
+      }
+
+      /// The region to frame for a zone: fitted to the polygon's bounding box
+      /// for a custom shape (tc-7se1w.3), or the existing 2.5x-radius span for
+      /// a circle.
+      private static func cameraRegion(framing: ClusteredZoneFraming) -> MKCoordinateRegion {
+        guard let boundaryVertices = framing.boundaryVertices, !boundaryVertices.isEmpty else {
+          return circleRegion(framing: framing)
+        }
+        return PolygonBoundingRegion.fitting(
+          vertices: boundaryVertices,
+          marginFraction: polygonMarginFraction,
+          minimumSpanDegrees: polygonMinimumSpanDegrees
+        ) ?? circleRegion(framing: framing)
+      }
+
+      private static func circleRegion(framing: ClusteredZoneFraming) -> MKCoordinateRegion {
+        // Span 2.5x the zone radius so the whole circle plus a margin is visible.
+        MKCoordinateRegion(
+          center: framing.centre,
+          latitudinalMeters: framing.radius * 2.5,
+          longitudinalMeters: framing.radius * 2.5)
       }
 
       // MARK: - MKMapViewDelegate
@@ -232,8 +323,8 @@
             // Members are coincident (or closer than the finest grid cell), so no
             // zoom level can ever split them. Open the disambiguation list of the
             // stacked applications instead of zooming forever (GH#722).
-            let viewModel = self.viewModel
-            Task { await viewModel.selectStack(cluster) }
+            let capturedViewModel = self.viewModel
+            Task { await capturedViewModel.selectStack(cluster) }
           } else {
             // Splittable cell: zoom into it so its members spread into finer cells
             // on the next (debounced) refetch.
@@ -245,8 +336,8 @@
             mapView.setRegion(region, animated: true)
           }
         } else {
-          let viewModel = self.viewModel
-          Task { await viewModel.selectCluster(cluster) }
+          let capturedViewModel = self.viewModel
+          Task { await capturedViewModel.selectCluster(cluster) }
         }
       }
 
@@ -260,12 +351,12 @@
       private func scheduleClusterRefetch(for mapView: MKMapView) {
         let viewport = Self.viewport(from: mapView)
         let zoom = Self.zoom(from: mapView)
-        let viewModel = self.viewModel
+        let capturedViewModel = self.viewModel
         refetchTask?.cancel()
         refetchTask = Task { @MainActor in
           try? await Task.sleep(nanoseconds: 250_000_000)
           guard !Task.isCancelled else { return }
-          await viewModel.loadClusters(viewport: viewport, zoom: zoom)
+          await capturedViewModel.loadClusters(viewport: viewport, zoom: zoom)
         }
       }
 
@@ -283,31 +374,22 @@
       }
 
       func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
-        guard let circle = overlay as? MKCircle else {
-          return MKOverlayRenderer(overlay: overlay)
+        if let circle = overlay as? MKCircle {
+          let renderer = MKCircleRenderer(circle: circle)
+          renderer.strokeColor = UIColor(Color.tcAmber.opacity(0.3))
+          renderer.fillColor = UIColor(Color.tcAmber.opacity(0.08))
+          renderer.lineWidth = 1.5
+          return renderer
         }
-        let renderer = MKCircleRenderer(circle: circle)
-        renderer.strokeColor = UIColor(Color.tcAmber.opacity(0.3))
-        renderer.fillColor = UIColor(Color.tcAmber.opacity(0.08))
-        renderer.lineWidth = 1.5
-        return renderer
+        if let polygon = overlay as? MKPolygon {
+          let renderer = MKPolygonRenderer(polygon: polygon)
+          renderer.strokeColor = UIColor(Color.tcAmber.opacity(0.3))
+          renderer.fillColor = UIColor(Color.tcAmber.opacity(0.08))
+          renderer.lineWidth = 1.5
+          return renderer
+        }
+        return MKOverlayRenderer(overlay: overlay)
       }
-    }
-  }
-
-  /// A reference-type `MKAnnotation` wrapping a value-type ``MapCluster`` so
-  /// MapKit can hold it. Carries the cluster the coordinator needs to style the
-  /// marker and route a tap.
-  final class MapClusterAnnotation: NSObject, MKAnnotation {
-    let cluster: MapCluster
-    let clusterId: String
-    let coordinate: CLLocationCoordinate2D
-
-    init(cluster: MapCluster) {
-      self.cluster = cluster
-      self.clusterId = cluster.id
-      self.coordinate = CLLocationCoordinate2D(
-        latitude: cluster.coordinate.latitude, longitude: cluster.coordinate.longitude)
     }
   }
 #endif

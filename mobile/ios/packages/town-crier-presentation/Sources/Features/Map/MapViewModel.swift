@@ -42,6 +42,17 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
   @Published private(set) var centreLon: Double = -0.1278
   @Published private(set) var radiusMetres: Double = 2000
 
+  /// The selected zone's custom-shape polygon vertices (GH#1031), or `nil`
+  /// for a circle zone. Derived from ``selectedZone`` rather than stored
+  /// separately, so it always tracks the current selection with no extra
+  /// state to keep in sync. `ClusteredMapView` uses this to draw an
+  /// `MKPolygon` overlay instead of the default `MKCircle` for a
+  /// custom-shape zone (tc-7se1w.3 — the polygon already drives application
+  /// filtering; this makes the overlay match it).
+  var boundaryVertices: [Coordinate]? {
+    selectedZone?.boundary?.vertices
+  }
+
   private let repository: PlanningApplicationRepository
   private let watchZoneRepository: WatchZoneRepository
   private let savedApplicationRepository: SavedApplicationRepository?

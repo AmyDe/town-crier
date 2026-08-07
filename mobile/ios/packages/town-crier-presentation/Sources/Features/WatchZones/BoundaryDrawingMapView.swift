@@ -31,8 +31,16 @@ enum BoundaryDrawingRegion {
   /// few vertices from producing an absurdly close-in zoom.
   static let minimumSpanDegrees = 0.006
 
+  /// Delegates the non-empty-vertices case to ``PolygonBoundingRegion``
+  /// (extracted in tc-7se1w.3, which needs the identical bounding-box-with-
+  /// margin math to frame the main Map page's camera on a custom-shape
+  /// zone) — only the "no vertices yet" fixed-region fallback is specific
+  /// to this editor.
   static func fitting(vertices: [Coordinate], initialCentre: Coordinate) -> MKCoordinateRegion {
-    guard !vertices.isEmpty else {
+    guard
+      let fitted = PolygonBoundingRegion.fitting(
+        vertices: vertices, marginFraction: marginFraction, minimumSpanDegrees: minimumSpanDegrees)
+    else {
       return MKCoordinateRegion(
         center: CLLocationCoordinate2D(
           latitude: initialCentre.latitude, longitude: initialCentre.longitude),
@@ -40,26 +48,7 @@ enum BoundaryDrawingRegion {
         longitudinalMeters: freshDrawRegionMetres
       )
     }
-
-    let latitudes = vertices.map(\.latitude)
-    let longitudes = vertices.map(\.longitude)
-    // Force-unwrap-free: `vertices` is non-empty here, so `min()`/`max()`
-    // always succeed; the `??` fallback only guards the type-checker.
-    let minLatitude = latitudes.min() ?? initialCentre.latitude
-    let maxLatitude = latitudes.max() ?? initialCentre.latitude
-    let minLongitude = longitudes.min() ?? initialCentre.longitude
-    let maxLongitude = longitudes.max() ?? initialCentre.longitude
-
-    let centre = CLLocationCoordinate2D(
-      latitude: (minLatitude + maxLatitude) / 2,
-      longitude: (minLongitude + maxLongitude) / 2
-    )
-    let span = MKCoordinateSpan(
-      latitudeDelta: max((maxLatitude - minLatitude) * (1 + marginFraction), minimumSpanDegrees),
-      longitudeDelta: max(
-        (maxLongitude - minLongitude) * (1 + marginFraction), minimumSpanDegrees)
-    )
-    return MKCoordinateRegion(center: centre, span: span)
+    return fitted
   }
 }
 
