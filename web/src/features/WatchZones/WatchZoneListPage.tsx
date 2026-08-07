@@ -11,7 +11,11 @@ interface Props {
 }
 
 function formatRadius(metres: number): string {
-  return `${metres / 1000} km`;
+  if (metres >= 1000) {
+    const km = Math.round((metres / 1000) * 10) / 10;
+    return `${km} km`;
+  }
+  return `${Math.round(metres)} m`;
 }
 
 export function WatchZoneListPage({ repository }: Props) {
@@ -86,7 +90,9 @@ export function WatchZoneListPage({ repository }: Props) {
                     </span>
                   )}
                 </div>
-                <p className={styles.zoneRadius}>{formatRadius(zone.radiusMetres)}</p>
+                <p className={styles.zoneRadius}>
+                  {zone.boundary !== null ? 'Custom shape' : formatRadius(zone.radiusMetres)}
+                </p>
               </div>
               <div className={styles.cardActions}>
                 <Link to={`/watch-zones/${zone.id}`} className={styles.editLink}>
