@@ -1,3 +1,18 @@
+# SwiftLint version is pinned to 0.63.2 to match CI (pr-gate.yml / cd-ios-testflight.yml,
+# which download the portable release zip from GitHub directly). A newer local Homebrew
+# build (e.g. 0.65.0) can flag rules CI's 0.63.2 doesn't recognize (or vice versa),
+# causing local-only false positives/negatives and `--strict` failures on rule-name
+# mismatches. Install/run the pinned version via Mint (see ./Mintfile) rather than a
+# bare `brew install swiftlint`:
+#
+#   brew install mint          # once
+#   cd mobile/ios && mint bootstrap
+#   mint run realm/SwiftLint@0.63.2 lint --strict
+#
+# If you already have a Homebrew swiftlint that's drifted from 0.63.2, prefer the Mint
+# invocation above over reinstalling a pinned Homebrew formula — versioned Homebrew
+# formulae get pulled from homebrew-core over time, while Mint resolves the exact
+# tagged GitHub release CI uses.
 opt_in_rules:
   - all
 
