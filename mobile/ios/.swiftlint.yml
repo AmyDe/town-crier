@@ -7,7 +7,7 @@
 #
 #   brew install mint          # once
 #   cd mobile/ios && mint bootstrap
-#   mint run realm/swiftlint@0.63.2 lint --strict
+#   mint run realm/SwiftLint@0.63.2 lint --strict
 #
 # If you already have a Homebrew swiftlint that's drifted from 0.63.2, prefer the Mint
 # invocation above over reinstalling a pinned Homebrew formula — versioned Homebrew
