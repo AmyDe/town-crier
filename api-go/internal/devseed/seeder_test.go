@@ -58,6 +58,48 @@ func testZone(t *testing.T, id string, lat, lon, radius float64) watchzones.Watc
 	return z
 }
 
+// TestZoneGeometryOf_CustomShape exercises zoneGeometryOf's polygon branch
+// directly, using a real WithBoundary zone rather than a circle -- PR #1077
+// review feedback: the only prior coverage of a custom-shape ZoneGeometry was
+// at the applications.RecentNearZones store level, via a directly-constructed
+// ZoneGeometry that bypasses this exact translation, so a regression here
+// (e.g. a swapped Longitude/Latitude field, or a boundary-shaped zone losing
+// its ring) would have slipped through both suites.
+func TestZoneGeometryOf_CustomShape(t *testing.T) {
+	t.Parallel()
+
+	base := testZone(t, "z1", 51.5, -0.12, 500)
+	polygon, err := base.WithBoundary([]watchzones.Coordinate{
+		{Longitude: -0.130, Latitude: 51.510},
+		{Longitude: -0.110, Latitude: 51.510},
+		{Longitude: -0.110, Latitude: 51.490},
+	})
+	if err != nil {
+		t.Fatalf("WithBoundary: %v", err)
+	}
+	if !polygon.IsCustomShape() {
+		t.Fatal("test setup: WithBoundary must produce a custom-shape zone")
+	}
+
+	got := zoneGeometryOf(polygon)
+
+	if len(got.Boundary) != len(polygon.Boundary) {
+		t.Fatalf("zoneGeometryOf Boundary length = %d, want %d (source ring, closed by NewBoundary)",
+			len(got.Boundary), len(polygon.Boundary))
+	}
+	for i, v := range polygon.Boundary {
+		want := applications.Coordinate{Longitude: v.Longitude, Latitude: v.Latitude}
+		if got.Boundary[i] != want {
+			t.Fatalf("zoneGeometryOf Boundary[%d] = %+v, want %+v (Longitude/Latitude must not be swapped)",
+				i, got.Boundary[i], want)
+		}
+	}
+	if got.Latitude != polygon.Latitude || got.Longitude != polygon.Longitude || got.RadiusMetres != polygon.RadiusMetres {
+		t.Fatalf("zoneGeometryOf circle-fallback fields = {%v,%v,%v}, want {%v,%v,%v} (still populated from the derived centroid/enclosing radius, even for a custom-shape zone)",
+			got.Latitude, got.Longitude, got.RadiusMetres, polygon.Latitude, polygon.Longitude, polygon.RadiusMetres)
+	}
+}
+
 // fakePushFlusher is a hand-written fake for pushFlusher.
 type fakePushFlusher struct {
 	resetCalls int
