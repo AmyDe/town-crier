@@ -664,6 +664,155 @@ func TestPostgresStore_RecentInAuthorities(t *testing.T) {
 	}
 }
 
+// TestPostgresStore_RecentNearZones_CircleZone proves the circle branch: an app
+// inside the zone's radius matches, one outside does not (bd tc-9nbs4.1,
+// GH#1076 Phase 1 -- RecentInAuthorities' geometry-scoped replacement).
+func TestPostgresStore_RecentNearZones_CircleZone(t *testing.T) {
+	ctx := context.Background()
+	store := newAppPGStore(t)
+
+	zone := ZoneGeometry{Latitude: pgCentreLat, Longitude: pgCentreLon, RadiusMetres: 1000}
+
+	inside := at(pgApp("INSIDE", 100), 500)
+	outside := at(pgApp("OUTSIDE", 100), 5000)
+	for _, a := range []PlanningApplication{inside, outside} {
+		if err := store.Upsert(ctx, a); err != nil {
+			t.Fatalf("Upsert %s: %v", a.Name, err)
+		}
+	}
+
+	got, err := store.RecentNearZones(ctx, []ZoneGeometry{zone}, 10)
+	if err != nil {
+		t.Fatalf("RecentNearZones: %v", err)
+	}
+	assertNames(t, appNames(got), []string{"INSIDE"})
+}
+
+// TestPostgresStore_RecentNearZones_PolygonZone proves the polygon branch: an
+// app inside the zone's boundary matches (via ST_Covers, mirroring
+// FindInBoundaryPage), one outside does not.
+func TestPostgresStore_RecentNearZones_PolygonZone(t *testing.T) {
+	ctx := context.Background()
+	store := newAppPGStore(t)
+
+	zone := ZoneGeometry{Boundary: squareBoundary(0.005)}
+
+	inside := pgApp("INSIDE", 100)
+	inside.Longitude = pgPtr(pgCentreLon + 0.001)
+	inside.Latitude = pgPtr(pgCentreLat + 0.001)
+
+	outside := pgApp("OUTSIDE", 100)
+	outside.Longitude = pgPtr(pgCentreLon + 0.02)
+	outside.Latitude = pgPtr(pgCentreLat + 0.02)
+
+	for _, a := range []PlanningApplication{inside, outside} {
+		if err := store.Upsert(ctx, a); err != nil {
+			t.Fatalf("Upsert %s: %v", a.Name, err)
+		}
+	}
+
+	got, err := store.RecentNearZones(ctx, []ZoneGeometry{zone}, 10)
+	if err != nil {
+		t.Fatalf("RecentNearZones: %v", err)
+	}
+	assertNames(t, appNames(got), []string{"INSIDE"})
+}
+
+// TestPostgresStore_RecentNearZones_OrdersByLastDifferentDescAndRespectsLimit
+// mirrors TestPostgresStore_RecentInAuthorities' ordering/limit proof, scoped
+// by geometry instead of authority id.
+func TestPostgresStore_RecentNearZones_OrdersByLastDifferentDescAndRespectsLimit(t *testing.T) {
+	ctx := context.Background()
+	store := newAppPGStore(t)
+
+	zone := ZoneGeometry{Latitude: pgCentreLat, Longitude: pgCentreLon, RadiusMetres: 5000}
+
+	older := at(pgApp("OLD", 100), 100)
+	older.LastDifferent = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	mid := at(pgApp("MID", 100), 200)
+	mid.LastDifferent = time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+	newer := at(pgApp("NEW", 100), 300)
+	newer.LastDifferent = time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	outside := at(pgApp("OUTSIDE", 100), 50000) // outside the 5000m zone; must never appear
+	outside.LastDifferent = time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC)
+
+	for _, a := range []PlanningApplication{older, mid, newer, outside} {
+		if err := store.Upsert(ctx, a); err != nil {
+			t.Fatalf("Upsert %s: %v", a.Name, err)
+		}
+	}
+
+	got, err := store.RecentNearZones(ctx, []ZoneGeometry{zone}, 10)
+	if err != nil {
+		t.Fatalf("RecentNearZones: %v", err)
+	}
+	assertNames(t, appNames(got), []string{"NEW", "MID", "OLD"})
+
+	capped, err := store.RecentNearZones(ctx, []ZoneGeometry{zone}, 2)
+	if err != nil {
+		t.Fatalf("RecentNearZones capped: %v", err)
+	}
+	assertNames(t, appNames(capped), []string{"NEW", "MID"})
+}
+
+// TestPostgresStore_RecentNearZones_DedupsAcrossOverlappingZones proves an
+// application matched by more than one zone (here a circle and a polygon that
+// both cover it) is returned exactly once -- the EXISTS/OR shape, not a JOIN
+// that would multiply rows.
+func TestPostgresStore_RecentNearZones_DedupsAcrossOverlappingZones(t *testing.T) {
+	ctx := context.Background()
+	store := newAppPGStore(t)
+
+	circle := ZoneGeometry{Latitude: pgCentreLat, Longitude: pgCentreLon, RadiusMetres: 1000}
+	// A ~5.5km half-side square comfortably covers the whole circle too, with a
+	// large safety margin against geodesic-vs-planar rounding.
+	hugePolygon := ZoneGeometry{Boundary: squareBoundary(0.05)}
+
+	inBoth := at(pgApp("IN-BOTH", 100), 500)
+	farOutside := at(pgApp("FAR-OUTSIDE", 100), 20000)
+	for _, a := range []PlanningApplication{inBoth, farOutside} {
+		if err := store.Upsert(ctx, a); err != nil {
+			t.Fatalf("Upsert %s: %v", a.Name, err)
+		}
+	}
+
+	got, err := store.RecentNearZones(ctx, []ZoneGeometry{circle, hugePolygon}, 10)
+	if err != nil {
+		t.Fatalf("RecentNearZones: %v", err)
+	}
+	assertNames(t, appNames(got), []string{"IN-BOTH"})
+}
+
+// TestPostgresStore_RecentNearZones_EmptyZones_NoOp mirrors
+// TestPostgresStore_RecentInAuthorities' empty/nil handling: an empty or nil
+// zones list is a normal no-op (a fresh/empty dev environment), not an error,
+// even with a matching application present.
+func TestPostgresStore_RecentNearZones_EmptyZones_NoOp(t *testing.T) {
+	ctx := context.Background()
+	store := newAppPGStore(t)
+
+	if err := store.Upsert(ctx, at(pgApp("ANY", 100), 0)); err != nil {
+		t.Fatalf("Upsert: %v", err)
+	}
+
+	empty, err := store.RecentNearZones(ctx, []ZoneGeometry{}, 10)
+	if err != nil {
+		t.Fatalf("RecentNearZones empty zones: %v", err)
+	}
+	if len(empty) != 0 {
+		t.Errorf("RecentNearZones empty zones: got %d rows, want 0", len(empty))
+	}
+
+	var nilZones []ZoneGeometry
+	nilResult, err := store.RecentNearZones(ctx, nilZones, 10)
+	if err != nil {
+		t.Fatalf("RecentNearZones nil zones: %v", err)
+	}
+	if len(nilResult) != 0 {
+		t.Errorf("RecentNearZones nil zones: got %d rows, want 0", len(nilResult))
+	}
+}
+
 // TestPostgresStore_BreakdownByAuthority returns exact per-app_state counts
 // including the NULL-app_state bucket, sorted by sortStateCounts, scoped to the
 // authority and summing to the true total.
