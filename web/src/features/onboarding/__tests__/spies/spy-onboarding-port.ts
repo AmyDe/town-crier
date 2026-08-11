@@ -26,7 +26,6 @@ export class SpyOnboardingPort implements OnboardingPort {
     latitude: 51.5074,
     longitude: -0.1278,
     radiusMetres: 1000,
-    authorityId: 0 as WatchZoneSummary['authorityId'],
   };
   createWatchZoneError: Error | null = null;
 

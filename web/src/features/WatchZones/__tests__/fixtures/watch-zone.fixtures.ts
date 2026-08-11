@@ -3,7 +3,7 @@ import type {
   WatchZoneSummary,
   ZoneNotificationPreferences,
 } from '../../../../domain/types';
-import { asWatchZoneId, asAuthorityId } from '../../../../domain/types';
+import { asWatchZoneId } from '../../../../domain/types';
 
 export function aWatchZone(overrides?: Partial<WatchZoneSummary>): WatchZoneSummary {
   return {
@@ -12,7 +12,6 @@ export function aWatchZone(overrides?: Partial<WatchZoneSummary>): WatchZoneSumm
     latitude: 52.2053,
     longitude: 0.1218,
     radiusMetres: 2000,
-    authorityId: asAuthorityId(1),
     pushEnabled: true,
     emailInstantEnabled: true,
     paused: false,
@@ -28,7 +27,6 @@ export function aSecondWatchZone(overrides?: Partial<WatchZoneSummary>): WatchZo
     latitude: 51.5074,
     longitude: -0.1278,
     radiusMetres: 5000,
-    authorityId: asAuthorityId(2),
     pushEnabled: true,
     emailInstantEnabled: true,
     paused: false,

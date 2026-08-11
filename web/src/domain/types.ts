@@ -151,7 +151,6 @@ export interface WatchZoneSummary {
   readonly latitude: number;
   readonly longitude: number;
   readonly radiusMetres: number;
-  readonly authorityId: AuthorityId;
   readonly pushEnabled: boolean;
   readonly emailInstantEnabled: boolean;
   /**
@@ -394,7 +393,6 @@ export interface CreateWatchZoneRequest {
   readonly latitude: number;
   readonly longitude: number;
   readonly radiusMetres: number;
-  readonly authorityId?: number;
   readonly pushEnabled?: boolean;
   readonly emailInstantEnabled?: boolean;
   /**
