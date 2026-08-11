@@ -12,19 +12,23 @@ import (
 
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
 	"github.com/AmyDe/town-crier/api-go/internal/polling"
+	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
 )
 
-// authorityLister lists the distinct authority ids dev currently has watch
-// zones in. *watchzones.PostgresStore (dev-bound) satisfies it.
-type authorityLister interface {
-	DistinctAuthorityIDs(ctx context.Context) ([]int, error)
+// zoneLister lists every watch zone dev currently has, across every user.
+// *watchzones.PostgresStore (dev-bound) satisfies it. It replaces the
+// authority-scoped authorityLister (bd tc-9nbs4.1, GH#1076 Phase 1): dev's
+// watch zones no longer need a "home" authority to scope the prod read, since
+// notification matching is purely geographic (ADR 0041/0044).
+type zoneLister interface {
+	All(ctx context.Context) ([]watchzones.WatchZone, error)
 }
 
-// prodReader reads the most-recently-changed prod applications scoped to a
-// set of authority ids. *applications.PostgresStore, bound to a read-only
-// prod pool, satisfies it.
+// prodReader reads the most-recently-changed prod applications that fall
+// within a set of watch-zone geometries. *applications.PostgresStore, bound
+// to a read-only prod pool, satisfies it.
 type prodReader interface {
-	RecentInAuthorities(ctx context.Context, authorityIDs []int, limit int) ([]applications.PlanningApplication, error)
+	RecentNearZones(ctx context.Context, zones []applications.ZoneGeometry, limit int) ([]applications.PlanningApplication, error)
 }
 
 // pushFlusher drives the poll-cycle push coalescer's lifecycle, the same
@@ -36,11 +40,11 @@ type pushFlusher interface {
 	Flush(ctx context.Context) error
 }
 
-// Seeder runs one dev-seed cycle: read dev's watched authorities, pull the
-// most-recently-changed prod applications within them, and feed each through
-// the real ingest pipeline.
+// Seeder runs one dev-seed cycle: read dev's watch zones, pull the
+// most-recently-changed prod applications that fall within any of them, and
+// feed each through the real ingest pipeline.
 type Seeder struct {
-	zones    authorityLister
+	zones    zoneLister
 	prodApps prodReader
 	ingester *polling.Ingester
 	push     pushFlusher
@@ -49,7 +53,7 @@ type Seeder struct {
 }
 
 // NewSeeder wires a Seeder.
-func NewSeeder(zones authorityLister, prodApps prodReader, ingester *polling.Ingester, push pushFlusher, limit int, logger *slog.Logger) *Seeder {
+func NewSeeder(zones zoneLister, prodApps prodReader, ingester *polling.Ingester, push pushFlusher, limit int, logger *slog.Logger) *Seeder {
 	return &Seeder{
 		zones:    zones,
 		prodApps: prodApps,
@@ -65,16 +69,21 @@ func NewSeeder(zones authorityLister, prodApps prodReader, ingester *polling.Ing
 // not an error: it is logged at info level and returns (0, nil) without
 // touching the prod reader or the push coalescer.
 func (s *Seeder) Run(ctx context.Context) (int, error) {
-	authorityIDs, err := s.zones.DistinctAuthorityIDs(ctx)
+	watchZones, err := s.zones.All(ctx)
 	if err != nil {
 		return 0, err
 	}
-	if len(authorityIDs) == 0 {
-		s.logger.InfoContext(ctx, "dev-seed: no watched authorities, skipping cycle")
+	if len(watchZones) == 0 {
+		s.logger.InfoContext(ctx, "dev-seed: no watch zones, skipping cycle")
 		return 0, nil
 	}
 
-	apps, err := s.prodApps.RecentInAuthorities(ctx, authorityIDs, s.limit)
+	geometries := make([]applications.ZoneGeometry, len(watchZones))
+	for i, z := range watchZones {
+		geometries[i] = zoneGeometryOf(z)
+	}
+
+	apps, err := s.prodApps.RecentNearZones(ctx, geometries, s.limit)
 	if err != nil {
 		return 0, err
 	}
@@ -98,4 +107,25 @@ func (s *Seeder) Run(ctx context.Context) (int, error) {
 	}
 
 	return count, nil
+}
+
+// zoneGeometryOf maps a watch zone's shape into applications.ZoneGeometry.
+// applications cannot import watchzones (which already imports applications,
+// see applications.Coordinate's doc), so this mapping lives on the devseed
+// side, which imports both. A custom-shape zone (non-empty Boundary) carries
+// its own polygon ring; a circle zone carries its centre and radius with an
+// empty Boundary — mirroring watchzones.WatchZone.IsCustomShape.
+func zoneGeometryOf(z watchzones.WatchZone) applications.ZoneGeometry {
+	g := applications.ZoneGeometry{
+		Latitude:     z.Latitude,
+		Longitude:    z.Longitude,
+		RadiusMetres: z.RadiusMetres,
+	}
+	if z.IsCustomShape() {
+		g.Boundary = make([]applications.Coordinate, len(z.Boundary))
+		for i, v := range z.Boundary {
+			g.Boundary[i] = applications.Coordinate{Longitude: v.Longitude, Latitude: v.Latitude}
+		}
+	}
+	return g
 }
