@@ -10,19 +10,21 @@ import (
 	"reflect"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
 	"github.com/AmyDe/town-crier/api-go/internal/polling"
+	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
 )
 
-// fakeAuthorityLister is a hand-written fake for authorityLister.
-type fakeAuthorityLister struct {
-	ids []int
-	err error
+// fakeZoneLister is a hand-written fake for zoneLister.
+type fakeZoneLister struct {
+	zones []watchzones.WatchZone
+	err   error
 }
 
-func (f *fakeAuthorityLister) DistinctAuthorityIDs(ctx context.Context) ([]int, error) {
-	return f.ids, f.err
+func (f *fakeZoneLister) All(ctx context.Context) ([]watchzones.WatchZone, error) {
+	return f.zones, f.err
 }
 
 // fakeProdReader is a hand-written fake for prodReader.
@@ -30,16 +32,72 @@ type fakeProdReader struct {
 	apps []applications.PlanningApplication
 	err  error
 
-	calls           int
-	gotAuthorityIDs []int
-	gotLimit        int
+	calls    int
+	gotZones []applications.ZoneGeometry
+	gotLimit int
 }
 
-func (f *fakeProdReader) RecentInAuthorities(ctx context.Context, authorityIDs []int, limit int) ([]applications.PlanningApplication, error) {
+func (f *fakeProdReader) RecentNearZones(ctx context.Context, zones []applications.ZoneGeometry, limit int) ([]applications.PlanningApplication, error) {
 	f.calls++
-	f.gotAuthorityIDs = authorityIDs
+	f.gotZones = zones
 	f.gotLimit = limit
 	return f.apps, f.err
+}
+
+// testZone builds a validated watch zone at the given coordinates. authorityID
+// is arbitrary and fixed at 1 -- devseed no longer reads it, but
+// watchzones.NewWatchZone still requires it positive (that invariant is out
+// of this bead's scope; see tc-9nbs4.2).
+func testZone(t *testing.T, id string, lat, lon, radius float64) watchzones.WatchZone {
+	t.Helper()
+	z, err := watchzones.NewWatchZone(id, "user-1", "zone-"+id, lat, lon, radius, 1,
+		time.Date(2026, 6, 26, 12, 0, 0, 0, time.UTC), true, false)
+	if err != nil {
+		t.Fatalf("NewWatchZone(%s): %v", id, err)
+	}
+	return z
+}
+
+// TestZoneGeometryOf_CustomShape exercises zoneGeometryOf's polygon branch
+// directly, using a real WithBoundary zone rather than a circle -- PR #1077
+// review feedback: the only prior coverage of a custom-shape ZoneGeometry was
+// at the applications.RecentNearZones store level, via a directly-constructed
+// ZoneGeometry that bypasses this exact translation, so a regression here
+// (e.g. a swapped Longitude/Latitude field, or a boundary-shaped zone losing
+// its ring) would have slipped through both suites.
+func TestZoneGeometryOf_CustomShape(t *testing.T) {
+	t.Parallel()
+
+	base := testZone(t, "z1", 51.5, -0.12, 500)
+	polygon, err := base.WithBoundary([]watchzones.Coordinate{
+		{Longitude: -0.130, Latitude: 51.510},
+		{Longitude: -0.110, Latitude: 51.510},
+		{Longitude: -0.110, Latitude: 51.490},
+	})
+	if err != nil {
+		t.Fatalf("WithBoundary: %v", err)
+	}
+	if !polygon.IsCustomShape() {
+		t.Fatal("test setup: WithBoundary must produce a custom-shape zone")
+	}
+
+	got := zoneGeometryOf(polygon)
+
+	if len(got.Boundary) != len(polygon.Boundary) {
+		t.Fatalf("zoneGeometryOf Boundary length = %d, want %d (source ring, closed by NewBoundary)",
+			len(got.Boundary), len(polygon.Boundary))
+	}
+	for i, v := range polygon.Boundary {
+		want := applications.Coordinate{Longitude: v.Longitude, Latitude: v.Latitude}
+		if got.Boundary[i] != want {
+			t.Fatalf("zoneGeometryOf Boundary[%d] = %+v, want %+v (Longitude/Latitude must not be swapped)",
+				i, got.Boundary[i], want)
+		}
+	}
+	if got.Latitude != polygon.Latitude || got.Longitude != polygon.Longitude || got.RadiusMetres != polygon.RadiusMetres {
+		t.Fatalf("zoneGeometryOf circle-fallback fields = {%v,%v,%v}, want {%v,%v,%v} (still populated from the derived centroid/enclosing radius, even for a custom-shape zone)",
+			got.Latitude, got.Longitude, got.RadiusMetres, polygon.Latitude, polygon.Longitude, polygon.RadiusMetres)
+	}
 }
 
 // fakePushFlusher is a hand-written fake for pushFlusher.
@@ -134,7 +192,7 @@ func testApp(uid string, areaID int, description string) applications.PlanningAp
 func TestSeeder_Run_NoWatchZones_NoOp(t *testing.T) {
 	t.Parallel()
 
-	zones := &fakeAuthorityLister{ids: nil}
+	zones := &fakeZoneLister{zones: nil}
 	prod := &fakeProdReader{}
 	push := &fakePushFlusher{}
 	ingester := polling.NewIngester(&fakeAppStore{}, &fakeDecisionDispatcher{}, &fakeEnqueuer{})
@@ -150,7 +208,7 @@ func TestSeeder_Run_NoWatchZones_NoOp(t *testing.T) {
 		t.Fatalf("Run() count = %d, want 0", count)
 	}
 	if prod.calls != 0 {
-		t.Fatalf("RecentInAuthorities called %d times, want 0 (no-op before reaching prod)", prod.calls)
+		t.Fatalf("RecentNearZones called %d times, want 0 (no-op before reaching prod)", prod.calls)
 	}
 	if push.resetCalls != 0 || push.flushCalls != 0 {
 		t.Fatalf("push Reset/Flush = %d/%d, want 0/0 (no-op returns before touching push)", push.resetCalls, push.flushCalls)
@@ -161,7 +219,7 @@ func TestSeeder_Run_ZonesListerError(t *testing.T) {
 	t.Parallel()
 
 	wantErr := errors.New("zones down")
-	zones := &fakeAuthorityLister{err: wantErr}
+	zones := &fakeZoneLister{err: wantErr}
 	prod := &fakeProdReader{}
 	push := &fakePushFlusher{}
 	ingester := polling.NewIngester(&fakeAppStore{}, &fakeDecisionDispatcher{}, &fakeEnqueuer{})
@@ -177,7 +235,7 @@ func TestSeeder_Run_ZonesListerError(t *testing.T) {
 		t.Fatalf("Run() count = %d, want 0", count)
 	}
 	if prod.calls != 0 {
-		t.Fatalf("RecentInAuthorities called %d times, want 0", prod.calls)
+		t.Fatalf("RecentNearZones called %d times, want 0", prod.calls)
 	}
 	if push.resetCalls != 0 || push.flushCalls != 0 {
 		t.Fatalf("push Reset/Flush = %d/%d, want 0/0", push.resetCalls, push.flushCalls)
@@ -188,7 +246,7 @@ func TestSeeder_Run_ProdReaderError(t *testing.T) {
 	t.Parallel()
 
 	wantErr := errors.New("prod down")
-	zones := &fakeAuthorityLister{ids: []int{100}}
+	zones := &fakeZoneLister{zones: []watchzones.WatchZone{testZone(t, "z1", 51.5, -0.12, 500)}}
 	prod := &fakeProdReader{err: wantErr}
 	push := &fakePushFlusher{}
 	ingester := polling.NewIngester(&fakeAppStore{}, &fakeDecisionDispatcher{}, &fakeEnqueuer{})
@@ -211,7 +269,7 @@ func TestSeeder_Run_ProdReaderError(t *testing.T) {
 func TestSeeder_Run_ZeroAppsReturned_StillFlushesOnce(t *testing.T) {
 	t.Parallel()
 
-	zones := &fakeAuthorityLister{ids: []int{100}}
+	zones := &fakeZoneLister{zones: []watchzones.WatchZone{testZone(t, "z1", 51.5, -0.12, 500)}}
 	prod := &fakeProdReader{apps: nil}
 	push := &fakePushFlusher{}
 	ingester := polling.NewIngester(&fakeAppStore{}, &fakeDecisionDispatcher{}, &fakeEnqueuer{})
@@ -227,7 +285,7 @@ func TestSeeder_Run_ZeroAppsReturned_StillFlushesOnce(t *testing.T) {
 		t.Fatalf("Run() count = %d, want 0", count)
 	}
 	if push.resetCalls != 1 || push.flushCalls != 1 {
-		t.Fatalf("push Reset/Flush = %d/%d, want 1/1 (non-zero authorities still flush, even with zero candidates)", push.resetCalls, push.flushCalls)
+		t.Fatalf("push Reset/Flush = %d/%d, want 1/1 (non-zero zones still flush, even with zero candidates)", push.resetCalls, push.flushCalls)
 	}
 }
 
@@ -249,7 +307,9 @@ func TestSeeder_Run_HappyPath_MixOfNewUnchangedChanged(t *testing.T) {
 	decision := &fakeDecisionDispatcher{}
 	ingester := polling.NewIngester(appStore, decision, enqueuer)
 
-	zones := &fakeAuthorityLister{ids: []int{100, 200}}
+	zone1 := testZone(t, "z1", 51.5, -0.12, 500)
+	zone2 := testZone(t, "z2", 52.2, -1.3, 750)
+	zones := &fakeZoneLister{zones: []watchzones.WatchZone{zone1, zone2}}
 	prod := &fakeProdReader{apps: []applications.PlanningApplication{unchanged, newApp, changedNew}}
 	push := &fakePushFlusher{}
 
@@ -263,11 +323,12 @@ func TestSeeder_Run_HappyPath_MixOfNewUnchangedChanged(t *testing.T) {
 	if count != 3 {
 		t.Fatalf("Run() count = %d, want 3 (all three processed without error)", count)
 	}
-	if got, want := prod.gotAuthorityIDs, []int{100, 200}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("RecentInAuthorities authorityIDs = %v, want %v", got, want)
+	wantGeometries := []applications.ZoneGeometry{zoneGeometryOf(zone1), zoneGeometryOf(zone2)}
+	if got := prod.gotZones; !reflect.DeepEqual(got, wantGeometries) {
+		t.Fatalf("RecentNearZones zones = %+v, want %+v", got, wantGeometries)
 	}
 	if prod.gotLimit != 5 {
-		t.Fatalf("RecentInAuthorities limit = %d, want 5", prod.gotLimit)
+		t.Fatalf("RecentNearZones limit = %d, want 5", prod.gotLimit)
 	}
 	if push.resetCalls != 1 || push.flushCalls != 1 {
 		t.Fatalf("push Reset/Flush = %d/%d, want 1/1", push.resetCalls, push.flushCalls)
@@ -298,7 +359,7 @@ func TestSeeder_Run_IngestErrorDoesNotAbortBatch(t *testing.T) {
 	enqueuer := &fakeEnqueuer{}
 	ingester := polling.NewIngester(appStore, &fakeDecisionDispatcher{}, enqueuer)
 
-	zones := &fakeAuthorityLister{ids: []int{100}}
+	zones := &fakeZoneLister{zones: []watchzones.WatchZone{testZone(t, "z1", 51.5, -0.12, 500)}}
 	prod := &fakeProdReader{apps: []applications.PlanningApplication{ok1, failing, ok2}}
 	push := &fakePushFlusher{}
 
@@ -323,7 +384,7 @@ func TestSeeder_Run_IngestErrorDoesNotAbortBatch(t *testing.T) {
 func TestSeeder_Run_FlushErrorIsSwallowed(t *testing.T) {
 	t.Parallel()
 
-	zones := &fakeAuthorityLister{ids: []int{100}}
+	zones := &fakeZoneLister{zones: []watchzones.WatchZone{testZone(t, "z1", 51.5, -0.12, 500)}}
 	prod := &fakeProdReader{apps: []applications.PlanningApplication{testApp("a1", 100, "d")}}
 	push := &fakePushFlusher{flushErr: errors.New("push down")}
 	ingester := polling.NewIngester(&fakeAppStore{}, &fakeDecisionDispatcher{}, &fakeEnqueuer{})

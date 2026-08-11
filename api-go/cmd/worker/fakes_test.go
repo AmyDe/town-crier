@@ -50,3 +50,5 @@ func (s *spyZoneStore) Delete(_ context.Context, _, _ string) error { return nil
 func (s *spyZoneStore) DeleteAllByUserID(_ context.Context, _ string) error { return nil }
 
 func (s *spyZoneStore) DistinctAuthorityIDs(_ context.Context) ([]int, error) { return nil, nil }
+
+func (s *spyZoneStore) All(_ context.Context) ([]watchzones.WatchZone, error) { return nil, nil }

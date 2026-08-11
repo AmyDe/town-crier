@@ -37,6 +37,8 @@ func (f *fakeWatchZoneStore) FindZonesContaining(_ context.Context, _, _ float64
 	return nil, nil
 }
 
+func (f *fakeWatchZoneStore) All(_ context.Context) ([]watchzones.WatchZone, error) { return nil, nil }
+
 // TestWatchZoneExportReader_ReadsThroughStoreInterface proves the export adapter
 // is backed by the consumer-side watchzones.Store interface, so GET /v1/me/data
 // exports a user's watch zones (bead tc-s8g1). The fake is a plain

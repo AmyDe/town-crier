@@ -208,6 +208,45 @@ func TestWatchZonePostgresStore_GetByUserID_OrderedAndScoped(t *testing.T) {
 	assertStrings(t, zoneNames(list), []string{"first", "second", "third"})
 }
 
+// TestWatchZonePostgresStore_All returns every zone across every user, ordered
+// by id — the dev-seed job's "every zone dev currently has" read (bd
+// tc-9nbs4.1, GH#1076), replacing the authority-scoped DistinctAuthorityIDs.
+func TestWatchZonePostgresStore_All(t *testing.T) {
+	ctx := context.Background()
+	store := newZonePGStore(t)
+
+	for _, z := range []WatchZone{
+		pgZone(t, uuidN(2), "user-1", "second", 51.5, -0.12, 500, 10),
+		pgZone(t, uuidN(1), "user-1", "first", 51.5, -0.12, 500, 10),
+		pgZone(t, uuidN(3), "user-2", "third", 51.6, -0.13, 750, 20),
+	} {
+		if err := store.Save(ctx, z); err != nil {
+			t.Fatalf("Save %s: %v", z.Name, err)
+		}
+	}
+
+	all, err := store.All(ctx)
+	if err != nil {
+		t.Fatalf("All: %v", err)
+	}
+	assertStrings(t, zoneNames(all), []string{"first", "second", "third"})
+}
+
+// TestWatchZonePostgresStore_All_Empty returns an empty slice, not an error,
+// when no watch zones exist -- the fresh/empty dev environment case.
+func TestWatchZonePostgresStore_All_Empty(t *testing.T) {
+	ctx := context.Background()
+	store := newZonePGStore(t)
+
+	all, err := store.All(ctx)
+	if err != nil {
+		t.Fatalf("All: %v", err)
+	}
+	if len(all) != 0 {
+		t.Fatalf("All on empty table: got %d zones, want 0", len(all))
+	}
+}
+
 // TestWatchZonePostgresStore_Delete removes a zone; a miss returns ErrNotFound.
 func TestWatchZonePostgresStore_Delete(t *testing.T) {
 	ctx := context.Background()
