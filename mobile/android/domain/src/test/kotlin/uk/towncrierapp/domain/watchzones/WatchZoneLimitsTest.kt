@@ -62,4 +62,19 @@ class WatchZoneLimitsTest {
     fun `clampRadius exceeding the limit returns the max`() {
         assertEquals(5_000.0, WatchZoneLimits(SubscriptionTier.PERSONAL).clampRadius(8_000.0))
     }
+
+    @Test
+    fun `free tier does not allow a custom boundary`() {
+        assertFalse(WatchZoneLimits(SubscriptionTier.FREE).allowsCustomBoundary)
+    }
+
+    @Test
+    fun `personal tier allows a custom boundary`() {
+        assertTrue(WatchZoneLimits(SubscriptionTier.PERSONAL).allowsCustomBoundary)
+    }
+
+    @Test
+    fun `pro tier allows a custom boundary`() {
+        assertTrue(WatchZoneLimits(SubscriptionTier.PRO).allowsCustomBoundary)
+    }
 }

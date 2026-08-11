@@ -44,4 +44,39 @@ class WatchZoneTest {
         assertEquals(true, zone.emailInstantEnabled)
         assertEquals(0, zone.authorityId)
     }
+
+    @Test
+    fun `boundary defaults to null meaning a circle zone`() {
+        val zone =
+            WatchZone(
+                id = WatchZoneId("wz-1"),
+                name = "Home",
+                centre = Coordinate(51.5074, -0.1278),
+                radiusMetres = 500.0,
+            )
+
+        assertEquals(null, zone.boundary)
+    }
+
+    @Test
+    fun `a custom-shape zone carries its boundary`() {
+        val triangle =
+            listOf(
+                Coordinate(latitude = 51.50, longitude = -0.10),
+                Coordinate(latitude = 51.51, longitude = -0.09),
+                Coordinate(latitude = 51.50, longitude = -0.09),
+            )
+        val boundary = (WatchZoneBoundary.of(triangle) as WatchZoneBoundaryResult.Valid).boundary
+
+        val zone =
+            WatchZone(
+                id = WatchZoneId("wz-1"),
+                name = "Home",
+                centre = Coordinate(51.5074, -0.1278),
+                radiusMetres = 500.0,
+                boundary = boundary,
+            )
+
+        assertEquals(boundary, zone.boundary)
+    }
 }
