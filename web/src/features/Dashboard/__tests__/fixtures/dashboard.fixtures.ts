@@ -10,7 +10,6 @@ export function cambridgeZone(
     latitude: 52.2053,
     longitude: 0.1218,
     radiusMetres: 1000,
-    authorityId: asAuthorityId(42),
     ...overrides,
   };
 }
@@ -24,7 +23,6 @@ export function oxfordZone(
     latitude: 51.752,
     longitude: -1.2577,
     radiusMetres: 500,
-    authorityId: asAuthorityId(99),
     ...overrides,
   };
 }

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { createApiClient } from '../client';
 import { watchZonesApi } from '../watchZones';
 import type { WatchZoneBoundary, WatchZoneSummary } from '../../domain/types';
-import { asAuthorityId, asWatchZoneId } from '../../domain/types';
+import { asWatchZoneId } from '../../domain/types';
 
 interface RecordedRequest {
   readonly url: string;
@@ -55,7 +55,6 @@ function aZoneSummary(overrides?: Partial<WatchZoneSummary>): WatchZoneSummary {
     latitude: 52.2053,
     longitude: 0.1218,
     radiusMetres: 2000,
-    authorityId: asAuthorityId(1),
     pushEnabled: true,
     emailInstantEnabled: true,
     paused: false,

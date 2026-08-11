@@ -2,16 +2,10 @@ import type { ApiClient } from './client';
 import type {
   ApplicationsSort,
   ApplicationStatus,
-  AuthorityListItem,
   MapCluster,
   PlanningApplication,
   PlanningApplicationSummary,
 } from '../domain/types';
-
-interface UserApplicationAuthoritiesResponse {
-  readonly authorities: readonly AuthorityListItem[];
-  readonly count: number;
-}
 
 /** Wire shape for one cell of the map clusters endpoint (GH#698). */
 interface MapClusterDto {
@@ -66,10 +60,6 @@ function mapClusterToDomain(dto: MapClusterDto): MapCluster {
 
 export function applicationsApi(client: ApiClient) {
   return {
-    getMyAuthorities: () =>
-      client
-        .get<UserApplicationAuthoritiesResponse>('/v1/me/application-authorities')
-        .then((r) => r.authorities),
     getByZone: (zoneId: string) =>
       client.get<readonly PlanningApplication[]>(`/v1/me/watch-zones/${zoneId}/applications`),
     /**
