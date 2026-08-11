@@ -208,8 +208,7 @@ struct MapViewModelTests {
       id: WatchZoneId("zone-1"),
       name: "Camden",
       centre: Coordinate(latitude: 51.539, longitude: -0.1426),
-      radiusMetres: 1000,
-      authorityId: 42
+      radiusMetres: 1000
     )
     let spy = SpyPlanningApplicationRepository()
     spy.fetchClustersResult = .success([.bubble(count: 9)])

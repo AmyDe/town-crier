@@ -184,8 +184,7 @@ struct AppCoordinatorWatchZoneTests {
       id: WatchZone.cambridge.id,
       name: "My New Name",
       centre: WatchZone.cambridge.centre,
-      radiusMetres: WatchZone.cambridge.radiusMetres,
-      authorityId: WatchZone.cambridge.authorityId
+      radiusMetres: WatchZone.cambridge.radiusMetres
     )
     watchZoneSpy.loadAllResult = .success([renamed])
 
@@ -235,8 +234,7 @@ struct AppCoordinatorWatchZoneTests {
       id: WatchZone.cambridge.id,
       name: "My New Name",
       centre: WatchZone.cambridge.centre,
-      radiusMetres: WatchZone.cambridge.radiusMetres,
-      authorityId: WatchZone.cambridge.authorityId
+      radiusMetres: WatchZone.cambridge.radiusMetres
     )
     watchZoneSpy.loadAllResult = .success([renamed])
 
@@ -289,8 +287,7 @@ struct AppCoordinatorWatchZoneTests {
       id: WatchZone.cambridge.id,
       name: "Renamed",
       centre: WatchZone.cambridge.centre,
-      radiusMetres: WatchZone.cambridge.radiusMetres,
-      authorityId: WatchZone.cambridge.authorityId
+      radiusMetres: WatchZone.cambridge.radiusMetres
     )
     watchZoneSpy.loadAllResult = .success([renamed])
 

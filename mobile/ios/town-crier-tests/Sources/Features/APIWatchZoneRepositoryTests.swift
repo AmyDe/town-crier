@@ -41,7 +41,7 @@ struct APIWatchZoneRepositoryTests {
 
   // MARK: - save
 
-  @Test("save sends POST /v1/me/watch-zones with correct body (no zoneId, includes authorityId)")
+  @Test("save sends POST /v1/me/watch-zones with correct body (no zoneId)")
   func save_sendsCorrectRequest() async throws {
     let zone = WatchZone.cambridge
     let (sut, _, transport) = makeSUT(responses: [
@@ -63,30 +63,6 @@ struct APIWatchZoneRepositoryTests {
     #expect(json["latitude"] as? Double == 52.2053)
     #expect(json["longitude"] as? Double == 0.1218)
     #expect(json["radiusMetres"] as? Double == 2000)
-    #expect(json["authorityId"] as? Int == 123)
-  }
-
-  @Test("save omits authorityId when zone has default authorityId of 0")
-  func save_omitsAuthorityIdWhenZero() async throws {
-    // swiftlint:disable:next force_try
-    let zone = try! WatchZone(
-      id: WatchZoneId("zone-no-authority"),
-      postcode: Postcode("CB1 2AD"),
-      centre: Coordinate(latitude: 52.2053, longitude: 0.1218),
-      radiusMetres: 2000
-        // authorityId defaults to 0
-    )
-    let (sut, _, transport) = makeSUT(responses: [
-      (Data("{}".utf8), httpResponse(statusCode: 201))
-    ])
-
-    try await sut.save(zone)
-
-    let body = try #require(transport.requests[0].httpBody)
-    let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
-    // When authorityId is 0 (default/unknown), the key should be absent
-    #expect(json["authorityId"] == nil, "authorityId should be omitted when zone has default value")
-    #expect(json["zoneId"] == nil, "zoneId must not be sent to the API")
   }
 
   @Test("save with network error throws networkUnavailable")
@@ -183,8 +159,7 @@ struct APIWatchZoneRepositoryTests {
                   "name": "CB1 2AD",
                   "latitude": 52.2053,
                   "longitude": 0.1218,
-                  "radiusMetres": 2000,
-                  "authorityId": 123
+                  "radiusMetres": 2000
               }
           ]
       }
@@ -207,7 +182,6 @@ struct APIWatchZoneRepositoryTests {
     let expectedCentre = try Coordinate(latitude: 52.2053, longitude: 0.1218)
     #expect(zone.centre == expectedCentre)
     #expect(zone.radiusMetres == 2000)
-    #expect(zone.authorityId == 123)
   }
 
   @Test("loadAll includes zones with freeform names (web-created)")
@@ -220,8 +194,7 @@ struct APIWatchZoneRepositoryTests {
                   "name": "My Home Zone",
                   "latitude": 51.5014,
                   "longitude": -0.1419,
-                  "radiusMetres": 1500,
-                  "authorityId": 456
+                  "radiusMetres": 1500
               }
           ]
       }
@@ -236,7 +209,6 @@ struct APIWatchZoneRepositoryTests {
     let zone = zones[0]
     #expect(zone.id == WatchZoneId("zone-web-001"))
     #expect(zone.name == "My Home Zone")
-    #expect(zone.authorityId == 456)
   }
 
   @Test("loadAll returns mix of postcode and freeform-named zones")
@@ -249,16 +221,14 @@ struct APIWatchZoneRepositoryTests {
                   "name": "CB1 2AD",
                   "latitude": 52.2053,
                   "longitude": 0.1218,
-                  "radiusMetres": 2000,
-                  "authorityId": 123
+                  "radiusMetres": 2000
               },
               {
                   "id": "zone-web",
                   "name": "Office near Westminster",
                   "latitude": 51.5014,
                   "longitude": -0.1419,
-                  "radiusMetres": 1500,
-                  "authorityId": 456
+                  "radiusMetres": 1500
               }
           ]
       }
@@ -342,24 +312,21 @@ struct APIWatchZoneRepositoryTests {
                   "name": "CB1 2AD",
                   "latitude": 52.2053,
                   "longitude": 0.1218,
-                  "radiusMetres": 2000,
-                  "authorityId": 123
+                  "radiusMetres": 2000
               },
               {
                   "id": "zone-bad-coord",
                   "name": "Bad Zone",
                   "latitude": 999.0,
                   "longitude": 0.0,
-                  "radiusMetres": 1000,
-                  "authorityId": 456
+                  "radiusMetres": 1000
               },
               {
                   "id": "zone-empty-name",
                   "name": "",
                   "latitude": 51.5,
                   "longitude": -0.1,
-                  "radiusMetres": 1500,
-                  "authorityId": 789
+                  "radiusMetres": 1500
               }
           ]
       }

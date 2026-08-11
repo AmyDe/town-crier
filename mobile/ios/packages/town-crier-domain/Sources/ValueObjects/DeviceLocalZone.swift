@@ -2,10 +2,10 @@ import Foundation
 
 /// A circular geographic area saved on-device before sign-up (GH#879 Phase
 /// 4): name, centre, radius. Deliberately NOT a ``WatchZone`` — that type
-/// requires a server-resolved `authorityId`, which an anonymous session has
-/// no way to obtain. No alerts, no server persistence: a device-local zone
-/// exists purely to drive the anonymous Applications list and Map while the
-/// user has no account.
+/// requires a signed-in session to persist server-side, which an anonymous
+/// session has no way to obtain. No alerts, no server persistence: a
+/// device-local zone exists purely to drive the anonymous Applications list
+/// and Map while the user has no account.
 public struct DeviceLocalZone: Equatable, Hashable, Identifiable, Sendable {
   public let id: DeviceLocalZoneId
   public let name: String

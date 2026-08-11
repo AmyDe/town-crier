@@ -21,7 +21,6 @@ public final class APIWatchZoneRepository: WatchZoneRepository, Sendable {
       latitude: zone.centre.latitude,
       longitude: zone.centre.longitude,
       radiusMetres: zone.radiusMetres,
-      authorityId: zone.authorityId > 0 ? zone.authorityId : nil,
       pushEnabled: zone.pushEnabled,
       emailInstantEnabled: zone.emailInstantEnabled,
       boundary: zone.boundary.map { GeoJSONPolygon(boundary: $0) }
@@ -118,7 +117,6 @@ struct CreateWatchZoneRequest: Encodable, Sendable {
   let latitude: Double
   let longitude: Double
   let radiusMetres: Double
-  let authorityId: Int?
   let pushEnabled: Bool
   let emailInstantEnabled: Bool
   let boundary: GeoJSONPolygon?
@@ -212,7 +210,6 @@ struct WatchZoneSummaryDTO: Decodable, Sendable {
   let latitude: Double
   let longitude: Double
   let radiusMetres: Double
-  let authorityId: Int
   let pushEnabled: Bool
   let emailInstantEnabled: Bool
   /// Server-derived: true when this zone currently exceeds the user's
@@ -232,7 +229,6 @@ struct WatchZoneSummaryDTO: Decodable, Sendable {
     latitude: Double,
     longitude: Double,
     radiusMetres: Double,
-    authorityId: Int,
     pushEnabled: Bool = true,
     emailInstantEnabled: Bool = true,
     paused: Bool = false,
@@ -243,7 +239,6 @@ struct WatchZoneSummaryDTO: Decodable, Sendable {
     self.latitude = latitude
     self.longitude = longitude
     self.radiusMetres = radiusMetres
-    self.authorityId = authorityId
     self.pushEnabled = pushEnabled
     self.emailInstantEnabled = emailInstantEnabled
     self.paused = paused
@@ -257,7 +252,6 @@ struct WatchZoneSummaryDTO: Decodable, Sendable {
     self.latitude = try container.decode(Double.self, forKey: .latitude)
     self.longitude = try container.decode(Double.self, forKey: .longitude)
     self.radiusMetres = try container.decode(Double.self, forKey: .radiusMetres)
-    self.authorityId = try container.decode(Int.self, forKey: .authorityId)
     // Per spec (T1): existing zones without these fields hydrate to true (preserves prior behaviour).
     self.pushEnabled = try container.decodeIfPresent(Bool.self, forKey: .pushEnabled) ?? true
     self.emailInstantEnabled =
@@ -269,7 +263,7 @@ struct WatchZoneSummaryDTO: Decodable, Sendable {
   }
 
   private enum CodingKeys: String, CodingKey {
-    case id, name, latitude, longitude, radiusMetres, authorityId
+    case id, name, latitude, longitude, radiusMetres
     case pushEnabled, emailInstantEnabled, paused, boundary
   }
 
@@ -281,7 +275,6 @@ struct WatchZoneSummaryDTO: Decodable, Sendable {
       name: name,
       centre: centre,
       radiusMetres: radiusMetres,
-      authorityId: authorityId,
       pushEnabled: pushEnabled,
       emailInstantEnabled: emailInstantEnabled,
       paused: paused,

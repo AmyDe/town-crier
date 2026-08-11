@@ -186,7 +186,7 @@ struct WatchZoneListViewModelDeviceLocalZoneRowTests {
   @Test func load_deduplicatesLocalZoneMatchingServerZone() async throws {
     let localRepo = SpyDeviceLocalZoneRepository()
     let serverZone = try WatchZone(
-      name: "Home", centre: .cambridge, radiusMetres: 1000, authorityId: 1)
+      name: "Home", centre: .cambridge, radiusMetres: 1000)
     let duplicateCentre = try Coordinate(
       latitude: Coordinate.cambridge.latitude + 0.00005,
       longitude: Coordinate.cambridge.longitude - 0.00005

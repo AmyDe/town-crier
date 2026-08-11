@@ -88,7 +88,6 @@ public final class AppCoordinator: ObservableObject {
   let notificationService: NotificationService
   // Internal (not private) so the AppCoordinator+WatchZones extension can read it.
   let offlineRepository: OfflineAwareRepository?
-  let authorityRepository: ApplicationAuthorityRepository?
   let watchZoneRepository: WatchZoneRepository
   // Internal (not private) so the AppCoordinator+Onboarding extension can read it.
   let geocoder: PostcodeGeocoder?
@@ -140,7 +139,6 @@ public final class AppCoordinator: ObservableObject {
     userProfileRepository: UserProfileRepository,
     tierResolver: SubscriptionTierResolving? = nil,
     offlineRepository: OfflineAwareRepository? = nil,
-    authorityRepository: ApplicationAuthorityRepository? = nil,
     watchZoneRepository: WatchZoneRepository,
     geocoder: PostcodeGeocoder? = nil,
     onboardingRepository: OnboardingRepository,
@@ -171,7 +169,6 @@ public final class AppCoordinator: ObservableObject {
         authService: authService
       )
     self.offlineRepository = offlineRepository
-    self.authorityRepository = authorityRepository
     self.watchZoneRepository = watchZoneRepository
     self.geocoder = geocoder
     self.onboardingRepository = onboardingRepository

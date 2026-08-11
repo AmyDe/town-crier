@@ -14,8 +14,7 @@ struct WatchZoneSummaryDTOTests {
       name: "CB1 2AD",
       latitude: 999.0,
       longitude: 0.1218,
-      radiusMetres: 2000,
-      authorityId: 123
+      radiusMetres: 2000
     )
 
     #expect(throws: DomainError.invalidCoordinate) {
@@ -30,8 +29,7 @@ struct WatchZoneSummaryDTOTests {
       name: "",
       latitude: 52.2053,
       longitude: 0.1218,
-      radiusMetres: 2000,
-      authorityId: 123
+      radiusMetres: 2000
     )
 
     #expect(throws: DomainError.invalidWatchZoneName) {
@@ -46,8 +44,7 @@ struct WatchZoneSummaryDTOTests {
       name: "CB1 2AD",
       latitude: 52.2053,
       longitude: 0.1218,
-      radiusMetres: 0,
-      authorityId: 123
+      radiusMetres: 0
     )
 
     #expect(throws: DomainError.invalidWatchZoneRadius) {
@@ -63,7 +60,6 @@ struct WatchZoneSummaryDTOTests {
       latitude: 52.2053,
       longitude: 0.1218,
       radiusMetres: 2000,
-      authorityId: 123,
       pushEnabled: true,
       emailInstantEnabled: true
     )
@@ -72,7 +68,6 @@ struct WatchZoneSummaryDTOTests {
     #expect(zone.id == WatchZoneId("zone-ok"))
     #expect(zone.name == "CB1 2AD")
     #expect(zone.radiusMetres == 2000)
-    #expect(zone.authorityId == 123)
   }
 
   // MARK: - Per-zone notification flags (tc-kh1s)
@@ -85,7 +80,6 @@ struct WatchZoneSummaryDTOTests {
       latitude: 52.2053,
       longitude: 0.1218,
       radiusMetres: 2000,
-      authorityId: 123,
       pushEnabled: false,
       emailInstantEnabled: true
     )
@@ -104,7 +98,6 @@ struct WatchZoneSummaryDTOTests {
           "latitude": 52.2053,
           "longitude": 0.1218,
           "radiusMetres": 2000,
-          "authorityId": 123,
           "emailInstantEnabled": true
       }
       """
@@ -121,7 +114,6 @@ struct WatchZoneSummaryDTOTests {
           "latitude": 52.2053,
           "longitude": 0.1218,
           "radiusMetres": 2000,
-          "authorityId": 123,
           "pushEnabled": true
       }
       """
@@ -138,7 +130,6 @@ struct WatchZoneSummaryDTOTests {
           "latitude": 52.2053,
           "longitude": 0.1218,
           "radiusMetres": 2000,
-          "authorityId": 123,
           "pushEnabled": false,
           "emailInstantEnabled": false
       }
@@ -158,7 +149,6 @@ struct WatchZoneSummaryDTOTests {
       latitude: 52.2053,
       longitude: 0.1218,
       radiusMetres: 2000,
-      authorityId: 123,
       paused: true
     )
 
@@ -174,8 +164,7 @@ struct WatchZoneSummaryDTOTests {
           "name": "CB1 2AD",
           "latitude": 52.2053,
           "longitude": 0.1218,
-          "radiusMetres": 2000,
-          "authorityId": 123
+          "radiusMetres": 2000
       }
       """
     let dto = try JSONDecoder().decode(WatchZoneSummaryDTO.self, from: Data(json.utf8))
@@ -191,7 +180,6 @@ struct WatchZoneSummaryDTOTests {
           "latitude": 52.2053,
           "longitude": 0.1218,
           "radiusMetres": 2000,
-          "authorityId": 123,
           "paused": true
       }
       """
@@ -209,8 +197,7 @@ struct WatchZoneSummaryDTOTests {
           "name": "CB1 2AD",
           "latitude": 52.2053,
           "longitude": 0.1218,
-          "radiusMetres": 2000,
-          "authorityId": 123
+          "radiusMetres": 2000
       }
       """
     let dto = try JSONDecoder().decode(WatchZoneSummaryDTO.self, from: Data(json.utf8))
@@ -226,7 +213,6 @@ struct WatchZoneSummaryDTOTests {
           "latitude": 51.5074,
           "longitude": -0.1278,
           "radiusMetres": 1500,
-          "authorityId": 123,
           "boundary": {
               "type": "Polygon",
               "coordinates": [[
@@ -251,7 +237,6 @@ struct WatchZoneSummaryDTOTests {
       latitude: 51.5074,
       longitude: -0.1278,
       radiusMetres: 1500,
-      authorityId: 123,
       boundary: GeoJSONPolygon(
         type: "Polygon",
         coordinates: [
@@ -279,8 +264,7 @@ struct WatchZoneSummaryDTOTests {
       name: "CB1 2AD",
       latitude: 52.2053,
       longitude: 0.1218,
-      radiusMetres: 2000,
-      authorityId: 123
+      radiusMetres: 2000
     )
 
     let zone = try dto.toDomain()
@@ -297,7 +281,6 @@ struct WatchZoneSummaryDTOTests {
       latitude: 51.5074,
       longitude: -0.1278,
       radiusMetres: 1500,
-      authorityId: 123,
       boundary: GeoJSONPolygon(coordinates: [])
     )
 
@@ -314,7 +297,6 @@ struct WatchZoneSummaryDTOTests {
       latitude: 51.5074,
       longitude: -0.1278,
       radiusMetres: 1500,
-      authorityId: 123,
       boundary: GeoJSONPolygon(coordinates: [[[-0.10, 51.50, 3.0]]])
     )
 
@@ -331,7 +313,6 @@ struct WatchZoneSummaryDTOTests {
       latitude: 51.5074,
       longitude: -0.1278,
       radiusMetres: 1500,
-      authorityId: 123,
       boundary: GeoJSONPolygon(coordinates: [
         [
           [-0.10, 51.50],

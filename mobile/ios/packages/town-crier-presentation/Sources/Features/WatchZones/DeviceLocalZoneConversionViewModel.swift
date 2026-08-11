@@ -42,8 +42,7 @@ public final class DeviceLocalZoneConversionViewModel: ObservableObject {
   /// Converts every remaining zone sequentially, in list order — never in
   /// parallel, so a mid-list quota breach leaves everything after it
   /// untouched. Each success is deleted from local storage immediately.
-  /// Reuses exactly the wizard/authed-editor path for zone creation: no
-  /// `authorityId` is set, so the server resolves it from the coordinate.
+  /// Reuses exactly the wizard/authed-editor path for zone creation.
   public func convertAll() async {
     isConverting = true
     error = nil

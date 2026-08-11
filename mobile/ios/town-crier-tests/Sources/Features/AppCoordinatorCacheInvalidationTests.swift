@@ -54,8 +54,7 @@ struct AppCoordinatorCacheInvalidationTests {
       id: WatchZone.cambridge.id,
       name: WatchZone.cambridge.name,
       centre: WatchZone.cambridge.centre,
-      radiusMetres: 200,
-      authorityId: WatchZone.cambridge.authorityId
+      radiusMetres: 200
     )
     sut.editingWatchZone = .cambridge
     let editorVM = sut.makeWatchZoneEditorViewModel(editing: .cambridge)

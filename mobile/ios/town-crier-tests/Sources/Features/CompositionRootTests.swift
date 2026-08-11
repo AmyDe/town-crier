@@ -149,14 +149,12 @@ struct CompositionRootTests {
     let authService = Auth0AuthenticationService(config: makeTestAuth0Config())
     let apiBaseURL = testAPIBaseURL()
     let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
-    let authorityRepository = APIApplicationAuthorityRepository(apiClient: apiClient)
 
     let coordinator = AppCoordinator(
       repository: APIPlanningApplicationRepository(apiClient: apiClient),
       authService: authService,
       subscriptionService: StoreKitSubscriptionService(),
       userProfileRepository: APIUserProfileRepository(apiClient: apiClient),
-      authorityRepository: authorityRepository,
       watchZoneRepository: APIWatchZoneRepository(apiClient: apiClient),
       onboardingRepository: UserDefaultsOnboardingRepository(),
       notificationService: CompositeNotificationService(

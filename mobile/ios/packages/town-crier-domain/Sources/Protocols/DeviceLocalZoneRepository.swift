@@ -1,8 +1,8 @@
 /// Persists device-local (pre-signup) zones (GH#879 Phase 4): up to
 /// ``DeviceLocalZone/maxZoneCount`` areas, entirely on-device — no server
 /// zone, no alerts. A distinct value object/repository pair from
-/// `WatchZone`/`WatchZoneRepository`: `WatchZone.authorityId` is
-/// server-resolved and unavailable to an anonymous session.
+/// `WatchZone`/`WatchZoneRepository`, which require a signed-in session to
+/// persist server-side.
 public protocol DeviceLocalZoneRepository: Sendable {
   /// All persisted zones, in the order they were created.
   func loadAll() -> [DeviceLocalZone]
