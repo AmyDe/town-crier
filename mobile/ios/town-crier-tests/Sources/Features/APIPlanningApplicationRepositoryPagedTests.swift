@@ -18,8 +18,7 @@ struct APIPlanningApplicationRepositoryPagedTests {
     id: WatchZoneId("zone-123"),
     name: "Cambridge",
     centre: Coordinate(latitude: 52.2053, longitude: 0.1218),
-    radiusMetres: 2000,
-    authorityId: 123
+    radiusMetres: 2000
   )
 
   private func makeSUT(

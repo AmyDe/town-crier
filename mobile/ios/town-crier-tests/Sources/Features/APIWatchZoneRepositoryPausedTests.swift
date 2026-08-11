@@ -53,7 +53,6 @@ struct APIWatchZoneRepositoryPausedTests {
                   "latitude": 52.2053,
                   "longitude": 0.1218,
                   "radiusMetres": 2000,
-                  "authorityId": 123,
                   "paused": true
               }
           ]
@@ -79,8 +78,7 @@ struct APIWatchZoneRepositoryPausedTests {
                   "name": "CB1 2AD",
                   "latitude": 52.2053,
                   "longitude": 0.1218,
-                  "radiusMetres": 2000,
-                  "authorityId": 123
+                  "radiusMetres": 2000
               }
           ]
       }

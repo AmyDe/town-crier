@@ -45,7 +45,6 @@ struct APIWatchZoneRepositoryNotificationFlagsTests {
       name: "CB1 2AD",
       centre: Coordinate(latitude: 52.2053, longitude: 0.1218),
       radiusMetres: 2000,
-      authorityId: 123,
       pushEnabled: false,
       emailInstantEnabled: true
     )
@@ -68,7 +67,6 @@ struct APIWatchZoneRepositoryNotificationFlagsTests {
       name: "CB1 2AD",
       centre: Coordinate(latitude: 52.2053, longitude: 0.1218),
       radiusMetres: 2000,
-      authorityId: 123,
       pushEnabled: true,
       emailInstantEnabled: false
     )
@@ -95,7 +93,6 @@ struct APIWatchZoneRepositoryNotificationFlagsTests {
                   "latitude": 52.2053,
                   "longitude": 0.1218,
                   "radiusMetres": 2000,
-                  "authorityId": 123,
                   "pushEnabled": false,
                   "emailInstantEnabled": true
               }
@@ -123,8 +120,7 @@ struct APIWatchZoneRepositoryNotificationFlagsTests {
                   "name": "CB1 2AD",
                   "latitude": 52.2053,
                   "longitude": 0.1218,
-                  "radiusMetres": 2000,
-                  "authorityId": 123
+                  "radiusMetres": 2000
               }
           ]
       }

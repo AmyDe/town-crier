@@ -53,25 +53,6 @@ struct WatchZoneTests {
     #expect(zone1.id != zone2.id)
   }
 
-  @Test func init_storesAuthorityId() throws {
-    let centre = try Coordinate(latitude: 52.2053, longitude: 0.1218)
-    let postcode = try Postcode("CB1 2AD")
-    let zone = try WatchZone(
-      postcode: postcode,
-      centre: centre,
-      radiusMetres: 1000,
-      authorityId: 123
-    )
-    #expect(zone.authorityId == 123)
-  }
-
-  @Test func init_defaultAuthorityIdIsZero() throws {
-    let centre = try Coordinate(latitude: 52.2053, longitude: 0.1218)
-    let postcode = try Postcode("CB1 2AD")
-    let zone = try WatchZone(postcode: postcode, centre: centre, radiusMetres: 1000)
-    #expect(zone.authorityId == 0)
-  }
-
   // MARK: - Freeform name support (tc-y39l)
 
   @Test func init_acceptsFreeformName() throws {
@@ -85,11 +66,9 @@ struct WatchZoneTests {
     let zone = try WatchZone(
       name: "Office near Westminster",
       centre: centre,
-      radiusMetres: 2000,
-      authorityId: 456
+      radiusMetres: 2000
     )
     #expect(zone.name == "Office near Westminster")
-    #expect(zone.authorityId == 456)
   }
 
   @Test func init_freeformName_emptyName_throws() throws {

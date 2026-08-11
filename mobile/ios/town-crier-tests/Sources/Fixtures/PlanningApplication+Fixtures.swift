@@ -108,16 +108,14 @@ extension WatchZone {
     id: WatchZoneId("zone-001"),
     postcode: .cambridge,
     centre: .cambridge,
-    radiusMetres: 2000,
-    authorityId: 123
+    radiusMetres: 2000
   )
 
   static let london = try! WatchZone(
     id: WatchZoneId("zone-002"),
     postcode: try! Postcode("SW1A 1AA"),
     centre: try! Coordinate(latitude: 51.5014, longitude: -0.1419),
-    radiusMetres: 1500,
-    authorityId: 456
+    radiusMetres: 1500
   )
 
   /// A zone paused because a subscription downgrade left the user over their
@@ -127,7 +125,6 @@ extension WatchZone {
     postcode: .cambridge,
     centre: .cambridge,
     radiusMetres: 2000,
-    authorityId: 123,
     paused: true
   )
 }

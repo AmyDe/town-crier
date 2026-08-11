@@ -6,7 +6,6 @@ public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
   public let name: String
   public let centre: Coordinate
   public let radiusMetres: Double
-  public let authorityId: Int
   public let pushEnabled: Bool
   public let emailInstantEnabled: Bool
   /// Whether this zone currently exceeds the user's effective tier quota and
@@ -30,7 +29,6 @@ public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
     name: String,
     centre: Coordinate,
     radiusMetres: Double,
-    authorityId: Int = 0,
     pushEnabled: Bool = true,
     emailInstantEnabled: Bool = true,
     paused: Bool = false,
@@ -47,7 +45,6 @@ public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
     self.name = trimmed
     self.centre = centre
     self.radiusMetres = radiusMetres
-    self.authorityId = authorityId
     self.pushEnabled = pushEnabled
     self.emailInstantEnabled = emailInstantEnabled
     self.paused = paused
@@ -60,7 +57,6 @@ public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
     postcode: Postcode,
     centre: Coordinate,
     radiusMetres: Double,
-    authorityId: Int = 0,
     pushEnabled: Bool = true,
     emailInstantEnabled: Bool = true,
     paused: Bool = false,
@@ -71,7 +67,6 @@ public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
       name: postcode.value,
       centre: centre,
       radiusMetres: radiusMetres,
-      authorityId: authorityId,
       pushEnabled: pushEnabled,
       emailInstantEnabled: emailInstantEnabled,
       paused: paused,

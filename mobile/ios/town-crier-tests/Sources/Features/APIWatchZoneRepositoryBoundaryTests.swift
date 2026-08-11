@@ -51,7 +51,6 @@ struct APIWatchZoneRepositoryBoundaryTests {
       name: "Custom Area",
       centre: Coordinate(latitude: 51.5074, longitude: -0.1278),
       radiusMetres: 1500,
-      authorityId: 123,
       boundary: boundary
     )
   }
@@ -145,7 +144,6 @@ struct APIWatchZoneRepositoryBoundaryTests {
                   "latitude": 51.5074,
                   "longitude": -0.1278,
                   "radiusMetres": 1500,
-                  "authorityId": 123,
                   "boundary": {
                       "type": "Polygon",
                       "coordinates": [[
@@ -180,8 +178,7 @@ struct APIWatchZoneRepositoryBoundaryTests {
                   "name": "CB1 2AD",
                   "latitude": 52.2053,
                   "longitude": 0.1218,
-                  "radiusMetres": 2000,
-                  "authorityId": 123
+                  "radiusMetres": 2000
               }
           ]
       }

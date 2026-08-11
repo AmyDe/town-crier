@@ -17,8 +17,7 @@ struct APIPlanningApplicationRepositoryTests {
     id: WatchZoneId("zone-123"),
     name: "Cambridge",
     centre: Coordinate(latitude: 52.2053, longitude: 0.1218),
-    radiusMetres: 2000,
-    authorityId: 123
+    radiusMetres: 2000
   )
 
   private func makeSUT(
@@ -57,8 +56,7 @@ struct APIPlanningApplicationRepositoryTests {
       id: WatchZoneId("zone-123"),
       name: "Camden",
       centre: Coordinate(latitude: 51.539, longitude: -0.1426),
-      radiusMetres: 1000,
-      authorityId: 42
+      radiusMetres: 1000
     )
     let (sut, _, transport) = makeSUT(responses: [
       (Data(json.utf8), httpResponse(statusCode: 200))

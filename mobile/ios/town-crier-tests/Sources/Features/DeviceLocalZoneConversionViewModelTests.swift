@@ -96,9 +96,6 @@ struct DeviceLocalZoneConversionViewModelTests {
     #expect(saved.name == "Mum's House")
     #expect(saved.centre == zone.centre)
     #expect(saved.radiusMetres == 1500)
-    // Reuses exactly the same "no authorityId, let the server resolve it
-    // from lat/lng" path the wizard and authed editor already use.
-    #expect(saved.authorityId == 0)
   }
 
   // MARK: - Quota breach stops conversion
