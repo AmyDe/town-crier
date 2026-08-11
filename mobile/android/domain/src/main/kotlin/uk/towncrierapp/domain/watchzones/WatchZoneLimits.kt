@@ -24,6 +24,14 @@ public data class WatchZoneLimits(
             SubscriptionTier.PRO -> 10_000.0
         }
 
+    /**
+     * Whether this tier can draw a custom-shape (polygon) zone rather than
+     * only a circle (GH#1072 Phase 1). Mirrors the server's
+     * `SubscriptionTier.AllowsCustomBoundary()` (`t.IsPaid()`) and iOS
+     * `WatchZoneLimits.allowsCustomBoundary`.
+     */
+    public val allowsCustomBoundary: Boolean = tier != SubscriptionTier.FREE
+
     /** Whether the user can add another zone given their current count. */
     public fun canAddZone(currentCount: Int): Boolean = currentCount < maxZones
 
