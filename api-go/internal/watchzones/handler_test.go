@@ -185,9 +185,18 @@ func TestHandler_Patch_UpdatesAndReturnsZone(t *testing.T) {
 	if got.Zone.Latitude != z.Latitude {
 		t.Errorf("unset fields changed: %+v", got.Zone)
 	}
-	// Back-compat shim (tc-9nbs4.6): authorityId is always present and 0.
-	if got.Zone.AuthorityID != 0 {
-		t.Errorf("authorityId: got %d, want 0", got.Zone.AuthorityID)
+	// Back-compat shim (tc-9nbs4.6): authorityId must be present on the wire,
+	// not just zero-valued after decode (absence also decodes as 0).
+	var raw struct {
+		Zone map[string]json.RawMessage `json:"zone"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
+		t.Fatalf("decode raw: %v", err)
+	}
+	authorityRaw, ok := raw.Zone["authorityId"]
+	var authorityID int
+	if !ok || json.Unmarshal(authorityRaw, &authorityID) != nil || authorityID != 0 {
+		t.Errorf("authorityId: got %s, want 0", authorityRaw)
 	}
 }
 
@@ -228,6 +237,19 @@ func TestHandler_Patch_UpdatesEveryMappedField(t *testing.T) {
 	}
 	if got.Zone != want {
 		t.Errorf("response zone: got %+v, want %+v", got.Zone, want)
+	}
+	// Back-compat shim (tc-9nbs4.6): authorityId must be present on the wire,
+	// not just zero-valued after decode (absence also decodes as 0).
+	var raw struct {
+		Zone map[string]json.RawMessage `json:"zone"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
+		t.Fatalf("decode raw: %v", err)
+	}
+	authorityRaw, ok := raw.Zone["authorityId"]
+	var authorityID int
+	if !ok || json.Unmarshal(authorityRaw, &authorityID) != nil || authorityID != 0 {
+		t.Errorf("authorityId: got %s, want 0", authorityRaw)
 	}
 	if store.saved == nil {
 		t.Fatal("zone not persisted")
@@ -611,7 +633,7 @@ func TestHandler_List_MarksPausedZonesOverEffectiveTierLimit(t *testing.T) {
 			}
 		}
 		// authorityId is a back-compat shim (tc-9nbs4.6): always present, always 0.
-		if authorityID, _ := obj["authorityId"].(float64); authorityID != 0 {
+		if authorityID, ok := obj["authorityId"].(float64); !ok || authorityID != 0 {
 			t.Errorf("zone %d: authorityId = %v, want 0", i, obj["authorityId"])
 		}
 	}
