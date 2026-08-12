@@ -50,6 +50,13 @@ const (
 	// the caller's tier cap (profiles.SubscriptionTier.MaxZoneRadiusMetres).
 	boundaryTooLargeCode    = "boundary_too_large"
 	boundaryTooLargeMessage = "The boundary is too large for your subscription tier."
+	// zoneNameTakenCode/-Message: 409, Store.Save returned ErrDuplicateName --
+	// the caller already owns a watch zone with this name (watch_zones' UNIQUE
+	// (user_id, name) constraint). A resource conflict, not a validation
+	// failure, so it sits apart from the 400 boundary_* codes above but uses
+	// the same stable-code convention (GH#1083, tc-h4y98).
+	zoneNameTakenCode    = "zone_name_taken"
+	zoneNameTakenMessage = "You already have a watch zone with this name."
 )
 
 // errProfileReaderNotWired signals a wiring bug: setting a watch-zone boundary
@@ -450,6 +457,10 @@ func (h *handler) patch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.store.Save(r.Context(), updated); err != nil {
+		if errors.Is(err, ErrDuplicateName) {
+			h.writeErrorCode(w, r, http.StatusConflict, zoneNameTakenCode, zoneNameTakenMessage)
+			return
+		}
 		h.serverError(w, r, "save watch zone", err)
 		return
 	}
