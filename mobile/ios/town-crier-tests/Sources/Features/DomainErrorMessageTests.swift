@@ -171,4 +171,22 @@ struct DomainErrorMessageTests {
     #expect(error.userMessage == "A custom area must be drawn within the UK.")
     #expect(!error.isRetryable)
   }
+
+  // MARK: - Watch-zone save errors (tc-9oyhw, GH#1085)
+
+  @Test func invalidWatchZoneBoundaryTooLarge_hasInvalidAreaTitle() {
+    let error = DomainError.invalidWatchZoneBoundaryTooLarge
+    #expect(error.userTitle == "Invalid Area")
+    #expect(error.userMessage == "This area is too large. Try drawing a smaller shape.")
+    #expect(!error.isRetryable)
+  }
+
+  @Test func watchZoneNameTaken_hasNameAlreadyUsedTitle() {
+    let error = DomainError.watchZoneNameTaken
+    #expect(error.userTitle == "Name Already Used")
+    #expect(
+      error.userMessage
+        == "You already have a watch zone with this name. Choose a different name.")
+    #expect(!error.isRetryable)
+  }
 }

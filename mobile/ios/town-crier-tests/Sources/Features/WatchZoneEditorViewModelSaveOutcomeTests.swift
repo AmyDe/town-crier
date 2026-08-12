@@ -77,4 +77,32 @@ struct WatchZoneEditorSaveOutcomeTests {
     #expect(!didSave)
     #expect(spyRepository.saveCalls.isEmpty)
   }
+
+  // MARK: - Watch-zone save errors (tc-9oyhw, GH#1085)
+
+  @Test func save_boundaryTooLarge_setsError_andDoesNotRouteToUpgrade() async {
+    await geocode()
+    spyRepository.saveResult = .failure(DomainError.invalidWatchZoneBoundaryTooLarge)
+    var upgradeRequested = false
+    sut.onUpgradeRequired = { upgradeRequested = true }
+
+    let didSave = await sut.save()
+
+    #expect(!didSave)
+    #expect(!upgradeRequested)
+    #expect(sut.error == .invalidWatchZoneBoundaryTooLarge)
+  }
+
+  @Test func save_nameTaken_setsError_andDoesNotRouteToUpgrade() async {
+    await geocode()
+    spyRepository.saveResult = .failure(DomainError.watchZoneNameTaken)
+    var upgradeRequested = false
+    sut.onUpgradeRequired = { upgradeRequested = true }
+
+    let didSave = await sut.save()
+
+    #expect(!didSave)
+    #expect(!upgradeRequested)
+    #expect(sut.error == .watchZoneNameTaken)
+  }
 }

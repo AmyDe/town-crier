@@ -21,6 +21,16 @@ public enum DomainError: Error, Equatable, Sendable {
   /// box (or a non-finite coordinate). Mirrors the server's
   /// `ErrBoundaryOutOfBounds`.
   case invalidWatchZoneBoundaryOutOfBounds
+  /// A custom-shape watch zone boundary's enclosing radius exceeds the
+  /// server's 10km ceiling (or the caller's tier cap). Mirrors the server's
+  /// `boundary_too_large` (`400`). Grouped with the other boundary-shape
+  /// cases above -- from the user's perspective this is the same category of
+  /// problem, fixed the same way (redraw a smaller shape). GH#1085.
+  case invalidWatchZoneBoundaryTooLarge
+  /// Saving a watch zone failed because the name duplicates an existing
+  /// watch zone for the same user. Mirrors the server's `zone_name_taken`
+  /// (`409`). GH#1085.
+  case watchZoneNameTaken
   case networkUnavailable
   case serverError(statusCode: Int, message: String?)
   case authenticationFailed(String)
@@ -69,8 +79,11 @@ public enum DomainError: Error, Equatable, Sendable {
     case .geocodingFailed:
       return "Postcode Not Found"
     case .invalidWatchZoneBoundaryVertexCount, .invalidWatchZoneBoundaryDuplicateVertex,
-      .invalidWatchZoneBoundarySelfIntersecting, .invalidWatchZoneBoundaryOutOfBounds:
+      .invalidWatchZoneBoundarySelfIntersecting, .invalidWatchZoneBoundaryOutOfBounds,
+      .invalidWatchZoneBoundaryTooLarge:
       return "Invalid Area"
+    case .watchZoneNameTaken:
+      return "Name Already Used"
     case .invalidCoordinate, .invalidWatchZoneRadius,
       .invalidWatchZoneName, .invalidStatusTransition,
       .notificationPermissionDenied, .unexpected:
@@ -113,6 +126,10 @@ public enum DomainError: Error, Equatable, Sendable {
       return "This shape crosses itself. Try drawing it again without crossing lines."
     case .invalidWatchZoneBoundaryOutOfBounds:
       return "A custom area must be drawn within the UK."
+    case .invalidWatchZoneBoundaryTooLarge:
+      return "This area is too large. Try drawing a smaller shape."
+    case .watchZoneNameTaken:
+      return "You already have a watch zone with this name. Choose a different name."
     case .invalidCoordinate, .invalidWatchZoneRadius,
       .invalidWatchZoneName, .invalidStatusTransition, .unexpected:
       return "An unexpected error occurred. Please try again."
@@ -131,7 +148,8 @@ public enum DomainError: Error, Equatable, Sendable {
       .purchaseCancelled, .productNotFound, .insufficientEntitlement,
       .deviceLocalZoneLimitReached, .invalidWatchZoneBoundaryVertexCount,
       .invalidWatchZoneBoundaryDuplicateVertex, .invalidWatchZoneBoundarySelfIntersecting,
-      .invalidWatchZoneBoundaryOutOfBounds:
+      .invalidWatchZoneBoundaryOutOfBounds, .invalidWatchZoneBoundaryTooLarge,
+      .watchZoneNameTaken:
       return false
     }
   }
