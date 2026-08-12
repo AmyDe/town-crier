@@ -166,13 +166,16 @@ func Routes(mux *http.ServeMux, store zoneStore, logger *slog.Logger, opts ...Op
 
 // watchZoneSummary is the per-zone wire shape returned by list and update.
 // createdAt is deliberately absent from the summary. Paused is additive
-// (GH#889): a derived, never-stored flag — see pausedIDs.
+// (GH#889): a derived, never-stored flag — see pausedIDs. AuthorityID is a
+// wire-format-only back-compat shim (tc-9nbs4.6): the domain no longer has
+// an authority id, but the field must stay present for older clients.
 type watchZoneSummary struct {
 	ID                  string  `json:"id"`
 	Name                string  `json:"name"`
 	Latitude            float64 `json:"latitude"`
 	Longitude           float64 `json:"longitude"`
 	RadiusMetres        float64 `json:"radiusMetres"`
+	AuthorityID         int     `json:"authorityId"`
 	PushEnabled         bool    `json:"pushEnabled"`
 	EmailInstantEnabled bool    `json:"emailInstantEnabled"`
 	Paused              bool    `json:"paused"`
@@ -185,11 +188,16 @@ type watchZoneSummary struct {
 
 func summaryOf(z WatchZone, paused bool) watchZoneSummary {
 	return watchZoneSummary{
-		ID:                  z.ID,
-		Name:                z.Name,
-		Latitude:            z.Latitude,
-		Longitude:           z.Longitude,
-		RadiusMetres:        z.RadiusMetres,
+		ID:           z.ID,
+		Name:         z.Name,
+		Latitude:     z.Latitude,
+		Longitude:    z.Longitude,
+		RadiusMetres: z.RadiusMetres,
+		// AuthorityID is hardcoded to 0, not resolved from z: it's a
+		// wire-format-only back-compat shim for the pre-tc-9nbs4.4 shipped
+		// iOS client's strict decode. No client reads the value — see
+		// bead tc-9nbs4.6 / GH#1076.
+		AuthorityID:         0,
 		PushEnabled:         z.PushEnabled,
 		EmailInstantEnabled: z.EmailInstantEnabled,
 		Paused:              paused,

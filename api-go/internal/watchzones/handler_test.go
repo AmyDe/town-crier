@@ -143,7 +143,7 @@ func TestHandler_List(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if len(got.Zones) != 1 || got.Zones[0].ID != z.ID {
+	if len(got.Zones) != 1 || got.Zones[0].ID != z.ID || got.Zones[0].AuthorityID != 0 {
 		t.Errorf("zones: got %+v", got.Zones)
 	}
 }
@@ -185,6 +185,10 @@ func TestHandler_Patch_UpdatesAndReturnsZone(t *testing.T) {
 	if got.Zone.Latitude != z.Latitude {
 		t.Errorf("unset fields changed: %+v", got.Zone)
 	}
+	// Back-compat shim (tc-9nbs4.6): authorityId is always present and 0.
+	if got.Zone.AuthorityID != 0 {
+		t.Errorf("authorityId: got %d, want 0", got.Zone.AuthorityID)
+	}
 }
 
 func TestHandler_Patch_UpdatesEveryMappedField(t *testing.T) {
@@ -211,11 +215,13 @@ func TestHandler_Patch_UpdatesEveryMappedField(t *testing.T) {
 		t.Fatalf("decode: %v", err)
 	}
 	want := watchZoneSummary{
-		ID:                  z.ID,
-		Name:                "Renamed Office",
-		Latitude:            52.4862,
-		Longitude:           -1.8904,
-		RadiusMetres:        3000,
+		ID:           z.ID,
+		Name:         "Renamed Office",
+		Latitude:     52.4862,
+		Longitude:    -1.8904,
+		RadiusMetres: 3000,
+		// Back-compat shim (tc-9nbs4.6): always 0, never resolved.
+		AuthorityID:         0,
 		PushEnabled:         false,
 		EmailInstantEnabled: false,
 		Paused:              got.Zone.Paused,
@@ -594,7 +600,7 @@ func TestHandler_List_MarksPausedZonesOverEffectiveTierLimit(t *testing.T) {
 	if len(raw.Zones) != 3 {
 		t.Fatalf("zones: got %d, want 3", len(raw.Zones))
 	}
-	wantKeys := []string{"id", "name", "latitude", "longitude", "radiusMetres", "pushEnabled", "emailInstantEnabled", "paused", "boundary"}
+	wantKeys := []string{"id", "name", "latitude", "longitude", "radiusMetres", "authorityId", "pushEnabled", "emailInstantEnabled", "paused", "boundary"}
 	for i, obj := range raw.Zones {
 		if len(obj) != len(wantKeys) {
 			t.Errorf("zone %d: got %d keys %v, want %d keys %v", i, len(obj), keysOf(obj), len(wantKeys), wantKeys)
@@ -603,6 +609,10 @@ func TestHandler_List_MarksPausedZonesOverEffectiveTierLimit(t *testing.T) {
 			if _, ok := obj[k]; !ok {
 				t.Errorf("zone %d: missing pre-existing/expected key %q", i, k)
 			}
+		}
+		// authorityId is a back-compat shim (tc-9nbs4.6): always present, always 0.
+		if authorityID, _ := obj["authorityId"].(float64); authorityID != 0 {
+			t.Errorf("zone %d: authorityId = %v, want 0", i, obj["authorityId"])
 		}
 	}
 
