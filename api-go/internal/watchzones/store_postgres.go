@@ -11,6 +11,22 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
+// pgUniqueViolationCode is the Postgres SQLSTATE for a unique-constraint
+// violation. Save uses it to detect a name collision against the
+// watch_zones_user_id_name_key constraint (GH#1083, tc-h4y98), mirroring
+// internal/offercodes/store_postgres.go's identical helper.
+const pgUniqueViolationCode = "23505"
+
+// isUniqueViolation reports whether err is a Postgres unique-constraint
+// violation (SQLSTATE 23505).
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return pgErr.Code == pgUniqueViolationCode
+	}
+	return false
+}
+
 // querier is the consumer-side slice of *pgxpool.Pool the store uses. Defining it
 // here keeps the store decoupled from the concrete pool; both *pgxpool.Pool and
 // pgx.Tx satisfy it structurally.
@@ -230,6 +246,13 @@ ON CONFLICT (id) DO UPDATE SET
 // (a circle zone) writes SQL NULL, so saving a zone that previously had a
 // custom shape with Boundary cleared correctly reverts the persisted row to a
 // circle rather than leaving a stale polygon behind.
+//
+// ON CONFLICT (id) only dedupes an upsert of the SAME id -- it does not catch
+// a name collision against a different, already-existing row for the same
+// user (watch_zones also has UNIQUE (user_id, name)). create always mints a
+// fresh id, so that case reaches Postgres as a raw unique-violation on
+// watch_zones_user_id_name_key; isUniqueViolation translates it into the
+// domain sentinel ErrDuplicateName instead (GH#1083, tc-h4y98).
 func (s *PostgresStore) Save(ctx context.Context, z WatchZone) error {
 	boundaryGeoJSON, err := encodeBoundaryGeoJSON(z.Boundary)
 	if err != nil {
@@ -240,6 +263,9 @@ func (s *PostgresStore) Save(ctx context.Context, z WatchZone) error {
 		z.PushEnabled, z.EmailInstantEnabled, z.CreatedAt, boundaryGeoJSON,
 	)
 	if err != nil {
+		if isUniqueViolation(err) {
+			return ErrDuplicateName
+		}
 		return fmt.Errorf("upsert watch zone %q: %w", z.ID, err)
 	}
 	return nil
