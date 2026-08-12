@@ -120,6 +120,11 @@ type fakeStateStore struct {
 	// watermark-read (state-store) failure, as distinct from a PlanIt fetch
 	// error (tc-uitxr).
 	getErr error
+	// saveErr, when set, is returned by every Save call -- lets a test
+	// simulate a genuine watermark-write (state-store) failure landing on
+	// top of an already-classified PlanIt fetch/hydration error (CodeRabbit
+	// follow-up on tc-uitxr).
+	saveErr error
 }
 
 type savedState struct {
@@ -149,6 +154,9 @@ func (f *fakeStateStore) Get(_ context.Context, authorityID int) (PollState, boo
 func (f *fakeStateStore) Save(ctx context.Context, authorityID int, lastPollTime, highWaterMark time.Time, cursor *PollCursor) error {
 	if err := ctx.Err(); err != nil {
 		return err
+	}
+	if f.saveErr != nil {
+		return f.saveErr
 	}
 	f.saves = append(f.saves, savedState{authorityID, lastPollTime, highWaterMark, cursor})
 	f.states[authorityID] = PollState{LastPollTime: lastPollTime, HighWaterMark: highWaterMark, Cursor: cursor}

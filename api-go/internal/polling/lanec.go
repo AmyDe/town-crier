@@ -225,8 +225,14 @@ func (h *InverseMaskLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 		// fetched, so no progress exists to checkpoint) but with
 		// last_poll_time advanced to now, so a page-fetch 429/error still
 		// rotates this lane off the LRU front instead of freezing it there.
-		if serr := h.watermark.save(ctx, now, loadedEpochUpper, cursor); serr != nil && out.err == nil {
-			out.err = serr
+		if serr := h.watermark.save(ctx, now, loadedEpochUpper, cursor); serr != nil {
+			// A save failure is a state-store problem, never PlanIt's fault —
+			// join it onto any PlanIt fetch error above and clear
+			// planitOrigin, so a genuine persistence failure never gets
+			// hidden behind a self-healing PlanIt classification (CodeRabbit
+			// follow-up on tc-uitxr).
+			out.err = errors.Join(out.err, serr)
+			out.planitOrigin = false
 		}
 		out.watermarkAfter = epochUpper
 		h.recordOutcome(ctx, out)
@@ -312,8 +318,12 @@ func (h *InverseMaskLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 			nextIndex = cursor.NextIndex
 		}
 		newCursor := &PollCursor{DifferentStart: epochLower, NextIndex: nextIndex, KnownTotal: res.Total}
-		if serr := h.watermark.save(ctx, now, epochUpper, newCursor); serr != nil && out.err == nil {
-			out.err = serr
+		if serr := h.watermark.save(ctx, now, epochUpper, newCursor); serr != nil {
+			// See the page-fetch save above: a save failure is never
+			// PlanIt's fault, even when it lands on top of a PlanIt-origin
+			// hydration error (CodeRabbit follow-up on tc-uitxr).
+			out.err = errors.Join(out.err, serr)
+			out.planitOrigin = false
 		}
 		out.watermarkAfter = epochUpper
 		h.recordOutcome(ctx, out)

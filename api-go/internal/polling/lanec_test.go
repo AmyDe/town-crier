@@ -629,6 +629,84 @@ func TestInverseMaskLane_HydrationTimeoutSetsTimedOut(t *testing.T) {
 	}
 }
 
+// TestInverseMaskLane_PageFetchErrorPlusWatermarkSaveFailureClearsPlanitOrigin
+// covers the gap CodeRabbit flagged as a follow-up on tc-uitxr: the page-fetch
+// error path sets planitOrigin=true, then unconditionally re-saves the
+// watermark (GH#986, so LastPollTime still advances and the lane rotates off
+// the LRU). If THAT save also fails, the failure is a genuine Postgres/
+// state-store problem -- never PlanIt's fault -- so it must surface on
+// out.err rather than being silently dropped, and it must clear
+// planitOrigin so NationalPollHandler.Handle never misclassifies the cycle
+// as self-healing PlanIt noise and lets runPollSB exit 0 on a real
+// persistence failure.
+func TestInverseMaskLane_PageFetchErrorPlusWatermarkSaveFailureClearsPlanitOrigin(t *testing.T) {
+	t.Parallel()
+	epochLower := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	epochUpper := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	fetchErr := errors.New("planit: page fetch failed")
+	saveErr := errors.New("postgres: save failed")
+
+	fetcher := newFakeInverseMaskFetcher()
+	fetcher.failNth[1] = fetchErr
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	state.states[sentinelLaneC] = PollState{HighWaterMark: epochUpper, Cursor: &PollCursor{DifferentStart: epochLower, NextIndex: 300}}
+	state.saveErr = saveErr
+
+	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
+	out := h.RunOnePage(context.Background())
+
+	if out.planitOrigin {
+		t.Error("planitOrigin: got true, want false (watermark save also failed, so this is a genuine non-PlanIt failure)")
+	}
+	if out.err == nil || !errors.Is(out.err, fetchErr) {
+		t.Errorf("out.err: got %v, want it to wrap the original page-fetch error %v", out.err, fetchErr)
+	}
+	if out.err == nil || !errors.Is(out.err, saveErr) {
+		t.Errorf("out.err: got %v, want it to wrap the watermark save error %v", out.err, saveErr)
+	}
+}
+
+// TestInverseMaskLane_HydrationErrorPlusWatermarkSaveFailureClearsPlanitOrigin
+// mirrors the page-fetch case above for the OTHER watermark.save call
+// CodeRabbit flagged: the stoppedEarly checkpoint-and-return path, reached
+// when a hydration fetch fails mid-page. Same requirement -- a save failure
+// stacked on top must surface and clear planitOrigin.
+func TestInverseMaskLane_HydrationErrorPlusWatermarkSaveFailureClearsPlanitOrigin(t *testing.T) {
+	t.Parallel()
+	epochLower := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	epochUpper := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	newLD := epochLower.Add(time.Hour)
+	hydrateErr := errors.New("planit: hydration fetch failed")
+	saveErr := errors.New("postgres: save failed")
+
+	fetcher := newFakeInverseMaskFetcher()
+	fetcher.pages[0] = planit.FetchPageResult{
+		From:         0,
+		Applications: []applications.PlanningApplication{lightApp("first/FUL", 99, "Permitted", newLD)},
+		HasMorePages: false,
+	}
+	fetcher.hydrateErr["first/FUL"] = hydrateErr
+
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	state.states[sentinelLaneC] = PollState{HighWaterMark: epochUpper, Cursor: &PollCursor{DifferentStart: epochLower, NextIndex: 0}}
+	state.saveErr = saveErr
+
+	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
+	out := h.RunOnePage(context.Background())
+
+	if out.planitOrigin {
+		t.Error("planitOrigin: got true, want false (watermark save also failed, so this is a genuine non-PlanIt failure)")
+	}
+	if out.err == nil || !errors.Is(out.err, hydrateErr) {
+		t.Errorf("out.err: got %v, want it to wrap the original hydration fetch error %v", out.err, hydrateErr)
+	}
+	if out.err == nil || !errors.Is(out.err, saveErr) {
+		t.Errorf("out.err: got %v, want it to wrap the watermark save error %v", out.err, saveErr)
+	}
+}
+
 // TestInverseMaskLane_GetByUIDTimeoutDoesNotSetTimedOut proves
 // processStraggler's two error sources are classified by provenance
 // (tc-c5tmz, a CodeRabbit follow-up on tc-pmh5y): a Postgres GetByUID read
