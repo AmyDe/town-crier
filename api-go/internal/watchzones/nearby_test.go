@@ -421,6 +421,37 @@ func TestCreate_QuotaExceededIs403(t *testing.T) {
 	}
 }
 
+// TestCreate_DuplicateNameIs409 proves that a Store.Save failure carrying
+// ErrDuplicateName (a unique-violation on watch_zones' UNIQUE (user_id, name)
+// constraint against a different, already-existing row -- create always
+// mints a fresh id, so ON CONFLICT (id) can never catch this) maps to 409
+// zone_name_taken rather than falling through to the generic 500 (GH#1083,
+// tc-h4y98).
+func TestCreate_DuplicateNameIs409(t *testing.T) {
+	t.Parallel()
+	d := nearbyDeps{
+		store:    &fakeZoneStore{saveErr: ErrDuplicateName},
+		profiles: &fakeProfileReader{profile: proProfile(t)},
+		apps:     &fakeAppFinder{},
+		unread:   &fakeUnread{},
+	}
+	mux := newNearbyMux(t, d)
+
+	body := `{"name":"My Zone","latitude":51.5,"longitude":-0.12,"radiusMetres":1000}`
+	rec := doReq(t, mux, http.MethodPost, "/v1/me/watch-zones", body)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status: got %d, want 409 (body %s)", rec.Code, rec.Body)
+	}
+	var env apiErrorResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatalf("decode error envelope: %v", err)
+	}
+	if env.Error != zoneNameTakenCode {
+		t.Errorf("error code: got %q, want %q", env.Error, zoneNameTakenCode)
+	}
+}
+
 func TestCreate_ProTierBypassesQuota(t *testing.T) {
 	t.Parallel()
 	manyZones := make([]WatchZone, 10)
