@@ -44,13 +44,10 @@ func (f *fakeProdReader) RecentNearZones(ctx context.Context, zones []applicatio
 	return f.apps, f.err
 }
 
-// testZone builds a validated watch zone at the given coordinates. authorityID
-// is arbitrary and fixed at 1 -- devseed no longer reads it, but
-// watchzones.NewWatchZone still requires it positive (that invariant is out
-// of this bead's scope; see tc-9nbs4.2).
+// testZone builds a validated watch zone at the given coordinates.
 func testZone(t *testing.T, id string, lat, lon, radius float64) watchzones.WatchZone {
 	t.Helper()
-	z, err := watchzones.NewWatchZone(id, "user-1", "zone-"+id, lat, lon, radius, 1,
+	z, err := watchzones.NewWatchZone(id, "user-1", "zone-"+id, lat, lon, radius,
 		time.Date(2026, 6, 26, 12, 0, 0, 0, time.UTC), true, false)
 	if err != nil {
 		t.Fatalf("NewWatchZone(%s): %v", id, err)

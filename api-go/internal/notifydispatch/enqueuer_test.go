@@ -110,7 +110,7 @@ func testApplication(t *testing.T, lastDifferent time.Time) applications.Plannin
 
 func testZoneAt(t *testing.T, id, userID string, createdAt time.Time) watchzones.WatchZone {
 	t.Helper()
-	z, err := watchzones.NewWatchZone(id, userID, "My Zone", 51.5, -0.1, 500, 99, createdAt, true, true)
+	z, err := watchzones.NewWatchZone(id, userID, "My Zone", 51.5, -0.1, 500, createdAt, true, true)
 	if err != nil {
 		t.Fatalf("NewWatchZone: %v", err)
 	}
@@ -202,12 +202,12 @@ func TestEnqueuer_EnqueueForApplication_MatchesCrossBorderNeighbourAuthorityZone
 	// the 246 app. The CreatedAt.After(LastDifferent) skip rule is UNCHANGED: a
 	// second 449 zone created after the application last changed is still skipped.
 	lastDifferent := time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC)
-	eligible, err := watchzones.NewWatchZone("zone-449", "auth0|alice", "Border", 50.81, -0.42, 2000, 449,
+	eligible, err := watchzones.NewWatchZone("zone-449", "auth0|alice", "Border", 50.81, -0.42, 2000,
 		time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC), true, true)
 	if err != nil {
 		t.Fatalf("NewWatchZone eligible: %v", err)
 	}
-	tooNew, err := watchzones.NewWatchZone("zone-449-new", "auth0|alice", "Border New", 50.81, -0.42, 2000, 449,
+	tooNew, err := watchzones.NewWatchZone("zone-449-new", "auth0|alice", "Border New", 50.81, -0.42, 2000,
 		time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC), true, true)
 	if err != nil {
 		t.Fatalf("NewWatchZone tooNew: %v", err)

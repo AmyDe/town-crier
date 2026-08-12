@@ -167,7 +167,7 @@ func mkProfile(t *testing.T, tier profiles.SubscriptionTier, prefs profiles.Noti
 
 func mkZone(t *testing.T, id, name string, emailInstant bool) watchzones.WatchZone {
 	t.Helper()
-	z, err := watchzones.NewWatchZone(id, testUser, name, 51.5, -0.1, 500, 1, time.Now(), true, emailInstant)
+	z, err := watchzones.NewWatchZone(id, testUser, name, 51.5, -0.1, 500, time.Now(), true, emailInstant)
 	if err != nil {
 		t.Fatalf("NewWatchZone: %v", err)
 	}

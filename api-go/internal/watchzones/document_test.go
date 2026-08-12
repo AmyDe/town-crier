@@ -21,9 +21,6 @@ func TestWatchZoneDocument_RoundTrip(t *testing.T) {
 	if got.Latitude != z.Latitude || got.Longitude != z.Longitude || got.RadiusMetres != z.RadiusMetres {
 		t.Errorf("geometry mismatch: got %+v", got)
 	}
-	if got.AuthorityID != z.AuthorityID {
-		t.Errorf("authorityId: got %d, want %d", got.AuthorityID, z.AuthorityID)
-	}
 	if got.PushEnabled != z.PushEnabled || got.EmailInstantEnabled != z.EmailInstantEnabled {
 		t.Errorf("flags mismatch: got %+v", got)
 	}
@@ -44,7 +41,7 @@ func TestWatchZoneDocument_CamelCaseAndDotNetTime(t *testing.T) {
 
 	for _, key := range []string{
 		`"id":`, `"userId":`, `"name":`, `"latitude":`, `"longitude":`,
-		`"radiusMetres":`, `"authorityId":`, `"createdAt":`, `"pushEnabled":`, `"emailInstantEnabled":`,
+		`"radiusMetres":`, `"createdAt":`, `"pushEnabled":`, `"emailInstantEnabled":`,
 	} {
 		if !strings.Contains(body, key) {
 			t.Errorf("missing camelCase key %s in %s", key, body)
@@ -132,7 +129,7 @@ func TestWatchZoneDocument_LegacyMissingBoundingBoxDecodesNil(t *testing.T) {
 	// nil is the "needs backfill" signal the slice-3 CLI backfill keys on, and the
 	// transitional query's NOT IS_DEFINED(c.minLat) fallback matches such zones via
 	// the ST_DISTANCE residual until the backfill runs.
-	raw := `{"id":"z1","userId":"u1","name":"Home","latitude":51.5074,"longitude":-0.1278,"radiusMetres":1000,"authorityId":471,"createdAt":"2026-06-01T09:00:00+00:00"}`
+	raw := `{"id":"z1","userId":"u1","name":"Home","latitude":51.5074,"longitude":-0.1278,"radiusMetres":1000,"createdAt":"2026-06-01T09:00:00+00:00"}`
 	var doc watchZoneDocument
 	if err := json.Unmarshal([]byte(raw), &doc); err != nil {
 		t.Fatalf("unmarshal: %v", err)
@@ -159,11 +156,11 @@ func TestWatchZoneDocument_HydratesWithAndWithoutLocation(t *testing.T) {
 	}{
 		{
 			name: "without location (legacy)",
-			raw:  `{"id":"z1","userId":"u1","name":"Home","latitude":51.5074,"longitude":-0.1278,"radiusMetres":1000,"authorityId":471,"createdAt":"2026-06-01T09:00:00+00:00"}`,
+			raw:  `{"id":"z1","userId":"u1","name":"Home","latitude":51.5074,"longitude":-0.1278,"radiusMetres":1000,"createdAt":"2026-06-01T09:00:00+00:00"}`,
 		},
 		{
 			name: "with location",
-			raw:  `{"id":"z1","userId":"u1","name":"Home","latitude":51.5074,"longitude":-0.1278,"radiusMetres":1000,"authorityId":471,"createdAt":"2026-06-01T09:00:00+00:00","location":{"type":"Point","coordinates":[-0.1278,51.5074]}}`,
+			raw:  `{"id":"z1","userId":"u1","name":"Home","latitude":51.5074,"longitude":-0.1278,"radiusMetres":1000,"createdAt":"2026-06-01T09:00:00+00:00","location":{"type":"Point","coordinates":[-0.1278,51.5074]}}`,
 		},
 	}
 	for _, tc := range tests {
@@ -188,7 +185,7 @@ func TestWatchZoneDocument_LegacyNullFlagsCoalesceTrue(t *testing.T) {
 	t.Parallel()
 	// A document written before the per-zone flags existed omits them; absent
 	// bool fields must coalesce to true (the opt-in default).
-	raw := `{"id":"z1","userId":"u1","name":"Home","latitude":51,"longitude":-0.1,"radiusMetres":500,"authorityId":471,"createdAt":"2026-06-01T09:00:00+00:00"}`
+	raw := `{"id":"z1","userId":"u1","name":"Home","latitude":51,"longitude":-0.1,"radiusMetres":500,"createdAt":"2026-06-01T09:00:00+00:00"}`
 	var doc watchZoneDocument
 	if err := json.Unmarshal([]byte(raw), &doc); err != nil {
 		t.Fatalf("unmarshal: %v", err)
@@ -204,7 +201,7 @@ func TestWatchZoneDocument_LegacyNullFlagsCoalesceTrue(t *testing.T) {
 
 func TestWatchZoneDocument_AbsentCreatedAtHydratesToZero(t *testing.T) {
 	t.Parallel()
-	raw := `{"id":"z1","userId":"u1","name":"Home","latitude":51,"longitude":-0.1,"radiusMetres":500,"authorityId":471}`
+	raw := `{"id":"z1","userId":"u1","name":"Home","latitude":51,"longitude":-0.1,"radiusMetres":500}`
 	var doc watchZoneDocument
 	if err := json.Unmarshal([]byte(raw), &doc); err != nil {
 		t.Fatalf("unmarshal: %v", err)

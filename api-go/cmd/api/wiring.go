@@ -314,9 +314,6 @@ func newRouter(
 			zoneOpts = append(zoneOpts, watchzones.WithProfileReader(store))
 		}
 		watchzones.Routes(mux, watchZoneStore, logger, zoneOpts...)
-		// application-authorities derives from the user's watch zones plus the
-		// static authority data; it needs no applications store.
-		watchzones.AuthoritiesRoutes(mux, watchZoneStore, authorities.NewLookup(), logger)
 	}
 	if appStore != nil {
 		// Refresh-on-tap heals a saved row's snapshot when the user views an app
@@ -384,11 +381,10 @@ func newRouter(
 		// applications list. Create enforces the tier's zone quota atomically via
 		// CAS on the profile counter (WithProfileCAS) — this is the only create
 		// path, so concurrent creates can never exceed the tier limit (F5/#515).
-		// store is non-nil here (guarded above), so no typed-nil concern. It
-		// resolves the authority from coordinates via the geocode client when the
-		// request omits one; the applications list augments each row with its
-		// latest unread notification (read_at IS NULL, ADR 0035).
-		watchzones.NearbyRoutes(mux, watchZoneStore, store, geocodeClient, appStore, notifStore, uuid.NewString, time.Now, logger, watchzones.WithMetricsRecorder(registry), watchzones.WithProfileCAS(store))
+		// store is non-nil here (guarded above), so no typed-nil concern. The
+		// applications list augments each row with its latest unread notification
+		// (read_at IS NULL, ADR 0035).
+		watchzones.NearbyRoutes(mux, watchZoneStore, store, appStore, notifStore, uuid.NewString, time.Now, logger, watchzones.WithMetricsRecorder(registry), watchzones.WithProfileCAS(store))
 	}
 	if store != nil && watchZoneStore != nil && appStore != nil {
 		// Demo account (anonymous): seeds a Pro profile, a Westminster watch zone,

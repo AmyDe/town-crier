@@ -64,7 +64,6 @@ type ExportedWatchZone struct {
 	Latitude     float64             `json:"latitude"`
 	Longitude    float64             `json:"longitude"`
 	RadiusMetres float64             `json:"radiusMetres"`
-	AuthorityID  int                 `json:"authorityId"`
 	CreatedAt    platform.DotNetTime `json:"createdAt"`
 	// Boundary is null for a circle zone and a GeoJSON Polygon for a
 	// custom-shape one (tc-6he3x.4), mirroring the HTTP watch-zone handlers'

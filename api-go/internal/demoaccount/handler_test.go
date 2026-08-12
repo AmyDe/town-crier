@@ -119,7 +119,7 @@ func TestGetDemoAccount_FirstCall_SeedsAndReturnsDemoAccount(t *testing.T) {
 	if len(z.saved) != 1 {
 		t.Fatalf("watch zones saved: got %d, want 1", len(z.saved))
 	}
-	if zone := z.saved[0]; zone.ID != demoZoneID || zone.AuthorityID != seedAuthorityID || !zone.CreatedAt.IsZero() {
+	if zone := z.saved[0]; zone.ID != demoZoneID || !zone.CreatedAt.IsZero() {
 		t.Errorf("seeded zone: got %+v", zone)
 	}
 	if len(a.upserted) != 5 {

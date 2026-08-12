@@ -30,7 +30,6 @@ type Store interface {
 	Save(ctx context.Context, z WatchZone) error
 	Delete(ctx context.Context, userID, zoneID string) error
 	DeleteAllByUserID(ctx context.Context, userID string) error
-	DistinctAuthorityIDs(ctx context.Context) ([]int, error)
 	FindZonesContaining(ctx context.Context, latitude, longitude float64) ([]WatchZone, error)
 	All(ctx context.Context) ([]WatchZone, error)
 }
@@ -59,31 +58,30 @@ func NewPostgresStore(db querier) *PostgresStore {
 // ST_AsGeoJSON(boundary) is NULL for a circle zone and a GeoJSON Polygon for a
 // custom-shape one. The order MUST match scanZone.
 const pgZoneColumns = "id::text, user_id, name, ST_Y(location::geometry), " +
-	"ST_X(location::geometry), radius_metres, authority_id, created_at, " +
+	"ST_X(location::geometry), radius_metres, created_at, " +
 	"push_enabled, email_instant_enabled, ST_AsGeoJSON(boundary)"
 
 // scanZone hydrates one zone through NewWatchZone, so the same invariants the
-// domain enforces (positive radius and authority id, non-blank id/user/name) gate
-// a row read from the database. A non-NULL boundary column is decoded from
-// GeoJSON and re-validated through NewBoundary (via decodeBoundaryGeoJSON),
-// applying the same domain invariants to a boundary read back from the
-// database as to one supplied by a client.
+// domain enforces (positive radius, non-blank id/user/name) gate a row read
+// from the database. A non-NULL boundary column is decoded from GeoJSON and
+// re-validated through NewBoundary (via decodeBoundaryGeoJSON), applying the
+// same domain invariants to a boundary read back from the database as to one
+// supplied by a client.
 func scanZone(row pgx.Row) (WatchZone, error) {
 	var (
 		id, userID, name       string
 		latitude, longitude    float64
 		radiusMetres           float64
-		authorityID            int
 		createdAt              time.Time
 		pushEnabled, emailFlag bool
 		boundaryGeoJSON        *string
 	)
 	if err := row.Scan(&id, &userID, &name, &latitude, &longitude, &radiusMetres,
-		&authorityID, &createdAt, &pushEnabled, &emailFlag, &boundaryGeoJSON); err != nil {
+		&createdAt, &pushEnabled, &emailFlag, &boundaryGeoJSON); err != nil {
 		return WatchZone{}, err
 	}
 	zone, err := NewWatchZone(id, userID, name, latitude, longitude, radiusMetres,
-		authorityID, createdAt, pushEnabled, emailFlag)
+		createdAt, pushEnabled, emailFlag)
 	if err != nil {
 		return WatchZone{}, err
 	}
@@ -211,18 +209,17 @@ func (s *PostgresStore) Get(ctx context.Context, userID, zoneID string) (WatchZo
 
 const pgSaveZoneQuery = `
 INSERT INTO watch_zones (
-	id, user_id, name, location, radius_metres, authority_id,
+	id, user_id, name, location, radius_metres,
 	push_enabled, email_instant_enabled, created_at, boundary
 ) VALUES (
 	$1::uuid, $2, $3, ST_SetSRID(ST_MakePoint($4, $5), 4326)::geography,
-	$6, $7, $8, $9, $10, ST_GeomFromGeoJSON($11)::geography
+	$6, $7, $8, $9, ST_GeomFromGeoJSON($10)::geography
 )
 ON CONFLICT (id) DO UPDATE SET
 	user_id = EXCLUDED.user_id,
 	name = EXCLUDED.name,
 	location = EXCLUDED.location,
 	radius_metres = EXCLUDED.radius_metres,
-	authority_id = EXCLUDED.authority_id,
 	push_enabled = EXCLUDED.push_enabled,
 	email_instant_enabled = EXCLUDED.email_instant_enabled,
 	created_at = EXCLUDED.created_at,
@@ -240,7 +237,7 @@ func (s *PostgresStore) Save(ctx context.Context, z WatchZone) error {
 	}
 	_, err = s.db.Exec(ctx, pgSaveZoneQuery,
 		z.ID, z.UserID, z.Name, z.Longitude, z.Latitude, z.RadiusMetres,
-		z.AuthorityID, z.PushEnabled, z.EmailInstantEnabled, z.CreatedAt, boundaryGeoJSON,
+		z.PushEnabled, z.EmailInstantEnabled, z.CreatedAt, boundaryGeoJSON,
 	)
 	if err != nil {
 		return fmt.Errorf("upsert watch zone %q: %w", z.ID, err)
@@ -273,30 +270,11 @@ func (s *PostgresStore) DeleteAllByUserID(ctx context.Context, userID string) er
 	return nil
 }
 
-// pgDistinctAuthorityIDsQuery serves the distinct set natively — unlike the Cosmos
-// gateway, which cannot run a cross-partition DISTINCT and forces a client-side dedup.
-const pgDistinctAuthorityIDsQuery = "SELECT DISTINCT authority_id FROM watch_zones " +
-	"WHERE authority_id IS NOT NULL ORDER BY authority_id"
-
-// DistinctAuthorityIDs returns the distinct authority ids across every user's
-// zones, ascending. It backs the polling watch-zone active-authority provider.
-func (s *PostgresStore) DistinctAuthorityIDs(ctx context.Context) ([]int, error) {
-	rows, err := s.db.Query(ctx, pgDistinctAuthorityIDsQuery)
-	if err != nil {
-		return nil, fmt.Errorf("query distinct authority ids: %w", err)
-	}
-	ids, err := pgx.CollectRows(rows, pgx.RowTo[int])
-	if err != nil {
-		return nil, fmt.Errorf("query distinct authority ids: %w", err)
-	}
-	return ids, nil
-}
-
 const pgAllZonesQuery = "SELECT " + pgZoneColumns + " FROM watch_zones ORDER BY id"
 
 // All returns every watch zone across every user, ordered by id for
 // determinism. It backs the dev-seed job's zone-geometry read (bd tc-9nbs4.1,
-// GH#1076 Phase 1): the same "every zone dev currently has" input
+// GH#1076 Phase 1): the same "every zone dev currently has" input the now-removed
 // DistinctAuthorityIDs previously served as a set of authority ids, now served
 // as full zone geometries, so devseed can query prod by geography instead of
 // authority id -- notification matching is purely geographic (ADR 0041/0044),

@@ -38,11 +38,10 @@ func newZonePGStore(t *testing.T) *PostgresStore {
 	return NewPostgresStore(pool)
 }
 
-// pgZone constructs a validated watch zone. authorityID must be positive so
-// NewWatchZone (and therefore FindZonesContaining hydration) accepts it.
-func pgZone(t *testing.T, id, userID, name string, lat, lon, radius float64, authorityID int) WatchZone {
+// pgZone constructs a validated watch zone.
+func pgZone(t *testing.T, id, userID, name string, lat, lon, radius float64) WatchZone {
 	t.Helper()
-	z, err := NewWatchZone(id, userID, name, lat, lon, radius, authorityID,
+	z, err := NewWatchZone(id, userID, name, lat, lon, radius,
 		time.Date(2026, 6, 26, 12, 0, 0, 0, time.UTC), true, false)
 	if err != nil {
 		t.Fatalf("NewWatchZone(%s): %v", name, err)
@@ -119,7 +118,7 @@ func TestWatchZonePostgresStore_SaveGetRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	store := newZonePGStore(t)
 
-	want := pgZone(t, uuidN(1), "user-1", "Home", 51.5, -0.12, 500, 33)
+	want := pgZone(t, uuidN(1), "user-1", "Home", 51.5, -0.12, 500)
 	want.PushEnabled = true
 	want.EmailInstantEnabled = true
 
@@ -160,11 +159,11 @@ func TestWatchZonePostgresStore_Save_UpsertOnID(t *testing.T) {
 	ctx := context.Background()
 	store := newZonePGStore(t)
 
-	first := pgZone(t, uuidN(1), "user-1", "Old name", 51.5, -0.12, 500, 10)
+	first := pgZone(t, uuidN(1), "user-1", "Old name", 51.5, -0.12, 500)
 	if err := store.Save(ctx, first); err != nil {
 		t.Fatalf("Save first: %v", err)
 	}
-	second := pgZone(t, uuidN(1), "user-1", "New name", 52.0, -1.0, 750, 20)
+	second := pgZone(t, uuidN(1), "user-1", "New name", 52.0, -1.0, 750)
 	if err := store.Save(ctx, second); err != nil {
 		t.Fatalf("Save second: %v", err)
 	}
@@ -191,10 +190,10 @@ func TestWatchZonePostgresStore_GetByUserID_OrderedAndScoped(t *testing.T) {
 	store := newZonePGStore(t)
 
 	for _, z := range []WatchZone{
-		pgZone(t, uuidN(3), "user-1", "third", 51.5, -0.12, 500, 10),
-		pgZone(t, uuidN(1), "user-1", "first", 51.5, -0.12, 500, 10),
-		pgZone(t, uuidN(2), "user-1", "second", 51.5, -0.12, 500, 10),
-		pgZone(t, uuidN(9), "user-2", "other", 51.5, -0.12, 500, 10),
+		pgZone(t, uuidN(3), "user-1", "third", 51.5, -0.12, 500),
+		pgZone(t, uuidN(1), "user-1", "first", 51.5, -0.12, 500),
+		pgZone(t, uuidN(2), "user-1", "second", 51.5, -0.12, 500),
+		pgZone(t, uuidN(9), "user-2", "other", 51.5, -0.12, 500),
 	} {
 		if err := store.Save(ctx, z); err != nil {
 			t.Fatalf("Save %s: %v", z.Name, err)
@@ -210,15 +209,16 @@ func TestWatchZonePostgresStore_GetByUserID_OrderedAndScoped(t *testing.T) {
 
 // TestWatchZonePostgresStore_All returns every zone across every user, ordered
 // by id — the dev-seed job's "every zone dev currently has" read (bd
-// tc-9nbs4.1, GH#1076), replacing the authority-scoped DistinctAuthorityIDs.
+// tc-9nbs4.1, GH#1076), replacing the now-removed authority-scoped
+// DistinctAuthorityIDs.
 func TestWatchZonePostgresStore_All(t *testing.T) {
 	ctx := context.Background()
 	store := newZonePGStore(t)
 
 	for _, z := range []WatchZone{
-		pgZone(t, uuidN(2), "user-1", "second", 51.5, -0.12, 500, 10),
-		pgZone(t, uuidN(1), "user-1", "first", 51.5, -0.12, 500, 10),
-		pgZone(t, uuidN(3), "user-2", "third", 51.6, -0.13, 750, 20),
+		pgZone(t, uuidN(2), "user-1", "second", 51.5, -0.12, 500),
+		pgZone(t, uuidN(1), "user-1", "first", 51.5, -0.12, 500),
+		pgZone(t, uuidN(3), "user-2", "third", 51.6, -0.13, 750),
 	} {
 		if err := store.Save(ctx, z); err != nil {
 			t.Fatalf("Save %s: %v", z.Name, err)
@@ -252,7 +252,7 @@ func TestWatchZonePostgresStore_Delete(t *testing.T) {
 	ctx := context.Background()
 	store := newZonePGStore(t)
 
-	z := pgZone(t, uuidN(1), "user-1", "Home", 51.5, -0.12, 500, 10)
+	z := pgZone(t, uuidN(1), "user-1", "Home", 51.5, -0.12, 500)
 	if err := store.Save(ctx, z); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
@@ -274,9 +274,9 @@ func TestWatchZonePostgresStore_DeleteAllByUserID(t *testing.T) {
 	store := newZonePGStore(t)
 
 	for _, z := range []WatchZone{
-		pgZone(t, uuidN(1), "user-1", "a", 51.5, -0.12, 500, 10),
-		pgZone(t, uuidN(2), "user-1", "b", 51.5, -0.12, 500, 10),
-		pgZone(t, uuidN(3), "user-2", "keep", 51.5, -0.12, 500, 10),
+		pgZone(t, uuidN(1), "user-1", "a", 51.5, -0.12, 500),
+		pgZone(t, uuidN(2), "user-1", "b", 51.5, -0.12, 500),
+		pgZone(t, uuidN(3), "user-2", "keep", 51.5, -0.12, 500),
 	} {
 		if err := store.Save(ctx, z); err != nil {
 			t.Fatalf("Save %s: %v", z.Name, err)
@@ -302,32 +302,6 @@ func TestWatchZonePostgresStore_DeleteAllByUserID(t *testing.T) {
 	}
 }
 
-// TestWatchZonePostgresStore_DistinctAuthorityIDs returns the deduplicated set of
-// authority ids across every user's zones.
-func TestWatchZonePostgresStore_DistinctAuthorityIDs(t *testing.T) {
-	ctx := context.Background()
-	store := newZonePGStore(t)
-
-	for _, z := range []WatchZone{
-		pgZone(t, uuidN(1), "user-1", "a", 51.5, -0.12, 500, 10),
-		pgZone(t, uuidN(2), "user-1", "b", 51.5, -0.12, 500, 10), // dup authority 10
-		pgZone(t, uuidN(3), "user-2", "c", 51.5, -0.12, 500, 20),
-		pgZone(t, uuidN(4), "user-3", "d", 51.5, -0.12, 500, 99),
-	} {
-		if err := store.Save(ctx, z); err != nil {
-			t.Fatalf("Save %s: %v", z.Name, err)
-		}
-	}
-
-	ids, err := store.DistinctAuthorityIDs(ctx)
-	if err != nil {
-		t.Fatalf("DistinctAuthorityIDs: %v", err)
-	}
-	if !reflect.DeepEqual(ids, []int{10, 20, 99}) {
-		t.Fatalf("DistinctAuthorityIDs = %v, want [10 20 99]", ids)
-	}
-}
-
 // TestWatchZonePostgresStore_FindZonesContaining proves the notify hot path:
 // a zone whose circle contains the point matches; a same-centre narrower zone
 // does not (radius-driven, not centre proximity); and matching crosses users and
@@ -338,10 +312,10 @@ func TestWatchZonePostgresStore_FindZonesContaining(t *testing.T) {
 
 	// Two zones centred 2 km north of the query point: the wide one's 3 km radius
 	// reaches back to the point, the narrow one's 1 km does not.
-	wide := pgZone(t, uuidN(1), "user-1", "zone-wide", wzLatNorth(2000), wzCentreLon, 3000, 10)
-	narrow := pgZone(t, uuidN(2), "user-1", "zone-narrow", wzLatNorth(2000), wzCentreLon, 1000, 10)
+	wide := pgZone(t, uuidN(1), "user-1", "zone-wide", wzLatNorth(2000), wzCentreLon, 3000)
+	narrow := pgZone(t, uuidN(2), "user-1", "zone-narrow", wzLatNorth(2000), wzCentreLon, 1000)
 	// A different user, different authority, centred on the point itself.
-	other := pgZone(t, uuidN(3), "user-2", "zone-other", wzCentreLat, wzCentreLon, 500, 99)
+	other := pgZone(t, uuidN(3), "user-2", "zone-other", wzCentreLat, wzCentreLon, 500)
 	for _, z := range []WatchZone{wide, narrow, other} {
 		if err := store.Save(ctx, z); err != nil {
 			t.Fatalf("Save %s: %v", z.Name, err)
@@ -354,9 +328,9 @@ func TestWatchZonePostgresStore_FindZonesContaining(t *testing.T) {
 	}
 	assertStrings(t, zoneNames(matched), []string{"zone-wide", "zone-other"})
 
-	// The hydrated zones are valid (positive authority id) and carry their owner.
+	// The hydrated zones are valid and carry their owner.
 	for _, z := range matched {
-		if z.AuthorityID <= 0 || z.UserID == "" {
+		if z.UserID == "" {
 			t.Errorf("hydrated zone invalid: %+v", z)
 		}
 	}
@@ -371,7 +345,7 @@ func TestWatchZonePostgresStore_Boundary_SaveGetRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	store := newZonePGStore(t)
 
-	base := pgZone(t, uuidN(1), "user-1", "Custom shape", wzCentreLat, wzCentreLon, 1, 10)
+	base := pgZone(t, uuidN(1), "user-1", "Custom shape", wzCentreLat, wzCentreLon, 1)
 	want, err := base.WithBoundary(londonSquare(t))
 	if err != nil {
 		t.Fatalf("WithBoundary: %v", err)
@@ -412,7 +386,7 @@ func TestWatchZonePostgresStore_Save_BoundaryUpsertTransitions(t *testing.T) {
 	ctx := context.Background()
 	store := newZonePGStore(t)
 
-	circle := pgZone(t, uuidN(1), "user-1", "zone", wzCentreLat, wzCentreLon, 2000, 10)
+	circle := pgZone(t, uuidN(1), "user-1", "zone", wzCentreLat, wzCentreLon, 2000)
 	if err := store.Save(ctx, circle); err != nil {
 		t.Fatalf("Save circle: %v", err)
 	}
@@ -465,7 +439,7 @@ func TestWatchZonePostgresStore_FindZonesContaining_Boundary_PointInsidePolygonM
 	ctx := context.Background()
 	store := newZonePGStore(t)
 
-	base := pgZone(t, uuidN(1), "user-1", "polygon", wzCentreLat, wzCentreLon, 1, 10)
+	base := pgZone(t, uuidN(1), "user-1", "polygon", wzCentreLat, wzCentreLon, 1)
 	polygon, err := base.WithBoundary(londonSquare(t))
 	if err != nil {
 		t.Fatalf("WithBoundary: %v", err)
@@ -492,7 +466,7 @@ func TestWatchZonePostgresStore_FindZonesContaining_Boundary_PointInEnclosingCir
 	ctx := context.Background()
 	store := newZonePGStore(t)
 
-	base := pgZone(t, uuidN(1), "user-1", "polygon", wzCentreLat, wzCentreLon, 1, 10)
+	base := pgZone(t, uuidN(1), "user-1", "polygon", wzCentreLat, wzCentreLon, 1)
 	polygon, err := base.WithBoundary(londonSquare(t))
 	if err != nil {
 		t.Fatalf("WithBoundary: %v", err)
@@ -527,8 +501,8 @@ func TestWatchZonePostgresStore_FindZonesContaining_Boundary_AndCircle_BothMatch
 	ctx := context.Background()
 	store := newZonePGStore(t)
 
-	circle := pgZone(t, uuidN(1), "user-1", "circle", wzCentreLat, wzCentreLon, 2000, 10)
-	polygonBase := pgZone(t, uuidN(2), "user-2", "polygon", wzCentreLat, wzCentreLon, 1, 20)
+	circle := pgZone(t, uuidN(1), "user-1", "circle", wzCentreLat, wzCentreLon, 2000)
+	polygonBase := pgZone(t, uuidN(2), "user-2", "polygon", wzCentreLat, wzCentreLon, 1)
 	polygon, err := polygonBase.WithBoundary(londonSquare(t))
 	if err != nil {
 		t.Fatalf("WithBoundary: %v", err)
@@ -564,8 +538,8 @@ func TestWatchZonePostgresStore_FindZonesContaining_Boundary_ExplainUsesGiSTInde
 	pgtest.Truncate(t, pool, "applications", "watch_zones")
 	store := NewPostgresStore(pool)
 
-	circle := pgZone(t, uuidN(1), "user-1", "circle", wzCentreLat, wzCentreLon, 2000, 10)
-	polygonBase := pgZone(t, uuidN(2), "user-2", "polygon", wzCentreLat, wzCentreLon, 1, 20)
+	circle := pgZone(t, uuidN(1), "user-1", "circle", wzCentreLat, wzCentreLon, 2000)
+	polygonBase := pgZone(t, uuidN(2), "user-2", "polygon", wzCentreLat, wzCentreLon, 1)
 	polygon, err := polygonBase.WithBoundary(londonSquare(t))
 	if err != nil {
 		t.Fatalf("WithBoundary: %v", err)

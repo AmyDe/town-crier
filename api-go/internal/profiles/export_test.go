@@ -31,8 +31,8 @@ func populatedReaders(t *testing.T) ExportReaders {
 	decision := "Permitted"
 	return ExportReaders{
 		WatchZones: fakeWatchZonesReader{rows: []ExportedWatchZone{
-			{ID: "zone-b", Name: "Bravo", Latitude: 51.5, Longitude: -0.1, RadiusMetres: 500, AuthorityID: 22, CreatedAt: at("2026-02-02T00:00:00Z")},
-			{ID: "zone-a", Name: "Alpha", Latitude: 52.5, Longitude: -1.1, RadiusMetres: 1000, AuthorityID: 11, CreatedAt: at("2026-02-01T00:00:00Z")},
+			{ID: "zone-b", Name: "Bravo", Latitude: 51.5, Longitude: -0.1, RadiusMetres: 500, CreatedAt: at("2026-02-02T00:00:00Z")},
+			{ID: "zone-a", Name: "Alpha", Latitude: 52.5, Longitude: -1.1, RadiusMetres: 1000, CreatedAt: at("2026-02-01T00:00:00Z")},
 		}},
 		Notifications: fakeNotificationsReader{rows: []ExportedNotification{
 			{ID: "n-2", ApplicationName: "App Two", WatchZoneID: &wzID, ApplicationAddress: "2 St", ApplicationDescription: "two", ApplicationType: &appType, AuthorityID: 22, Decision: &decision, PushSent: true, EmailSent: false, CreatedAt: at("2026-03-02T00:00:00Z")},
@@ -149,8 +149,11 @@ func TestNewExportUserData_PopulatedShapes(t *testing.T) {
 	}
 
 	wz := got["watchZones"].([]any)[0].(map[string]any) // sorted: zone-a first
-	if wz["id"] != "zone-a" || wz["name"] != "Alpha" || wz["radiusMetres"] != 1000.0 || wz["authorityId"] != 11.0 {
+	if wz["id"] != "zone-a" || wz["name"] != "Alpha" || wz["radiusMetres"] != 1000.0 {
 		t.Errorf("watchZone shape wrong: %v", wz)
+	}
+	if _, hasAuthorityID := wz["authorityId"]; hasAuthorityID {
+		t.Errorf("watchZone must no longer export authorityId: %v", wz)
 	}
 	if wz["createdAt"] != "2026-02-01T00:00:00+00:00" {
 		t.Errorf("watchZone createdAt wire format: got %v", wz["createdAt"])

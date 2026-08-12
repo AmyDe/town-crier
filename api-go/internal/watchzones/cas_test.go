@@ -114,13 +114,12 @@ func TestCreate_ConcurrentCreatesRespectQuota(t *testing.T) {
 	d := nearbyDeps{
 		store:    &fakeZoneStore{},
 		profiles: &fakeProfileReader{profile: p},
-		resolver: &fakeResolver{},
 		apps:     &fakeAppFinder{},
 		unread:   &fakeUnread{},
 	}
 	mux := newNearbyMuxWithCAS(t, d, casFake)
 
-	body := `{"name":"My Zone","latitude":51.5,"longitude":-0.12,"radiusMetres":1000,"authorityId":471}`
+	body := `{"name":"My Zone","latitude":51.5,"longitude":-0.12,"radiusMetres":1000}`
 
 	type result struct{ code int }
 	results := make(chan result, 2)
@@ -166,7 +165,7 @@ func TestCreate_DeleteFreesQuota(t *testing.T) {
 	}
 	p.WatchZoneCount = &count
 
-	zone := mustZone(t, "zone-1", 471)
+	zone := mustZone(t, "zone-1")
 	store := &fakeZoneStore{zones: []WatchZone{zone}}
 	casFake := newFakeProfileCAS(p)
 
@@ -185,12 +184,11 @@ func TestCreate_DeleteFreesQuota(t *testing.T) {
 	d := nearbyDeps{
 		store:    &fakeZoneStore{}, // empty after the conceptual delete
 		profiles: &fakeProfileReader{profile: casFake.profile},
-		resolver: &fakeResolver{},
 		apps:     &fakeAppFinder{},
 		unread:   &fakeUnread{},
 	}
 	createMux := newNearbyMuxWithCAS(t, d, casFake)
-	createBody := `{"name":"New Zone","latitude":51.5,"longitude":-0.12,"radiusMetres":1000,"authorityId":471}`
+	createBody := `{"name":"New Zone","latitude":51.5,"longitude":-0.12,"radiusMetres":1000}`
 	createRec := doReq(t, createMux, http.MethodPost, "/v1/me/watch-zones", createBody)
 	if createRec.Code != http.StatusCreated {
 		t.Fatalf("create after delete: got %d, want 201 (body=%s)", createRec.Code, createRec.Body)
@@ -212,20 +210,19 @@ func TestCreate_LegacyProfileLazyInit(t *testing.T) {
 	// p.WatchZoneCount is nil — legacy profile
 
 	// Store already has 1 zone (at the free limit).
-	existingZone := mustZone(t, "zone-existing", 326)
+	existingZone := mustZone(t, "zone-existing")
 	store := &fakeZoneStore{zones: []WatchZone{existingZone}}
 	casFake := newFakeProfileCAS(p)
 
 	d := nearbyDeps{
 		store:    store,
 		profiles: &fakeProfileReader{profile: p},
-		resolver: &fakeResolver{},
 		apps:     &fakeAppFinder{},
 		unread:   &fakeUnread{},
 	}
 	mux := newNearbyMuxWithCAS(t, d, casFake)
 
-	body := `{"name":"Second Zone","latitude":51.5,"longitude":-0.12,"radiusMetres":1000,"authorityId":471}`
+	body := `{"name":"Second Zone","latitude":51.5,"longitude":-0.12,"radiusMetres":1000}`
 	rec := doReq(t, mux, http.MethodPost, "/v1/me/watch-zones", body)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("legacy profile at limit: got %d, want 403 (body=%s)", rec.Code, rec.Body)
@@ -242,11 +239,11 @@ func TestCreate_FailsClosedWhenCASNotWired(t *testing.T) {
 	mux := http.NewServeMux()
 	// NearbyRoutes WITHOUT WithProfileCAS — profileCAS is nil.
 	NearbyRoutes(mux, &fakeZoneStore{}, &fakeProfileReader{profile: freeProfile(t)},
-		&fakeResolver{}, &fakeAppFinder{}, &fakeUnread{},
+		&fakeAppFinder{}, &fakeUnread{},
 		func() string { return "zone-x" }, func() time.Time { return nearbyNow },
 		slog.New(slog.DiscardHandler))
 
-	body := `{"name":"Z","latitude":51.5,"longitude":-0.12,"radiusMetres":1000,"authorityId":471}`
+	body := `{"name":"Z","latitude":51.5,"longitude":-0.12,"radiusMetres":1000}`
 	rec := doReq(t, mux, http.MethodPost, "/v1/me/watch-zones", body)
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("nil CAS must fail closed: got %d, want 500 (body=%s)", rec.Code, rec.Body)
@@ -257,7 +254,7 @@ func TestCreate_FailsClosedWhenCASNotWired(t *testing.T) {
 func newNearbyMuxWithCAS(t *testing.T, d nearbyDeps, cas profileCAS) *http.ServeMux {
 	t.Helper()
 	mux := http.NewServeMux()
-	NearbyRoutes(mux, d.store, d.profiles, d.resolver, d.apps, d.unread,
+	NearbyRoutes(mux, d.store, d.profiles, d.apps, d.unread,
 		func() string { return "zone-cas-" + time.Now().Format("150405.000000000") },
 		func() time.Time { return nearbyNow },
 		slog.New(slog.DiscardHandler),

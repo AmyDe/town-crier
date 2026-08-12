@@ -143,7 +143,7 @@ func TestHandler_List(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if len(got.Zones) != 1 || got.Zones[0].ID != z.ID || got.Zones[0].AuthorityID != z.AuthorityID {
+	if len(got.Zones) != 1 || got.Zones[0].ID != z.ID {
 		t.Errorf("zones: got %+v", got.Zones)
 	}
 }
@@ -182,7 +182,7 @@ func TestHandler_Patch_UpdatesAndReturnsZone(t *testing.T) {
 		t.Errorf("zone not persisted: %+v", store.saved)
 	}
 	// Unset fields preserved through the merge.
-	if got.Zone.AuthorityID != z.AuthorityID || got.Zone.Latitude != z.Latitude {
+	if got.Zone.Latitude != z.Latitude {
 		t.Errorf("unset fields changed: %+v", got.Zone)
 	}
 }
@@ -196,7 +196,6 @@ func TestHandler_Patch_UpdatesEveryMappedField(t *testing.T) {
 		"latitude":52.4862,
 		"longitude":-1.8904,
 		"radiusMetres":3000,
-		"authorityId":999,
 		"pushEnabled":false,
 		"emailInstantEnabled":false
 	}`
@@ -217,7 +216,6 @@ func TestHandler_Patch_UpdatesEveryMappedField(t *testing.T) {
 		Latitude:            52.4862,
 		Longitude:           -1.8904,
 		RadiusMetres:        3000,
-		AuthorityID:         999,
 		PushEnabled:         false,
 		EmailInstantEnabled: false,
 		Paused:              got.Zone.Paused,
@@ -230,7 +228,7 @@ func TestHandler_Patch_UpdatesEveryMappedField(t *testing.T) {
 	}
 	if store.saved.Name != "Renamed Office" || store.saved.Latitude != 52.4862 ||
 		store.saved.Longitude != -1.8904 || store.saved.RadiusMetres != 3000 ||
-		store.saved.AuthorityID != 999 || store.saved.PushEnabled || store.saved.EmailInstantEnabled {
+		store.saved.PushEnabled || store.saved.EmailInstantEnabled {
 		t.Errorf("persisted zone: got %+v", store.saved)
 	}
 }
@@ -245,7 +243,6 @@ func TestHandler_Patch_RangeInvalid(t *testing.T) {
 		{"latitude too high", `{"latitude":91}`},
 		{"longitude too low", `{"longitude":-181}`},
 		{"zero radius", `{"radiusMetres":0}`},
-		{"zero authority", `{"authorityId":0}`},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -562,7 +559,7 @@ func TestPatch_RejectsOversizedRadius(t *testing.T) {
 func threeZonesRankedByAge(t *testing.T) (zone1, zone2, zone3 WatchZone) {
 	t.Helper()
 	mk := func(id string, day int) WatchZone {
-		z, err := NewWatchZone(id, testUser, "Zone "+id, 51.5, -0.1, 1000, 99,
+		z, err := NewWatchZone(id, testUser, "Zone "+id, 51.5, -0.1, 1000,
 			time.Date(2026, 6, day, 9, 0, 0, 0, time.UTC), true, true)
 		if err != nil {
 			t.Fatalf("NewWatchZone %s: %v", id, err)
@@ -597,7 +594,7 @@ func TestHandler_List_MarksPausedZonesOverEffectiveTierLimit(t *testing.T) {
 	if len(raw.Zones) != 3 {
 		t.Fatalf("zones: got %d, want 3", len(raw.Zones))
 	}
-	wantKeys := []string{"id", "name", "latitude", "longitude", "radiusMetres", "authorityId", "pushEnabled", "emailInstantEnabled", "paused", "boundary"}
+	wantKeys := []string{"id", "name", "latitude", "longitude", "radiusMetres", "pushEnabled", "emailInstantEnabled", "paused", "boundary"}
 	for i, obj := range raw.Zones {
 		if len(obj) != len(wantKeys) {
 			t.Errorf("zone %d: got %d keys %v, want %d keys %v", i, len(obj), keysOf(obj), len(wantKeys), wantKeys)
@@ -623,7 +620,7 @@ func TestHandler_List_MarksPausedZonesOverEffectiveTierLimit(t *testing.T) {
 		// Pre-existing fields must still be byte-identical to summaryOf's
 		// direct mapping of the domain zone.
 		if z.Name != "Zone "+z.ID || z.Latitude != 51.5 || z.Longitude != -0.1 ||
-			z.RadiusMetres != 1000 || z.AuthorityID != 99 || !z.PushEnabled || !z.EmailInstantEnabled {
+			z.RadiusMetres != 1000 || !z.PushEnabled || !z.EmailInstantEnabled {
 			t.Errorf("zone %s: pre-existing fields changed: %+v", z.ID, z)
 		}
 	}
