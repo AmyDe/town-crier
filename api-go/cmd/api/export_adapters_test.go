@@ -31,8 +31,6 @@ func (f *fakeWatchZoneStore) Delete(_ context.Context, _, _ string) error { retu
 
 func (f *fakeWatchZoneStore) DeleteAllByUserID(_ context.Context, _ string) error { return nil }
 
-func (f *fakeWatchZoneStore) DistinctAuthorityIDs(_ context.Context) ([]int, error) { return nil, nil }
-
 func (f *fakeWatchZoneStore) FindZonesContaining(_ context.Context, _, _ float64) ([]watchzones.WatchZone, error) {
 	return nil, nil
 }
@@ -48,8 +46,8 @@ func TestWatchZoneExportReader_ReadsThroughStoreInterface(t *testing.T) {
 
 	created := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
 	store := &fakeWatchZoneStore{zones: []watchzones.WatchZone{
-		{ID: "zone-1", UserID: "u1", Name: "Home", Latitude: 51.5, Longitude: -0.1, RadiusMetres: 500, AuthorityID: 384, CreatedAt: created},
-		{ID: "zone-2", UserID: "u1", Name: "Work", Latitude: 52.2, Longitude: -1.3, RadiusMetres: 250, AuthorityID: 471, CreatedAt: created},
+		{ID: "zone-1", UserID: "u1", Name: "Home", Latitude: 51.5, Longitude: -0.1, RadiusMetres: 500, CreatedAt: created},
+		{ID: "zone-2", UserID: "u1", Name: "Work", Latitude: 52.2, Longitude: -1.3, RadiusMetres: 250, CreatedAt: created},
 	}}
 
 	var reader profiles.WatchZoneReader = watchZoneExportReader{store: store}
@@ -60,8 +58,8 @@ func TestWatchZoneExportReader_ReadsThroughStoreInterface(t *testing.T) {
 	if len(rows) != 2 {
 		t.Fatalf("got %d rows, want 2", len(rows))
 	}
-	if rows[0].ID != "zone-1" || rows[0].Name != "Home" || rows[0].RadiusMetres != 500 || rows[0].AuthorityID != 384 {
-		t.Errorf("row[0] = %+v, want zone-1/Home/500/384", rows[0])
+	if rows[0].ID != "zone-1" || rows[0].Name != "Home" || rows[0].RadiusMetres != 500 {
+		t.Errorf("row[0] = %+v, want zone-1/Home/500", rows[0])
 	}
 	if rows[1].ID != "zone-2" || rows[1].Latitude != 52.2 || rows[1].Longitude != -1.3 {
 		t.Errorf("row[1] = %+v, want zone-2 coords 52.2/-1.3", rows[1])
@@ -80,10 +78,10 @@ func TestWatchZoneExportReader_IncludesBoundaryForCustomShapeZones(t *testing.T)
 	created := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
 	circle := watchzones.WatchZone{
 		ID: "zone-1", UserID: "u1", Name: "Home",
-		Latitude: 51.5, Longitude: -0.1, RadiusMetres: 500, AuthorityID: 384, CreatedAt: created,
+		Latitude: 51.5, Longitude: -0.1, RadiusMetres: 500, CreatedAt: created,
 	}
 
-	base, err := watchzones.NewWatchZone("zone-2", "u1", "Shape", 51.5, -0.1, 500, 384, created, true, true)
+	base, err := watchzones.NewWatchZone("zone-2", "u1", "Shape", 51.5, -0.1, 500, created, true, true)
 	if err != nil {
 		t.Fatalf("NewWatchZone: %v", err)
 	}

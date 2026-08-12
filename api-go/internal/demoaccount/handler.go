@@ -131,7 +131,7 @@ func (h *handler) seed(ctx context.Context) (*profiles.UserProfile, error) {
 	zone, err := watchzones.NewWatchZone(
 		demoZoneID, demoUserID, demoZoneName,
 		demoLatitude, demoLongitude, demoRadiusMetres,
-		seedAuthorityID, time.Time{}, true, true)
+		time.Time{}, true, true)
 	if err != nil {
 		return nil, fmt.Errorf("build demo watch zone: %w", err)
 	}

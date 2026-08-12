@@ -12,7 +12,7 @@ func testZone(t *testing.T) WatchZone {
 	t.Helper()
 	z, err := NewWatchZone(
 		"zone-1", "auth0|user", "Home",
-		51.5074, -0.1278, 1000, 471,
+		51.5074, -0.1278, 1000,
 		time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC),
 		true, true)
 	if err != nil {
@@ -29,7 +29,7 @@ func TestWatchZone_BoundingBox(t *testing.T) {
 	// north-south span. Expected values precomputed from the documented formula:
 	//   dLat = 1000 / 111320                      = 0.0089831
 	//   dLon = 1000 / (111320 * cos(51.5074°))    = 0.0144328
-	z, err := NewWatchZone("z1", "u1", "Home", 51.5074, -0.1278, 1000, 471,
+	z, err := NewWatchZone("z1", "u1", "Home", 51.5074, -0.1278, 1000,
 		time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC), true, true)
 	if err != nil {
 		t.Fatalf("NewWatchZone: %v", err)
@@ -65,29 +65,26 @@ func TestNewWatchZone_Validation(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
 	tests := []struct {
-		name        string
-		id          string
-		userID      string
-		zoneName    string
-		radius      float64
-		authorityID int
-		wantErr     bool
+		name     string
+		id       string
+		userID   string
+		zoneName string
+		radius   float64
+		wantErr  bool
 	}{
-		{"valid", "z1", "u1", "Home", 500, 471, false},
-		{"blank id", "", "u1", "Home", 500, 471, true},
-		{"whitespace id", "  ", "u1", "Home", 500, 471, true},
-		{"blank user", "z1", "", "Home", 500, 471, true},
-		{"blank name", "z1", "u1", "", 500, 471, true},
-		{"whitespace name", "z1", "u1", "   ", 500, 471, true},
-		{"zero radius", "z1", "u1", "Home", 0, 471, true},
-		{"negative radius", "z1", "u1", "Home", -5, 471, true},
-		{"zero authority", "z1", "u1", "Home", 500, 0, true},
-		{"negative authority", "z1", "u1", "Home", 500, -3, true},
+		{"valid", "z1", "u1", "Home", 500, false},
+		{"blank id", "", "u1", "Home", 500, true},
+		{"whitespace id", "  ", "u1", "Home", 500, true},
+		{"blank user", "z1", "", "Home", 500, true},
+		{"blank name", "z1", "u1", "", 500, true},
+		{"whitespace name", "z1", "u1", "   ", 500, true},
+		{"zero radius", "z1", "u1", "Home", 0, true},
+		{"negative radius", "z1", "u1", "Home", -5, true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := NewWatchZone(tc.id, tc.userID, tc.zoneName, 51, -0.1, tc.radius, tc.authorityID, now, true, true)
+			_, err := NewWatchZone(tc.id, tc.userID, tc.zoneName, 51, -0.1, tc.radius, now, true, true)
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("got err=%v, wantErr=%v", err, tc.wantErr)
 			}
@@ -100,7 +97,7 @@ func TestNewWatchZone_DoesNotValidateCoordinateRange(t *testing.T) {
 	// Latitude/longitude range is an HTTP-layer concern, not a domain invariant.
 	// The constructor accepts any coordinate.
 	now := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
-	if _, err := NewWatchZone("z1", "u1", "Home", 999, -999, 500, 471, now, true, true); err != nil {
+	if _, err := NewWatchZone("z1", "u1", "Home", 999, -999, 500, now, true, true); err != nil {
 		t.Fatalf("constructor must not range-check coordinates: %v", err)
 	}
 }
@@ -133,9 +130,6 @@ func TestWatchZone_WithUpdates_PartialMergePreservesUnsetFields(t *testing.T) {
 	// Unset fields preserved.
 	if updated.Latitude != z.Latitude || updated.Longitude != z.Longitude {
 		t.Errorf("coords changed: got (%v,%v), want (%v,%v)", updated.Latitude, updated.Longitude, z.Latitude, z.Longitude)
-	}
-	if updated.AuthorityID != z.AuthorityID {
-		t.Errorf("authorityId changed: got %d, want %d", updated.AuthorityID, z.AuthorityID)
 	}
 	if updated.EmailInstantEnabled != z.EmailInstantEnabled {
 		t.Errorf("emailInstantEnabled changed: got %v, want %v", updated.EmailInstantEnabled, z.EmailInstantEnabled)
@@ -491,7 +485,7 @@ func TestWatchZone_WithBoundary_DerivesCentroidAndRadius(t *testing.T) {
 	}
 	// Identity and every non-derived field carry over unchanged.
 	if shape.ID != z.ID || shape.UserID != z.UserID || shape.Name != z.Name ||
-		shape.AuthorityID != z.AuthorityID || !shape.CreatedAt.Equal(z.CreatedAt) ||
+		!shape.CreatedAt.Equal(z.CreatedAt) ||
 		shape.PushEnabled != z.PushEnabled || shape.EmailInstantEnabled != z.EmailInstantEnabled {
 		t.Errorf("non-derived fields changed: got %+v, want %+v", shape, z)
 	}

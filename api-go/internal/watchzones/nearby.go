@@ -40,12 +40,6 @@ type profileReader interface {
 	Get(ctx context.Context, userID string) (*profiles.UserProfile, error)
 }
 
-// authorityResolver reverse-geocodes coordinates to a PlanIt authority id when
-// the create request omits one. *geocoding.Client satisfies it.
-type authorityResolver interface {
-	ResolveAuthority(ctx context.Context, latitude, longitude float64) (int, error)
-}
-
 // appFinder runs the spatial lookup that backs both the create response's nearby
 // applications and the per-zone applications list. It is authority-agnostic and
 // cross-partition, so a border-spanning zone surfaces neighbour-authority apps
@@ -93,7 +87,6 @@ func NearbyRoutes(
 	mux *http.ServeMux,
 	store zoneStore,
 	profileReader profileReader,
-	resolver authorityResolver,
 	apps appFinder,
 	unread unreadReader,
 	newID func() string,
@@ -104,7 +97,6 @@ func NearbyRoutes(
 	h := &handler{
 		store:    store,
 		profiles: profileReader,
-		resolver: resolver,
 		apps:     apps,
 		unread:   unread,
 		newID:    newID,
@@ -119,17 +111,16 @@ func NearbyRoutes(
 	mux.HandleFunc("GET /v1/me/watch-zones/{zoneId}/applications/clusters", h.clusters)
 }
 
-// createRequest is the POST body. The optional flags default to true
-// and authorityId defaults to nil (resolve from coordinates). Boundary is an
-// optional GeoJSON polygon (tc-6he3x.4): when present, Latitude/Longitude/
-// RadiusMetres are ignored and derived server-side from the boundary's
-// centroid and enclosing radius instead (see create and (createRequest).valid).
+// createRequest is the POST body. The optional flags default to true.
+// Boundary is an optional GeoJSON polygon (tc-6he3x.4): when present,
+// Latitude/Longitude/RadiusMetres are ignored and derived server-side from
+// the boundary's centroid and enclosing radius instead (see create and
+// (createRequest).valid).
 type createRequest struct {
 	Name                string           `json:"name"`
 	Latitude            float64          `json:"latitude"`
 	Longitude           float64          `json:"longitude"`
 	RadiusMetres        float64          `json:"radiusMetres"`
-	AuthorityID         *int             `json:"authorityId"`
 	PushEnabled         *bool            `json:"pushEnabled"`
 	EmailInstantEnabled *bool            `json:"emailInstantEnabled"`
 	Boundary            *boundaryGeoJSON `json:"boundary"`
@@ -186,19 +177,16 @@ const invalidUnreadMessage = "Invalid unread filter."
 const filterConflictMessage = "status and unread filters are mutually exclusive."
 
 // valid reports whether the create request passes the pre-handler guard:
-// non-blank name and a positive authority id when one is supplied, always;
-// PLUS, for a plain circle request (Boundary absent), positive radius within
-// the server ceiling and in-range coordinates. A boundary-carrying request
-// skips those circle-shaped checks entirely -- Latitude/Longitude/RadiusMetres
-// are ignored and overwritten from the boundary in create, so whatever (or
-// nothing) the caller sent for them is irrelevant; the boundary's own shape
-// and radius are validated separately in create (NewBoundary, then the
-// maxRadiusMetres/tier ceiling gates).
+// non-blank name, always; PLUS, for a plain circle request (Boundary
+// absent), positive radius within the server ceiling and in-range
+// coordinates. A boundary-carrying request skips those circle-shaped checks
+// entirely -- Latitude/Longitude/RadiusMetres are ignored and overwritten
+// from the boundary in create, so whatever (or nothing) the caller sent for
+// them is irrelevant; the boundary's own shape and radius are validated
+// separately in create (NewBoundary, then the maxRadiusMetres/tier ceiling
+// gates).
 func (req createRequest) valid() bool {
 	if strings.TrimSpace(req.Name) == "" {
-		return false
-	}
-	if req.AuthorityID != nil && *req.AuthorityID <= 0 {
 		return false
 	}
 	if req.Boundary != nil {
@@ -244,9 +232,8 @@ type createResult struct {
 // create implements POST /v1/me/watch-zones: validate (400), gate a
 // boundary-carrying request on the caller's tier (403
 // boundary_requires_paid_tier) and shape/radius (400 boundary_invalid /
-// boundary_too_large), enforce the tier's watch-zone quota (403), resolve the
-// authority from coordinates when absent, persist the zone, and return 201
-// Created with the applications already nearby.
+// boundary_too_large), enforce the tier's watch-zone quota (403), persist the
+// zone, and return 201 Created with the applications already nearby.
 func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 	userID := auth.Subject(r.Context())
 
@@ -274,8 +261,8 @@ func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 	// then on the enclosing radius against both the hard server ceiling and
 	// the tier's own cap. On success Latitude/Longitude/RadiusMetres are
 	// overwritten with the boundary's derived values, so every existing
-	// circle-shaped step below (authority resolution, NewWatchZone, the
-	// nearby-applications fetch) runs unchanged against them.
+	// circle-shaped step below (NewWatchZone, the nearby-applications fetch)
+	// runs unchanged against them.
 	var boundary Boundary
 	if req.Boundary != nil {
 		if !tier.AllowsCustomBoundary() {
@@ -318,21 +305,10 @@ func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	authorityID := 0
-	if req.AuthorityID != nil {
-		authorityID = *req.AuthorityID
-	} else {
-		authorityID, err = h.resolver.ResolveAuthority(r.Context(), req.Latitude, req.Longitude)
-		if err != nil {
-			h.serverError(w, r, "resolve authority from coordinates", err)
-			return
-		}
-	}
-
 	zone, err := NewWatchZone(
 		h.newID(), userID, req.Name,
 		req.Latitude, req.Longitude, req.RadiusMetres,
-		authorityID, h.now(),
+		h.now(),
 		boolOrTrue(req.PushEnabled), boolOrTrue(req.EmailInstantEnabled))
 	if err != nil {
 		h.serverError(w, r, "build watch zone", err)

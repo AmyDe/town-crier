@@ -57,7 +57,6 @@ func (r watchZoneExportReader) WatchZonesByUser(ctx context.Context, userID stri
 			Latitude:     z.Latitude,
 			Longitude:    z.Longitude,
 			RadiusMetres: z.RadiusMetres,
-			AuthorityID:  z.AuthorityID,
 			CreatedAt:    platform.DotNetTime(z.CreatedAt),
 			Boundary:     exportedBoundaryOf(z.Boundary),
 		})

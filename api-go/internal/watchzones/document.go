@@ -30,7 +30,6 @@ type watchZoneDocument struct {
 	Latitude     float64 `json:"latitude"`
 	Longitude    float64 `json:"longitude"`
 	RadiusMetres float64 `json:"radiusMetres"`
-	AuthorityID  int     `json:"authorityId"`
 
 	// location is the GeoJSON Point form of latitude/longitude, persisted purely
 	// so a spatial index (added later in the infra child tc-quqe) can serve
@@ -84,7 +83,6 @@ func newWatchZoneDocument(z WatchZone) watchZoneDocument {
 		Latitude:            z.Latitude,
 		Longitude:           z.Longitude,
 		RadiusMetres:        z.RadiusMetres,
-		AuthorityID:         z.AuthorityID,
 		Location:            newGeoPoint(z.Longitude, z.Latitude),
 		MinLat:              &minLat,
 		MaxLat:              &maxLat,
@@ -117,7 +115,6 @@ func (d watchZoneDocument) toDomain() (WatchZone, error) {
 		d.Latitude,
 		d.Longitude,
 		d.RadiusMetres,
-		d.AuthorityID,
 		createdAt,
 		coalesceTrue(d.PushEnabled),
 		coalesceTrue(d.EmailInstantEnabled),

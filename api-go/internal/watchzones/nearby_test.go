@@ -29,17 +29,6 @@ func (f *fakeProfileReader) Get(_ context.Context, _ string) (*profiles.UserProf
 	return f.profile, f.err
 }
 
-type fakeResolver struct {
-	id     int
-	err    error
-	called bool
-}
-
-func (f *fakeResolver) ResolveAuthority(_ context.Context, _, _ float64) (int, error) {
-	f.called = true
-	return f.id, f.err
-}
-
 type fakeAppFinder struct {
 	apps         []applications.PlanningApplication
 	next         string
@@ -180,7 +169,6 @@ func (f *fakeUnread) GetLatestUnreadByApplications(_ context.Context, _ string, 
 type nearbyDeps struct {
 	store    *fakeZoneStore
 	profiles *fakeProfileReader
-	resolver *fakeResolver
 	apps     *fakeAppFinder
 	unread   *fakeUnread
 }
@@ -202,7 +190,7 @@ func newNearbyMuxWithLogger(t *testing.T, d nearbyDeps, logger *slog.Logger) *ht
 	// the existing quota assertions (Free at limit -> 403, Pro -> unlimited)
 	// continue to hold.
 	cas := newFakeProfileCAS(d.profiles.profile)
-	NearbyRoutes(mux, d.store, d.profiles, d.resolver, d.apps, d.unread,
+	NearbyRoutes(mux, d.store, d.profiles, d.apps, d.unread,
 		func() string { return "zone-123" }, func() time.Time { return nearbyNow },
 		logger, WithProfileCAS(cas))
 	return mux
@@ -308,13 +296,12 @@ func testAppInAuthority(uid, name string, areaID int) applications.PlanningAppli
 
 func TestCreate_PersistsZoneAndReturnsNearbyApplications(t *testing.T) {
 	t.Parallel()
-	// A border-spanning zone (pinned to authority 471) whose circle also covers a
-	// neighbour authority (246). The browse path is now authority-agnostic, so the
-	// create response must surface the neighbour's app too (tc-zldl).
+	// A border-spanning zone whose circle covers applications from two different
+	// authorities. The browse path is authority-agnostic, so the create response
+	// must surface both (tc-zldl).
 	d := nearbyDeps{
 		store:    &fakeZoneStore{},
 		profiles: &fakeProfileReader{profile: proProfile(t)},
-		resolver: &fakeResolver{},
 		apps: &fakeAppFinder{apps: []applications.PlanningApplication{
 			testAppInAuthority("uid-1", "24/001", 471),
 			testAppInAuthority("uid-2", "24/002", 246),
@@ -323,7 +310,7 @@ func TestCreate_PersistsZoneAndReturnsNearbyApplications(t *testing.T) {
 	}
 	mux := newNearbyMux(t, d)
 
-	body := `{"name":"My Zone","latitude":51.5,"longitude":-0.12,"radiusMetres":1000,"authorityId":471}`
+	body := `{"name":"My Zone","latitude":51.5,"longitude":-0.12,"radiusMetres":1000}`
 	rec := doReq(t, mux, http.MethodPost, "/v1/me/watch-zones", body)
 
 	if rec.Code != http.StatusCreated {
@@ -332,14 +319,11 @@ func TestCreate_PersistsZoneAndReturnsNearbyApplications(t *testing.T) {
 	if loc := rec.Header().Get("Location"); loc != "/v1/me/watch-zones/zone-123" {
 		t.Errorf("Location: got %q", loc)
 	}
-	if d.store.saved == nil || d.store.saved.AuthorityID != 471 || d.store.saved.ID != "zone-123" {
+	if d.store.saved == nil || d.store.saved.ID != "zone-123" {
 		t.Errorf("saved zone: got %+v", d.store.saved)
 	}
 	if !d.store.saved.PushEnabled || !d.store.saved.EmailInstantEnabled {
 		t.Errorf("flags should default true: got push=%v email=%v", d.store.saved.PushEnabled, d.store.saved.EmailInstantEnabled)
-	}
-	if d.resolver.called {
-		t.Error("resolver must not run when authorityId is supplied")
 	}
 	if !d.apps.called {
 		t.Error("FindNearby must run to populate the create response")
@@ -366,28 +350,45 @@ func TestCreate_PersistsZoneAndReturnsNearbyApplications(t *testing.T) {
 	}
 }
 
-func TestCreate_ResolvesAuthorityWhenAbsent(t *testing.T) {
+// TestCreate_PolygonCentroidWithNoNearbyPostcode is the regression test for the
+// bug that started this bead (GH#1076): a polygon watch zone whose derived
+// centroid falls at a real-world coordinate with no nearby postcodes.io result
+// used to 500 when the create path reverse-geocoded the centroid to a PlanIt
+// authority id. The create path no longer resolves (or stores) an authority at
+// all, so creating a zone at this exact coordinate must now succeed
+// regardless of postcode data -- proven here with no resolver dependency
+// wired into NearbyRoutes at all.
+func TestCreate_PolygonCentroidWithNoNearbyPostcode(t *testing.T) {
 	t.Parallel()
+	const (
+		reproLat = 51.46204229202306
+		reproLon = -0.34147596831783333
+	)
+	b := mustBoundary(t, squareVertices(reproLat, reproLon, 200))
+	wantLat, wantLon := b.Centroid()
+
 	d := nearbyDeps{
 		store:    &fakeZoneStore{},
 		profiles: &fakeProfileReader{profile: proProfile(t)},
-		resolver: &fakeResolver{id: 326},
 		apps:     &fakeAppFinder{},
 		unread:   &fakeUnread{},
 	}
 	mux := newNearbyMux(t, d)
 
-	body := `{"name":"My Zone","latitude":51.5,"longitude":-0.12,"radiusMetres":1000}`
+	body := mustJSON(t, createRequest{
+		Name:     "No Nearby Postcode",
+		Boundary: boundaryToGeoJSON(b),
+	})
 	rec := doReq(t, mux, http.MethodPost, "/v1/me/watch-zones", body)
 
 	if rec.Code != http.StatusCreated {
-		t.Fatalf("status: got %d, want 201; body=%s", rec.Code, rec.Body.String())
+		t.Fatalf("status: got %d, want 201 (body %s)", rec.Code, rec.Body)
 	}
-	if !d.resolver.called {
-		t.Error("resolver must run when authorityId is absent")
+	if d.store.saved == nil {
+		t.Fatal("zone not persisted")
 	}
-	if d.store.saved == nil || d.store.saved.AuthorityID != 326 {
-		t.Errorf("saved zone authority: got %+v", d.store.saved)
+	if d.store.saved.Latitude != wantLat || d.store.saved.Longitude != wantLon {
+		t.Errorf("saved centroid: got (%v,%v), want (%v,%v)", d.store.saved.Latitude, d.store.saved.Longitude, wantLat, wantLon)
 	}
 }
 
@@ -395,15 +396,14 @@ func TestCreate_QuotaExceededIs403(t *testing.T) {
 	t.Parallel()
 	// Free tier limit is 1; one existing zone means the next create is forbidden.
 	d := nearbyDeps{
-		store:    &fakeZoneStore{zones: []WatchZone{authorityZone(t, 471)}},
+		store:    &fakeZoneStore{zones: []WatchZone{mustZone(t, "zone-1")}},
 		profiles: &fakeProfileReader{profile: freeProfile(t)},
-		resolver: &fakeResolver{},
 		apps:     &fakeAppFinder{},
 		unread:   &fakeUnread{},
 	}
 	mux := newNearbyMux(t, d)
 
-	body := `{"name":"My Zone","latitude":51.5,"longitude":-0.12,"radiusMetres":1000,"authorityId":471}`
+	body := `{"name":"My Zone","latitude":51.5,"longitude":-0.12,"radiusMetres":1000}`
 	rec := doReq(t, mux, http.MethodPost, "/v1/me/watch-zones", body)
 
 	if rec.Code != http.StatusForbidden {
@@ -425,18 +425,17 @@ func TestCreate_ProTierBypassesQuota(t *testing.T) {
 	t.Parallel()
 	manyZones := make([]WatchZone, 10)
 	for i := range manyZones {
-		manyZones[i] = authorityZone(t, 471)
+		manyZones[i] = mustZone(t, "zone-1")
 	}
 	d := nearbyDeps{
 		store:    &fakeZoneStore{zones: manyZones},
 		profiles: &fakeProfileReader{profile: proProfile(t)},
-		resolver: &fakeResolver{},
 		apps:     &fakeAppFinder{},
 		unread:   &fakeUnread{},
 	}
 	mux := newNearbyMux(t, d)
 
-	body := `{"name":"My Zone","latitude":51.5,"longitude":-0.12,"radiusMetres":1000,"authorityId":471}`
+	body := `{"name":"My Zone","latitude":51.5,"longitude":-0.12,"radiusMetres":1000}`
 	rec := doReq(t, mux, http.MethodPost, "/v1/me/watch-zones", body)
 
 	if rec.Code != http.StatusCreated {
@@ -455,18 +454,17 @@ func TestCreate_ExpiredProTierQuotaIs403(t *testing.T) {
 
 	manyZones := make([]WatchZone, 10)
 	for i := range manyZones {
-		manyZones[i] = authorityZone(t, 471)
+		manyZones[i] = mustZone(t, "zone-1")
 	}
 	d := nearbyDeps{
 		store:    &fakeZoneStore{zones: manyZones},
 		profiles: &fakeProfileReader{profile: lapsed},
-		resolver: &fakeResolver{},
 		apps:     &fakeAppFinder{},
 		unread:   &fakeUnread{},
 	}
 	mux := newNearbyMux(t, d)
 
-	body := `{"name":"My Zone","latitude":51.5,"longitude":-0.12,"radiusMetres":1000,"authorityId":471}`
+	body := `{"name":"My Zone","latitude":51.5,"longitude":-0.12,"radiusMetres":1000}`
 	rec := doReq(t, mux, http.MethodPost, "/v1/me/watch-zones", body)
 
 	if rec.Code != http.StatusForbidden {
@@ -480,11 +478,10 @@ func TestCreate_ExpiredProTierQuotaIs403(t *testing.T) {
 func TestCreate_InvalidPayloadIs400(t *testing.T) {
 	t.Parallel()
 	cases := map[string]string{
-		"blank name":       `{"name":"  ","latitude":51.5,"longitude":-0.12,"radiusMetres":1000,"authorityId":471}`,
-		"zero radius":      `{"name":"Z","latitude":51.5,"longitude":-0.12,"radiusMetres":0,"authorityId":471}`,
-		"lat out of range": `{"name":"Z","latitude":91,"longitude":-0.12,"radiusMetres":1000,"authorityId":471}`,
-		"lng out of range": `{"name":"Z","latitude":51.5,"longitude":-181,"radiusMetres":1000,"authorityId":471}`,
-		"authority <= 0":   `{"name":"Z","latitude":51.5,"longitude":-0.12,"radiusMetres":1000,"authorityId":0}`,
+		"blank name":       `{"name":"  ","latitude":51.5,"longitude":-0.12,"radiusMetres":1000}`,
+		"zero radius":      `{"name":"Z","latitude":51.5,"longitude":-0.12,"radiusMetres":0}`,
+		"lat out of range": `{"name":"Z","latitude":91,"longitude":-0.12,"radiusMetres":1000}`,
+		"lng out of range": `{"name":"Z","latitude":51.5,"longitude":-181,"radiusMetres":1000}`,
 	}
 	for name, body := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -492,7 +489,7 @@ func TestCreate_InvalidPayloadIs400(t *testing.T) {
 			d := nearbyDeps{
 				store:    &fakeZoneStore{},
 				profiles: &fakeProfileReader{profile: proProfile(t)},
-				resolver: &fakeResolver{}, apps: &fakeAppFinder{}, unread: &fakeUnread{},
+				apps:     &fakeAppFinder{}, unread: &fakeUnread{},
 			}
 			mux := newNearbyMux(t, d)
 			rec := doReq(t, mux, http.MethodPost, "/v1/me/watch-zones", body)
@@ -511,22 +508,6 @@ func TestCreate_MissingProfileIs500(t *testing.T) {
 	d := nearbyDeps{
 		store:    &fakeZoneStore{},
 		profiles: &fakeProfileReader{profile: nil},
-		resolver: &fakeResolver{}, apps: &fakeAppFinder{}, unread: &fakeUnread{},
-	}
-	mux := newNearbyMux(t, d)
-	body := `{"name":"Z","latitude":51.5,"longitude":-0.12,"radiusMetres":1000,"authorityId":471}`
-	rec := doReq(t, mux, http.MethodPost, "/v1/me/watch-zones", body)
-	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("status: got %d, want 500", rec.Code)
-	}
-}
-
-func TestCreate_ResolverErrorIs500(t *testing.T) {
-	t.Parallel()
-	d := nearbyDeps{
-		store:    &fakeZoneStore{},
-		profiles: &fakeProfileReader{profile: proProfile(t)},
-		resolver: &fakeResolver{err: errors.New("upstream down")},
 		apps:     &fakeAppFinder{}, unread: &fakeUnread{},
 	}
 	mux := newNearbyMux(t, d)
@@ -542,12 +523,11 @@ func TestApplications_AugmentsUnreadAndNullsTheRest(t *testing.T) {
 	decision := "Permitted"
 	unreadAt := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
 	d := nearbyDeps{
-		store: &fakeZoneStore{zones: []WatchZone{mustZone(t, "zone-1", 471)}},
+		store: &fakeZoneStore{zones: []WatchZone{mustZone(t, "zone-1")}},
 		apps: &fakeAppFinder{apps: []applications.PlanningApplication{
 			testApp("uid-1", "24/001"), testApp("uid-2", "24/002"),
 		}},
 		profiles: &fakeProfileReader{},
-		resolver: &fakeResolver{},
 		unread: &fakeUnread{result: map[string]notifications.LatestUnread{
 			"uid-1": {ApplicationUID: "uid-1", EventType: notifications.EventDecisionUpdate, Decision: &decision, CreatedAt: unreadAt},
 		}},
@@ -589,10 +569,9 @@ func TestApplications_AugmentsUnreadAndNullsTheRest(t *testing.T) {
 func TestApplications_DefaultsLimitTo500(t *testing.T) {
 	t.Parallel()
 	d := nearbyDeps{
-		store:    &fakeZoneStore{zones: []WatchZone{mustZone(t, "zone-1", 471)}},
+		store:    &fakeZoneStore{zones: []WatchZone{mustZone(t, "zone-1")}},
 		apps:     &fakeAppFinder{},
 		profiles: &fakeProfileReader{},
-		resolver: &fakeResolver{},
 		unread:   &fakeUnread{},
 	}
 	mux := newNearbyMux(t, d)
@@ -625,10 +604,9 @@ func TestApplications_LimitParsing(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			d := nearbyDeps{
-				store:    &fakeZoneStore{zones: []WatchZone{mustZone(t, "zone-1", 471)}},
+				store:    &fakeZoneStore{zones: []WatchZone{mustZone(t, "zone-1")}},
 				apps:     &fakeAppFinder{},
 				profiles: &fakeProfileReader{},
-				resolver: &fakeResolver{},
 				unread:   &fakeUnread{},
 			}
 			mux := newNearbyMux(t, d)
@@ -646,10 +624,9 @@ func TestApplications_LimitParsing(t *testing.T) {
 func TestApplications_SetsNextCursorHeaderWhenMorePagesExist(t *testing.T) {
 	t.Parallel()
 	d := nearbyDeps{
-		store:    &fakeZoneStore{zones: []WatchZone{mustZone(t, "zone-1", 471)}},
+		store:    &fakeZoneStore{zones: []WatchZone{mustZone(t, "zone-1")}},
 		apps:     &fakeAppFinder{apps: []applications.PlanningApplication{testApp("uid-1", "24/001")}, next: "raw-token-123"},
 		profiles: &fakeProfileReader{},
-		resolver: &fakeResolver{},
 		unread:   &fakeUnread{},
 	}
 	mux := newNearbyMux(t, d)
@@ -668,10 +645,9 @@ func TestApplications_SetsNextCursorHeaderWhenMorePagesExist(t *testing.T) {
 func TestApplications_OmitsNextCursorHeaderWhenExhausted(t *testing.T) {
 	t.Parallel()
 	d := nearbyDeps{
-		store:    &fakeZoneStore{zones: []WatchZone{mustZone(t, "zone-1", 471)}},
+		store:    &fakeZoneStore{zones: []WatchZone{mustZone(t, "zone-1")}},
 		apps:     &fakeAppFinder{apps: []applications.PlanningApplication{testApp("uid-1", "24/001")}}, // next == ""
 		profiles: &fakeProfileReader{},
-		resolver: &fakeResolver{},
 		unread:   &fakeUnread{},
 	}
 	mux := newNearbyMux(t, d)
@@ -688,10 +664,9 @@ func TestApplications_OmitsNextCursorHeaderWhenExhausted(t *testing.T) {
 func TestApplications_ResumesFromCursorParam(t *testing.T) {
 	t.Parallel()
 	d := nearbyDeps{
-		store:    &fakeZoneStore{zones: []WatchZone{mustZone(t, "zone-1", 471)}},
+		store:    &fakeZoneStore{zones: []WatchZone{mustZone(t, "zone-1")}},
 		apps:     &fakeAppFinder{},
 		profiles: &fakeProfileReader{},
-		resolver: &fakeResolver{},
 		unread:   &fakeUnread{},
 	}
 	mux := newNearbyMux(t, d)
@@ -710,10 +685,9 @@ func TestApplications_ResumesFromCursorParam(t *testing.T) {
 func TestApplications_RejectsUndecodableCursorWith400(t *testing.T) {
 	t.Parallel()
 	d := nearbyDeps{
-		store:    &fakeZoneStore{zones: []WatchZone{mustZone(t, "zone-1", 471)}},
+		store:    &fakeZoneStore{zones: []WatchZone{mustZone(t, "zone-1")}},
 		apps:     &fakeAppFinder{},
 		profiles: &fakeProfileReader{},
-		resolver: &fakeResolver{},
 		unread:   &fakeUnread{},
 	}
 	mux := newNearbyMux(t, d)
@@ -735,10 +709,9 @@ func TestApplications_BoundsUnreadLookupToReturnedPage(t *testing.T) {
 	// returns only `limit` (default 500), so the unread lookup must receive a
 	// bounded UID set — never every app in a dense zone (tc-fm8f).
 	d := nearbyDeps{
-		store:    &fakeZoneStore{zones: []WatchZone{mustZone(t, "zone-1", 471)}},
+		store:    &fakeZoneStore{zones: []WatchZone{mustZone(t, "zone-1")}},
 		apps:     &fakeAppFinder{apps: manyApps(600)},
 		profiles: &fakeProfileReader{},
-		resolver: &fakeResolver{},
 		unread:   &fakeUnread{},
 	}
 	mux := newNearbyMux(t, d)
@@ -761,13 +734,12 @@ func TestApplications_SurfacesNeighbourAuthorityApps(t *testing.T) {
 	// applications list is now authority-agnostic, so both sides must appear
 	// (tc-zldl / tc-w11n).
 	d := nearbyDeps{
-		store: &fakeZoneStore{zones: []WatchZone{mustZone(t, "zone-1", 471)}},
+		store: &fakeZoneStore{zones: []WatchZone{mustZone(t, "zone-1")}},
 		apps: &fakeAppFinder{apps: []applications.PlanningApplication{
 			testAppInAuthority("uid-1", "24/001", 471),
 			testAppInAuthority("uid-2", "24/002", 246),
 		}},
 		profiles: &fakeProfileReader{},
-		resolver: &fakeResolver{},
 		unread:   &fakeUnread{},
 	}
 	mux := newNearbyMux(t, d)
@@ -800,10 +772,9 @@ func TestApplications_UnreadSurfacesWithoutStateRow(t *testing.T) {
 	decision := "Permitted"
 	unreadAt := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
 	d := nearbyDeps{
-		store:    &fakeZoneStore{zones: []WatchZone{mustZone(t, "zone-1", 471)}},
+		store:    &fakeZoneStore{zones: []WatchZone{mustZone(t, "zone-1")}},
 		apps:     &fakeAppFinder{apps: []applications.PlanningApplication{testApp("uid-1", "24/001")}},
 		profiles: &fakeProfileReader{},
-		resolver: &fakeResolver{},
 		unread: &fakeUnread{result: map[string]notifications.LatestUnread{
 			"uid-1": {ApplicationUID: "uid-1", EventType: notifications.EventNewApplication, CreatedAt: unreadAt, Decision: &decision},
 		}},
@@ -835,7 +806,6 @@ func TestApplications_ZoneNotFoundIs404(t *testing.T) {
 		store:    &fakeZoneStore{},
 		apps:     &fakeAppFinder{},
 		profiles: &fakeProfileReader{},
-		resolver: &fakeResolver{},
 		unread:   &fakeUnread{},
 	}
 	mux := newNearbyMux(t, d)
@@ -849,10 +819,9 @@ func TestApplications_ZoneNotFoundIs404(t *testing.T) {
 func TestApplications_EmptyZoneReturnsEmptyArray(t *testing.T) {
 	t.Parallel()
 	d := nearbyDeps{
-		store:    &fakeZoneStore{zones: []WatchZone{mustZone(t, "zone-1", 471)}},
+		store:    &fakeZoneStore{zones: []WatchZone{mustZone(t, "zone-1")}},
 		apps:     &fakeAppFinder{},
 		profiles: &fakeProfileReader{},
-		resolver: &fakeResolver{},
 		unread:   &fakeUnread{},
 	}
 	mux := newNearbyMux(t, d)
@@ -883,12 +852,11 @@ func TestCreate_RejectsOversizedRadius(t *testing.T) {
 			d := nearbyDeps{
 				store:    &fakeZoneStore{},
 				profiles: &fakeProfileReader{profile: proProfile(t)},
-				resolver: &fakeResolver{},
 				apps:     &fakeAppFinder{},
 				unread:   &fakeUnread{},
 			}
 			mux := newNearbyMux(t, d)
-			body := fmt.Sprintf(`{"name":"Z","latitude":51.5,"longitude":-0.12,"radiusMetres":%v,"authorityId":471}`, tc.radiusMetres)
+			body := fmt.Sprintf(`{"name":"Z","latitude":51.5,"longitude":-0.12,"radiusMetres":%v}`, tc.radiusMetres)
 			rec := doReq(t, mux, http.MethodPost, "/v1/me/watch-zones", body)
 			if rec.Code != tc.wantStatus {
 				t.Fatalf("radiusMetres=%v: got status %d, want %d", tc.radiusMetres, rec.Code, tc.wantStatus)
@@ -928,20 +896,17 @@ func TestValid_RejectsNonFiniteCoordinates(t *testing.T) {
 // first (acceptance criteria 4).
 func TestCreate_Boundary_FreeTierIs403(t *testing.T) {
 	t.Parallel()
-	authorityID := 471
 	d := nearbyDeps{
 		store:    &fakeZoneStore{},
 		profiles: &fakeProfileReader{profile: freeProfile(t)},
-		resolver: &fakeResolver{},
 		apps:     &fakeAppFinder{},
 		unread:   &fakeUnread{},
 	}
 	mux := newNearbyMux(t, d)
 
 	body := mustJSON(t, createRequest{
-		Name:        "My Shape",
-		AuthorityID: &authorityID,
-		Boundary:    boundaryToGeoJSON(mustBoundary(t, squareVertices(51.5, -0.12, 500))),
+		Name:     "My Shape",
+		Boundary: boundaryToGeoJSON(mustBoundary(t, squareVertices(51.5, -0.12, 500))),
 	})
 	rec := doReq(t, mux, http.MethodPost, "/v1/me/watch-zones", body)
 
@@ -966,7 +931,6 @@ func TestCreate_Boundary_FreeTierIs403(t *testing.T) {
 // response (acceptance criteria 2), and persists a custom-shape zone.
 func TestCreate_Boundary_DerivesLatLonRadiusAndPersistsShape(t *testing.T) {
 	t.Parallel()
-	authorityID := 471
 	vertices := squareVertices(51.5, -0.12, 500)
 	b := mustBoundary(t, vertices)
 	wantLat, wantLon := b.Centroid()
@@ -975,16 +939,14 @@ func TestCreate_Boundary_DerivesLatLonRadiusAndPersistsShape(t *testing.T) {
 	d := nearbyDeps{
 		store:    &fakeZoneStore{},
 		profiles: &fakeProfileReader{profile: personalProfile(t)},
-		resolver: &fakeResolver{},
 		apps:     &fakeAppFinder{},
 		unread:   &fakeUnread{},
 	}
 	mux := newNearbyMux(t, d)
 
 	body := mustJSON(t, createRequest{
-		Name:        "My Shape",
-		AuthorityID: &authorityID,
-		Boundary:    boundaryToGeoJSON(b),
+		Name:     "My Shape",
+		Boundary: boundaryToGeoJSON(b),
 	})
 	rec := doReq(t, mux, http.MethodPost, "/v1/me/watch-zones", body)
 
@@ -1027,7 +989,6 @@ func TestCreate_Boundary_DerivesLatLonRadiusAndPersistsShape(t *testing.T) {
 // (MaxZoneRadiusMetres) is also rejected -- both as 400 boundary_too_large.
 func TestCreate_Boundary_TooLarge(t *testing.T) {
 	t.Parallel()
-	authorityID := 471
 	tests := []struct {
 		name             string
 		profile          *profiles.UserProfile
@@ -1043,12 +1004,11 @@ func TestCreate_Boundary_TooLarge(t *testing.T) {
 			d := nearbyDeps{
 				store:    &fakeZoneStore{},
 				profiles: &fakeProfileReader{profile: tc.profile},
-				resolver: &fakeResolver{},
 				apps:     &fakeAppFinder{},
 				unread:   &fakeUnread{},
 			}
 			mux := newNearbyMux(t, d)
-			body := mustJSON(t, createRequest{Name: "Big Shape", AuthorityID: &authorityID, Boundary: boundaryToGeoJSON(b)})
+			body := mustJSON(t, createRequest{Name: "Big Shape", Boundary: boundaryToGeoJSON(b)})
 			rec := doReq(t, mux, http.MethodPost, "/v1/me/watch-zones", body)
 
 			if rec.Code != http.StatusBadRequest {
@@ -1074,19 +1034,16 @@ func TestCreate_Boundary_TooLarge(t *testing.T) {
 // re-implementing a geometry check at the HTTP layer (acceptance criteria 5).
 func TestCreate_Boundary_InvalidShapeIs400(t *testing.T) {
 	t.Parallel()
-	authorityID := 471
 	d := nearbyDeps{
 		store:    &fakeZoneStore{},
 		profiles: &fakeProfileReader{profile: proProfile(t)},
-		resolver: &fakeResolver{},
 		apps:     &fakeAppFinder{},
 		unread:   &fakeUnread{},
 	}
 	mux := newNearbyMux(t, d)
 
 	body := mustJSON(t, createRequest{
-		Name:        "Too Few Vertices",
-		AuthorityID: &authorityID,
+		Name: "Too Few Vertices",
 		Boundary: &boundaryGeoJSON{
 			Type: "Polygon",
 			Coordinates: [][][2]float64{{
@@ -1128,10 +1085,9 @@ func TestCreate_Boundary_InvalidShapeIs400(t *testing.T) {
 func sortDeps(t *testing.T, apps *fakeAppFinder) nearbyDeps {
 	t.Helper()
 	return nearbyDeps{
-		store:    &fakeZoneStore{zones: []WatchZone{mustZone(t, "zone-1", 471)}},
+		store:    &fakeZoneStore{zones: []WatchZone{mustZone(t, "zone-1")}},
 		apps:     apps,
 		profiles: &fakeProfileReader{},
-		resolver: &fakeResolver{},
 		unread:   &fakeUnread{},
 	}
 }
@@ -1199,7 +1155,6 @@ func TestApplications_CustomShapeZoneUsesBoundaryPath(t *testing.T) {
 		store:    &fakeZoneStore{zones: []WatchZone{zone}},
 		apps:     apps,
 		profiles: &fakeProfileReader{},
-		resolver: &fakeResolver{},
 		unread:   &fakeUnread{},
 	}
 	mux := newNearbyMux(t, d)
@@ -1248,7 +1203,6 @@ func TestApplications_CustomShapeZoneSortAndFilterRoutesToBoundaryZonePage(t *te
 		store:    &fakeZoneStore{zones: []WatchZone{zone}},
 		apps:     apps,
 		profiles: &fakeProfileReader{},
-		resolver: &fakeResolver{},
 		unread:   &fakeUnread{},
 	}
 	mux := newNearbyMux(t, d)
@@ -1299,7 +1253,6 @@ func TestApplications_CustomShapeZoneUnreadFilterRoutesToBoundaryZonePage(t *tes
 		store:    &fakeZoneStore{zones: []WatchZone{zone}},
 		apps:     apps,
 		profiles: &fakeProfileReader{},
-		resolver: &fakeResolver{},
 		unread:   &fakeUnread{},
 	}
 	mux := newNearbyMux(t, d)
@@ -1330,7 +1283,6 @@ func TestApplications_CustomShapeZoneBoundaryZoneCursorMismatchIs400(t *testing.
 		store:    &fakeZoneStore{zones: []WatchZone{zone}},
 		apps:     apps,
 		profiles: &fakeProfileReader{},
-		resolver: &fakeResolver{},
 		unread:   &fakeUnread{},
 	}
 	mux := newNearbyMux(t, d)
@@ -1754,9 +1706,9 @@ func manyApps(n int) []applications.PlanningApplication {
 	return apps
 }
 
-func mustZone(t *testing.T, id string, authorityID int) WatchZone {
+func mustZone(t *testing.T, id string) WatchZone {
 	t.Helper()
-	z, err := NewWatchZone(id, testUser, "Zone", 51.5, -0.12, 1000, authorityID, nearbyNow, true, true)
+	z, err := NewWatchZone(id, testUser, "Zone", 51.5, -0.12, 1000, nearbyNow, true, true)
 	if err != nil {
 		t.Fatalf("NewWatchZone: %v", err)
 	}
@@ -1765,12 +1717,11 @@ func mustZone(t *testing.T, id string, authorityID int) WatchZone {
 
 // mustCustomShapeZone builds a custom-shape zone (londonSquare, from
 // zone_test.go) over the same base fields as mustZone, for the polygon-branch
-// tests in findZonePage and clusters. id and authorityID are always "zone-1"
-// and 471 across callers (unparam), so they are fixed here rather than
-// threaded through.
+// tests in findZonePage and clusters. id is always "zone-1" across callers
+// (unparam), so it is fixed here rather than threaded through.
 func mustCustomShapeZone(t *testing.T) WatchZone {
 	t.Helper()
-	z := mustZone(t, "zone-1", 471)
+	z := mustZone(t, "zone-1")
 	z, err := z.WithBoundary(londonSquare(t))
 	if err != nil {
 		t.Fatalf("WithBoundary: %v", err)
@@ -1783,10 +1734,9 @@ func mustCustomShapeZone(t *testing.T) WatchZone {
 func clusterDeps(t *testing.T, apps *fakeAppFinder) nearbyDeps {
 	t.Helper()
 	return nearbyDeps{
-		store:    &fakeZoneStore{zones: []WatchZone{mustZone(t, "zone-1", 471)}},
+		store:    &fakeZoneStore{zones: []WatchZone{mustZone(t, "zone-1")}},
 		apps:     apps,
 		profiles: &fakeProfileReader{},
-		resolver: &fakeResolver{},
 		unread:   &fakeUnread{},
 	}
 }
@@ -1866,7 +1816,6 @@ func TestClusters_CustomShapeZoneUsesBoundaryClusterQuery(t *testing.T) {
 		store:    &fakeZoneStore{zones: []WatchZone{zone}},
 		apps:     apps,
 		profiles: &fakeProfileReader{},
-		resolver: &fakeResolver{},
 		unread:   &fakeUnread{},
 	}
 	mux := newNearbyMux(t, d)

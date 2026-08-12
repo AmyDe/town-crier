@@ -53,7 +53,6 @@ type WatchZone struct {
 	Latitude            float64
 	Longitude           float64
 	RadiusMetres        float64
-	AuthorityID         int
 	CreatedAt           time.Time
 	PushEnabled         bool
 	EmailInstantEnabled bool
@@ -61,16 +60,16 @@ type WatchZone struct {
 }
 
 // NewWatchZone validates and constructs a circle watch zone (Boundary nil).
-// id, user id and name must be non-blank and radius and authority id must be
-// positive. Coordinate range is deliberately NOT checked here — that is an
-// HTTP-layer validation, so the domain accepts any latitude/longitude. This
-// is an intentional asymmetry with custom-shape zones: NewBoundary DOES
+// id, user id and name must be non-blank and radius must be positive.
+// Coordinate range is deliberately NOT checked here — that is an HTTP-layer
+// validation, so the domain accepts any latitude/longitude. This is an
+// intentional asymmetry with custom-shape zones: NewBoundary DOES
 // range-check its vertices against UK bounds, because a hand-drawn polygon
 // with an out-of-range vertex is a client bug worth rejecting at construction
 // (the shape is meaningless outside the UK), whereas a circle's centre is a
 // single point whose plausibility is better judged with request context
 // (e.g. postcode lookup) at the HTTP layer.
-func NewWatchZone(id, userID, name string, latitude, longitude, radiusMetres float64, authorityID int, createdAt time.Time, pushEnabled, emailInstantEnabled bool) (WatchZone, error) {
+func NewWatchZone(id, userID, name string, latitude, longitude, radiusMetres float64, createdAt time.Time, pushEnabled, emailInstantEnabled bool) (WatchZone, error) {
 	if strings.TrimSpace(id) == "" {
 		return WatchZone{}, errors.New("id is required")
 	}
@@ -83,9 +82,6 @@ func NewWatchZone(id, userID, name string, latitude, longitude, radiusMetres flo
 	if radiusMetres <= 0 {
 		return WatchZone{}, errors.New("radius must be positive")
 	}
-	if authorityID <= 0 {
-		return WatchZone{}, errors.New("authority id must be positive")
-	}
 	return WatchZone{
 		ID:                  id,
 		UserID:              userID,
@@ -93,7 +89,6 @@ func NewWatchZone(id, userID, name string, latitude, longitude, radiusMetres flo
 		Latitude:            latitude,
 		Longitude:           longitude,
 		RadiusMetres:        radiusMetres,
-		AuthorityID:         authorityID,
 		CreatedAt:           createdAt,
 		PushEnabled:         pushEnabled,
 		EmailInstantEnabled: emailInstantEnabled,
@@ -140,7 +135,7 @@ func (z WatchZone) WithBoundary(vertices []Coordinate) (WatchZone, error) {
 	updated, err := NewWatchZone(
 		z.ID, z.UserID, z.Name,
 		lat, lon, b.EnclosingRadiusMetres(),
-		z.AuthorityID, z.CreatedAt,
+		z.CreatedAt,
 		z.PushEnabled, z.EmailInstantEnabled,
 	)
 	if err != nil {
@@ -404,7 +399,6 @@ type ZoneUpdate struct {
 	Latitude            *float64
 	Longitude           *float64
 	RadiusMetres        *float64
-	AuthorityID         *int
 	PushEnabled         *bool
 	EmailInstantEnabled *bool
 	Boundary            *Boundary
@@ -428,9 +422,6 @@ func (z WatchZone) WithUpdates(u ZoneUpdate) (WatchZone, error) {
 	}
 	if u.RadiusMetres != nil {
 		updated.RadiusMetres = *u.RadiusMetres
-	}
-	if u.AuthorityID != nil {
-		updated.AuthorityID = *u.AuthorityID
 	}
 	if u.PushEnabled != nil {
 		updated.PushEnabled = *u.PushEnabled
@@ -465,7 +456,6 @@ func (z WatchZone) WithUpdates(u ZoneUpdate) (WatchZone, error) {
 		updated.Latitude,
 		updated.Longitude,
 		updated.RadiusMetres,
-		updated.AuthorityID,
 		updated.CreatedAt,
 		updated.PushEnabled,
 		updated.EmailInstantEnabled,

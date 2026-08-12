@@ -661,13 +661,15 @@ func TestRouter_AuthenticatedPipeline(t *testing.T) {
 		t.Errorf("GET /v1/me/saved-applications body = %s, want []", got)
 	}
 
-	// application-authorities is wired off the watch-zone store (empty set).
+	// application-authorities was removed with authority_id (bd tc-9nbs4.2,
+	// GH#1076 Phase 1). A regression check that the route is genuinely gone: with
+	// no pattern left to match, auth.RequireAuth's deny-by-default policy
+	// (internal/auth/middleware.go) rejects the request with 401 before the mux
+	// ever gets a chance to 404 it -- a valid bearer token no longer helps, since
+	// there is no authenticated handler behind this path any more.
 	rec = serveReq(t, h, http.MethodGet, "/v1/me/application-authorities", "", "Bearer tok")
-	if rec.Code != http.StatusOK {
-		t.Fatalf("GET /v1/me/application-authorities status = %d body = %s", rec.Code, rec.Body.String())
-	}
-	if got := strings.TrimSpace(rec.Body.String()); got != `{"authorities":[],"count":0}` {
-		t.Errorf("GET /v1/me/application-authorities body = %s", got)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("GET /v1/me/application-authorities status = %d, want 401 (route removed)", rec.Code)
 	}
 
 	// Authorities routes are authed (GH#418): a valid token reaches the handlers,

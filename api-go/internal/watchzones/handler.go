@@ -142,7 +142,6 @@ type handler struct {
 	store      zoneStore
 	profiles   profileReader
 	profileCAS profileCAS
-	resolver   authorityResolver
 	apps       appFinder
 	unread     unreadReader
 	newID      func() string
@@ -174,7 +173,6 @@ type watchZoneSummary struct {
 	Latitude            float64 `json:"latitude"`
 	Longitude           float64 `json:"longitude"`
 	RadiusMetres        float64 `json:"radiusMetres"`
-	AuthorityID         int     `json:"authorityId"`
 	PushEnabled         bool    `json:"pushEnabled"`
 	EmailInstantEnabled bool    `json:"emailInstantEnabled"`
 	Paused              bool    `json:"paused"`
@@ -192,7 +190,6 @@ func summaryOf(z WatchZone, paused bool) watchZoneSummary {
 		Latitude:            z.Latitude,
 		Longitude:           z.Longitude,
 		RadiusMetres:        z.RadiusMetres,
-		AuthorityID:         z.AuthorityID,
 		PushEnabled:         z.PushEnabled,
 		EmailInstantEnabled: z.EmailInstantEnabled,
 		Paused:              paused,
@@ -292,14 +289,13 @@ type patchRequest struct {
 	Latitude            *float64        `json:"latitude"`
 	Longitude           *float64        `json:"longitude"`
 	RadiusMetres        *float64        `json:"radiusMetres"`
-	AuthorityID         *int            `json:"authorityId"`
 	PushEnabled         *bool           `json:"pushEnabled"`
 	EmailInstantEnabled *bool           `json:"emailInstantEnabled"`
 	Boundary            json.RawMessage `json:"boundary"`
 }
 
-// rangeValid reports whether the present coordinate/radius/authority fields are
-// in range. A nil field is not checked. Name is deliberately not checked here —
+// rangeValid reports whether the present coordinate/radius fields are in
+// range. A nil field is not checked. Name is deliberately not checked here —
 // that is enforced by the domain merge (and a blank name there is a 500, not a 400).
 func (req patchRequest) rangeValid() bool {
 	if req.Latitude != nil && (math.IsNaN(*req.Latitude) || math.IsInf(*req.Latitude, 0) ||
@@ -314,9 +310,6 @@ func (req patchRequest) rangeValid() bool {
 		*req.RadiusMetres <= 0 || *req.RadiusMetres > maxRadiusMetres) {
 		return false
 	}
-	if req.AuthorityID != nil && *req.AuthorityID <= 0 {
-		return false
-	}
 	return true
 }
 
@@ -328,7 +321,6 @@ func (req patchRequest) toUpdate(boundary *Boundary) ZoneUpdate {
 		Latitude:            req.Latitude,
 		Longitude:           req.Longitude,
 		RadiusMetres:        req.RadiusMetres,
-		AuthorityID:         req.AuthorityID,
 		PushEnabled:         req.PushEnabled,
 		EmailInstantEnabled: req.EmailInstantEnabled,
 		Boundary:            boundary,

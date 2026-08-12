@@ -19,7 +19,6 @@ func TestDecodeDocument(t *testing.T) {
 		"latitude": 51.5074,
 		"longitude": -0.1278,
 		"radiusMetres": 1000,
-		"authorityId": 100,
 		"location": {"type": "Point", "coordinates": [-0.1278, 51.5074]},
 		"minLat": 51.49,
 		"maxLat": 51.52,
@@ -42,8 +41,8 @@ func TestDecodeDocument(t *testing.T) {
 		if got.Latitude != 51.5074 || got.Longitude != -0.1278 {
 			t.Errorf("coordinates: got lat=%v lon=%v", got.Latitude, got.Longitude)
 		}
-		if got.RadiusMetres != 1000 || got.AuthorityID != 100 {
-			t.Errorf("radius/authority: got radius=%v authority=%v", got.RadiusMetres, got.AuthorityID)
+		if got.RadiusMetres != 1000 {
+			t.Errorf("radius: got %v", got.RadiusMetres)
 		}
 		if got.PushEnabled || got.EmailInstantEnabled {
 			t.Errorf("flags: got push=%v email=%v, want both false (explicit)", got.PushEnabled, got.EmailInstantEnabled)
@@ -55,7 +54,7 @@ func TestDecodeDocument(t *testing.T) {
 
 	t.Run("absent flags coalesce to true and absent createdAt is the zero instant", func(t *testing.T) {
 		t.Parallel()
-		const minimal = `{"id":"22222222-2222-2222-2222-222222222222","userId":"u2","name":"Work","latitude":51.5,"longitude":-0.1,"radiusMetres":500,"authorityId":100}`
+		const minimal = `{"id":"22222222-2222-2222-2222-222222222222","userId":"u2","name":"Work","latitude":51.5,"longitude":-0.1,"radiusMetres":500}`
 		got, err := DecodeDocument([]byte(minimal))
 		if err != nil {
 			t.Fatalf("DecodeDocument: %v", err)
@@ -78,7 +77,7 @@ func TestDecodeDocument(t *testing.T) {
 	t.Run("document violating a domain invariant is rejected", func(t *testing.T) {
 		t.Parallel()
 		// radiusMetres <= 0 violates the NewWatchZone constructor.
-		const badRadius = `{"id":"33333333-3333-3333-3333-333333333333","userId":"u3","name":"Bad","latitude":51.5,"longitude":-0.1,"radiusMetres":0,"authorityId":100}`
+		const badRadius = `{"id":"33333333-3333-3333-3333-333333333333","userId":"u3","name":"Bad","latitude":51.5,"longitude":-0.1,"radiusMetres":0}`
 		if _, err := DecodeDocument([]byte(badRadius)); err == nil {
 			t.Fatal("DecodeDocument: want error for non-positive radius, got nil")
 		}
