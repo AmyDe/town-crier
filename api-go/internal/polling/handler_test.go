@@ -115,6 +115,11 @@ type fakeStateStore struct {
 	saves    []savedState
 	lruOrder []int
 	lruErr   error
+	// getErr, when set, is returned by every Get call (mirroring fakeApps.getErr
+	// / fakeBackfillStateStore.getErr) -- lets a test simulate a genuine
+	// watermark-read (state-store) failure, as distinct from a PlanIt fetch
+	// error (tc-uitxr).
+	getErr error
 }
 
 type savedState struct {
@@ -129,6 +134,9 @@ func newFakeStateStore() *fakeStateStore {
 }
 
 func (f *fakeStateStore) Get(_ context.Context, authorityID int) (PollState, bool, error) {
+	if f.getErr != nil {
+		return PollState{}, false, f.getErr
+	}
 	s, ok := f.states[authorityID]
 	return s, ok, nil
 }

@@ -587,6 +587,9 @@ func TestInverseMaskLane_PageFetchTimeoutSetsTimedOut(t *testing.T) {
 	if !out.timedOut {
 		t.Error("timedOut: got false, want true (page-fetch client timeout)")
 	}
+	if !out.planitOrigin {
+		t.Error("planitOrigin: got false, want true (page-fetch error, tc-uitxr)")
+	}
 }
 
 // TestInverseMaskLane_HydrationTimeoutSetsTimedOut mirrors
@@ -620,6 +623,9 @@ func TestInverseMaskLane_HydrationTimeoutSetsTimedOut(t *testing.T) {
 	}
 	if !out.timedOut {
 		t.Error("timedOut: got false, want true (hydration client timeout)")
+	}
+	if !out.planitOrigin {
+		t.Error("planitOrigin: got false, want true (hydration fetch error, tc-uitxr)")
 	}
 }
 
@@ -661,6 +667,9 @@ func TestInverseMaskLane_GetByUIDTimeoutDoesNotSetTimedOut(t *testing.T) {
 	}
 	if out.timedOut {
 		t.Error("timedOut: got true, want false (GetByUID is Postgres, never PlanIt -- isTimeoutError must never be consulted on this path)")
+	}
+	if out.planitOrigin {
+		t.Error("planitOrigin: got true, want false (GetByUID is Postgres, never PlanIt, tc-uitxr)")
 	}
 	if len(fetcher.hydrateCalls) != 0 {
 		t.Errorf("expected hydrate() never called when GetByUID fails, got %v", fetcher.hydrateCalls)

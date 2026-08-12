@@ -301,8 +301,8 @@ func TestRun_PollSBExitsOneOnlyWhenNoAppsAndAuthorityErrors(t *testing.T) {
 		wantExit int
 	}{
 		{
-			name:     "no apps and authority errors -> exit 1",
-			result:   PollRunResult{MessageReceived: true, ApplicationCount: 0, AuthorityErrors: 2},
+			name:     "no apps and non-PlanIt-origin authority errors -> exit 1",
+			result:   PollRunResult{MessageReceived: true, ApplicationCount: 0, AuthorityErrors: 2, AuthorityErrorIsPlanIt: false},
 			wantExit: 1,
 		},
 		{
@@ -319,6 +319,23 @@ func TestRun_PollSBExitsOneOnlyWhenNoAppsAndAuthorityErrors(t *testing.T) {
 			name:     "lease unavailable -> exit 0 (peer is polling)",
 			result:   PollRunResult{LeaseUnavailable: true},
 			wantExit: 0,
+		},
+		{
+			// tc-uitxr: an isolated PlanIt-origin fetch error on an otherwise
+			// quiet cycle self-heals (the orchestrator still completes the
+			// message and publishes the next trigger normally) and is already
+			// covered by the ratio-based alert-planit-failure-rate-shared log
+			// alert, so it must not also page alert-job-failed-poll-prod.
+			name:     "no apps, authority error is PlanIt-origin -> exit 0 (self-healing)",
+			result:   PollRunResult{MessageReceived: true, ApplicationCount: 0, AuthorityErrors: 1, AuthorityErrorIsPlanIt: true},
+			wantExit: 0,
+		},
+		{
+			// tc-uitxr: a genuine state-store/Postgres error must keep paging
+			// immediately, exactly as before.
+			name:     "no apps, authority error is NOT PlanIt-origin -> exit 1 (genuine failure)",
+			result:   PollRunResult{MessageReceived: true, ApplicationCount: 0, AuthorityErrors: 1, AuthorityErrorIsPlanIt: false},
+			wantExit: 1,
 		},
 	}
 	for _, tc := range tests {
