@@ -619,6 +619,7 @@ func (a *pollOrchestratorAdapter) RunOnce(ctx context.Context) (worker.PollRunRe
 		out.ApplicationCount = res.PollResult.ApplicationCount
 		out.AuthoritiesPolled = res.PollResult.AuthoritiesPolled
 		out.AuthorityErrors = res.PollResult.AuthorityErrors
+		out.AuthorityErrorIsPlanIt = res.PollResult.AuthorityErrorIsPlanIt
 		out.Termination = res.PollResult.TerminationReason.TelemetryValue()
 		out.OldestHWMAgeSeconds = res.PollResult.OldestHWMAgeSeconds
 		out.OldestHWMNeverPolled = res.PollResult.OldestHWMNeverPolled

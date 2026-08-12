@@ -154,8 +154,13 @@ type backfillOutcome struct {
 	rateLimited     bool
 	retryAfter      *time.Duration
 	err             error
-	planitTotal     *int
-	complete        bool
+	// planitOrigin mirrors laneOutcome.planitOrigin (nationallane.go): true
+	// only when err came from the FetchBackfillPage call, false (default) for
+	// a state-read (h.state.Get), ingest, or state-save error -- all genuine
+	// state-store problems unrelated to PlanIt (tc-uitxr).
+	planitOrigin bool
+	planitTotal  *int
+	complete     bool
 }
 
 // Run fetches up to MaxPagesPerCycle pages of the current backward-sliding
@@ -216,6 +221,7 @@ pageLoop:
 				out.retryAfter = rl.RetryAfter
 			} else {
 				out.err = ferr
+				out.planitOrigin = true
 			}
 			break pageLoop
 		}
