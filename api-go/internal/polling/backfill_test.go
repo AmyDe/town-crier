@@ -474,6 +474,85 @@ func TestBackfillHandler_Run_FetchErrorDoesNotAdvanceCursor(t *testing.T) {
 	if len(apps.upserts) != 2 {
 		t.Errorf("upserts: got %d, want 2 (page 0's records were still ingested)", len(apps.upserts))
 	}
+	if !out.planitOrigin {
+		t.Error("planitOrigin: got false, want true (the error came straight from FetchBackfillPage, tc-uitxr)")
+	}
+}
+
+// TestBackfillHandler_Run_StateGetErrorLeavesPlanitOriginFalse proves the
+// origin classification (tc-uitxr): a failure reading the persisted backfill
+// state -- a genuine state-store problem, unrelated to PlanIt -- must never
+// be misclassified as planitOrigin.
+func TestBackfillHandler_Run_StateGetErrorLeavesPlanitOriginFalse(t *testing.T) {
+	t.Parallel()
+	fetcher := newFakeBackfillFetcher()
+	apps := newFakeApps()
+	state := newFakeBackfillStateStore()
+	state.getErr = errors.New("postgres: connection refused")
+
+	h := newBackfillHandler(t, fetcher, apps, state, defaultBackfillOpts())
+	out := h.Run(context.Background())
+
+	if out.err == nil {
+		t.Fatal("expected the state-read error to surface on the outcome")
+	}
+	if out.planitOrigin {
+		t.Error("planitOrigin: got true, want false (a state-store read failure is never PlanIt-origin)")
+	}
+	if fetcher.calls != 0 {
+		t.Errorf("expected no PlanIt fetch when the state read fails first, got %d calls", fetcher.calls)
+	}
+}
+
+// TestBackfillHandler_Run_IngestErrorLeavesPlanitOriginFalse proves an
+// Ingester.Ingest failure (Postgres upsert) is likewise never PlanIt-origin,
+// even though it happens mid-page, after a successful fetch.
+func TestBackfillHandler_Run_IngestErrorLeavesPlanitOriginFalse(t *testing.T) {
+	t.Parallel()
+	windowEnd := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	ld := time.Date(2019, 1, 1, 0, 0, 0, 0, time.UTC)
+	fetcher := newFakeBackfillFetcher(fakeBackfillResponse{
+		result: planit.FetchPageResult{Applications: []applications.PlanningApplication{testApp("a", 300, ld)}, HasMorePages: false},
+	})
+	apps := newFakeApps()
+	apps.upsertErr = errors.New("postgres: connection refused")
+	state := newFakeBackfillStateStore()
+	state.state = BackfillState{WindowEnd: windowEnd}
+
+	h := newBackfillHandler(t, fetcher, apps, state, defaultBackfillOpts())
+	out := h.Run(context.Background())
+
+	if out.err == nil {
+		t.Fatal("expected the ingest (upsert) error to surface on the outcome")
+	}
+	if out.planitOrigin {
+		t.Error("planitOrigin: got true, want false (the fetch itself succeeded; the failure is a Postgres upsert)")
+	}
+}
+
+// TestBackfillHandler_Run_SaveErrorLeavesPlanitOriginFalse proves a state
+// persistence failure (Postgres save) is likewise never PlanIt-origin.
+func TestBackfillHandler_Run_SaveErrorLeavesPlanitOriginFalse(t *testing.T) {
+	t.Parallel()
+	windowEnd := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	ld := time.Date(2019, 1, 1, 0, 0, 0, 0, time.UTC)
+	fetcher := newFakeBackfillFetcher(fakeBackfillResponse{
+		result: planit.FetchPageResult{Applications: []applications.PlanningApplication{testApp("a", 300, ld)}, HasMorePages: true},
+	})
+	apps := newFakeApps()
+	state := newFakeBackfillStateStore()
+	state.state = BackfillState{WindowEnd: windowEnd}
+	state.saveErr = errors.New("postgres: connection refused")
+
+	h := newBackfillHandler(t, fetcher, apps, state, defaultBackfillOpts())
+	out := h.Run(context.Background())
+
+	if out.err == nil {
+		t.Fatal("expected the state-save error to surface on the outcome")
+	}
+	if out.planitOrigin {
+		t.Error("planitOrigin: got true, want false (the fetch itself succeeded; the failure is a Postgres save)")
+	}
 }
 
 // TestBackfillHandler_Run_RateLimitedDoesNotAdvanceCursor mirrors the fetch-

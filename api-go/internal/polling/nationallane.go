@@ -231,7 +231,18 @@ type laneOutcome struct {
 	// watermark/cursor persistence error, which is unrelated to PlanIt. It
 	// lets Handle's loop distinguish "PlanIt needs space" (TerminationTimeout)
 	// from a genuine natural completion (tc-pmh5y).
-	timedOut        bool
+	timedOut bool
+	// planitOrigin is the broader sibling of timedOut (tc-uitxr): true when
+	// err came from a PlanIt fetch call (page fetch or hydration) — ANY such
+	// error, not just a timeout — and false (default) when err came from a
+	// watermark/cursor read or persistence error, or an Ingester.Ingest
+	// failure, all of which are genuine state-store (Postgres) problems
+	// unrelated to PlanIt. Handle threads it onto PollPlanItResult so the
+	// worker's exit-code rule can tell an isolated, self-healing PlanIt
+	// hiccup (already covered by the ratio-based
+	// alert-planit-failure-rate-shared log alert) apart from a genuine
+	// DB-layer failure that should keep paging.
+	planitOrigin    bool
 	planitTotal     *int
 	watermarkBefore time.Time
 	watermarkAfter  time.Time
@@ -346,6 +357,7 @@ func (h *NationalLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 		} else {
 			out.err = ferr
 			out.timedOut = isTimeoutError(ferr)
+			out.planitOrigin = true
 		}
 		out.watermarkAfter = watermarkBefore
 		h.recordRunMetrics(ctx, out, now)
@@ -486,6 +498,7 @@ func (h *NationalLaneHandler) seed(ctx context.Context, span trace.Span, now, ma
 		} else {
 			out.err = ferr
 			out.timedOut = isTimeoutError(ferr)
+			out.planitOrigin = true
 		}
 		// out.watermarkAfter is still the zero time here — the seeding fetch
 		// itself failed, so nothing was ever established this run. Recording
@@ -703,6 +716,12 @@ type commonLaneOutcome struct {
 	// no equivalent, so it always reads false from that branch — Lane D is
 	// out of scope for tc-pmh5y's timeout classification).
 	timedOut bool
+	// planitOrigin mirrors laneOutcome.planitOrigin (Lane A/B/C) and
+	// backfillOutcome.planitOrigin (Lane D, mapped in execOnePage's Lane D
+	// case) — unlike timedOut, Lane D DOES track this one: a fetch-origin
+	// error must stop an otherwise-quiet cycle without paging, whichever
+	// lane it came from (tc-uitxr).
+	planitOrigin bool
 }
 
 // Handle runs one ADR 0044 poll cycle: a planner/executor loop replacing the
@@ -738,12 +757,13 @@ func (h *NationalPollHandler) Handle(ctx context.Context) (PollPlanItResult, err
 	}
 
 	var (
-		totalIngested int
-		lastErr       error
-		rateLimited   bool
-		retryAfter    *time.Duration
-		reason        = TerminationNatural
-		pagesRun      = map[LaneName]int{}
+		totalIngested       int
+		lastErr             error
+		lastErrPlanitOrigin bool
+		rateLimited         bool
+		retryAfter          *time.Duration
+		reason              = TerminationNatural
+		pagesRun            = map[LaneName]int{}
 	)
 
 loop:
@@ -772,6 +792,7 @@ loop:
 
 		if out.err != nil {
 			lastErr = out.err
+			lastErrPlanitOrigin = out.planitOrigin
 			if out.timedOut {
 				reason = TerminationTimeout
 			}
@@ -792,20 +813,23 @@ loop:
 	}
 
 	laneErrors := 0
+	authorityErrorIsPlanIt := false
 	if lastErr != nil {
 		laneErrors = 1
+		authorityErrorIsPlanIt = lastErrPlanitOrigin
 	}
 
 	h.recorder().CycleCompleted(ctx, "National", reason.TelemetryValue())
 
 	return PollPlanItResult{
-		ApplicationCount:  totalIngested,
-		AuthoritiesPolled: 0, // no per-authority concept in the national lanes
-		RateLimited:       rateLimited,
-		TerminationReason: reason,
-		AuthorityErrors:   laneErrors,
-		RetryAfter:        retryAfter,
-		CycleType:         "National",
+		ApplicationCount:       totalIngested,
+		AuthoritiesPolled:      0, // no per-authority concept in the national lanes
+		RateLimited:            rateLimited,
+		TerminationReason:      reason,
+		AuthorityErrors:        laneErrors,
+		AuthorityErrorIsPlanIt: authorityErrorIsPlanIt,
+		RetryAfter:             retryAfter,
+		CycleType:              "National",
 	}, nil
 }
 
@@ -881,13 +905,13 @@ func (h *NationalPollHandler) execOnePage(ctx context.Context, lane LaneName) co
 		if out.err != nil {
 			h.logger.ErrorContext(ctx, "lane A poll error", "error", out.err)
 		}
-		return commonLaneOutcome{recordsIngested: out.recordsIngested, rateLimited: out.rateLimited, retryAfter: out.retryAfter, err: out.err, timedOut: out.timedOut}
+		return commonLaneOutcome{recordsIngested: out.recordsIngested, rateLimited: out.rateLimited, retryAfter: out.retryAfter, err: out.err, timedOut: out.timedOut, planitOrigin: out.planitOrigin}
 	case LaneB:
 		out := h.laneB.RunOnePage(ctx)
 		if out.err != nil {
 			h.logger.ErrorContext(ctx, "lane B poll error", "error", out.err)
 		}
-		return commonLaneOutcome{recordsIngested: out.recordsIngested, rateLimited: out.rateLimited, retryAfter: out.retryAfter, err: out.err, timedOut: out.timedOut}
+		return commonLaneOutcome{recordsIngested: out.recordsIngested, rateLimited: out.rateLimited, retryAfter: out.retryAfter, err: out.err, timedOut: out.timedOut, planitOrigin: out.planitOrigin}
 	case LaneC:
 		if h.laneC == nil {
 			return commonLaneOutcome{}
@@ -896,7 +920,7 @@ func (h *NationalPollHandler) execOnePage(ctx context.Context, lane LaneName) co
 		if out.err != nil {
 			h.logger.ErrorContext(ctx, "lane C poll error", "error", out.err)
 		}
-		return commonLaneOutcome{recordsIngested: out.recordsIngested, rateLimited: out.rateLimited, retryAfter: out.retryAfter, err: out.err, timedOut: out.timedOut}
+		return commonLaneOutcome{recordsIngested: out.recordsIngested, rateLimited: out.rateLimited, retryAfter: out.retryAfter, err: out.err, timedOut: out.timedOut, planitOrigin: out.planitOrigin}
 	case LaneD:
 		if h.laneD == nil {
 			return commonLaneOutcome{}
@@ -905,7 +929,7 @@ func (h *NationalPollHandler) execOnePage(ctx context.Context, lane LaneName) co
 		if out.err != nil {
 			h.logger.ErrorContext(ctx, "lane D backfill error", "error", out.err)
 		}
-		return commonLaneOutcome{rateLimited: out.rateLimited, retryAfter: out.retryAfter, err: out.err}
+		return commonLaneOutcome{rateLimited: out.rateLimited, retryAfter: out.retryAfter, err: out.err, planitOrigin: out.planitOrigin}
 	default:
 		return commonLaneOutcome{}
 	}

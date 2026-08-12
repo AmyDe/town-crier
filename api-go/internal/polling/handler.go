@@ -115,14 +115,28 @@ type HandlerOptions struct {
 }
 
 // PollPlanItResult is the outcome of one ingestion cycle. Drives the worker's
-// exit code (exit 1 only when ApplicationCount==0 AND AuthorityErrors>0) and
-// the next-run cadence.
+// exit code and the next-run cadence: exit 1 only when ApplicationCount==0,
+// AuthorityErrors>0, AND that error did NOT originate from a PlanIt fetch
+// call (see AuthorityErrorIsPlanIt) -- an isolated PlanIt-origin error on an
+// otherwise-quiet cycle self-heals (the orchestrator still completes the
+// message and publishes the next trigger normally) and is already covered by
+// the ratio-based alert-planit-failure-rate-shared log alert, so it must not
+// also page alert-job-failed-poll-prod. Any other error type (a
+// watermark/state-store or Postgres failure) still exits 1 immediately
+// (tc-uitxr).
 type PollPlanItResult struct {
 	ApplicationCount  int
 	AuthoritiesPolled int
 	RateLimited       bool
 	TerminationReason TerminationReason
 	AuthorityErrors   int
+	// AuthorityErrorIsPlanIt is true when the lane error counted in
+	// AuthorityErrors originated from a PlanIt fetch call (any error, not
+	// just a timeout -- see laneOutcome.planitOrigin/backfillOutcome.planitOrigin),
+	// false when it came from a watermark/cursor read or persistence error,
+	// or an Ingester.Ingest failure -- genuine state-store problems unrelated
+	// to PlanIt. Meaningless when AuthorityErrors == 0.
+	AuthorityErrorIsPlanIt bool
 	// RetryAfter is the Retry-After hint bubbled up from a 429, consumed by the
 	// scheduler to time the next trigger. nil when not rate-limited or absent.
 	RetryAfter *time.Duration

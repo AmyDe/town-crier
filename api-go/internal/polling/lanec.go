@@ -219,13 +219,20 @@ func (h *InverseMaskLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 		} else {
 			out.err = ferr
 			out.timedOut = isTimeoutError(ferr)
+			out.planitOrigin = true
 		}
 		// GH#986: re-persist the epoch/cursor exactly as loaded (nothing was
 		// fetched, so no progress exists to checkpoint) but with
 		// last_poll_time advanced to now, so a page-fetch 429/error still
 		// rotates this lane off the LRU front instead of freezing it there.
-		if serr := h.watermark.save(ctx, now, loadedEpochUpper, cursor); serr != nil && out.err == nil {
-			out.err = serr
+		if serr := h.watermark.save(ctx, now, loadedEpochUpper, cursor); serr != nil {
+			// A save failure is a state-store problem, never PlanIt's fault —
+			// join it onto any PlanIt fetch error above and clear
+			// planitOrigin, so a genuine persistence failure never gets
+			// hidden behind a self-healing PlanIt classification (CodeRabbit
+			// follow-up on tc-uitxr).
+			out.err = errors.Join(out.err, serr)
+			out.planitOrigin = false
 		}
 		out.watermarkAfter = epochUpper
 		h.recordOutcome(ctx, out)
@@ -311,8 +318,12 @@ func (h *InverseMaskLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 			nextIndex = cursor.NextIndex
 		}
 		newCursor := &PollCursor{DifferentStart: epochLower, NextIndex: nextIndex, KnownTotal: res.Total}
-		if serr := h.watermark.save(ctx, now, epochUpper, newCursor); serr != nil && out.err == nil {
-			out.err = serr
+		if serr := h.watermark.save(ctx, now, epochUpper, newCursor); serr != nil {
+			// See the page-fetch save above: a save failure is never
+			// PlanIt's fault, even when it lands on top of a PlanIt-origin
+			// hydration error (CodeRabbit follow-up on tc-uitxr).
+			out.err = errors.Join(out.err, serr)
+			out.planitOrigin = false
 		}
 		out.watermarkAfter = epochUpper
 		h.recordOutcome(ctx, out)
@@ -407,12 +418,14 @@ func (h *InverseMaskLaneHandler) hydrate(ctx context.Context, uid string, wantAr
 			out.retryAfter = rl.RetryAfter
 			return nil
 		}
-		// timedOut is set here, at the actual PlanIt fetch site, rather than
-		// re-derived from processStraggler's aggregate error at the
-		// RunOnePage call site -- so a Postgres GetByUID error (the sibling
-		// error source processStraggler wraps) never gets misclassified as a
-		// PlanIt timeout (tc-c5tmz, CodeRabbit follow-up on tc-pmh5y).
+		// timedOut/planitOrigin are set here, at the actual PlanIt fetch site,
+		// rather than re-derived from processStraggler's aggregate error at
+		// the RunOnePage call site -- so a Postgres GetByUID error (the
+		// sibling error source processStraggler wraps) never gets
+		// misclassified as PlanIt-origin (tc-c5tmz, CodeRabbit follow-up on
+		// tc-pmh5y; tc-uitxr).
 		out.timedOut = isTimeoutError(err)
+		out.planitOrigin = true
 		return fmt.Errorf("lane C: hydration fetch %q: %w", uid, err)
 	}
 	for _, app := range full.Applications {

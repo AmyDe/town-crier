@@ -336,6 +336,9 @@ func TestNationalLane_NeverAdvancesWatermarkPastAnErroredPage(t *testing.T) {
 	if got := state.states[sentinelLaneA].Cursor; got == nil || got.NextIndex != 1 {
 		t.Errorf("cursor after the failed page: got %+v, want the untouched page-1 checkpoint (NextIndex=1)", got)
 	}
+	if !secondOut.planitOrigin {
+		t.Error("planitOrigin: got false, want true (the error came straight from FetchNationalDeltaPage, tc-uitxr)")
+	}
 }
 
 // TestNationalLane_NeverAdvancesWatermarkOn429 mirrors the errored-page test
@@ -722,6 +725,9 @@ func TestNationalLane_SeedFetchErrorLeavesLaneUnseeded(t *testing.T) {
 	if len(state.saves) != 0 {
 		t.Errorf("expected NO Save call when the seed fetch fails, got %+v", state.saves)
 	}
+	if !out.planitOrigin {
+		t.Error("planitOrigin: got false, want true (seed()'s FetchNationalDeltaPage error branch must set it too, tc-uitxr)")
+	}
 }
 
 // TestNationalLane_SeedRateLimitedLeavesLaneUnseeded mirrors the error case
@@ -772,6 +778,63 @@ func TestNationalLane_SeedFetchTimeoutSetsTimedOut(t *testing.T) {
 	}
 	if len(state.saves) != 0 {
 		t.Errorf("expected NO Save call when the seed fetch times out, got %+v", state.saves)
+	}
+}
+
+// TestNationalLane_WatermarkReadErrorLeavesPlanitOriginFalse proves the
+// origin classification (tc-uitxr): a failure reading the persisted
+// watermark -- a genuine state-store problem, unrelated to PlanIt -- must
+// never be misclassified as planitOrigin, mirroring
+// TestInverseMaskLane_GetByUIDTimeoutDoesNotSetTimedOut's "provenance, not
+// symptom" rule for the sibling timedOut flag.
+func TestNationalLane_WatermarkReadErrorLeavesPlanitOriginFalse(t *testing.T) {
+	t.Parallel()
+	fetcher := newFakeNationalFetcher()
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	state.getErr = errors.New("postgres: connection refused")
+
+	h := newLaneHandler(t, fetcher, apps, state, laneAOpts())
+	out := h.RunOnePage(context.Background())
+
+	if out.err == nil {
+		t.Fatal("expected the watermark-read error to surface on the outcome")
+	}
+	if out.planitOrigin {
+		t.Error("planitOrigin: got true, want false (a watermark/state-store read failure is never PlanIt-origin)")
+	}
+	if fetcher.calls != 0 {
+		t.Errorf("expected no PlanIt fetch when the watermark read fails first, got %d calls", fetcher.calls)
+	}
+}
+
+// TestNationalLane_IngestErrorLeavesPlanitOriginFalse proves an
+// Ingester.Ingest failure (Postgres upsert) is likewise never PlanIt-origin,
+// even though it happens mid-page, after a successful fetch.
+func TestNationalLane_IngestErrorLeavesPlanitOriginFalse(t *testing.T) {
+	t.Parallel()
+	watermark := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	ld := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+
+	fetcher := newFakeNationalFetcher()
+	fetcher.pages[0] = planit.FetchPageResult{
+		From:         0,
+		Applications: []applications.PlanningApplication{testApp("a", 300, ld)},
+		HasMorePages: false,
+	}
+	apps := newFakeApps()
+	apps.upsertErr = errors.New("postgres: connection refused")
+	state := newFakeStateStore()
+	state.states[sentinelLaneA] = PollState{HighWaterMark: watermark, LastPollTime: watermark}
+
+	h := newLaneHandler(t, fetcher, apps, state, laneAOpts())
+	out := h.RunOnePage(context.Background())
+
+	if out.err == nil {
+		t.Fatal("expected the ingest (upsert) error to surface on the outcome")
+	}
+	if out.planitOrigin {
+		t.Error("planitOrigin: got true, want false (the fetch itself succeeded; the failure is a Postgres upsert)")
 	}
 }
 
@@ -1018,7 +1081,10 @@ func TestNationalPollHandler_Handle_RunsBothLanesToCompletion(t *testing.T) {
 // TestNationalPollHandler_Handle_StopsOnFirstLaneError proves a lane error
 // stops the WHOLE loop immediately (ADR 0044's single break, replacing the
 // old per-lane fold): the cycle still returns a nil error (self-healing —
-// the last checkpoint holds) but AuthorityErrors reports the stop.
+// the last checkpoint holds) but AuthorityErrors reports the stop. It also
+// proves the error's origin (tc-uitxr): a plain PlanIt fetch failure sets
+// AuthorityErrorIsPlanIt so runPollSB's exit-code rule treats it as
+// self-healing rather than paging.
 func TestNationalPollHandler_Handle_StopsOnFirstLaneError(t *testing.T) {
 	t.Parallel()
 	clockTime := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
@@ -1049,6 +1115,9 @@ func TestNationalPollHandler_Handle_StopsOnFirstLaneError(t *testing.T) {
 	if res.AuthorityErrors != 1 {
 		t.Errorf("AuthorityErrors: got %d, want 1", res.AuthorityErrors)
 	}
+	if !res.AuthorityErrorIsPlanIt {
+		t.Error("AuthorityErrorIsPlanIt: got false, want true (the error came straight from a PlanIt fetch call)")
+	}
 	// A plain, non-timeout transport error must NOT be misclassified as
 	// TerminationTimeout (tc-pmh5y regression guard: isTimeoutError must not
 	// over-match a generic error).
@@ -1060,6 +1129,49 @@ func TestNationalPollHandler_Handle_StopsOnFirstLaneError(t *testing.T) {
 	// covers whichever lane errors, without a per-lane fold to omit one.
 	if fetcherB.calls != 0 {
 		t.Errorf("lane B fetcher: got %d calls, want 0 (the loop stopped on lane A's error before lane B's turn)", fetcherB.calls)
+	}
+}
+
+// TestNationalPollHandler_Handle_NonPlanItOriginErrorLeavesAuthorityErrorIsPlanItFalse
+// mirrors TestNationalPollHandler_Handle_StopsOnFirstLaneError for a genuine
+// state-store failure (a Postgres upsert error, mid-page, AFTER a successful
+// PlanIt fetch): AuthorityErrors still reports the stop, but
+// AuthorityErrorIsPlanIt must stay false so runPollSB's exit-code rule keeps
+// paging on this class of failure (tc-uitxr).
+func TestNationalPollHandler_Handle_NonPlanItOriginErrorLeavesAuthorityErrorIsPlanItFalse(t *testing.T) {
+	t.Parallel()
+	clockTime := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
+	longAgo := clockTime.Add(-time.Hour)
+	ld := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+
+	fetcherA := newFakeNationalFetcher()
+	fetcherA.pages[0] = planit.FetchPageResult{From: 0, Applications: []applications.PlanningApplication{testApp("a", 300, ld)}}
+	fetcherB := newFakeNationalFetcher()
+	fetcherB.pages[0] = planit.FetchPageResult{From: 0, Applications: nil, HasMorePages: false}
+
+	apps := newFakeApps()
+	apps.upsertErr = errors.New("postgres: connection refused")
+	state := newFakeStateStore()
+	watermark := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	state.states[sentinelLaneA] = PollState{HighWaterMark: watermark, LastPollTime: longAgo}
+	state.states[sentinelLaneB] = PollState{HighWaterMark: watermark, LastPollTime: longAgo}
+	logger := slog.New(slog.NewTextHandler(discard{}, nil))
+	clock := func() time.Time { return clockTime }
+
+	laneAHandler := NewNationalLaneHandler(fetcherA, state, apps, laneAOpts(), clock, logger)
+	laneBHandler := NewNationalLaneHandler(fetcherB, state, apps, laneBOpts(20), clock, logger)
+	planner := NewPlanner(newTestPlannerOpts())
+	handler := NewNationalPollHandler(laneAHandler, laneBHandler, nil, planner, NationalPollOptions{HandlerBudget: 4 * time.Minute}, clock, logger)
+
+	res, err := handler.Handle(context.Background())
+	if err != nil {
+		t.Fatalf("Handle must not fail the cycle on a lane error: %v", err)
+	}
+	if res.AuthorityErrors != 1 {
+		t.Errorf("AuthorityErrors: got %d, want 1", res.AuthorityErrors)
+	}
+	if res.AuthorityErrorIsPlanIt {
+		t.Error("AuthorityErrorIsPlanIt: got true, want false (the fetch succeeded; the failure is a Postgres upsert)")
 	}
 }
 

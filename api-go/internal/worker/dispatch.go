@@ -113,7 +113,14 @@ type PollRunResult struct {
 	ApplicationCount  int
 	AuthoritiesPolled int
 	AuthorityErrors   int
-	Termination       string
+	// AuthorityErrorIsPlanIt mirrors polling.PollPlanItResult.AuthorityErrorIsPlanIt:
+	// true when the lane error counted in AuthorityErrors originated from a
+	// PlanIt fetch call -- self-healing, already covered by the ratio-based
+	// alert-planit-failure-rate-shared log alert -- rather than a genuine
+	// state-store/Postgres failure. Meaningless when AuthorityErrors == 0
+	// (tc-uitxr).
+	AuthorityErrorIsPlanIt bool
+	Termination            string
 	// OldestHWMAgeSeconds mirrors polling.PollPlanItResult.OldestHWMAgeSeconds:
 	// the staleness (seconds) of the least-recently-polled candidate
 	// authority's high-water mark at cycle start, nil when the cycle had no
@@ -230,9 +237,17 @@ func Run(ctx context.Context, mode string, bootstrapper *Bootstrapper, digester 
 // keep working). It tags the span with the canonical keys
 // (polling.sb.message_received / published_next / authorities_polled /
 // applications_ingested / termination / authority_errors) and applies the
-// exit-code rule: exit 1 only when the run did NO useful work AND hit authority
-// errors. A nil orchestrator (job missing Service Bus / Cosmos config) is an
-// exit-1 condition; an orchestrator error is recorded on the span and also exits 1.
+// exit-code rule: exit 1 only when the run did NO useful work, hit an
+// authority error, AND that error did NOT originate from a PlanIt fetch call
+// (res.AuthorityErrorIsPlanIt) -- an isolated PlanIt-origin error on an
+// otherwise-quiet cycle self-heals (the orchestrator still completes the
+// message and publishes the next trigger normally) and is already covered by
+// the ratio-based alert-planit-failure-rate-shared log alert, so it exits 0
+// rather than paging alert-job-failed-poll-prod (tc-uitxr). Any other error
+// type -- a watermark/state-store or Postgres failure -- still exits 1
+// immediately, exactly as before. A nil orchestrator (job missing Service Bus
+// / Cosmos config) is an exit-1 condition; an orchestrator error is recorded
+// on the span and also exits 1.
 func runPollSB(ctx context.Context, poller PollOrchestrator, logger *slog.Logger) int {
 	tracer := otel.Tracer(tracerName)
 	ctx, span := tracer.Start(ctx, "Polling Cycle (SB)")
@@ -257,6 +272,7 @@ func runPollSB(ctx context.Context, poller PollOrchestrator, logger *slog.Logger
 		attribute.Int("polling.authorities_polled", res.AuthoritiesPolled),
 		attribute.Int("polling.applications_ingested", res.ApplicationCount),
 		attribute.Int("polling.authority_errors", res.AuthorityErrors),
+		attribute.Bool("polling.authority_error_is_planit", res.AuthorityErrorIsPlanIt),
 		attribute.String("polling.termination", res.Termination),
 		attribute.String("polling.cycle_type", res.CycleType),
 	)
@@ -273,12 +289,16 @@ func runPollSB(ctx context.Context, poller PollOrchestrator, logger *slog.Logger
 		"applicationsIngested", res.ApplicationCount,
 		"authoritiesPolled", res.AuthoritiesPolled,
 		"authorityErrors", res.AuthorityErrors,
+		"authorityErrorIsPlanIt", res.AuthorityErrorIsPlanIt,
 		"leaseUnavailable", res.LeaseUnavailable)
 
-	// Exit-code rule: only exit 1 when the run did no useful work AND hit
-	// authority errors. A quiet cycle (0 apps, 0 errors), a lease-unavailable
-	// exit, and any cycle that ingested apps all exit 0.
-	if res.ApplicationCount == 0 && res.AuthorityErrors > 0 {
+	// Exit-code rule (tc-uitxr): only exit 1 when the run did no useful work,
+	// hit an authority error, AND that error is NOT PlanIt-origin. A quiet
+	// cycle (0 apps, 0 errors), a lease-unavailable exit, any cycle that
+	// ingested apps, and an isolated PlanIt-origin error on an otherwise-quiet
+	// cycle (self-healing -- covered by alert-planit-failure-rate-shared
+	// instead) all exit 0. A genuine state-store/Postgres error still exits 1.
+	if res.ApplicationCount == 0 && res.AuthorityErrors > 0 && !res.AuthorityErrorIsPlanIt {
 		return 1
 	}
 	return 0
