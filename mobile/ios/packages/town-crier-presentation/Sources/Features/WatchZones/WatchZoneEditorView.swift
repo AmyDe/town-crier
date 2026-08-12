@@ -250,9 +250,11 @@ public struct WatchZoneEditorView: View {
       } header: {
         Text("Custom Shape")
       } footer: {
-        Text("Tap the map to add points. Drag a point to move it, and tap the first point again to finish.")
-          .font(TCTypography.caption)
-          .foregroundStyle(Color.tcTextSecondary)
+        Text(
+          "Tap the map to add points. Drag a point to move it, and tap the first point again to finish."
+        )
+        .font(TCTypography.caption)
+        .foregroundStyle(Color.tcTextSecondary)
       }
     }
   }
