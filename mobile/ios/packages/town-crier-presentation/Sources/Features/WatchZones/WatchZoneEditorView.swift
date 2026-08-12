@@ -31,9 +31,9 @@ public struct WatchZoneEditorView: View {
         if viewModel.areNotificationTogglesVisible {
           notificationsSection
         }
-        if let error = viewModel.error {
-          errorSection(error)
-        }
+      }
+      .safeAreaInset(edge: .top, spacing: 0) {
+        errorBanner
       }
       .navigationTitle(viewModel.isEditing ? "Edit Watch Zone" : "New Watch Zone")
       #if os(iOS)
@@ -355,17 +355,38 @@ public struct WatchZoneEditorView: View {
     }
   }
 
-  private func errorSection(_ error: DomainError) -> some View {
-    Section {
-      Label {
+  /// Pinned above the `Form`'s scrollable content via `.safeAreaInset(edge:
+  /// .top)` rather than a trailing `Form` `Section` (tc-9oyhw, GH#1085) --
+  /// a save failure while scrolled into the custom-shape drawing section
+  /// with the keyboard open used to render entirely off-screen. Always
+  /// attached so the inset participates in layout consistently; the
+  /// `if let` inside collapses to zero size when there's no error, mirroring
+  /// `MapView`'s `headerSection` precedent for an always-on, conditionally
+  /// empty inset. Tracks `viewModel.error` exactly as the removed section
+  /// conditional did -- no new appearance/disappearance timing.
+  @ViewBuilder
+  private var errorBanner: some View {
+    if let error = viewModel.error {
+      HStack(alignment: .top, spacing: TCSpacing.small) {
+        Image(systemName: "exclamationmark.triangle.fill")
+          .font(TCTypography.body)
+          .foregroundStyle(Color.tcStatusRejected)
+          .accessibilityHidden(true)
+
         Text(error.userMessage)
           .font(TCTypography.body)
           .foregroundStyle(Color.tcStatusRejected)
-      } icon: {
-        Image(systemName: "exclamationmark.triangle.fill")
-          .foregroundStyle(Color.tcStatusRejected)
+          .fixedSize(horizontal: false, vertical: true)
+
+        Spacer(minLength: 0)
       }
+      .padding(TCSpacing.medium)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(Color.tcStatusRejected.opacity(0.15))
+      .clipShape(RoundedRectangle(cornerRadius: TCCornerRadius.medium))
+      .padding(.horizontal, TCSpacing.medium)
+      .padding(.top, TCSpacing.small)
+      .accessibilityElement(children: .combine)
     }
   }
-
 }
