@@ -183,6 +183,42 @@ func TestWatchZonePostgresStore_Save_UpsertOnID(t *testing.T) {
 	}
 }
 
+// TestWatchZonePostgresStore_Save_DuplicateNameSameUserIsErrDuplicateName proves
+// that Save's ON CONFLICT (id) upsert does NOT catch a name collision against a
+// different, already-existing row for the same user: watch_zones has a separate
+// UNIQUE (user_id, name) constraint (0001_init_postgis.sql), so inserting a
+// second zone with a fresh id but a name the user already owns must surface as
+// the domain sentinel ErrDuplicateName rather than the raw Postgres
+// unique-violation (GH#1083, tc-h4y98) -- the bug that was propagating as an
+// unhandled 500 through both the create and patch handlers.
+func TestWatchZonePostgresStore_Save_DuplicateNameSameUserIsErrDuplicateName(t *testing.T) {
+	ctx := context.Background()
+	store := newZonePGStore(t)
+
+	first := pgZone(t, uuidN(1), "user-1", "My Zone", 51.5, -0.12, 500)
+	if err := store.Save(ctx, first); err != nil {
+		t.Fatalf("Save first: %v", err)
+	}
+
+	second := pgZone(t, uuidN(2), "user-1", "My Zone", 52.0, -1.0, 750)
+	err := store.Save(ctx, second)
+	if !errors.Is(err, ErrDuplicateName) {
+		t.Fatalf("Save duplicate name: got %v, want ErrDuplicateName", err)
+	}
+
+	// The first zone's row must be untouched by the failed second insert.
+	got, err := store.Get(ctx, "user-1", uuidN(1))
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	assertZoneEqual(t, got, first)
+
+	// The second zone must never have been persisted.
+	if _, err := store.Get(ctx, "user-1", uuidN(2)); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Get second zone: got %v, want ErrNotFound", err)
+	}
+}
+
 // TestWatchZonePostgresStore_GetByUserID_OrderedAndScoped lists a user's zones in
 // id order and excludes other users' zones.
 func TestWatchZonePostgresStore_GetByUserID_OrderedAndScoped(t *testing.T) {
