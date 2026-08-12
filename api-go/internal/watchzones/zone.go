@@ -20,6 +20,12 @@ import (
 // ErrNotFound signals that no watch zone exists for the given (user, zone) pair.
 var ErrNotFound = errors.New("watch zone not found")
 
+// ErrDuplicateName signals that the user already owns a watch zone with this
+// name: watch_zones has UNIQUE (user_id, name) (0001_init_postgis.sql), a
+// constraint the store's Save upsert (ON CONFLICT (id)) cannot itself dedupe
+// against, since create always mints a fresh id (GH#1083, tc-h4y98).
+var ErrDuplicateName = errors.New("a watch zone with this name already exists")
+
 // Boundary validation errors. All are returned by NewBoundary (and therefore
 // by WatchZone.WithBoundary and WithUpdates when a new boundary value is
 // supplied); consumers should use errors.Is rather than string matching.
