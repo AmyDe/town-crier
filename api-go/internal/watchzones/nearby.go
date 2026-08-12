@@ -319,6 +319,10 @@ func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 	// centroid/radius above were already computed from the same b.
 	zone.Boundary = boundary
 	if err := h.store.Save(r.Context(), zone); err != nil {
+		if errors.Is(err, ErrDuplicateName) {
+			h.writeErrorCode(w, r, http.StatusConflict, zoneNameTakenCode, zoneNameTakenMessage)
+			return
+		}
 		h.serverError(w, r, "save watch zone", err)
 		return
 	}
