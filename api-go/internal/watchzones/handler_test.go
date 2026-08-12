@@ -323,6 +323,29 @@ func TestHandler_Patch_BlankNameIsServerError(t *testing.T) {
 	}
 }
 
+// TestHandler_Patch_DuplicateNameIs409 proves that a Store.Save failure
+// carrying ErrDuplicateName (a unique-violation on watch_zones' UNIQUE
+// (user_id, name) constraint against a different, already-existing row) maps
+// to 409 zone_name_taken rather than falling through to the generic 500
+// (GH#1083, tc-h4y98).
+func TestHandler_Patch_DuplicateNameIs409(t *testing.T) {
+	t.Parallel()
+	z := testZone(t)
+	store := &fakeZoneStore{zones: []WatchZone{z}, saveErr: ErrDuplicateName}
+	rec := doReq(t, testMux(t, store), http.MethodPatch, "/v1/me/watch-zones/"+z.ID, `{"name":"Taken Name"}`)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status: got %d, want 409 (body %s)", rec.Code, rec.Body)
+	}
+	var env apiErrorResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatalf("decode error envelope: %v", err)
+	}
+	if env.Error != zoneNameTakenCode {
+		t.Errorf("error code: got %q, want %q", env.Error, zoneNameTakenCode)
+	}
+}
+
 // --- PATCH boundary tri-state tests (tc-6he3x.4) ----------------------------
 
 // TestHandler_Patch_Boundary_AbsentLeavesShapeUnchanged proves an absent
