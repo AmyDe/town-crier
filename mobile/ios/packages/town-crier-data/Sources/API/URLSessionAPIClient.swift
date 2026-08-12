@@ -227,10 +227,14 @@ public final class URLSessionAPIClient: Sendable {
       return
     case 401:
       throw APIError.unauthorized
+    case 400:
+      try mapBadRequest(data: data)
     case 403:
       try mapForbidden(data: data)
     case 404:
       throw APIError.notFound
+    case 409:
+      try mapConflict(data: data)
     default:
       if statusCode >= 400 {
         let message = String(data: data, encoding: .utf8)
@@ -246,5 +250,30 @@ public final class URLSessionAPIClient: Sendable {
     }
     let message = String(data: data, encoding: .utf8)
     throw APIError.serverError(statusCode: 403, message: message)
+  }
+
+  /// Maps a watch-zone `400` — a custom-shape boundary whose enclosing
+  /// radius exceeds the server's ceiling. Any other error code, or a
+  /// decode failure, falls back to the generic `serverError` unchanged
+  /// (GH#1085).
+  private func mapBadRequest(data: Data) throws {
+    if let body = try? decoder.decode(WatchZoneErrorBody.self, from: data),
+      body.error == "boundary_too_large" {
+      throw DomainError.invalidWatchZoneBoundaryTooLarge
+    }
+    let message = String(data: data, encoding: .utf8)
+    throw APIError.serverError(statusCode: 400, message: message)
+  }
+
+  /// Maps a watch-zone `409` — a duplicate watch-zone name for the same
+  /// user. Any other error code, or a decode failure, falls back to the
+  /// generic `serverError` unchanged (GH#1085).
+  private func mapConflict(data: Data) throws {
+    if let body = try? decoder.decode(WatchZoneErrorBody.self, from: data),
+      body.error == "zone_name_taken" {
+      throw DomainError.watchZoneNameTaken
+    }
+    let message = String(data: data, encoding: .utf8)
+    throw APIError.serverError(statusCode: 409, message: message)
   }
 }
