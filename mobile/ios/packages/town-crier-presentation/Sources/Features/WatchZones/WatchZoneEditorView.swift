@@ -12,28 +12,28 @@ public struct WatchZoneEditorView: View {
 
   public var body: some View {
     NavigationStack {
-      Form {
-        nameSection
-        if viewModel.isPostcodeFieldVisible {
-          postcodeSection
-        }
-        if viewModel.geocodedCoordinate != nil {
-          shapeModeSection
-          if viewModel.shapeMode == .circle {
-            radiusSection
-            mapPreviewSection
-          } else if viewModel.canDrawCustomShape {
-            boundaryDrawingSection
-          } else {
-            lockedCustomShapeSection
+      VStack(spacing: 0) {
+        errorBanner
+        Form {
+          nameSection
+          if viewModel.isPostcodeFieldVisible {
+            postcodeSection
+          }
+          if viewModel.geocodedCoordinate != nil {
+            shapeModeSection
+            if viewModel.shapeMode == .circle {
+              radiusSection
+              mapPreviewSection
+            } else if viewModel.canDrawCustomShape {
+              boundaryDrawingSection
+            } else {
+              lockedCustomShapeSection
+            }
+          }
+          if viewModel.areNotificationTogglesVisible {
+            notificationsSection
           }
         }
-        if viewModel.areNotificationTogglesVisible {
-          notificationsSection
-        }
-      }
-      .safeAreaInset(edge: .top, spacing: 0) {
-        errorBanner
       }
       .navigationTitle(viewModel.isEditing ? "Edit Watch Zone" : "New Watch Zone")
       #if os(iOS)
@@ -357,15 +357,20 @@ public struct WatchZoneEditorView: View {
     }
   }
 
-  /// Pinned above the `Form`'s scrollable content via `.safeAreaInset(edge:
-  /// .top)` rather than a trailing `Form` `Section` (tc-9oyhw, GH#1085) --
-  /// a save failure while scrolled into the custom-shape drawing section
-  /// with the keyboard open used to render entirely off-screen. Always
-  /// attached so the inset participates in layout consistently; the
-  /// `if let` inside collapses to zero size when there's no error, mirroring
-  /// `MapView`'s `headerSection` precedent for an always-on, conditionally
-  /// empty inset. Tracks `viewModel.error` exactly as the removed section
-  /// conditional did -- no new appearance/disappearance timing.
+  /// Pinned above the `Form` as a plain `VStack` sibling rather than a
+  /// trailing `Form` `Section` (tc-9oyhw, GH#1085) -- a save failure while
+  /// scrolled into the custom-shape drawing section with the keyboard open
+  /// used to render entirely off-screen. Deliberately NOT a `.safeAreaInset`
+  /// on the `Form` (tried first, reverted in tc-p8oks): `Form`/`List` is
+  /// UIKit-backed, and its content-inset doesn't reliably track the inset
+  /// view's height when that height changes dynamically (e.g. `userMessage`
+  /// wrapping to two lines) -- the first `Form` row rendered underneath the
+  /// banner's translucent background instead of below it. `MapView`'s
+  /// `headerSection` precedent (also a `.safeAreaInset`) doesn't hit this:
+  /// it sits over a `ZStack`/`Map`, not a `Form`. A `VStack` sibling lays
+  /// out deterministically instead. Always attached so the `if let` inside
+  /// collapses to zero size when there's no error -- no new appearance/
+  /// disappearance timing versus the removed section conditional.
   @ViewBuilder
   private var errorBanner: some View {
     if let error = viewModel.error {
