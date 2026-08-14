@@ -50,3 +50,25 @@ func (s *spyZoneStore) Delete(_ context.Context, _, _ string) error { return nil
 func (s *spyZoneStore) DeleteAllByUserID(_ context.Context, _ string) error { return nil }
 
 func (s *spyZoneStore) All(_ context.Context) ([]watchzones.WatchZone, error) { return nil, nil }
+
+// fakeDescriptionMatcher is a hand-written double for notifydispatch's
+// consumer-side descriptionMatcher interface (GH#1090, epic tc-w825j,
+// tc-w825j.5): it proves the worker wiring builds an Enqueuer whose matcher
+// dependency structurally satisfies that interface, the same role
+// *applications.PostgresStore plays in production. The notify wiring tests
+// here only exercise FindZonesContaining (see spyZoneStore), so
+// MatchesExpression is never expected to be called; matched/err let a future
+// test drive it if that changes.
+type fakeDescriptionMatcher struct {
+	mu      sync.Mutex
+	calls   int
+	matched bool
+	err     error
+}
+
+func (f *fakeDescriptionMatcher) MatchesExpression(_ context.Context, _, _ string) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls++
+	return f.matched, f.err
+}

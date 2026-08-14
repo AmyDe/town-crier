@@ -124,3 +124,27 @@ func IsValidFilterKey(key string) bool {
 	_, ok := filterCatalog[FilterKey(key)]
 	return ok
 }
+
+// FilterDefinitionFor returns the catalog entry for key and whether key is a
+// member of the catalog. It is the read-only cross-package entry point the
+// notifydispatch enqueuer uses to evaluate a loaded zone's pre-canned filter
+// (GH#1090, epic tc-w825j, bead tc-w825j.5) without duplicating the catalog
+// data outside this package.
+func FilterDefinitionFor(key FilterKey) (FilterDefinition, bool) {
+	def, ok := filterCatalog[key]
+	return def, ok
+}
+
+// IsExcludedAppType reports whether appType is one of the
+// filterExcludedAppTypes values that never generate a notification for any
+// keyword-bearing filter — see that variable's doc comment. The
+// notifydispatch enqueuer checks this in-memory gate before ever calling
+// into a DB-backed keyword matcher.
+func IsExcludedAppType(appType string) bool {
+	for _, t := range filterExcludedAppTypes {
+		if t == appType {
+			return true
+		}
+	}
+	return false
+}
