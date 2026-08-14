@@ -253,6 +253,22 @@ func (s *PostgresStore) GetByUID(ctx context.Context, uid, authorityCode string)
 	return a, true, nil
 }
 
+const matchesExpressionQuery = "SELECT to_tsvector('english', $1::text) @@ to_tsquery('english', $2)"
+
+// MatchesExpression reports whether description matches the given
+// to_tsquery('english', ...) boolean expression under Postgres full-text
+// search — the watch-zone pre-canned filter matcher (GH#1090, epic tc-w825j;
+// see watchzones.FilterDefinition.Expression for the catalog this is built
+// to evaluate). It touches no table: both operands are literals, so there is
+// no index or row cost to this call beyond the tsvector/tsquery parse.
+func (s *PostgresStore) MatchesExpression(ctx context.Context, description, expression string) (bool, error) {
+	var matches bool
+	if err := s.db.QueryRow(ctx, matchesExpressionQuery, description, expression).Scan(&matches); err != nil {
+		return false, fmt.Errorf("match description against expression %q: %w", expression, err)
+	}
+	return matches, nil
+}
+
 // recentRealDateOrder is the shared "sort by the stable real-world lifecycle
 // date, not PlanIt's last_different re-index marker" ORDER BY clause (#819
 // decision 1). last_different is bumped to "now" whenever PlanIt re-indexes an
