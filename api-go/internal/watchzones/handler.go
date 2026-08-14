@@ -59,6 +59,23 @@ const (
 	zoneNameTakenMessage = "You already have a watch zone with this name."
 )
 
+// Pre-canned watch-zone filter error codes and messages (GH#1090, epic
+// tc-w825j), sitting alongside the boundary_* codes above and sharing their
+// (code, message) convention. Shared by both the create path (nearby.go) and
+// the patch path (this file) rather than duplicated per file.
+const (
+	// filterRequiresProTierCode/-Message: 403, a Free- or Personal-tier caller
+	// supplied a non-empty filterKey on create, or on a PATCH that sets one.
+	// Pro-only -- deliberately narrower than AllowsCustomBoundary's IsPaid()
+	// gate (see profiles.SubscriptionTier.AllowsWatchZoneFilter).
+	filterRequiresProTierCode    = "filter_requires_pro_tier"
+	filterRequiresProTierMessage = "Pre-canned watch-zone filters require a Pro subscription."
+	// filterKeyInvalidCode/-Message: 400, the supplied filterKey is not a
+	// member of the catalog (see IsValidFilterKey / ErrUnknownFilterKey).
+	filterKeyInvalidCode    = "filter_key_invalid"
+	filterKeyInvalidMessage = "Unrecognised filter."
+)
+
 // errProfileReaderNotWired signals a wiring bug: setting a watch-zone boundary
 // requires the profile reader to check the caller's tier entitlement, and the
 // handler refuses to run an unverified tier check without it. Unreachable in
@@ -191,6 +208,10 @@ type watchZoneSummary struct {
 	// the polygon's derived centroid/enclosing radius either way, so every
 	// pre-existing circle-shaped consumer keeps working unchanged.
 	Boundary *boundaryGeoJSON `json:"boundary"`
+	// FilterKey is null for an unfiltered zone and the catalog key string
+	// otherwise (GH#1090, epic tc-w825j), mirroring Boundary's presence
+	// convention.
+	FilterKey *string `json:"filterKey"`
 }
 
 func summaryOf(z WatchZone, paused bool) watchZoneSummary {
@@ -209,7 +230,19 @@ func summaryOf(z WatchZone, paused bool) watchZoneSummary {
 		EmailInstantEnabled: z.EmailInstantEnabled,
 		Paused:              paused,
 		Boundary:            boundaryToGeoJSON(z.Boundary),
+		FilterKey:           filterKeyToWire(z.FilterKey),
 	}
+}
+
+// filterKeyToWire renders a domain FilterKey as its nullable wire form: nil
+// for the unfiltered zero value, a pointer to the string form otherwise --
+// the same presence convention boundaryToGeoJSON uses for Boundary.
+func filterKeyToWire(k FilterKey) *string {
+	if k == "" {
+		return nil
+	}
+	s := string(k)
+	return &s
 }
 
 // listResult is the GET /v1/me/watch-zones response: { zones: [...] }.

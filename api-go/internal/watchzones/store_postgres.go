@@ -72,17 +72,21 @@ func NewPostgresStore(db querier) *PostgresStore {
 // pgZoneColumns is the read projection. id is rendered as text; ST_Y is the
 // latitude and ST_X the longitude of the (NOT NULL) geography point;
 // ST_AsGeoJSON(boundary) is NULL for a circle zone and a GeoJSON Polygon for a
-// custom-shape one. The order MUST match scanZone.
+// custom-shape one; filter_key (GH#1090, epic tc-w825j) is NULL for an
+// unfiltered zone. The order MUST match scanZone.
 const pgZoneColumns = "id::text, user_id, name, ST_Y(location::geometry), " +
 	"ST_X(location::geometry), radius_metres, created_at, " +
-	"push_enabled, email_instant_enabled, ST_AsGeoJSON(boundary)"
+	"push_enabled, email_instant_enabled, ST_AsGeoJSON(boundary), filter_key"
 
 // scanZone hydrates one zone through NewWatchZone, so the same invariants the
 // domain enforces (positive radius, non-blank id/user/name) gate a row read
 // from the database. A non-NULL boundary column is decoded from GeoJSON and
 // re-validated through NewBoundary (via decodeBoundaryGeoJSON), applying the
 // same domain invariants to a boundary read back from the database as to one
-// supplied by a client.
+// supplied by a client. A non-NULL filter_key column is coalesced straight
+// onto FilterKey -- unlike boundary it needs no re-validation (the catalog is
+// pure Go data, not a store-side invariant), and a NULL column leaves
+// FilterKey at its unfiltered zero value.
 func scanZone(row pgx.Row) (WatchZone, error) {
 	var (
 		id, userID, name       string
@@ -91,9 +95,10 @@ func scanZone(row pgx.Row) (WatchZone, error) {
 		createdAt              time.Time
 		pushEnabled, emailFlag bool
 		boundaryGeoJSON        *string
+		filterKey              *string
 	)
 	if err := row.Scan(&id, &userID, &name, &latitude, &longitude, &radiusMetres,
-		&createdAt, &pushEnabled, &emailFlag, &boundaryGeoJSON); err != nil {
+		&createdAt, &pushEnabled, &emailFlag, &boundaryGeoJSON, &filterKey); err != nil {
 		return WatchZone{}, err
 	}
 	zone, err := NewWatchZone(id, userID, name, latitude, longitude, radiusMetres,
@@ -107,6 +112,9 @@ func scanZone(row pgx.Row) (WatchZone, error) {
 			return WatchZone{}, fmt.Errorf("hydrate watch zone %q boundary: %w", id, err)
 		}
 		zone.Boundary = boundary
+	}
+	if filterKey != nil {
+		zone.FilterKey = FilterKey(*filterKey)
 	}
 	return zone, nil
 }
@@ -226,10 +234,10 @@ func (s *PostgresStore) Get(ctx context.Context, userID, zoneID string) (WatchZo
 const pgSaveZoneQuery = `
 INSERT INTO watch_zones (
 	id, user_id, name, location, radius_metres,
-	push_enabled, email_instant_enabled, created_at, boundary
+	push_enabled, email_instant_enabled, created_at, boundary, filter_key
 ) VALUES (
 	$1::uuid, $2, $3, ST_SetSRID(ST_MakePoint($4, $5), 4326)::geography,
-	$6, $7, $8, $9, ST_GeomFromGeoJSON($10)::geography
+	$6, $7, $8, $9, ST_GeomFromGeoJSON($10)::geography, $11
 )
 ON CONFLICT (id) DO UPDATE SET
 	user_id = EXCLUDED.user_id,
@@ -239,13 +247,29 @@ ON CONFLICT (id) DO UPDATE SET
 	push_enabled = EXCLUDED.push_enabled,
 	email_instant_enabled = EXCLUDED.email_instant_enabled,
 	created_at = EXCLUDED.created_at,
-	boundary = EXCLUDED.boundary`
+	boundary = EXCLUDED.boundary,
+	filter_key = EXCLUDED.filter_key`
+
+// encodeFilterKey renders z's filter key as the nullable string bind value
+// Save passes for the filter_key column: nil for the unfiltered zero value
+// (writing SQL NULL, mirroring encodeBoundaryGeoJSON's nil-for-absent
+// convention), a pointer to the string form otherwise. No validation happens
+// here -- by the time a zone reaches Save its FilterKey has already been
+// validated (WithUpdates / IsValidFilterKey at the HTTP layer).
+func encodeFilterKey(k FilterKey) *string {
+	if k == "" {
+		return nil
+	}
+	s := string(k)
+	return &s
+}
 
 // Save upserts the zone keyed on its uuid id, creating it or overwriting every
-// column -- including boundary -- on an existing row. A nil/empty z.Boundary
-// (a circle zone) writes SQL NULL, so saving a zone that previously had a
-// custom shape with Boundary cleared correctly reverts the persisted row to a
-// circle rather than leaving a stale polygon behind.
+// column -- including boundary and filter_key -- on an existing row. A
+// nil/empty z.Boundary (a circle zone) writes SQL NULL, so saving a zone that
+// previously had a custom shape with Boundary cleared correctly reverts the
+// persisted row to a circle rather than leaving a stale polygon behind; the
+// same holds for FilterKey's zero value ("") and the filter_key column.
 //
 // ON CONFLICT (id) only dedupes an upsert of the SAME id -- it does not catch
 // a name collision against a different, already-existing row for the same
@@ -261,6 +285,7 @@ func (s *PostgresStore) Save(ctx context.Context, z WatchZone) error {
 	_, err = s.db.Exec(ctx, pgSaveZoneQuery,
 		z.ID, z.UserID, z.Name, z.Longitude, z.Latitude, z.RadiusMetres,
 		z.PushEnabled, z.EmailInstantEnabled, z.CreatedAt, boundaryGeoJSON,
+		encodeFilterKey(z.FilterKey),
 	)
 	if err != nil {
 		if isUniqueViolation(err) {

@@ -634,8 +634,8 @@ func TestHandler_List_MarksPausedZonesOverEffectiveTierLimit(t *testing.T) {
 	}
 
 	// Golden-check first: every pre-existing field must round-trip unchanged,
-	// and "paused" plus "boundary" (tc-6he3x.4) are the only additions (10
-	// keys total per zone).
+	// and "paused", "boundary" (tc-6he3x.4) and "filterKey" (GH#1090, epic
+	// tc-w825j) are the only additions (11 keys total per zone).
 	var raw struct {
 		Zones []map[string]any `json:"zones"`
 	}
@@ -645,7 +645,7 @@ func TestHandler_List_MarksPausedZonesOverEffectiveTierLimit(t *testing.T) {
 	if len(raw.Zones) != 3 {
 		t.Fatalf("zones: got %d, want 3", len(raw.Zones))
 	}
-	wantKeys := []string{"id", "name", "latitude", "longitude", "radiusMetres", "authorityId", "pushEnabled", "emailInstantEnabled", "paused", "boundary"}
+	wantKeys := []string{"id", "name", "latitude", "longitude", "radiusMetres", "authorityId", "pushEnabled", "emailInstantEnabled", "paused", "boundary", "filterKey"}
 	for i, obj := range raw.Zones {
 		if len(obj) != len(wantKeys) {
 			t.Errorf("zone %d: got %d keys %v, want %d keys %v", i, len(obj), keysOf(obj), len(wantKeys), wantKeys)
