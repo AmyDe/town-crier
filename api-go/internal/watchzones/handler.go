@@ -449,13 +449,15 @@ func decodeFilterKeyUpdate(raw json.RawMessage) (*string, error) {
 
 // patch implements PATCH /v1/me/watch-zones/{zoneId}: range-validate the body
 // (400), decode the tri-state boundary and filterKey fields (400
-// boundary_invalid / filter_key_invalid on a malformed value), gate a
-// boundary-setting or filter-setting update on the caller's tier (403
-// boundary_requires_paid_tier / filter_requires_pro_tier), load the zone (404
-// if absent), apply the merge (400 boundary_invalid / filter_key_invalid on
-// an invalid shape/key, 500 on any other domain invariant violation e.g. a
-// blank name), gate the resulting radius (400 boundary_too_large), persist,
-// and return the updated summary.
+// boundary_invalid / filter_key_invalid on a malformed value), load the zone
+// (404 if absent -- needed before the filter gate below, see settingFilter),
+// gate a boundary-setting or actually-changed-filter-setting update on the
+// caller's tier (403 boundary_requires_paid_tier / filter_requires_pro_tier;
+// resending the zone's own unchanged filterKey is never gated, tc-k3ncu),
+// apply the merge (400 boundary_invalid / filter_key_invalid on an invalid
+// shape/key, 500 on any other domain invariant violation e.g. a blank name),
+// gate the resulting radius (400 boundary_too_large), persist, and return the
+// updated summary.
 func (h *handler) patch(w http.ResponseWriter, r *http.Request) {
 	userID := auth.Subject(r.Context())
 	zoneID := r.PathValue("zoneId")
@@ -486,10 +488,30 @@ func (h *handler) patch(w http.ResponseWriter, r *http.Request) {
 		h.writeErrorCode(w, r, http.StatusBadRequest, filterKeyInvalidCode, filterKeyInvalidMessage)
 		return
 	}
-	// "Setting" a filter (as opposed to leaving it alone, or explicitly
-	// nulling it back to unfiltered) is the only case the Pro-tier gate
-	// applies to (GH#1090, epic tc-w825j) -- mirrors settingBoundary exactly.
-	settingFilter := filterKeyUpdate != nil && *filterKeyUpdate != ""
+
+	// The zone must be loaded before the tier gate below so settingFilter can
+	// tell "the caller is setting a NEW filter" apart from "the caller resent
+	// the zone's own unchanged filterKey" (tc-k3ncu) -- e.g. a client that
+	// always sends full state on every PATCH, including an unrelated field
+	// like name or radius. Loaded once here and reused for WithUpdates below;
+	// do not fetch it a second time.
+	zone, err := h.store.Get(r.Context(), userID, zoneID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		h.serverError(w, r, "load watch zone", err)
+		return
+	}
+
+	// "Setting" a filter (as opposed to leaving it alone, explicitly nulling
+	// it back to unfiltered, or resending the zone's own already-stored
+	// filterKey unchanged) is the only case the Pro-tier gate applies to
+	// (GH#1090, epic tc-w825j; unchanged-resend exemption tc-k3ncu). A
+	// downgraded caller who retained a pre-existing filter and PATCHes an
+	// unrelated field must not be gated on a filterKey they didn't touch.
+	settingFilter := filterKeyUpdate != nil && *filterKeyUpdate != "" && *filterKeyUpdate != string(zone.FilterKey)
 
 	var tier profiles.SubscriptionTier
 	if settingBoundary || settingFilter {
@@ -514,16 +536,6 @@ func (h *handler) patch(w http.ResponseWriter, r *http.Request) {
 			h.writeErrorCode(w, r, http.StatusForbidden, filterRequiresProTierCode, filterRequiresProTierMessage)
 			return
 		}
-	}
-
-	zone, err := h.store.Get(r.Context(), userID, zoneID)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-		h.serverError(w, r, "load watch zone", err)
-		return
 	}
 
 	updated, err := zone.WithUpdates(req.toUpdate(boundaryUpdate, filterKeyUpdate))

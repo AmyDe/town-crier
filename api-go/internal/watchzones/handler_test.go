@@ -750,6 +750,68 @@ func TestHandler_Patch_FilterKey_NoProfileReaderWiredIs500(t *testing.T) {
 	}
 }
 
+// TestHandler_Patch_FilterKey_DowngradedTierResendingUnchangedFilterSucceeds
+// proves that a downgraded (Free/Personal) caller who resends the zone's own
+// already-stored filterKey unchanged -- alongside an edit to an unrelated
+// field, as a client that always sends full state on every PATCH would -- is
+// NOT gated by the Pro-tier check (tc-k3ncu). Before the fix, the gate ran on
+// mere presence of a non-empty filterKey and could not tell "setting a new
+// filter" apart from "resending the existing one", so this PATCH wrongly
+// 403'd a Pro-canned filter retained after downgrade.
+func TestHandler_Patch_FilterKey_DowngradedTierResendingUnchangedFilterSucceeds(t *testing.T) {
+	t.Parallel()
+	z := testZone(t)
+	z.FilterKey = FilterKeyHouseBuilder
+	store := &fakeZoneStore{zones: []WatchZone{z}}
+	mux := http.NewServeMux()
+	Routes(mux, store, slog.New(slog.DiscardHandler), WithProfileReader(&fakeProfileReader{profile: freeProfile(t)}))
+
+	body := mustJSON(t, struct {
+		Name      string  `json:"name"`
+		FilterKey *string `json:"filterKey"`
+	}{Name: "Renamed", FilterKey: strPtr(string(FilterKeyHouseBuilder))})
+	rec := doReq(t, mux, http.MethodPatch, "/v1/me/watch-zones/"+z.ID, body)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200 (body %s)", rec.Code, rec.Body)
+	}
+	if store.saved == nil || store.saved.Name != "Renamed" || store.saved.FilterKey != FilterKeyHouseBuilder {
+		t.Fatalf("saved zone: got %+v", store.saved)
+	}
+}
+
+// TestHandler_Patch_FilterKey_DowngradedTierChangingFilterStillGated proves
+// the fix above did not weaken the underlying protection: a downgraded caller
+// who changes the zone's filterKey to a genuinely DIFFERENT value is still
+// rejected with 403 filter_requires_pro_tier (tc-k3ncu).
+func TestHandler_Patch_FilterKey_DowngradedTierChangingFilterStillGated(t *testing.T) {
+	t.Parallel()
+	z := testZone(t)
+	z.FilterKey = FilterKeyHouseBuilder
+	store := &fakeZoneStore{zones: []WatchZone{z}}
+	mux := http.NewServeMux()
+	Routes(mux, store, slog.New(slog.DiscardHandler), WithProfileReader(&fakeProfileReader{profile: freeProfile(t)}))
+
+	body := mustJSON(t, struct {
+		FilterKey *string `json:"filterKey"`
+	}{FilterKey: strPtr(string(FilterKeyHMOHouseShares))})
+	rec := doReq(t, mux, http.MethodPatch, "/v1/me/watch-zones/"+z.ID, body)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status: got %d, want 403 (body %s)", rec.Code, rec.Body)
+	}
+	var env apiErrorResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatalf("decode error envelope: %v", err)
+	}
+	if env.Error != filterRequiresProTierCode {
+		t.Errorf("error code: got %q, want %q", env.Error, filterRequiresProTierCode)
+	}
+	if store.saved != nil {
+		t.Error("must not save when changing to a genuinely different filter on a downgraded tier")
+	}
+}
+
 // strPtr is a tiny test helper for building an inline *string, mirroring
 // mustJSON/mustBoundary's role for filterKey request bodies.
 func strPtr(s string) *string { return &s }
