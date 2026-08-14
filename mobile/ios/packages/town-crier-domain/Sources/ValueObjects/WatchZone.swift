@@ -23,6 +23,12 @@ public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
   /// non-nil boundary is the sole "this is a custom shape" discriminator —
   /// see ``isCustomShape``.
   public let boundary: WatchZoneBoundary?
+  /// The pre-canned notification filter applied to this zone, or `nil` for
+  /// unfiltered (GH#1098). Mirrors `boundary`'s optionality -- there is no
+  /// `.none`/`.unfiltered` case, so "no filter" is never representable two
+  /// different ways. Pro-tier only; see
+  /// ``WatchZoneLimits/allowsWatchZoneFilter``.
+  public let filterKey: WatchZoneFilterKey?
 
   public init(
     id: WatchZoneId = WatchZoneId(),
@@ -32,7 +38,8 @@ public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
     pushEnabled: Bool = true,
     emailInstantEnabled: Bool = true,
     paused: Bool = false,
-    boundary: WatchZoneBoundary? = nil
+    boundary: WatchZoneBoundary? = nil,
+    filterKey: WatchZoneFilterKey? = nil
   ) throws {
     let trimmed = name.trimmingCharacters(in: .whitespaces)
     guard !trimmed.isEmpty else {
@@ -49,6 +56,7 @@ public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
     self.emailInstantEnabled = emailInstantEnabled
     self.paused = paused
     self.boundary = boundary
+    self.filterKey = filterKey
   }
 
   /// Convenience initializer that derives the zone name from a validated postcode.
@@ -60,7 +68,8 @@ public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
     pushEnabled: Bool = true,
     emailInstantEnabled: Bool = true,
     paused: Bool = false,
-    boundary: WatchZoneBoundary? = nil
+    boundary: WatchZoneBoundary? = nil,
+    filterKey: WatchZoneFilterKey? = nil
   ) throws {
     try self.init(
       id: id,
@@ -70,7 +79,8 @@ public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
       pushEnabled: pushEnabled,
       emailInstantEnabled: emailInstantEnabled,
       paused: paused,
-      boundary: boundary
+      boundary: boundary,
+      filterKey: filterKey
     )
   }
 
