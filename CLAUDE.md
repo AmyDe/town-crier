@@ -218,6 +218,10 @@ Beads track *what to do* and *dependencies*. The `how` and `why` of a feature li
 
 Use `bd` for ALL task tracking. Do NOT use TodoWrite, TaskCreate, or markdown files.
 
+- **NEVER trust local Dolt state without syncing first.** This repo is worked by numerous cloud agents and parallel local sessions, all reading and writing the same beads concurrently — the local Dolt replica goes stale within minutes and there is no warning when it does. A bead can read `open` locally when another session closed it and merged the PR an hour ago. Concretely:
+  - **Before any read you'll act or report on** (`bd show`, `bd list`, `bd ready`, checking an epic's status, deciding what to work on next) — run `bd dolt pull` first. Do not answer "what's the status of X" from a bare `bd show` without pulling; a stale "still open" reads as confidently wrong as a true one.
+  - **After any write** (`bd create`, `bd update`, `bd close`, `bd dep add`, `bd label`, etc.) — run `bd dolt push` immediately, not batched at session end. An un-pushed write is invisible to every other agent and can silently conflict or get lost if another session pushes first.
+  - `git push` triggers `bd dolt push` via the pre-push hook, but that only covers writes tied to a code push — a bare `bd close` or `bd update --notes` with no accompanying commit still needs an explicit `bd dolt push`.
 - Run `bd prime` to load workflow context (commands, session protocol).
 - Do NOT use `bd edit` — it opens an interactive editor that blocks agents.
 - `bd dolt push` runs automatically on `git push` via the bd pre-push hook (install once per clone with `bd hooks install`).
