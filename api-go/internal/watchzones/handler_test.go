@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
+	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 )
 
 const testUser = "auth0|user"
@@ -565,6 +566,193 @@ func TestHandler_Patch_Boundary_NoProfileReaderWiredIs500(t *testing.T) {
 		t.Error("must not save when the tier gate cannot be verified")
 	}
 }
+
+// --- PATCH filterKey tri-state tests (GH#1090, epic tc-w825j) --------------
+
+// TestHandler_Patch_FilterKey_FreeOrPersonalTierIs403 proves a non-Pro
+// caller's PATCH that SETS a non-empty filterKey is rejected with 403
+// filter_requires_pro_tier and never persisted.
+func TestHandler_Patch_FilterKey_FreeOrPersonalTierIs403(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		profile func(*testing.T) *profiles.UserProfile
+	}{
+		{"Free tier", freeProfile},
+		{"Personal tier", personalProfile},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			z := testZone(t)
+			store := &fakeZoneStore{zones: []WatchZone{z}}
+			mux := http.NewServeMux()
+			Routes(mux, store, slog.New(slog.DiscardHandler), WithProfileReader(&fakeProfileReader{profile: tc.profile(t)}))
+
+			body := mustJSON(t, struct {
+				FilterKey *string `json:"filterKey"`
+			}{FilterKey: strPtr(string(FilterKeyHouseBuilder))})
+			rec := doReq(t, mux, http.MethodPatch, "/v1/me/watch-zones/"+z.ID, body)
+
+			if rec.Code != http.StatusForbidden {
+				t.Fatalf("status: got %d, want 403 (body %s)", rec.Code, rec.Body)
+			}
+			var env apiErrorResponse
+			if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+				t.Fatalf("decode error envelope: %v", err)
+			}
+			if env.Error != filterRequiresProTierCode {
+				t.Errorf("error code: got %q, want %q", env.Error, filterRequiresProTierCode)
+			}
+			if store.saved != nil {
+				t.Error("must not save when the filter tier gate rejects the request")
+			}
+		})
+	}
+}
+
+// TestHandler_Patch_FilterKey_ProTierSetsAndRoundTrips proves a Pro-tier
+// caller's PATCH that sets a valid filterKey succeeds (200), persists it, and
+// round-trips it in the response.
+func TestHandler_Patch_FilterKey_ProTierSetsAndRoundTrips(t *testing.T) {
+	t.Parallel()
+	z := testZone(t)
+	store := &fakeZoneStore{zones: []WatchZone{z}}
+	mux := http.NewServeMux()
+	Routes(mux, store, slog.New(slog.DiscardHandler), WithProfileReader(&fakeProfileReader{profile: proProfile(t)}))
+
+	body := mustJSON(t, struct {
+		FilterKey *string `json:"filterKey"`
+	}{FilterKey: strPtr(string(FilterKeyHMOHouseShares))})
+	rec := doReq(t, mux, http.MethodPatch, "/v1/me/watch-zones/"+z.ID, body)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200 (body %s)", rec.Code, rec.Body)
+	}
+	if store.saved == nil || store.saved.FilterKey != FilterKeyHMOHouseShares {
+		t.Fatalf("saved zone filter key: got %+v", store.saved)
+	}
+	var got struct {
+		Zone watchZoneSummary `json:"zone"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Zone.FilterKey == nil || *got.Zone.FilterKey != string(FilterKeyHMOHouseShares) {
+		t.Errorf("response filterKey: got %v, want %q", got.Zone.FilterKey, FilterKeyHMOHouseShares)
+	}
+}
+
+// TestHandler_Patch_FilterKey_ExplicitNullClearsRegardlessOfTier proves a
+// literal `"filterKey": null` always clears an existing filter back to
+// unfiltered, with no tier check at all -- the test wires no profile reader,
+// and the request still succeeds, mirroring the boundary revert's no-gate
+// behaviour.
+func TestHandler_Patch_FilterKey_ExplicitNullClearsRegardlessOfTier(t *testing.T) {
+	t.Parallel()
+	z := testZone(t)
+	z.FilterKey = FilterKeyHouseBuilder
+	store := &fakeZoneStore{zones: []WatchZone{z}}
+	rec := doReq(t, testMux(t, store), http.MethodPatch, "/v1/me/watch-zones/"+z.ID, `{"filterKey":null}`)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200 (body %s)", rec.Code, rec.Body)
+	}
+	if store.saved == nil || store.saved.FilterKey != "" {
+		t.Fatalf("filter key must be cleared: got %+v", store.saved)
+	}
+	var got struct {
+		Zone watchZoneSummary `json:"zone"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Zone.FilterKey != nil {
+		t.Error("response filterKey must be null after clearing")
+	}
+}
+
+// TestHandler_Patch_FilterKey_AbsentLeavesExistingFilterUntouched proves
+// omitting the "filterKey" key entirely leaves an existing filter alone, and
+// requires no profile reader (mirrors the boundary absent-key test).
+func TestHandler_Patch_FilterKey_AbsentLeavesExistingFilterUntouched(t *testing.T) {
+	t.Parallel()
+	z := testZone(t)
+	z.FilterKey = FilterKeyNewHomes
+	store := &fakeZoneStore{zones: []WatchZone{z}}
+	rec := doReq(t, testMux(t, store), http.MethodPatch, "/v1/me/watch-zones/"+z.ID, `{"name":"Renamed"}`)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200 (body %s)", rec.Code, rec.Body)
+	}
+	if store.saved == nil || store.saved.FilterKey != FilterKeyNewHomes {
+		t.Fatalf("filter key must be untouched by an absent field: got %+v", store.saved)
+	}
+	var got struct {
+		Zone watchZoneSummary `json:"zone"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Zone.FilterKey == nil || *got.Zone.FilterKey != string(FilterKeyNewHomes) {
+		t.Errorf("response filterKey: got %v, want %q", got.Zone.FilterKey, FilterKeyNewHomes)
+	}
+}
+
+// TestHandler_Patch_FilterKey_UnrecognisedIs400 proves an unrecognised
+// filterKey string maps to 400 filter_key_invalid (via WithUpdates'
+// ErrUnknownFilterKey), even for a Pro-tier caller who has passed the
+// entitlement gate.
+func TestHandler_Patch_FilterKey_UnrecognisedIs400(t *testing.T) {
+	t.Parallel()
+	z := testZone(t)
+	store := &fakeZoneStore{zones: []WatchZone{z}}
+	mux := http.NewServeMux()
+	Routes(mux, store, slog.New(slog.DiscardHandler), WithProfileReader(&fakeProfileReader{profile: proProfile(t)}))
+
+	body := mustJSON(t, struct {
+		FilterKey *string `json:"filterKey"`
+	}{FilterKey: strPtr("not_a_real_filter")})
+	rec := doReq(t, mux, http.MethodPatch, "/v1/me/watch-zones/"+z.ID, body)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status: got %d, want 400 (body %s)", rec.Code, rec.Body)
+	}
+	var env apiErrorResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatalf("decode error envelope: %v", err)
+	}
+	if env.Error != filterKeyInvalidCode {
+		t.Errorf("error code: got %q, want %q", env.Error, filterKeyInvalidCode)
+	}
+	if store.saved != nil {
+		t.Error("must not save a zone with an unrecognised filter key")
+	}
+}
+
+// TestHandler_Patch_FilterKey_NoProfileReaderWiredIs500 proves that attempting
+// to SET a filterKey without a profile reader wired is a 500 (a wiring bug),
+// mirroring the boundary tier gate's equivalent test.
+func TestHandler_Patch_FilterKey_NoProfileReaderWiredIs500(t *testing.T) {
+	t.Parallel()
+	z := testZone(t)
+	store := &fakeZoneStore{zones: []WatchZone{z}}
+	body := mustJSON(t, struct {
+		FilterKey *string `json:"filterKey"`
+	}{FilterKey: strPtr(string(FilterKeyHouseBuilder))})
+	rec := doReq(t, testMux(t, store), http.MethodPatch, "/v1/me/watch-zones/"+z.ID, body)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status: got %d, want 500", rec.Code)
+	}
+	if store.saved != nil {
+		t.Error("must not save when the filter tier gate cannot be verified")
+	}
+}
+
+// strPtr is a tiny test helper for building an inline *string, mirroring
+// mustJSON/mustBoundary's role for filterKey request bodies.
+func strPtr(s string) *string { return &s }
 
 func TestHandler_Delete(t *testing.T) {
 	t.Parallel()
