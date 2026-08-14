@@ -1099,6 +1099,161 @@ func TestCreate_Boundary_InvalidShapeIs400(t *testing.T) {
 	}
 }
 
+// --- filterKey create tests (GH#1090, epic tc-w825j) ------------------------
+
+// TestCreate_FilterKey_FreeOrPersonalTierIs403 proves a non-Pro caller
+// supplying a non-empty filterKey on create is rejected with 403
+// filter_requires_pro_tier and never persisted -- Pro-only, deliberately
+// narrower than the boundary gate's IsPaid() (acceptance criteria).
+func TestCreate_FilterKey_FreeOrPersonalTierIs403(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		profile func(*testing.T) *profiles.UserProfile
+	}{
+		{"Free tier", freeProfile},
+		{"Personal tier", personalProfile},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			d := nearbyDeps{
+				store:    &fakeZoneStore{},
+				profiles: &fakeProfileReader{profile: tc.profile(t)},
+				apps:     &fakeAppFinder{},
+				unread:   &fakeUnread{},
+			}
+			mux := newNearbyMux(t, d)
+
+			key := string(FilterKeyHouseBuilder)
+			body := mustJSON(t, createRequest{
+				Name: "My Zone", Latitude: 51.5, Longitude: -0.12, RadiusMetres: 1000,
+				FilterKey: &key,
+			})
+			rec := doReq(t, mux, http.MethodPost, "/v1/me/watch-zones", body)
+
+			if rec.Code != http.StatusForbidden {
+				t.Fatalf("status: got %d, want 403 (body %s)", rec.Code, rec.Body)
+			}
+			var env apiErrorResponse
+			if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+				t.Fatalf("decode error envelope: %v", err)
+			}
+			if env.Error != filterRequiresProTierCode {
+				t.Errorf("error code: got %q, want %q", env.Error, filterRequiresProTierCode)
+			}
+			if d.store.saved != nil {
+				t.Error("must not save a zone when the filter tier gate rejects the request")
+			}
+		})
+	}
+}
+
+// TestCreate_FilterKey_ProTierPersistsAndRoundTrips proves a Pro-tier caller's
+// create with a valid filterKey succeeds (201), persists FilterKey on the
+// saved zone, and the response body's filterKey round-trips the sent value.
+func TestCreate_FilterKey_ProTierPersistsAndRoundTrips(t *testing.T) {
+	t.Parallel()
+	d := nearbyDeps{
+		store:    &fakeZoneStore{},
+		profiles: &fakeProfileReader{profile: proProfile(t)},
+		apps:     &fakeAppFinder{},
+		unread:   &fakeUnread{},
+	}
+	mux := newNearbyMux(t, d)
+
+	key := string(FilterKeyLoftExtension)
+	body := mustJSON(t, createRequest{
+		Name: "My Zone", Latitude: 51.5, Longitude: -0.12, RadiusMetres: 1000,
+		FilterKey: &key,
+	})
+	rec := doReq(t, mux, http.MethodPost, "/v1/me/watch-zones", body)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status: got %d, want 201 (body %s)", rec.Code, rec.Body)
+	}
+	if d.store.saved == nil || d.store.saved.FilterKey != FilterKeyLoftExtension {
+		t.Fatalf("saved zone filter key: got %+v", d.store.saved)
+	}
+	var got struct {
+		FilterKey *string `json:"filterKey"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.FilterKey == nil || *got.FilterKey != string(FilterKeyLoftExtension) {
+		t.Errorf("response filterKey: got %v, want %q", got.FilterKey, FilterKeyLoftExtension)
+	}
+}
+
+// TestCreate_FilterKey_UnrecognisedIs400 proves an unrecognised filterKey
+// string on create is rejected with 400 filter_key_invalid, even for a
+// Pro-tier caller who has passed the entitlement gate.
+func TestCreate_FilterKey_UnrecognisedIs400(t *testing.T) {
+	t.Parallel()
+	d := nearbyDeps{
+		store:    &fakeZoneStore{},
+		profiles: &fakeProfileReader{profile: proProfile(t)},
+		apps:     &fakeAppFinder{},
+		unread:   &fakeUnread{},
+	}
+	mux := newNearbyMux(t, d)
+
+	key := "not_a_real_filter"
+	body := mustJSON(t, createRequest{
+		Name: "My Zone", Latitude: 51.5, Longitude: -0.12, RadiusMetres: 1000,
+		FilterKey: &key,
+	})
+	rec := doReq(t, mux, http.MethodPost, "/v1/me/watch-zones", body)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status: got %d, want 400 (body %s)", rec.Code, rec.Body)
+	}
+	var env apiErrorResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatalf("decode error envelope: %v", err)
+	}
+	if env.Error != filterKeyInvalidCode {
+		t.Errorf("error code: got %q, want %q", env.Error, filterKeyInvalidCode)
+	}
+	if d.store.saved != nil {
+		t.Error("must not save a zone with an unrecognised filter key")
+	}
+}
+
+// TestCreate_FilterKey_AbsentIsUnfilteredAndNullOnWire proves the default,
+// no-filterKey create path is unaffected: the saved zone's FilterKey stays
+// the zero value and the response's filterKey field is null.
+func TestCreate_FilterKey_AbsentIsUnfilteredAndNullOnWire(t *testing.T) {
+	t.Parallel()
+	d := nearbyDeps{
+		store:    &fakeZoneStore{},
+		profiles: &fakeProfileReader{profile: freeProfile(t)},
+		apps:     &fakeAppFinder{},
+		unread:   &fakeUnread{},
+	}
+	mux := newNearbyMux(t, d)
+
+	body := `{"name":"My Zone","latitude":51.5,"longitude":-0.12,"radiusMetres":1000}`
+	rec := doReq(t, mux, http.MethodPost, "/v1/me/watch-zones", body)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status: got %d, want 201 (body %s)", rec.Code, rec.Body)
+	}
+	if d.store.saved == nil || d.store.saved.FilterKey != "" {
+		t.Fatalf("saved zone must be unfiltered: %+v", d.store.saved)
+	}
+	var got struct {
+		FilterKey *string `json:"filterKey"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.FilterKey != nil {
+		t.Errorf("response filterKey: got %v, want null", got.FilterKey)
+	}
+}
+
 // NOTE (tc-grlnc, discovered-from tc-acbsh): two tests used to live here --
 // TestApplications_CustomShapeZone_UsesEnclosingRadiusInterimFallback and
 // TestClusters_CustomShapeZone_UsesEnclosingRadiusInterimFallback -- pinning

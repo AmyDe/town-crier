@@ -124,6 +124,12 @@ type createRequest struct {
 	PushEnabled         *bool            `json:"pushEnabled"`
 	EmailInstantEnabled *bool            `json:"emailInstantEnabled"`
 	Boundary            *boundaryGeoJSON `json:"boundary"`
+	// FilterKey is the pre-canned watch-zone filter to apply (GH#1090, epic
+	// tc-w825j). A plain pointer suffices on create -- unlike PATCH, there is
+	// no existing value to distinguish "leave alone" from, so nil and "" both
+	// mean "no filter". Non-empty requires Pro (see create's gating block) and
+	// must be a member of the catalog (IsValidFilterKey).
+	FilterKey *string `json:"filterKey"`
 }
 
 // maxRadiusMetres is the server-side ceiling for a watch-zone radius. It matches
@@ -227,6 +233,9 @@ type createResult struct {
 	RadiusMetres       float64                     `json:"radiusMetres"`
 	Boundary           *boundaryGeoJSON            `json:"boundary"`
 	NearbyApplications []applications.NearbyResult `json:"nearbyApplications"`
+	// FilterKey round-trips the persisted filter (GH#1090, epic tc-w825j): nil
+	// for an unfiltered zone, the catalog key string otherwise.
+	FilterKey *string `json:"filterKey"`
 }
 
 // create implements POST /v1/me/watch-zones: validate (400), gate a
@@ -284,6 +293,23 @@ func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 		req.RadiusMetres = radius
 	}
 
+	// A non-empty filterKey is a Pro-only entitlement (GH#1090, epic
+	// tc-w825j) -- gated right after the boundary block (mirroring its
+	// cheapest-check-first order) and before the quota check below, so a
+	// disallowed or unrecognised filter never consumes a quota slot.
+	var filterKey FilterKey
+	if req.FilterKey != nil && *req.FilterKey != "" {
+		if !tier.AllowsWatchZoneFilter() {
+			h.writeErrorCode(w, r, http.StatusForbidden, filterRequiresProTierCode, filterRequiresProTierMessage)
+			return
+		}
+		if !IsValidFilterKey(*req.FilterKey) {
+			h.writeErrorCode(w, r, http.StatusBadRequest, filterKeyInvalidCode, filterKeyInvalidMessage)
+			return
+		}
+		filterKey = FilterKey(*req.FilterKey)
+	}
+
 	// Atomic quota gate: the CAS-backed profile counter is the ONLY create path,
 	// so there is no non-atomic footgun. A nil profileCAS at request time is a
 	// wiring bug (never reachable in production, where NearbyRoutes is always
@@ -318,6 +344,7 @@ func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 	// read-path pattern) rather than re-deriving it through WithBoundary: the
 	// centroid/radius above were already computed from the same b.
 	zone.Boundary = boundary
+	zone.FilterKey = filterKey
 	if err := h.store.Save(r.Context(), zone); err != nil {
 		if errors.Is(err, ErrDuplicateName) {
 			h.writeErrorCode(w, r, http.StatusConflict, zoneNameTakenCode, zoneNameTakenMessage)
@@ -349,6 +376,7 @@ func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 		RadiusMetres:       zone.RadiusMetres,
 		Boundary:           boundaryToGeoJSON(zone.Boundary),
 		NearbyApplications: results,
+		FilterKey:          filterKeyToWire(zone.FilterKey),
 	})
 }
 
