@@ -572,3 +572,55 @@ func TestWatchZone_WithUpdates_BoundaryTriState(t *testing.T) {
 		}
 	})
 }
+
+func TestWatchZone_WithUpdates_FilterKeyTriState(t *testing.T) {
+	t.Parallel()
+	filteredZone := testZone(t)
+	filteredZone.FilterKey = FilterKeyHouseBuilder
+
+	t.Run("absent leaves the filter untouched", func(t *testing.T) {
+		t.Parallel()
+		updated, err := filteredZone.WithUpdates(ZoneUpdate{})
+		if err != nil {
+			t.Fatalf("WithUpdates: %v", err)
+		}
+		if updated.FilterKey != filteredZone.FilterKey {
+			t.Errorf("FilterKey changed by an absent update: got %q, want %q", updated.FilterKey, filteredZone.FilterKey)
+		}
+	})
+
+	t.Run("explicit empty string clears the filter", func(t *testing.T) {
+		t.Parallel()
+		cleared := ""
+		updated, err := filteredZone.WithUpdates(ZoneUpdate{FilterKey: &cleared})
+		if err != nil {
+			t.Fatalf("WithUpdates: %v", err)
+		}
+		if updated.FilterKey != "" {
+			t.Errorf("FilterKey not cleared: got %q", updated.FilterKey)
+		}
+	})
+
+	t.Run("a valid catalog key sets the filter", func(t *testing.T) {
+		t.Parallel()
+		zone := testZone(t)
+		key := string(FilterKeyLoftExtension)
+		updated, err := zone.WithUpdates(ZoneUpdate{FilterKey: &key})
+		if err != nil {
+			t.Fatalf("WithUpdates: %v", err)
+		}
+		if updated.FilterKey != FilterKeyLoftExtension {
+			t.Errorf("FilterKey: got %q, want %q", updated.FilterKey, FilterKeyLoftExtension)
+		}
+	})
+
+	t.Run("an unrecognised key is rejected", func(t *testing.T) {
+		t.Parallel()
+		zone := testZone(t)
+		bogus := "not_a_real_filter"
+		_, err := zone.WithUpdates(ZoneUpdate{FilterKey: &bogus})
+		if !errors.Is(err, ErrUnknownFilterKey) {
+			t.Fatalf("WithUpdates: got %v, want ErrUnknownFilterKey", err)
+		}
+	})
+}

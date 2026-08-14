@@ -96,6 +96,13 @@ func (t SubscriptionTier) WatchZoneLimit() int {
 // never Free. Part of the custom-shape watch zones entitlement (epic GH#1031).
 func (t SubscriptionTier) AllowsCustomBoundary() bool { return t.IsPaid() }
 
+// AllowsWatchZoneFilter reports whether the tier may set a pre-canned
+// keyword filter on a watch zone: Pro only, never Free or Personal. Narrower
+// than AllowsCustomBoundary (which any paid tier grants via IsPaid) —
+// pre-canned filters are a deliberate Pro-tier-exclusive upsell (GH#1090,
+// epic tc-w825j), not a Personal-tier capability.
+func (t SubscriptionTier) AllowsWatchZoneFilter() bool { return t.IsPaidPro() }
+
 // MaxZoneRadiusMetres returns the maximum enclosing-circle radius, in metres,
 // permitted for a custom-shape polygon boundary: Free=2000, Personal=5000,
 // Pro=10000, mirroring mobile/ios/packages/town-crier-domain/Sources/
