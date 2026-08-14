@@ -312,6 +312,31 @@ func TestHandler_Patch_NotFound(t *testing.T) {
 	}
 }
 
+// TestHandler_Patch_NotFound_TakesPrecedenceOverBoundaryTierGate pins a
+// precedence change that fell out of tc-k3ncu's fix: the zone load
+// (h.store.Get) now runs before the shared boundary/filter tier-gate block
+// (it has to, so the filter gate can compare against the zone's current
+// FilterKey), so a PATCH naming a nonexistent zone ID now 404s before the
+// tier gate ever runs -- even when the body would otherwise have tripped it.
+// Before the reorder this returned 403 boundary_requires_paid_tier (tier
+// checked first); now it returns 404, without needing a profile reader wired
+// at all (the gate block, including its own-profile-nil check, is never
+// reached). No caller-visible regression: not found beats not entitled.
+func TestHandler_Patch_NotFound_TakesPrecedenceOverBoundaryTierGate(t *testing.T) {
+	t.Parallel()
+	body := mustJSON(t, struct {
+		Boundary *boundaryGeoJSON `json:"boundary"`
+	}{Boundary: boundaryToGeoJSON(mustBoundary(t, squareVertices(51.5, -0.1, 500)))})
+	rec := doReq(t, testMux(t, &fakeZoneStore{}), http.MethodPatch, "/v1/me/watch-zones/missing", body)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status: got %d, want 404", rec.Code)
+	}
+	if rec.Body.Len() != 0 {
+		t.Errorf("404 must be bodyless, got %s", rec.Body)
+	}
+}
+
 func TestHandler_Patch_BlankNameIsServerError(t *testing.T) {
 	t.Parallel()
 	// Name is not validated at the endpoint; WithUpdates' guard rejects a blank

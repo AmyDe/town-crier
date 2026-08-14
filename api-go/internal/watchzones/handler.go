@@ -450,14 +450,17 @@ func decodeFilterKeyUpdate(raw json.RawMessage) (*string, error) {
 // patch implements PATCH /v1/me/watch-zones/{zoneId}: range-validate the body
 // (400), decode the tri-state boundary and filterKey fields (400
 // boundary_invalid / filter_key_invalid on a malformed value), load the zone
-// (404 if absent -- needed before the filter gate below, see settingFilter),
-// gate a boundary-setting or actually-changed-filter-setting update on the
-// caller's tier (403 boundary_requires_paid_tier / filter_requires_pro_tier;
-// resending the zone's own unchanged filterKey is never gated, tc-k3ncu),
-// apply the merge (400 boundary_invalid / filter_key_invalid on an invalid
-// shape/key, 500 on any other domain invariant violation e.g. a blank name),
-// gate the resulting radius (400 boundary_too_large), persist, and return the
-// updated summary.
+// (404 if absent -- needed before the filter gate below, see settingFilter;
+// as a side effect this also puts the 404 check ahead of the boundary tier
+// gate now, so a PATCH naming a nonexistent zone 404s even when its body
+// would have tripped the boundary gate -- not found beats not entitled,
+// tc-k3ncu), gate a boundary-setting or actually-changed-filter-setting
+// update on the caller's tier (403 boundary_requires_paid_tier /
+// filter_requires_pro_tier; resending the zone's own unchanged filterKey is
+// never gated, tc-k3ncu), apply the merge (400 boundary_invalid /
+// filter_key_invalid on an invalid shape/key, 500 on any other domain
+// invariant violation e.g. a blank name), gate the resulting radius (400
+// boundary_too_large), persist, and return the updated summary.
 func (h *handler) patch(w http.ResponseWriter, r *http.Request) {
 	userID := auth.Subject(r.Context())
 	zoneID := r.PathValue("zoneId")
