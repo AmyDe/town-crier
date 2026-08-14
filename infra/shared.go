@@ -733,33 +733,22 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 	// jobs live in the prod stack (infra/environment.go, createWorkerJob), named
 	// job-tc-<name>-prod.
 	//
-	// "poll" carries a wider window/higher threshold than the rest (tc-k5c9w, alert-noise audit
-	// 2026-07-23): it was the dominant noise source at 13 firings/30d, because the default
-	// shape (WindowSize PT30M, Threshold GreaterThan 0) fires on ANY single Failed execution.
-	// Root cause of most of those firings was isolated single-execution PlanIt hydration
-	// timeouts (Lane C, "context deadline exceeded") that self-recover on the next 15-min
-	// schedule tick — not a real incident. Validated against 7 days of real execution history:
-	// with WindowSize=PT6H/Threshold>1, 6 of 7 days with a poll failure would NOT have fired
-	// (isolated singles suppressed), while the one real cluster (2026-07-17, 4 failures in a
-	// day) still would. The other six jobs are unchanged: they have never fired in 30 days and
-	// have a different failure profile (daily/lower-frequency cadence, no quick retry), so
-	// there's no evidence they need the same relaxation.
+	// All seven jobs share the default shape (WindowSize PT30M, Threshold GreaterThan 0 — fires
+	// on any single Failed execution). "poll" briefly carried a widened PT6H/threshold>1 window
+	// (tc-k5c9w, alert-noise audit 2026-07-23) because its exit code conflated isolated
+	// self-healing PlanIt fetch hiccups with genuine failures, making single-execution alerting
+	// too noisy (13 firings/30d). tc-uitxr (shipped to prod 2026-08-13) fixed that at the
+	// source — poll-cycle lane errors are now classified by origin so exit 1 only fires on
+	// genuine Postgres/state-store failures — so tc-8dg4a reverted "poll" back to the default
+	// single-failure sensitivity: a real DB problem should page fast, not wait for a second
+	// failure within 6 hours.
 	type failedExecutionJobSpec struct {
 		name       string
 		windowSize string
 		threshold  float64
-		// description overrides the default "reported a Failed execution" text when non-empty;
-		// used for "poll" so the fired-alert email states the new >=2-in-6h semantics rather than
-		// implying a single-failure trigger.
-		description string
 	}
 	prodFailedExecutionJobs := []failedExecutionJobSpec{
-		{
-			name:        "poll",
-			windowSize:  "PT6H",
-			threshold:   1,
-			description: "Container Apps job job-tc-poll-prod reported 2 or more Failed executions within 6 hours.",
-		},
+		{name: "poll", windowSize: "PT30M", threshold: 0},
 		{name: "poll-bootstrap", windowSize: "PT30M", threshold: 0},
 		{name: "digest", windowSize: "PT30M", threshold: 0},
 		{name: "digest-hourly", windowSize: "PT30M", threshold: 0},
@@ -772,10 +761,7 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		jobID := fmt.Sprintf(
 			"/subscriptions/%s/resourceGroups/rg-town-crier-prod/providers/Microsoft.App/jobs/job-tc-%s-prod",
 			armSubscriptionID, job.name)
-		description := job.description
-		if description == "" {
-			description = fmt.Sprintf("Container Apps job job-tc-%s-prod reported a Failed execution.", job.name)
-		}
+		description := fmt.Sprintf("Container Apps job job-tc-%s-prod reported a Failed execution.", job.name)
 		_, err = monitor.NewMetricAlert(ctx, alertName, &monitor.MetricAlertArgs{
 			RuleName:            pulumi.String(alertName),
 			ResourceGroupName:   resourceGroup.Name,
