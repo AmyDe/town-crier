@@ -15,7 +15,7 @@
 -- No backfill needed: the column is nullable with no default
 -- (0001_init_postgis.sql:49), so this is a straight drop.
 ALTER TABLE watch_zones
-    DROP COLUMN authority_id;
+    DROP COLUMN IF EXISTS authority_id;
 
 -- +goose Down
 
@@ -23,4 +23,4 @@ ALTER TABLE watch_zones
 -- that existed before the Up ran are gone and cannot be recovered by this
 -- Down -- nothing in the running system re-resolves or backfills them.
 ALTER TABLE watch_zones
-    ADD COLUMN authority_id integer;
+    ADD COLUMN IF NOT EXISTS authority_id integer;
