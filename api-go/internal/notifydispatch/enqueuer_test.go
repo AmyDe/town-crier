@@ -80,6 +80,30 @@ func (f *fakePushQueue) Add(userID string, n notifications.DigestNotification) {
 	f.queued = append(f.queued, queuedPush{userID: userID, notification: n})
 }
 
+// fakeDescriptionMatcher is a hand-written double for the enqueuer's
+// consumer-side descriptionMatcher interface (GH#1090, epic tc-w825j): it
+// records every MatchesExpression call so a test can assert both the
+// returned verdict and — for the app_type-excluded case — that the matcher
+// was never reached at all (the cheap in-memory gate must run first).
+type fakeDescriptionMatcher struct {
+	calls   []matchCall
+	matches bool
+	err     error
+}
+
+type matchCall struct {
+	description string
+	expression  string
+}
+
+func (f *fakeDescriptionMatcher) MatchesExpression(_ context.Context, description, expression string) (bool, error) {
+	f.calls = append(f.calls, matchCall{description: description, expression: expression})
+	if f.err != nil {
+		return false, f.err
+	}
+	return f.matches, nil
+}
+
 func profileWithTier(t *testing.T, userID string, tier profiles.SubscriptionTier) *profiles.UserProfile {
 	t.Helper()
 	p, err := profiles.NewProfile(userID, "", time.Now())
@@ -149,6 +173,16 @@ func newEnqueuerHarness(t *testing.T, tier profiles.SubscriptionTier) (*Enqueuer
 
 func newEnqueuerHarnessWithZones(t *testing.T, tier profiles.SubscriptionTier, zones *fakeZones) (*Enqueuer, *fakeNotifications, *fakePushQueue, *fakeZones) {
 	t.Helper()
+	enq, notifs, queue, zones, _ := newEnqueuerHarnessWithZonesAndMatcher(t, tier, zones, nil)
+	return enq, notifs, queue, zones
+}
+
+// newEnqueuerHarnessWithZonesAndMatcher is the full harness the filter tests
+// use: it threads a caller-supplied descriptionMatcher (or a fresh
+// zero-value fake, matching nothing, when nil is passed) through to
+// NewEnqueuer alongside the zones fake.
+func newEnqueuerHarnessWithZonesAndMatcher(t *testing.T, tier profiles.SubscriptionTier, zones *fakeZones, matcher *fakeDescriptionMatcher) (*Enqueuer, *fakeNotifications, *fakePushQueue, *fakeZones, *fakeDescriptionMatcher) {
+	t.Helper()
 	notifs := newFakeNotifications()
 	profile := profileWithTier(t, "auth0|alice", tier)
 	profs := &fakeProfiles{byID: map[string]*profiles.UserProfile{"auth0|alice": profile}}
@@ -156,11 +190,14 @@ func newEnqueuerHarnessWithZones(t *testing.T, tier profiles.SubscriptionTier, z
 	if zones == nil {
 		zones = &fakeZones{}
 	}
-	enq := NewEnqueuer(notifs, zones, profs, queue,
+	if matcher == nil {
+		matcher = &fakeDescriptionMatcher{}
+	}
+	enq := NewEnqueuer(notifs, zones, profs, queue, matcher,
 		func() string { return "n-fixed" },
 		func() time.Time { return time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC) },
 		testLogger(t))
-	return enq, notifs, queue, zones
+	return enq, notifs, queue, zones, matcher
 }
 
 func TestEnqueuer_EnqueueForApplication_FansOutToContainingZones(t *testing.T) {
@@ -176,7 +213,7 @@ func TestEnqueuer_EnqueueForApplication_FansOutToContainingZones(t *testing.T) {
 		"auth0|bob":   profileWithTier(t, "auth0|bob", profiles.TierPro),
 	}}
 	fz := zones
-	enq := NewEnqueuer(notifs, zones, profs, &fakePushQueue{},
+	enq := NewEnqueuer(notifs, zones, profs, &fakePushQueue{}, nil,
 		func() string { return "n-fixed" },
 		func() time.Time { return time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC) },
 		testLogger(t))
@@ -378,7 +415,7 @@ func TestEnqueuer_ExpiredPaidTier_CreatesRecordNoPush(t *testing.T) {
 	profile.SubscriptionExpiry = &past
 	profs := &fakeProfiles{byID: map[string]*profiles.UserProfile{"auth0|alice": profile}}
 	queue := &fakePushQueue{}
-	enq := NewEnqueuer(notifs, &fakeZones{}, profs, queue,
+	enq := NewEnqueuer(notifs, &fakeZones{}, profs, queue, nil,
 		func() string { return "n-1" },
 		func() time.Time { return time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC) },
 		testLogger(t))
@@ -531,7 +568,7 @@ func TestEnqueuer_LapsedPaidTier_RankedAgainstFreeLimit(t *testing.T) {
 	z1 := testZoneAt(t, "zone-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
 	z2 := testZoneAt(t, "zone-2", "auth0|alice", time.Date(2026, 6, 2, 0, 0, 0, 0, time.UTC))
 	zones := &fakeZones{zones: []watchzones.WatchZone{z1, z2}}
-	enq := NewEnqueuer(notifs, zones, profs, queue,
+	enq := NewEnqueuer(notifs, zones, profs, queue, nil,
 		func() string { return "n-1" },
 		func() time.Time { return time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC) },
 		testLogger(t))
@@ -625,5 +662,141 @@ func TestEnqueuer_UnknownProfile_NoRecord(t *testing.T) {
 	}
 	if len(queue.queued) != 0 {
 		t.Errorf("unknown profile must not queue a push, got %d", len(queue.queued))
+	}
+}
+
+// filteredZoneAt returns a "zone-1"/"auth0|alice" zone identical to
+// testZoneAt but carrying key — GH#1090's watch-zone filters, epic
+// tc-w825j, bead tc-w825j.5.
+func filteredZoneAt(t *testing.T, createdAt time.Time, key watchzones.FilterKey) watchzones.WatchZone {
+	t.Helper()
+	z := testZoneAt(t, "zone-1", "auth0|alice", createdAt)
+	z.FilterKey = key
+	return z
+}
+
+func TestEnqueuer_UnfilteredZone_UnaffectedByMatcher(t *testing.T) {
+	t.Parallel()
+	// FilterKey == "" (the zero value / unfiltered case): the matcher must
+	// never be consulted, and behaviour is exactly as before this bead.
+	matcher := &fakeDescriptionMatcher{matches: false} // would reject if ever called
+	zone := testZoneAt(t, "zone-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+	zones := &fakeZones{zones: []watchzones.WatchZone{zone}}
+	enq, notifs, _, _, gotMatcher := newEnqueuerHarnessWithZonesAndMatcher(t, profiles.TierPro, zones, matcher)
+	app := testApplication(t, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
+
+	if err := enq.Enqueue(context.Background(), app, zone); err != nil {
+		t.Fatalf("Enqueue: %v", err)
+	}
+	if len(notifs.created) != 1 {
+		t.Errorf("unfiltered zone must still create a record, got %d", len(notifs.created))
+	}
+	if len(gotMatcher.calls) != 0 {
+		t.Errorf("unfiltered zone must never consult the matcher, got %d calls", len(gotMatcher.calls))
+	}
+}
+
+func TestEnqueuer_FilteredZone_MatchingApplicationCreatesRecord(t *testing.T) {
+	t.Parallel()
+	matcher := &fakeDescriptionMatcher{matches: true}
+	zone := filteredZoneAt(t, time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC), watchzones.FilterKeyHMOHouseShares)
+	zones := &fakeZones{zones: []watchzones.WatchZone{zone}}
+	enq, notifs, _, _, gotMatcher := newEnqueuerHarnessWithZonesAndMatcher(t, profiles.TierPro, zones, matcher)
+	app := testApplication(t, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
+	appType := "Full"
+	app.AppType = &appType
+	app.Description = "Change of use to HMO for 6 occupants"
+
+	if err := enq.Enqueue(context.Background(), app, zone); err != nil {
+		t.Fatalf("Enqueue: %v", err)
+	}
+	if len(notifs.created) != 1 {
+		t.Fatalf("matching filtered application must create a record, got %d", len(notifs.created))
+	}
+	if len(gotMatcher.calls) != 1 {
+		t.Fatalf("expected exactly one MatchesExpression call, got %d", len(gotMatcher.calls))
+	}
+	wantDef, ok := watchzones.FilterDefinitionFor(watchzones.FilterKeyHMOHouseShares)
+	if !ok {
+		t.Fatalf("catalog missing %q", watchzones.FilterKeyHMOHouseShares)
+	}
+	if gotMatcher.calls[0].description != app.Description {
+		t.Errorf("matcher description: got %q, want %q", gotMatcher.calls[0].description, app.Description)
+	}
+	if gotMatcher.calls[0].expression != wantDef.Expression {
+		t.Errorf("matcher expression: got %q, want %q", gotMatcher.calls[0].expression, wantDef.Expression)
+	}
+}
+
+func TestEnqueuer_FilteredZone_NonMatchingExpressionNoRecord(t *testing.T) {
+	t.Parallel()
+	matcher := &fakeDescriptionMatcher{matches: false}
+	zone := filteredZoneAt(t, time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC), watchzones.FilterKeyHMOHouseShares)
+	zones := &fakeZones{zones: []watchzones.WatchZone{zone}}
+	enq, notifs, queue, _, gotMatcher := newEnqueuerHarnessWithZonesAndMatcher(t, profiles.TierPro, zones, matcher)
+	app := testApplication(t, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
+	appType := "Full"
+	app.AppType = &appType
+	app.Description = "Single-storey rear extension"
+
+	if err := enq.Enqueue(context.Background(), app, zone); err != nil {
+		t.Fatalf("Enqueue: %v", err)
+	}
+	if len(notifs.created) != 0 {
+		t.Errorf("non-matching filtered application must NOT create a record, got %d", len(notifs.created))
+	}
+	if len(queue.queued) != 0 {
+		t.Errorf("non-matching filtered application must NOT queue a push, got %d", len(queue.queued))
+	}
+	if len(gotMatcher.calls) != 1 {
+		t.Errorf("expected exactly one MatchesExpression call, got %d", len(gotMatcher.calls))
+	}
+}
+
+func TestEnqueuer_FilteredZone_ExcludedAppTypeSkipsMatcherEntirely(t *testing.T) {
+	t.Parallel()
+	// The app_type gate is a cheap in-memory check that must run BEFORE any
+	// DB-backed keyword match — assert the fake matcher is never invoked.
+	matcher := &fakeDescriptionMatcher{matches: true} // would match if ever called
+	zone := filteredZoneAt(t, time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC), watchzones.FilterKeyHMOHouseShares)
+	zones := &fakeZones{zones: []watchzones.WatchZone{zone}}
+	enq, notifs, queue, _, gotMatcher := newEnqueuerHarnessWithZonesAndMatcher(t, profiles.TierPro, zones, matcher)
+	app := testApplication(t, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
+	excluded := "Trees"
+	app.AppType = &excluded
+	app.Description = "HMO Class C4 conversion"
+
+	if err := enq.Enqueue(context.Background(), app, zone); err != nil {
+		t.Fatalf("Enqueue: %v", err)
+	}
+	if len(notifs.created) != 0 {
+		t.Errorf("excluded app_type must NOT create a record, got %d", len(notifs.created))
+	}
+	if len(queue.queued) != 0 {
+		t.Errorf("excluded app_type must NOT queue a push, got %d", len(queue.queued))
+	}
+	if len(gotMatcher.calls) != 0 {
+		t.Errorf("excluded app_type must skip the matcher entirely, got %d calls", len(gotMatcher.calls))
+	}
+}
+
+func TestEnqueuer_UnrecognisedFilterKeyFailsOpen(t *testing.T) {
+	t.Parallel()
+	// A FilterKey not in the catalog (should not happen — validated at write
+	// time) fails open: matches, same as unfiltered.
+	matcher := &fakeDescriptionMatcher{matches: false} // would reject if ever called
+	zone := filteredZoneAt(t, time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC), watchzones.FilterKey("not_a_real_filter"))
+	zones := &fakeZones{zones: []watchzones.WatchZone{zone}}
+	enq, notifs, _, _, gotMatcher := newEnqueuerHarnessWithZonesAndMatcher(t, profiles.TierPro, zones, matcher)
+	app := testApplication(t, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
+
+	if err := enq.Enqueue(context.Background(), app, zone); err != nil {
+		t.Fatalf("Enqueue: %v", err)
+	}
+	if len(notifs.created) != 1 {
+		t.Errorf("unrecognised FilterKey must fail open and create a record, got %d", len(notifs.created))
+	}
+	if len(gotMatcher.calls) != 0 {
+		t.Errorf("unrecognised FilterKey must never consult the matcher, got %d calls", len(gotMatcher.calls))
 	}
 }

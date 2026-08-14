@@ -25,7 +25,7 @@ func TestEnqueuer_CreatedRecordIsDigestReadable(t *testing.T) {
 	zone := testZoneAt(t, "zone-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
 	zones := &fakeZones{zones: []watchzones.WatchZone{zone}}
 
-	enq := NewEnqueuer(notifs, zones, profs, &fakePushQueue{},
+	enq := NewEnqueuer(notifs, zones, profs, &fakePushQueue{}, nil,
 		func() string { return "n-roundtrip" },
 		func() time.Time { return time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC) },
 		testLogger(t))

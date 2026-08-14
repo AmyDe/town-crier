@@ -60,6 +60,47 @@ func TestFilterCatalog_FewerNotificationsHasNoExpression(t *testing.T) {
 	}
 }
 
+func TestFilterDefinitionFor(t *testing.T) {
+	t.Parallel()
+
+	def, ok := FilterDefinitionFor(FilterKeyHouseBuilder)
+	if !ok {
+		t.Fatalf("FilterDefinitionFor(%q) = _, false, want true", FilterKeyHouseBuilder)
+	}
+	if def.DisplayName != filterCatalog[FilterKeyHouseBuilder].DisplayName {
+		t.Errorf("FilterDefinitionFor(%q) DisplayName = %q, want %q",
+			FilterKeyHouseBuilder, def.DisplayName, filterCatalog[FilterKeyHouseBuilder].DisplayName)
+	}
+
+	if _, ok := FilterDefinitionFor(FilterKey("not_a_real_filter")); ok {
+		t.Error("FilterDefinitionFor(unknown key) = _, true, want false")
+	}
+}
+
+func TestIsExcludedAppType(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		appType string
+		want    bool
+	}{
+		{"Trees is excluded", "Trees", true},
+		{"Telecoms is excluded", "Telecoms", true},
+		{"Full is not excluded", "Full", false},
+		{"empty string is not excluded", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := IsExcludedAppType(tt.appType); got != tt.want {
+				t.Errorf("IsExcludedAppType(%q) = %v, want %v", tt.appType, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestFilterCatalog_KeywordFiltersHaveExpressions(t *testing.T) {
 	t.Parallel()
 

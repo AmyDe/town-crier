@@ -513,6 +513,7 @@ func buildNotifyFanOut(cfg platform.Config, registry *metrics.Registry, zoneStor
 		deviceStore    *devicetokens.PostgresStore
 		statePushStore *notificationstate.PostgresStore
 		savedStore     *savedapplications.PostgresStore
+		appStore       *applications.PostgresStore
 	)
 	if st != nil {
 		notifStore = st.notification
@@ -520,12 +521,13 @@ func buildNotifyFanOut(cfg platform.Config, registry *metrics.Registry, zoneStor
 		deviceStore = st.device
 		statePushStore = st.notifState
 		savedStore = st.savedApp
+		appStore = st.app
 	}
 
 	pushDispatcher := buildPlatformDispatcher(cfg, registry, logger)
 	coalescer := notifydispatch.NewPushCoalescer(deviceStore, statePushStore, pushDispatcher, zoneStore, logger)
 	enqueuer := notifydispatch.NewEnqueuer(
-		notifStore, zoneStore, profileStore, coalescer,
+		notifStore, zoneStore, profileStore, coalescer, appStore,
 		uuid.NewString, time.Now, logger,
 	)
 	dispatcher := notifydispatch.NewDecisionDispatcher(

@@ -78,6 +78,15 @@ type notificationMetricsRecorder interface {
 	NotificationCreated(ctx context.Context, eventType, sources string)
 }
 
+// descriptionMatcher is the consumer-side slice of the applications store the
+// enqueuer needs to evaluate a watch zone's pre-canned keyword filter
+// (GH#1090, epic tc-w825j): a full-text match of an application's description
+// against a catalog filter's to_tsquery expression.
+// *applications.PostgresStore satisfies it.
+type descriptionMatcher interface {
+	MatchesExpression(ctx context.Context, description, expression string) (bool, error)
+}
+
 // Enqueuer handles new-application zone fan-out: for a new application that
 // matched a watch zone, it dedups, creates the notification record (which feeds
 // the digest pipeline), and — for paid tiers with push enabled — queues an
@@ -88,6 +97,7 @@ type Enqueuer struct {
 	zones         zoneRanker
 	profiles      profileReader
 	push          pushQueue
+	matcher       descriptionMatcher
 	newID         func() string
 	now           func() time.Time
 	logger        *slog.Logger
@@ -105,12 +115,14 @@ func (e *Enqueuer) WithMetrics(rec notificationMetricsRecorder) *Enqueuer {
 
 // NewEnqueuer wires the enqueuer. newID mints the notification id (a GUID in
 // production); now stamps the record's creation time. Both are injected so tests
-// can pin them.
+// can pin them. matcher evaluates a filtered zone's keyword expression
+// (GH#1090, epic tc-w825j) — see matchesFilter.
 func NewEnqueuer(
 	notifs notificationWriter,
 	zones zoneRanker,
 	profs profileReader,
 	push pushQueue,
+	matcher descriptionMatcher,
 	newID func() string,
 	now func() time.Time,
 	logger *slog.Logger,
@@ -120,6 +132,7 @@ func NewEnqueuer(
 		zones:         zones,
 		profiles:      profs,
 		push:          push,
+		matcher:       matcher,
 		newID:         newID,
 		now:           now,
 		logger:        logger,
@@ -161,6 +174,14 @@ func (e *Enqueuer) Enqueue(ctx context.Context, app applications.PlanningApplica
 		return err
 	}
 	if existing != nil {
+		return nil
+	}
+
+	matched, err := e.matchesFilter(ctx, zone, app)
+	if err != nil {
+		return err
+	}
+	if !matched {
 		return nil
 	}
 
@@ -225,6 +246,33 @@ func (e *Enqueuer) Enqueue(ctx context.Context, app applications.PlanningApplica
 		e.metrics.NotificationCreated(ctx, string(n.EventType), n.Sources)
 	}
 	return nil
+}
+
+// matchesFilter reports whether app passes zone's pre-canned keyword filter
+// (GH#1090, epic tc-w825j). An unfiltered zone (the FilterKey zero value)
+// always matches — no catalog lookup, no DB call. A FilterKey not found in
+// the catalog fails open (matches) rather than blocking a fan-out on a
+// read-time inconsistency that create/patch validation should already have
+// prevented, mirroring this file's fail-open conventions elsewhere (a
+// missing profile in Enqueue, a zoneID absent from its own zone set in
+// isPaused). The app_type gate is checked first and is a plain in-memory
+// membership test against the already-loaded application — no DB call — so
+// an excluded app_type is rejected before ever reaching the matcher.
+func (e *Enqueuer) matchesFilter(ctx context.Context, zone watchzones.WatchZone, app applications.PlanningApplication) (bool, error) {
+	if zone.FilterKey == "" {
+		return true, nil
+	}
+	def, ok := watchzones.FilterDefinitionFor(zone.FilterKey)
+	if !ok {
+		return true, nil
+	}
+	if app.AppType != nil && watchzones.IsExcludedAppType(*app.AppType) {
+		return false, nil
+	}
+	if def.Expression == "" {
+		return true, nil
+	}
+	return e.matcher.MatchesExpression(ctx, app.Description, def.Expression)
 }
 
 // isPaused reports whether the zone identified by zoneID is paused (GH#889):

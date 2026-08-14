@@ -100,8 +100,9 @@ func TestEnqueuer_FindZonesContainingFlowsThroughInterface(t *testing.T) {
 	t.Parallel()
 
 	spy := newSpyZoneStore()
+	matcher := &fakeDescriptionMatcher{}
 	enqueuer := notifydispatch.NewEnqueuer(
-		nil, spy, nil, nil,
+		nil, spy, nil, nil, matcher,
 		func() string { return "id" },
 		func() time.Time { return time.Unix(0, 0).UTC() },
 		discardLogger(),
