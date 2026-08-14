@@ -184,6 +184,20 @@ func TestSubscriptionTier_AllowsCustomBoundary(t *testing.T) {
 	}
 }
 
+func TestSubscriptionTier_AllowsWatchZoneFilter(t *testing.T) {
+	t.Parallel()
+
+	if TierFree.AllowsWatchZoneFilter() {
+		t.Error("Free should not allow a watch-zone filter")
+	}
+	if TierPersonal.AllowsWatchZoneFilter() {
+		t.Error("Personal should not allow a watch-zone filter (Pro-only, narrower than AllowsCustomBoundary)")
+	}
+	if !TierPro.AllowsWatchZoneFilter() {
+		t.Error("Pro should allow a watch-zone filter")
+	}
+}
+
 func TestSubscriptionTier_MaxZoneRadiusMetres(t *testing.T) {
 	t.Parallel()
 
