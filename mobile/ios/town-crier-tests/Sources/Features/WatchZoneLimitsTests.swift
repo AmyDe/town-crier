@@ -76,4 +76,21 @@ struct WatchZoneLimitsTests {
     #expect(limits.allowsCustomBoundary)
   }
 
+  // MARK: - allowsWatchZoneFilter (GH#1098, tc-hogkn -- Pro only, narrower than allowsCustomBoundary)
+
+  @Test func freeTier_allowsWatchZoneFilterIsFalse() {
+    let limits = WatchZoneLimits(tier: .free)
+    #expect(!limits.allowsWatchZoneFilter)
+  }
+
+  @Test func personalTier_allowsWatchZoneFilterIsFalse() {
+    let limits = WatchZoneLimits(tier: .personal)
+    #expect(!limits.allowsWatchZoneFilter)
+  }
+
+  @Test func proTier_allowsWatchZoneFilterIsTrue() {
+    let limits = WatchZoneLimits(tier: .pro)
+    #expect(limits.allowsWatchZoneFilter)
+  }
+
 }
