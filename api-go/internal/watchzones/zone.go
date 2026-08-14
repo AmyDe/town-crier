@@ -12,6 +12,7 @@ package watchzones
 
 import (
 	"errors"
+	"fmt"
 	"math"
 	"strings"
 	"time"
@@ -43,6 +44,11 @@ var (
 	ErrBoundaryOutOfBounds = errors.New("boundary vertices must be within the UK")
 )
 
+// ErrUnknownFilterKey signals a ZoneUpdate.FilterKey value that is not a
+// member of the filter catalog (see IsValidFilterKey). Consumers should use
+// errors.Is rather than string matching.
+var ErrUnknownFilterKey = errors.New("unknown watch-zone filter key")
+
 // WatchZone is a user's geofenced monitoring area scoped to one planning
 // authority: either a circle (centre + radius) or, when Boundary is non-nil,
 // a custom-shape polygon. A custom-shape zone still carries Latitude,
@@ -63,6 +69,13 @@ type WatchZone struct {
 	PushEnabled         bool
 	EmailInstantEnabled bool
 	Boundary            Boundary
+	// FilterKey is the zone's pre-canned keyword filter (GH#1090, epic
+	// tc-w825j): the zero value ("") means unfiltered, the same
+	// zero-value-means-unset pattern as most other domain fields — unlike
+	// Boundary, no derived field needs recomputing when it changes. Setting
+	// it to a non-empty value is a Pro-tier-only entitlement, enforced by
+	// the HTTP layer, not here.
+	FilterKey FilterKey
 }
 
 // NewWatchZone validates and constructs a circle watch zone (Boundary nil).
@@ -400,6 +413,14 @@ func (b Boundary) EnclosingRadiusMetres() float64 {
 // This is the domain-level representation of the tri-state; decoding the
 // HTTP PATCH body's `"boundary": null` vs absent vs a value into this shape
 // is a separate, JSON-layer concern (json.RawMessage) handled by the handler.
+//
+// FilterKey is tri-state too, mirroring Boundary's shape exactly (a plain
+// *string cannot distinguish an absent PATCH key from an explicit
+// `"filterKey": null`, since both decode to a nil pointer):
+//   - nil                  — absent: leave the zone's filter alone.
+//   - non-nil, pointing to "" — explicit clear: revert to unfiltered.
+//   - non-nil, pointing to a value — set this filter, validated against
+//     IsValidFilterKey; an unrecognised value returns ErrUnknownFilterKey.
 type ZoneUpdate struct {
 	Name                *string
 	Latitude            *float64
@@ -408,6 +429,7 @@ type ZoneUpdate struct {
 	PushEnabled         *bool
 	EmailInstantEnabled *bool
 	Boundary            *Boundary
+	FilterKey           *string
 }
 
 // WithUpdates returns a copy of the zone with the non-nil fields of u applied,
@@ -455,6 +477,18 @@ func (z WatchZone) WithUpdates(u ZoneUpdate) (WatchZone, error) {
 		}
 	}
 
+	if u.FilterKey != nil {
+		if *u.FilterKey == "" {
+			// Explicit clear: revert to unfiltered. No validation needed —
+			// "" is always a valid target, unlike a set.
+			updated.FilterKey = ""
+		} else if !IsValidFilterKey(*u.FilterKey) {
+			return WatchZone{}, fmt.Errorf("%w: %q", ErrUnknownFilterKey, *u.FilterKey)
+		} else {
+			updated.FilterKey = FilterKey(*u.FilterKey)
+		}
+	}
+
 	result, err := NewWatchZone(
 		updated.ID,
 		updated.UserID,
@@ -470,5 +504,6 @@ func (z WatchZone) WithUpdates(u ZoneUpdate) (WatchZone, error) {
 		return WatchZone{}, err
 	}
 	result.Boundary = updated.Boundary
+	result.FilterKey = updated.FilterKey
 	return result, nil
 }
