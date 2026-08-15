@@ -449,13 +449,16 @@ func decodeFilterKeyUpdate(raw json.RawMessage) (*string, error) {
 
 // patch implements PATCH /v1/me/watch-zones/{zoneId}: range-validate the body
 // (400), decode the tri-state boundary and filterKey fields (400
-// boundary_invalid / filter_key_invalid on a malformed value), gate a
-// boundary-setting or filter-setting update on the caller's tier (403
-// boundary_requires_paid_tier / filter_requires_pro_tier), load the zone (404
-// if absent), apply the merge (400 boundary_invalid / filter_key_invalid on
-// an invalid shape/key, 500 on any other domain invariant violation e.g. a
-// blank name), gate the resulting radius (400 boundary_too_large), persist,
-// and return the updated summary.
+// boundary_invalid / filter_key_invalid on a malformed value), load the zone
+// (404 if absent or not owned by the caller -- this takes precedence over
+// every tier-gate check below, tc-h3aov), gate a boundary-setting or
+// filter-setting update on the caller's tier (403 boundary_requires_paid_tier
+// / filter_requires_pro_tier; "setting" a boundary excludes resending the
+// zone's own currently-stored shape unchanged, tc-h3aov), apply the merge
+// (400 boundary_invalid / filter_key_invalid on an invalid shape/key, 500 on
+// any other domain invariant violation e.g. a blank name), gate the
+// resulting radius (400 boundary_too_large), persist, and return the updated
+// summary.
 func (h *handler) patch(w http.ResponseWriter, r *http.Request) {
 	userID := auth.Subject(r.Context())
 	zoneID := r.PathValue("zoneId")
@@ -476,10 +479,6 @@ func (h *handler) patch(w http.ResponseWriter, r *http.Request) {
 		h.writeErrorCode(w, r, http.StatusBadRequest, boundaryInvalidCode, boundaryInvalidMessage)
 		return
 	}
-	// "Setting" a boundary (as opposed to leaving it alone, or explicitly
-	// nulling it back to a circle) is the only case the paid-tier gate and the
-	// radius ceiling apply to (tc-6he3x.4 acceptance criteria 4 and 6).
-	settingBoundary := boundaryUpdate != nil && len(*boundaryUpdate) > 0
 
 	filterKeyUpdate, err := decodeFilterKeyUpdate(req.FilterKey)
 	if err != nil {
@@ -490,6 +489,29 @@ func (h *handler) patch(w http.ResponseWriter, r *http.Request) {
 	// nulling it back to unfiltered) is the only case the Pro-tier gate
 	// applies to (GH#1090, epic tc-w825j) -- mirrors settingBoundary exactly.
 	settingFilter := filterKeyUpdate != nil && *filterKeyUpdate != ""
+
+	// The zone is loaded here -- before the tier gate below -- for two
+	// reasons: a 404 on a missing/not-owned zone ID must take precedence over
+	// a boundary-tier 403 (tc-h3aov, mirroring the precedence tc-k3ncu's
+	// reviewer flagged for the identical filter-gate fix), and settingBoundary
+	// itself needs the zone's currently-stored Boundary to compare against.
+	zone, err := h.store.Get(r.Context(), userID, zoneID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		h.serverError(w, r, "load watch zone", err)
+		return
+	}
+
+	// "Setting" a boundary (as opposed to leaving it alone, explicitly nulling
+	// it back to a circle, or resending the SAME shape the zone already has --
+	// e.g. a client that always PATCHes full state on every edit) is the only
+	// case the paid-tier gate and the radius ceiling apply to (tc-6he3x.4
+	// acceptance criteria 4 and 6; the unchanged-resend carve-out is tc-h3aov,
+	// mirroring tc-k3ncu's identical fix for the filter gate).
+	settingBoundary := boundaryUpdate != nil && len(*boundaryUpdate) > 0 && !zone.Boundary.Equal(*boundaryUpdate)
 
 	var tier profiles.SubscriptionTier
 	if settingBoundary || settingFilter {
@@ -514,16 +536,6 @@ func (h *handler) patch(w http.ResponseWriter, r *http.Request) {
 			h.writeErrorCode(w, r, http.StatusForbidden, filterRequiresProTierCode, filterRequiresProTierMessage)
 			return
 		}
-	}
-
-	zone, err := h.store.Get(r.Context(), userID, zoneID)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-		h.serverError(w, r, "load watch zone", err)
-		return
 	}
 
 	updated, err := zone.WithUpdates(req.toUpdate(boundaryUpdate, filterKeyUpdate))
