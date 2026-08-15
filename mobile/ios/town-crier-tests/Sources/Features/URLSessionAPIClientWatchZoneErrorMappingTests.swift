@@ -51,6 +51,17 @@ struct URLSessionAPIClientWatchZoneErrorMappingTests {
     }
   }
 
+  @Test("400 with filter_key_invalid body throws DomainError.invalidWatchZoneFilterKey")
+  func filterKeyInvalidResponse() async throws {
+    let body =
+      #"{"error":"filter_key_invalid","message":"The filter key is not recognised."}"#
+    let sut = makeSUT(responses: [(Data(body.utf8), httpResponse(url: baseURL, statusCode: 400))])
+
+    await #expect(throws: DomainError.invalidWatchZoneFilterKey) {
+      let _: TestResponse = try await sut.request(.post("/watch-zones", body: TestBody(title: "x")))
+    }
+  }
+
   @Test("400 with unrecognized error code falls back to APIError.serverError")
   func unrecognizedBadRequestFallsBackToServerError() async throws {
     let body = #"{"error":"validation_failed","message":"Something else is wrong."}"#

@@ -10,10 +10,16 @@ public struct WatchZoneLimits: Equatable, Sendable {
   /// only a circle (GH#1031). Mirrors the server's
   /// `SubscriptionTier.AllowsCustomBoundary()` (`t.IsPaid()`).
   public let allowsCustomBoundary: Bool
+  /// Whether this tier may set a pre-canned notification filter on a watch
+  /// zone (GH#1098). Mirrors the server's
+  /// `SubscriptionTier.AllowsWatchZoneFilter()` (`t.IsPaidPro()`) -- Pro
+  /// only, narrower than ``allowsCustomBoundary``'s Personal+Pro gate.
+  public let allowsWatchZoneFilter: Bool
 
   public init(tier: SubscriptionTier) {
     self.tier = tier
     maxZones = EntitlementMap.limit(for: tier, quota: .watchZones)
+    allowsWatchZoneFilter = tier == .pro
     switch tier {
     case .free:
       maxRadiusMetres = 2000
