@@ -312,6 +312,31 @@ func TestHandler_Patch_NotFound(t *testing.T) {
 	}
 }
 
+// TestHandler_Patch_NotFound_TakesPrecedenceOverBoundaryTierGate pins a
+// precedence change that fell out of tc-k3ncu's fix: the zone load
+// (h.store.Get) now runs before the shared boundary/filter tier-gate block
+// (it has to, so the filter gate can compare against the zone's current
+// FilterKey), so a PATCH naming a nonexistent zone ID now 404s before the
+// tier gate ever runs -- even when the body would otherwise have tripped it.
+// Before the reorder this returned 403 boundary_requires_paid_tier (tier
+// checked first); now it returns 404, without needing a profile reader wired
+// at all (the gate block, including its own-profile-nil check, is never
+// reached). No caller-visible regression: not found beats not entitled.
+func TestHandler_Patch_NotFound_TakesPrecedenceOverBoundaryTierGate(t *testing.T) {
+	t.Parallel()
+	body := mustJSON(t, struct {
+		Boundary *boundaryGeoJSON `json:"boundary"`
+	}{Boundary: boundaryToGeoJSON(mustBoundary(t, squareVertices(51.5, -0.1, 500)))})
+	rec := doReq(t, testMux(t, &fakeZoneStore{}), http.MethodPatch, "/v1/me/watch-zones/missing", body)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status: got %d, want 404", rec.Code)
+	}
+	if rec.Body.Len() != 0 {
+		t.Errorf("404 must be bodyless, got %s", rec.Body)
+	}
+}
+
 func TestHandler_Patch_BlankNameIsServerError(t *testing.T) {
 	t.Parallel()
 	// Name is not validated at the endpoint; WithUpdates' guard rejects a blank
@@ -747,6 +772,68 @@ func TestHandler_Patch_FilterKey_NoProfileReaderWiredIs500(t *testing.T) {
 	}
 	if store.saved != nil {
 		t.Error("must not save when the filter tier gate cannot be verified")
+	}
+}
+
+// TestHandler_Patch_FilterKey_DowngradedTierResendingUnchangedFilterSucceeds
+// proves that a downgraded (Free/Personal) caller who resends the zone's own
+// already-stored filterKey unchanged -- alongside an edit to an unrelated
+// field, as a client that always sends full state on every PATCH would -- is
+// NOT gated by the Pro-tier check (tc-k3ncu). Before the fix, the gate ran on
+// mere presence of a non-empty filterKey and could not tell "setting a new
+// filter" apart from "resending the existing one", so this PATCH wrongly
+// 403'd a Pro-canned filter retained after downgrade.
+func TestHandler_Patch_FilterKey_DowngradedTierResendingUnchangedFilterSucceeds(t *testing.T) {
+	t.Parallel()
+	z := testZone(t)
+	z.FilterKey = FilterKeyHouseBuilder
+	store := &fakeZoneStore{zones: []WatchZone{z}}
+	mux := http.NewServeMux()
+	Routes(mux, store, slog.New(slog.DiscardHandler), WithProfileReader(&fakeProfileReader{profile: freeProfile(t)}))
+
+	body := mustJSON(t, struct {
+		Name      string  `json:"name"`
+		FilterKey *string `json:"filterKey"`
+	}{Name: "Renamed", FilterKey: strPtr(string(FilterKeyHouseBuilder))})
+	rec := doReq(t, mux, http.MethodPatch, "/v1/me/watch-zones/"+z.ID, body)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200 (body %s)", rec.Code, rec.Body)
+	}
+	if store.saved == nil || store.saved.Name != "Renamed" || store.saved.FilterKey != FilterKeyHouseBuilder {
+		t.Fatalf("saved zone: got %+v", store.saved)
+	}
+}
+
+// TestHandler_Patch_FilterKey_DowngradedTierChangingFilterStillGated proves
+// the fix above did not weaken the underlying protection: a downgraded caller
+// who changes the zone's filterKey to a genuinely DIFFERENT value is still
+// rejected with 403 filter_requires_pro_tier (tc-k3ncu).
+func TestHandler_Patch_FilterKey_DowngradedTierChangingFilterStillGated(t *testing.T) {
+	t.Parallel()
+	z := testZone(t)
+	z.FilterKey = FilterKeyHouseBuilder
+	store := &fakeZoneStore{zones: []WatchZone{z}}
+	mux := http.NewServeMux()
+	Routes(mux, store, slog.New(slog.DiscardHandler), WithProfileReader(&fakeProfileReader{profile: freeProfile(t)}))
+
+	body := mustJSON(t, struct {
+		FilterKey *string `json:"filterKey"`
+	}{FilterKey: strPtr(string(FilterKeyHMOHouseShares))})
+	rec := doReq(t, mux, http.MethodPatch, "/v1/me/watch-zones/"+z.ID, body)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status: got %d, want 403 (body %s)", rec.Code, rec.Body)
+	}
+	var env apiErrorResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatalf("decode error envelope: %v", err)
+	}
+	if env.Error != filterRequiresProTierCode {
+		t.Errorf("error code: got %q, want %q", env.Error, filterRequiresProTierCode)
+	}
+	if store.saved != nil {
+		t.Error("must not save when changing to a genuinely different filter on a downgraded tier")
 	}
 }
 
