@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"time"
 )
@@ -176,6 +177,21 @@ type Coordinate struct {
 // last vertex always equals the first (a closed ring); NewBoundary is the
 // only supported way to obtain a valid, validated Boundary.
 type Boundary []Coordinate
+
+// Equal reports whether b and other hold identical vertices in the same
+// order, by exact float64/struct equality (Coordinate is a plain comparable
+// struct, so slices.Equal is sufficient — no epsilon tolerance, and a nil
+// Boundary compares equal to an empty non-nil one, matching slices.Equal's
+// own nil-vs-empty handling). This is deliberately exact rather than
+// approximate: the only caller (the PATCH handler's boundary tier gate,
+// tc-h3aov) compares an incoming boundary against the zone's
+// currently-stored one to detect a client resending the SAME shape
+// unchanged, and the incoming value is always a JSON round-trip of a value
+// this server itself previously returned via boundaryToGeoJSON — so no
+// floating-point drift between the two is expected.
+func (b Boundary) Equal(other Boundary) bool {
+	return slices.Equal(b, other)
+}
 
 const (
 	// minBoundaryVertices and maxBoundaryVertices bound the ring size,
