@@ -450,15 +450,13 @@ func decodeFilterKeyUpdate(raw json.RawMessage) (*string, error) {
 // patch implements PATCH /v1/me/watch-zones/{zoneId}: range-validate the body
 // (400), decode the tri-state boundary and filterKey fields (400
 // boundary_invalid / filter_key_invalid on a malformed value), load the zone
-// (404 if absent -- needed before the filter gate below, see settingFilter;
-// as a side effect this also puts the 404 check ahead of the boundary tier
-// gate now, so a PATCH naming a nonexistent zone 404s even when its body
-// would have tripped the boundary gate -- not found beats not entitled,
-// tc-k3ncu), gate a boundary-setting or actually-changed-filter-setting
-// update on the caller's tier (403 boundary_requires_paid_tier /
-// filter_requires_pro_tier; resending the zone's own unchanged filterKey is
-// never gated, tc-k3ncu), apply the merge (400 boundary_invalid /
-// filter_key_invalid on an invalid shape/key, 500 on any other domain
+// (404 if absent or not owned by the caller -- this takes precedence over
+// every tier-gate check below, tc-h3aov / tc-k3ncu), gate an
+// actually-changed boundary-setting or filter-setting update on the caller's
+// tier (403 boundary_requires_paid_tier / filter_requires_pro_tier;
+// resending the zone's own currently-stored boundary or filterKey unchanged
+// is never gated, tc-h3aov / tc-k3ncu), apply the merge (400 boundary_invalid
+// / filter_key_invalid on an invalid shape/key, 500 on any other domain
 // invariant violation e.g. a blank name), gate the resulting radius (400
 // boundary_too_large), persist, and return the updated summary.
 func (h *handler) patch(w http.ResponseWriter, r *http.Request) {
@@ -481,10 +479,6 @@ func (h *handler) patch(w http.ResponseWriter, r *http.Request) {
 		h.writeErrorCode(w, r, http.StatusBadRequest, boundaryInvalidCode, boundaryInvalidMessage)
 		return
 	}
-	// "Setting" a boundary (as opposed to leaving it alone, or explicitly
-	// nulling it back to a circle) is the only case the paid-tier gate and the
-	// radius ceiling apply to (tc-6he3x.4 acceptance criteria 4 and 6).
-	settingBoundary := boundaryUpdate != nil && len(*boundaryUpdate) > 0
 
 	filterKeyUpdate, err := decodeFilterKeyUpdate(req.FilterKey)
 	if err != nil {
@@ -492,12 +486,17 @@ func (h *handler) patch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// The zone must be loaded before the tier gate below so settingFilter can
-	// tell "the caller is setting a NEW filter" apart from "the caller resent
-	// the zone's own unchanged filterKey" (tc-k3ncu) -- e.g. a client that
-	// always sends full state on every PATCH, including an unrelated field
-	// like name or radius. Loaded once here and reused for WithUpdates below;
-	// do not fetch it a second time.
+	// The zone must be loaded before the tier gate below (and before computing
+	// settingFilter/settingBoundary) for two reasons: a 404 on a
+	// missing/not-owned zone ID must take precedence over every tier-gate
+	// check (tc-h3aov, mirroring the precedence tc-k3ncu's reviewer flagged
+	// for the identical filter-gate fix), and settingFilter/settingBoundary
+	// each need the zone's currently-stored FilterKey/Boundary to tell
+	// "setting a NEW value" apart from "resending the zone's own unchanged
+	// value" (tc-k3ncu, tc-h3aov) -- e.g. a client that always sends full
+	// state on every PATCH, including an unrelated field like name or
+	// radius. Loaded once here and reused for WithUpdates below; do not
+	// fetch it a second time.
 	zone, err := h.store.Get(r.Context(), userID, zoneID)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
@@ -515,6 +514,14 @@ func (h *handler) patch(w http.ResponseWriter, r *http.Request) {
 	// downgraded caller who retained a pre-existing filter and PATCHes an
 	// unrelated field must not be gated on a filterKey they didn't touch.
 	settingFilter := filterKeyUpdate != nil && *filterKeyUpdate != "" && *filterKeyUpdate != string(zone.FilterKey)
+
+	// "Setting" a boundary (as opposed to leaving it alone, explicitly nulling
+	// it back to a circle, or resending the SAME shape the zone already has --
+	// e.g. a client that always PATCHes full state on every edit) is the only
+	// case the paid-tier gate and the radius ceiling apply to (tc-6he3x.4
+	// acceptance criteria 4 and 6; the unchanged-resend carve-out is tc-h3aov,
+	// mirroring tc-k3ncu's identical fix for the filter gate).
+	settingBoundary := boundaryUpdate != nil && len(*boundaryUpdate) > 0 && !zone.Boundary.Equal(*boundaryUpdate)
 
 	var tier profiles.SubscriptionTier
 	if settingBoundary || settingFilter {

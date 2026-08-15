@@ -592,6 +592,113 @@ func TestHandler_Patch_Boundary_NoProfileReaderWiredIs500(t *testing.T) {
 	}
 }
 
+// TestHandler_Patch_Boundary_ResendingUnchangedValueSucceedsForDowngradedTier
+// proves the fix for tc-h3aov (the same defect pattern tc-k3ncu fixed for the
+// filter gate): a downgraded (Free-tier) caller who already owns a
+// custom-shape zone and resends its UNCHANGED boundary vertices alongside an
+// unrelated field edit (name here — the same pattern a client that always
+// PATCHes full state on every edit produces) must succeed, because nothing
+// about the boundary actually changed. Before the fix, settingBoundary gated
+// on mere non-emptiness of the incoming boundary and always 403'd here.
+func TestHandler_Patch_Boundary_ResendingUnchangedValueSucceedsForDowngradedTier(t *testing.T) {
+	t.Parallel()
+	base := testZone(t)
+	z, err := base.WithBoundary(squareVertices(base.Latitude, base.Longitude, 500))
+	if err != nil {
+		t.Fatalf("WithBoundary: %v", err)
+	}
+	store := &fakeZoneStore{zones: []WatchZone{z}}
+	mux := http.NewServeMux()
+	Routes(mux, store, slog.New(slog.DiscardHandler), WithProfileReader(&fakeProfileReader{profile: freeProfile(t)}))
+
+	body := mustJSON(t, struct {
+		Name     *string          `json:"name"`
+		Boundary *boundaryGeoJSON `json:"boundary"`
+	}{Name: strPtr("Renamed"), Boundary: boundaryToGeoJSON(z.Boundary)})
+	rec := doReq(t, mux, http.MethodPatch, "/v1/me/watch-zones/"+z.ID, body)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200 (body %s)", rec.Code, rec.Body)
+	}
+	if store.saved == nil {
+		t.Fatal("zone must be saved")
+	}
+	if store.saved.Name != "Renamed" {
+		t.Errorf("name: got %q, want %q", store.saved.Name, "Renamed")
+	}
+	if !store.saved.Boundary.Equal(z.Boundary) {
+		t.Errorf("boundary must be unchanged: got %+v, want %+v", store.saved.Boundary, z.Boundary)
+	}
+}
+
+// TestHandler_Patch_Boundary_ChangingExistingBoundaryStillRequiresPaidTier403
+// proves the unchanged-resend carve-out (above) does not weaken the tier gate
+// itself: a downgraded (Free-tier) caller who owns a custom-shape zone and
+// sends a genuinely DIFFERENT set of boundary vertices still gets 403
+// boundary_requires_paid_tier, and the update is never persisted. Complements
+// TestHandler_Patch_Boundary_ValueRequiresPaidTier403, which only covers a
+// zone with no pre-existing boundary (a genuine new-set case) -- this one
+// proves the gate still fires when the zone already has a (different) shape.
+func TestHandler_Patch_Boundary_ChangingExistingBoundaryStillRequiresPaidTier403(t *testing.T) {
+	t.Parallel()
+	base := testZone(t)
+	z, err := base.WithBoundary(squareVertices(base.Latitude, base.Longitude, 500))
+	if err != nil {
+		t.Fatalf("WithBoundary: %v", err)
+	}
+	store := &fakeZoneStore{zones: []WatchZone{z}}
+	mux := http.NewServeMux()
+	Routes(mux, store, slog.New(slog.DiscardHandler), WithProfileReader(&fakeProfileReader{profile: freeProfile(t)}))
+
+	body := mustJSON(t, struct {
+		Boundary *boundaryGeoJSON `json:"boundary"`
+	}{Boundary: boundaryToGeoJSON(mustBoundary(t, squareVertices(z.Latitude, z.Longitude, 700)))})
+	rec := doReq(t, mux, http.MethodPatch, "/v1/me/watch-zones/"+z.ID, body)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status: got %d, want 403 (body %s)", rec.Code, rec.Body)
+	}
+	var env apiErrorResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatalf("decode error envelope: %v", err)
+	}
+	if env.Error != boundaryRequiresPaidTierCode {
+		t.Errorf("error code: got %q, want %q", env.Error, boundaryRequiresPaidTierCode)
+	}
+	if store.saved != nil {
+		t.Error("must not save a zone when the boundary tier gate rejects the request")
+	}
+}
+
+// TestHandler_Patch_NotFound_TakesPrecedenceOverBoundaryTierGate_ProfileWired
+// complements TestHandler_Patch_NotFound_TakesPrecedenceOverBoundaryTierGate
+// above (that one proves the 404 short-circuit means a profile reader isn't
+// even needed): this one wires a real (free-tier) profile reader and proves
+// that even with the tier gate fully able to run and reject the request,
+// the 404 for a non-existent (or not-owned) zone ID still wins, and the
+// rejected request is never persisted (tc-h3aov).
+func TestHandler_Patch_NotFound_TakesPrecedenceOverBoundaryTierGate_ProfileWired(t *testing.T) {
+	t.Parallel()
+	store := &fakeZoneStore{}
+	mux := http.NewServeMux()
+	Routes(mux, store, slog.New(slog.DiscardHandler), WithProfileReader(&fakeProfileReader{profile: freeProfile(t)}))
+
+	body := mustJSON(t, struct {
+		Boundary *boundaryGeoJSON `json:"boundary"`
+	}{Boundary: boundaryToGeoJSON(mustBoundary(t, squareVertices(51.5074, -0.1278, 500)))})
+	rec := doReq(t, mux, http.MethodPatch, "/v1/me/watch-zones/missing", body)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status: got %d, want 404 (body %s)", rec.Code, rec.Body)
+	}
+	if rec.Body.Len() != 0 {
+		t.Errorf("404 must be bodyless, got %s", rec.Body)
+	}
+	if store.saved != nil {
+		t.Error("must not save when the zone does not exist")
+	}
+}
+
 // --- PATCH filterKey tri-state tests (GH#1090, epic tc-w825j) --------------
 
 // TestHandler_Patch_FilterKey_FreeOrPersonalTierIs403 proves a non-Pro
