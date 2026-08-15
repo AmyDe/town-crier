@@ -445,6 +445,47 @@ func TestBoundary_EnclosingRadiusMetres_EmptyBoundaryDoesNotPanic(t *testing.T) 
 	}
 }
 
+// TestBoundary_Equal proves Boundary.Equal's exact, order-sensitive
+// element-wise comparison (tc-h3aov): the PATCH handler's boundary tier gate
+// uses it to tell "the caller resent the SAME shape unchanged" apart from
+// "the caller is setting a new/different shape".
+func TestBoundary_Equal(t *testing.T) {
+	t.Parallel()
+	square := mustBoundary(t, londonSquare(t))
+	sameVertices := make(Boundary, len(square))
+	copy(sameVertices, square)
+	reordered := append(Boundary{square[1]}, square[2:]...)
+	reordered = append(reordered, square[0])
+	shifted, err := NewBoundary(squareVertices(51.5074, -0.1278, 750))
+	if err != nil {
+		t.Fatalf("NewBoundary: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		a, b Boundary
+		want bool
+	}{
+		{"identical value equal", square, sameVertices, true},
+		{"same vertices, different order not equal", square, reordered, false},
+		{"different shape not equal", square, shifted, false},
+		{"both nil equal", nil, nil, true},
+		{"nil vs empty equal", nil, Boundary{}, true},
+		{"nil vs non-empty not equal", nil, square, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := tc.a.Equal(tc.b); got != tc.want {
+				t.Errorf("Equal: got %v, want %v", got, tc.want)
+			}
+			if got := tc.b.Equal(tc.a); got != tc.want {
+				t.Errorf("Equal (reversed): got %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestWatchZone_IsCustomShape(t *testing.T) {
 	t.Parallel()
 	circle := testZone(t)
