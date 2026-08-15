@@ -27,6 +27,12 @@ public enum DomainError: Error, Equatable, Sendable {
   /// cases above -- from the user's perspective this is the same category of
   /// problem, fixed the same way (redraw a smaller shape). GH#1085.
   case invalidWatchZoneBoundaryTooLarge
+  /// A pre-canned watch-zone filter key is not recognised by the server's
+  /// catalog. Mirrors the server's `filter_key_invalid` (`400`). Defensive --
+  /// the client only ever submits a key sourced from its own
+  /// `WatchZoneFilterKey.allCases`, so this guards against a stale client
+  /// whose catalog has fallen behind the server's (GH#1098).
+  case invalidWatchZoneFilterKey
   /// Saving a watch zone failed because the name duplicates an existing
   /// watch zone for the same user. Mirrors the server's `zone_name_taken`
   /// (`409`). GH#1085.
@@ -82,6 +88,8 @@ public enum DomainError: Error, Equatable, Sendable {
       .invalidWatchZoneBoundarySelfIntersecting, .invalidWatchZoneBoundaryOutOfBounds,
       .invalidWatchZoneBoundaryTooLarge:
       return "Invalid Area"
+    case .invalidWatchZoneFilterKey:
+      return "Invalid Filter"
     case .watchZoneNameTaken:
       return "Name Already Used"
     case .invalidCoordinate, .invalidWatchZoneRadius,
@@ -128,6 +136,8 @@ public enum DomainError: Error, Equatable, Sendable {
       return "A custom area must be drawn within the UK."
     case .invalidWatchZoneBoundaryTooLarge:
       return "This area is too large. Try drawing a smaller shape."
+    case .invalidWatchZoneFilterKey:
+      return "That filter isn't recognised. Please choose another one."
     case .watchZoneNameTaken:
       return "You already have a watch zone with this name. Choose a different name."
     case .invalidCoordinate, .invalidWatchZoneRadius,
@@ -149,7 +159,7 @@ public enum DomainError: Error, Equatable, Sendable {
       .deviceLocalZoneLimitReached, .invalidWatchZoneBoundaryVertexCount,
       .invalidWatchZoneBoundaryDuplicateVertex, .invalidWatchZoneBoundarySelfIntersecting,
       .invalidWatchZoneBoundaryOutOfBounds, .invalidWatchZoneBoundaryTooLarge,
-      .watchZoneNameTaken:
+      .invalidWatchZoneFilterKey, .watchZoneNameTaken:
       return false
     }
   }

@@ -34,6 +34,11 @@ public final class WatchZoneEditorViewModel: ObservableObject, EntitlementGating
   /// `WatchZoneBoundary.init` when ``shapeMode`` is `.custom`.
   @Published public private(set) var boundaryVertices: [Coordinate] = []
 
+  /// The pre-canned notification filter selected for this zone, or `nil` for
+  /// unfiltered (GH#1098). Defaults to `nil`; populated from the edited
+  /// zone's `filterKey` when present.
+  @Published public private(set) var selectedFilterKey: WatchZoneFilterKey?
+
   /// Mirrors `WatchZoneBoundary`'s geometric minimum (3 distinct vertices
   /// are required to form a polygon) so the UI can gate "finish drawing"
   /// without constructing (and discarding) a throwaway boundary just to
@@ -84,6 +89,7 @@ public final class WatchZoneEditorViewModel: ObservableObject, EntitlementGating
         // works with the open sequence and re-closes on save.
         self.boundaryVertices = Array(boundary.vertices.dropLast())
       }
+      self.selectedFilterKey = zone.filterKey
     }
   }
 
@@ -223,6 +229,35 @@ public final class WatchZoneEditorViewModel: ObservableObject, EntitlementGating
     }
   }
 
+  // MARK: - Pre-canned filter (GH#1098)
+
+  /// Whether the current tier may set a pre-canned filter at all -- gates
+  /// showing the filter picker row in the View. Pro only; Free/Personal are
+  /// always `false`. Mirrors the server's
+  /// `SubscriptionTier.AllowsWatchZoneFilter()` via `WatchZoneLimits`.
+  public var canSetWatchZoneFilter: Bool {
+    limits.allowsWatchZoneFilter
+  }
+
+  /// True when editing an existing filtered zone on a tier that can no
+  /// longer set one (a downgraded Pro user who set a filter before
+  /// downgrading) -- same posture as ``isCustomShapeLocked``: the filter
+  /// stays applied and visible, never silently cleared, but the picker is
+  /// unreachable.
+  public var isFilterLocked: Bool {
+    selectedFilterKey != nil && !canSetWatchZoneFilter
+  }
+
+  /// Sets or clears the selected filter. Clearing (`nil`) is always allowed
+  /// regardless of tier, matching the server's "clearing never requires an
+  /// entitlement check". Setting a non-nil value while ineligible
+  /// (``canSetWatchZoneFilter`` is `false`) is a silent no-op, matching
+  /// ``selectShapeMode``'s defence-in-depth pattern.
+  public func selectFilterKey(_ key: WatchZoneFilterKey?) {
+    guard key == nil || canSetWatchZoneFilter else { return }
+    selectedFilterKey = key
+  }
+
   public func submitPostcode() async {
     isLoading = true
     error = nil
@@ -299,7 +334,8 @@ public final class WatchZoneEditorViewModel: ObservableObject, EntitlementGating
         radiusMetres: radius,
         pushEnabled: pushEnabled,
         emailInstantEnabled: emailInstantEnabled,
-        boundary: boundary
+        boundary: boundary,
+        filterKey: selectedFilterKey
       )
       if isEditing {
         try await repository.update(zone)

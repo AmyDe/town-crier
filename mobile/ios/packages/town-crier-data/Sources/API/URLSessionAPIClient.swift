@@ -253,13 +253,17 @@ public final class URLSessionAPIClient: Sendable {
   }
 
   /// Maps a watch-zone `400` — a custom-shape boundary whose enclosing
-  /// radius exceeds the server's ceiling. Any other error code, or a
-  /// decode failure, falls back to the generic `serverError` unchanged
-  /// (GH#1085).
+  /// radius exceeds the server's ceiling, or an unrecognised pre-canned
+  /// filter key (GH#1098). Any other error code, or a decode failure, falls
+  /// back to the generic `serverError` unchanged (GH#1085).
   private func mapBadRequest(data: Data) throws {
-    if let body = try? decoder.decode(WatchZoneErrorBody.self, from: data),
-      body.error == "boundary_too_large" {
-      throw DomainError.invalidWatchZoneBoundaryTooLarge
+    if let body = try? decoder.decode(WatchZoneErrorBody.self, from: data) {
+      if body.error == "boundary_too_large" {
+        throw DomainError.invalidWatchZoneBoundaryTooLarge
+      }
+      if body.error == "filter_key_invalid" {
+        throw DomainError.invalidWatchZoneFilterKey
+      }
     }
     let message = String(data: data, encoding: .utf8)
     throw APIError.serverError(statusCode: 400, message: message)

@@ -168,4 +168,38 @@ struct WatchZoneTests {
     #expect(zone.boundary == boundary)
     #expect(zone.isCustomShape)
   }
+
+  // MARK: - Pre-canned filter (GH#1098, tc-hogkn)
+
+  @Test("filterKey defaults to nil (unfiltered)")
+  func init_defaultsFilterKeyToNil() throws {
+    let centre = try Coordinate(latitude: 52.2053, longitude: 0.1218)
+    let zone = try WatchZone(name: "Home", centre: centre, radiusMetres: 1000)
+    #expect(zone.filterKey == nil)
+  }
+
+  @Test("filterKey round-trips through the name/centre initializer")
+  func init_storesFilterKey() throws {
+    let centre = try Coordinate(latitude: 52.2053, longitude: 0.1218)
+    let zone = try WatchZone(
+      name: "Home",
+      centre: centre,
+      radiusMetres: 1000,
+      filterKey: .loftExtension
+    )
+    #expect(zone.filterKey == .loftExtension)
+  }
+
+  @Test("filterKey round-trips through the postcode initializer")
+  func init_postcodeInitializer_storesFilterKey() throws {
+    let centre = try Coordinate(latitude: 52.2053, longitude: 0.1218)
+    let postcode = try Postcode("CB1 2AD")
+    let zone = try WatchZone(
+      postcode: postcode,
+      centre: centre,
+      radiusMetres: 1000,
+      filterKey: .hmoHouseShares
+    )
+    #expect(zone.filterKey == .hmoHouseShares)
+  }
 }

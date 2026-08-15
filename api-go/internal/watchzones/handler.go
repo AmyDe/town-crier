@@ -451,14 +451,14 @@ func decodeFilterKeyUpdate(raw json.RawMessage) (*string, error) {
 // (400), decode the tri-state boundary and filterKey fields (400
 // boundary_invalid / filter_key_invalid on a malformed value), load the zone
 // (404 if absent or not owned by the caller -- this takes precedence over
-// every tier-gate check below, tc-h3aov), gate a boundary-setting or
-// filter-setting update on the caller's tier (403 boundary_requires_paid_tier
-// / filter_requires_pro_tier; "setting" a boundary excludes resending the
-// zone's own currently-stored shape unchanged, tc-h3aov), apply the merge
-// (400 boundary_invalid / filter_key_invalid on an invalid shape/key, 500 on
-// any other domain invariant violation e.g. a blank name), gate the
-// resulting radius (400 boundary_too_large), persist, and return the updated
-// summary.
+// every tier-gate check below, tc-h3aov / tc-k3ncu), gate an
+// actually-changed boundary-setting or filter-setting update on the caller's
+// tier (403 boundary_requires_paid_tier / filter_requires_pro_tier;
+// resending the zone's own currently-stored boundary or filterKey unchanged
+// is never gated, tc-h3aov / tc-k3ncu), apply the merge (400 boundary_invalid
+// / filter_key_invalid on an invalid shape/key, 500 on any other domain
+// invariant violation e.g. a blank name), gate the resulting radius (400
+// boundary_too_large), persist, and return the updated summary.
 func (h *handler) patch(w http.ResponseWriter, r *http.Request) {
 	userID := auth.Subject(r.Context())
 	zoneID := r.PathValue("zoneId")
@@ -485,16 +485,18 @@ func (h *handler) patch(w http.ResponseWriter, r *http.Request) {
 		h.writeErrorCode(w, r, http.StatusBadRequest, filterKeyInvalidCode, filterKeyInvalidMessage)
 		return
 	}
-	// "Setting" a filter (as opposed to leaving it alone, or explicitly
-	// nulling it back to unfiltered) is the only case the Pro-tier gate
-	// applies to (GH#1090, epic tc-w825j) -- mirrors settingBoundary exactly.
-	settingFilter := filterKeyUpdate != nil && *filterKeyUpdate != ""
 
-	// The zone is loaded here -- before the tier gate below -- for two
-	// reasons: a 404 on a missing/not-owned zone ID must take precedence over
-	// a boundary-tier 403 (tc-h3aov, mirroring the precedence tc-k3ncu's
-	// reviewer flagged for the identical filter-gate fix), and settingBoundary
-	// itself needs the zone's currently-stored Boundary to compare against.
+	// The zone must be loaded before the tier gate below (and before computing
+	// settingFilter/settingBoundary) for two reasons: a 404 on a
+	// missing/not-owned zone ID must take precedence over every tier-gate
+	// check (tc-h3aov, mirroring the precedence tc-k3ncu's reviewer flagged
+	// for the identical filter-gate fix), and settingFilter/settingBoundary
+	// each need the zone's currently-stored FilterKey/Boundary to tell
+	// "setting a NEW value" apart from "resending the zone's own unchanged
+	// value" (tc-k3ncu, tc-h3aov) -- e.g. a client that always sends full
+	// state on every PATCH, including an unrelated field like name or
+	// radius. Loaded once here and reused for WithUpdates below; do not
+	// fetch it a second time.
 	zone, err := h.store.Get(r.Context(), userID, zoneID)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
@@ -504,6 +506,14 @@ func (h *handler) patch(w http.ResponseWriter, r *http.Request) {
 		h.serverError(w, r, "load watch zone", err)
 		return
 	}
+
+	// "Setting" a filter (as opposed to leaving it alone, explicitly nulling
+	// it back to unfiltered, or resending the zone's own already-stored
+	// filterKey unchanged) is the only case the Pro-tier gate applies to
+	// (GH#1090, epic tc-w825j; unchanged-resend exemption tc-k3ncu). A
+	// downgraded caller who retained a pre-existing filter and PATCHes an
+	// unrelated field must not be gated on a filterKey they didn't touch.
+	settingFilter := filterKeyUpdate != nil && *filterKeyUpdate != "" && *filterKeyUpdate != string(zone.FilterKey)
 
 	// "Setting" a boundary (as opposed to leaving it alone, explicitly nulling
 	// it back to a circle, or resending the SAME shape the zone already has --
