@@ -8,10 +8,12 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import uk.towncrierapp.domain.reviewprompt.ReviewPromptState
 import uk.towncrierapp.domain.reviewprompt.ReviewPromptStore
+import java.io.IOException
 import java.time.Instant
 
 // Key names are this feature's own device-local namespace (GH #628) — no
@@ -51,17 +53,28 @@ public class DataStoreReviewPromptStore(
                 )
             }.first()
 
+    @Suppress("SwallowedException")
+    // Best-effort fire-and-forget preference write (tc-l31ve, module-wide
+    // convention): a disk-IO failure here is rare and recoverable per
+    // DataStore's own edit() contract, and no caller handles a thrown
+    // exception from this method — so it's swallowed rather than propagated.
     override suspend fun save(state: ReviewPromptState) {
-        dataStore.edit { preferences ->
-            setOrRemove(preferences, FIRST_LAUNCH_DATE_KEY, state.firstLaunchDate?.epochSecond)
-            preferences[ENGAGEMENT_SCORE_KEY] = state.engagementScore
-            preferences[SAVE_COUNT_KEY] = state.saveCount
-            setOrRemove(preferences, LAST_ACTIVE_DAY_KEY_KEY, state.lastActiveDayKey)
-            preferences[DISTINCT_ACTIVE_DAYS_KEY] = state.distinctActiveDays
-            setOrRemove(preferences, LAST_PROMPT_DATE_KEY, state.lastPromptDate?.epochSecond)
-            preferences[PROMPT_TIMESTAMPS_KEY] =
-                state.promptTimestamps.joinToString(TIMESTAMP_SEPARATOR) { it.epochSecond.toString() }
-            preferences[HAS_RECORDED_UPGRADE_KEY] = state.hasRecordedUpgrade
+        try {
+            dataStore.edit { preferences ->
+                setOrRemove(preferences, FIRST_LAUNCH_DATE_KEY, state.firstLaunchDate?.epochSecond)
+                preferences[ENGAGEMENT_SCORE_KEY] = state.engagementScore
+                preferences[SAVE_COUNT_KEY] = state.saveCount
+                setOrRemove(preferences, LAST_ACTIVE_DAY_KEY_KEY, state.lastActiveDayKey)
+                preferences[DISTINCT_ACTIVE_DAYS_KEY] = state.distinctActiveDays
+                setOrRemove(preferences, LAST_PROMPT_DATE_KEY, state.lastPromptDate?.epochSecond)
+                preferences[PROMPT_TIMESTAMPS_KEY] =
+                    state.promptTimestamps.joinToString(TIMESTAMP_SEPARATOR) { it.epochSecond.toString() }
+                preferences[HAS_RECORDED_UPGRADE_KEY] = state.hasRecordedUpgrade
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: IOException) {
+            // Swallowed: see class-level rationale above.
         }
     }
 }
