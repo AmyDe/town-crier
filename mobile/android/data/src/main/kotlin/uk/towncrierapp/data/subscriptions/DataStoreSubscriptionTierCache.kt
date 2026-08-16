@@ -4,10 +4,12 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import uk.towncrierapp.domain.subscriptions.SubscriptionTier
 import uk.towncrierapp.domain.subscriptions.SubscriptionTierCache
+import java.io.IOException
 
 private val CACHED_SUBSCRIPTION_TIER_KEY = stringPreferencesKey("cachedSubscriptionTier")
 
@@ -26,7 +28,18 @@ public class DataStoreSubscriptionTierCache(
                 preferences[CACHED_SUBSCRIPTION_TIER_KEY]?.let { SubscriptionTier.fromWireValue(it) }
             }.first()
 
+    @Suppress("SwallowedException")
+    // Best-effort fire-and-forget preference write (tc-l31ve, module-wide
+    // convention): a disk-IO failure here is rare and recoverable per
+    // DataStore's own edit() contract, and no caller handles a thrown
+    // exception from this method — so it's swallowed rather than propagated.
     override suspend fun write(tier: SubscriptionTier) {
-        dataStore.edit { preferences -> preferences[CACHED_SUBSCRIPTION_TIER_KEY] = tier.wireValue }
+        try {
+            dataStore.edit { preferences -> preferences[CACHED_SUBSCRIPTION_TIER_KEY] = tier.wireValue }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: IOException) {
+            // Swallowed: see class-level rationale above.
+        }
     }
 }
