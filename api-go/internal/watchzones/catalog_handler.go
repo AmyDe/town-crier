@@ -1,9 +1,10 @@
 package watchzones
 
 import (
-	"encoding/json"
 	"log/slog"
 	"net/http"
+
+	"github.com/AmyDe/town-crier/api-go/internal/httputil"
 )
 
 // filterCatalogEntry is the wire shape for one catalog filter. It
@@ -36,7 +37,10 @@ type catalogHandler struct {
 }
 
 // catalog always returns 200: the catalog is static content baked into the
-// binary, so there is no not-found or error branch to model.
+// binary, so there is no not-found branch to model. Encoding can only fail
+// on a filterCatalogEntry that can't be marshalled, which never happens for
+// this all-string struct — the error branch exists to match this package's
+// other handlers' writeJSON pattern, not because it's reachable today.
 func (h catalogHandler) catalog(w http.ResponseWriter, r *http.Request) {
 	result := filterCatalogResult{Filters: make([]filterCatalogEntry, 0, len(filterCatalogOrder))}
 	for _, key := range filterCatalogOrder {
@@ -53,9 +57,16 @@ func (h catalogHandler) catalog(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	body, err := httputil.EncodeJSON(result)
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "encode filter catalog response", "error", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Cache-Control", "public, max-age=3600")
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	if err := json.NewEncoder(w).Encode(result); err != nil {
+	w.WriteHeader(http.StatusOK)
+	if _, err := w.Write(body); err != nil {
 		h.logger.ErrorContext(r.Context(), "write filter catalog response", "error", err)
 	}
 }
