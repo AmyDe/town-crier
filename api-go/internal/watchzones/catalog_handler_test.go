@@ -26,7 +26,7 @@ func TestCatalogRoutes_FilterCatalog_StableOrder(t *testing.T) {
 	// Call repeatedly: map iteration order is randomised per-process, so a
 	// regression to iterating filterCatalog directly would show up as
 	// flakiness across these calls even within a single test run.
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+"/v1/watch-zones/filter-catalog", nil)
 		if err != nil {
 			t.Fatalf("new request: %v", err)
@@ -132,7 +132,7 @@ func TestCatalogRoutes_FilterCatalog_AnonymousNoAuthRequired(t *testing.T) {
 	mux := http.NewServeMux()
 	CatalogRoutes(mux, slog.New(slog.DiscardHandler))
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/watch-zones/filter-catalog", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/watch-zones/filter-catalog", nil)
 	rec := httptest.NewRecorder()
 
 	mux.ServeHTTP(rec, req)
