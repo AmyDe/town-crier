@@ -45,6 +45,28 @@ struct MapViewTests {
     _ = sut.body
   }
 
+  /// tc-edyvn: a zero-cluster viewport (or zone) must not unmount the map
+  /// behind a full-screen empty state. The View itself isn't introspectable
+  /// in this codebase (no ViewInspector — see `WatchZoneFilterPickerViewTests`
+  /// for the same caveat), so this is a construction/render smoke test paired
+  /// with the `MapViewModel.showMap` assertion `MapViewModelTests` covers
+  /// directly: after a load that returns zero clusters, `showMap` is true
+  /// (the map branch `mapBody` now takes) and the body still composes with no
+  /// crash — there is no longer an `EmptyStateView` branch to divert to.
+  @Test func body_renders_whenClustersEmptyAfterLoad() async {
+    let spy = SpyPlanningApplicationRepository()
+    spy.fetchClustersResult = .success([])
+    let watchZoneSpy = SpyWatchZoneRepository()
+    watchZoneSpy.loadAllResult = .success([.cambridge])
+    let viewModel = MapViewModel(repository: spy, watchZoneRepository: watchZoneSpy)
+    await viewModel.loadApplications()
+    #expect(viewModel.isEmpty)
+    #expect(viewModel.showMap)
+    let sut = MapView(viewModel: viewModel) {}
+
+    _ = sut.body
+  }
+
   /// The injected `onSettingsTapped` closure is captured by reference, not
   /// copied prematurely — mirrors `SettingsToolbarModifierTests`, which
   /// verifies the equivalent nav-bar gear's action closure the same way.

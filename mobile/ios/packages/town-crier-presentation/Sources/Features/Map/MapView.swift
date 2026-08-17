@@ -186,19 +186,18 @@ public struct MapView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.tcBackground)
-      } else if viewModel.isEmpty {
-        EmptyStateView(
-          icon: "map",
-          title: "No Applications",
-          description:
-            "No planning applications found in your watch zone yet. Check back soon."
-        )
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.tcBackground)
-      } else {
+      } else if viewModel.showMap {
         // iOS: MKMapView with native clustering (GH#542, GH#682 slice 5).
         // macOS (SPM compile target): fall back to SwiftUI Map so the package
         // still compiles for swift test without UIKit.
+        //
+        // tc-edyvn: stays mounted even when the current viewport (or the
+        // whole zone) has zero clusters -- a full-screen empty-state takeover
+        // here used to unmount the map entirely, trapping the user with no
+        // way to zoom back out. `ClusteredMapView` already draws the zone
+        // boundary overlay independent of marker count, so a zero-cluster
+        // viewport just shows the bare map with the outline and no pins,
+        // fully pannable/zoomable.
         #if canImport(UIKit)
           // Full-bleed (tc-3b1hj): the nav bar is hidden on this screen, so
           // the map extends to every physical edge, including under the
