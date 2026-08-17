@@ -226,9 +226,22 @@ struct MapViewModelTests {
   }
 
   @Test func showMap_falseDuringInitialLoad() async {
-    let (sut, _, _) = makeSUT()
+    let (sut, spy, _) = makeSUT()
+    spy.enableGate()
 
+    let load = Task { await sut.loadApplications() }
+    // Two hops before the gated fetch (loadApplications awaits
+    // watchZoneRepository.loadAll(), then loadClusters awaits the gated
+    // fetchClusters) — one yield per await point, mirroring the
+    // multi-yield precedent in ApplicationListViewModelConcurrentLoadTests.
+    await Task.yield()
+    await Task.yield()
+    #expect(sut.isLoading)
+    #expect(!sut.hasLoaded)
     #expect(!sut.showMap)
+
+    spy.releaseGate()
+    await load.value
   }
 
   @Test func showMap_falseWhenErrorOccurred() async {
