@@ -72,6 +72,20 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
     hasLoaded && clusters.isEmpty && error == nil && !isLoading
   }
 
+  /// Whether the interactive map (``ClusteredMapView`` on iOS, the SwiftUI
+  /// `Map` fallback on macOS) should be mounted. tc-edyvn: a zero-cluster
+  /// viewport must never unmount the map — it's the only surface the user has
+  /// to pan/zoom back out with, and it already draws the zone boundary
+  /// overlay independent of marker count. So this is true whenever the
+  /// initial load has produced *something other than an error* — including a
+  /// zero-result viewport, and even a zone that genuinely has zero
+  /// applications anywhere. It's only false during the very first load
+  /// (before anything has rendered) and while an error is showing, mirroring
+  /// the other two branches ``MapView/mapBody`` checks ahead of this one.
+  public var showMap: Bool {
+    !(isLoading && !hasLoaded) && error == nil
+  }
+
   /// Whether to show the status filter chips: only once a zone has loaded, so a
   /// filter that returns zero clusters doesn't make the chips vanish (the user
   /// must be able to switch back to "All").
