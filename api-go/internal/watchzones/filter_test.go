@@ -123,3 +123,36 @@ func TestFilterCatalog_KeywordFiltersHaveExpressions(t *testing.T) {
 		}
 	}
 }
+
+// TestFilterCatalogOrder_MatchesFilterCatalog guards against filterCatalog
+// and filterCatalogOrder drifting apart. A key added to filterCatalog alone
+// would build and pass every other test, but silently never appear in GET
+// /v1/watch-zones/filter-catalog (catalog_handler.go skips any
+// filterCatalogOrder entry missing from filterCatalog, but nothing catches
+// the reverse) -- defeating GH#1104/GH#1090's "adding a filter is a Go-only
+// deploy" premise.
+func TestFilterCatalogOrder_MatchesFilterCatalog(t *testing.T) {
+	t.Parallel()
+
+	if len(filterCatalogOrder) != len(filterCatalog) {
+		t.Fatalf("filterCatalogOrder has %d entries, filterCatalog has %d -- they must match",
+			len(filterCatalogOrder), len(filterCatalog))
+	}
+
+	seen := make(map[FilterKey]bool, len(filterCatalogOrder))
+	for _, key := range filterCatalogOrder {
+		if _, ok := filterCatalog[key]; !ok {
+			t.Errorf("filterCatalogOrder contains %q, which is not in filterCatalog", key)
+		}
+		if seen[key] {
+			t.Errorf("filterCatalogOrder contains %q more than once", key)
+		}
+		seen[key] = true
+	}
+
+	for key := range filterCatalog {
+		if !seen[key] {
+			t.Errorf("filterCatalog contains %q, which is missing from filterCatalogOrder", key)
+		}
+	}
+}

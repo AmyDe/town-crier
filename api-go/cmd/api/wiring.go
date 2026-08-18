@@ -45,6 +45,11 @@ var anonymousPatterns = map[string]struct{}{
 	"GET /v1/health":               {},
 	"GET /v1/version-config":       {},
 	"GET /v1/legal/{documentType}": {},
+	// The watch-zone filter catalog is static, non-user-specific content (the
+	// seven pre-canned filters' display copy) that iOS reads before creating an
+	// account, so it is anonymous to Auth0, mirroring the legal endpoint above
+	// (GH#1104, tc-m8j90.1).
+	"GET /v1/watch-zones/filter-catalog": {},
 	// The demo-account endpoint is anonymous so Apple's App Store reviewer can
 	// reach a fully-provisioned Pro account without a token (no bearer required).
 	"GET /v1/demo-account": {},
@@ -248,6 +253,11 @@ func newRouter(
 	health.Routes(mux, logger)
 	versionconfig.Routes(mux, logger)
 	legal.Routes(mux, logger)
+	// The filter catalog is static Go-literal content with no store dependency
+	// (see filter.go), so it is registered unconditionally, outside the
+	// watchZoneStore-guarded block below, mirroring legal.Routes immediately
+	// above (GH#1104, tc-m8j90.1).
+	watchzones.CatalogRoutes(mux, logger)
 	authorities.Routes(mux, logger)
 	api.Routes(mux, logger)
 	// The Apple App Site Association document (#738 Slice 3) is stateless and needs

@@ -115,6 +115,22 @@ var filterCatalog = map[FilterKey]FilterDefinition{
 	},
 }
 
+// filterCatalogOrder lists the seven catalog keys in a fixed, deliberate
+// display order (matching the const block above) for anything that serves
+// the catalog to a client — e.g. catalog_handler.go's GET
+// /v1/watch-zones/filter-catalog. Go map iteration order is randomised, so
+// any caller that needs a stable, repeatable order must walk this slice
+// rather than range over filterCatalog directly.
+var filterCatalogOrder = []FilterKey{
+	FilterKeyFewerNotifications,
+	FilterKeyHouseBuilder,
+	FilterKeyNewHomes,
+	FilterKeyExtensionsAlterations,
+	FilterKeyLoftExtension,
+	FilterKeyKitchenExtension,
+	FilterKeyHMOHouseShares,
+}
+
 // IsValidFilterKey reports whether key is a member of the catalog. The
 // empty string is never valid: "" means "no filter", and callers must gate
 // on a non-empty value before calling IsValidFilterKey (per GH#1090's
