@@ -1,11 +1,15 @@
 import SwiftUI
 import TownCrierDomain
 
-/// Picker for the pre-canned watch-zone filter catalog (GH#1098): "None"
-/// plus the 7 `WatchZoneFilterKey` cases, a checkmark on the current
-/// selection. Tapping a row selects it and pops back to the editor,
+/// Picker for the pre-canned watch-zone filter catalog (GH#1098, GH#1104,
+/// bead tc-m8j90.2): "None" plus the fetched
+/// ``WatchZoneEditorViewModel/filterCatalog`` entries, a checkmark on the
+/// current selection. Tapping a row selects it and pops back to the editor,
 /// following this app's existing push-a-list-picker idiom
 /// (`WatchZoneEditorView`'s `Form`/`Section` + `NavigationLink` pattern).
+/// Renders fetched data rather than a hardcoded enum's `allCases` -- the
+/// entire point of GH#1104 -- so a loading row and a retry row cover the
+/// fetch-pending and fetch-failed states.
 public struct WatchZoneFilterPickerView: View {
   @ObservedObject private var viewModel: WatchZoneEditorViewModel
   @Environment(\.dismiss) private var dismiss
@@ -24,13 +28,19 @@ public struct WatchZoneFilterPickerView: View {
         select(nil)
       }
 
-      ForEach(WatchZoneFilterKey.allCases, id: \.self) { filterKey in
-        row(
-          displayName: filterKey.displayName,
-          description: filterKey.description,
-          isSelected: viewModel.selectedFilterKey == filterKey
-        ) {
-          select(filterKey)
+      if viewModel.isLoadingFilterCatalog {
+        loadingRow
+      } else if viewModel.filterCatalogLoadFailed {
+        retryRow
+      } else {
+        ForEach(viewModel.filterCatalog, id: \.key) { entry in
+          row(
+            displayName: entry.displayName,
+            description: entry.description,
+            isSelected: viewModel.selectedFilterKey == entry.key
+          ) {
+            select(entry.key)
+          }
         }
       }
     }
@@ -38,9 +48,30 @@ public struct WatchZoneFilterPickerView: View {
     #if os(iOS)
       .navigationBarTitleDisplayMode(.inline)
     #endif
+    .task {
+      await viewModel.loadFilterCatalogIfNeeded()
+    }
   }
 
-  private func select(_ filterKey: WatchZoneFilterKey?) {
+  private var loadingRow: some View {
+    HStack {
+      Spacer()
+      ProgressView()
+      Spacer()
+    }
+  }
+
+  private var retryRow: some View {
+    Button {
+      Task { await viewModel.loadFilterCatalogIfNeeded() }
+    } label: {
+      Text("Couldn't load filters. Tap to retry.")
+        .font(TCTypography.body)
+        .foregroundStyle(Color.tcTextSecondary)
+    }
+  }
+
+  private func select(_ filterKey: String?) {
     viewModel.selectFilterKey(filterKey)
     dismiss()
   }

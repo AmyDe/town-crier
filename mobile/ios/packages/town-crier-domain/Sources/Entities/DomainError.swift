@@ -28,10 +28,12 @@ public enum DomainError: Error, Equatable, Sendable {
   /// problem, fixed the same way (redraw a smaller shape). GH#1085.
   case invalidWatchZoneBoundaryTooLarge
   /// A pre-canned watch-zone filter key is not recognised by the server's
-  /// catalog. Mirrors the server's `filter_key_invalid` (`400`). Defensive --
-  /// the client only ever submits a key sourced from its own
-  /// `WatchZoneFilterKey.allCases`, so this guards against a stale client
-  /// whose catalog has fallen behind the server's (GH#1098).
+  /// catalog. Mirrors the server's `filter_key_invalid` (`400`). This is a
+  /// write-path (POST/PATCH) validation error only -- the client submits
+  /// `WatchZone.filterKey` as an opaque string with no client-side
+  /// validation against the fetched catalog, so this guards against a stale
+  /// client submitting a key the server no longer recognises (GH#1098,
+  /// GH#1104).
   case invalidWatchZoneFilterKey
   /// Saving a watch zone failed because the name duplicates an existing
   /// watch zone for the same user. Mirrors the server's `zone_name_taken`

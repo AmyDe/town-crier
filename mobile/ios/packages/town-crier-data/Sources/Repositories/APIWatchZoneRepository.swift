@@ -24,7 +24,7 @@ public final class APIWatchZoneRepository: WatchZoneRepository, Sendable {
       pushEnabled: zone.pushEnabled,
       emailInstantEnabled: zone.emailInstantEnabled,
       boundary: zone.boundary.map { GeoJSONPolygon(boundary: $0) },
-      filterKey: zone.filterKey?.rawValue
+      filterKey: zone.filterKey
     )
     do {
       let _: EmptyResponse = try await apiClient.request(.post("/v1/me/watch-zones", body: body))
@@ -60,7 +60,7 @@ public final class APIWatchZoneRepository: WatchZoneRepository, Sendable {
       pushEnabled: zone.pushEnabled,
       emailInstantEnabled: zone.emailInstantEnabled,
       boundary: zone.boundary.map { GeoJSONPolygon(boundary: $0) },
-      filterKey: zone.filterKey?.rawValue
+      filterKey: zone.filterKey
     )
     do {
       let _: EmptyResponse = try await apiClient.request(
@@ -110,6 +110,24 @@ public final class APIWatchZoneRepository: WatchZoneRepository, Sendable {
       throw error.toDomainError()
     }
   }
+
+  /// Fetches the pre-canned watch-zone filter catalog (GH#1104, tc-m8j90.2).
+  /// Anonymous server-side (`wiring.go`'s `anonymousPatterns`), but
+  /// `URLSessionAPIClient` doesn't differentiate authed vs anonymous
+  /// requests, so this reuses the same authenticated client as every other
+  /// call on this repository -- sending a bearer token the endpoint doesn't
+  /// require is harmless.
+  public func filterCatalog() async throws -> [FilterCatalogEntry] {
+    let result: FilterCatalogResponse
+    do {
+      result = try await apiClient.request(.get("/v1/watch-zones/filter-catalog"))
+    } catch let domainError as DomainError {
+      throw domainError
+    } catch {
+      throw error.toDomainError()
+    }
+    return result.filters.map { $0.toDomain() }
+  }
 }
 
 // MARK: - Request/Response DTOs
@@ -125,7 +143,8 @@ struct CreateWatchZoneRequest: Encodable, Sendable {
   /// Omitted from the payload when `nil` (default `Encodable` synthesis) --
   /// create has no prior value to distinguish "leave alone" from, so
   /// omission and explicit absence are the same thing (GH#1098, mirrors
-  /// `boundary`'s create-time treatment).
+  /// `boundary`'s create-time treatment). An opaque wire value (GH#1104,
+  /// tc-m8j90.2) -- sent verbatim, never validated client-side.
   let filterKey: String?
 }
 
@@ -235,11 +254,10 @@ struct WatchZoneSummaryDTO: Decodable, Sendable {
   let boundary: GeoJSONPolygon?
   /// The pre-canned notification filter applied to this zone, or `nil` for
   /// unfiltered (GH#1098). Absent on responses predating this field hydrates
-  /// to `nil` -- same back-compat treatment as `boundary` above. An
-  /// unrecognised string (e.g. the server's catalog has outrun this build's)
-  /// also fails open to `nil`, mirroring the server's own fail-open read
-  /// path for an unrecognised key.
-  let filterKey: WatchZoneFilterKey?
+  /// to `nil` -- same back-compat treatment as `boundary` above. Decoded as
+  /// an opaque `String?` (GH#1104, tc-m8j90.2): any value round-trips
+  /// verbatim, recognised by this build's fetched catalog or not.
+  let filterKey: String?
 
   init(
     id: String,
@@ -251,7 +269,7 @@ struct WatchZoneSummaryDTO: Decodable, Sendable {
     emailInstantEnabled: Bool = true,
     paused: Bool = false,
     boundary: GeoJSONPolygon? = nil,
-    filterKey: WatchZoneFilterKey? = nil
+    filterKey: String? = nil
   ) {
     self.id = id
     self.name = name
@@ -280,9 +298,9 @@ struct WatchZoneSummaryDTO: Decodable, Sendable {
     self.paused = try container.decodeIfPresent(Bool.self, forKey: .paused) ?? false
     // GH#1031: absent (older API/back-compat, or a plain circle zone) hydrates to nil.
     self.boundary = try container.decodeIfPresent(GeoJSONPolygon.self, forKey: .boundary)
-    // GH#1098: absent, null, or an unrecognised string all fail open to nil.
-    let rawFilterKey = try container.decodeIfPresent(String.self, forKey: .filterKey)
-    self.filterKey = rawFilterKey.flatMap { WatchZoneFilterKey(rawValue: $0) }
+    // GH#1098: absent or null both hydrate to nil. GH#1104/tc-m8j90.2: any
+    // non-null string round-trips verbatim -- no enum-backed validation.
+    self.filterKey = try container.decodeIfPresent(String.self, forKey: .filterKey)
   }
 
   private enum CodingKeys: String, CodingKey {
@@ -304,5 +322,23 @@ struct WatchZoneSummaryDTO: Decodable, Sendable {
       boundary: domainBoundary,
       filterKey: filterKey
     )
+  }
+}
+
+/// Response envelope for `GET /v1/watch-zones/filter-catalog` (GH#1104,
+/// tc-m8j90.2): a named wrapper object, matching this codebase's existing
+/// list-shaped response convention (e.g. `ListWatchZonesResponse`'s
+/// `zones`), not a bare array.
+struct FilterCatalogResponse: Decodable, Sendable {
+  let filters: [FilterCatalogEntryDTO]
+}
+
+struct FilterCatalogEntryDTO: Decodable, Sendable {
+  let key: String
+  let displayName: String
+  let description: String
+
+  func toDomain() -> FilterCatalogEntry {
+    FilterCatalogEntry(key: key, displayName: displayName, description: description)
   }
 }

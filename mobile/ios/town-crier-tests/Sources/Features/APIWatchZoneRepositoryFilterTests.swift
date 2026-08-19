@@ -47,7 +47,7 @@ struct APIWatchZoneRepositoryFilterTests {
       name: "Filtered Area",
       centre: Coordinate(latitude: 51.5074, longitude: -0.1278),
       radiusMetres: 1500,
-      filterKey: .loftExtension
+      filterKey: "loft_extension"
     )
   }
 
@@ -144,7 +144,7 @@ struct APIWatchZoneRepositoryFilterTests {
     let zones = try await sut.loadAll()
 
     #expect(zones.count == 1)
-    #expect(zones[0].filterKey == .hmoHouseShares)
+    #expect(zones[0].filterKey == "hmo_house_shares")
   }
 
   @Test("loadAll decodes an unfiltered zone with filterKey nil (back-compat)")
@@ -170,5 +170,111 @@ struct APIWatchZoneRepositoryFilterTests {
 
     #expect(zones.count == 1)
     #expect(zones[0].filterKey == nil)
+  }
+
+  /// GH#1104/tc-m8j90.2's core fix for tc-8z9ri: a key this build's fetched
+  /// catalog doesn't recognise no longer fails open to `nil` at decode time
+  /// (the old `WatchZoneFilterKey(rawValue:)` conversion did) -- it
+  /// round-trips verbatim as an opaque string, same as any other key.
+  @Test("loadAll decodes an unrecognised filterKey string verbatim, not nil")
+  func loadAll_unrecognisedFilterKey_decodesVerbatim() async throws {
+    let json = """
+      {
+          "zones": [
+              {
+                  "id": "zone-future-filter",
+                  "name": "Filtered Area",
+                  "latitude": 51.5074,
+                  "longitude": -0.1278,
+                  "radiusMetres": 1500,
+                  "filterKey": "a_filter_this_build_predates"
+              }
+          ]
+      }
+      """
+    let (sut, _) = makeSUT(responses: [
+      (Data(json.utf8), httpResponse(statusCode: 200))
+    ])
+
+    let zones = try await sut.loadAll()
+
+    #expect(zones.count == 1)
+    #expect(zones[0].filterKey == "a_filter_this_build_predates")
+  }
+
+  // MARK: - filterCatalog (GH#1104, tc-m8j90.2)
+
+  @Test("filterCatalog sends GET /v1/watch-zones/filter-catalog and maps the response envelope")
+  func filterCatalog_decodesResponseEnvelope() async throws {
+    let json = """
+      {
+          "filters": [
+              {"key": "fewer_notifications", "displayName": "Fewer notifications", "description": "Cuts out noise."},
+              {"key": "loft_extension", "displayName": "Loft extension", "description": "Loft conversions."}
+          ]
+      }
+      """
+    let (sut, transport) = makeSUT(responses: [
+      (Data(json.utf8), httpResponse(statusCode: 200))
+    ])
+
+    let entries = try await sut.filterCatalog()
+
+    #expect(transport.requests.count == 1)
+    let request = transport.requests[0]
+    #expect(request.httpMethod == "GET")
+    #expect(request.url?.path().contains("/v1/watch-zones/filter-catalog") == true)
+
+    let expected = [
+      FilterCatalogEntry(
+        key: "fewer_notifications",
+        displayName: "Fewer notifications",
+        description: "Cuts out noise."
+      ),
+      FilterCatalogEntry(
+        key: "loft_extension",
+        displayName: "Loft extension",
+        description: "Loft conversions."
+      ),
+    ]
+    #expect(entries == expected)
+  }
+
+  @Test("filterCatalog returns an empty array for an empty filters array")
+  func filterCatalog_emptyFilters_returnsEmptyArray() async throws {
+    let json = #"{"filters": []}"#
+    let (sut, _) = makeSUT(responses: [
+      (Data(json.utf8), httpResponse(statusCode: 200))
+    ])
+
+    let entries = try await sut.filterCatalog()
+
+    #expect(entries.isEmpty)
+  }
+
+  @Test("filterCatalog with network error throws networkUnavailable")
+  func filterCatalog_networkError_throwsNetworkUnavailable() async {
+    let authService = SpyAuthenticationService()
+    authService.currentSessionResult = .valid
+    let transport = StubHTTPTransport()
+    transport.error = URLError(.notConnectedToInternet)
+    let apiClient = URLSessionAPIClient(
+      baseURL: baseURL, authService: authService, transport: transport)
+    let sut = APIWatchZoneRepository(apiClient: apiClient)
+
+    await #expect(throws: DomainError.networkUnavailable) {
+      _ = try await sut.filterCatalog()
+    }
+  }
+
+  @Test("filterCatalog with a malformed response surfaces a decode error the ViewModel can catch")
+  func filterCatalog_malformedResponse_throwsError() async {
+    let (sut, _) = makeSUT(responses: [
+      (Data("not json".utf8), httpResponse(statusCode: 200))
+    ])
+
+    await #expect(throws: (any Error).self) {
+      _ = try await sut.filterCatalog()
+    }
   }
 }

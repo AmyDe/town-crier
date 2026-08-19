@@ -16,6 +16,11 @@ import TownCrierDomain
 @MainActor
 @Suite("WatchZoneEditorView — pre-canned filter")
 struct WatchZoneEditorViewFilterTests {
+  private var spyRepository: SpyWatchZoneRepository!
+
+  init() {
+    spyRepository = SpyWatchZoneRepository()
+  }
 
   private func makeViewModel(
     tier: SubscriptionTier = .pro,
@@ -23,14 +28,14 @@ struct WatchZoneEditorViewFilterTests {
   ) -> WatchZoneEditorViewModel {
     WatchZoneEditorViewModel(
       geocoder: SpyPostcodeGeocoder(),
-      repository: SpyWatchZoneRepository(),
+      repository: spyRepository,
       tier: tier,
       editing: zone
     )
   }
 
   private func filteredZone(
-    filterKey: WatchZoneFilterKey = .kitchenExtension
+    filterKey: String = "kitchen_extension"
   ) throws -> WatchZone {
     try WatchZone(
       id: WatchZoneId("zone-filtered"),
@@ -61,7 +66,7 @@ struct WatchZoneEditorViewFilterTests {
   @Test func body_renders_proTier_editMode_withFilterSelected() throws {
     let vm = makeViewModel(tier: .pro, editing: try filteredZone())
     #expect(vm.canSetWatchZoneFilter)
-    #expect(vm.selectedFilterKey == .kitchenExtension)
+    #expect(vm.selectedFilterKey == "kitchen_extension")
     #expect(!vm.isFilterLocked)
     let sut = WatchZoneEditorView(viewModel: vm)
     _ = sut.body
@@ -102,7 +107,7 @@ struct WatchZoneEditorViewFilterTests {
 
   @Test func body_renders_freeTier_editingFilteredZone_locked() throws {
     let vm = makeViewModel(tier: .free, editing: try filteredZone())
-    #expect(vm.selectedFilterKey == .kitchenExtension)
+    #expect(vm.selectedFilterKey == "kitchen_extension")
     #expect(!vm.canSetWatchZoneFilter)
     #expect(vm.isFilterLocked)
 
@@ -126,5 +131,39 @@ struct WatchZoneEditorViewFilterTests {
 
     #expect(vm.geocodedCoordinate != nil)
     #expect(!vm.nameInput.trimmingCharacters(in: .whitespaces).isEmpty)
+  }
+
+  // MARK: - Both label call sites resolve via the catalog lookup (GH#1104, tc-m8j90.2)
+
+  /// The open-picker `NavigationLink` row's label
+  /// (`WatchZoneEditorView+FilterSection.swift`'s unlocked branch) reads
+  /// `viewModel.filterDisplayName(for:)`, not `.displayName` off a deleted
+  /// enum -- exercised with the catalog fetched, so the label resolves to
+  /// the real display name.
+  @Test func openPickerRow_filterDisplayName_resolvesFromFetchedCatalog() async throws {
+    let vm = makeViewModel(tier: .pro, editing: try filteredZone(filterKey: "loft_extension"))
+    spyRepository.filterCatalogResult = .success(FilterCatalogEntry.allCatalog)
+    await vm.loadFilterCatalogIfNeeded()
+
+    let sut = WatchZoneEditorView(viewModel: vm)
+    _ = sut.body
+
+    #expect(vm.filterDisplayName(for: vm.selectedFilterKey) == "Loft extension")
+  }
+
+  /// The locked static label (`lockedFilterSection`'s branch) also reads
+  /// `viewModel.filterDisplayName(for:)`. Exercised with the catalog never
+  /// fetched, so the fallback label resolves -- the label must still read
+  /// as "filter set", never "None" (tc-8z9ri).
+  @Test func lockedRow_filterDisplayName_fallsBackWhenCatalogUnfetched() throws {
+    let vm = makeViewModel(tier: .free, editing: try filteredZone(filterKey: "loft_extension"))
+    #expect(vm.filterCatalog.isEmpty)
+
+    let sut = WatchZoneEditorView(viewModel: vm)
+    _ = sut.body
+
+    let displayName = vm.filterDisplayName(for: vm.selectedFilterKey)
+    #expect(displayName != nil)
+    #expect(displayName != "None")
   }
 }

@@ -24,7 +24,7 @@ struct WatchZoneFilterSection: View {
             Text("Filter")
               .foregroundStyle(Color.tcTextPrimary)
             Spacer()
-            Text(viewModel.selectedFilterKey?.displayName ?? "None")
+            Text(viewModel.filterDisplayName(for: viewModel.selectedFilterKey) ?? "None")
               .foregroundStyle(Color.tcTextSecondary)
           }
         }
@@ -54,7 +54,7 @@ struct WatchZoneFilterSection: View {
         Text("Filter")
           .foregroundStyle(Color.tcTextPrimary)
         Spacer()
-        Text(viewModel.selectedFilterKey?.displayName ?? "None")
+        Text(viewModel.filterDisplayName(for: viewModel.selectedFilterKey) ?? "None")
           .foregroundStyle(Color.tcTextSecondary)
       }
     } header: {
