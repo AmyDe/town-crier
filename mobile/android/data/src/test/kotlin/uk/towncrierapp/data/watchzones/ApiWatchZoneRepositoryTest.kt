@@ -260,9 +260,20 @@ class ApiWatchZoneRepositoryTest {
             sut.create(aWatchZone().copy(boundary = aBoundary()))
 
             val request = transport.requests.single()
-            val boundaryJson = Json.parseToJsonElement(request.bodyAsString()).jsonObject.getValue("boundary").jsonObject
+            val boundaryJson =
+                Json
+                    .parseToJsonElement(
+                        request.bodyAsString(),
+                    ).jsonObject
+                    .getValue("boundary")
+                    .jsonObject
             assertEquals("Polygon", boundaryJson.getValue("type").jsonPrimitive.content)
-            val ring = boundaryJson.getValue("coordinates").jsonArray.single().jsonArray
+            val ring =
+                boundaryJson
+                    .getValue("coordinates")
+                    .jsonArray
+                    .single()
+                    .jsonArray
             assertEquals(4, ring.size)
             val firstVertex = ring.first().jsonArray
             assertEquals(0.1, firstVertex[0].jsonPrimitive.double)
@@ -293,9 +304,20 @@ class ApiWatchZoneRepositoryTest {
             sut.update(aWatchZone(id = WatchZoneId("wz-9")).copy(boundary = aBoundary()))
 
             val request = transport.requests.single()
-            val boundaryJson = Json.parseToJsonElement(request.bodyAsString()).jsonObject.getValue("boundary").jsonObject
+            val boundaryJson =
+                Json
+                    .parseToJsonElement(
+                        request.bodyAsString(),
+                    ).jsonObject
+                    .getValue("boundary")
+                    .jsonObject
             assertEquals("Polygon", boundaryJson.getValue("type").jsonPrimitive.content)
-            val ring = boundaryJson.getValue("coordinates").jsonArray.single().jsonArray
+            val ring =
+                boundaryJson
+                    .getValue("coordinates")
+                    .jsonArray
+                    .single()
+                    .jsonArray
             assertEquals(4, ring.size)
         }
 
