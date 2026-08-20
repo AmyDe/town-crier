@@ -9,7 +9,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.tooling.preview.Preview
@@ -18,6 +17,7 @@ import uk.towncrierapp.domain.watchzones.Coordinate
 import uk.towncrierapp.domain.watchzones.WatchZoneBoundary
 import uk.towncrierapp.domain.watchzones.WatchZoneBoundaryResult
 import uk.towncrierapp.presentation.designsystem.TownCrierTheme
+import uk.towncrierapp.presentation.designsystem.components.polygonPath
 
 /**
  * Fill/stroke alpha for the drawn polygon — the same values `MapScreen`
@@ -64,15 +64,6 @@ internal fun ZoneBoundaryThumbnail(
         drawPath(path = path, color = strokeColor, style = Stroke(width = BOUNDARY_STROKE_WIDTH.toPx()))
     }
 }
-
-/** Builds a closed [Path] through [vertices]. */
-private fun polygonPath(vertices: List<Offset>): Path =
-    Path().apply {
-        val first = vertices.firstOrNull() ?: return@apply
-        moveTo(first.x, first.y)
-        vertices.drop(1).forEach { vertex -> lineTo(vertex.x, vertex.y) }
-        close()
-    }
 
 /**
  * Pure geometry mapping a [WatchZoneBoundary]'s lon/lat [Coordinate]
