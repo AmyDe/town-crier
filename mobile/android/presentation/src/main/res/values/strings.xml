@@ -45,6 +45,9 @@
     <string name="watch_zone_upsell_free_clarifier">Free gives you a weekly digest.</string>
     <string name="watch_zone_upsell_view_plans">View Plans</string>
 
+    <!-- Custom-shape upsell graphic (tc-v6fo0.4, GH#1072 Phase 4, copy verbatim from iOS accessibility label) -->
+    <string name="custom_shape_upsell_graphic_content_description">Illustration: a plain circle watch zone next to a custom, hand-drawn shape watch zone</string>
+
     <!-- Watch zone editor (tc-z95t) -->
     <string name="watch_zone_editor_title_new">New Watch Zone</string>
     <string name="watch_zone_editor_title_edit">Edit Watch Zone</string>
