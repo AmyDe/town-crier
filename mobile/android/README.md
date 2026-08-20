@@ -56,6 +56,23 @@ Run from `mobile/android/`:
 The pre-flight gate for any change here: `ktlintFormat`, then
 `test ktlintCheck detekt :app:assembleDevDebug :app:assembleProdRelease` all green.
 
+### Non-interactive/CI-like sessions: set LANG before invoking Gradle
+
+If `./gradlew test` (or `compileDebugUnitTestKotlin`) fails with
+`java.nio.file.InvalidPathException: Malformed input or input contains unmappable
+characters`, the shell's locale is the cause, not the test itself. A bare/unset
+`LANG`/`LC_ALL` (common in non-interactive or cloud containers — `locale -a` only
+lists `C`/`C.utf8`/`POSIX`) makes the JVM's `sun.jnu.encoding` fall back to ASCII
+even when `file.encoding` is UTF-8, and Kotlin's incremental-compilation
+output-path writer chokes on the non-ASCII class-file name derived from any test
+name containing unicode characters (e.g. an em-dash). A normal interactive Mac
+shell already has a UTF-8 locale and won't hit this — but before running Gradle in
+a non-interactive/CI-like session, set:
+
+```bash
+export LANG=C.utf8 LC_ALL=C.utf8
+```
+
 ### Toolchain pins (read before bumping any version)
 
 `gradle/libs.versions.toml` pins Gradle **9.5.1** and AGP **8.13.2** together
