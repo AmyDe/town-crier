@@ -244,7 +244,12 @@ private fun WatchZoneRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(TownCrierSpacing.md),
     ) {
-        ZoneMapPlaceholder(modifier = Modifier.size(56.dp))
+        val boundary = zone.boundary
+        if (boundary != null) {
+            ZoneBoundaryThumbnail(boundary = boundary, modifier = Modifier.size(56.dp))
+        } else {
+            ZoneMapPlaceholder(modifier = Modifier.size(56.dp))
+        }
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = RadiusFormatter.format(zone.radiusMetres),
