@@ -39,7 +39,8 @@ private val TILE_SIZE = 96.dp
 private val OUTLINE_STROKE_WIDTH = 2.dp
 
 /** On/off dash lengths for the default-shape circle's stroke. */
-private val CIRCLE_DASH_PATTERN = floatArrayOf(18f, 12f)
+private val CIRCLE_DASH_ON = 18.dp
+private val CIRCLE_DASH_OFF = 12.dp
 
 /**
  * Decorative, Canvas-drawn onboarding graphic contrasting the default
@@ -82,7 +83,11 @@ public fun CustomShapeUpsellGraphic(modifier: Modifier = Modifier) {
                     Stroke(
                         width = OUTLINE_STROKE_WIDTH.toPx(),
                         cap = StrokeCap.Round,
-                        pathEffect = PathEffect.dashPathEffect(CIRCLE_DASH_PATTERN, phase = 0f),
+                        pathEffect =
+                            PathEffect.dashPathEffect(
+                                floatArrayOf(CIRCLE_DASH_ON.toPx(), CIRCLE_DASH_OFF.toPx()),
+                                phase = 0f,
+                            ),
                     ),
             )
         }
