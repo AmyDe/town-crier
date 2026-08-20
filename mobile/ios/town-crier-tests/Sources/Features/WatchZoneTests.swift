@@ -185,9 +185,9 @@ struct WatchZoneTests {
       name: "Home",
       centre: centre,
       radiusMetres: 1000,
-      filterKey: .loftExtension
+      filterKey: "loft_extension"
     )
-    #expect(zone.filterKey == .loftExtension)
+    #expect(zone.filterKey == "loft_extension")
   }
 
   @Test("filterKey round-trips through the postcode initializer")
@@ -198,8 +198,23 @@ struct WatchZoneTests {
       postcode: postcode,
       centre: centre,
       radiusMetres: 1000,
-      filterKey: .hmoHouseShares
+      filterKey: "hmo_house_shares"
     )
-    #expect(zone.filterKey == .hmoHouseShares)
+    #expect(zone.filterKey == "hmo_house_shares")
+  }
+
+  @Test("filterKey accepts any opaque string, not just a known catalog key (GH#1104)")
+  func init_storesFilterKey_evenWhenNotInAnyCatalog() throws {
+    // WatchZone no longer validates filterKey against a closed enum -- an
+    // opaque string this build has never seen (a genuinely newer filter, or
+    // a typo) still round-trips exactly as given.
+    let centre = try Coordinate(latitude: 52.2053, longitude: 0.1218)
+    let zone = try WatchZone(
+      name: "Home",
+      centre: centre,
+      radiusMetres: 1000,
+      filterKey: "a_filter_this_build_has_never_heard_of"
+    )
+    #expect(zone.filterKey == "a_filter_this_build_has_never_heard_of")
   }
 }

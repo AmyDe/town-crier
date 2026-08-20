@@ -24,11 +24,14 @@ public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
   /// see ``isCustomShape``.
   public let boundary: WatchZoneBoundary?
   /// The pre-canned notification filter applied to this zone, or `nil` for
-  /// unfiltered (GH#1098). Mirrors `boundary`'s optionality -- there is no
-  /// `.none`/`.unfiltered` case, so "no filter" is never representable two
-  /// different ways. Pro-tier only; see
+  /// unfiltered (GH#1098). An opaque key round-tripped verbatim to/from the
+  /// API (GH#1104, tc-m8j90.2) -- display copy for a given key is resolved
+  /// separately from the fetched ``FilterCatalogEntry`` catalog, not stored
+  /// or validated here. Mirrors `boundary`'s optionality -- there is no
+  /// `.none`/`.unfiltered` sentinel, so "no filter" is never representable
+  /// two different ways. Pro-tier only; see
   /// ``WatchZoneLimits/allowsWatchZoneFilter``.
-  public let filterKey: WatchZoneFilterKey?
+  public let filterKey: String?
 
   public init(
     id: WatchZoneId = WatchZoneId(),
@@ -39,7 +42,7 @@ public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
     emailInstantEnabled: Bool = true,
     paused: Bool = false,
     boundary: WatchZoneBoundary? = nil,
-    filterKey: WatchZoneFilterKey? = nil
+    filterKey: String? = nil
   ) throws {
     let trimmed = name.trimmingCharacters(in: .whitespaces)
     guard !trimmed.isEmpty else {
@@ -69,7 +72,7 @@ public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
     emailInstantEnabled: Bool = true,
     paused: Bool = false,
     boundary: WatchZoneBoundary? = nil,
-    filterKey: WatchZoneFilterKey? = nil
+    filterKey: String? = nil
   ) throws {
     try self.init(
       id: id,

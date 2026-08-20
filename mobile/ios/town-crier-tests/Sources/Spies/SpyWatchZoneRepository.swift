@@ -42,4 +42,12 @@ final class SpyWatchZoneRepository: WatchZoneRepository, @unchecked Sendable {
     deleteCalls.append(id)
     try deleteResult.get()
   }
+
+  private(set) var filterCatalogCallCount = 0
+  var filterCatalogResult: Result<[FilterCatalogEntry], Error> = .success([])
+
+  func filterCatalog() async throws -> [FilterCatalogEntry] {
+    filterCatalogCallCount += 1
+    return try filterCatalogResult.get()
+  }
 }

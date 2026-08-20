@@ -35,9 +35,35 @@ public final class WatchZoneEditorViewModel: ObservableObject, EntitlementGating
   @Published public private(set) var boundaryVertices: [Coordinate] = []
 
   /// The pre-canned notification filter selected for this zone, or `nil` for
-  /// unfiltered (GH#1098). Defaults to `nil`; populated from the edited
-  /// zone's `filterKey` when present.
-  @Published public private(set) var selectedFilterKey: WatchZoneFilterKey?
+  /// unfiltered (GH#1098). An opaque `String?` (GH#1104, tc-m8j90.2), never
+  /// validated against ``filterCatalog`` client-side. Defaults to `nil`;
+  /// populated from the edited zone's `filterKey` when present. `internal(set)`
+  /// (not `private(set)`) so `selectFilterKey(_:)` can live in
+  /// `WatchZoneEditorViewModel+FilterCatalog.swift`, split out to keep this
+  /// file under SwiftLint's `file_length` ceiling -- mirrors `error`'s
+  /// `internal(set)` for the same cross-file-mutation reason.
+  @Published public internal(set) var selectedFilterKey: String?
+
+  /// The pre-canned watch-zone filter catalog, fetched once per editor
+  /// session and memoized for its lifetime (GH#1104, tc-m8j90.2) -- see
+  /// ``loadFilterCatalogIfNeeded()``. Empty until the first successful
+  /// fetch; the picker reads this to render its rows instead of a
+  /// hardcoded list.
+  @Published public internal(set) var filterCatalog: [FilterCatalogEntry] = []
+
+  /// True while ``loadFilterCatalogIfNeeded()`` has an in-flight fetch --
+  /// drives the picker's `ProgressView` row.
+  @Published public internal(set) var isLoadingFilterCatalog = false
+
+  /// True when the most recent catalog fetch failed -- drives the picker's
+  /// "couldn't load, tap to retry" row. Never clears ``selectedFilterKey``:
+  /// a fetch failure only ever degrades display, never data (tc-8z9ri).
+  @Published public internal(set) var filterCatalogLoadFailed = false
+
+  /// Set once ``loadFilterCatalogIfNeeded()`` succeeds, so a repeat call
+  /// within the same editor session is a no-op (memoization). Left `false`
+  /// after a failed fetch so a retry re-attempts.
+  var hasLoadedFilterCatalog = false
 
   /// Mirrors `WatchZoneBoundary`'s geometric minimum (3 distinct vertices
   /// are required to form a polygon) so the UI can gate "finish drawing"
@@ -59,7 +85,10 @@ public final class WatchZoneEditorViewModel: ObservableObject, EntitlementGating
   public let isEditing: Bool
 
   private let geocoder: PostcodeGeocoder
-  private let repository: WatchZoneRepository
+  /// `internal` (not `private`) so `WatchZoneEditorViewModel+FilterCatalog.swift`
+  /// can call `filterCatalog()` -- split out to keep this file under
+  /// SwiftLint's `file_length` ceiling.
+  let repository: WatchZoneRepository
   private let limits: WatchZoneLimits
   private let tier: SubscriptionTier
   private let existingId: WatchZoneId?
@@ -248,15 +277,10 @@ public final class WatchZoneEditorViewModel: ObservableObject, EntitlementGating
     selectedFilterKey != nil && !canSetWatchZoneFilter
   }
 
-  /// Sets or clears the selected filter. Clearing (`nil`) is always allowed
-  /// regardless of tier, matching the server's "clearing never requires an
-  /// entitlement check". Setting a non-nil value while ineligible
-  /// (``canSetWatchZoneFilter`` is `false`) is a silent no-op, matching
-  /// ``selectShapeMode``'s defence-in-depth pattern.
-  public func selectFilterKey(_ key: WatchZoneFilterKey?) {
-    guard key == nil || canSetWatchZoneFilter else { return }
-    selectedFilterKey = key
-  }
+  // `selectFilterKey(_:)`, `loadFilterCatalogIfNeeded()`, and
+  // `filterDisplayName(for:)` live in
+  // `WatchZoneEditorViewModel+FilterCatalog.swift`, split out to keep this
+  // file under SwiftLint's `file_length` ceiling (GH#1104, tc-m8j90.2).
 
   public func submitPostcode() async {
     isLoading = true
