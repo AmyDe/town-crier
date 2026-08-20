@@ -1,6 +1,12 @@
 package uk.towncrierapp.data.watchzones
 
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.double
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.Request
 import okio.Buffer
 import org.junit.jupiter.api.Test
@@ -8,6 +14,9 @@ import uk.towncrierapp.data.api.ApiClient
 import uk.towncrierapp.data.api.FakeHttpTransport
 import uk.towncrierapp.domain.auth.DomainError
 import uk.towncrierapp.domain.auth.FakeAuthenticationService
+import uk.towncrierapp.domain.watchzones.Coordinate
+import uk.towncrierapp.domain.watchzones.WatchZoneBoundary
+import uk.towncrierapp.domain.watchzones.WatchZoneBoundaryResult
 import uk.towncrierapp.domain.watchzones.WatchZoneId
 import uk.towncrierapp.domain.watchzones.aWatchZone
 import kotlin.test.assertEquals
@@ -20,6 +29,17 @@ private fun Request.bodyAsString(): String {
     val buffer = Buffer()
     body?.writeTo(buffer)
     return buffer.readUtf8()
+}
+
+/** A valid, simple triangular boundary near the fixture watch zone's centre. */
+private fun aBoundary(): WatchZoneBoundary {
+    val vertices =
+        listOf(
+            Coordinate(latitude = 52.20, longitude = 0.10),
+            Coordinate(latitude = 52.21, longitude = 0.14),
+            Coordinate(latitude = 52.19, longitude = 0.12),
+        )
+    return (WatchZoneBoundary.of(vertices) as WatchZoneBoundaryResult.Valid).boundary
 }
 
 /**
@@ -191,5 +211,135 @@ class ApiWatchZoneRepositoryTest {
             val sut = makeSut(transport)
 
             assertFailsWith<DomainError.ServerError> { sut.delete(WatchZoneId("wz-1")) }
+        }
+
+    @Test
+    fun `zones GETs and decodes a boundary`() =
+        runTest {
+            val transport = FakeHttpTransport()
+            transport.enqueueResponse(
+                200,
+                """{"zones":[{"id":"wz-1","name":"Home","latitude":51.5074,"longitude":-0.1278,""" +
+                    """"radiusMetres":500.0,"authorityId":42,"pushEnabled":true,"emailInstantEnabled":true,""" +
+                    """"boundary":{"type":"Polygon","coordinates":""" +
+                    """[[[0.1,52.2],[0.14,52.21],[0.12,52.19],[0.1,52.2]]]}}]}""",
+            )
+            val sut = makeSut(transport)
+
+            val zone = sut.zones().single()
+
+            assertEquals(aBoundary(), zone.boundary)
+        }
+
+    @Test
+    fun `zones skips only the zone with a malformed boundary, keeping the rest of the list`() =
+        runTest {
+            val transport = FakeHttpTransport()
+            transport.enqueueResponse(
+                200,
+                """{"zones":[""" +
+                    """{"id":"wz-bad","name":"Malformed","latitude":51.5,"longitude":-0.1,""" +
+                    """"radiusMetres":500.0,"boundary":{"type":"Polygon","coordinates":[[[0.1,52.2]]]}},""" +
+                    """{"id":"wz-good","name":"Good","latitude":51.6,"longitude":-0.2,"radiusMetres":300.0}""" +
+                    """]}""",
+            )
+            val sut = makeSut(transport)
+
+            val zones = sut.zones()
+
+            assertEquals(listOf("wz-good"), zones.map { it.id.value })
+        }
+
+    @Test
+    fun `create POSTs the encoded boundary when the zone has one`() =
+        runTest {
+            val transport = FakeHttpTransport()
+            transport.enqueueResponse(201, """{"nearbyApplications":[]}""")
+            val sut = makeSut(transport)
+
+            sut.create(aWatchZone().copy(boundary = aBoundary()))
+
+            val request = transport.requests.single()
+            val boundaryJson =
+                Json
+                    .parseToJsonElement(
+                        request.bodyAsString(),
+                    ).jsonObject
+                    .getValue("boundary")
+                    .jsonObject
+            assertEquals("Polygon", boundaryJson.getValue("type").jsonPrimitive.content)
+            val ring =
+                boundaryJson
+                    .getValue("coordinates")
+                    .jsonArray
+                    .single()
+                    .jsonArray
+            assertEquals(4, ring.size)
+            val firstVertex = ring.first().jsonArray
+            assertEquals(0.1, firstVertex[0].jsonPrimitive.double)
+            assertEquals(52.2, firstVertex[1].jsonPrimitive.double)
+        }
+
+    @Test
+    fun `create omits the boundary key entirely when the zone has none`() =
+        runTest {
+            val transport = FakeHttpTransport()
+            transport.enqueueResponse(201, """{"nearbyApplications":[]}""")
+            val sut = makeSut(transport)
+
+            sut.create(aWatchZone())
+
+            val request = transport.requests.single()
+            val body = Json.parseToJsonElement(request.bodyAsString()).jsonObject
+            assertTrue("boundary" !in body)
+        }
+
+    @Test
+    fun `update PATCHes the encoded boundary when the zone has one`() =
+        runTest {
+            val transport = FakeHttpTransport()
+            transport.enqueueResponse(200, """{"zone":{}}""")
+            val sut = makeSut(transport)
+
+            sut.update(aWatchZone(id = WatchZoneId("wz-9")).copy(boundary = aBoundary()))
+
+            val request = transport.requests.single()
+            val boundaryJson =
+                Json
+                    .parseToJsonElement(
+                        request.bodyAsString(),
+                    ).jsonObject
+                    .getValue("boundary")
+                    .jsonObject
+            assertEquals("Polygon", boundaryJson.getValue("type").jsonPrimitive.content)
+            val ring =
+                boundaryJson
+                    .getValue("coordinates")
+                    .jsonArray
+                    .single()
+                    .jsonArray
+            assertEquals(4, ring.size)
+        }
+
+    @Test
+    fun `update PATCHes an explicit null boundary for a circle zone — revert, not omitted`() =
+        runTest {
+            // Load-bearing (tc-v6fo0.2 brief): the update DTO must always emit the
+            // "boundary" key, including an explicit JSON null, because the server's
+            // PATCH handler treats an absent key as "leave untouched" and an
+            // explicit null as "revert to circle" — different instructions. Asserts
+            // on the raw JSON, not DTO equality, so an accidental `= null` default
+            // added to the field later (which would make kotlinx.serialization omit
+            // it) fails this test.
+            val transport = FakeHttpTransport()
+            transport.enqueueResponse(200, """{"zone":{}}""")
+            val sut = makeSut(transport)
+
+            sut.update(aWatchZone(id = WatchZoneId("wz-9")))
+
+            val request = transport.requests.single()
+            val body = Json.parseToJsonElement(request.bodyAsString()).jsonObject
+            assertTrue("boundary" in body)
+            assertEquals(JsonNull, body.getValue("boundary"))
         }
 }
