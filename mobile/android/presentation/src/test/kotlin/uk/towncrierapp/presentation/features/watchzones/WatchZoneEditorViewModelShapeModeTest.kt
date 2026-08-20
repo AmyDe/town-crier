@@ -207,6 +207,48 @@ class WatchZoneEditorViewModelShapeModeTest {
         assertEquals(triangle, viewModel.uiState.value.polygonVertices)
     }
 
+    @Test
+    fun `moving a vertex on a closed polygon that stays valid keeps it closed`() {
+        val viewModel = makeViewModel(SubscriptionTier.PERSONAL)
+        viewModel.selectShapeMode(WatchZoneShapeMode.CUSTOM)
+        triangle.forEach(viewModel::addPolygonVertex)
+        viewModel.closePolygon()
+        val moved = Coordinate(latitude = 51.505, longitude = -0.095)
+
+        viewModel.movePolygonVertex(1, moved)
+
+        val state = viewModel.uiState.value
+        assertTrue(state.isPolygonClosed)
+        assertFalse(state.boundaryError)
+        assertEquals(moved, state.polygonVertices[1])
+    }
+
+    @Test
+    fun `dragging a closed polygon's vertex into a self-intersecting shape reopens it with a boundary error`() {
+        // A valid rectangle traced in perimeter order (bl, br, tr, tl).
+        val rectangle =
+            listOf(
+                Coordinate(latitude = 51.50, longitude = -0.10),
+                Coordinate(latitude = 51.50, longitude = -0.09),
+                Coordinate(latitude = 51.51, longitude = -0.09),
+                Coordinate(latitude = 51.51, longitude = -0.10),
+            )
+        val viewModel = makeViewModel(SubscriptionTier.PERSONAL)
+        viewModel.selectShapeMode(WatchZoneShapeMode.CUSTOM)
+        rectangle.forEach(viewModel::addPolygonVertex)
+        viewModel.closePolygon()
+        assertTrue(viewModel.uiState.value.isPolygonClosed)
+
+        // Dragging the second vertex (br) above the top edge makes the edge
+        // from the first vertex to it cross the (now non-adjacent) top edge.
+        viewModel.movePolygonVertex(1, Coordinate(latitude = 51.52, longitude = -0.095))
+
+        val state = viewModel.uiState.value
+        assertFalse(state.isPolygonClosed)
+        assertTrue(state.boundaryError)
+        assertFalse(state.isSaveEnabled)
+    }
+
     // MARK: - Undo
 
     @Test

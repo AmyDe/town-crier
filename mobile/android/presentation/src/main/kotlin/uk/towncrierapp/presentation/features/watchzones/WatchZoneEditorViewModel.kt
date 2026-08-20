@@ -255,14 +255,27 @@ private fun WatchZoneEditorUiState.withVertexAdded(coordinate: Coordinate): Watc
     ).withSaveEnabled()
 }
 
-/** Ignored for an out-of-range [index]. */
+/**
+ * Ignored for an out-of-range [index]. Dragging a vertex on an already-closed
+ * polygon re-validates through [WatchZoneBoundary.of] the same way
+ * [withPolygonClosed] does — a drag that makes the ring self-intersecting
+ * reopens it and surfaces [WatchZoneEditorUiState.boundaryError] rather than
+ * leaving [WatchZoneEditorUiState.isPolygonClosed]/`isSaveEnabled` stale for
+ * a shape that would silently fail on save.
+ */
 private fun WatchZoneEditorUiState.withVertexMoved(
     index: Int,
     coordinate: Coordinate,
 ): WatchZoneEditorUiState {
     if (index !in polygonVertices.indices) return this
     val vertices = polygonVertices.toMutableList().also { it[index] = coordinate }
-    return copy(polygonVertices = vertices, boundaryError = false).withSaveEnabled()
+    if (!isPolygonClosed) {
+        return copy(polygonVertices = vertices, boundaryError = false).withSaveEnabled()
+    }
+    return when (WatchZoneBoundary.of(vertices)) {
+        is WatchZoneBoundaryResult.Valid -> copy(polygonVertices = vertices, boundaryError = false).withSaveEnabled()
+        else -> copy(polygonVertices = vertices, isPolygonClosed = false, boundaryError = true).withSaveEnabled()
+    }
 }
 
 /**
