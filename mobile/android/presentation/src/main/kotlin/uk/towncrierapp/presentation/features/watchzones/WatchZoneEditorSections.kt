@@ -26,6 +26,8 @@ import androidx.compose.ui.unit.dp
 import uk.towncrierapp.presentation.R
 import uk.towncrierapp.presentation.designsystem.TownCrierSpacing
 import uk.towncrierapp.presentation.designsystem.TownCrierTheme
+import uk.towncrierapp.presentation.designsystem.components.CapsuleChip
+import uk.towncrierapp.presentation.designsystem.components.CustomShapeUpsellGraphic
 import uk.towncrierapp.presentation.designsystem.components.GatedToggle
 import uk.towncrierapp.presentation.designsystem.components.LargeRadiusWarning
 import uk.towncrierapp.presentation.designsystem.components.UnlockLargerZonesChip
@@ -137,6 +139,63 @@ private fun radiusSliderSteps(
 ): Int = (((max - min) / RADIUS_STEP_METRES).toInt() - 1).coerceAtLeast(0)
 
 private const val RADIUS_STEP_METRES = 100f
+
+/**
+ * Circle/Custom-shape segmented toggle (GH#1072 Phase 3). Only rendered by
+ * `WatchZoneEditorScreen` when [WatchZoneEditorUiState.allowsCustomBoundary]
+ * is true — a Free-tier user never sees this control, so there is no
+ * hidden/disabled path to custom-shape mode for them (see
+ * [CustomShapeUpsellSection] for what they see instead).
+ */
+@Composable
+internal fun ShapeModeSection(
+    shapeMode: WatchZoneShapeMode,
+    onShapeModeChange: (WatchZoneShapeMode) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(TownCrierSpacing.sm)) {
+        Text(
+            text = stringResource(R.string.watch_zone_editor_shape_label),
+            style = MaterialTheme.typography.labelMedium,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(TownCrierSpacing.sm)) {
+            CapsuleChip(
+                label = stringResource(R.string.watch_zone_shape_mode_circle),
+                selected = shapeMode == WatchZoneShapeMode.CIRCLE,
+                onClick = { onShapeModeChange(WatchZoneShapeMode.CIRCLE) },
+            )
+            CapsuleChip(
+                label = stringResource(R.string.watch_zone_shape_mode_custom),
+                selected = shapeMode == WatchZoneShapeMode.CUSTOM,
+                onClick = { onShapeModeChange(WatchZoneShapeMode.CUSTOM) },
+            )
+        }
+    }
+}
+
+/**
+ * What a Free-tier user (no [WatchZoneEditorUiState.allowsCustomBoundary])
+ * sees in place of [ShapeModeSection]: the Phase 4 upsell graphic
+ * ([CustomShapeUpsellGraphic]) plus a CTA to the paywall placeholder — never
+ * a toggle they could tap into a mode they're not entitled to.
+ */
+@Composable
+internal fun CustomShapeUpsellSection(
+    onUpgradeClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(TownCrierSpacing.sm)) {
+        CustomShapeUpsellGraphic()
+        Text(
+            text = stringResource(R.string.watch_zone_editor_custom_shape_upsell_body),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        TextButton(onClick = onUpgradeClick) {
+            Text(stringResource(R.string.watch_zone_upsell_view_plans))
+        }
+    }
+}
 
 @Composable
 internal fun PreviewSection(modifier: Modifier = Modifier) {
