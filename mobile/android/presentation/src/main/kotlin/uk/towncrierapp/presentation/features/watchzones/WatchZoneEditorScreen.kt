@@ -70,6 +70,8 @@ public fun WatchZoneEditorRoute(
         onEmailInstantEnabledChange = viewModel::updateEmailInstantEnabled,
         onUnlockLargerZonesClick = onUpgradeRequired,
         onUpgradeRequired = viewModel::requestInstantAlertUpgrade,
+        onShapeEvent = viewModel::onShapeEvent,
+        onCustomShapeUpsellClick = onUpgradeRequired,
         onSaveClick = viewModel::save,
         onCancelClick = onDismiss,
         modifier = modifier,
@@ -88,6 +90,8 @@ internal fun WatchZoneEditorScreen(
     onEmailInstantEnabledChange: (Boolean) -> Unit,
     onUnlockLargerZonesClick: () -> Unit,
     onUpgradeRequired: () -> Unit,
+    onShapeEvent: (WatchZoneShapeEvent) -> Unit,
+    onCustomShapeUpsellClick: () -> Unit,
     onSaveClick: () -> Unit,
     onCancelClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -117,12 +121,13 @@ internal fun WatchZoneEditorScreen(
             }
 
             if (state.geocodedCoordinate != null) {
-                RadiusSection(
+                ShapeSection(
                     state = state,
                     onRadiusChange = onRadiusChange,
                     onUnlockLargerZonesClick = onUnlockLargerZonesClick,
+                    onShapeEvent = onShapeEvent,
+                    onCustomShapeUpsellClick = onCustomShapeUpsellClick,
                 )
-                PreviewSection()
             }
 
             NotificationsSection(
@@ -133,6 +138,52 @@ internal fun WatchZoneEditorScreen(
             )
 
             state.error?.let { error -> ErrorSection(messageRes = watchZoneErrorMessageRes(error)) }
+        }
+    }
+}
+
+/**
+ * The shape-choice half of the editor once a centre coordinate exists: the
+ * Circle/Custom toggle (paid tiers only), then either the radius slider +
+ * static preview or the polygon-drawing surface, then the custom-shape
+ * upsell for a Free-tier user. Split out of [WatchZoneEditorScreen] to keep
+ * that composable under detekt's LongMethod budget.
+ */
+@Composable
+private fun ShapeSection(
+    state: WatchZoneEditorUiState,
+    onRadiusChange: (Float) -> Unit,
+    onUnlockLargerZonesClick: () -> Unit,
+    onShapeEvent: (WatchZoneShapeEvent) -> Unit,
+    onCustomShapeUpsellClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val coordinate = requireNotNull(state.geocodedCoordinate) { "ShapeSection requires a geocoded coordinate" }
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(TownCrierSpacing.lg)) {
+        if (state.allowsCustomBoundary) {
+            ShapeModeSection(
+                shapeMode = state.shapeMode,
+                onShapeModeChange = { mode -> onShapeEvent(WatchZoneShapeEvent.ModeSelected(mode)) },
+            )
+        }
+
+        when (state.shapeMode) {
+            WatchZoneShapeMode.CIRCLE -> {
+                RadiusSection(
+                    state = state,
+                    onRadiusChange = onRadiusChange,
+                    onUnlockLargerZonesClick = onUnlockLargerZonesClick,
+                )
+                PreviewSection()
+            }
+
+            WatchZoneShapeMode.CUSTOM -> {
+                PolygonDrawingSection(state = state, centre = coordinate, onShapeEvent = onShapeEvent)
+            }
+        }
+
+        if (!state.allowsCustomBoundary) {
+            CustomShapeUpsellSection(onUpgradeClick = onCustomShapeUpsellClick)
         }
     }
 }
@@ -176,13 +227,15 @@ private fun WatchZoneEditorScreenNewPreview() {
             onEmailInstantEnabledChange = {},
             onUnlockLargerZonesClick = {},
             onUpgradeRequired = {},
+            onShapeEvent = {},
+            onCustomShapeUpsellClick = {},
             onSaveClick = {},
             onCancelClick = {},
         )
     }
 }
 
-@Preview(name = "geocoded with warning + locked toggles")
+@Preview(name = "geocoded, free tier: radius + custom-shape upsell")
 @Composable
 private fun WatchZoneEditorScreenGeocodedPreview() {
     TownCrierTheme {
@@ -205,6 +258,39 @@ private fun WatchZoneEditorScreenGeocodedPreview() {
             onEmailInstantEnabledChange = {},
             onUnlockLargerZonesClick = {},
             onUpgradeRequired = {},
+            onShapeEvent = {},
+            onCustomShapeUpsellClick = {},
+            onSaveClick = {},
+            onCancelClick = {},
+        )
+    }
+}
+
+@Preview(name = "geocoded, paid tier: shape toggle")
+@Preview(name = "geocoded, paid tier: shape toggle, dark", uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+private fun WatchZoneEditorScreenShapeTogglePreview() {
+    TownCrierTheme {
+        WatchZoneEditorScreen(
+            state =
+                WatchZoneEditorUiState(
+                    name = "Home",
+                    geocodedCoordinate = Coordinate(51.5074, -0.1278),
+                    radiusMetres = 2_500f,
+                    maxRadiusMetres = 10_000f,
+                    allowsCustomBoundary = true,
+                    isSaveEnabled = true,
+                ),
+            onNameChange = {},
+            onPostcodeChange = {},
+            onLookUpClick = {},
+            onRadiusChange = {},
+            onPushEnabledChange = {},
+            onEmailInstantEnabledChange = {},
+            onUnlockLargerZonesClick = {},
+            onUpgradeRequired = {},
+            onShapeEvent = {},
+            onCustomShapeUpsellClick = {},
             onSaveClick = {},
             onCancelClick = {},
         )

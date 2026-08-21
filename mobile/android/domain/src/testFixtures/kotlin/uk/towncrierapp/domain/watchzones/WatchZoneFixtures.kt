@@ -15,6 +15,7 @@ public fun aWatchZone(
     authorityId: Int = 0,
     pushEnabled: Boolean = true,
     emailInstantEnabled: Boolean = true,
+    boundary: WatchZoneBoundary? = null,
 ): WatchZone =
     WatchZone(
         id = id,
@@ -24,6 +25,7 @@ public fun aWatchZone(
         authorityId = authorityId,
         pushEnabled = pushEnabled,
         emailInstantEnabled = emailInstantEnabled,
+        boundary = boundary,
     )
 
 /** Fixture factory for [ZoneNotificationPreferences]. */

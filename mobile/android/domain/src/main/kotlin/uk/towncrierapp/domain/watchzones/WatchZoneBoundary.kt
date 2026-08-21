@@ -74,9 +74,12 @@ public class WatchZoneBoundary private constructor(
     public companion object {
         // 3 is the geometric minimum for a polygon, 50 is generous for a
         // hand-drawn shape while bounding payload size and matching-query
-        // cost. Both exclude the closing repeat.
-        private const val MIN_VERTICES = 3
-        private const val MAX_VERTICES = 50
+        // cost. Both exclude the closing repeat. Public so the editor
+        // drawing UI (GH#1072 Phase 3, :presentation, a different module)
+        // can gate "close" and "add vertex" affordances off the same
+        // numbers rather than duplicating them.
+        public const val MIN_VERTICES: Int = 3
+        public const val MAX_VERTICES: Int = 50
 
         // A generous bounding box around Great Britain and Northern Ireland,
         // used only to reject vertices that are obviously not the UK — not a

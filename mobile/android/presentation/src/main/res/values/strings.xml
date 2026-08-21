@@ -66,6 +66,17 @@
     <string name="watch_zone_editor_save_button">Save</string>
     <string name="watch_zone_editor_cancel_button">Cancel</string>
 
+    <!-- Watch zone editor: shape toggle + polygon drawing (tc-v6fo0.3, GH#1072 Phase 3) -->
+    <string name="watch_zone_editor_shape_label">Shape</string>
+    <string name="watch_zone_shape_mode_circle">Circle</string>
+    <string name="watch_zone_shape_mode_custom">Custom shape</string>
+    <string name="watch_zone_editor_polygon_instructions">Tap the map to add points. Tap the first point again to close the shape.</string>
+    <string name="watch_zone_editor_polygon_closed_hint">Drag a point to adjust it, or undo to keep editing.</string>
+    <string name="watch_zone_editor_polygon_undo_button">Undo</string>
+    <string name="watch_zone_editor_polygon_vertex_count">%1$d of %2$d points</string>
+    <string name="watch_zone_editor_polygon_invalid_shape">This shape isn\'t valid — its edges cross. Adjust it and try again.</string>
+    <string name="watch_zone_editor_custom_shape_upsell_body">Personal and Pro can draw a custom shape instead of a circle.</string>
+
     <!-- Large-radius warning + unlock-larger-zones chip (tc-1zb7 / tc-42gc / tc-z95t) -->
     <string name="large_radius_warning_title">Heads up: large zones get noisy</string>
     <string name="large_radius_warning_body">A wide watch zone can produce hundreds of notifications a day, especially in cities. We recommend 100-500 m in built-up areas, and under 2 km everywhere else.</string>
