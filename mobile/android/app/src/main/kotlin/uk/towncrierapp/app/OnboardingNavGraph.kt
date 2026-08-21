@@ -51,7 +51,13 @@ internal fun OnboardingGate(
                     }
                 },
         )
-    OnboardingRoute(viewModel = viewModel, onOnboardingComplete = onOnboardingComplete)
+    OnboardingRoute(
+        viewModel = viewModel,
+        onOnboardingComplete = onOnboardingComplete,
+        // #783 hasn't shipped - no-op until the paywall exists (GH#1072 Phase
+        // 5, tc-v6fo0.5), mirrors PAYWALL_AVAILABLE above.
+        onUpgradeRequired = {},
+    )
 }
 
 /** Shown while [uk.towncrierapp.presentation.auth.OnboardingPresentation] is `Undetermined` - never flash Required/NotRequired before account state resolves. */
