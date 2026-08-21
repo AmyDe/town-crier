@@ -15,7 +15,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -112,15 +111,6 @@ public fun CustomShapeUpsellGraphic(modifier: Modifier = Modifier) {
         }
     }
 }
-
-/** Builds a closed [Path] through [vertices], mirroring iOS `CustomShapePolygon.path(in:)`. */
-private fun polygonPath(vertices: List<Offset>): Path =
-    Path().apply {
-        val first = vertices.firstOrNull() ?: return@apply
-        moveTo(first.x, first.y)
-        vertices.drop(1).forEach { vertex -> lineTo(vertex.x, vertex.y) }
-        close()
-    }
 
 /**
  * Pure geometry for [CustomShapeUpsellGraphic]'s irregular polygon ("blob")
