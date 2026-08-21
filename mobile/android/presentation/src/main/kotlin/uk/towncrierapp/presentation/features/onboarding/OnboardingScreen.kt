@@ -26,6 +26,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import uk.towncrierapp.presentation.R
 import uk.towncrierapp.presentation.designsystem.TownCrierTheme
+import uk.towncrierapp.presentation.features.watchzones.WatchZoneShapeEvent
 
 /**
  * The onboarding wizard: one route hosting all four steps behind a single
@@ -40,6 +41,7 @@ import uk.towncrierapp.presentation.designsystem.TownCrierTheme
 public fun OnboardingRoute(
     viewModel: OnboardingViewModel,
     onOnboardingComplete: () -> Unit,
+    onUpgradeRequired: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -51,6 +53,12 @@ public fun OnboardingRoute(
 
     LaunchedEffect(state.isComplete) {
         if (state.isComplete) onOnboardingComplete()
+    }
+    LaunchedEffect(state.navigateToPaywall) {
+        if (state.navigateToPaywall) {
+            viewModel.consumeNavigateToPaywall()
+            onUpgradeRequired()
+        }
     }
 
     OnboardingScreen(
@@ -64,6 +72,10 @@ public fun OnboardingRoute(
         onConfirmRadiusClick = viewModel::confirmRadius,
         // #783 hasn't shipped - the chip is hidden (OnboardingUiState.canUnlockLargerRadius), so this is never reached.
         onUnlockLargerZonesClick = {},
+        onCustomShapeUpsellClick = viewModel::requestCustomShapeUpgrade,
+        onDrawCustomShapeClick = viewModel::selectCustomShape,
+        onShapeEvent = viewModel::onShapeEvent,
+        onConfirmBoundaryClick = viewModel::confirmBoundary,
         onEnableNotificationsClick = {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -87,6 +99,10 @@ internal fun OnboardingScreen(
     onRadiusChange: (Float) -> Unit,
     onConfirmRadiusClick: () -> Unit,
     onUnlockLargerZonesClick: () -> Unit,
+    onCustomShapeUpsellClick: () -> Unit,
+    onDrawCustomShapeClick: () -> Unit,
+    onShapeEvent: (WatchZoneShapeEvent) -> Unit,
+    onConfirmBoundaryClick: () -> Unit,
     onEnableNotificationsClick: () -> Unit,
     onSkipNotificationsClick: () -> Unit,
     onFinishClick: () -> Unit,
@@ -122,6 +138,17 @@ internal fun OnboardingScreen(
                         onRadiusChange = onRadiusChange,
                         onConfirmClick = onConfirmRadiusClick,
                         onUnlockLargerZonesClick = onUnlockLargerZonesClick,
+                        onCustomShapeUpsellClick = onCustomShapeUpsellClick,
+                        onDrawCustomShapeClick = onDrawCustomShapeClick,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+
+                OnboardingStep.BoundaryDrawing -> {
+                    BoundaryDrawingStep(
+                        state = state,
+                        onShapeEvent = onShapeEvent,
+                        onConfirmClick = onConfirmBoundaryClick,
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -163,12 +190,16 @@ private fun OnboardingTopBar(
     }
 }
 
-/** 1 of 3 once past Welcome (which shows no bar at all) through to the last step. */
+/**
+ * 1 of 3 once past Welcome (which shows no bar at all) through to the last
+ * step. [OnboardingStep.BoundaryDrawing] shows the same fraction as
+ * [OnboardingStep.Radius] - it replaces that step in the flow, not adds to it.
+ */
 private fun onboardingStepProgress(step: OnboardingStep): Float =
     when (step) {
         OnboardingStep.Welcome -> 0f
         OnboardingStep.Postcode -> 1f / 3f
-        OnboardingStep.Radius -> 2f / 3f
+        OnboardingStep.Radius, OnboardingStep.BoundaryDrawing -> 2f / 3f
         OnboardingStep.NotificationPermission -> 1f
     }
 
@@ -186,6 +217,10 @@ private fun OnboardingScreenPostcodePreview() {
             onRadiusChange = {},
             onConfirmRadiusClick = {},
             onUnlockLargerZonesClick = {},
+            onCustomShapeUpsellClick = {},
+            onDrawCustomShapeClick = {},
+            onShapeEvent = {},
+            onConfirmBoundaryClick = {},
             onEnableNotificationsClick = {},
             onSkipNotificationsClick = {},
             onFinishClick = {},
@@ -207,6 +242,10 @@ private fun OnboardingScreenRadiusPreview() {
             onRadiusChange = {},
             onConfirmRadiusClick = {},
             onUnlockLargerZonesClick = {},
+            onCustomShapeUpsellClick = {},
+            onDrawCustomShapeClick = {},
+            onShapeEvent = {},
+            onConfirmBoundaryClick = {},
             onEnableNotificationsClick = {},
             onSkipNotificationsClick = {},
             onFinishClick = {},

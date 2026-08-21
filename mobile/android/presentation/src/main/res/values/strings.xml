@@ -156,6 +156,14 @@
     <string name="onboarding_radius_subtitle">Drag to choose how far out to watch. You can change this any time.</string>
     <string name="onboarding_radius_confirm_button">Confirm</string>
 
+    <!-- Onboarding: custom-shape upsell + drawing step (tc-v6fo0.5, GH#1072 Phase 5) -->
+    <string name="onboarding_custom_shape_upsell_body">Personal and Pro can draw a custom shape instead of a circle.</string>
+    <string name="onboarding_custom_shape_available_title">Draw a custom shape</string>
+    <string name="onboarding_custom_shape_available_body">Trace the exact area you want to watch instead of a circle.</string>
+    <string name="onboarding_boundary_drawing_title">Draw your watch zone</string>
+    <string name="onboarding_boundary_drawing_subtitle">Trace the area on the map — you can always switch back to a circle.</string>
+    <string name="onboarding_boundary_drawing_confirm_button">Confirm</string>
+
     <string name="onboarding_notifications_title">Stay in the loop</string>
     <string name="onboarding_notifications_paid_body">Turn on notifications and we\'ll tell you the moment something changes nearby.</string>
     <string name="onboarding_notifications_free_body">Free gives you a weekly email digest. Upgrade any time for instant alerts by push and email.</string>

@@ -178,7 +178,13 @@ private fun ShapeSection(
             }
 
             WatchZoneShapeMode.CUSTOM -> {
-                PolygonDrawingSection(state = state, centre = coordinate, onShapeEvent = onShapeEvent)
+                PolygonDrawingSection(
+                    vertices = state.polygonVertices,
+                    isPolygonClosed = state.isPolygonClosed,
+                    boundaryError = state.boundaryError,
+                    centre = coordinate,
+                    onShapeEvent = onShapeEvent,
+                )
             }
         }
 
