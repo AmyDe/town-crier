@@ -39,12 +39,18 @@ import uk.towncrierapp.presentation.features.map.toLatLng
  * a vertex, drag to move one, tap the first vertex to close, undo the last
  * action. Purely a rendering + gesture-routing layer; every rule (minimum 3
  * vertices, self-intersection, the 50-vertex cap) lives in
- * [WatchZoneEditorViewModel] and [WatchZoneBoundary], not here — this
- * composable only forwards taps/drags and renders the current state.
+ * [PolygonDrawingState] and [WatchZoneBoundary], not here — this composable
+ * only forwards taps/drags and renders the current state.
+ *
+ * Takes the drawing fields directly rather than a whole `WatchZoneEditorUiState`
+ * (GH#1072 Phase 5, tc-v6fo0.5) so onboarding's `BoundaryDrawingStep` can
+ * reuse this exact surface from `OnboardingUiState` without an adapter type.
  */
 @Composable
 internal fun PolygonDrawingSection(
-    state: WatchZoneEditorUiState,
+    vertices: List<Coordinate>,
+    isPolygonClosed: Boolean,
+    boundaryError: Boolean,
     centre: Coordinate,
     onShapeEvent: (WatchZoneShapeEvent) -> Unit,
     modifier: Modifier = Modifier,
@@ -53,7 +59,7 @@ internal fun PolygonDrawingSection(
         Text(
             text =
                 stringResource(
-                    if (state.isPolygonClosed) {
+                    if (isPolygonClosed) {
                         R.string.watch_zone_editor_polygon_closed_hint
                     } else {
                         R.string.watch_zone_editor_polygon_instructions
@@ -63,8 +69,8 @@ internal fun PolygonDrawingSection(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         PolygonDrawingMap(
-            vertices = state.polygonVertices,
-            isClosed = state.isPolygonClosed,
+            vertices = vertices,
+            isClosed = isPolygonClosed,
             centre = centre,
             onMapTap = { coordinate -> onShapeEvent(WatchZoneShapeEvent.VertexAdded(coordinate)) },
             onVertexMoved = { index, coordinate -> onShapeEvent(WatchZoneShapeEvent.VertexMoved(index, coordinate)) },
@@ -77,7 +83,7 @@ internal fun PolygonDrawingSection(
         ) {
             TextButton(
                 onClick = { onShapeEvent(WatchZoneShapeEvent.UndoRequested) },
-                enabled = state.polygonVertices.isNotEmpty(),
+                enabled = vertices.isNotEmpty(),
             ) {
                 Text(stringResource(R.string.watch_zone_editor_polygon_undo_button))
             }
@@ -85,14 +91,14 @@ internal fun PolygonDrawingSection(
                 text =
                     stringResource(
                         R.string.watch_zone_editor_polygon_vertex_count,
-                        state.polygonVertices.size,
+                        vertices.size,
                         WatchZoneBoundary.MAX_VERTICES,
                     ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        if (state.boundaryError) {
+        if (boundaryError) {
             Text(
                 text = stringResource(R.string.watch_zone_editor_polygon_invalid_shape),
                 style = MaterialTheme.typography.bodySmall,

@@ -14,11 +14,9 @@ import uk.towncrierapp.domain.auth.DomainError
 import uk.towncrierapp.domain.subscriptions.Entitlement
 import uk.towncrierapp.domain.subscriptions.FeatureGate
 import uk.towncrierapp.domain.subscriptions.SubscriptionTier
-import uk.towncrierapp.domain.watchzones.Coordinate
 import uk.towncrierapp.domain.watchzones.PostcodeGeocoder
 import uk.towncrierapp.domain.watchzones.WatchZone
 import uk.towncrierapp.domain.watchzones.WatchZoneBoundary
-import uk.towncrierapp.domain.watchzones.WatchZoneBoundaryResult
 import uk.towncrierapp.domain.watchzones.WatchZoneId
 import uk.towncrierapp.domain.watchzones.WatchZoneLimits
 import uk.towncrierapp.domain.watchzones.WatchZoneRepository
@@ -91,12 +89,18 @@ public class WatchZoneEditorViewModel(
      * through one dispatch point — see [WatchZoneShapeEvent] for why a
      * single method covers five distinct user actions. All the actual rules
      * (the 3-vertex close gate, the 50-vertex cap, [WatchZoneBoundary.of]
-     * validation, the Free-tier custom-mode guard) live in the private
-     * `apply*`/`with*` helpers below, kept as top-level functions so this
-     * class's own function/complexity budgets stay unaffected by them.
+     * validation, the Free-tier custom-mode guard) live in
+     * [PolygonDrawingState.applyShapeEvent] (GH#1072 Phase 5, tc-v6fo0.5) —
+     * shared with onboarding's custom-shape drawing step rather than
+     * duplicated — kept out of this class so its own function/complexity
+     * budgets stay unaffected by them.
      */
     public fun onShapeEvent(event: WatchZoneShapeEvent) {
-        _uiState.update { state -> state.applyShapeEvent(event, limits) }
+        _uiState.update { state ->
+            state
+                .withPolygonDrawing(state.toPolygonDrawingState().applyShapeEvent(event, limits.allowsCustomBoundary))
+                .withSaveEnabled()
+        }
     }
 
     public fun submitPostcode() {
@@ -215,137 +219,33 @@ private fun WatchZoneEditorUiState.isShapeReady(): Boolean =
         WatchZoneShapeMode.CUSTOM -> isPolygonClosed
     }
 
-// MARK: - Shape-mode/polygon-drawing event handling (GH#1072 Phase 3)
+// MARK: - Shape-mode/polygon-drawing event handling (GH#1072 Phase 3/5)
 //
 // Top-level, not class members, for the same TooManyFunctions/complexity
-// budget reason as withSaveEnabled/isShapeReady above: WatchZoneEditorViewModel
-// exposes ONE public entry point (onShapeEvent); every rule these events
-// enforce (the Free-tier custom-mode guard, the 3-vertex close gate, the
-// 50-vertex add cap, WatchZoneBoundary.of validation) lives here instead.
+// budget reason as withSaveEnabled/isShapeReady above. The actual rules live
+// in PolygonDrawingState.kt (shared with onboarding, tc-v6fo0.5); these two
+// functions just convert WatchZoneEditorUiState's flat fields to/from that
+// shared holder at the point onShapeEvent/save need it.
 
-private fun WatchZoneEditorUiState.applyShapeEvent(
-    event: WatchZoneShapeEvent,
-    limits: WatchZoneLimits,
-): WatchZoneEditorUiState =
-    when (event) {
-        is WatchZoneShapeEvent.ModeSelected -> withShapeMode(event.mode, limits)
-        is WatchZoneShapeEvent.VertexAdded -> withVertexAdded(event.coordinate)
-        is WatchZoneShapeEvent.VertexMoved -> withVertexMoved(event.index, event.coordinate)
-        WatchZoneShapeEvent.PolygonClosed -> withPolygonClosed()
-        WatchZoneShapeEvent.UndoRequested -> withUndoApplied()
-    }
+private fun WatchZoneEditorUiState.toPolygonDrawingState(): PolygonDrawingState =
+    PolygonDrawingState(
+        shapeMode = shapeMode,
+        polygonVertices = polygonVertices,
+        isPolygonClosed = isPolygonClosed,
+        canClosePolygon = canClosePolygon,
+        boundaryError = boundaryError,
+    )
 
-/** A no-op for [WatchZoneShapeMode.CUSTOM] when [limits] don't allow it — belt-and-braces alongside the Screen never offering it. */
-private fun WatchZoneEditorUiState.withShapeMode(
-    mode: WatchZoneShapeMode,
-    limits: WatchZoneLimits,
-): WatchZoneEditorUiState {
-    if (mode == WatchZoneShapeMode.CUSTOM && !limits.allowsCustomBoundary) return this
-    return copy(shapeMode = mode).withSaveEnabled()
-}
+private fun WatchZoneEditorUiState.withPolygonDrawing(drawing: PolygonDrawingState): WatchZoneEditorUiState =
+    copy(
+        shapeMode = drawing.shapeMode,
+        polygonVertices = drawing.polygonVertices,
+        isPolygonClosed = drawing.isPolygonClosed,
+        canClosePolygon = drawing.canClosePolygon,
+        boundaryError = drawing.boundaryError,
+    )
 
-/** Ignored once closed (undo first) or at the 50-vertex cap ([WatchZoneBoundary.MAX_VERTICES]). */
-private fun WatchZoneEditorUiState.withVertexAdded(coordinate: Coordinate): WatchZoneEditorUiState {
-    if (isPolygonClosed || polygonVertices.size >= WatchZoneBoundary.MAX_VERTICES) return this
-    val vertices = polygonVertices + coordinate
-    return copy(
-        polygonVertices = vertices,
-        canClosePolygon = vertices.size >= WatchZoneBoundary.MIN_VERTICES,
-        boundaryError = false,
-    ).withSaveEnabled()
-}
-
-/**
- * Ignored for an out-of-range [index]. Dragging a vertex on an already-closed
- * polygon re-validates through [WatchZoneBoundary.of] the same way
- * [withPolygonClosed] does — a drag that makes the ring self-intersecting
- * reopens it and surfaces [WatchZoneEditorUiState.boundaryError] rather than
- * leaving [WatchZoneEditorUiState.isPolygonClosed]/`isSaveEnabled` stale for
- * a shape that would silently fail on save.
- */
-private fun WatchZoneEditorUiState.withVertexMoved(
-    index: Int,
-    coordinate: Coordinate,
-): WatchZoneEditorUiState {
-    if (index !in polygonVertices.indices) return this
-    val vertices = polygonVertices.toMutableList().also { it[index] = coordinate }
-    if (!isPolygonClosed) {
-        return copy(polygonVertices = vertices, boundaryError = false).withSaveEnabled()
-    }
-    return when (WatchZoneBoundary.of(vertices)) {
-        is WatchZoneBoundaryResult.Valid -> copy(polygonVertices = vertices, boundaryError = false).withSaveEnabled()
-        else -> copy(polygonVertices = vertices, isPolygonClosed = false, boundaryError = true).withSaveEnabled()
-    }
-}
-
-/**
- * Requires at least [WatchZoneBoundary.MIN_VERTICES] and a simple,
- * non-self-intersecting ring — [WatchZoneBoundary.of] is the single source
- * of truth for both, so an invalid shape sets
- * [WatchZoneEditorUiState.boundaryError] and stays open rather than closing
- * anyway.
- */
-private fun WatchZoneEditorUiState.withPolygonClosed(): WatchZoneEditorUiState {
-    if (isPolygonClosed || polygonVertices.size < WatchZoneBoundary.MIN_VERTICES) return this
-    return when (WatchZoneBoundary.of(polygonVertices)) {
-        is WatchZoneBoundaryResult.Valid -> copy(isPolygonClosed = true, boundaryError = false).withSaveEnabled()
-        else -> copy(boundaryError = true)
-    }
-}
-
-/** Reopens a just-closed polygon without dropping a vertex, otherwise drops the most recently added vertex; a no-op with nothing drawn. */
-private fun WatchZoneEditorUiState.withUndoApplied(): WatchZoneEditorUiState =
-    when {
-        isPolygonClosed -> {
-            copy(isPolygonClosed = false, boundaryError = false).withSaveEnabled()
-        }
-
-        polygonVertices.isNotEmpty() -> {
-            val vertices = polygonVertices.dropLast(1)
-            copy(
-                polygonVertices = vertices,
-                canClosePolygon = vertices.size >= WatchZoneBoundary.MIN_VERTICES,
-                boundaryError = false,
-            ).withSaveEnabled()
-        }
-
-        else -> {
-            this
-        }
-    }
-
-/** The shape [WatchZoneEditorViewModel.save] resolves from the current state — see [WatchZoneEditorUiState.resolveShapeForSave]. */
-private sealed interface ShapeForSave {
-    data object Circle : ShapeForSave
-
-    data class Custom(
-        val boundary: WatchZoneBoundary,
-    ) : ShapeForSave
-
-    /** Custom mode but the polygon isn't closed yet — save() aborts silently, matching the disabled Save button. */
-    data object NotReady : ShapeForSave
-
-    /** Custom mode, closed, but [WatchZoneBoundary.of] rejected the vertices (e.g. self-intersecting). */
-    data object Invalid : ShapeForSave
-}
-
-private fun WatchZoneEditorUiState.resolveShapeForSave(): ShapeForSave =
-    when (shapeMode) {
-        WatchZoneShapeMode.CIRCLE -> {
-            ShapeForSave.Circle
-        }
-
-        WatchZoneShapeMode.CUSTOM -> {
-            if (!isPolygonClosed) {
-                ShapeForSave.NotReady
-            } else {
-                when (val result = WatchZoneBoundary.of(polygonVertices)) {
-                    is WatchZoneBoundaryResult.Valid -> ShapeForSave.Custom(result.boundary)
-                    else -> ShapeForSave.Invalid
-                }
-            }
-        }
-    }
+private fun WatchZoneEditorUiState.resolveShapeForSave(): ShapeForSave = toPolygonDrawingState().resolveShapeForSave()
 
 // The default ApplicationCacheStore (tc-cnme) — genuinely stateless, so a
 // shared `object` (not a hidden mutable global) is the right shape here.
