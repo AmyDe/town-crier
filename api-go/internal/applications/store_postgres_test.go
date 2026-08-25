@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -311,6 +312,87 @@ func TestPostgresStore_GetByUID(t *testing.T) {
 	}
 	if _, found, err := store.GetByUID(ctx, "the-uid", "200"); err != nil || found {
 		t.Errorf("GetByUID wrong-authority: found=%v err=%v", found, err)
+	}
+}
+
+// TestPostgresStore_GetByUID_ExplainUsesAuthorityUIDIndex proves the
+// applications_authority_uid composite index (tc-v6f4m; migrations/
+// 0027_applications_authority_uid_index.sql) serves GetByUID's
+// "authority_code = $1 AND uid = $2" predicate. GetByUID sits on the hot path
+// of every application ingest (the national delta lanes and the Lane D
+// historical backfill both call it via Ingester.Ingest for the silent-field
+// read-back), had no supporting index before this migration, and was the
+// confirmed root cause of alert-job-failed-poll-prod paging nightly under
+// Lane D load. enable_seqscan is disabled for the EXPLAIN so the planner is
+// forced to reveal whether the index is usable at all, rather than preferring
+// a sequential scan over the small fixture table — mirroring
+// TestPostgresStore_FindClustersInZone_ExplainUsesGiSTIndex.
+//
+// A single-row authority is not enough to prove this: the pre-existing
+// composite PRIMARY KEY (authority_code, planit_name) already prunes by
+// authority_code and happens to satisfy ORDER BY planit_name for free, so at
+// N=1 its near-zero cost ties with the new index and the planner picks the
+// PK instead — confirmed empirically (EXPLAIN against a single-row fixture
+// keeps choosing applications_pkey even with fresh statistics). Sibling rows
+// in the same authority (raw SQL, not Upsert, for speed) make the PK's
+// linear Filter scan measurably more expensive than the new index's direct
+// two-column equality lookup, so the choice stops being a coin flip; an
+// explicit ANALYZE makes that visible immediately rather than depending on
+// autovacuum's analyze threshold firing within the test's lifetime.
+func TestPostgresStore_GetByUID_ExplainUsesAuthorityUIDIndex(t *testing.T) {
+	pool := pgtest.New(t)
+	pgtest.Truncate(t, pool, "applications", "watch_zones")
+	store := NewPostgresStore(pool)
+	ctx := context.Background()
+
+	a := pgApp("24/0009/FUL", 100)
+	a.UID = "explain-uid"
+	if err := store.Upsert(ctx, a); err != nil {
+		t.Fatalf("Upsert: %v", err)
+	}
+
+	const seedSiblings = `
+		INSERT INTO applications (planit_name, authority_code, uid, area_name, area_id, last_different)
+		SELECT '24/sibling-' || i, '100', 'sibling-uid-' || i, 'Testshire', 100, now()
+		FROM generate_series(1, 20) AS i`
+	if _, err := pool.Exec(ctx, seedSiblings); err != nil {
+		t.Fatalf("seed sibling rows: %v", err)
+	}
+	if _, err := pool.Exec(ctx, "ANALYZE applications"); err != nil {
+		t.Fatalf("analyze applications: %v", err)
+	}
+
+	// SET enable_seqscan = off and the EXPLAIN must run on the SAME connection
+	// (the setting is session state), so acquire one pooled connection for both.
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		t.Fatalf("acquire connection: %v", err)
+	}
+	defer conn.Release()
+	if _, err := conn.Exec(ctx, "SET enable_seqscan = off"); err != nil {
+		t.Fatalf("disable seqscan: %v", err)
+	}
+
+	rows, err := conn.Query(ctx, "EXPLAIN (ANALYZE, FORMAT TEXT) "+getByUIDQuery, "100", "explain-uid")
+	if err != nil {
+		t.Fatalf("EXPLAIN: %v", err)
+	}
+	var plan strings.Builder
+	for rows.Next() {
+		var line string
+		if err := rows.Scan(&line); err != nil {
+			rows.Close()
+			t.Fatalf("scan plan line: %v", err)
+		}
+		plan.WriteString(line)
+		plan.WriteByte('\n')
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("read plan: %v", err)
+	}
+
+	if !strings.Contains(strings.ToLower(plan.String()), "applications_authority_uid") {
+		t.Errorf("EXPLAIN plan does not use the applications_authority_uid index:\n%s", plan.String())
 	}
 }
 
