@@ -6,16 +6,20 @@
 --     ORDER BY planit_name LIMIT 1
 -- on every single application ingest (the national delta lanes and the Lane D
 -- historical backfill both call it via Ingester.Ingest, for the silent-field
--- read-back HasSameSilentFieldsAs check). The table's only key is the
--- PRIMARY KEY on planit_name (0001_init_postgis.sql); the only index that
--- touches authority_code, applications_authority_recent
--- (authority_code, last_different DESC), doesn't help an equality uid lookup,
--- and the only uid-related index, applications_uid_lower_pattern
--- (0018_application_search_indexes.sql), is a FUNCTIONAL index on
--- lower(uid) text_pattern_ops built for GH#821 case-insensitive search — the
--- planner cannot use it for this query's plain uid = $2 predicate. So
--- GetByUID has always run as an authority-scoped sequential scan, with cost
--- proportional to how many rows exist for that authority.
+-- read-back HasSameSilentFieldsAs check). The table's PRIMARY KEY is the
+-- composite (authority_code, planit_name) (0002_applications_composite_key.sql
+-- replaced the original bare planit_name key from 0001_init_postgis.sql), so
+-- it already prunes by authority_code — but it's ordered by planit_name, not
+-- uid, so finding the uid match within that authority's rows still costs a
+-- filter scan across them. The only other index that touches authority_code,
+-- applications_authority_recent (authority_code, last_different DESC),
+-- doesn't help an equality uid lookup either, and the only uid-related index,
+-- applications_uid_lower_pattern (0018_application_search_indexes.sql), is a
+-- FUNCTIONAL index on lower(uid) text_pattern_ops built for GH#821
+-- case-insensitive search — the planner cannot use it for this query's plain
+-- uid = $2 predicate. So GetByUID has always run as an authority-scoped
+-- filter scan, with cost proportional to how many rows exist for that
+-- authority.
 --
 -- This is confirmed (tc-v6f4m; Azure Monitor + App Insights, not assumption)
 -- to be the root cause of alert-job-failed-poll-prod paging nightly: overnight
