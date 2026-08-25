@@ -498,9 +498,9 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		return err
 	}
 
-	// Scheduled query (log) alert — PlanIt non-429 dependency failure ratio over the last 3 hours,
-	// computed from AppDependencies on this shared Log Analytics workspace (tc-ttjor / GH #938
-	// PR3). Go emits no AppMetrics by design (no Go Azure Monitor metrics exporter), so a
+	// Scheduled query (log) alert — PlanIt non-429 dependency failure ratio over the last 24
+	// hours, computed from AppDependencies on this shared Log Analytics workspace (tc-ttjor / GH
+	// #938 PR3). Go emits no AppMetrics by design (no Go Azure Monitor metrics exporter), so a
 	// log-based alert is the only option here. The query requires >=20 calls in the window so a
 	// quiet hour with one stray failure can't read as 100%. ResultCode on these dependency spans
 	// is the OTel span status ('0'/'2'), NOT the HTTP status — hence filtering on
@@ -522,20 +522,24 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		ResourceGroupName:   resourceGroup.Name,
 		Location:            pulumi.String("uksouth"),
 		Kind:                pulumi.String("LogAlert"),
-		Description:         pulumi.String("PlanIt non-429 dependency failure ratio exceeded 30% over the last 3 hours (>=20 calls). See GH #938."),
+		Description:         pulumi.String("PlanIt non-429 dependency failure ratio exceeded 30% over the last 24 hours (>=20 calls). See GH #938."),
 		DisplayName:         pulumi.String("PlanIt non-429 failure rate"),
 		Severity:            pulumi.Float64(2), // Warning
 		Enabled:             pulumi.Bool(true),
 		EvaluationFrequency: pulumi.String("PT15M"),
-		// WindowSize is PT3H, not PT1H (widened by tc-k5c9w, alert-noise audit 2026-07-23). A 3x
-		// wider rolling window dilutes the failure-ratio calc by ~3x more total calls before it
-		// can cross 30%, so a short-lived blip that would trip a 1h window won't trip a 3h one,
-		// while a genuinely sustained PlanIt outage — the only kind of event this alert should
-		// page for — still comfortably breaches within the window. Same "give it space to prove
-		// it's a real trend, not a blip" principle as the polling-code timeout backoff change in
-		// the companion bead (tc-pmh5y), applied on the alerting side instead of the scheduling
-		// side.
-		WindowSize: pulumi.String("PT3H"),
+		// WindowSize is P1D, not PT3H (widened again by tc-x5xsx, alert-noise audit 2026-08-25).
+		// PlanIt is a free, single-operator service (ADR 0006) with frequent multi-hour
+		// outages/slowdowns that are not actionable by the owner until they've been ongoing a
+		// full day — confirmed against Azure Monitor's alert history that the PT3H window (itself
+		// already widened once from PT1H by tc-k5c9w) was firing on real but short-lived PlanIt
+		// degradation multiple times a week, occasionally flapping fire/resolve within the same
+		// day. An 8x wider rolling window dilutes the failure-ratio calc by ~8x more total calls
+		// before it can cross 30%, so anything shorter than a sustained day-long PlanIt outage
+		// self-heals without paging, while a genuinely daylong outage — the only kind of event
+		// this alert should page for — still comfortably breaches within the window. Same "give it
+		// space to prove it's a real trend, not a blip" principle as the PT3H widening, taken
+		// further because PlanIt's normal operating noise floor is higher than first assumed.
+		WindowSize: pulumi.String("P1D"),
 		Scopes:     pulumi.StringArray{logAnalytics.ID()},
 		Criteria: monitor.ScheduledQueryRuleCriteriaArgs{
 			AllOf: monitor.ConditionArray{
