@@ -60,6 +60,48 @@ import {
 const DEFAULT_LIMIT = 30;
 
 /**
+ * Per-request wall-clock budget (ms) for a single API call in the SEO fetch,
+ * enforced with an `AbortController`. One stalled PostGIS KNN must not hang the
+ * whole run. Override with `PRERENDER_FETCH_TIMEOUT_MS`.
+ * @type {number}
+ */
+export const DEFAULT_FETCH_TIMEOUT_MS = 30000;
+
+/**
+ * Total attempts per request (initial try + retries) before {@link
+ * fetchJSONWithRetry} gives up and throws. Retries fire on a transport failure
+ * (fetch rejection / abort / timeout), an HTTP 5xx, or an HTTP 429 — a single
+ * transient blip must not abort the snapshot. Override with
+ * `PRERENDER_FETCH_RETRIES`.
+ * @type {number}
+ */
+export const DEFAULT_FETCH_RETRIES = 3;
+
+/**
+ * Backoff (ms) slept BEFORE attempt N (N ≥ 2). The last entry is reused for any
+ * further attempts. Deliberately short and jitter-free — the point is to ride
+ * out a blip, not to implement a full backoff strategy.
+ * @type {ReadonlyArray<number>}
+ */
+const FETCH_RETRY_BACKOFF_MS = [1000, 3000];
+
+/**
+ * Default number of API requests in flight at once during the SEO fetch. Kept
+ * deliberately small: prod runs a SINGLE Go API replica at 0.25 vCPU / 0.5 GiB
+ * with no autoscale, and `/v1/applications/near` is a PostGIS KNN. Override with
+ * `PRERENDER_FETCH_CONCURRENCY` (clamped to {@link MIN_FETCH_CONCURRENCY}..{@link
+ * MAX_FETCH_CONCURRENCY}).
+ * @type {number}
+ */
+export const DEFAULT_FETCH_CONCURRENCY = 4;
+
+/** Lower clamp for `PRERENDER_FETCH_CONCURRENCY`. @type {number} */
+const MIN_FETCH_CONCURRENCY = 1;
+
+/** Upper clamp for `PRERENDER_FETCH_CONCURRENCY`. @type {number} */
+const MAX_FETCH_CONCURRENCY = 16;
+
+/**
  * Fallback centroid radius (metres) sent to `/v1/applications/near` for BOTH
  * the primary town point and every sibling centroid (tc-s0yf, GH #819),
  * mirroring the Go server's own default (`api-go/internal/applications/near.go`).
@@ -158,6 +200,63 @@ export function resolveMinPopulation(env = {}) {
     return DEFAULT_MIN_POPULATION;
   }
   return parsed;
+}
+
+/**
+ * Parse an env value to a positive integer, falling back when it is missing,
+ * empty/whitespace, non-numeric, or not strictly positive. A fractional value is
+ * truncated toward zero (same rule as {@link resolveMinPopulation}).
+ *
+ * @param {string | undefined} raw
+ * @param {number} fallback
+ * @returns {number}
+ */
+function resolvePositiveIntEnv(raw, fallback) {
+  if (typeof raw !== 'string' || raw.trim().length === 0) {
+    return fallback;
+  }
+  const parsed = Number.parseInt(raw.trim(), 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+  return parsed;
+}
+
+/**
+ * @typedef {Object} FetchTuning
+ * @property {number} timeoutMs        per-request abort budget (ms)
+ * @property {number} retries          total attempts per request
+ * @property {number} concurrency      max requests in flight at once
+ */
+
+/**
+ * Resolve the SEO-fetch tuning knobs from the environment. Every value has a
+ * conservative default (see the `DEFAULT_FETCH_*` constants); the overrides
+ * exist for incident response, not routine use. `concurrency` is clamped to a
+ * safe band so a fat-fingered value can never stampede the single prod replica.
+ *
+ * @param {Record<string, string | undefined>} [env]
+ * @returns {FetchTuning}
+ */
+export function resolveFetchTuning(env = {}) {
+  const concurrency = resolvePositiveIntEnv(
+    env.PRERENDER_FETCH_CONCURRENCY,
+    DEFAULT_FETCH_CONCURRENCY,
+  );
+  return {
+    timeoutMs: resolvePositiveIntEnv(
+      env.PRERENDER_FETCH_TIMEOUT_MS,
+      DEFAULT_FETCH_TIMEOUT_MS,
+    ),
+    retries: resolvePositiveIntEnv(
+      env.PRERENDER_FETCH_RETRIES,
+      DEFAULT_FETCH_RETRIES,
+    ),
+    concurrency: Math.min(
+      MAX_FETCH_CONCURRENCY,
+      Math.max(MIN_FETCH_CONCURRENCY, concurrency),
+    ),
+  };
 }
 
 /**
@@ -395,6 +494,157 @@ function siblingQueryParams(siblings) {
     .join('');
 }
 
+/** @param {number} ms @returns {Promise<void>} */
+function defaultSleep(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+/**
+ * Backoff to sleep BEFORE attempt `attempt` (only called with `attempt` ≥ 2).
+ * Clamps to the last {@link FETCH_RETRY_BACKOFF_MS} entry for later attempts.
+ *
+ * @param {number} attempt  1-based attempt number about to be made
+ * @returns {number} ms
+ */
+function retryBackoffMs(attempt) {
+  const index = Math.min(attempt - 2, FETCH_RETRY_BACKOFF_MS.length - 1);
+  return FETCH_RETRY_BACKOFF_MS[Math.max(0, index)];
+}
+
+/**
+ * One attempt: fetch `url`, enforce a wall-clock `timeoutMs` with an
+ * `AbortController` (raced, so it fires even if `fetchImpl` ignores the signal),
+ * and — on a 2xx — parse and return the JSON body. A non-OK response is
+ * surfaced as `{ ok: false, status }` for the caller to classify; a transport
+ * failure or the timeout rejects.
+ *
+ * @param {string} url
+ * @param {{ fetchImpl: typeof globalThis.fetch, headers: Record<string, string>, timeoutMs: number }} opts
+ * @returns {Promise<{ ok: true, body: unknown } | { ok: false, status: number }>}
+ */
+function attemptFetchJSON(url, { fetchImpl, headers, timeoutMs }) {
+  const controller = new AbortController();
+  let timer;
+  const timeout = new Promise((_resolve, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(new Error(`request timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+
+  const run = (async () => {
+    const res = await fetchImpl(url, { headers, signal: controller.signal });
+    if (!res.ok) {
+      return { ok: false, status: res.status };
+    }
+    return { ok: true, body: await res.json() };
+  })();
+
+  // Whichever loses the race may still reject later (e.g. an AbortError once we
+  // abort on timeout) — swallow that so it is never an unhandled rejection.
+  run.catch(() => {});
+
+  return Promise.race([run, timeout]).finally(() => clearTimeout(timer));
+}
+
+/**
+ * Fetch `url` and return its parsed JSON body, with a per-request timeout and
+ * bounded retry/backoff. Retries (up to `retries` attempts total) on a fetch
+ * rejection (network / `fetch failed`), an abort/timeout, an HTTP 5xx, or an
+ * HTTP 429. Any other non-OK status (4xx apart from 429) throws immediately with
+ * no retry. After the final failed attempt, throws an Error naming the URL and
+ * the last failure. Shape validation is the caller's job.
+ *
+ * @param {string} url
+ * @param {Object} options
+ * @param {typeof globalThis.fetch} options.fetchImpl
+ * @param {Record<string, string>} [options.headers]
+ * @param {number} [options.timeoutMs]
+ * @param {number} [options.retries]
+ * @param {(ms: number) => Promise<void>} [options.sleepImpl]  seam for tests
+ * @returns {Promise<unknown>}
+ */
+export async function fetchJSONWithRetry(url, options) {
+  const {
+    fetchImpl,
+    headers = {},
+    timeoutMs = DEFAULT_FETCH_TIMEOUT_MS,
+    retries = DEFAULT_FETCH_RETRIES,
+    sleepImpl = defaultSleep,
+  } = options;
+
+  let lastFailure = 'unknown error';
+
+  for (let attempt = 1; attempt <= retries; attempt += 1) {
+    if (attempt > 1) {
+      await sleepImpl(retryBackoffMs(attempt));
+    }
+
+    let outcome;
+    try {
+      outcome = await attemptFetchJSON(url, { fetchImpl, headers, timeoutMs });
+    } catch (err) {
+      // Transport failure or timeout — retryable.
+      lastFailure = err instanceof Error ? err.message : String(err);
+      continue;
+    }
+
+    if (outcome.ok) {
+      return outcome.body;
+    }
+
+    // Non-OK HTTP. 4xx other than 429 is a hard error — retrying will not help.
+    if (outcome.status !== 429 && outcome.status < 500) {
+      throw new Error(`GET ${url} failed: HTTP ${outcome.status}`);
+    }
+    lastFailure = `HTTP ${outcome.status}`;
+  }
+
+  throw new Error(
+    `GET ${url} failed after ${retries} attempt(s): ${lastFailure}`,
+  );
+}
+
+/**
+ * Map `worker` over `items` with at most `poolSize` calls in flight, returning
+ * results in INPUT order regardless of completion order. The first rejection
+ * propagates (the returned promise rejects) and no further items are started —
+ * failure stays loud, never a partial result set.
+ *
+ * Hand-rolled index-drained worker lanes: no new dependency, plain-async style.
+ *
+ * @template T, R
+ * @param {ReadonlyArray<T>} items
+ * @param {number} poolSize
+ * @param {(item: T, index: number) => Promise<R>} worker
+ * @returns {Promise<R[]>}
+ */
+export async function mapWithConcurrency(items, poolSize, worker) {
+  /** @type {R[]} */
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  let aborted = false;
+  const lanes = Math.max(1, Math.min(poolSize, items.length || 1));
+
+  async function runLane() {
+    while (nextIndex < items.length && !aborted) {
+      const index = nextIndex;
+      nextIndex += 1;
+      try {
+        results[index] = await worker(items[index], index);
+      } catch (err) {
+        aborted = true;
+        throw err;
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: lanes }, () => runLane()));
+  return results;
+}
+
 /**
  * Fetch the bounded recent-applications projection for one authority via the
  * build-key-gated endpoint. Throws on any non-OK status or unexpected shape.
@@ -404,6 +654,7 @@ function siblingQueryParams(siblings) {
  * @param {string} buildKey
  * @param {number} limit
  * @param {typeof globalThis.fetch} fetchImpl
+ * @param {Partial<FetchTuning> & { sleepImpl?: (ms: number) => Promise<void> }} [tuning]
  * @returns {Promise<{ areaName: string, applications: object[], total: number, statusBreakdown: object[] }>}
  */
 async function fetchRecentApplications(
@@ -412,15 +663,16 @@ async function fetchRecentApplications(
   buildKey,
   limit,
   fetchImpl,
+  tuning = {},
 ) {
   const url = `${apiBase}/v1/authorities/${authorityId}/applications?limit=${limit}`;
-  const res = await fetchImpl(url, { headers: { 'X-Build-Key': buildKey } });
-  if (!res.ok) {
-    throw new Error(
-      `GET /v1/authorities/${authorityId}/applications failed: HTTP ${res.status}`,
-    );
-  }
-  const body = await res.json();
+  const body = await fetchJSONWithRetry(url, {
+    fetchImpl,
+    headers: { 'X-Build-Key': buildKey },
+    timeoutMs: tuning.timeoutMs,
+    retries: tuning.retries,
+    sleepImpl: tuning.sleepImpl,
+  });
   if (
     !body ||
     !Array.isArray(body.applications) ||
@@ -772,6 +1024,7 @@ async function renderAuthorityPages(args) {
  * @param {string} buildKey
  * @param {number} limit
  * @param {typeof globalThis.fetch} fetchImpl
+ * @param {Partial<FetchTuning> & { sleepImpl?: (ms: number) => Promise<void> }} [tuning]
  * @returns {Promise<{ applications: object[], total: number, statusBreakdown: object[] }>}
  */
 async function fetchRecentNearby(
@@ -781,19 +1034,19 @@ async function fetchRecentNearby(
   buildKey,
   limit,
   fetchImpl,
+  tuning = {},
 ) {
   const url =
     `${apiBase}/v1/applications/near?authorityId=${town.authorityId}` +
     `&lat=${town.lat}&lng=${town.lng}&radius=${DEFAULT_NEAR_RADIUS_METERS}` +
     `&limit=${limit}${siblingQueryParams(siblings)}`;
-  const res = await fetchImpl(url, { headers: { 'X-Build-Key': buildKey } });
-  if (!res.ok) {
-    throw new Error(
-      `GET /v1/applications/near (authority ${town.authorityId}, ${town.name}) ` +
-        `failed: HTTP ${res.status}`,
-    );
-  }
-  const body = await res.json();
+  const body = await fetchJSONWithRetry(url, {
+    fetchImpl,
+    headers: { 'X-Build-Key': buildKey },
+    timeoutMs: tuning.timeoutMs,
+    retries: tuning.retries,
+    sleepImpl: tuning.sleepImpl,
+  });
   if (
     !body ||
     !Array.isArray(body.applications) ||
@@ -1470,7 +1723,14 @@ async function runLiveMode(args) {
  * dedup are deliberately NOT applied here: they are page-generation decisions
  * re-applied at render time, so the snapshot carries the full fetched set and a
  * `--render` reproduces today's exact page set. Fails LOUD on any
- * transport/shape error (the per-endpoint fetch helpers throw).
+ * transport/shape error (the per-endpoint fetch helpers throw, and the first
+ * rejection aborts the whole gather — never a partial snapshot).
+ *
+ * The two fetch passes run with bounded concurrency ({@link
+ * DEFAULT_FETCH_CONCURRENCY}, override `PRERENDER_FETCH_CONCURRENCY`), kept
+ * small on purpose (single prod API replica, PostGIS KNN). Output order is
+ * IDENTICAL to a serial run: the pre-filters stay pre-filters, and results are
+ * collected in input order.
  *
  * @param {Object} args
  * @param {string} args.apiBase
@@ -1481,9 +1741,13 @@ async function runLiveMode(args) {
  * @param {() => Promise<Array<{ id: number, name: string, areaType: string }>>} args.loadAuthorities
  * @param {() => Promise<Town[]>} args.loadTowns
  * @param {() => string} args.now
+ * @param {number} [args.concurrency]   max requests in flight (default {@link DEFAULT_FETCH_CONCURRENCY})
+ * @param {number} [args.timeoutMs]     per-request abort budget (default {@link DEFAULT_FETCH_TIMEOUT_MS})
+ * @param {number} [args.retries]       attempts per request (default {@link DEFAULT_FETCH_RETRIES})
+ * @param {(ms: number) => Promise<void>} [args.sleepImpl]  retry-backoff seam for tests
  * @returns {Promise<SeoSnapshot>}
  */
-async function gatherSnapshot(args) {
+export async function gatherSnapshot(args) {
   const {
     apiBase,
     buildKey,
@@ -1493,35 +1757,45 @@ async function gatherSnapshot(args) {
     loadAuthorities,
     loadTowns,
     now,
+    concurrency = DEFAULT_FETCH_CONCURRENCY,
+    timeoutMs,
+    retries,
+    sleepImpl,
   } = args;
+
+  const tuning = { timeoutMs, retries, sleepImpl };
 
   const authorities = await loadAuthorities();
 
+  // areaType pre-filter: non-qualifying authorities are never fetched (same as
+  // live mode), so they never enter the snapshot. Filtering first keeps output
+  // order identical to the old serial loop.
+  const qualifyingAuthorities = authorities.filter((authority) =>
+    isQualifyingAreaType(authority.areaType),
+  );
+  const authorityRecents = await mapWithConcurrency(
+    qualifyingAuthorities,
+    concurrency,
+    (authority) =>
+      fetchRecentApplications(
+        apiBase,
+        authority.id,
+        buildKey,
+        limit,
+        fetchImpl,
+        tuning,
+      ),
+  );
   /** @type {SeoSnapshot['authorityPages']} */
-  const authorityPages = [];
-  for (const authority of authorities) {
-    // areaType pre-filter: non-qualifying authorities are never fetched (same as
-    // live mode), so they never enter the snapshot.
-    if (!isQualifyingAreaType(authority.areaType)) {
-      continue;
-    }
-    const recent = await fetchRecentApplications(
-      apiBase,
-      authority.id,
-      buildKey,
-      limit,
-      fetchImpl,
-    );
-    authorityPages.push({
-      id: authority.id,
-      name: authority.name,
-      areaType: authority.areaType,
-      areaName: recent.areaName || authority.name,
-      total: recent.total,
-      statusBreakdown: recent.statusBreakdown,
-      applications: recent.applications,
-    });
-  }
+  const authorityPages = qualifyingAuthorities.map((authority, i) => ({
+    id: authority.id,
+    name: authority.name,
+    areaType: authority.areaType,
+    areaName: authorityRecents[i].areaName || authority.name,
+    total: authorityRecents[i].total,
+    statusBreakdown: authorityRecents[i].statusBreakdown,
+    applications: authorityRecents[i].applications,
+  }));
 
   const towns = await loadTowns();
 
@@ -1530,34 +1804,37 @@ async function gatherSnapshot(args) {
   // authority, regardless of the population gate applied below.
   const gazetteerByAuthority = groupTownsByAuthority(towns);
 
+  // population pre-filter, applied BEFORE the geo fetch (same as live mode), so
+  // below-threshold towns never hit the API and never enter the snapshot.
+  const eligibleTowns = towns.filter(
+    (town) => town.population >= minPopulation,
+  );
+  const townGeos = await mapWithConcurrency(
+    eligibleTowns,
+    concurrency,
+    (town) =>
+      fetchRecentNearby(
+        apiBase,
+        town,
+        siblingTownsOf(town, gazetteerByAuthority),
+        buildKey,
+        limit,
+        fetchImpl,
+        tuning,
+      ),
+  );
   /** @type {SeoSnapshot['townPages']} */
-  const townPages = [];
-  for (const town of towns) {
-    // population pre-filter, applied BEFORE the geo fetch (same as live mode), so
-    // below-threshold towns never hit the API and never enter the snapshot.
-    if (town.population < minPopulation) {
-      continue;
-    }
-    const geo = await fetchRecentNearby(
-      apiBase,
-      town,
-      siblingTownsOf(town, gazetteerByAuthority),
-      buildKey,
-      limit,
-      fetchImpl,
-    );
-    townPages.push({
-      slug: town.slug,
-      name: town.name,
-      lat: town.lat,
-      lng: town.lng,
-      authorityId: town.authorityId,
-      population: town.population,
-      total: geo.total,
-      statusBreakdown: geo.statusBreakdown,
-      applications: geo.applications,
-    });
-  }
+  const townPages = eligibleTowns.map((town, i) => ({
+    slug: town.slug,
+    name: town.name,
+    lat: town.lat,
+    lng: town.lng,
+    authorityId: town.authorityId,
+    population: town.population,
+    total: townGeos[i].total,
+    statusBreakdown: townGeos[i].statusBreakdown,
+    applications: townGeos[i].applications,
+  }));
 
   return {
     version: SNAPSHOT_VERSION,
@@ -1664,11 +1941,12 @@ export async function runPrerender(options) {
  * @param {string} [options.apiBase]                 API base URL (PRERENDER_API_BASE / VITE_API_BASE_URL)
  * @param {string} [options.buildKey]                SITE_BUILD_KEY
  * @param {number} [options.limit]                   applications fetched per page
- * @param {Record<string, string | undefined>} [options.env]  environment (for SEO_TOWN_MIN_POPULATION)
+ * @param {Record<string, string | undefined>} [options.env]  environment (SEO_TOWN_MIN_POPULATION, PRERENDER_FETCH_*)
  * @param {typeof globalThis.fetch} [options.fetchImpl]
  * @param {() => Promise<Array<{ id: number, name: string, areaType: string }>>} [options.loadAuthorities]
  * @param {() => Promise<Town[]>} [options.loadTowns]
  * @param {() => string} [options.now]               clock seam for `generatedAt`
+ * @param {(ms: number) => Promise<void>} [options.sleepImpl]  retry-backoff seam for tests
  * @param {{ log: Function, warn: Function, error: Function }} [options.logger]
  * @returns {Promise<SeoSnapshot>}
  */
@@ -1683,6 +1961,7 @@ export async function runFetch(options) {
     loadAuthorities = () => loadAuthoritiesFromFile(AUTHORITIES_FILE, readFile),
     loadTowns = () => loadTownsFromFile(TOWNS_FILE, readFile),
     now = () => new Date().toISOString(),
+    sleepImpl,
     logger = console,
   } = options;
 
@@ -1695,6 +1974,8 @@ export async function runFetch(options) {
     );
   }
 
+  const { timeoutMs, retries, concurrency } = resolveFetchTuning(env);
+
   const snapshot = await gatherSnapshot({
     apiBase: trimTrailingSlash(apiBase),
     buildKey,
@@ -1704,6 +1985,10 @@ export async function runFetch(options) {
     loadAuthorities,
     loadTowns,
     now,
+    concurrency,
+    timeoutMs,
+    retries,
+    sleepImpl,
   });
 
   await mkdir(dirname(snapshotPath), { recursive: true });
