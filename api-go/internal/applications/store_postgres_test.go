@@ -908,6 +908,104 @@ func assertBreakdown(t *testing.T, got, want []StateCount) {
 	}
 }
 
+// TestPostgresStore_BreakdownByAuthority_ExplainUsesAuthorityAppStateIndex proves
+// the applications_authority_app_state composite index (tc-bnxbn; migrations/
+// 0028_applications_authority_app_state_index.sql) serves BreakdownByAuthority's
+// "SELECT app_state, count(*) ... WHERE authority_code = $1 GROUP BY app_state"
+// status-chip count. That query backs the build-key-gated SEO authority read
+// (GET /v1/authorities/{id}/applications) and was the confirmed root cause of
+// the SEO Refresh prod job timing out (tc-a6mrb): p95 ~20s / max ~55s in prod,
+// because no index carried both authority_code and app_state, so the planner
+// index-scanned the authority's slice and then heap-fetched every row just to
+// read app_state before the aggregate. Both columns now live in one index, so
+// the count is an index-only scan. enable_seqscan is disabled for the EXPLAIN
+// so the planner is forced to reveal whether the index is usable at all, rather
+// than preferring a sequential scan over the small fixture table — mirroring
+// TestPostgresStore_GetByUID_ExplainUsesAuthorityUIDIndex and
+// TestPostgresStore_FindClustersInZone_ExplainUsesGiSTIndex.
+//
+// Sibling rows matter: with only a handful of rows in the target authority the
+// planner's cost estimates for the new covering index, applications_app_state
+// (on app_state alone), and applications_authority_real_date (authority_code
+// prefix then heap fetch) all collapse toward zero and the pick is a coin flip.
+// Seeding ~20 rows in the target authority spread across several app_state
+// values plus a NULL bucket, and a second well-populated authority so pruning
+// by authority_code is worth something, gives the covering index a clear cost
+// advantage. An explicit ANALYZE makes those fresh row counts visible to the
+// planner immediately rather than waiting on autovacuum's analyze threshold.
+func TestPostgresStore_BreakdownByAuthority_ExplainUsesAuthorityAppStateIndex(t *testing.T) {
+	pool := pgtest.New(t)
+	pgtest.Truncate(t, pool, "applications", "watch_zones")
+	store := NewPostgresStore(pool)
+	ctx := context.Background()
+
+	if err := store.Upsert(ctx, withState(pgApp("24/0028/FUL", 100), pgPtr("Permitted"))); err != nil {
+		t.Fatalf("Upsert: %v", err)
+	}
+
+	// ~20 sibling rows in the target authority (100), spread across a few
+	// app_state values plus a NULL bucket, raw SQL (not Upsert) for speed.
+	const seedTargetAuthority = `
+		INSERT INTO applications (planit_name, authority_code, uid, area_name, area_id, last_different, app_state)
+		SELECT '24/target-' || i, '100', 'target-uid-' || i, 'Testshire', 100, now(),
+		       CASE i % 4 WHEN 0 THEN NULL WHEN 1 THEN 'Permitted' WHEN 2 THEN 'Rejected' ELSE 'Undecided' END
+		FROM generate_series(1, 20) AS i`
+	if _, err := pool.Exec(ctx, seedTargetAuthority); err != nil {
+		t.Fatalf("seed target authority rows: %v", err)
+	}
+
+	// A second, well-populated authority so pruning by authority_code is worth
+	// something to the planner.
+	const seedOtherAuthority = `
+		INSERT INTO applications (planit_name, authority_code, uid, area_name, area_id, last_different, app_state)
+		SELECT '24/other-' || i, '200', 'other-uid-' || i, 'Othershire', 200, now(), 'Permitted'
+		FROM generate_series(1, 30) AS i`
+	if _, err := pool.Exec(ctx, seedOtherAuthority); err != nil {
+		t.Fatalf("seed other authority rows: %v", err)
+	}
+
+	if _, err := pool.Exec(ctx, "ANALYZE applications"); err != nil {
+		t.Fatalf("analyze applications: %v", err)
+	}
+
+	// SET enable_seqscan = off and the EXPLAIN must run on the SAME connection
+	// (the setting is session state), so acquire one pooled connection for both.
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		t.Fatalf("acquire connection: %v", err)
+	}
+	defer conn.Release()
+	if _, err := conn.Exec(ctx, "SET enable_seqscan = off"); err != nil {
+		t.Fatalf("disable seqscan: %v", err)
+	}
+
+	rows, err := conn.Query(ctx, "EXPLAIN (ANALYZE, FORMAT TEXT) "+pgBreakdownByAuthorityQuery, "100")
+	if err != nil {
+		t.Fatalf("EXPLAIN: %v", err)
+	}
+	var plan strings.Builder
+	for rows.Next() {
+		var line string
+		if err := rows.Scan(&line); err != nil {
+			rows.Close()
+			t.Fatalf("scan plan line: %v", err)
+		}
+		plan.WriteString(line)
+		plan.WriteByte('\n')
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("read plan: %v", err)
+	}
+
+	planText := strings.ToLower(plan.String())
+	if !strings.Contains(planText, "applications_authority_app_state") {
+		t.Errorf("EXPLAIN plan does not use the applications_authority_app_state index:\n%s", plan.String())
+	}
+	if !strings.Contains(planText, "index only scan") {
+		t.Errorf("EXPLAIN plan is not an index-only scan (per-row heap fetch not eliminated):\n%s", plan.String())
+	}
+}
+
 // TestPostgresStore_FindNearbyPage proves nearest-first ordering, the radius
 // filter, and keyset pagination across pages with no overlap or gap and an empty
 // next-cursor at exhaustion.
