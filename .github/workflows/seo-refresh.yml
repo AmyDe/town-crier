@@ -102,10 +102,12 @@ jobs:
     # Schedule always runs; manual runs honour the `environment` selector.
     if: github.event_name == 'schedule' || inputs.environment == 'dev' || inputs.environment == 'both'
     runs-on: ubuntu-latest
-    # 30 min: --fetch gathers the complete authority + town set serially (~410
-    # authorities + several hundred towns, two bounded Cosmos reads each), so this
-    # is the long pole; the offline --render is fast.
-    timeout-minutes: 30
+    # 45 min: --fetch gathers the complete authority + town set (~418 authorities
+    # + ~1,550 towns, one bounded Postgres read each) with small bounded
+    # concurrency + per-request timeout/retry (tc-a6mrb); it is still the long
+    # pole, and the ceiling has headroom over the observed ~29 min prod run. The
+    # offline --render is fast.
+    timeout-minutes: 45
     environment: development
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -189,8 +191,8 @@ jobs:
     # Schedule always runs; manual runs honour the `environment` selector.
     if: github.event_name == 'schedule' || inputs.environment == 'prod' || inputs.environment == 'both'
     runs-on: ubuntu-latest
-    # 30 min: full authority + town --fetch (see web-dev for the rationale).
-    timeout-minutes: 30
+    # 45 min: full authority + town --fetch (see web-dev for the rationale).
+    timeout-minutes: 45
     environment: production
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
