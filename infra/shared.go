@@ -1129,10 +1129,10 @@ expected
 	const dashboardJobCyclesByOutcomeQuery = `let data = dependencies | where customDimensions['deployment.environment'] == 'prod' | where name in ('Digest Cycle', 'Hourly Digest Cycle', 'Dormant Cleanup Cycle', 'Subscription Sweep Cycle', 'Postgres Purge Cycle', 'Polling Bootstrap') | summarize Value=toreal(count()) by timestamp=bin(timestamp, 1h), series=iff(success == true, name, strcat(name, ' (failed)')); union data, (datatable(timestamp:datetime, Value:real, series:string)[]) | render timechart`
 	const dashboardPlanItLatencyP95Query = `dependencies | where customDimensions['deployment.environment'] == 'prod' | where target == 'PlanIt search' | summarize Value=percentile(duration, 95) by timestamp=bin(timestamp, 1h) | render timechart`
 
-	// tc-gha6l row y=28: App Store Notifications and Daily Active Users read telemetry from
-	// sibling Go beads not yet deployed as of 2026-07-13 — both render flat 0 until the next
-	// api-go release ships (see the row comment above). Poll HWM by Authority (tc-yxrjs, below)
-	// reads the "PlanIt authority poll" span shipped in GH #955 PR A (v0.20.1) instead.
+	// tc-gha6l row y=28: Daily Active Users (live) and App Store Notifications (flat until
+	// prod gains its first App Store Server Notification subscription) read request telemetry;
+	// see the row comment below for tile order. Poll HWM by Authority (tc-yxrjs, below) reads
+	// the "PlanIt authority poll" span shipped in GH #955 PR A (v0.20.1) instead.
 	const dashboardAppStoreNotificationsQuery = `let data = requests | where customDimensions['deployment.environment'] == 'prod' | where name == 'POST /v1/webhooks/appstore' | summarize Value=toreal(count()) by timestamp=bin(timestamp, 1h), type=coalesce(tostring(customDimensions['assn.notification_type']), '(undecoded)'); union data, (datatable(timestamp:datetime, Value:real, type:string)[]) | render timechart`
 	const dashboardDailyActiveUsersQuery = `let data = requests | where customDimensions['deployment.environment'] == 'prod' | extend uid = coalesce(user_AuthenticatedId, tostring(customDimensions['enduser.id'])) | where isnotempty(uid) | summarize Value=toreal(dcount(uid)) by timestamp=bin(timestamp, 1d); union data, (datatable(timestamp:datetime, Value:real)[]) | render timechart`
 
@@ -1233,10 +1233,15 @@ expected
 						dashboardPart(0, 24, 4, 4, monitorChartTile(prodPollServiceBusNamespaceID, "Messages", "Microsoft.ServiceBus/namespaces", monitorAggregationMaximum, "Poll Queue Depth")),
 						dashboardPart(4, 24, 4, 4, kqlTile(appInsightsID, dashboardJobCyclesByOutcomeQuery, "Job Cycles by Outcome", "series")),
 						dashboardPart(8, 24, 4, 4, kqlTile(appInsightsID, dashboardPlanItLatencyP95Query, "PlanIt Latency p95 (ms)", "")),
-						// Row 8 (y=28): Poll HWM by Authority (data today); the other two await deploy.
+						// Row 8 (y=28): Poll HWM by Authority, then Daily Active Users, then App
+						// Store Notifications. DAU is ahead of the App Store Notifications tile
+						// (which stays flat until prod gains its first App Store Server
+						// Notification subscription). This ordering matches a manual portal
+						// reorder that infra-drift-check kept flagging on the shared stack —
+						// codifying it here so pulumi up reclaims the dashboard (tc-wx6un).
 						dashboardPart(0, 28, 4, 4, kqlGridTile(appInsightsID, dashboardPollHWMByAuthorityQuery, "Poll HWM by Authority (oldest first)")),
-						dashboardPart(4, 28, 4, 4, kqlTile(appInsightsID, dashboardAppStoreNotificationsQuery, "App Store Notifications", "type")),
-						dashboardPart(8, 28, 4, 4, kqlTile(appInsightsID, dashboardDailyActiveUsersQuery, "Daily Active Users", "")),
+						dashboardPart(4, 28, 4, 4, kqlTile(appInsightsID, dashboardDailyActiveUsersQuery, "Daily Active Users", "")),
+						dashboardPart(8, 28, 4, 4, kqlTile(appInsightsID, dashboardAppStoreNotificationsQuery, "App Store Notifications", "type")),
 					},
 				},
 			},
