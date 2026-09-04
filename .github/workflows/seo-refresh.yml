@@ -18,10 +18,11 @@
 #      This is the ONLY Go API call in the whole pipeline.
 #   3. Azure OIDC login — deliberately AFTER fetch, not before (tc-xukdb). The
 #      federated client assertion GitHub hands to Azure AD is only valid ~5
-#      minutes; fetch alone now runs 9.5-13 minutes (418 authorities + 1550
-#      towns), so logging in beforehand left the assertion stale by the time
-#      the upload step below needed a storage-scoped token, failing with
-#      AADSTS700024. Login right before the first Azure call instead.
+#      minutes; fetch alone runs ~25-30 minutes (418 authorities + 1550 towns,
+#      serial — see the concurrency note on the fetch step), so logging in
+#      beforehand left the assertion stale by the time the upload step below
+#      needed a storage-scoped token, failing with AADSTS700024. Login right
+#      before the first Azure call instead.
 #   4. UPLOAD: push seo-snapshot.json to the environment's Azure Blob container
 #      (seo-snapshot/seo-snapshot.json). The storage account has shared-key
 #      access DISABLED, so blob I/O uses `--auth-mode login` (AAD/RBAC); the CI
@@ -103,9 +104,12 @@ jobs:
     if: github.event_name == 'schedule' || inputs.environment == 'dev' || inputs.environment == 'both'
     runs-on: ubuntu-latest
     # 45 min: --fetch gathers the complete authority + town set (~418 authorities
-    # + ~1,550 towns, one bounded Postgres read each) with small bounded
-    # concurrency + per-request timeout/retry (tc-a6mrb); it is still the long
-    # pole, and the ceiling has headroom over the observed ~29 min prod run. The
+    # + ~1,550 towns, one bounded Postgres read each). Serial by design
+    # (PRERENDER_FETCH_CONCURRENCY=1 on the fetch step below): the prod API is a
+    # single 0.25 vCPU replica with no autoscale, and concurrency > 1 saturated
+    # it into a retry storm — request volume ~2x, prod step ~22 min, every
+    # endpoint's tail ballooned (tc-5nr3t). Serial + per-request timeout/retry
+    # (tc-a6mrb) keeps it the long pole at ~25-30 min, inside the ceiling. The
     # offline --render is fast.
     timeout-minutes: 45
     environment: development
@@ -140,6 +144,12 @@ jobs:
           SITE_BUILD_KEY: ${{ secrets.SITE_BUILD_KEY }}
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
           SEO_TOWN_MIN_POPULATION: ${{ vars.SEO_TOWN_MIN_POPULATION || '5000' }}
+          # Serial fetch. The prod API is a single 0.25 vCPU replica with no
+          # autoscale; PRERENDER_FETCH_CONCURRENCY > 1 saturated it into a retry
+          # storm (~2x request volume, ~22 min step — tc-5nr3t). The script
+          # default is 4; this override exists for exactly this reason. Kept the
+          # same on dev for config symmetry — dev's tiny DB is fast either way.
+          PRERENDER_FETCH_CONCURRENCY: "1"
 
       # Login right before the first Azure call (tc-xukdb) — see flow comment above.
       - uses: ./.github/actions/azure-login
@@ -236,6 +246,12 @@ jobs:
           SITE_BUILD_KEY: ${{ secrets.SITE_BUILD_KEY }}
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
           SEO_TOWN_MIN_POPULATION: ${{ vars.SEO_TOWN_MIN_POPULATION || '5000' }}
+          # Serial fetch. The prod API is a single 0.25 vCPU replica with no
+          # autoscale; PRERENDER_FETCH_CONCURRENCY > 1 saturated it into a retry
+          # storm (~2x request volume, ~22 min step — tc-5nr3t). The script
+          # default is 4; this override exists for exactly this reason. Kept the
+          # same on dev for config symmetry — dev's tiny DB is fast either way.
+          PRERENDER_FETCH_CONCURRENCY: "1"
 
       # Login right before the first Azure call (tc-xukdb) — see flow comment above.
       - uses: ./.github/actions/azure-login
