@@ -104,8 +104,8 @@ func (c *Client) FetchNationalDeltaPage(ctx context.Context, q NationalDeltaQuer
 // different=N filter ("changed in the last N days") is inherently bounded, so
 // there is no absolute floor to freeze and no server-side total+sort cost
 // that grows without limit — the failure mode that livelocked the old
-// pinned-epoch different_start floor (bead tc-777e7). The MaskCutoff ceiling
-// on last_different is still applied, as the end_date query param.
+// pinned-epoch model (bead tc-777e7). The MaskCutoff ceiling on
+// last_different is still applied, as the end_date query param.
 type NationalInverseMaskQuery struct {
 	// WindowDays is the rolling different=N window width in days: how far back
 	// (from today) PlanIt should consider a record "changed". The caller
@@ -168,8 +168,8 @@ func buildNationalDeltaPath(q NationalDeltaQuery) string {
 
 // buildInverseMaskPath builds ADR 0044 §5 (as amended by #1127) Lane C's
 // national inverse-mask query path: no auth param, a bounded rolling
-// different=N window (N = q.WindowDays — replaces the old absolute
-// different_start floor, bead tc-777e7), an end_date ceiling (the inverse of
+// different=N window (N = q.WindowDays — replaces the old absolute epoch
+// floor, bead tc-777e7), an end_date ceiling (the inverse of
 // Lane A's start_date mask — see NationalInverseMaskQuery.MaskCutoff),
 // sort=last_different ASCENDING (no leading "-", unlike buildNationalDeltaPath),
 // the light select set (containing the sort field, satisfying PlanIt's "sort
