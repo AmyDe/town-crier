@@ -415,6 +415,7 @@ func TestLoadConfig_PollingDefaults(t *testing.T) {
 		"POLLING_PLANIT_PAGE_SIZE",
 		"POLLING_LANE_A_MASK_DAYS", "POLLING_LANE_B_MASK_DAYS", "POLLING_LANE_B_MAX_PAGES",
 		"POLLING_DAY_START", "POLLING_DAY_END", "POLLING_LANE_FRESHNESS_INTERVAL",
+		"POLLING_LANE_C_ENABLED",
 		"POLLING_BACKFILL_ENABLED", "POLLING_BACKFILL_WINDOW_WIDTH_DAYS",
 		"POLLING_BACKFILL_MAX_PAGES_PER_CYCLE", "POLLING_BACKFILL_EMPTY_WINDOWS_BEFORE_COMPLETE",
 	} {
@@ -463,6 +464,9 @@ func TestLoadConfig_PollingDefaults(t *testing.T) {
 	if cfg.PollingLaneFreshnessInterval != 15*time.Minute {
 		t.Errorf("PollingLaneFreshnessInterval default: got %v, want 15m", cfg.PollingLaneFreshnessInterval)
 	}
+	if !cfg.PollingLaneCEnabled {
+		t.Error("PollingLaneCEnabled: got false, want true by default (tc-56ahl, unset => Lane C runs as today)")
+	}
 	if cfg.PollingBackfillEnabled {
 		t.Error("PollingBackfillEnabled: got true, want false by default (GH#967, ships dark)")
 	}
@@ -501,6 +505,38 @@ func TestLoadConfig_PollingBackfillEnabled(t *testing.T) {
 			}
 			if cfg.PollingBackfillEnabled != tc.want {
 				t.Errorf("PollingBackfillEnabled: got %v, want %v", cfg.PollingBackfillEnabled, tc.want)
+			}
+		})
+	}
+}
+
+// TestLoadConfig_PollingLaneCEnabled pins the Lane C gate re-added by tc-56ahl
+// (GH#1125) after ADR 0044 removed it: POLLING_LANE_C_ENABLED is a DEFAULT-TRUE
+// flag, so an unset or truthy value leaves Lane C running exactly as today, and
+// only an explicit falsy value turns it off. A present-but-unparseable value
+// fails safe to false, matching getenvBoolDefault's contract.
+func TestLoadConfig_PollingLaneCEnabled(t *testing.T) {
+	tests := []struct {
+		name string
+		env  string
+		want bool
+	}{
+		{"unset defaults true", "", true},
+		{"true stays enabled", "true", true},
+		{"1 stays enabled", "1", true},
+		{"false disables", "false", false},
+		{"garbage disables", "notabool", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("POLLING_LANE_C_ENABLED", tc.env)
+
+			cfg, err := LoadConfig()
+			if err != nil {
+				t.Fatalf("LoadConfig: %v", err)
+			}
+			if cfg.PollingLaneCEnabled != tc.want {
+				t.Errorf("PollingLaneCEnabled: got %v, want %v", cfg.PollingLaneCEnabled, tc.want)
 			}
 		})
 	}
