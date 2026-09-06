@@ -350,6 +350,40 @@ func TestPlanner_NextWork_NilLaneCSkipsIt(t *testing.T) {
 	}
 }
 
+// TestPlanner_NextWork_NilLaneCNeverSelectedAcross24h is tc-56ahl's (GH#1125)
+// wiring assertion: with Lane C disabled (POLLING_LANE_C_ENABLED=false =>
+// buildPollOrchestrator leaves laneC nil => PlannerState.LaneC == nil), the
+// planner must never yield a Lane C candidate at ANY wall-clock time,
+// including right across the daytime eligibility window where a wired Lane C
+// would otherwise be the only pick. Sweeps now every 15 minutes over a full
+// 24h (both a GMT and a BST day, so the DST window shift is covered too) with
+// A/B parked not-due and Lane D absent — the one arrangement in which a wired
+// Lane C would win every daytime iteration.
+func TestPlanner_NextWork_NilLaneCNeverSelectedAcross24h(t *testing.T) {
+	t.Parallel()
+	p := NewPlanner(testPlannerOptions(t))
+
+	for _, day := range []time.Time{
+		time.Date(2026, 1, 15, 0, 0, 0, 0, time.UTC), // GMT
+		time.Date(2026, 7, 15, 0, 0, 0, 0, time.UTC), // BST
+	} {
+		for offset := time.Duration(0); offset < 24*time.Hour; offset += 15 * time.Minute {
+			now := day.Add(offset)
+			state := PlannerState{
+				// A/B far in the future: never due, so a wired Lane C would be
+				// the sole daytime candidate.
+				LaneA: LaneState{LastPollTime: now.Add(time.Hour)},
+				LaneB: LaneState{LastPollTime: now.Add(time.Hour)},
+				LaneC: nil, // POLLING_LANE_C_ENABLED=false: not wired
+				LaneD: nil, // not wired here either
+			}
+			if item := p.NextWork(state, now); item != nil && item.Lane == LaneC {
+				t.Fatalf("NextWork at %s: yielded Lane C, want it never selected when unwired", now)
+			}
+		}
+	}
+}
+
 // TestPlanner_NextWork_NilWhenIdle covers the pure "nothing to do" case:
 // every lane either ineligible or with no work.
 func TestPlanner_NextWork_NilWhenIdle(t *testing.T) {
