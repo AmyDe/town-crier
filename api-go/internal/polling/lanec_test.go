@@ -13,27 +13,40 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/planit"
 )
 
-// fakeInverseMaskFetcher serves pre-canned Lane C rolling-window pages keyed
-// by the requested 0-based record offset, and hydration responses keyed by
-// uid. It
-// can be primed to fail a specific fetch ordinal (1-based, failNth) or a
-// specific hydration uid (hydrateErr).
+// laneCTestPageSize is the per-page record count fakeInverseMaskFetcher's
+// virtual-result-set mode (f.rows) serves, mirroring planit.nationalPageSize.
+const laneCTestPageSize = 300
+
+// fakeInverseMaskFetcher serves Lane C rolling-window pages and hydration
+// responses. Pages come from one of two modes: pre-canned pages keyed by the
+// requested 0-based record offset (f.pages), or — when f.rows is set — real
+// index-paginated slices of a single virtual result set (laneCTestPageSize
+// per page, HasMorePages until the tail), the way PlanIt actually pages, so a
+// resume test can prove the cursor walks PAST a head-of-window cluster rather
+// than re-fetching a fixed canned page forever. Hydration responses are keyed
+// by uid (f.hydrated, one record) or f.hydratedMulti (several records for one
+// uid — a cross-authority uid collision, tc-nkvil). It can be primed to fail
+// a specific fetch ordinal (1-based, failNth) or a specific hydration uid
+// (hydrateErr).
 type fakeInverseMaskFetcher struct {
-	pages        map[int]planit.FetchPageResult
-	hydrated     map[string]applications.PlanningApplication
-	hydrateErr   map[string]error
-	failNth      map[int]error
-	calls        int
-	queries      []planit.NationalInverseMaskQuery
-	hydrateCalls []string
+	pages         map[int]planit.FetchPageResult
+	rows          []applications.PlanningApplication
+	hydrated      map[string]applications.PlanningApplication
+	hydratedMulti map[string][]applications.PlanningApplication
+	hydrateErr    map[string]error
+	failNth       map[int]error
+	calls         int
+	queries       []planit.NationalInverseMaskQuery
+	hydrateCalls  []string
 }
 
 func newFakeInverseMaskFetcher() *fakeInverseMaskFetcher {
 	return &fakeInverseMaskFetcher{
-		pages:      map[int]planit.FetchPageResult{},
-		hydrated:   map[string]applications.PlanningApplication{},
-		hydrateErr: map[string]error{},
-		failNth:    map[int]error{},
+		pages:         map[int]planit.FetchPageResult{},
+		hydrated:      map[string]applications.PlanningApplication{},
+		hydratedMulti: map[string][]applications.PlanningApplication{},
+		hydrateErr:    map[string]error{},
+		failNth:       map[int]error{},
 	}
 }
 
@@ -43,6 +56,9 @@ func (f *fakeInverseMaskFetcher) FetchInverseMaskPage(_ context.Context, q plani
 	if err, ok := f.failNth[f.calls]; ok {
 		return planit.FetchPageResult{}, err
 	}
+	if f.rows != nil {
+		return f.pageFromRows(q.StartIndex), nil
+	}
 	res, ok := f.pages[q.StartIndex]
 	if !ok {
 		return planit.FetchPageResult{From: q.StartIndex, HasMorePages: false}, nil
@@ -50,10 +66,28 @@ func (f *fakeInverseMaskFetcher) FetchInverseMaskPage(_ context.Context, q plani
 	return res, nil
 }
 
+// pageFromRows serves one index-paginated slice of f.rows, mirroring PlanIt's
+// own paging: up to laneCTestPageSize records from start, HasMorePages set
+// while the tail is unreached.
+func (f *fakeInverseMaskFetcher) pageFromRows(start int) planit.FetchPageResult {
+	if start > len(f.rows) {
+		start = len(f.rows)
+	}
+	end := min(start+laneCTestPageSize, len(f.rows))
+	return planit.FetchPageResult{
+		From:         start,
+		Applications: append([]applications.PlanningApplication(nil), f.rows[start:end]...),
+		HasMorePages: end < len(f.rows),
+	}
+}
+
 func (f *fakeInverseMaskFetcher) FetchByUID(_ context.Context, uid string) (planit.FetchPageResult, error) {
 	f.hydrateCalls = append(f.hydrateCalls, uid)
 	if err, ok := f.hydrateErr[uid]; ok {
 		return planit.FetchPageResult{}, err
+	}
+	if apps, ok := f.hydratedMulti[uid]; ok {
+		return planit.FetchPageResult{Applications: append([]applications.PlanningApplication(nil), apps...)}, nil
 	}
 	app, ok := f.hydrated[uid]
 	if !ok {
@@ -114,6 +148,29 @@ func newLaneCHandlerAt(t *testing.T, fetcher *fakeInverseMaskFetcher, apps appli
 
 func defaultInverseMaskOpts() InverseMaskOptions {
 	return InverseMaskOptions{MaskWindow: 90 * 24 * time.Hour}
+}
+
+// TestInverseMaskLane_ResumeOverlapSmallerThanHydrationCap pins the
+// load-bearing invariant of tc-nkvil / tc-777e7 Bug 2: Lane C's resume
+// overlap MUST stay below the per-pass hydration cap, so a resume that lands
+// on a cluster of permanently-unhydratable rows still nets at least
+// (maxHydrationsPerPass - laneCResumeOverlapRecords) records of forward
+// progress per pass instead of re-spending its whole hydration budget
+// re-failing rows it already walked (which the tc-6u4da clamp then pins in
+// place forever).
+func TestInverseMaskLane_ResumeOverlapSmallerThanHydrationCap(t *testing.T) {
+	t.Parallel()
+	if laneCResumeOverlapRecords >= maxHydrationsPerPass {
+		t.Fatalf(
+			"laneCResumeOverlapRecords (%d) must stay < maxHydrationsPerPass (%d): "+
+				"a resume onto a phantom cluster must still net-advance the cursor, "+
+				"or the tc-777e7 Bug 2 livelock returns",
+			laneCResumeOverlapRecords, maxHydrationsPerPass,
+		)
+	}
+	if laneCResumeOverlapRecords <= 0 {
+		t.Fatalf("laneCResumeOverlapRecords (%d) must be positive to tolerate any PlanIt record-shift on a resume", laneCResumeOverlapRecords)
+	}
 }
 
 // TestRunOnePage_WindowDaysClampedToRange pins #1127's window-width rule:
@@ -303,14 +360,15 @@ func TestRunOnePage_StaleFrozenEpochRowIsColdStart(t *testing.T) {
 
 // TestInverseMaskLane_ResumesActiveScanWithOverlap proves the within-scan
 // checkpoint's resume story (GH#986): a same-day cursor resumes pagination at
-// max(0, NextIndex-resumeOverlapRecords), mirroring Lane A/B's own resume
-// overlap (nationallane.go), rather than either restarting or resuming at the
-// checkpointed index with no safety margin.
+// max(0, NextIndex-laneCResumeOverlapRecords) — Lane C's own, deliberately
+// smaller overlap (tc-nkvil), not the shared resumeOverlapRecords Lane A/B
+// use — rather than either restarting or resuming at the checkpointed index
+// with no safety margin.
 func TestInverseMaskLane_ResumesActiveScanWithOverlap(t *testing.T) {
 	t.Parallel()
 	fetcher := newFakeInverseMaskFetcher()
-	// 300 - the 100-record resume overlap = 200.
-	fetcher.pages[200] = planit.FetchPageResult{From: 200, Applications: nil, HasMorePages: false}
+	// 300 - the 10-record Lane C resume overlap = 290.
+	fetcher.pages[290] = planit.FetchPageResult{From: 290, Applications: nil, HasMorePages: false}
 	apps := newFakeApps()
 	state := newFakeStateStore()
 	state.states[sentinelLaneC] = PollState{
@@ -324,8 +382,8 @@ func TestInverseMaskLane_ResumesActiveScanWithOverlap(t *testing.T) {
 	if out.err != nil {
 		t.Fatalf("RunOnePage: %v", out.err)
 	}
-	if len(fetcher.queries) != 1 || fetcher.queries[0].StartIndex != 200 {
-		t.Fatalf("expected exactly one fetch at StartIndex 200 (300 - the 100-record resume overlap), got %+v", fetcher.queries)
+	if len(fetcher.queries) != 1 || fetcher.queries[0].StartIndex != 290 {
+		t.Fatalf("expected exactly one fetch at StartIndex 290 (300 - the 10-record Lane C resume overlap), got %+v", fetcher.queries)
 	}
 	if fetcher.queries[0].WindowDays != 2 {
 		t.Errorf("WindowDays: got %d, want 2", fetcher.queries[0].WindowDays)
@@ -351,8 +409,8 @@ func TestInverseMaskLane_ResumeOverlapDedupesAlreadyProcessedRows(t *testing.T) 
 
 	same := "Permitted"
 	fetcher := newFakeInverseMaskFetcher()
-	fetcher.pages[200] = planit.FetchPageResult{ // 300 - the 100-record resume overlap
-		From: 200,
+	fetcher.pages[290] = planit.FetchPageResult{ // 300 - the 10-record Lane C resume overlap
+		From: 290,
 		Applications: []applications.PlanningApplication{
 			lightApp("already/FUL", 99, same, ld), // in the overlap window: unchanged since last pass
 			lightApp("genuine/FUL", 99, "Permitted", ld),
@@ -474,6 +532,52 @@ func TestInverseMaskLane_AppStateDriftHydrates(t *testing.T) {
 	}
 	if len(apps.upserts) != 1 || apps.upserts[0].UID != "24/0001/FUL" {
 		t.Fatalf("upserts: got %+v", apps.upserts)
+	}
+}
+
+// TestInverseMaskLane_HydratesCollidingUIDByAreaID is the tc-nkvil /
+// tc-777e7 Bug 2 case: PlanIt's uid is unique only within one authority, so
+// the pg_sz=10 id_match hydration lookup (planit.uidHydrationPageSize) can
+// return several records for one uid — here the Croydon (area 301) copy PlanIt
+// sorts first, then the Bassetlaw (area 198) copy the light row actually
+// flagged. hydrate must skip the 301 collision and ingest exactly the 198
+// record; the old pg_sz=1 lookup returned only the 301 copy and logged "no
+// matching record" every cycle forever.
+func TestInverseMaskLane_HydratesCollidingUIDByAreaID(t *testing.T) {
+	t.Parallel()
+	ld := laneCNow.Add(-time.Hour)
+	const uid = "21/00856/HSE"
+
+	fetcher := newFakeInverseMaskFetcher()
+	fetcher.pages[0] = planit.FetchPageResult{
+		From:         0,
+		Applications: []applications.PlanningApplication{lightApp(uid, 198, "Permitted", ld)}, // light row: area 198 (Bassetlaw)
+		HasMorePages: false,
+	}
+	// id_match returns the wrong-authority copy first, the flagged one second.
+	fetcher.hydratedMulti[uid] = []applications.PlanningApplication{
+		lightApp(uid, 301, "Permitted", ld), // Croydon — a bare-uid collision
+		lightApp(uid, 198, "Permitted", ld), // Bassetlaw — the record the light row flagged
+	}
+
+	apps := newFakeApps() // uid absent under authority 198: a genuine straggler
+	state := newFakeStateStore()
+	state.states[sentinelLaneC] = PollState{HighWaterMark: laneCNow.AddDate(0, 0, -2), Cursor: &PollCursor{DifferentStart: laneCToday, NextIndex: 0}}
+
+	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
+	out := h.RunOnePage(context.Background())
+
+	if out.err != nil {
+		t.Fatalf("RunOnePage: %v", out.err)
+	}
+	if out.recordsIngested != 1 {
+		t.Errorf("recordsIngested: got %d, want 1 (only the area 198 copy)", out.recordsIngested)
+	}
+	if len(apps.upserts) != 1 {
+		t.Fatalf("upserts: got %d, want 1 (the 301 collision must not be ingested)", len(apps.upserts))
+	}
+	if apps.upserts[0].AreaID != 198 {
+		t.Errorf("ingested record AreaID: got %d, want 198 (the copy matching the light row, not the 301 collision)", apps.upserts[0].AreaID)
 	}
 }
 
@@ -911,125 +1015,177 @@ func TestInverseMaskLane_HydrationCapStopsPassAndCheckpoints(t *testing.T) {
 	}
 }
 
-// TestInverseMaskLane_HydrationCapNeverRegressesCursor is tc-6u4da: a cluster
-// of PERMANENTLY-unhydratable rows (FetchByUID genuinely has no matching
-// record for them, forever — a historical areaId-198 cluster in prod) never
-// dedupes via GetByUID/inverseMaskDiffers (Postgres has no row for them
-// either), so every one of them consumes a hydration-cap slot on every single
-// pass, and the resume overlap (100) dwarfs the cap (25): a resume can hit
-// the cap after attempting only maxHydrationsPerPass hydrations, i banked
-// well short of the 100-record overlap the resume subtracted. Left alone,
-// startIndex+i checkpoints BELOW the cursor's own prior NextIndex — the
-// checkpoint retreats, and since the same cluster is still there next pass,
-// it retreats again, and again, potentially spiralling all the way back to
-// index 0. This proves the fix: the persisted cursor must never fall below
-// the NextIndex already loaded at the top of this call.
-func TestInverseMaskLane_HydrationCapNeverRegressesCursor(t *testing.T) {
+// tc-nkvil replaced TestInverseMaskLane_HydrationCapNeverRegressesCursor and
+// TestInverseMaskLane_HydrationCapFlatlinesAcrossRepeatedPasses: those pinned
+// the PRE-FIX behaviour where resumeOverlapRecords (100) > maxHydrationsPerPass
+// (25), so a resume onto a permanently-unhydratable cluster could only
+// FLATLINE the cursor (the tc-6u4da clamp holding a raw startIndex+i that
+// landed below the loaded NextIndex). With laneCResumeOverlapRecords (10) now
+// < the cap, that same resume NET-ADVANCES the cursor every pass —
+// TestInverseMaskLane_PhantomClusterDoesNotPinCursor and
+// TestInverseMaskLane_CleanScanCompletesPastPhantomCluster cover the new
+// model, and TestInverseMaskLane_ClampHoldsCursorOnEarlyHydrationError keeps
+// coverage of the tc-6u4da clamp itself for the residual case it still fires
+// on (an early hydration error within the first laneCResumeOverlapRecords
+// rows).
+
+// TestInverseMaskLane_PhantomClusterDoesNotPinCursor is the tc-777e7 Bug 2
+// regression: a head-of-window cluster of PERMANENTLY-unhydratable rows
+// (cross-authority uid collisions PlanIt resolves to the wrong authority —
+// FetchByUID returns no area-matching record for them, forever) never dedupes
+// via GetByUID/inverseMaskDiffers, so every one burns a hydration-cap slot on
+// every pass. Because laneCResumeOverlapRecords (10) < maxHydrationsPerPass
+// (25), the resume no longer re-spends its whole budget re-failing rows it
+// already walked: the persisted cursor advances by at least
+// (maxHydrationsPerPass - laneCResumeOverlapRecords) records per pass instead
+// of being pinned by the tc-6u4da clamp.
+func TestInverseMaskLane_PhantomClusterDoesNotPinCursor(t *testing.T) {
 	t.Parallel()
-	windowStart := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	lastCleanScanAt := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
-	ld := windowStart.Add(time.Hour)
+	ld := laneCNow.Add(-time.Hour)
+	const minAdvance = maxHydrationsPerPass - laneCResumeOverlapRecords // 15
 
-	const priorNextIndex = 500
-	const startIndex = priorNextIndex - resumeOverlapRecords // 400
-
-	// A run of unhydratable rows, one more than the cap: the fake fetcher's
-	// hydrated map has NO entry for any of these uids, so FetchByUID returns
-	// zero matching applications every time -- exactly "200 OK, no matching
-	// record", never wired into fetcher.hydrateErr.
-	const rowCount = maxHydrationsPerPass + 1
 	fetcher := newFakeInverseMaskFetcher()
-	lightRows := make([]applications.PlanningApplication, 0, rowCount)
-	for i := range rowCount {
-		uid := fmt.Sprintf("phantom-%02d/HSE", i)
-		lightRows = append(lightRows, lightApp(uid, 198, "Permitted", ld))
+	// A virtual result set that is ALL phantom: no matter how far the cursor
+	// walks, the resume still lands on unhydratable rows.
+	rows := make([]applications.PlanningApplication, 0, 600)
+	for i := range 600 {
+		rows = append(rows, lightApp(fmt.Sprintf("phantom-%03d/HSE", i), 198, "Permitted", ld))
 	}
-	fetcher.pages[startIndex] = planit.FetchPageResult{From: startIndex, Applications: lightRows, HasMorePages: false}
+	fetcher.rows = rows
 
-	apps := newFakeApps() // nothing hydrated ever lands here either
+	apps := newFakeApps() // nothing dedupes, nothing hydrates
 	state := newFakeStateStore()
 	state.states[sentinelLaneC] = PollState{
-		HighWaterMark: lastCleanScanAt,
-		Cursor:        &PollCursor{DifferentStart: laneCToday, NextIndex: priorNextIndex},
-	}
-
-	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
-	out := h.RunOnePage(context.Background())
-
-	if out.err != nil {
-		t.Fatalf("RunOnePage: %v (the hydration cap is a clean early stop, not an error)", out.err)
-	}
-	if len(fetcher.hydrateCalls) != maxHydrationsPerPass {
-		t.Fatalf("hydrateCalls: got %d, want %d (the per-pass cap)", len(fetcher.hydrateCalls), maxHydrationsPerPass)
-	}
-	got := state.states[sentinelLaneC].Cursor
-	if got == nil {
-		t.Fatal("cursor: got nil, want a checkpoint")
-	}
-	if got.NextIndex != priorNextIndex {
-		t.Errorf("cursor.NextIndex: got %d, want exactly the prior checkpoint %d (raw startIndex+i would have been %d)", got.NextIndex, priorNextIndex, startIndex+maxHydrationsPerPass)
-	}
-}
-
-// TestInverseMaskLane_HydrationCapFlatlinesAcrossRepeatedPasses extends the
-// above across two consecutive RunOnePage calls with the SAME permanently-
-// unhydratable cluster still sitting at the resumed offset (nothing about it
-// ever changes in Postgres or PlanIt, so nothing about the situation changes
-// between passes either). Proves the failure mode this bead converts a
-// backward spiral into a bounded flatline: the second call's persisted
-// cursor is never LOWER than the first call's, even though both calls hit
-// the identical cap-stop arithmetic that would otherwise retreat it every
-// single time.
-func TestInverseMaskLane_HydrationCapFlatlinesAcrossRepeatedPasses(t *testing.T) {
-	t.Parallel()
-	windowStart := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	lastCleanScanAt := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
-	ld := windowStart.Add(time.Hour)
-
-	const priorNextIndex = 500
-	const startIndex = priorNextIndex - resumeOverlapRecords // 400
-
-	const rowCount = maxHydrationsPerPass + 1
-	fetcher := newFakeInverseMaskFetcher()
-	lightRows := make([]applications.PlanningApplication, 0, rowCount)
-	for i := range rowCount {
-		uid := fmt.Sprintf("phantom-%02d/HSE", i)
-		lightRows = append(lightRows, lightApp(uid, 198, "Permitted", ld))
-	}
-	fetcher.pages[startIndex] = planit.FetchPageResult{From: startIndex, Applications: lightRows, HasMorePages: false}
-
-	apps := newFakeApps()
-	state := newFakeStateStore()
-	state.states[sentinelLaneC] = PollState{
-		HighWaterMark: lastCleanScanAt,
-		Cursor:        &PollCursor{DifferentStart: laneCToday, NextIndex: priorNextIndex},
+		HighWaterMark: laneCNow.AddDate(0, 0, -2),
+		Cursor:        &PollCursor{DifferentStart: laneCToday, NextIndex: 500},
 	}
 
 	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
 
-	firstOut := h.RunOnePage(context.Background())
-	if firstOut.err != nil {
-		t.Fatalf("first RunOnePage: %v", firstOut.err)
+	first := h.RunOnePage(context.Background())
+	if first.err != nil {
+		t.Fatalf("first RunOnePage: %v", first.err)
 	}
 	firstCursor := state.states[sentinelLaneC].Cursor
 	if firstCursor == nil {
 		t.Fatal("first pass cursor: got nil, want a checkpoint")
 	}
+	if firstCursor.NextIndex < 500+minAdvance {
+		t.Fatalf("first pass cursor.NextIndex: got %d, want >= %d (must net-advance past the phantom cluster, not flatline at 500)", firstCursor.NextIndex, 500+minAdvance)
+	}
 
-	// The cluster is still exactly there: the fake fetcher's page/hydrated
-	// maps are untouched, so a second call resumes at the same overlap-
-	// adjusted offset and hits the identical cap-stop.
-	secondOut := h.RunOnePage(context.Background())
-	if secondOut.err != nil {
-		t.Fatalf("second RunOnePage: %v", secondOut.err)
+	second := h.RunOnePage(context.Background())
+	if second.err != nil {
+		t.Fatalf("second RunOnePage: %v", second.err)
 	}
 	secondCursor := state.states[sentinelLaneC].Cursor
 	if secondCursor == nil {
 		t.Fatal("second pass cursor: got nil, want a checkpoint")
 	}
+	if secondCursor.NextIndex < firstCursor.NextIndex+minAdvance {
+		t.Errorf("second pass cursor.NextIndex: got %d, want >= %d (strictly increasing by >= %d per pass, never pinned)", secondCursor.NextIndex, firstCursor.NextIndex+minAdvance, minAdvance)
+	}
+}
 
-	if secondCursor.NextIndex != firstCursor.NextIndex {
-		t.Errorf("cursor changed on the second pass: got %d, want exactly the first pass's %d", secondCursor.NextIndex, firstCursor.NextIndex)
+// TestInverseMaskLane_CleanScanCompletesPastPhantomCluster proves the whole
+// point of tc-nkvil: a scan whose first page HEAD is a phantom cluster now
+// walks past it and reaches a clean completion within a bounded number of
+// passes, stamping last_clean_scan_at and clearing the cursor — so N settles
+// back to 2 and Lane C is useful again. Pre-fix, the oversized resume overlap
+// re-fetched the cluster from index 0 every pass and the scan never finished.
+func TestInverseMaskLane_CleanScanCompletesPastPhantomCluster(t *testing.T) {
+	t.Parallel()
+	ld := laneCNow.Add(-time.Hour)
+
+	fetcher := newFakeInverseMaskFetcher()
+	apps := newFakeApps()
+
+	rows := make([]applications.PlanningApplication, 0, 350)
+	// Head: 30 phantom rows (one more than a full hydration budget).
+	for i := range 30 {
+		rows = append(rows, lightApp(fmt.Sprintf("phantom-%03d/HSE", i), 198, "Permitted", ld))
+	}
+	// Tail: 320 rows already correct in Postgres — they dedupe, spanning more
+	// than one 300-record page so this is a genuine multi-page scan.
+	same := "Undecided"
+	for i := range 320 {
+		uid := fmt.Sprintf("clean-%03d/FUL", i)
+		rows = append(rows, lightApp(uid, 99, same, ld))
+		apps.existing[uid] = applications.PlanningApplication{UID: uid, AreaID: 99, AppState: &same}
+	}
+	fetcher.rows = rows
+
+	state := newFakeStateStore()
+	state.states[sentinelLaneC] = PollState{HighWaterMark: laneCNow.AddDate(0, 0, -3)} // fresh scan
+
+	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
+
+	const maxPasses = 6
+	completed := false
+	for pass := 1; pass <= maxPasses; pass++ {
+		if out := h.RunOnePage(context.Background()); out.err != nil {
+			t.Fatalf("pass %d: %v", pass, out.err)
+		}
+		got := state.states[sentinelLaneC]
+		if got.HighWaterMark.Equal(laneCNow) && got.Cursor == nil {
+			completed = true
+			break
+		}
+	}
+	if !completed {
+		t.Fatalf("scan never completed within %d passes: state=%+v (a phantom head-of-window cluster must not stall the scan forever)", maxPasses, state.states[sentinelLaneC])
+	}
+}
+
+// TestInverseMaskLane_ClampHoldsCursorOnEarlyHydrationError keeps coverage of
+// the tc-6u4da monotonic-NextIndex clamp for the one case it still fires on
+// after tc-nkvil: a hydration hard error (or 429) that breaks the loop within
+// the first laneCResumeOverlapRecords rows of a resume, so startIndex+i lands
+// below the loaded cursor. The clamp must hold the persisted cursor at its
+// prior value rather than retreat it.
+func TestInverseMaskLane_ClampHoldsCursorOnEarlyHydrationError(t *testing.T) {
+	t.Parallel()
+	lastCleanScanAt := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	ld := time.Date(2026, 7, 1, 1, 0, 0, 0, time.UTC)
+	hydrateErr := errors.New("planit: hydration fetch failed")
+
+	const priorNextIndex = 50
+	const startIndex = priorNextIndex - laneCResumeOverlapRecords // 40
+
+	same := "Undecided"
+	fetcher := newFakeInverseMaskFetcher()
+	fetcher.pages[startIndex] = planit.FetchPageResult{
+		From: startIndex,
+		Applications: []applications.PlanningApplication{
+			lightApp("clamp-a/FUL", 99, same, ld),          // i=0: dedupes
+			lightApp("clamp-b/FUL", 99, same, ld),          // i=1: dedupes
+			lightApp("clamp-c/FUL", 99, same, ld),          // i=2: dedupes
+			lightApp("clamp-err/FUL", 99, "Permitted", ld), // i=3 (< the 10-record overlap): hydration hard-errors
+			lightApp("clamp-never/FUL", 99, "Permitted", ld),
+		},
+		HasMorePages: false,
+	}
+	fetcher.hydrateErr["clamp-err/FUL"] = hydrateErr
+
+	apps := newFakeApps()
+	for _, uid := range []string{"clamp-a/FUL", "clamp-b/FUL", "clamp-c/FUL"} {
+		apps.existing[uid] = applications.PlanningApplication{UID: uid, AreaID: 99, AppState: &same}
+	}
+	state := newFakeStateStore()
+	state.states[sentinelLaneC] = PollState{HighWaterMark: lastCleanScanAt, Cursor: &PollCursor{DifferentStart: laneCToday, NextIndex: priorNextIndex}}
+
+	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
+	out := h.RunOnePage(context.Background())
+
+	if out.err == nil || !errors.Is(out.err, hydrateErr) {
+		t.Fatalf("out.err: got %v, want it to wrap the hydration hard error %v", out.err, hydrateErr)
+	}
+	got := state.states[sentinelLaneC].Cursor
+	if got == nil || got.NextIndex != priorNextIndex {
+		t.Errorf("cursor.NextIndex: got %+v, want held at the prior checkpoint %d (tc-6u4da: raw startIndex+i would have been %d)", got, priorNextIndex, startIndex+3)
+	}
+	if lastPoll := state.states[sentinelLaneC].LastPollTime; !lastPoll.Equal(laneCNow) {
+		t.Errorf("LastPollTime: got %v, want %v (must advance so the planner LRU rotates)", lastPoll, laneCNow)
 	}
 }
 
@@ -1119,13 +1275,13 @@ func TestInverseMaskLane_MultiPageScanResumesWithinADay(t *testing.T) {
 		t.Errorf("last_clean_scan_at: got %v, want unchanged %v (scan not finished)", mid.HighWaterMark, lastCleanScanAt)
 	}
 
-	// Page 2: resumes at 300 - the 100-record overlap = 200, finishes.
-	fetcher.pages[200] = planit.FetchPageResult{From: 200, Applications: nil, HasMorePages: false}
+	// Page 2: resumes at 300 - the 10-record Lane C overlap = 290, finishes.
+	fetcher.pages[290] = planit.FetchPageResult{From: 290, Applications: nil, HasMorePages: false}
 	if out := h.RunOnePage(context.Background()); out.err != nil {
 		t.Fatalf("page 2: %v", out.err)
 	}
-	if got := fetcher.queries[len(fetcher.queries)-1].StartIndex; got != 200 {
-		t.Errorf("page 2 StartIndex: got %d, want 200 (resume overlap)", got)
+	if got := fetcher.queries[len(fetcher.queries)-1].StartIndex; got != 290 {
+		t.Errorf("page 2 StartIndex: got %d, want 290 (Lane C resume overlap)", got)
 	}
 	done := state.states[sentinelLaneC]
 	if done.Cursor != nil {

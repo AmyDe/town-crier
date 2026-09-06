@@ -96,8 +96,8 @@ func TestInverseMaskLane_ScanCursorCrossCycleResume_RealPostgres(t *testing.T) {
 
 	newLD := now.Add(-2 * time.Hour)
 	fetcher := newFakeInverseMaskFetcher()
-	fetcher.pages[200] = planit.FetchPageResult{
-		From:         200,
+	fetcher.pages[290] = planit.FetchPageResult{
+		From:         290,
 		Applications: []applications.PlanningApplication{lightApp("resumed/FUL", 99, "Permitted", newLD)},
 		HasMorePages: false,
 	}
@@ -114,8 +114,8 @@ func TestInverseMaskLane_ScanCursorCrossCycleResume_RealPostgres(t *testing.T) {
 	if out.err != nil {
 		t.Fatalf("RunOnePage: %v", out.err)
 	}
-	if len(fetcher.queries) != 1 || fetcher.queries[0].StartIndex != 200 {
-		t.Fatalf("expected the resumed fetch at StartIndex 200 (checkpointed NextIndex 300 minus the 100-record resume overlap, GH#986), got %+v", fetcher.queries)
+	if len(fetcher.queries) != 1 || fetcher.queries[0].StartIndex != 290 {
+		t.Fatalf("expected the resumed fetch at StartIndex 290 (checkpointed NextIndex 300 minus the 10-record Lane C resume overlap laneCResumeOverlapRecords, GH#986 / tc-nkvil), got %+v", fetcher.queries)
 	}
 	if fetcher.queries[0].WindowDays != 3 {
 		t.Errorf("WindowDays: got %d, want 3 (last clean scan two days ago -> clamp(2+1, 2, 3))", fetcher.queries[0].WindowDays)

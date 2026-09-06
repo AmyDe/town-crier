@@ -51,6 +51,31 @@ type inverseMaskFetcher interface {
 // time, bounding the burst without losing progress.
 const maxHydrationsPerPass = 25
 
+// laneCResumeOverlapRecords is the record overlap Lane C subtracts from a
+// resumed scan's persisted NextIndex (it resumes at
+// max(0, NextIndex-laneCResumeOverlapRecords)) to tolerate PlanIt
+// record-shift between cycles — Lane C's own, deliberately smaller
+// counterpart to the shared resumeOverlapRecords (100, handler.go) that
+// Lanes A/B and the legacy per-authority drain use.
+//
+// It MUST stay < maxHydrationsPerPass (25). A resume that lands on a cluster
+// of permanently-unhydratable rows — cross-authority uid collisions PlanIt
+// resolves to the wrong authority, e.g. area 198 (Bassetlaw) vs area 301
+// (Croydon), bead tc-777e7 Bug 2 — burns one hydration-cap slot per phantom
+// row on every pass, and such a row never dedupes via
+// GetByUID/inverseMaskDiffers. If the overlap were >= the cap the pass would
+// re-spend its whole hydration budget re-failing rows it already walked, i
+// would bank short of the overlap it subtracted, startIndex+i would land
+// below the loaded cursor, and the tc-6u4da anti-retreat clamp would pin the
+// cursor there forever (the observed 2026-07 → 2026-09 prod livelock). At 10,
+// every pass nets at least (maxHydrationsPerPass - laneCResumeOverlapRecords)
+// = 15 records of forward progress even against a pure-phantom cluster of any
+// size, while keeping a useful PlanIt-record-shift tolerance.
+//
+// A const, not an env var: a fixed safety rule, mirroring maxHydrationsPerPass
+// and planit.nationalPageSize (ADR 0041).
+const laneCResumeOverlapRecords = 10
+
 // defaultMaxInverseMaskWindowDays is the hard cap on Lane C's rolling
 // different=N window (#1127). Live PlanIt probes on 2026-09-06 (end_date
 // 2026-06-08, light select, pg_sz=300): different=3 returned ~25k rows in
@@ -221,16 +246,22 @@ func (h *InverseMaskLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 		activeCursor = cursor
 	}
 
-	// GH#986: resume WITH a safety overlap, mirroring Lane A/B's
-	// resumeOverlapRecords. Safe because Lane C dedups every row via
+	// GH#986: resume WITH a safety overlap. Lane C uses its OWN
+	// laneCResumeOverlapRecords (10), deliberately smaller than Lane A/B's
+	// shared resumeOverlapRecords (100): the overlap MUST stay below
+	// maxHydrationsPerPass (25) or a resume landing on a cluster of
+	// permanently-unhydratable rows re-spends its whole hydration budget
+	// re-failing rows it already passed, i banks short of the overlap it
+	// subtracted, and the tc-6u4da anti-retreat clamp then pins the cursor
+	// forever (bead tc-777e7 Bug 2). Safe because Lane C dedups every row via
 	// GetByUID/inverseMaskDiffers plus the Ingester, so re-processing up to
-	// resumeOverlapRecords rows on a resume is idempotent and cheap — and,
-	// now that a mid-scan bail checkpoints at the exact failing offset, the
-	// overlap is what makes that checkpoint skip-safe against any off-by-one
-	// in PlanIt's own ordering.
+	// laneCResumeOverlapRecords rows on a resume is idempotent and cheap —
+	// and, now that a mid-scan bail checkpoints at the exact failing offset,
+	// the overlap is what makes that checkpoint skip-safe against any
+	// off-by-one in PlanIt's own ordering.
 	startIndex := 0
 	if activeCursor != nil {
-		startIndex = max(0, activeCursor.NextIndex-resumeOverlapRecords)
+		startIndex = max(0, activeCursor.NextIndex-laneCResumeOverlapRecords)
 	}
 
 	res, ferr := h.fetcher.FetchInverseMaskPage(ctx, planit.NationalInverseMaskQuery{
@@ -321,22 +352,20 @@ func (h *InverseMaskLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 		// re-walking it forever. last_clean_scan_at is left UNCHANGED: this
 		// scan did not finish, so N must not reset.
 		nextIndex := startIndex + i
-		// tc-6u4da: a cluster of permanently-unhydratable rows (FetchByUID
-		// genuinely has no matching record for them, forever) never dedupes
-		// via GetByUID/inverseMaskDiffers, so every one of them burns a
-		// hydration-cap slot on every pass. Because resumeOverlapRecords
-		// (100) is much bigger than maxHydrationsPerPass (25), a resume that
-		// lands near such a cluster can hit the cap after attempting only
-		// maxHydrationsPerPass hydrations — i banked well short of the
-		// overlap this resume already subtracted — so the raw startIndex+i
-		// checkpoint can land BELOW the cursor this call loaded. Left alone
-		// that retreats the persisted cursor, and since the same cluster is
-		// still there next pass it retreats again, spiralling backward
-		// instead of stalling in place. Clamp to the loaded cursor's own
-		// NextIndex (only meaningful when a same-day cursor was actually
-		// loaded — a fresh scan has no prior checkpoint to protect) so a
-		// stuck cluster can at worst flatline the checkpoint, never walk it
-		// backward.
+		// tc-6u4da: the persisted cursor must never retreat. With Lane C's
+		// laneCResumeOverlapRecords (10) now smaller than maxHydrationsPerPass
+		// (25), a plain hydration-cap stop always lands startIndex+i at least
+		// (maxHydrationsPerPass - laneCResumeOverlapRecords) records past the
+		// loaded cursor, so a cluster of permanently-unhydratable rows can no
+		// longer spiral the checkpoint backward (bead tc-777e7 Bug 2, the
+		// 2026-07 → 2026-09 prod livelock). The clamp still matters for the
+		// residual case: a hydration error or 429 that breaks the loop within
+		// the first laneCResumeOverlapRecords rows of a resume leaves
+		// i < laneCResumeOverlapRecords, so startIndex+i is below the loaded
+		// cursor. Clamp to the loaded cursor's own NextIndex (only meaningful
+		// when a same-day cursor was actually loaded — a fresh scan has no
+		// prior checkpoint to protect) so such an early bail holds the cursor
+		// in place, never walks it backward.
 		if activeCursor != nil && nextIndex < activeCursor.NextIndex {
 			nextIndex = activeCursor.NextIndex
 		}
