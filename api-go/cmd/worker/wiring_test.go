@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -74,11 +76,11 @@ func TestWirePollFanOut_AcceptsZoneStoreInterface(t *testing.T) {
 }
 
 // TestWirePollFanOut_NilLaneCDoesNotPanic proves wirePollFanOut's nil guard
-// still holds even though production always wires a real Lane C now (ADR
-// 0044 dropped POLLING_LANE_C_ENABLED): a test exercising a narrower lane
-// set must not need to stub Lane C too. Before the original tc-5lu8h fix,
-// wirePollFanOut called laneC.WithFanOut unconditionally, which nil-panics
-// on a nil receiver method value dereference.
+// holds when Lane C is not wired: with POLLING_LANE_C_ENABLED=false (tc-56ahl)
+// buildPollOrchestrator leaves laneC nil, and a test exercising a narrower
+// lane set must not need to stub Lane C either. Before the original tc-5lu8h
+// fix, wirePollFanOut called laneC.WithFanOut unconditionally, which
+// nil-panics on a nil receiver method value dereference.
 func TestWirePollFanOut_NilLaneCDoesNotPanic(t *testing.T) {
 	t.Parallel()
 
@@ -129,35 +131,67 @@ func TestEnqueuer_FindZonesContainingFlowsThroughInterface(t *testing.T) {
 // and the ADR 0044 day-window fields (LoadConfig's own defaults —
 // buildPollOrchestrator now parses these via polling.ParseCivilTime and
 // fails the whole build on a malformed value, so a zero-value Config{} is no
-// longer a valid input here).
+// longer a valid input here). PollingLaneCEnabled is set true to mirror
+// LoadConfig's default (tc-56ahl): unset => Lane C wired as today.
 func pollOrchestratorTestConfig() platform.Config {
 	return platform.Config{
-		PlanItBaseURL:   "https://stub.planit.test/",
-		PollingDayStart: "07:00",
-		PollingDayEnd:   "19:00",
+		PlanItBaseURL:       "https://stub.planit.test/",
+		PollingDayStart:     "07:00",
+		PollingDayEnd:       "19:00",
+		PollingLaneCEnabled: true,
 	}
 }
 
-// TestBuildPollOrchestrator_AlwaysWiresLaneC pins ADR 0044's removal of the
-// POLLING_LANE_C_ENABLED gate: Lane C (the national inverse-mask
-// reconciliation lane) is now constructed and wired unconditionally, with no
-// flag to check. sbClient and st are zero-value: buildPollOrchestrator only
-// needs sbClient non-nil to pass its "no poller configured" guard, and every
-// collaborator it constructs (planit.NewClient, the lane handlers, the
-// planner, the orchestrator) opens no connection and performs no I/O at
-// construction time.
-func TestBuildPollOrchestrator_AlwaysWiresLaneC(t *testing.T) {
+// TestBuildPollOrchestrator_LaneCGating pins the Lane C gate re-added by
+// tc-56ahl (GH#1125): Lane C (the national inverse-mask reconciliation lane)
+// is constructed and wired only when cfg.PollingLaneCEnabled is true (default
+// true — unset leaves Lane C running as today). Both gate states must build a
+// working orchestrator without panicking; when Lane C is disabled the build
+// emits exactly one info line so the prod logs make the state obvious, and
+// when it is enabled that line is absent. sbClient and st are zero-value:
+// buildPollOrchestrator only needs sbClient non-nil to pass its "no poller
+// configured" guard, and every collaborator it constructs (planit.NewClient,
+// the lane handlers, the planner, the orchestrator) opens no connection and
+// performs no I/O at construction time.
+func TestBuildPollOrchestrator_LaneCGating(t *testing.T) {
 	t.Parallel()
 
-	sbClient := &servicebus.Client{}
-	st := &stores{}
-
-	adapter, err := buildPollOrchestrator(pollOrchestratorTestConfig(), sbClient, testRegistry(), st, discardLogger())
-	if err != nil {
-		t.Fatalf("buildPollOrchestrator: %v", err)
+	tests := []struct {
+		name            string
+		laneCEnabled    bool
+		wantDisabledLog bool
+	}{
+		{"enabled (default)", true, false},
+		{"disabled", false, true},
 	}
-	if adapter == nil {
-		t.Fatal("buildPollOrchestrator: got nil adapter, want a configured orchestrator")
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := pollOrchestratorTestConfig()
+			cfg.PollingLaneCEnabled = tc.laneCEnabled
+			sbClient := &servicebus.Client{}
+			st := &stores{}
+
+			var logBuf bytes.Buffer
+			logger := slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+
+			adapter, err := buildPollOrchestrator(cfg, sbClient, testRegistry(), st, logger)
+			if err != nil {
+				t.Fatalf("buildPollOrchestrator: %v", err)
+			}
+			if adapter == nil {
+				t.Fatal("buildPollOrchestrator: got nil adapter, want a configured orchestrator")
+			}
+
+			gotDisabledLog := strings.Contains(logBuf.String(), "POLLING_LANE_C_ENABLED=false")
+			if gotDisabledLog != tc.wantDisabledLog {
+				t.Errorf("Lane C disabled log present = %v, want %v (log: %q)", gotDisabledLog, tc.wantDisabledLog, logBuf.String())
+			}
+			if n := strings.Count(logBuf.String(), "POLLING_LANE_C_ENABLED=false"); n > 1 {
+				t.Errorf("Lane C disabled log emitted %d times, want at most 1", n)
+			}
+		})
 	}
 }
 
