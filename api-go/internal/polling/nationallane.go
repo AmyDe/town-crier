@@ -73,13 +73,15 @@ type nationalDeltaFetcher interface {
 // laneWatermarkStore persists ONE lane's global delta watermark plus its
 // resumable per-page cursor in the existing poll_state table via a reserved
 // sentinel authority_id (see the package doc above): HighWaterMark holds the
-// watermark (Lane A/B: the descending delta watermark; Lane C: the pinned
-// epoch_upper — see lanec.go), LastPollTime the lane's last-run time, Cursor
-// the active resume position (Lane A/B: an insurance checkpoint for a
-// multi-page walk; Lane C: DifferentStart doubles as epoch_lower and
-// NextIndex as the ascending record offset — ADR 0044's reuse of the
-// existing PollCursor shape, no migration). It is a thin wrapper over the
-// existing pollStateAccess Get/Save — no new store, no new columns.
+// watermark (Lane A/B: the descending delta watermark; Lane C: last_clean_scan_at,
+// when the lane last finished a whole rolling-window scan — see lanec.go, as
+// amended by #1127), LastPollTime the lane's last-run time, Cursor the active
+// resume position (Lane A/B: an insurance checkpoint for a multi-page walk;
+// Lane C: DifferentStart is the in-flight scan's anchor date, valid only
+// while it still equals today, and NextIndex the within-scan record offset —
+// ADR 0044's reuse of the existing PollCursor shape, no migration). It is a
+// thin wrapper over the existing pollStateAccess Get/Save — no new store, no
+// new columns.
 type laneWatermarkStore struct {
 	state      pollStateAccess
 	sentinelID int
@@ -216,9 +218,9 @@ func (h *NationalLaneHandler) recorder() metricsRecorder {
 
 // laneOutcome is one lane page's result, carried both into PollPlanItResult
 // (by the caller) and onto the lane's telemetry span. Lane C (lanec.go)
-// reuses this same shape: watermarkBefore/After there hold epoch_lower and
-// the epoch_upper in effect after the call, rather than a literal delta
-// watermark.
+// reuses this same shape: watermarkBefore/After there hold last_clean_scan_at
+// before and after the call (advanced to now only on a clean full scan),
+// rather than a literal delta watermark.
 type laneOutcome struct {
 	recordsSeen     int
 	recordsIngested int

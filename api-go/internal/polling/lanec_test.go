@@ -13,8 +13,9 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/planit"
 )
 
-// fakeInverseMaskFetcher serves pre-canned Lane C epoch pages keyed by the
-// requested 0-based record offset, and hydration responses keyed by uid. It
+// fakeInverseMaskFetcher serves pre-canned Lane C rolling-window pages keyed
+// by the requested 0-based record offset, and hydration responses keyed by
+// uid. It
 // can be primed to fail a specific fetch ordinal (1-based, failNth) or a
 // specific hydration uid (hydrateErr).
 type fakeInverseMaskFetcher struct {
@@ -87,12 +88,27 @@ func (f *fakeScopedApps) GetByUID(ctx context.Context, uid, authorityCode string
 	return f.fakeApps.GetByUID(ctx, uid, authorityCode)
 }
 
-// newLaneCHandler wires an InverseMaskLaneHandler pinned to a fixed clock
-// (2026-07-14T12:00:00Z).
+// laneCNow is the fixed clock newLaneCHandler pins (2026-07-14T12:00:00Z);
+// laneCToday is its calendar date at UTC midnight — the value an in-flight
+// scan cursor's DifferentStart must carry to count as same-day/active.
+var (
+	laneCNow   = time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
+	laneCToday = time.Date(2026, 7, 14, 0, 0, 0, 0, time.UTC)
+)
+
+// newLaneCHandler wires an InverseMaskLaneHandler pinned to the laneCNow
+// clock.
 func newLaneCHandler(t *testing.T, fetcher *fakeInverseMaskFetcher, apps applicationStore, state *fakeStateStore, opts InverseMaskOptions) *InverseMaskLaneHandler {
 	t.Helper()
+	return newLaneCHandlerAt(t, fetcher, apps, state, opts, func() time.Time { return laneCNow })
+}
+
+// newLaneCHandlerAt is newLaneCHandler with a caller-supplied clock, for the
+// cases that need "now" somewhere other than laneCNow (e.g. a scan resuming
+// across a day rollover, or the pre-#1127 frozen epoch row).
+func newLaneCHandlerAt(t *testing.T, fetcher *fakeInverseMaskFetcher, apps applicationStore, state *fakeStateStore, opts InverseMaskOptions, clock func() time.Time) *InverseMaskLaneHandler {
+	t.Helper()
 	logger := slog.New(slog.NewTextHandler(discard{}, nil))
-	clock := func() time.Time { return time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC) }
 	return NewInverseMaskLaneHandler(fetcher, state, apps, opts, clock, logger)
 }
 
@@ -100,88 +116,206 @@ func defaultInverseMaskOpts() InverseMaskOptions {
 	return InverseMaskOptions{MaskWindow: 90 * 24 * time.Hour}
 }
 
-// TestInverseMaskLane_FirstRunSeedsWithNoRequest proves Lane C's seed is
-// pure state initialisation: unlike Lane A/B (which fetch a real page-0 to
-// discover PlanIt's head), Lane C's epoch is purely time-bound, so seeding
-// makes ZERO PlanIt requests — a zero-width epoch cannot possibly contain a
-// record.
-func TestInverseMaskLane_FirstRunSeedsWithNoRequest(t *testing.T) {
+// TestRunOnePage_WindowDaysClampedToRange pins #1127's window-width rule:
+// N = clamp(days_since(last_clean_scan_at) + 1, 2, maxInverseMaskWindowDays),
+// measured on truncate-to-date values, with a zero last_clean_scan_at
+// yielding the cap.
+func TestRunOnePage_WindowDaysClampedToRange(t *testing.T) {
 	t.Parallel()
-	fetcher := newFakeInverseMaskFetcher()
-	apps := newFakeApps()
-	state := newFakeStateStore() // never run
+	tests := []struct {
+		name            string
+		lastCleanScanAt time.Time
+		want            int
+	}{
+		{"clean scan today: N=2", laneCNow, 2},
+		{"clean scan yesterday: N=2", laneCNow.AddDate(0, 0, -1), 2},
+		{"clean scan two days ago: N=3 (cap)", laneCNow.AddDate(0, 0, -2), 3},
+		{"clean scan 30 days ago: N=3 (cap)", laneCNow.AddDate(0, 0, -30), 3},
+		{"never cleanly scanned (zero): N=3 (cap)", time.Time{}, 3},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			fetcher := newFakeInverseMaskFetcher()
+			fetcher.pages[0] = planit.FetchPageResult{From: 0, Applications: nil, HasMorePages: false}
+			apps := newFakeApps()
+			state := newFakeStateStore()
+			state.states[sentinelLaneC] = PollState{HighWaterMark: tc.lastCleanScanAt}
 
-	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
-	out := h.RunOnePage(context.Background())
-
-	if out.err != nil {
-		t.Fatalf("RunOnePage: %v", out.err)
-	}
-	if fetcher.calls != 0 {
-		t.Errorf("expected zero PlanIt requests on the seed call, got %d", fetcher.calls)
-	}
-	wantNow := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
-	if !out.watermarkAfter.Equal(wantNow) {
-		t.Errorf("watermarkAfter (epoch_upper): got %v, want now() %v", out.watermarkAfter, wantNow)
-	}
-	got := state.states[sentinelLaneC]
-	if !got.HighWaterMark.Equal(wantNow) {
-		t.Errorf("persisted HighWaterMark: got %v, want %v", got.HighWaterMark, wantNow)
-	}
-	if got.Cursor != nil {
-		t.Errorf("persisted Cursor: got %+v, want nil", got.Cursor)
+			h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
+			out := h.RunOnePage(context.Background())
+			if out.err != nil {
+				t.Fatalf("RunOnePage: %v", out.err)
+			}
+			if len(fetcher.queries) != 1 {
+				t.Fatalf("expected exactly one fetch, got %d", len(fetcher.queries))
+			}
+			if got := fetcher.queries[0].WindowDays; got != tc.want {
+				t.Errorf("WindowDays: got %d, want %d", got, tc.want)
+			}
+		})
 	}
 }
 
-// TestInverseMaskLane_AnchorsNewEpochFromPriorCeiling proves epoch tiling's
-// contiguous-floor rule (ADR 0044 §5): once a prior epoch has drained (no
-// active cursor, a pinned ceiling persisted), the NEXT call anchors a new
-// epoch whose floor is EXACTLY that prior ceiling — no gap.
-func TestInverseMaskLane_AnchorsNewEpochFromPriorCeiling(t *testing.T) {
+// TestRunOnePage_CleanScanStampsLastCleanScanAtAndClearsCursor pins the
+// clean-scan completion path (#1127): a scan that reaches the last page with
+// no 429 and no hydration-cap bail stamps last_clean_scan_at = now and clears
+// the cursor — that is what resets N to 2 next cycle.
+func TestRunOnePage_CleanScanStampsLastCleanScanAtAndClearsCursor(t *testing.T) {
 	t.Parallel()
-	priorCeiling := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
 	fetcher := newFakeInverseMaskFetcher()
 	fetcher.pages[0] = planit.FetchPageResult{From: 0, Applications: nil, HasMorePages: false}
 	apps := newFakeApps()
 	state := newFakeStateStore()
-	state.states[sentinelLaneC] = PollState{HighWaterMark: priorCeiling} // no cursor: the previous epoch already drained
+	state.states[sentinelLaneC] = PollState{HighWaterMark: laneCNow.AddDate(0, 0, -5)}
+
+	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
+	out := h.RunOnePage(context.Background())
+	if out.err != nil {
+		t.Fatalf("RunOnePage: %v", out.err)
+	}
+	got := state.states[sentinelLaneC]
+	if !got.HighWaterMark.Equal(laneCNow) {
+		t.Errorf("last_clean_scan_at (HighWaterMark): got %v, want now %v", got.HighWaterMark, laneCNow)
+	}
+	if got.Cursor != nil {
+		t.Errorf("cursor: got %+v, want nil (cleared on a clean scan)", got.Cursor)
+	}
+}
+
+// TestRunOnePage_RateLimitMidScanKeepsLastCleanScanAt pins the mid-scan bail
+// path (#1127): a 429 partway through a scan advances the cursor and
+// last_poll_time but must NOT stamp last_clean_scan_at — the scan did not
+// finish, so N stays wide next cycle.
+func TestRunOnePage_RateLimitMidScanKeepsLastCleanScanAt(t *testing.T) {
+	t.Parallel()
+	lastCleanScanAt := laneCNow.AddDate(0, 0, -2)
+	retryAfter := 20 * time.Second
+	ld := laneCNow.Add(-time.Hour)
+
+	fetcher := newFakeInverseMaskFetcher()
+	fetcher.pages[0] = planit.FetchPageResult{
+		From: 0,
+		Applications: []applications.PlanningApplication{
+			lightApp("ok/FUL", 99, "Permitted", ld),    // index 0: hydrates fine
+			lightApp("rl/FUL", 99, "Permitted", ld),    // index 1: hydration 429s here
+			lightApp("never/FUL", 99, "Permitted", ld), // index 2: never reached
+		},
+		HasMorePages: true,
+	}
+	full := testApp("ok", 99, ld)
+	full.UID = "ok/FUL"
+	fetcher.hydrated["ok/FUL"] = full
+	fetcher.hydrateErr["rl/FUL"] = &planit.RateLimitError{RetryAfter: &retryAfter}
+
+	apps := newFakeApps() // every uid new: every one would otherwise hydrate
+	state := newFakeStateStore()
+	state.states[sentinelLaneC] = PollState{
+		HighWaterMark: lastCleanScanAt,
+		Cursor:        &PollCursor{DifferentStart: laneCToday, NextIndex: 0},
+	}
 
 	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
 	out := h.RunOnePage(context.Background())
 
+	if !out.rateLimited {
+		t.Fatal("expected rateLimited=true")
+	}
+	got := state.states[sentinelLaneC]
+	if !got.HighWaterMark.Equal(lastCleanScanAt) {
+		t.Errorf("last_clean_scan_at: got %v, want the unchanged loaded value %v (a mid-scan 429 must not stamp it)", got.HighWaterMark, lastCleanScanAt)
+	}
+	if got.Cursor == nil || got.Cursor.NextIndex != 1 {
+		t.Errorf("cursor: got %+v, want NextIndex=1 (the failing record's own offset)", got.Cursor)
+	}
+	if !got.LastPollTime.Equal(laneCNow) {
+		t.Errorf("LastPollTime: got %v, want %v (must advance so the LRU rotates)", got.LastPollTime, laneCNow)
+	}
+}
+
+// TestRunOnePage_DayRolloverDiscardsStaleCursor pins the calendar-day
+// staleness guard (#1127): a cursor whose DifferentStart is yesterday is
+// meaningless once the rolling window has shifted a day, so the scan restarts
+// at index 0 with a freshly recomputed N.
+func TestRunOnePage_DayRolloverDiscardsStaleCursor(t *testing.T) {
+	t.Parallel()
+	yesterday := laneCToday.AddDate(0, 0, -1)
+
+	fetcher := newFakeInverseMaskFetcher()
+	fetcher.pages[0] = planit.FetchPageResult{From: 0, Applications: nil, HasMorePages: false}
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	state.states[sentinelLaneC] = PollState{
+		HighWaterMark: yesterday, // last clean scan was yesterday: N = clamp(1+1, 2, 3) = 2
+		Cursor:        &PollCursor{DifferentStart: yesterday, NextIndex: 900},
+	}
+
+	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
+	out := h.RunOnePage(context.Background())
 	if out.err != nil {
 		t.Fatalf("RunOnePage: %v", out.err)
 	}
 	if len(fetcher.queries) != 1 {
 		t.Fatalf("expected exactly one fetch, got %d", len(fetcher.queries))
 	}
-	if !fetcher.queries[0].EpochLower.Equal(priorCeiling) {
-		t.Errorf("EpochLower: got %v, want the prior epoch's ceiling %v (contiguous tiling, no gap)", fetcher.queries[0].EpochLower, priorCeiling)
+	if fetcher.queries[0].StartIndex != 0 {
+		t.Errorf("StartIndex: got %d, want 0 (the stale cross-day cursor is discarded)", fetcher.queries[0].StartIndex)
 	}
-	wantNewCeiling := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC) // the pinned test clock
-	if !out.watermarkAfter.Equal(wantNewCeiling) {
-		t.Errorf("watermarkAfter (new epoch_upper): got %v, want %v", out.watermarkAfter, wantNewCeiling)
+	if fetcher.queries[0].WindowDays != 2 {
+		t.Errorf("WindowDays: got %d, want 2 (recomputed from last_clean_scan_at = yesterday)", fetcher.queries[0].WindowDays)
 	}
 }
 
-// TestInverseMaskLane_ResumesActiveEpochWithOverlap proves the per-page
-// checkpoint's resume story (GH#986): an active cursor resumes pagination at
-// max(0, NextIndex-resumeOverlapRecords) within the SAME epoch bounds,
-// mirroring Lane A/B's own resume overlap (nationallane.go), rather than
-// either re-anchoring or resuming at the checkpointed index with no safety
-// margin.
-func TestInverseMaskLane_ResumesActiveEpochWithOverlap(t *testing.T) {
+// TestRunOnePage_StaleFrozenEpochRowIsColdStart pins #1127's compatibility
+// requirement: the frozen pre-#1127 poll_state row -3 (epoch semantics:
+// HighWaterMark 2026-07-20, Cursor{DifferentStart: 2026-07-19, NextIndex: 33})
+// must not panic or replay history when the fix runs. The cross-day cursor is
+// discarded (index 0) and the weeks-old HighWaterMark yields the window cap —
+// a normal, bounded different=3 scan.
+func TestRunOnePage_StaleFrozenEpochRowIsColdStart(t *testing.T) {
 	t.Parallel()
-	epochLower := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	epochUpper := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	// "now" is the day the fix ships, well after the row froze in 2026-07.
+	now := time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC)
+	frozenHWM := time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC)
+	frozenCursorDate := time.Date(2026, 7, 19, 0, 0, 0, 0, time.UTC)
+
+	fetcher := newFakeInverseMaskFetcher()
+	fetcher.pages[0] = planit.FetchPageResult{From: 0, Applications: nil, HasMorePages: false}
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	state.states[sentinelLaneC] = PollState{
+		HighWaterMark: frozenHWM,
+		Cursor:        &PollCursor{DifferentStart: frozenCursorDate, NextIndex: 33},
+	}
+
+	h := newLaneCHandlerAt(t, fetcher, apps, state, defaultInverseMaskOpts(), func() time.Time { return now })
+	out := h.RunOnePage(context.Background())
+	if out.err != nil {
+		t.Fatalf("RunOnePage: %v", out.err)
+	}
+	if len(fetcher.queries) != 1 {
+		t.Fatalf("expected exactly one fetch, got %d", len(fetcher.queries))
+	}
+	if got := fetcher.queries[0]; got.WindowDays != 3 || got.StartIndex != 0 {
+		t.Errorf("first fetch: got WindowDays=%d StartIndex=%d, want 3 / 0 (bounded cold start, no historical replay)", got.WindowDays, got.StartIndex)
+	}
+}
+
+// TestInverseMaskLane_ResumesActiveScanWithOverlap proves the within-scan
+// checkpoint's resume story (GH#986): a same-day cursor resumes pagination at
+// max(0, NextIndex-resumeOverlapRecords), mirroring Lane A/B's own resume
+// overlap (nationallane.go), rather than either restarting or resuming at the
+// checkpointed index with no safety margin.
+func TestInverseMaskLane_ResumesActiveScanWithOverlap(t *testing.T) {
+	t.Parallel()
 	fetcher := newFakeInverseMaskFetcher()
 	// 300 - the 100-record resume overlap = 200.
 	fetcher.pages[200] = planit.FetchPageResult{From: 200, Applications: nil, HasMorePages: false}
 	apps := newFakeApps()
 	state := newFakeStateStore()
 	state.states[sentinelLaneC] = PollState{
-		HighWaterMark: epochUpper,
-		Cursor:        &PollCursor{DifferentStart: epochLower, NextIndex: 300},
+		HighWaterMark: laneCNow.AddDate(0, 0, -1), // last clean scan yesterday
+		Cursor:        &PollCursor{DifferentStart: laneCToday, NextIndex: 300},
 	}
 
 	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
@@ -193,14 +327,14 @@ func TestInverseMaskLane_ResumesActiveEpochWithOverlap(t *testing.T) {
 	if len(fetcher.queries) != 1 || fetcher.queries[0].StartIndex != 200 {
 		t.Fatalf("expected exactly one fetch at StartIndex 200 (300 - the 100-record resume overlap), got %+v", fetcher.queries)
 	}
-	if !fetcher.queries[0].EpochLower.Equal(epochLower) {
-		t.Errorf("EpochLower: got %v, want the active epoch's floor %v", fetcher.queries[0].EpochLower, epochLower)
+	if fetcher.queries[0].WindowDays != 2 {
+		t.Errorf("WindowDays: got %d, want 2", fetcher.queries[0].WindowDays)
 	}
 	if got := state.states[sentinelLaneC].Cursor; got != nil {
-		t.Errorf("cursor: got %+v, want nil (epoch drained on an empty final page)", got)
+		t.Errorf("cursor: got %+v, want nil (scan completed on an empty final page)", got)
 	}
-	if !out.watermarkAfter.Equal(epochUpper) {
-		t.Errorf("watermarkAfter: got %v, want the unchanged pinned ceiling %v", out.watermarkAfter, epochUpper)
+	if !state.states[sentinelLaneC].HighWaterMark.Equal(laneCNow) {
+		t.Errorf("last_clean_scan_at: got %v, want now %v (clean scan)", state.states[sentinelLaneC].HighWaterMark, laneCNow)
 	}
 }
 
@@ -213,9 +347,7 @@ func TestInverseMaskLane_ResumesActiveEpochWithOverlap(t *testing.T) {
 // duplicate notifications.
 func TestInverseMaskLane_ResumeOverlapDedupesAlreadyProcessedRows(t *testing.T) {
 	t.Parallel()
-	epochLower := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	epochUpper := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
-	ld := epochLower.Add(time.Hour)
+	ld := laneCNow.Add(-time.Hour)
 
 	same := "Permitted"
 	fetcher := newFakeInverseMaskFetcher()
@@ -237,8 +369,8 @@ func TestInverseMaskLane_ResumeOverlapDedupesAlreadyProcessedRows(t *testing.T) 
 	apps.existing["already/FUL"] = applications.PlanningApplication{UID: "already/FUL", AreaID: 99, AppState: &same, LastDifferent: ld}
 	state := newFakeStateStore()
 	state.states[sentinelLaneC] = PollState{
-		HighWaterMark: epochUpper,
-		Cursor:        &PollCursor{DifferentStart: epochLower, NextIndex: 300},
+		HighWaterMark: laneCNow.AddDate(0, 0, -1),
+		Cursor:        &PollCursor{DifferentStart: laneCToday, NextIndex: 300},
 	}
 
 	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
@@ -255,84 +387,13 @@ func TestInverseMaskLane_ResumeOverlapDedupesAlreadyProcessedRows(t *testing.T) 
 	}
 }
 
-// TestInverseMaskLane_PinnedCeilingStopsTheEpoch proves the pinned
-// epoch_upper is enforced by the executor reading returned records, not by
-// PlanIt (which has no different_end/ceiling param): a record past the
-// ceiling stops the walk without being ingested, and — because ascending
-// order means everything after it also exceeds the ceiling — the whole
-// epoch is marked drained, not just this page.
-func TestInverseMaskLane_PinnedCeilingStopsTheEpoch(t *testing.T) {
-	t.Parallel()
-	epochLower := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	epochUpper := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
-	withinCeiling := epochUpper.Add(-time.Hour)
-	pastCeiling := epochUpper.Add(time.Hour)
-
-	fetcher := newFakeInverseMaskFetcher()
-	fetcher.pages[0] = planit.FetchPageResult{
-		From: 0,
-		Applications: []applications.PlanningApplication{
-			lightApp("in/FUL", 99, "Permitted", withinCeiling),
-			lightApp("out/FUL", 99, "Permitted", pastCeiling), // belongs to a future epoch
-		},
-		HasMorePages: false,
-	}
-	apps := newFakeApps() // no existing records: both would otherwise be new stragglers
-	state := newFakeStateStore()
-	state.states[sentinelLaneC] = PollState{
-		HighWaterMark: epochUpper,
-		Cursor:        &PollCursor{DifferentStart: epochLower, NextIndex: 0},
-	}
-
-	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
-	out := h.RunOnePage(context.Background())
-
-	if out.err != nil {
-		t.Fatalf("RunOnePage: %v", out.err)
-	}
-	if len(fetcher.hydrateCalls) != 1 || fetcher.hydrateCalls[0] != "in/FUL" {
-		t.Errorf("expected only the within-ceiling record to be processed: got %v", fetcher.hydrateCalls)
-	}
-	if got := state.states[sentinelLaneC].Cursor; got != nil {
-		t.Errorf("cursor: got %+v, want nil (the ceiling hit marks the whole epoch drained)", got)
-	}
-	if !out.watermarkAfter.Equal(epochUpper) {
-		t.Errorf("watermarkAfter: got %v, want the unchanged pinned ceiling %v", out.watermarkAfter, epochUpper)
-	}
-}
-
-// TestInverseMaskLane_SkipsRecordsAtOrBeforeEpochLower proves the ascending
-// exact-instant skip: the date-granular different_start prefilter can
-// re-serve records from the boundary day the PREVIOUS epoch already
-// handled, and this epoch must not re-process them.
-func TestInverseMaskLane_SkipsRecordsAtOrBeforeEpochLower(t *testing.T) {
-	t.Parallel()
-	epochLower := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	epochUpper := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
-
-	fetcher := newFakeInverseMaskFetcher()
-	fetcher.pages[0] = planit.FetchPageResult{
-		From: 0,
-		Applications: []applications.PlanningApplication{
-			lightApp("boundary/FUL", 99, "Permitted", epochLower),               // == epochLower: already handled by the previous epoch
-			lightApp("before/FUL", 99, "Permitted", epochLower.Add(-time.Hour)), // < epochLower
-		},
-		HasMorePages: false,
-	}
-	apps := newFakeApps()
-	state := newFakeStateStore()
-	state.states[sentinelLaneC] = PollState{HighWaterMark: epochUpper, Cursor: &PollCursor{DifferentStart: epochLower, NextIndex: 0}}
-
-	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
-	out := h.RunOnePage(context.Background())
-
-	if out.err != nil {
-		t.Fatalf("RunOnePage: %v", out.err)
-	}
-	if len(fetcher.hydrateCalls) != 0 {
-		t.Errorf("expected no hydration attempts (both records at/before epochLower): got %v", fetcher.hydrateCalls)
-	}
-}
+// #1127 deleted TestInverseMaskLane_PinnedCeilingStopsTheEpoch and
+// TestInverseMaskLane_SkipsRecordsAtOrBeforeEpochLower: with a rolling
+// different=N window there is no pinned epoch_upper to stop at and no
+// epoch_lower to skip below — every row the query returns is within the last
+// N days by construction, and every one is processed (dedup + hydration cap
+// still bound the work). TestRunOnePage_WindowDaysClampedToRange and the
+// resume/dedupe tests cover the replacement model.
 
 // TestInverseMaskLane_LastDifferentOnlyChurnDoesNotHydrate is the ADR
 // 0044 §4 anti-amplification test: a row whose app_state and decided_date
@@ -341,10 +402,10 @@ func TestInverseMaskLane_SkipsRecordsAtOrBeforeEpochLower(t *testing.T) {
 // per-authority ReconciliationHandler hit.
 func TestInverseMaskLane_LastDifferentOnlyChurnDoesNotHydrate(t *testing.T) {
 	t.Parallel()
-	epochLower := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	epochUpper := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
-	oldLD := epochLower.Add(-24 * time.Hour) // the persisted record's own last_different — irrelevant to the diff
-	newLD := epochLower.Add(time.Hour)       // only last_different changed (a re-index bump)
+	windowStart := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	lastCleanScanAt := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	oldLD := windowStart.Add(-24 * time.Hour) // the persisted record's own last_different — irrelevant to the diff
+	newLD := windowStart.Add(time.Hour)       // only last_different changed (a re-index bump)
 
 	same := "Undecided"
 	fetcher := newFakeInverseMaskFetcher()
@@ -356,7 +417,7 @@ func TestInverseMaskLane_LastDifferentOnlyChurnDoesNotHydrate(t *testing.T) {
 	apps := newFakeApps()
 	apps.existing["24/0001/FUL"] = applications.PlanningApplication{UID: "24/0001/FUL", AreaID: 99, AppState: &same, LastDifferent: oldLD}
 	state := newFakeStateStore()
-	state.states[sentinelLaneC] = PollState{HighWaterMark: epochUpper, Cursor: &PollCursor{DifferentStart: epochLower, NextIndex: 0}}
+	state.states[sentinelLaneC] = PollState{HighWaterMark: lastCleanScanAt, Cursor: &PollCursor{DifferentStart: laneCToday, NextIndex: 0}}
 
 	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
 	out := h.RunOnePage(context.Background())
@@ -377,9 +438,9 @@ func TestInverseMaskLane_LastDifferentOnlyChurnDoesNotHydrate(t *testing.T) {
 // ingest.
 func TestInverseMaskLane_AppStateDriftHydrates(t *testing.T) {
 	t.Parallel()
-	epochLower := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	epochUpper := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
-	newLD := epochLower.Add(time.Hour)
+	windowStart := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	lastCleanScanAt := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	newLD := windowStart.Add(time.Hour)
 
 	existingState := "Undecided"
 	fetcher := newFakeInverseMaskFetcher()
@@ -395,9 +456,9 @@ func TestInverseMaskLane_AppStateDriftHydrates(t *testing.T) {
 	fetcher.hydrated["24/0001/FUL"] = full
 
 	apps := newFakeApps()
-	apps.existing["24/0001/FUL"] = applications.PlanningApplication{UID: "24/0001/FUL", AreaID: 99, AppState: &existingState, LastDifferent: epochLower.Add(-time.Hour)}
+	apps.existing["24/0001/FUL"] = applications.PlanningApplication{UID: "24/0001/FUL", AreaID: 99, AppState: &existingState, LastDifferent: windowStart.Add(-time.Hour)}
 	state := newFakeStateStore()
-	state.states[sentinelLaneC] = PollState{HighWaterMark: epochUpper, Cursor: &PollCursor{DifferentStart: epochLower, NextIndex: 0}}
+	state.states[sentinelLaneC] = PollState{HighWaterMark: lastCleanScanAt, Cursor: &PollCursor{DifferentStart: laneCToday, NextIndex: 0}}
 
 	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
 	out := h.RunOnePage(context.Background())
@@ -423,9 +484,9 @@ func TestInverseMaskLane_AppStateDriftHydrates(t *testing.T) {
 // area_id must build the authorityCode GetByUID is called with.
 func TestInverseMaskLane_UsesAreaIDForAuthorityScopedExistenceCheck(t *testing.T) {
 	t.Parallel()
-	epochLower := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	epochUpper := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
-	newLD := epochLower.Add(time.Hour)
+	windowStart := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	lastCleanScanAt := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	newLD := windowStart.Add(time.Hour)
 
 	fetcher := newFakeInverseMaskFetcher()
 	fetcher.pages[0] = planit.FetchPageResult{
@@ -435,7 +496,7 @@ func TestInverseMaskLane_UsesAreaIDForAuthorityScopedExistenceCheck(t *testing.T
 	}
 	apps := &fakeScopedApps{fakeApps: newFakeApps()}
 	state := newFakeStateStore()
-	state.states[sentinelLaneC] = PollState{HighWaterMark: epochUpper, Cursor: &PollCursor{DifferentStart: epochLower, NextIndex: 0}}
+	state.states[sentinelLaneC] = PollState{HighWaterMark: lastCleanScanAt, Cursor: &PollCursor{DifferentStart: laneCToday, NextIndex: 0}}
 
 	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
 	out := h.RunOnePage(context.Background())
@@ -457,16 +518,15 @@ func TestInverseMaskLane_UsesAreaIDForAuthorityScopedExistenceCheck(t *testing.T
 // observed prod livelock).
 func TestInverseMaskLane_RateLimitedPageFetchPreservesCursorAdvancesLastPollTime(t *testing.T) {
 	t.Parallel()
-	epochLower := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	epochUpper := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	lastCleanScanAt := laneCNow.AddDate(0, 0, -2)
 	retryAfter := 30 * time.Second
-	wantNow := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC) // newLaneCHandler's pinned clock
+	wantNow := laneCNow
 
 	fetcher := newFakeInverseMaskFetcher()
 	fetcher.failNth[1] = &planit.RateLimitError{RetryAfter: &retryAfter}
 	apps := newFakeApps()
 	state := newFakeStateStore()
-	state.states[sentinelLaneC] = PollState{HighWaterMark: epochUpper, Cursor: &PollCursor{DifferentStart: epochLower, NextIndex: 300}}
+	state.states[sentinelLaneC] = PollState{HighWaterMark: lastCleanScanAt, Cursor: &PollCursor{DifferentStart: laneCToday, NextIndex: 300}}
 
 	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
 	out := h.RunOnePage(context.Background())
@@ -486,25 +546,22 @@ func TestInverseMaskLane_RateLimitedPageFetchPreservesCursorAdvancesLastPollTime
 	}
 }
 
-// TestInverseMaskLane_FreshAnchorPageFetch429PreservesUnanchoredState covers
+// TestInverseMaskLane_FreshScanPageFetch429PreservesLastCleanScanAt covers
 // the page-fetch-429 checkpoint's OTHER shape: a 429 on the very first fetch
-// of a freshly-anchoring epoch (no active cursor yet). The re-save must
-// persist the state EXACTLY as it was loaded — the prior ceiling as
-// HighWaterMark, cursor nil — not the in-memory epochUpper this call
-// provisionally reset to now(); saving that would falsely mark a brand new
-// epoch as already anchored-and-drained (nil cursor) without a single record
-// ever having been walked, silently skipping its entire contents.
-func TestInverseMaskLane_FreshAnchorPageFetch429PreservesUnanchoredState(t *testing.T) {
+// of a fresh scan (no active cursor). The re-save must persist the state
+// EXACTLY as loaded — last_clean_scan_at unchanged, cursor still nil — and
+// only advance last_poll_time so the LRU rotates.
+func TestInverseMaskLane_FreshScanPageFetch429PreservesLastCleanScanAt(t *testing.T) {
 	t.Parallel()
-	priorCeiling := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	lastCleanScanAt := laneCNow.AddDate(0, 0, -4)
 	retryAfter := 15 * time.Second
-	wantNow := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC) // newLaneCHandler's pinned clock
+	wantNow := laneCNow
 
 	fetcher := newFakeInverseMaskFetcher()
 	fetcher.failNth[1] = &planit.RateLimitError{RetryAfter: &retryAfter}
 	apps := newFakeApps()
 	state := newFakeStateStore()
-	state.states[sentinelLaneC] = PollState{HighWaterMark: priorCeiling} // no cursor: about to anchor a new epoch
+	state.states[sentinelLaneC] = PollState{HighWaterMark: lastCleanScanAt} // no cursor: a fresh scan
 
 	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
 	out := h.RunOnePage(context.Background())
@@ -513,11 +570,11 @@ func TestInverseMaskLane_FreshAnchorPageFetch429PreservesUnanchoredState(t *test
 		t.Fatal("expected rateLimited=true")
 	}
 	got := state.states[sentinelLaneC]
-	if !got.HighWaterMark.Equal(priorCeiling) {
-		t.Errorf("HighWaterMark: got %v, want the unchanged prior ceiling %v (never falsely advanced to now on a failed anchor fetch)", got.HighWaterMark, priorCeiling)
+	if !got.HighWaterMark.Equal(lastCleanScanAt) {
+		t.Errorf("last_clean_scan_at: got %v, want the unchanged loaded value %v (never stamped by a failed fetch)", got.HighWaterMark, lastCleanScanAt)
 	}
 	if got.Cursor != nil {
-		t.Errorf("cursor: got %+v, want nil (still no active cursor -- the epoch never actually anchored)", got.Cursor)
+		t.Errorf("cursor: got %+v, want nil (the scan never started)", got.Cursor)
 	}
 	if !got.LastPollTime.Equal(wantNow) {
 		t.Errorf("LastPollTime: got %v, want %v (must still advance so LRU rotates)", got.LastPollTime, wantNow)
@@ -530,9 +587,9 @@ func TestInverseMaskLane_FreshAnchorPageFetch429PreservesUnanchoredState(t *test
 // straggler on the same page must never be attempted.
 func TestInverseMaskLane_HydrationRateLimitStopsTheWholePage(t *testing.T) {
 	t.Parallel()
-	epochLower := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	epochUpper := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
-	newLD := epochLower.Add(time.Hour)
+	windowStart := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	lastCleanScanAt := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	newLD := windowStart.Add(time.Hour)
 	retryAfter := 20 * time.Second
 
 	fetcher := newFakeInverseMaskFetcher()
@@ -548,7 +605,7 @@ func TestInverseMaskLane_HydrationRateLimitStopsTheWholePage(t *testing.T) {
 
 	apps := newFakeApps() // both new: both would otherwise hydrate
 	state := newFakeStateStore()
-	state.states[sentinelLaneC] = PollState{HighWaterMark: epochUpper, Cursor: &PollCursor{DifferentStart: epochLower, NextIndex: 0}}
+	state.states[sentinelLaneC] = PollState{HighWaterMark: lastCleanScanAt, Cursor: &PollCursor{DifferentStart: laneCToday, NextIndex: 0}}
 
 	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
 	out := h.RunOnePage(context.Background())
@@ -569,14 +626,13 @@ func TestInverseMaskLane_HydrationRateLimitStopsTheWholePage(t *testing.T) {
 // as TerminationTimeout rather than TerminationNatural (tc-pmh5y).
 func TestInverseMaskLane_PageFetchTimeoutSetsTimedOut(t *testing.T) {
 	t.Parallel()
-	epochLower := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	epochUpper := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	lastCleanScanAt := laneCNow.AddDate(0, 0, -2)
 
 	fetcher := newFakeInverseMaskFetcher()
 	fetcher.failNth[1] = &url.Error{Op: "Get", URL: "https://www.planit.org.uk/api/applics/json", Err: context.DeadlineExceeded}
 	apps := newFakeApps()
 	state := newFakeStateStore()
-	state.states[sentinelLaneC] = PollState{HighWaterMark: epochUpper, Cursor: &PollCursor{DifferentStart: epochLower, NextIndex: 300}}
+	state.states[sentinelLaneC] = PollState{HighWaterMark: lastCleanScanAt, Cursor: &PollCursor{DifferentStart: laneCToday, NextIndex: 300}}
 
 	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
 	out := h.RunOnePage(context.Background())
@@ -599,9 +655,9 @@ func TestInverseMaskLane_PageFetchTimeoutSetsTimedOut(t *testing.T) {
 // FetchByUID).
 func TestInverseMaskLane_HydrationTimeoutSetsTimedOut(t *testing.T) {
 	t.Parallel()
-	epochLower := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	epochUpper := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
-	newLD := epochLower.Add(time.Hour)
+	windowStart := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	lastCleanScanAt := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	newLD := windowStart.Add(time.Hour)
 
 	fetcher := newFakeInverseMaskFetcher()
 	fetcher.pages[0] = planit.FetchPageResult{
@@ -613,7 +669,7 @@ func TestInverseMaskLane_HydrationTimeoutSetsTimedOut(t *testing.T) {
 
 	apps := newFakeApps()
 	state := newFakeStateStore()
-	state.states[sentinelLaneC] = PollState{HighWaterMark: epochUpper, Cursor: &PollCursor{DifferentStart: epochLower, NextIndex: 0}}
+	state.states[sentinelLaneC] = PollState{HighWaterMark: lastCleanScanAt, Cursor: &PollCursor{DifferentStart: laneCToday, NextIndex: 0}}
 
 	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
 	out := h.RunOnePage(context.Background())
@@ -641,8 +697,6 @@ func TestInverseMaskLane_HydrationTimeoutSetsTimedOut(t *testing.T) {
 // persistence failure.
 func TestInverseMaskLane_PageFetchErrorPlusWatermarkSaveFailureClearsPlanitOrigin(t *testing.T) {
 	t.Parallel()
-	epochLower := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	epochUpper := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
 	fetchErr := errors.New("planit: page fetch failed")
 	saveErr := errors.New("postgres: save failed")
 
@@ -650,7 +704,7 @@ func TestInverseMaskLane_PageFetchErrorPlusWatermarkSaveFailureClearsPlanitOrigi
 	fetcher.failNth[1] = fetchErr
 	apps := newFakeApps()
 	state := newFakeStateStore()
-	state.states[sentinelLaneC] = PollState{HighWaterMark: epochUpper, Cursor: &PollCursor{DifferentStart: epochLower, NextIndex: 300}}
+	state.states[sentinelLaneC] = PollState{HighWaterMark: laneCNow.AddDate(0, 0, -2), Cursor: &PollCursor{DifferentStart: laneCToday, NextIndex: 300}}
 	state.saveErr = saveErr
 
 	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
@@ -674,9 +728,9 @@ func TestInverseMaskLane_PageFetchErrorPlusWatermarkSaveFailureClearsPlanitOrigi
 // stacked on top must surface and clear planitOrigin.
 func TestInverseMaskLane_HydrationErrorPlusWatermarkSaveFailureClearsPlanitOrigin(t *testing.T) {
 	t.Parallel()
-	epochLower := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	epochUpper := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
-	newLD := epochLower.Add(time.Hour)
+	windowStart := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	lastCleanScanAt := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	newLD := windowStart.Add(time.Hour)
 	hydrateErr := errors.New("planit: hydration fetch failed")
 	saveErr := errors.New("postgres: save failed")
 
@@ -690,7 +744,7 @@ func TestInverseMaskLane_HydrationErrorPlusWatermarkSaveFailureClearsPlanitOrigi
 
 	apps := newFakeApps()
 	state := newFakeStateStore()
-	state.states[sentinelLaneC] = PollState{HighWaterMark: epochUpper, Cursor: &PollCursor{DifferentStart: epochLower, NextIndex: 0}}
+	state.states[sentinelLaneC] = PollState{HighWaterMark: lastCleanScanAt, Cursor: &PollCursor{DifferentStart: laneCToday, NextIndex: 0}}
 	state.saveErr = saveErr
 
 	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
@@ -718,9 +772,9 @@ func TestInverseMaskLane_HydrationErrorPlusWatermarkSaveFailureClearsPlanitOrigi
 // TerminationTimeout (2h cadence).
 func TestInverseMaskLane_GetByUIDTimeoutDoesNotSetTimedOut(t *testing.T) {
 	t.Parallel()
-	epochLower := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	epochUpper := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
-	newLD := epochLower.Add(time.Hour)
+	windowStart := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	lastCleanScanAt := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	newLD := windowStart.Add(time.Hour)
 
 	fetcher := newFakeInverseMaskFetcher()
 	fetcher.pages[0] = planit.FetchPageResult{
@@ -735,7 +789,7 @@ func TestInverseMaskLane_GetByUIDTimeoutDoesNotSetTimedOut(t *testing.T) {
 	// consulted on the GetByUID path -- it is Postgres, never PlanIt.
 	apps.getErr = &url.Error{Op: "Get", URL: "postgres://irrelevant", Err: context.DeadlineExceeded}
 	state := newFakeStateStore()
-	state.states[sentinelLaneC] = PollState{HighWaterMark: epochUpper, Cursor: &PollCursor{DifferentStart: epochLower, NextIndex: 0}}
+	state.states[sentinelLaneC] = PollState{HighWaterMark: lastCleanScanAt, Cursor: &PollCursor{DifferentStart: laneCToday, NextIndex: 0}}
 
 	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
 	out := h.RunOnePage(context.Background())
@@ -757,18 +811,16 @@ func TestInverseMaskLane_GetByUIDTimeoutDoesNotSetTimedOut(t *testing.T) {
 // TestInverseMaskLane_MidPageHydrationRateLimitCheckpointsAtFailingOffset is
 // GH#986 acceptance criterion (a): a mid-page hydration 429 must checkpoint
 // the cursor at the FAILING record's own offset (startIndex + i, where i
-// counts every record iterated this page including the exact-instant skip)
-// and advance last_poll_time — previously this path (stoppedEarly) returned
-// with no save at all, which froze the cursor on the same page forever (the
-// observed 59x re-fetch of the same 300-record boundary in prod) and froze
-// last_poll_time, starving Lane A/B via the planner's pure LRU.
+// counts every record iterated this page including a dedupe that hydrated
+// nothing) and advance last_poll_time — previously this path (stoppedEarly)
+// returned with no save at all, which froze the cursor on the same page
+// forever (the observed 59x re-fetch of the same 300-record boundary in
+// prod) and froze last_poll_time, starving Lane A/B via the planner's LRU.
 func TestInverseMaskLane_MidPageHydrationRateLimitCheckpointsAtFailingOffset(t *testing.T) {
 	t.Parallel()
-	epochLower := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	epochUpper := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
-	newLD := epochLower.Add(time.Hour)
+	newLD := laneCNow.Add(-time.Hour)
 	retryAfter := 20 * time.Second
-	wantNow := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC) // newLaneCHandler's pinned clock
+	wantNow := laneCNow
 
 	full := testApp("ok", 99, newLD)
 	full.UID = "ok/FUL"
@@ -779,19 +831,20 @@ func TestInverseMaskLane_MidPageHydrationRateLimitCheckpointsAtFailingOffset(t *
 	fetcher.pages[0] = planit.FetchPageResult{
 		From: 0,
 		Applications: []applications.PlanningApplication{
-			lightApp("before/FUL", 99, "Permitted", epochLower), // index 0: <= epochLower, skipped -- still counts toward the offset
-			lightApp("ok/FUL", 99, "Permitted", newLD),          // index 1: hydrates fine
-			lightApp("fails/FUL", 99, "Permitted", newLD),       // index 2: hydration 429s here
-			lightApp("never/FUL", 99, "Permitted", newLD),       // index 3: must never be reached
+			lightApp("dedupe/FUL", 99, "Permitted", newLD), // index 0: already correct in Postgres -- dedupes, still counts toward the offset
+			lightApp("ok/FUL", 99, "Permitted", newLD),     // index 1: hydrates fine
+			lightApp("fails/FUL", 99, "Permitted", newLD),  // index 2: hydration 429s here
+			lightApp("never/FUL", 99, "Permitted", newLD),  // index 3: must never be reached
 		},
 		HasMorePages: false,
 	}
 	fetcher.hydrated["ok/FUL"] = full
 	fetcher.hydrateErr["fails/FUL"] = &planit.RateLimitError{RetryAfter: &retryAfter}
 
-	apps := newFakeApps() // every uid is new: every one would otherwise hydrate
+	apps := newFakeApps() // ok/fails/never are new: they would otherwise hydrate
+	apps.existing["dedupe/FUL"] = applications.PlanningApplication{UID: "dedupe/FUL", AreaID: 99, AppState: &permitted, LastDifferent: newLD}
 	state := newFakeStateStore()
-	state.states[sentinelLaneC] = PollState{HighWaterMark: epochUpper, Cursor: &PollCursor{DifferentStart: epochLower, NextIndex: 0}}
+	state.states[sentinelLaneC] = PollState{HighWaterMark: laneCNow.AddDate(0, 0, -2), Cursor: &PollCursor{DifferentStart: laneCToday, NextIndex: 0}}
 
 	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
 	out := h.RunOnePage(context.Background())
@@ -819,9 +872,9 @@ func TestInverseMaskLane_MidPageHydrationRateLimitCheckpointsAtFailingOffset(t *
 // FetchByUID burst a page of many clustered genuine stragglers can trigger.
 func TestInverseMaskLane_HydrationCapStopsPassAndCheckpoints(t *testing.T) {
 	t.Parallel()
-	epochLower := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	epochUpper := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
-	ld := epochLower.Add(time.Hour)
+	windowStart := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	lastCleanScanAt := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	ld := windowStart.Add(time.Hour)
 	wantNow := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC) // newLaneCHandler's pinned clock
 
 	const recordCount = maxHydrationsPerPass + 5
@@ -838,7 +891,7 @@ func TestInverseMaskLane_HydrationCapStopsPassAndCheckpoints(t *testing.T) {
 	fetcher.pages[0] = planit.FetchPageResult{From: 0, Applications: lightRows, HasMorePages: false}
 
 	state := newFakeStateStore()
-	state.states[sentinelLaneC] = PollState{HighWaterMark: epochUpper, Cursor: &PollCursor{DifferentStart: epochLower, NextIndex: 0}}
+	state.states[sentinelLaneC] = PollState{HighWaterMark: lastCleanScanAt, Cursor: &PollCursor{DifferentStart: laneCToday, NextIndex: 0}}
 
 	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
 	out := h.RunOnePage(context.Background())
@@ -873,9 +926,9 @@ func TestInverseMaskLane_HydrationCapStopsPassAndCheckpoints(t *testing.T) {
 // the NextIndex already loaded at the top of this call.
 func TestInverseMaskLane_HydrationCapNeverRegressesCursor(t *testing.T) {
 	t.Parallel()
-	epochLower := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	epochUpper := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
-	ld := epochLower.Add(time.Hour)
+	windowStart := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	lastCleanScanAt := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	ld := windowStart.Add(time.Hour)
 
 	const priorNextIndex = 500
 	const startIndex = priorNextIndex - resumeOverlapRecords // 400
@@ -896,8 +949,8 @@ func TestInverseMaskLane_HydrationCapNeverRegressesCursor(t *testing.T) {
 	apps := newFakeApps() // nothing hydrated ever lands here either
 	state := newFakeStateStore()
 	state.states[sentinelLaneC] = PollState{
-		HighWaterMark: epochUpper,
-		Cursor:        &PollCursor{DifferentStart: epochLower, NextIndex: priorNextIndex},
+		HighWaterMark: lastCleanScanAt,
+		Cursor:        &PollCursor{DifferentStart: laneCToday, NextIndex: priorNextIndex},
 	}
 
 	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
@@ -929,9 +982,9 @@ func TestInverseMaskLane_HydrationCapNeverRegressesCursor(t *testing.T) {
 // single time.
 func TestInverseMaskLane_HydrationCapFlatlinesAcrossRepeatedPasses(t *testing.T) {
 	t.Parallel()
-	epochLower := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	epochUpper := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
-	ld := epochLower.Add(time.Hour)
+	windowStart := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	lastCleanScanAt := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	ld := windowStart.Add(time.Hour)
 
 	const priorNextIndex = 500
 	const startIndex = priorNextIndex - resumeOverlapRecords // 400
@@ -948,8 +1001,8 @@ func TestInverseMaskLane_HydrationCapFlatlinesAcrossRepeatedPasses(t *testing.T)
 	apps := newFakeApps()
 	state := newFakeStateStore()
 	state.states[sentinelLaneC] = PollState{
-		HighWaterMark: epochUpper,
-		Cursor:        &PollCursor{DifferentStart: epochLower, NextIndex: priorNextIndex},
+		HighWaterMark: lastCleanScanAt,
+		Cursor:        &PollCursor{DifferentStart: laneCToday, NextIndex: priorNextIndex},
 	}
 
 	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
@@ -989,9 +1042,9 @@ func TestInverseMaskLane_HydrationCapFlatlinesAcrossRepeatedPasses(t *testing.T)
 // whole page from scratch or freezing the LRU clock.
 func TestInverseMaskLane_IngestErrorIsAHardStop(t *testing.T) {
 	t.Parallel()
-	epochLower := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	epochUpper := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
-	newLD := epochLower.Add(time.Hour)
+	windowStart := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	lastCleanScanAt := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	newLD := windowStart.Add(time.Hour)
 
 	wantNow := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC) // newLaneCHandler's pinned clock
 
@@ -1008,7 +1061,7 @@ func TestInverseMaskLane_IngestErrorIsAHardStop(t *testing.T) {
 	apps := newFakeApps()
 	apps.upsertErr = errors.New("db write failed")
 	state := newFakeStateStore()
-	state.states[sentinelLaneC] = PollState{HighWaterMark: epochUpper, Cursor: &PollCursor{DifferentStart: epochLower, NextIndex: 0}}
+	state.states[sentinelLaneC] = PollState{HighWaterMark: lastCleanScanAt, Cursor: &PollCursor{DifferentStart: laneCToday, NextIndex: 0}}
 
 	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
 	out := h.RunOnePage(context.Background())
@@ -1028,63 +1081,57 @@ func TestInverseMaskLane_IngestErrorIsAHardStop(t *testing.T) {
 	}
 }
 
-// TestInverseMaskLane_ContiguousEpochTilingAcrossAStall drives Lane C
-// through seed -> anchor -> a simulated mid-epoch stall (a page reports more
-// follow, then the epoch drains on a LATER call, mirroring a storm that
-// stalls the walk and resumes once it passes) -> a second anchor, and
-// asserts the second epoch's floor is EXACTLY the first epoch's ceiling —
-// contiguous tiling, no gap, regardless of the stall (ADR 0044 §5).
-func TestInverseMaskLane_ContiguousEpochTilingAcrossAStall(t *testing.T) {
+// #1127 deleted TestInverseMaskLane_ContiguousEpochTilingAcrossAStall: there
+// is no epoch to tile any more. TestInverseMaskLane_MultiPageScanResumesWithinADay
+// covers the replacement — a scan that spans more than one page inside a
+// single calendar day resumes at its checkpoint and only stamps
+// last_clean_scan_at once the final page lands.
+func TestInverseMaskLane_MultiPageScanResumesWithinADay(t *testing.T) {
 	t.Parallel()
 	fetcher := newFakeInverseMaskFetcher()
 	apps := newFakeApps()
 	state := newFakeStateStore()
-	logger := slog.New(slog.NewTextHandler(discard{}, nil))
+	lastCleanScanAt := laneCNow.AddDate(0, 0, -3)
+	state.states[sentinelLaneC] = PollState{HighWaterMark: lastCleanScanAt}
 
-	// The clock genuinely advances between calls (like production), so
-	// successive epoch ceilings are distinguishable instants.
-	callTime := time.Date(2026, 7, 14, 0, 0, 0, 0, time.UTC)
-	clock := func() time.Time {
-		now := callTime
-		callTime = callTime.Add(time.Hour)
-		return now
+	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
+
+	// Page 1: more pages remain — checkpoint a same-day cursor, do NOT stamp
+	// last_clean_scan_at.
+	page1 := make([]applications.PlanningApplication, 300)
+	for i := range page1 {
+		page1[i] = lightApp(fmt.Sprintf("p1-%03d/FUL", i), 99, "Undecided", laneCNow.Add(-time.Hour))
+		apps.existing[page1[i].UID] = applications.PlanningApplication{UID: page1[i].UID, AreaID: 99, AppState: page1[i].AppState}
 	}
-	h := NewInverseMaskLaneHandler(fetcher, state, apps, defaultInverseMaskOpts(), clock, logger)
+	fetcher.pages[0] = planit.FetchPageResult{From: 0, Applications: page1, HasMorePages: true}
 
 	if out := h.RunOnePage(context.Background()); out.err != nil {
-		t.Fatalf("seed: %v", out.err)
+		t.Fatalf("page 1: %v", out.err)
+	}
+	mid := state.states[sentinelLaneC]
+	if mid.Cursor == nil || mid.Cursor.NextIndex != 300 {
+		t.Fatalf("page 1 cursor: got %+v, want NextIndex=300", mid.Cursor)
+	}
+	if !sameDate(mid.Cursor.DifferentStart, laneCNow) {
+		t.Errorf("cursor.DifferentStart: got %v, want today's date", mid.Cursor.DifferentStart)
+	}
+	if !mid.HighWaterMark.Equal(lastCleanScanAt) {
+		t.Errorf("last_clean_scan_at: got %v, want unchanged %v (scan not finished)", mid.HighWaterMark, lastCleanScanAt)
 	}
 
-	// Anchor epoch 1 for real: a page that reports more pages remain leaves
-	// the epoch mid-drain (the simulated stall point).
-	fetcher.pages[0] = planit.FetchPageResult{From: 0, Applications: nil, HasMorePages: true}
-	anchorOut := h.RunOnePage(context.Background())
-	if anchorOut.err != nil {
-		t.Fatalf("anchor: %v", anchorOut.err)
-	}
-	epoch1Ceiling := anchorOut.watermarkAfter
-	midCursor := state.states[sentinelLaneC].Cursor
-	if midCursor == nil {
-		t.Fatal("expected an active mid-epoch cursor after a HasMorePages=true page")
-	}
-
-	// The stall passes: the resumed page is empty with no more pages, so the
-	// epoch fully drains on this call.
-	fetcher.pages[midCursor.NextIndex] = planit.FetchPageResult{From: midCursor.NextIndex, Applications: nil, HasMorePages: false}
+	// Page 2: resumes at 300 - the 100-record overlap = 200, finishes.
+	fetcher.pages[200] = planit.FetchPageResult{From: 200, Applications: nil, HasMorePages: false}
 	if out := h.RunOnePage(context.Background()); out.err != nil {
-		t.Fatalf("drain: %v", out.err)
+		t.Fatalf("page 2: %v", out.err)
 	}
-	if state.states[sentinelLaneC].Cursor != nil {
-		t.Fatal("expected the cursor to clear once the epoch drains")
+	if got := fetcher.queries[len(fetcher.queries)-1].StartIndex; got != 200 {
+		t.Errorf("page 2 StartIndex: got %d, want 200 (resume overlap)", got)
 	}
-
-	// Epoch 2 anchors: its floor must be EXACTLY epoch 1's ceiling.
-	fetcher.pages[0] = planit.FetchPageResult{From: 0, Applications: nil, HasMorePages: false}
-	if out := h.RunOnePage(context.Background()); out.err != nil {
-		t.Fatalf("epoch 2 anchor: %v", out.err)
+	done := state.states[sentinelLaneC]
+	if done.Cursor != nil {
+		t.Errorf("cursor: got %+v, want nil (clean scan)", done.Cursor)
 	}
-	lastQuery := fetcher.queries[len(fetcher.queries)-1]
-	if !lastQuery.EpochLower.Equal(truncateToDate(epoch1Ceiling)) {
-		t.Errorf("epoch 2's EpochLower: got %v, want epoch 1's ceiling %v (contiguous tiling, no gap)", lastQuery.EpochLower, epoch1Ceiling)
+	if !done.HighWaterMark.Equal(laneCNow) {
+		t.Errorf("last_clean_scan_at: got %v, want now %v (clean scan)", done.HighWaterMark, laneCNow)
 	}
 }

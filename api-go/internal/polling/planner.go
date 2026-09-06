@@ -169,28 +169,26 @@ func hasWorkAB(s LaneState, now time.Time, freshness time.Duration) bool {
 	return s.LastPollTime.IsZero() || now.Sub(s.LastPollTime) >= freshness
 }
 
-// laneCIdleAnchorInterval bounds how often Lane C anchors a BRAND NEW epoch
-// once it has no backlog to walk — ADR 0044 §5/§6's "daily epoch cadence"
-// (no dedicated env var is named for it, unlike FreshnessInterval or the
-// day window, so this is a hardcoded constant, mirroring resumeOverlapRecords
-// in handler.go). Without this gate, a fully caught-up Lane C would anchor a
-// fresh near-zero-width epoch on every single planner iteration it wins
-// (last_different-ascending epochs are pinned to "now", so a caught-up lane
-// always has SOME sliver of a new epoch available) and busy-loop issuing
-// near-empty requests for the rest of every daytime cycle — a request-volume
-// hammering risk distinct from (and not covered by) the rows-served metric
-// ADR 0041/0044 are built around. A lane with an ACTIVE cursor (a genuine
-// backlog mid-drain) is exempt: it must keep grinding without waiting out
-// this interval, or a real backlog would take up to a day per epoch to
-// clear.
+// laneCIdleAnchorInterval bounds how often Lane C starts a BRAND NEW scan
+// once it has no backlog mid-flight — ADR 0044 §5/§6's "daily cadence" (no
+// dedicated env var is named for it, unlike FreshnessInterval or the day
+// window, so this is a hardcoded constant, mirroring resumeOverlapRecords in
+// handler.go). Without this gate, a fully caught-up Lane C would start a
+// fresh rolling-window scan on every single planner iteration it wins and
+// busy-loop issuing a different=N first page (the whole total+sort cost) for
+// the rest of every daytime cycle — a request-volume hammering risk distinct
+// from (and not covered by) the rows-served metric ADR 0041/0044 are built
+// around. A lane with an ACTIVE cursor (a genuine mid-scan resume) is exempt:
+// it must keep grinding without waiting out this interval, or a real backlog
+// would take up to a day per scan to clear.
 const laneCIdleAnchorInterval = 24 * time.Hour
 
-// hasWorkC reports whether Lane C currently has unwalked epoch pages: an
-// active cursor (mid-epoch) always has work, so a genuine backlog drains
-// without delay; otherwise a new epoch is anchored only once
+// hasWorkC reports whether Lane C currently has scan pages left to walk: an
+// active cursor (mid-scan) always has work, so a genuine backlog drains
+// without delay; otherwise a fresh scan starts only once
 // laneCIdleAnchorInterval has elapsed since Lane C's last run, so a fully
-// caught-up lane settles to a quiet daily check instead of busy-anchoring a
-// fresh near-empty epoch every time it is picked.
+// caught-up lane settles to a quiet daily check instead of busy-starting a
+// fresh scan every time it is picked.
 func hasWorkC(s LaneState, now time.Time) bool {
 	if s.Cursor != nil {
 		return true

@@ -233,12 +233,12 @@ func TestPlanner_NextWork_LRUPicksOldestAmongEligibleWithWork(t *testing.T) {
 }
 
 // TestPlanner_NextWork_LaneCHasWork covers Lane C's has-work rule (ADR 0044
-// §5/§6): an active mid-epoch cursor always has work regardless of how
-// recently it last ran (a genuine backlog must grind without delay), but an
-// idle lane (no cursor) only anchors a fresh epoch once
+// §5/§6, as amended by #1127): an active mid-scan cursor always has work
+// regardless of how recently it last ran (a genuine backlog must grind
+// without delay), but an idle lane (no cursor) only starts a fresh scan once
 // laneCIdleAnchorInterval has elapsed since its last run — never on every
-// single pick, which would busy-loop anchoring near-empty epochs forever
-// once caught up.
+// single pick, which would busy-loop issuing a different=N first page
+// forever once caught up.
 func TestPlanner_NextWork_LaneCHasWork(t *testing.T) {
 	t.Parallel()
 	p := NewPlanner(testPlannerOptions(t))
@@ -255,7 +255,7 @@ func TestPlanner_NextWork_LaneCHasWork(t *testing.T) {
 		{"idle, ran just under a day ago: no work yet", daytime.Add(-laneCIdleAnchorInterval + time.Minute), false, false},
 		{"idle, ran exactly a day ago: has work", daytime.Add(-laneCIdleAnchorInterval), false, true},
 		{"idle, ran over a day ago: has work", daytime.Add(-laneCIdleAnchorInterval - time.Hour), false, true},
-		{"mid-epoch, ran seconds ago: has work regardless (genuine backlog)", daytime.Add(-time.Minute), true, true},
+		{"mid-scan, ran seconds ago: has work regardless (genuine backlog)", daytime.Add(-time.Minute), true, true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

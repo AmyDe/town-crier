@@ -73,26 +73,28 @@ func TestNationalLane_CrossCycleCursorResume_RealPostgres(t *testing.T) {
 	}
 }
 
-// TestInverseMaskLane_EpochCursorCrossCycleResume_RealPostgres is Lane C's
-// analogue: a mid-epoch cursor (HighWaterMark = pinned epoch_upper,
-// Cursor.DifferentStart = epoch_lower, Cursor.NextIndex = the ascending
-// offset — ADR 0044's reuse of the existing PollCursor shape, no migration)
-// round-trips through real Postgres, and a fresh handler + store instance
-// resumes the SAME epoch at the checkpointed index.
-func TestInverseMaskLane_EpochCursorCrossCycleResume_RealPostgres(t *testing.T) {
+// TestInverseMaskLane_ScanCursorCrossCycleResume_RealPostgres is Lane C's
+// analogue (§5, as amended by #1127): a mid-scan cursor (HighWaterMark =
+// last_clean_scan_at, Cursor.DifferentStart = the scan's anchor date =
+// today, Cursor.NextIndex = the within-scan offset — ADR 0044's reuse of the
+// existing PollCursor shape, no migration) round-trips through real Postgres,
+// and a fresh handler + store instance resumes the SAME scan at the
+// checkpointed index.
+func TestInverseMaskLane_ScanCursorCrossCycleResume_RealPostgres(t *testing.T) {
 	ctx := context.Background()
 	pool := pgtest.New(t)
 	pgtest.Truncate(t, pool, "poll_state", "leases")
 	state := NewPostgresPollStateStore(pool)
 
-	epochLower := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	epochUpper := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
-	cursor := &PollCursor{DifferentStart: epochLower, NextIndex: 300}
-	if err := state.Save(ctx, sentinelLaneC, epochUpper, epochUpper, cursor); err != nil {
-		t.Fatalf("seed mid-epoch state: %v", err)
+	now := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
+	today := time.Date(2026, 7, 14, 0, 0, 0, 0, time.UTC)
+	lastCleanScanAt := time.Date(2026, 7, 12, 0, 0, 0, 0, time.UTC)
+	cursor := &PollCursor{DifferentStart: today, NextIndex: 300}
+	if err := state.Save(ctx, sentinelLaneC, lastCleanScanAt, lastCleanScanAt, cursor); err != nil {
+		t.Fatalf("seed mid-scan state: %v", err)
 	}
 
-	newLD := epochLower.Add(2 * time.Hour)
+	newLD := now.Add(-2 * time.Hour)
 	fetcher := newFakeInverseMaskFetcher()
 	fetcher.pages[200] = planit.FetchPageResult{
 		From:         200,
@@ -105,7 +107,7 @@ func TestInverseMaskLane_EpochCursorCrossCycleResume_RealPostgres(t *testing.T) 
 
 	apps := newFakeApps()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	clock := func() time.Time { return time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC) }
+	clock := func() time.Time { return now }
 
 	h := NewInverseMaskLaneHandler(fetcher, NewPostgresPollStateStore(pool), apps, defaultInverseMaskOpts(), clock, logger)
 	out := h.RunOnePage(ctx)
@@ -115,8 +117,8 @@ func TestInverseMaskLane_EpochCursorCrossCycleResume_RealPostgres(t *testing.T) 
 	if len(fetcher.queries) != 1 || fetcher.queries[0].StartIndex != 200 {
 		t.Fatalf("expected the resumed fetch at StartIndex 200 (checkpointed NextIndex 300 minus the 100-record resume overlap, GH#986), got %+v", fetcher.queries)
 	}
-	if !fetcher.queries[0].EpochLower.Equal(epochLower) {
-		t.Errorf("EpochLower: got %v, want the active epoch's floor %v", fetcher.queries[0].EpochLower, epochLower)
+	if fetcher.queries[0].WindowDays != 3 {
+		t.Errorf("WindowDays: got %d, want 3 (last clean scan two days ago -> clamp(2+1, 2, 3))", fetcher.queries[0].WindowDays)
 	}
 	if len(apps.upserts) != 1 || apps.upserts[0].UID != "resumed/FUL" {
 		t.Fatalf("expected the hydrated record ingested: got %+v", apps.upserts)
@@ -130,42 +132,43 @@ func TestInverseMaskLane_EpochCursorCrossCycleResume_RealPostgres(t *testing.T) 
 		t.Fatal("expected a persisted poll_state row")
 	}
 	if got.Cursor != nil {
-		t.Errorf("cursor after the epoch drains: got %+v, want nil", got.Cursor)
+		t.Errorf("cursor after the scan completes: got %+v, want nil", got.Cursor)
 	}
-	if !got.HighWaterMark.Equal(epochUpper) {
-		t.Errorf("HighWaterMark (pinned epoch_upper): got %v, want unchanged %v", got.HighWaterMark, epochUpper)
+	if !got.HighWaterMark.Equal(now) {
+		t.Errorf("last_clean_scan_at: got %v, want now %v (clean scan stamps it)", got.HighWaterMark, now)
 	}
 }
 
-// TestInverseMaskLane_ContiguousEpochTiling_RealPostgres proves the "no gap"
-// tiling guarantee survives a real Postgres round trip: once a prior epoch's
-// drained ceiling is persisted (no active cursor), a fresh handler + store
-// instance anchors the next epoch with EXACTLY that ceiling as its floor.
-func TestInverseMaskLane_ContiguousEpochTiling_RealPostgres(t *testing.T) {
+// TestInverseMaskLane_CleanScanStampsLastCleanScanAt_RealPostgres proves the
+// clean-scan completion path round-trips through real Postgres: a fresh scan
+// (no active cursor) that reaches its last page with no 429 stamps
+// last_clean_scan_at = now and leaves no cursor, on the EXISTING poll_state
+// columns (no migration).
+func TestInverseMaskLane_CleanScanStampsLastCleanScanAt_RealPostgres(t *testing.T) {
 	ctx := context.Background()
 	pool := pgtest.New(t)
 	pgtest.Truncate(t, pool, "poll_state", "leases")
 	state := NewPostgresPollStateStore(pool)
 
-	priorCeiling := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
-	if err := state.Save(ctx, sentinelLaneC, priorCeiling, priorCeiling, nil); err != nil {
-		t.Fatalf("seed drained epoch: %v", err)
+	priorCleanScan := time.Date(2026, 7, 8, 0, 0, 0, 0, time.UTC)
+	if err := state.Save(ctx, sentinelLaneC, priorCleanScan, priorCleanScan, nil); err != nil {
+		t.Fatalf("seed prior clean scan: %v", err)
 	}
 
 	fetcher := newFakeInverseMaskFetcher()
 	fetcher.pages[0] = planit.FetchPageResult{From: 0, Applications: nil, HasMorePages: false}
 	apps := newFakeApps()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	wantNewCeiling := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
-	clock := func() time.Time { return wantNewCeiling }
+	now := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
+	clock := func() time.Time { return now }
 
 	h := NewInverseMaskLaneHandler(fetcher, NewPostgresPollStateStore(pool), apps, defaultInverseMaskOpts(), clock, logger)
 	out := h.RunOnePage(ctx)
 	if out.err != nil {
 		t.Fatalf("RunOnePage: %v", out.err)
 	}
-	if len(fetcher.queries) != 1 || !fetcher.queries[0].EpochLower.Equal(priorCeiling) {
-		t.Fatalf("expected the new epoch's floor to equal the prior epoch's ceiling %v, got %+v", priorCeiling, fetcher.queries)
+	if len(fetcher.queries) != 1 || fetcher.queries[0].StartIndex != 0 || fetcher.queries[0].WindowDays != 3 {
+		t.Fatalf("expected one fresh fetch at index 0 with WindowDays 3, got %+v", fetcher.queries)
 	}
 
 	got, found, err := state.Get(ctx, sentinelLaneC)
@@ -175,7 +178,10 @@ func TestInverseMaskLane_ContiguousEpochTiling_RealPostgres(t *testing.T) {
 	if !found {
 		t.Fatal("expected a persisted poll_state row")
 	}
-	if !got.HighWaterMark.Equal(wantNewCeiling) {
-		t.Errorf("new epoch_upper: got %v, want %v", got.HighWaterMark, wantNewCeiling)
+	if got.Cursor != nil {
+		t.Errorf("cursor: got %+v, want nil (clean scan)", got.Cursor)
+	}
+	if !got.HighWaterMark.Equal(now) {
+		t.Errorf("last_clean_scan_at: got %v, want %v", got.HighWaterMark, now)
 	}
 }

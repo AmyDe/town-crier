@@ -1,9 +1,19 @@
-// ADR 0044: Lane C, the national inverse-mask reconciliation lane. Replaces
-// the per-authority ReconciliationHandler (deleted, tc-mc0hf's breaker along
-// with it) with a single national query, walked ASCENDING over a pinned,
-// contiguously-tiled epoch on last_different — the resumable core of ADR
-// 0044's fix for the per-authority sweep's 429 collisions (485 requests plus
-// hydration fan-out per pass) and the general stateless-re-walk livelock.
+// ADR 0044 §5 (as amended by #1127): Lane C, the national inverse-mask
+// reconciliation lane. Replaces the per-authority ReconciliationHandler
+// (deleted, tc-mc0hf's breaker along with it) with a single national query,
+// walked ASCENDING over a bounded, rolling different=N window on
+// last_different — the resumable core of ADR 0044's fix for the per-authority
+// sweep's 429 collisions (485 requests plus hydration fan-out per pass) and
+// the general stateless-re-walk livelock.
+//
+// #1127 replaced the original pinned-epoch / contiguous-tiling model: an
+// absolute different_start floor is a coarse prefilter only (PlanIt has no
+// different_end), so once the epoch cursor froze the floor stayed weeks in
+// the past and every cycle asked PlanIt for a total+sort over every national
+// record changed since — a query it could not answer inside its own 45s
+// limit (bead tc-777e7, the 2026-07 → 2026-09 prod livelock). A rolling
+// different=N window with N hard-capped small is inherently bounded: the
+// query cost cannot grow without limit no matter how long the lane stalls.
 package polling
 
 import (
@@ -23,8 +33,8 @@ import (
 )
 
 // inverseMaskFetcher is the consumer-side slice of the PlanIt client Lane C
-// needs: one ascending epoch page, and a full-record hydration fetch by uid.
-// *planit.Client satisfies both.
+// needs: one ascending rolling-window page, and a full-record hydration
+// fetch by uid. *planit.Client satisfies both.
 type inverseMaskFetcher interface {
 	FetchInverseMaskPage(ctx context.Context, q planit.NationalInverseMaskQuery) (planit.FetchPageResult, error)
 	FetchByUID(ctx context.Context, uid string) (planit.FetchPageResult, error)
@@ -41,7 +51,23 @@ type inverseMaskFetcher interface {
 // time, bounding the burst without losing progress.
 const maxHydrationsPerPass = 25
 
-// InverseMaskOptions tune Lane C's mask cutoff (ADR 0044).
+// defaultMaxInverseMaskWindowDays is the hard cap on Lane C's rolling
+// different=N window (#1127). Live PlanIt probes on 2026-09-06 (end_date
+// 2026-06-08, light select, pg_sz=300): different=3 returned ~25k rows in
+// ~3.3s — comfortably inside PlanIt's own 45s limit and the 240s handler
+// budget — while different=7 hit ~43s once (PlanIt latency is server-load
+// dependent, so a larger window is one bad moment from a 45s HTTP 400).
+// N is clamped into [2, 3]: N=2 is one full day plus overlap (different=1 is
+// only a partial day, ~3.2k rows); N=3 is the ceiling. Days older than the
+// cap are a bounded coverage gap recovered by an explicit poll_state reseed
+// (Part 3, tc-nkvil) — unbounded catch-up is exactly what livelocked.
+//
+// A const, not an env var: this is a fixed safety rule, not an operator dial,
+// mirroring planit.nationalPageSize's rationale (ADR 0041).
+const defaultMaxInverseMaskWindowDays = 3
+
+// InverseMaskOptions tune Lane C's mask cutoff and window cap (ADR 0044 §5,
+// as amended by #1127).
 type InverseMaskOptions struct {
 	// MaskWindow is Lane A's start_date mask width. Lane C's end_date bound
 	// is the same cutoff, inverted (today - MaskWindow), so the two lanes
@@ -49,12 +75,17 @@ type InverseMaskOptions struct {
 	// dial (POLLING_LANE_A_MASK_DAYS), not a correctness boundary owned by
 	// this lane.
 	MaskWindow time.Duration
+	// MaxWindowDays hard-caps the rolling different=N window. <= 0 means use
+	// defaultMaxInverseMaskWindowDays; the handler never surfaces this as a
+	// config dial (there is no env var), it exists so tests can pin it.
+	MaxWindowDays int
 }
 
 // InverseMaskLaneHandler runs ADR 0044's Lane C: one page per call of a
-// national, ascending, epoch-bounded inverse-mask query — the complement of
-// Lane A/B's masked-delta band, reconciling old applications' status drift
-// the delta axis structurally cannot see. Diffs each light row against
+// national, ascending, bounded rolling different=N window inverse-mask query
+// (§5, as amended by #1127) — the complement of Lane A/B's masked-delta band,
+// reconciling old applications' status drift the delta axis structurally
+// cannot see. Diffs each light row against
 // Postgres on app_state and decided_date only (last_different is DROPPED
 // from the diff — PlanIt bumps it on every re-index, so keeping it would
 // flag every churned old record as a straggler, the old per-authority
@@ -123,24 +154,34 @@ func (h *InverseMaskLaneHandler) recorder() metricsRecorder {
 	return h.metrics
 }
 
-// RunOnePage executes exactly one page of Lane C's ascending epoch walk (ADR
-// 0044 §5): anchor a new epoch when none is active, or resume the active one
-// (with a resume overlap, GH#986) at its persisted NextIndex; fetch one
-// page; diff/hydrate genuinely changed rows up to maxHydrationsPerPass;
-// checkpoint. The sentinel row's HighWaterMark holds the pinned epoch_upper,
-// Cursor.DifferentStart doubles as epoch_lower, and Cursor.NextIndex is the
-// ascending record offset — the existing PollCursor shape, reused with no
-// schema migration.
+// RunOnePage executes exactly one page of Lane C's ascending, bounded
+// rolling-window scan (ADR 0044 §5, as amended by #1127): compute this
+// cycle's window width N, resume an in-progress same-day scan (with a resume
+// overlap, GH#986) at its persisted NextIndex or start a fresh one at index
+// 0; fetch one page; diff/hydrate genuinely changed rows up to
+// maxHydrationsPerPass; checkpoint.
 //
-// GH#986: every early-exit path now checkpoints before returning — a page-
-// fetch 429/error re-saves the state exactly as loaded (unchanged epoch,
-// unchanged cursor) with last_poll_time bumped to now, and a mid-page bail
-// (a hydration 429, a straggler error, or the hydration cap) saves a cursor
-// at the offset actually reached. Previously both paths returned with no
-// save at all, so a persistently-failing record froze last_poll_time
-// forever: the planner's pure LRU then read Lane C as perpetually the
-// least-recently-polled lane, picked it every cycle, and it re-walked (and
-// re-failed on) the exact same page — the observed prod livelock that also
+// State reuses the existing PollCursor shape with no schema migration, but
+// the semantics changed with #1127:
+//   - HighWaterMark holds last_clean_scan_at — when the lane last finished a
+//     whole scan with no 429 and no hydration-cap bail. It is what N is
+//     recomputed from every cycle (a longer gap → a wider window, hard-capped
+//     at maxWindowDays). A zero or stale value yields the cap.
+//   - Cursor.DifferentStart holds the in-flight scan's anchor date, valid
+//     only while it still equals today: on a calendar-day rollover the
+//     rolling window has shifted a full day and PlanIt's total has changed
+//     materially, so the persisted index= offset points at different rows —
+//     the cursor is discarded and the scan restarts at index 0.
+//   - Cursor.NextIndex is the within-scan record offset (unchanged).
+//
+// GH#986: every early-exit path checkpoints before returning — a page-fetch
+// 429/error re-saves the state exactly as loaded with last_poll_time bumped
+// to now, and a mid-scan bail (a hydration 429, a straggler error, or the
+// hydration cap) saves a cursor at the offset actually reached. Previously
+// both paths returned with no save at all, so a persistently-failing record
+// froze last_poll_time forever: the planner's LRU then read Lane C as
+// perpetually least-recently-polled, picked it every cycle, and it re-walked
+// (and re-failed on) the same page — the observed prod livelock that also
 // starved Lane A/B of every daytime cycle.
 func (h *InverseMaskLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 	ctx, span := otel.Tracer(tracerName).Start(ctx, "PlanIt Lane C inverse-mask poll")
@@ -149,65 +190,51 @@ func (h *InverseMaskLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 	now := h.now().UTC()
 	var out laneOutcome
 
-	loadedEpochUpper, _, cursor, err := h.watermark.get(ctx)
+	lastCleanScanAt, _, cursor, err := h.watermark.get(ctx)
 	if err != nil {
-		out.err = fmt.Errorf("lane C: read epoch state: %w", err)
+		out.err = fmt.Errorf("lane C: read scan state: %w", err)
 		span.SetAttributes(attribute.String("poll.lane", string(LaneC)))
 		return out
 	}
+	out.watermarkBefore = lastCleanScanAt
 
 	maskCutoff := truncateToDate(now.Add(-h.opts.MaskWindow))
 
-	if loadedEpochUpper.IsZero() {
-		// Never run: seed like Lane A/B, but Lane C's epoch is purely
-		// time-bound (no "head record" to discover), so seeding needs NO
-		// PlanIt request at all: anchor a zero-width epoch (epoch_lower ==
-		// epoch_upper == now). Nothing can satisfy last_different >
-		// epoch_lower when epoch_lower == epoch_upper == now, so a fetch
-		// here would be knowably wasted; the NEXT call anchors the first
-		// real epoch from this seeded ceiling. Forward-flow only — never a
-		// one-time replay of Lane C's entire historical inverse-mask corpus
-		// (which would be exactly the red-line full-window re-scan ADR
-		// 0041/0044 reject, just spread over many cycles instead of one).
-		if serr := h.watermark.save(ctx, now, now, nil); serr != nil {
-			out.err = serr
-		}
-		out.watermarkAfter = now
-		h.recordOutcome(ctx, out)
-		h.setSpanAttributes(span, out, time.Time{}, truncateToDate(now), true)
-		return out
+	// N = clamp(days since the last clean scan + 1, 2, maxWindowDays). A zero
+	// or long-stale last_clean_scan_at (never run, or a long outage, or the
+	// frozen 2026-07 epoch-shaped row from before #1127) yields a large
+	// daysSince and therefore the cap — bounded either way, no historical
+	// replay, because different=N is inherently N-day bounded.
+	maxWindowDays := h.opts.MaxWindowDays
+	if maxWindowDays <= 0 {
+		maxWindowDays = defaultMaxInverseMaskWindowDays
 	}
+	windowDays := clampInt(daysSince(now, lastCleanScanAt)+1, 2, maxWindowDays)
 
-	epochUpper := loadedEpochUpper
-	var epochLower time.Time
-	if cursor != nil {
-		// Resume the active epoch at its persisted position.
-		epochLower = cursor.DifferentStart
-	} else {
-		// No active cursor: anchor a fresh epoch. The just-drained epoch's
-		// ceiling becomes this epoch's floor (contiguous tiling, ADR 0044
-		// §5 — no gap, a stall just widens the next window) and a new
-		// ceiling pins at now.
-		epochLower = epochUpper
-		epochUpper = now
+	// The cursor is an in-flight scan's checkpoint only while its anchor date
+	// is still today; once the day rolls the rolling window has shifted and
+	// the offset is meaningless, so drop it and restart at index 0 (mirrors
+	// NationalLaneHandler's sameDate(cursor.DifferentStart, watermarkBefore)
+	// staleness guard). A re-scan is idempotent (GetByUID dedup).
+	var activeCursor *PollCursor
+	if cursor != nil && sameDate(cursor.DifferentStart, now) {
+		activeCursor = cursor
 	}
-	out.watermarkBefore = epochLower
 
 	// GH#986: resume WITH a safety overlap, mirroring Lane A/B's
-	// resumeOverlapRecords (nationallane.go / handler.go). Safe because Lane
-	// C dedups every row via GetByUID/inverseMaskDiffers plus the Ingester,
-	// so re-processing up to resumeOverlapRecords rows on a resume is
-	// idempotent and cheap — and, now that a mid-page bail checkpoints at
-	// the exact failing offset, the overlap is what makes that checkpoint
-	// genuinely skip-safe against any off-by-one in PlanIt's own ordering.
+	// resumeOverlapRecords. Safe because Lane C dedups every row via
+	// GetByUID/inverseMaskDiffers plus the Ingester, so re-processing up to
+	// resumeOverlapRecords rows on a resume is idempotent and cheap — and,
+	// now that a mid-scan bail checkpoints at the exact failing offset, the
+	// overlap is what makes that checkpoint skip-safe against any off-by-one
+	// in PlanIt's own ordering.
 	startIndex := 0
-	if cursor != nil {
-		startIndex = max(0, cursor.NextIndex-resumeOverlapRecords)
+	if activeCursor != nil {
+		startIndex = max(0, activeCursor.NextIndex-resumeOverlapRecords)
 	}
 
-	differentStart := truncateToDate(epochLower)
 	res, ferr := h.fetcher.FetchInverseMaskPage(ctx, planit.NationalInverseMaskQuery{
-		EpochLower: differentStart,
+		WindowDays: windowDays,
 		MaskCutoff: maskCutoff,
 		StartIndex: startIndex,
 	})
@@ -221,11 +248,12 @@ func (h *InverseMaskLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 			out.timedOut = isTimeoutError(ferr)
 			out.planitOrigin = true
 		}
-		// GH#986: re-persist the epoch/cursor exactly as loaded (nothing was
-		// fetched, so no progress exists to checkpoint) but with
-		// last_poll_time advanced to now, so a page-fetch 429/error still
-		// rotates this lane off the LRU front instead of freezing it there.
-		if serr := h.watermark.save(ctx, now, loadedEpochUpper, cursor); serr != nil {
+		// GH#986: re-persist last_clean_scan_at and the cursor exactly as
+		// loaded (nothing was fetched, so there is no progress to
+		// checkpoint) but with last_poll_time advanced to now, so a
+		// page-fetch 429/error still rotates this lane off the LRU front
+		// instead of freezing it there.
+		if serr := h.watermark.save(ctx, now, lastCleanScanAt, cursor); serr != nil {
 			// A save failure is a state-store problem, never PlanIt's fault —
 			// join it onto any PlanIt fetch error above and clear
 			// planitOrigin, so a genuine persistence failure never gets
@@ -234,9 +262,9 @@ func (h *InverseMaskLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 			out.err = errors.Join(out.err, serr)
 			out.planitOrigin = false
 		}
-		out.watermarkAfter = epochUpper
+		out.watermarkAfter = lastCleanScanAt
 		h.recordOutcome(ctx, out)
-		h.setSpanAttributes(span, out, epochLower, differentStart, false)
+		h.setSpanAttributes(span, out, windowDays, lastCleanScanAt)
 		return out
 	}
 
@@ -244,30 +272,19 @@ func (h *InverseMaskLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 	out.planitTotal = res.Total
 	out.recordsSeen = len(res.Applications)
 
-	reachedCeiling := false
+	// #1127 dropped both last_different boundary checks that the pinned-epoch
+	// model needed (the lower-skip at/before epoch_lower and the future-epoch
+	// stop past epoch_upper): with no pinned epoch there is no epoch_lower or
+	// epoch_upper, and every row different=N returns is within the last N
+	// days by construction. Process every row, still subject to
+	// inverseMaskDiffers + the hydration cap; re-processing a row seen in a
+	// previous overlapping window is idempotent (GetByUID dedup).
 	stoppedEarly := false
 	hydrationsThisPass := 0
 	hydrationCapHit := false
 	i := 0
 	for ; i < len(res.Applications); i++ {
 		light := res.Applications[i]
-		// Ascending walk, exact-instant skip: a record at or before
-		// epochLower was already handled by the PREVIOUS epoch — the
-		// different_start prefilter is only date-granular, so the boundary
-		// day can re-serve records this epoch has no business re-touching.
-		if !light.LastDifferent.After(epochLower) {
-			continue
-		}
-		// Pinned ceiling: a record past epoch_upper belongs to a FUTURE
-		// epoch (it changed again after this epoch anchored) — stop here,
-		// mirroring NationalLaneHandler's descending reachedBoundary in the
-		// opposite direction. Ascending order means every remaining record
-		// on this page, and every later page, also exceeds the ceiling, so
-		// the whole epoch is done, not just this page.
-		if light.LastDifferent.After(epochUpper) {
-			reachedCeiling = true
-			break
-		}
 		if perr := h.processStraggler(ctx, light, &out, &hydrationsThisPass, &hydrationCapHit); perr != nil {
 			// timedOut (when applicable) is set inside hydrate itself, not
 			// re-derived here from the aggregate perr: processStraggler wraps
@@ -291,77 +308,103 @@ func (h *InverseMaskLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 		}
 	}
 
+	// The in-flight scan's anchor date: today. A checkpoint saved now is
+	// valid only until the next calendar-day rollover (see the staleness
+	// guard above).
+	scanAnchor := truncateToDate(now)
+
 	if stoppedEarly {
 		// GH#986: checkpoint the offset actually reached — startIndex + i,
-		// where i counts every record iterated this page, including the
-		// exact-instant skips above — so both the cursor and last_poll_time
-		// advance even on a mid-page bail, and the next pass resumes past
-		// what this one already handled instead of re-walking it forever.
+		// where i counts every record iterated this page — so both the
+		// cursor and last_poll_time advance even on a mid-scan bail, and the
+		// next pass resumes past what this one already handled instead of
+		// re-walking it forever. last_clean_scan_at is left UNCHANGED: this
+		// scan did not finish, so N must not reset.
 		nextIndex := startIndex + i
 		// tc-6u4da: a cluster of permanently-unhydratable rows (FetchByUID
 		// genuinely has no matching record for them, forever) never dedupes
 		// via GetByUID/inverseMaskDiffers, so every one of them burns a
-		// hydration-cap slot on every single pass. Because
-		// resumeOverlapRecords (100) is much bigger than maxHydrationsPerPass
-		// (25), a resume that lands near such a cluster can hit the cap
-		// after attempting only maxHydrationsPerPass hydrations — i banked
-		// well short of the overlap this resume already subtracted — so the
-		// raw startIndex+i checkpoint can land BELOW the cursor this call
-		// loaded. Left alone that retreats the persisted cursor, and since
-		// the same cluster is still there next pass, it retreats again,
-		// spiralling the epoch drain backward indefinitely instead of
-		// stalling in place. Clamp to the loaded cursor's own NextIndex (only
-		// meaningful when a cursor was actually loaded — a freshly-anchored
-		// epoch has no prior checkpoint to protect) so a stuck cluster can at
-		// worst flatline the checkpoint, never walk it backward.
-		if cursor != nil && nextIndex < cursor.NextIndex {
-			nextIndex = cursor.NextIndex
+		// hydration-cap slot on every pass. Because resumeOverlapRecords
+		// (100) is much bigger than maxHydrationsPerPass (25), a resume that
+		// lands near such a cluster can hit the cap after attempting only
+		// maxHydrationsPerPass hydrations — i banked well short of the
+		// overlap this resume already subtracted — so the raw startIndex+i
+		// checkpoint can land BELOW the cursor this call loaded. Left alone
+		// that retreats the persisted cursor, and since the same cluster is
+		// still there next pass it retreats again, spiralling backward
+		// instead of stalling in place. Clamp to the loaded cursor's own
+		// NextIndex (only meaningful when a same-day cursor was actually
+		// loaded — a fresh scan has no prior checkpoint to protect) so a
+		// stuck cluster can at worst flatline the checkpoint, never walk it
+		// backward.
+		if activeCursor != nil && nextIndex < activeCursor.NextIndex {
+			nextIndex = activeCursor.NextIndex
 		}
-		newCursor := &PollCursor{DifferentStart: epochLower, NextIndex: nextIndex, KnownTotal: res.Total}
-		if serr := h.watermark.save(ctx, now, epochUpper, newCursor); serr != nil {
+		newCursor := &PollCursor{DifferentStart: scanAnchor, NextIndex: nextIndex, KnownTotal: res.Total}
+		if serr := h.watermark.save(ctx, now, lastCleanScanAt, newCursor); serr != nil {
 			// See the page-fetch save above: a save failure is never
 			// PlanIt's fault, even when it lands on top of a PlanIt-origin
 			// hydration error (CodeRabbit follow-up on tc-uitxr).
 			out.err = errors.Join(out.err, serr)
 			out.planitOrigin = false
 		}
-		out.watermarkAfter = epochUpper
+		out.watermarkAfter = lastCleanScanAt
 		h.recordOutcome(ctx, out)
-		h.setSpanAttributes(span, out, epochLower, differentStart, false)
+		h.setSpanAttributes(span, out, windowDays, lastCleanScanAt)
 		return out
 	}
 
-	nextIndex := startIndex + len(res.Applications)
-	epochDrained := reachedCeiling || !res.HasMorePages
+	scanComplete := !res.HasMorePages
+	spanLastCleanScanAt := lastCleanScanAt
 
-	if epochDrained {
-		// Epoch complete: pin the drained epoch's ceiling as HighWaterMark
-		// (it becomes the next epoch's floor on the next anchor) and clear
-		// the cursor.
-		if serr := h.watermark.save(ctx, now, epochUpper, nil); serr != nil && out.err == nil {
+	if scanComplete {
+		// Clean scan: reached the last page with no 429 and no hydration-cap
+		// bail. Stamp last_clean_scan_at = now (this is what resets N to 2
+		// next cycle) and clear the cursor.
+		spanLastCleanScanAt = now
+		out.watermarkAfter = now
+		if serr := h.watermark.save(ctx, now, now, nil); serr != nil && out.err == nil {
 			out.err = serr
 		}
 	} else {
-		// tc-6u4da: same clamp as the stoppedEarly branch above, applied here
-		// for consistency/defense-in-depth. In practice a fully-consumed
-		// page's nextIndex is normally well past the prior checkpoint
-		// already, so this branch is unlikely to ever need it — but nothing
-		// stops a caller from getting here with a small page and a large
-		// loaded cursor, and monotonic advance should hold everywhere this
-		// lane persists NextIndex, not just on the hydration-cap path.
-		if cursor != nil && nextIndex < cursor.NextIndex {
-			nextIndex = cursor.NextIndex
+		// More pages remain this cycle: checkpoint the within-scan offset,
+		// leave last_clean_scan_at unchanged (the scan is not finished).
+		nextIndex := startIndex + len(res.Applications)
+		// tc-6u4da: same monotonic clamp as the stoppedEarly branch — a
+		// fully-consumed page's nextIndex is normally well past the prior
+		// checkpoint already, but monotonic advance should hold everywhere
+		// this lane persists NextIndex.
+		if activeCursor != nil && nextIndex < activeCursor.NextIndex {
+			nextIndex = activeCursor.NextIndex
 		}
-		newCursor := &PollCursor{DifferentStart: epochLower, NextIndex: nextIndex, KnownTotal: res.Total}
-		if serr := h.watermark.save(ctx, now, epochUpper, newCursor); serr != nil && out.err == nil {
+		newCursor := &PollCursor{DifferentStart: scanAnchor, NextIndex: nextIndex, KnownTotal: res.Total}
+		out.watermarkAfter = lastCleanScanAt
+		if serr := h.watermark.save(ctx, now, lastCleanScanAt, newCursor); serr != nil && out.err == nil {
 			out.err = serr
 		}
 	}
-	out.watermarkAfter = epochUpper
 
 	h.recordOutcome(ctx, out)
-	h.setSpanAttributes(span, out, epochLower, differentStart, false)
+	h.setSpanAttributes(span, out, windowDays, spanLastCleanScanAt)
 	return out
+}
+
+// daysSince returns the whole-day gap between now and earlier, measured on
+// their truncated-to-date (UTC midnight) values and floored at zero. A zero
+// earlier yields a very large number (its date is year 1) — Time.Sub
+// saturates rather than overflowing — which the caller clamps to the window
+// cap.
+func daysSince(now, earlier time.Time) int {
+	d := truncateToDate(now).Sub(truncateToDate(earlier))
+	if d <= 0 {
+		return 0
+	}
+	return int(d / (24 * time.Hour))
+}
+
+// clampInt confines x to [lo, hi]. lo must not exceed hi.
+func clampInt(x, lo, hi int) int {
+	return max(lo, min(x, hi))
 }
 
 // processStraggler diffs one light inverse-mask row against Postgres on
@@ -477,10 +520,11 @@ func eqOptionalTime(a, b *time.Time) bool {
 // recordOutcome records Lane C's per-page ApplicationsIngested count and,
 // on a 429, the rate-limit counter and Retry-After value — mirroring the
 // other lanes' recordRunMetrics. Lane C deliberately skips
-// OldestHighWaterMarkAge: its "watermark" (epoch_upper) resets to ~now on
-// every anchor, so an epoch-to-now age would always read ~0 and never
-// signal genuine backlog depth — mirroring BackfillHandler's identical
-// omission for Lane D and its stated rationale.
+// OldestHighWaterMarkAge: its "watermark" is last_clean_scan_at, which by
+// design tracks recent completions rather than backlog depth (a wider
+// different=N window is the bounded response to a longer gap, not an
+// ever-growing age), so an age-to-now gauge would mislead — mirroring
+// BackfillHandler's identical omission for Lane D and its stated rationale.
 func (h *InverseMaskLaneHandler) recordOutcome(ctx context.Context, out laneOutcome) {
 	rec := h.recorder()
 	rec.ApplicationsIngested(ctx, out.recordsIngested, string(LaneC))
@@ -495,23 +539,20 @@ func (h *InverseMaskLaneHandler) recordOutcome(ctx context.Context, out laneOutc
 }
 
 // setSpanAttributes stamps the "PlanIt Lane C inverse-mask poll" span,
-// mirroring the other lanes' setSpanAttributes. epochLower is the epoch
-// floor in effect this call (the seed cutoff on a seeding run);
-// differentStart is the different_start value actually sent to PlanIt (or,
-// on a seed, the date that would be used going forward — no request is
-// sent). seeded tags a first-run seed so its recordsIngested==0 is never
-// misread as a stall.
-func (h *InverseMaskLaneHandler) setSpanAttributes(span trace.Span, out laneOutcome, epochLower, differentStart time.Time, seeded bool) {
+// mirroring the other lanes' setSpanAttributes. windowDays is the rolling
+// different=N width used this cycle; lastCleanScanAt is the value in effect
+// after this call (advanced to now on a clean scan, unchanged otherwise), so
+// spans can be grouped to check the records_seen == planit.total invariant
+// and to see how far Lane C has drifted from a clean completion.
+func (h *InverseMaskLaneHandler) setSpanAttributes(span trace.Span, out laneOutcome, windowDays int, lastCleanScanAt time.Time) {
 	attrs := []attribute.KeyValue{
 		attribute.String("poll.lane", string(LaneC)),
 		attribute.Int("poll.records_seen", out.recordsSeen),
 		attribute.Int("poll.records_ingested", out.recordsIngested),
 		attribute.Int("poll.pages", out.pages),
-		attribute.String("poll.epoch_lower", formatWatermark(epochLower)),
-		attribute.String("poll.epoch_upper", formatWatermark(out.watermarkAfter)),
+		attribute.Int("poll.window_days", windowDays),
+		attribute.String("poll.last_clean_scan_at", formatWatermark(lastCleanScanAt)),
 		attribute.Bool("poll.rate_limited", out.rateLimited),
-		attribute.Bool("poll.seeded", seeded),
-		attribute.String("poll.different_start", differentStart.UTC().Format("2006-01-02")),
 	}
 	if out.planitTotal != nil {
 		attrs = append(attrs, attribute.Int("planit.total", *out.planitTotal))
