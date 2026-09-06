@@ -33,8 +33,8 @@ import (
 )
 
 // inverseMaskFetcher is the consumer-side slice of the PlanIt client Lane C
-// needs: one ascending epoch page, and a full-record hydration fetch by uid.
-// *planit.Client satisfies both.
+// needs: one ascending rolling-window page, and a full-record hydration
+// fetch by uid. *planit.Client satisfies both.
 type inverseMaskFetcher interface {
 	FetchInverseMaskPage(ctx context.Context, q planit.NationalInverseMaskQuery) (planit.FetchPageResult, error)
 	FetchByUID(ctx context.Context, uid string) (planit.FetchPageResult, error)
@@ -82,9 +82,10 @@ type InverseMaskOptions struct {
 }
 
 // InverseMaskLaneHandler runs ADR 0044's Lane C: one page per call of a
-// national, ascending, epoch-bounded inverse-mask query — the complement of
-// Lane A/B's masked-delta band, reconciling old applications' status drift
-// the delta axis structurally cannot see. Diffs each light row against
+// national, ascending, bounded rolling different=N window inverse-mask query
+// (§5, as amended by #1127) — the complement of Lane A/B's masked-delta band,
+// reconciling old applications' status drift the delta axis structurally
+// cannot see. Diffs each light row against
 // Postgres on app_state and decided_date only (last_different is DROPPED
 // from the diff — PlanIt bumps it on every re-index, so keeping it would
 // flag every churned old record as a straggler, the old per-authority

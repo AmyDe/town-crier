@@ -13,8 +13,9 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/planit"
 )
 
-// fakeInverseMaskFetcher serves pre-canned Lane C epoch pages keyed by the
-// requested 0-based record offset, and hydration responses keyed by uid. It
+// fakeInverseMaskFetcher serves pre-canned Lane C rolling-window pages keyed
+// by the requested 0-based record offset, and hydration responses keyed by
+// uid. It
 // can be primed to fail a specific fetch ordinal (1-based, failNth) or a
 // specific hydration uid (hydrateErr).
 type fakeInverseMaskFetcher struct {
@@ -401,10 +402,10 @@ func TestInverseMaskLane_ResumeOverlapDedupesAlreadyProcessedRows(t *testing.T) 
 // per-authority ReconciliationHandler hit.
 func TestInverseMaskLane_LastDifferentOnlyChurnDoesNotHydrate(t *testing.T) {
 	t.Parallel()
-	epochLower := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	epochUpper := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
-	oldLD := epochLower.Add(-24 * time.Hour) // the persisted record's own last_different — irrelevant to the diff
-	newLD := epochLower.Add(time.Hour)       // only last_different changed (a re-index bump)
+	windowStart := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	lastCleanScanAt := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	oldLD := windowStart.Add(-24 * time.Hour) // the persisted record's own last_different — irrelevant to the diff
+	newLD := windowStart.Add(time.Hour)       // only last_different changed (a re-index bump)
 
 	same := "Undecided"
 	fetcher := newFakeInverseMaskFetcher()
@@ -416,7 +417,7 @@ func TestInverseMaskLane_LastDifferentOnlyChurnDoesNotHydrate(t *testing.T) {
 	apps := newFakeApps()
 	apps.existing["24/0001/FUL"] = applications.PlanningApplication{UID: "24/0001/FUL", AreaID: 99, AppState: &same, LastDifferent: oldLD}
 	state := newFakeStateStore()
-	state.states[sentinelLaneC] = PollState{HighWaterMark: epochUpper, Cursor: &PollCursor{DifferentStart: laneCToday, NextIndex: 0}}
+	state.states[sentinelLaneC] = PollState{HighWaterMark: lastCleanScanAt, Cursor: &PollCursor{DifferentStart: laneCToday, NextIndex: 0}}
 
 	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
 	out := h.RunOnePage(context.Background())
@@ -437,9 +438,9 @@ func TestInverseMaskLane_LastDifferentOnlyChurnDoesNotHydrate(t *testing.T) {
 // ingest.
 func TestInverseMaskLane_AppStateDriftHydrates(t *testing.T) {
 	t.Parallel()
-	epochLower := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	epochUpper := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
-	newLD := epochLower.Add(time.Hour)
+	windowStart := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	lastCleanScanAt := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	newLD := windowStart.Add(time.Hour)
 
 	existingState := "Undecided"
 	fetcher := newFakeInverseMaskFetcher()
@@ -455,9 +456,9 @@ func TestInverseMaskLane_AppStateDriftHydrates(t *testing.T) {
 	fetcher.hydrated["24/0001/FUL"] = full
 
 	apps := newFakeApps()
-	apps.existing["24/0001/FUL"] = applications.PlanningApplication{UID: "24/0001/FUL", AreaID: 99, AppState: &existingState, LastDifferent: epochLower.Add(-time.Hour)}
+	apps.existing["24/0001/FUL"] = applications.PlanningApplication{UID: "24/0001/FUL", AreaID: 99, AppState: &existingState, LastDifferent: windowStart.Add(-time.Hour)}
 	state := newFakeStateStore()
-	state.states[sentinelLaneC] = PollState{HighWaterMark: epochUpper, Cursor: &PollCursor{DifferentStart: laneCToday, NextIndex: 0}}
+	state.states[sentinelLaneC] = PollState{HighWaterMark: lastCleanScanAt, Cursor: &PollCursor{DifferentStart: laneCToday, NextIndex: 0}}
 
 	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
 	out := h.RunOnePage(context.Background())
@@ -483,9 +484,9 @@ func TestInverseMaskLane_AppStateDriftHydrates(t *testing.T) {
 // area_id must build the authorityCode GetByUID is called with.
 func TestInverseMaskLane_UsesAreaIDForAuthorityScopedExistenceCheck(t *testing.T) {
 	t.Parallel()
-	epochLower := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	epochUpper := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
-	newLD := epochLower.Add(time.Hour)
+	windowStart := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	lastCleanScanAt := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	newLD := windowStart.Add(time.Hour)
 
 	fetcher := newFakeInverseMaskFetcher()
 	fetcher.pages[0] = planit.FetchPageResult{
@@ -495,7 +496,7 @@ func TestInverseMaskLane_UsesAreaIDForAuthorityScopedExistenceCheck(t *testing.T
 	}
 	apps := &fakeScopedApps{fakeApps: newFakeApps()}
 	state := newFakeStateStore()
-	state.states[sentinelLaneC] = PollState{HighWaterMark: epochUpper, Cursor: &PollCursor{DifferentStart: laneCToday, NextIndex: 0}}
+	state.states[sentinelLaneC] = PollState{HighWaterMark: lastCleanScanAt, Cursor: &PollCursor{DifferentStart: laneCToday, NextIndex: 0}}
 
 	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
 	out := h.RunOnePage(context.Background())
@@ -586,9 +587,9 @@ func TestInverseMaskLane_FreshScanPageFetch429PreservesLastCleanScanAt(t *testin
 // straggler on the same page must never be attempted.
 func TestInverseMaskLane_HydrationRateLimitStopsTheWholePage(t *testing.T) {
 	t.Parallel()
-	epochLower := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	epochUpper := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
-	newLD := epochLower.Add(time.Hour)
+	windowStart := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	lastCleanScanAt := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	newLD := windowStart.Add(time.Hour)
 	retryAfter := 20 * time.Second
 
 	fetcher := newFakeInverseMaskFetcher()
@@ -604,7 +605,7 @@ func TestInverseMaskLane_HydrationRateLimitStopsTheWholePage(t *testing.T) {
 
 	apps := newFakeApps() // both new: both would otherwise hydrate
 	state := newFakeStateStore()
-	state.states[sentinelLaneC] = PollState{HighWaterMark: epochUpper, Cursor: &PollCursor{DifferentStart: laneCToday, NextIndex: 0}}
+	state.states[sentinelLaneC] = PollState{HighWaterMark: lastCleanScanAt, Cursor: &PollCursor{DifferentStart: laneCToday, NextIndex: 0}}
 
 	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
 	out := h.RunOnePage(context.Background())
@@ -654,9 +655,9 @@ func TestInverseMaskLane_PageFetchTimeoutSetsTimedOut(t *testing.T) {
 // FetchByUID).
 func TestInverseMaskLane_HydrationTimeoutSetsTimedOut(t *testing.T) {
 	t.Parallel()
-	epochLower := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	epochUpper := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
-	newLD := epochLower.Add(time.Hour)
+	windowStart := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	lastCleanScanAt := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	newLD := windowStart.Add(time.Hour)
 
 	fetcher := newFakeInverseMaskFetcher()
 	fetcher.pages[0] = planit.FetchPageResult{
@@ -668,7 +669,7 @@ func TestInverseMaskLane_HydrationTimeoutSetsTimedOut(t *testing.T) {
 
 	apps := newFakeApps()
 	state := newFakeStateStore()
-	state.states[sentinelLaneC] = PollState{HighWaterMark: epochUpper, Cursor: &PollCursor{DifferentStart: laneCToday, NextIndex: 0}}
+	state.states[sentinelLaneC] = PollState{HighWaterMark: lastCleanScanAt, Cursor: &PollCursor{DifferentStart: laneCToday, NextIndex: 0}}
 
 	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
 	out := h.RunOnePage(context.Background())
@@ -727,9 +728,9 @@ func TestInverseMaskLane_PageFetchErrorPlusWatermarkSaveFailureClearsPlanitOrigi
 // stacked on top must surface and clear planitOrigin.
 func TestInverseMaskLane_HydrationErrorPlusWatermarkSaveFailureClearsPlanitOrigin(t *testing.T) {
 	t.Parallel()
-	epochLower := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	epochUpper := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
-	newLD := epochLower.Add(time.Hour)
+	windowStart := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	lastCleanScanAt := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	newLD := windowStart.Add(time.Hour)
 	hydrateErr := errors.New("planit: hydration fetch failed")
 	saveErr := errors.New("postgres: save failed")
 
@@ -743,7 +744,7 @@ func TestInverseMaskLane_HydrationErrorPlusWatermarkSaveFailureClearsPlanitOrigi
 
 	apps := newFakeApps()
 	state := newFakeStateStore()
-	state.states[sentinelLaneC] = PollState{HighWaterMark: epochUpper, Cursor: &PollCursor{DifferentStart: laneCToday, NextIndex: 0}}
+	state.states[sentinelLaneC] = PollState{HighWaterMark: lastCleanScanAt, Cursor: &PollCursor{DifferentStart: laneCToday, NextIndex: 0}}
 	state.saveErr = saveErr
 
 	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
@@ -771,9 +772,9 @@ func TestInverseMaskLane_HydrationErrorPlusWatermarkSaveFailureClearsPlanitOrigi
 // TerminationTimeout (2h cadence).
 func TestInverseMaskLane_GetByUIDTimeoutDoesNotSetTimedOut(t *testing.T) {
 	t.Parallel()
-	epochLower := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	epochUpper := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
-	newLD := epochLower.Add(time.Hour)
+	windowStart := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	lastCleanScanAt := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	newLD := windowStart.Add(time.Hour)
 
 	fetcher := newFakeInverseMaskFetcher()
 	fetcher.pages[0] = planit.FetchPageResult{
@@ -788,7 +789,7 @@ func TestInverseMaskLane_GetByUIDTimeoutDoesNotSetTimedOut(t *testing.T) {
 	// consulted on the GetByUID path -- it is Postgres, never PlanIt.
 	apps.getErr = &url.Error{Op: "Get", URL: "postgres://irrelevant", Err: context.DeadlineExceeded}
 	state := newFakeStateStore()
-	state.states[sentinelLaneC] = PollState{HighWaterMark: epochUpper, Cursor: &PollCursor{DifferentStart: laneCToday, NextIndex: 0}}
+	state.states[sentinelLaneC] = PollState{HighWaterMark: lastCleanScanAt, Cursor: &PollCursor{DifferentStart: laneCToday, NextIndex: 0}}
 
 	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
 	out := h.RunOnePage(context.Background())
@@ -871,9 +872,9 @@ func TestInverseMaskLane_MidPageHydrationRateLimitCheckpointsAtFailingOffset(t *
 // FetchByUID burst a page of many clustered genuine stragglers can trigger.
 func TestInverseMaskLane_HydrationCapStopsPassAndCheckpoints(t *testing.T) {
 	t.Parallel()
-	epochLower := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	epochUpper := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
-	ld := epochLower.Add(time.Hour)
+	windowStart := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	lastCleanScanAt := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	ld := windowStart.Add(time.Hour)
 	wantNow := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC) // newLaneCHandler's pinned clock
 
 	const recordCount = maxHydrationsPerPass + 5
@@ -890,7 +891,7 @@ func TestInverseMaskLane_HydrationCapStopsPassAndCheckpoints(t *testing.T) {
 	fetcher.pages[0] = planit.FetchPageResult{From: 0, Applications: lightRows, HasMorePages: false}
 
 	state := newFakeStateStore()
-	state.states[sentinelLaneC] = PollState{HighWaterMark: epochUpper, Cursor: &PollCursor{DifferentStart: laneCToday, NextIndex: 0}}
+	state.states[sentinelLaneC] = PollState{HighWaterMark: lastCleanScanAt, Cursor: &PollCursor{DifferentStart: laneCToday, NextIndex: 0}}
 
 	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
 	out := h.RunOnePage(context.Background())
@@ -925,9 +926,9 @@ func TestInverseMaskLane_HydrationCapStopsPassAndCheckpoints(t *testing.T) {
 // the NextIndex already loaded at the top of this call.
 func TestInverseMaskLane_HydrationCapNeverRegressesCursor(t *testing.T) {
 	t.Parallel()
-	epochLower := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	epochUpper := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
-	ld := epochLower.Add(time.Hour)
+	windowStart := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	lastCleanScanAt := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	ld := windowStart.Add(time.Hour)
 
 	const priorNextIndex = 500
 	const startIndex = priorNextIndex - resumeOverlapRecords // 400
@@ -948,7 +949,7 @@ func TestInverseMaskLane_HydrationCapNeverRegressesCursor(t *testing.T) {
 	apps := newFakeApps() // nothing hydrated ever lands here either
 	state := newFakeStateStore()
 	state.states[sentinelLaneC] = PollState{
-		HighWaterMark: epochUpper,
+		HighWaterMark: lastCleanScanAt,
 		Cursor:        &PollCursor{DifferentStart: laneCToday, NextIndex: priorNextIndex},
 	}
 
@@ -981,9 +982,9 @@ func TestInverseMaskLane_HydrationCapNeverRegressesCursor(t *testing.T) {
 // single time.
 func TestInverseMaskLane_HydrationCapFlatlinesAcrossRepeatedPasses(t *testing.T) {
 	t.Parallel()
-	epochLower := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	epochUpper := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
-	ld := epochLower.Add(time.Hour)
+	windowStart := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	lastCleanScanAt := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	ld := windowStart.Add(time.Hour)
 
 	const priorNextIndex = 500
 	const startIndex = priorNextIndex - resumeOverlapRecords // 400
@@ -1000,7 +1001,7 @@ func TestInverseMaskLane_HydrationCapFlatlinesAcrossRepeatedPasses(t *testing.T)
 	apps := newFakeApps()
 	state := newFakeStateStore()
 	state.states[sentinelLaneC] = PollState{
-		HighWaterMark: epochUpper,
+		HighWaterMark: lastCleanScanAt,
 		Cursor:        &PollCursor{DifferentStart: laneCToday, NextIndex: priorNextIndex},
 	}
 
@@ -1041,9 +1042,9 @@ func TestInverseMaskLane_HydrationCapFlatlinesAcrossRepeatedPasses(t *testing.T)
 // whole page from scratch or freezing the LRU clock.
 func TestInverseMaskLane_IngestErrorIsAHardStop(t *testing.T) {
 	t.Parallel()
-	epochLower := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	epochUpper := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
-	newLD := epochLower.Add(time.Hour)
+	windowStart := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	lastCleanScanAt := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	newLD := windowStart.Add(time.Hour)
 
 	wantNow := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC) // newLaneCHandler's pinned clock
 
@@ -1060,7 +1061,7 @@ func TestInverseMaskLane_IngestErrorIsAHardStop(t *testing.T) {
 	apps := newFakeApps()
 	apps.upsertErr = errors.New("db write failed")
 	state := newFakeStateStore()
-	state.states[sentinelLaneC] = PollState{HighWaterMark: epochUpper, Cursor: &PollCursor{DifferentStart: laneCToday, NextIndex: 0}}
+	state.states[sentinelLaneC] = PollState{HighWaterMark: lastCleanScanAt, Cursor: &PollCursor{DifferentStart: laneCToday, NextIndex: 0}}
 
 	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
 	out := h.RunOnePage(context.Background())
