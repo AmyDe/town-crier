@@ -260,6 +260,19 @@ type Config struct {
 	// POLLING_LANE_FRESHNESS_INTERVAL via time.ParseDuration.
 	PollingLaneFreshnessInterval time.Duration
 
+	// PollingLaneCEnabled gates whether Lane C (the ADR 0044 national
+	// inverse-mask reconciliation lane) is constructed and wired into the
+	// poll cycle. Loaded from POLLING_LANE_C_ENABLED and DEFAULT TRUE: unset
+	// or truthy leaves Lane C running exactly as today, only an explicit
+	// falsy value turns it off. The gate existed pre-ADR-0044 (tc-tuge8 /
+	// GH#971), was removed on the assumption the national query shape made
+	// Lane C safe to run unconditionally, and is re-added here (tc-56ahl /
+	// GH#1125) as a reversible mitigation for the Lane C livelock (tc-777e7):
+	// the frozen checkpoint makes every in-hours cycle issue ~135s of
+	// timed-out national queries against PlanIt for zero useful work.
+	// Disabled in prod pending the real fix (tc-777e7 Parts 2/3).
+	PollingLaneCEnabled bool
+
 	// PollingBackfill* configure Lane D, the paced historical backfill lane
 	// (GH#967, ADR 0042): a national, date-windowed backward sweep that
 	// enriches stale/NULL GH#935 fields and fills coverage gaps, but never
@@ -428,6 +441,8 @@ func LoadConfig() (Config, error) {
 		PollingDayStart:              getenv("POLLING_DAY_START", "07:00"),
 		PollingDayEnd:                getenv("POLLING_DAY_END", "19:00"),
 		PollingLaneFreshnessInterval: getenvDuration("POLLING_LANE_FRESHNESS_INTERVAL", 15*time.Minute),
+
+		PollingLaneCEnabled: getenvBoolDefault("POLLING_LANE_C_ENABLED", true),
 
 		PollingBackfillEnabled:                    getenvBool("POLLING_BACKFILL_ENABLED"),
 		PollingBackfillWindowWidthDays:            getenvInt("POLLING_BACKFILL_WINDOW_WIDTH_DAYS", 90),
