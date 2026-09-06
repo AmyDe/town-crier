@@ -319,20 +319,33 @@ func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, reg
 	// Lane C (ADR 0044): the national inverse-mask reconciliation lane,
 	// replacing the deleted per-authority ReconciliationHandler (485
 	// requests/pass plus hydration fan-out, the source of the tc-mc0hf 429
-	// storms). Always wired — there is no more POLLING_LANE_C_ENABLED gate:
-	// the planner/executor loop's single "stop on first 429" rule and the
-	// bounded, national query shape make Lane C safe to run unconditionally,
-	// unlike the per-authority sweep it replaces.
-	laneC := polling.NewInverseMaskLaneHandler(
-		planItClient, stateStore, appStore,
-		polling.InverseMaskOptions{
-			// The same mask width as Lane A's start_date mask: Lane C's
-			// end_date bound is that cutoff inverted, so the two lanes
-			// partition the national change axis with no gap or overlap.
-			MaskWindow: time.Duration(cfg.PollingLaneAMaskDays) * 24 * time.Hour,
-		},
-		time.Now, logger,
-	)
+	// storms).
+	//
+	// Gated behind POLLING_LANE_C_ENABLED (tc-56ahl / GH#1125, default true —
+	// unset leaves Lane C running exactly as today). ADR 0044 dropped this
+	// gate on the reasoning that the bounded national query shape made Lane C
+	// safe to run unconditionally; that has not held — the query shape is the
+	// tc-777e7 livelock bug, and every in-hours cycle now issues ~135s of
+	// timed-out national queries against PlanIt for zero useful work. The gate
+	// is back as a reversible mitigation and is set false in prod pending the
+	// real fix (tc-777e7 Parts 2/3). A nil laneC is the safe default when
+	// disabled: NationalPollHandler.loadPlannerState/execOnePage and
+	// wirePollFanOut all nil-guard it, exactly like Lane D.
+	var laneC *polling.InverseMaskLaneHandler
+	if cfg.PollingLaneCEnabled {
+		laneC = polling.NewInverseMaskLaneHandler(
+			planItClient, stateStore, appStore,
+			polling.InverseMaskOptions{
+				// The same mask width as Lane A's start_date mask: Lane C's
+				// end_date bound is that cutoff inverted, so the two lanes
+				// partition the national change axis with no gap or overlap.
+				MaskWindow: time.Duration(cfg.PollingLaneAMaskDays) * 24 * time.Hour,
+			},
+			time.Now, logger,
+		)
+	} else {
+		logger.Info("Lane C (national inverse-mask reconciliation) disabled by POLLING_LANE_C_ENABLED=false")
+	}
 
 	// The ADR 0044 planner: eligibility windows in Europe/London local time
 	// (Lane C daytime-only, Lane D out-of-hours) — the blank time/tzdata
@@ -450,9 +463,10 @@ func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, reg
 // top-level handler, not the individual lanes: one Reset/Flush per cycle
 // covers every lane's pushes, mirroring the old drain's single flush point.
 //
-// laneC is always non-nil in production (ADR 0044 dropped the
-// POLLING_LANE_C_ENABLED gate); the nil guard remains only so a test wiring
-// a narrower lane set (e.g. only A/B) doesn't need to stub Lane C too.
+// laneC is nil when POLLING_LANE_C_ENABLED=false (tc-56ahl / GH#1125,
+// default true, set false in prod as a tc-777e7 livelock mitigation) and
+// also when a test wires a narrower lane set (e.g. only A/B); the nil guards
+// below cover both.
 //
 // st may be nil in tests that only exercise the zone-containment path; the store
 // fields are extracted under a nil guard so the fan-out wires with no other
