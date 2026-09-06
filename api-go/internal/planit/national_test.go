@@ -74,32 +74,43 @@ func TestBuildNationalDeltaPath(t *testing.T) {
 	}
 }
 
-// TestBuildInverseMaskPath pins ADR 0044 Lane C's national inverse-mask
-// projection shape: no auth param (national, zero per-authority requests), a
-// different_start floor (the epoch lower bound) and an end_date ceiling (the
-// inverse of Lane A's start_date mask), ASCENDING sort (no leading "-",
-// unlike the descending Lane A/B query), the light select set (containing
-// the sort field, plus area_id — ADR 0044's uid-uniqueness-within-authority
-// fix), pg_sz=300, compress=on.
+// TestBuildInverseMaskPath pins ADR 0044 §5 (as amended by #1127) Lane C's
+// national inverse-mask projection shape: no auth param (national, zero
+// per-authority requests), a bounded rolling different=N window (N days), an
+// end_date ceiling (the inverse of Lane A's start_date mask, still applied as
+// a query param), ASCENDING sort (no leading "-", unlike the descending Lane
+// A/B query), the light select set (containing the sort field, plus area_id —
+// ADR 0044's uid-uniqueness-within-authority fix), pg_sz=300, compress=on.
 func TestBuildInverseMaskPath(t *testing.T) {
 	t.Parallel()
+	maskCutoff := time.Date(2026, 4, 15, 0, 0, 0, 0, time.UTC)
 	q := NationalInverseMaskQuery{
-		EpochLower: time.Date(2025, 7, 17, 0, 0, 0, 0, time.UTC),
-		MaskCutoff: time.Date(2026, 4, 15, 0, 0, 0, 0, time.UTC),
+		WindowDays: 2,
+		MaskCutoff: maskCutoff,
 		StartIndex: 600,
 	}
-	path := buildInverseMaskPath(q)
-	u, err := url.Parse(path)
+
+	// The exact string is pinned (#1127 acceptance criterion): a rolling
+	// different=<N> window replaces the old absolute different_start floor.
+	want := "/api/applics/json?different=2&end_date=2026-04-15&sort=last_different&pg_sz=300&index=600&select=uid,area_id,app_state,decided_date,last_different&compress=on"
+	if got := buildInverseMaskPath(q); got != want {
+		t.Fatalf("buildInverseMaskPath:\n got %q\nwant %q", got, want)
+	}
+
+	u, err := url.Parse(buildInverseMaskPath(q))
 	if err != nil {
-		t.Fatalf("parse built path %q: %v", path, err)
+		t.Fatalf("parse built path: %v", err)
 	}
 	got := u.Query()
 
 	if got.Has("auth") {
 		t.Error("inverse-mask query must not carry an auth param (national, not per-authority)")
 	}
-	if got.Get("different_start") != "2025-07-17" {
-		t.Errorf("different_start: got %q, want 2025-07-17", got.Get("different_start"))
+	if got.Has("different_start") {
+		t.Error("inverse-mask query must not carry a different_start floor any more (#1127): it is a rolling different=N window")
+	}
+	if got.Get("different") != "2" {
+		t.Errorf("different: got %q, want 2 (WindowDays)", got.Get("different"))
 	}
 	if got.Get("end_date") != "2026-04-15" {
 		t.Errorf("end_date: got %q, want 2026-04-15", got.Get("end_date"))
@@ -107,24 +118,9 @@ func TestBuildInverseMaskPath(t *testing.T) {
 	if got.Get("sort") != "last_different" {
 		t.Errorf("sort: got %q, want last_different (ascending, no leading '-')", got.Get("sort"))
 	}
-	if got.Get("pg_sz") != "300" {
-		t.Errorf("pg_sz: got %q, want 300", got.Get("pg_sz"))
-	}
-	if got.Get("index") != "600" {
-		t.Errorf("index: got %q, want 600", got.Get("index"))
-	}
-	if got.Get("compress") != "on" {
-		t.Errorf("compress: got %q, want on", got.Get("compress"))
-	}
 	fields := strings.Split(got.Get("select"), ",")
-	if !containsString(fields, "last_different") {
-		t.Errorf("select must contain the sort field last_different: got %v", fields)
-	}
 	if !containsString(fields, "area_id") {
 		t.Errorf("select must contain area_id (uid is only unique within an authority): got %v", fields)
-	}
-	if containsString(fields, "name") {
-		t.Errorf("inverse-mask select must stay a light projection, not the full ingest set: got %v", fields)
 	}
 }
 
@@ -147,7 +143,7 @@ func TestFetchInverseMaskPage_SendsExpectedQueryAndParsesResponse(t *testing.T) 
 	c := newTestClient(t, srv.URL, clock)
 
 	res, err := c.FetchInverseMaskPage(context.Background(), NationalInverseMaskQuery{
-		EpochLower: time.Date(2026, 4, 15, 0, 0, 0, 0, time.UTC),
+		WindowDays: 3,
 		MaskCutoff: time.Date(2026, 4, 15, 0, 0, 0, 0, time.UTC),
 		StartIndex: 0,
 	})
@@ -155,7 +151,7 @@ func TestFetchInverseMaskPage_SendsExpectedQueryAndParsesResponse(t *testing.T) 
 		t.Fatalf("FetchInverseMaskPage: %v", err)
 	}
 
-	if gotQuery.Get("different_start") != "2026-04-15" ||
+	if gotQuery.Get("different") != "3" ||
 		gotQuery.Get("end_date") != "2026-04-15" ||
 		gotQuery.Get("sort") != "last_different" ||
 		gotQuery.Get("pg_sz") != "300" ||
@@ -185,7 +181,7 @@ func TestFetchInverseMaskPage_RateLimited(t *testing.T) {
 	c := newTestClient(t, srv.URL, clock)
 
 	_, err := c.FetchInverseMaskPage(context.Background(), NationalInverseMaskQuery{
-		EpochLower: time.Now(),
+		WindowDays: 2,
 		MaskCutoff: time.Now(),
 	})
 	var rl *RateLimitError
