@@ -749,13 +749,16 @@ func addGoWorkerEnv(envVars app.EnvironmentVarArray, ec envContext, workerMode s
 			// Lane D (ADR 0042 / GH#967, PR #968): dark-shipped disabled, flipped on here.
 			app.EnvironmentVarArgs{Name: pulumi.String("POLLING_BACKFILL_ENABLED"), Value: pulumi.String("true")},
 			// Lane C (ADR 0041 reconciliation/completeness backstop, tc-tuge8 / GH#971):
-			// disabled as a reversible mitigation for the tc-777e7 livelock. ADR 0044's
-			// checkpoint (poll_state row -3) has been frozen since ~2026-07-19, so every
-			// in-hours cycle issues ~135s of timed-out national queries against PlanIt
-			// for zero useful work (records_ingested = 0). The Go gate is
-			// POLLING_LANE_C_ENABLED (tc-56ahl / GH#1125, default true). The real fix is
-			// tc-777e7 Parts 2/3 (query redesign + checkpoint). Rollback: flip back to "true".
-			app.EnvironmentVarArgs{Name: pulumi.String("POLLING_LANE_C_ENABLED"), Value: pulumi.String("false")},
+			// re-enabled (tc-x67ti) after the tc-777e7 livelock fix. Disabled 2026-09-06
+			// (tc-56ahl / #1126) as a reversible mitigation while the frozen poll_state
+			// row -3 made every in-hours cycle issue ~135s of timed-out national queries
+			// for zero useful work. The real fix shipped in v0.21.28: Part 2 (#1128) swaps
+			// the unbounded different_start= query for a bounded rolling different=N window,
+			// Part 3 (#1131) fixes the checkpoint livelock, and Part 2's staleness guard
+			// cold-starts the frozen row -3 on the first post-re-enable cycle. Watched by
+			// alert-planit-lane-stuck-shared / -slow-shared (#1132). Rollback: flip back to
+			// "false" and cut a tag. The Go gate is POLLING_LANE_C_ENABLED (default true).
+			app.EnvironmentVarArgs{Name: pulumi.String("POLLING_LANE_C_ENABLED"), Value: pulumi.String("true")},
 			app.EnvironmentVarArgs{Name: pulumi.String("POLLING_LANE_C_AUTHORITIES_PER_CYCLE"), Value: pulumi.String("50")},
 		)
 	}
