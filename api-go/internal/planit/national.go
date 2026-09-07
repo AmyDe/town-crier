@@ -24,9 +24,18 @@ import (
 // lanes, not an operator-tunable dial that could be raised by accident.
 const nationalPageSize = 300
 
-// uidPageSize is the pg_sz sent on a single-uid hydration lookup (Lane C):
-// exactly one record is ever expected back.
-const uidPageSize = 1
+// uidHydrationPageSize is the pg_sz sent on a single-uid hydration lookup
+// (Lane C, FetchByUID). PlanIt's uid is unique only WITHIN one authority, so
+// an id_match filter can legitimately return more than one record for a
+// single uid — cross-authority Idox reference collisions, e.g. Bassetlaw
+// (area 198) and Croydon (area 301) both minting "YY/NNNNN/TYPE" references.
+// Fetching only the first (the old pg_sz=1) returned whichever colliding copy
+// PlanIt sorted first, so a collision handed polling.hydrate the
+// wrong-authority record and it logged "no matching record" every cycle
+// forever (bead tc-777e7 Bug 2). 10 covers every realistic collision in one
+// small fetch; hydrate then filters the returned set to the record whose
+// area_id matches the light row that flagged the straggler.
+const uidHydrationPageSize = 10
 
 // ingestSelectFields lists every field the ingest pipeline consumes (ADR 0041
 // / GH#962), in the exact order the build spec gives. last_different — the
@@ -133,14 +142,17 @@ func (c *Client) FetchInverseMaskPage(ctx context.Context, q NationalInverseMask
 	return c.fetchPage(ctx, target, 0, q.StartIndex, nationalPageSize)
 }
 
-// FetchByUID hydrates one straggler Lane C flagged: a single-record fetch via
-// PlanIt's id_match filter, with the full ingest select projection. Whether
-// id_match accepts a comma-separated uid list is unproven (ADR 0041), so this
-// deliberately fetches one uid at a time — the ADR's explicitly sanctioned
-// fallback.
+// FetchByUID hydrates one straggler Lane C flagged: an id_match lookup with
+// the full ingest select projection, fetching up to uidHydrationPageSize
+// records. PlanIt's uid is unique only within one authority, so id_match can
+// return several records for one uid (cross-authority collisions); the caller
+// (polling.hydrate) filters the returned set to the record whose area_id
+// matches the light row that flagged the straggler. Whether id_match accepts
+// a comma-separated uid list is unproven (ADR 0041), so this still fetches
+// one uid at a time — the ADR's explicitly sanctioned fallback.
 func (c *Client) FetchByUID(ctx context.Context, uid string) (FetchPageResult, error) {
 	target := c.baseURL + buildUIDPath(uid)
-	return c.fetchPage(ctx, target, 0, 0, uidPageSize)
+	return c.fetchPage(ctx, target, 0, 0, uidHydrationPageSize)
 }
 
 // selectParam joins a select-field list into PlanIt's comma-separated query
@@ -183,10 +195,13 @@ func buildInverseMaskPath(q NationalInverseMaskQuery) string {
 	)
 }
 
-// buildUIDPath builds Lane C's single-record hydration path.
+// buildUIDPath builds Lane C's hydration lookup path: id_match on one uid, the
+// full ingest select projection, and pg_sz=uidHydrationPageSize — a uid can
+// collide across authorities, so more than one record may come back and the
+// caller filters by area_id.
 func buildUIDPath(uid string) string {
 	return fmt.Sprintf(
 		"/api/applics/json?id_match=%s&pg_sz=%d&select=%s&compress=on",
-		url.QueryEscape(uid), uidPageSize, selectParam(ingestSelectFields),
+		url.QueryEscape(uid), uidHydrationPageSize, selectParam(ingestSelectFields),
 	)
 }

@@ -3,6 +3,7 @@ package planit
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -193,10 +194,21 @@ func TestFetchInverseMaskPage_RateLimited(t *testing.T) {
 	}
 }
 
-// TestBuildUIDPath pins Lane C's single-record hydration shape: id_match, the
-// full ingest select set, a minimal page size.
+// TestBuildUIDPath pins Lane C's hydration lookup shape: id_match on one uid,
+// the full ingest select set, pg_sz=uidHydrationPageSize (10 — a uid is
+// unique only within an authority, so id_match can legitimately return more
+// than one record for cross-authority collisions).
 func TestBuildUIDPath(t *testing.T) {
 	t.Parallel()
+
+	want := fmt.Sprintf(
+		"/api/applics/json?id_match=21%%2F00846%%2FHSE&pg_sz=10&select=%s&compress=on",
+		selectParam(ingestSelectFields),
+	)
+	if got := buildUIDPath("21/00846/HSE"); got != want {
+		t.Fatalf("buildUIDPath:\n got %q\nwant %q", got, want)
+	}
+
 	path := buildUIDPath("24/0001/FUL")
 	u, err := url.Parse(path)
 	if err != nil {
@@ -207,8 +219,8 @@ func TestBuildUIDPath(t *testing.T) {
 	if got.Get("id_match") != "24/0001/FUL" {
 		t.Errorf("id_match: got %q, want 24/0001/FUL", got.Get("id_match"))
 	}
-	if got.Get("pg_sz") != "1" {
-		t.Errorf("pg_sz: got %q, want 1", got.Get("pg_sz"))
+	if got.Get("pg_sz") != "10" {
+		t.Errorf("pg_sz: got %q, want 10 (uidHydrationPageSize — a uid can collide across authorities)", got.Get("pg_sz"))
 	}
 	fields := strings.Split(got.Get("select"), ",")
 	if !containsString(fields, "area_id") {
@@ -317,7 +329,7 @@ func TestFetchByUID_SendsExpectedQuery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FetchByUID: %v", err)
 	}
-	if gotQuery.Get("id_match") != "26/0001/FUL" || gotQuery.Get("pg_sz") != "1" {
+	if gotQuery.Get("id_match") != "26/0001/FUL" || gotQuery.Get("pg_sz") != "10" {
 		t.Errorf("unexpected request query: %s", gotQuery.Encode())
 	}
 	if len(res.Applications) != 1 || res.Applications[0].AreaID != 300 {
