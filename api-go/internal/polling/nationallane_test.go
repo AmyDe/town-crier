@@ -1287,6 +1287,146 @@ func TestNationalPollHandler_Handle_RunsBackfillLaneOutOfHours(t *testing.T) {
 	}
 }
 
+// newLaneEHandlerForTest builds a RecentSweepHandler over the given fakes,
+// pinned to the supplied clock (so the handler-level tests share one clock
+// across every lane).
+func newLaneEHandlerForTest(t *testing.T, fetcher *fakeRecentSweepFetcher, state *fakeRecentSweepStateStore, apps *fakeApps, clock func() time.Time) *RecentSweepHandler {
+	t.Helper()
+	logger := slog.New(slog.NewTextHandler(discard{}, nil))
+	return NewRecentSweepHandler(fetcher, state, apps, RecentSweepOptions{
+		DepthDays: 90, WindowWidthDays: 15, MaxPagesPerCycle: 6, NotifyRecencyWindow: 30 * 24 * time.Hour,
+	}, clock, logger)
+}
+
+// TestNationalPollHandler_WithRecentSweepNilNeverPanics pins the wiring safety
+// contract for Lane E (ADR 0047): WithRecentSweep(nil) — the shape
+// cmd/worker's buildPollOrchestrator produces when POLLING_LANE_E_ENABLED is
+// off (its default) — must never panic, and Handle must complete normally with
+// no Lane E work attempted.
+func TestNationalPollHandler_WithRecentSweepNilNeverPanics(t *testing.T) {
+	t.Parallel()
+	clockTime := time.Date(2026, 9, 7, 12, 0, 0, 0, time.UTC)
+	fetcherA := newFakeNationalFetcher()
+	fetcherB := newFakeNationalFetcher()
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	logger := slog.New(slog.NewTextHandler(discard{}, nil))
+	clock := func() time.Time { return clockTime }
+
+	laneAHandler := NewNationalLaneHandler(fetcherA, state, apps, laneAOpts(), clock, logger)
+	laneBHandler := NewNationalLaneHandler(fetcherB, state, apps, laneBOpts(20), clock, logger)
+	planner := NewPlanner(newTestPlannerOpts())
+	handler := NewNationalPollHandler(laneAHandler, laneBHandler, nil, planner, NationalPollOptions{HandlerBudget: 4 * time.Minute}, clock, logger)
+
+	handler.WithRecentSweep(nil)
+
+	res, err := handler.Handle(context.Background())
+	if err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if res.CycleType != "National" {
+		t.Errorf("CycleType: got %q, want National", res.CycleType)
+	}
+}
+
+// TestNationalPollHandler_Handle_RunsLaneEOutOfHours_AndLeavesBackfillStateUntouched
+// proves execOnePage's Lane E case: with Lane E the least-recently-polled
+// tier-2 lane out of hours, the planner picks it and its Run executes. It also
+// proves Lane E's recordsIngested DOES contribute to ApplicationCount (unlike
+// Lane D), and that no Lane E code path touches backfill_state — Lane D is
+// wired (so loadPlannerState reads its state) but Complete, and its store
+// records zero saves and its fetcher zero calls.
+func TestNationalPollHandler_Handle_RunsLaneEOutOfHours_AndLeavesBackfillStateUntouched(t *testing.T) {
+	t.Parallel()
+	night := time.Date(2026, 9, 7, 3, 0, 0, 0, time.UTC)
+	fetcherA := newFakeNationalFetcher()
+	fetcherB := newFakeNationalFetcher()
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	watermark := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	state.states[sentinelLaneA] = PollState{HighWaterMark: watermark, LastPollTime: night}
+	state.states[sentinelLaneB] = PollState{HighWaterMark: watermark, LastPollTime: night}
+	logger := slog.New(slog.NewTextHandler(discard{}, nil))
+	clock := func() time.Time { return night }
+
+	laneAHandler := NewNationalLaneHandler(fetcherA, state, apps, laneAOpts(), clock, logger)
+	laneBHandler := NewNationalLaneHandler(fetcherB, state, apps, laneBOpts(20), clock, logger)
+	planner := NewPlanner(newTestPlannerOpts())
+	handler := NewNationalPollHandler(laneAHandler, laneBHandler, nil, planner, NationalPollOptions{HandlerBudget: 4 * time.Minute}, clock, logger)
+
+	// Lane D wired but Complete: loadPlannerState still reads its state every
+	// iteration, but the planner never runs it.
+	backfillFetcher := newFakeBackfillFetcher()
+	backfillState := newFakeBackfillStateStore()
+	backfillState.state = BackfillState{Complete: true}
+	handler.WithBackfill(NewBackfillHandler(backfillFetcher, backfillState, apps, defaultBackfillOpts(), clock, logger))
+
+	// Lane E: one light row missing from Postgres, so it hydrates and ingests.
+	sweepFetcher := newFakeRecentSweepFetcher(fakeRecentSweepResponse{
+		result: planit.FetchPageResult{
+			Applications: []applications.PlanningApplication{recentLightRow("miss/FUL", 300, "Undecided")},
+			HasMorePages: false,
+		},
+	})
+	sweepFetcher.hydrated["miss/FUL"] = testApp("miss", 300, time.Date(2026, 9, 2, 0, 0, 0, 0, time.UTC))
+	sweepState := newFakeRecentSweepStateStore()
+	handler.WithRecentSweep(newLaneEHandlerForTest(t, sweepFetcher, sweepState, apps, clock))
+
+	res, err := handler.Handle(context.Background())
+	if err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if sweepFetcher.calls == 0 {
+		t.Error("recent-sweep fetcher: got 0 calls, want Lane E to have run")
+	}
+	if res.ApplicationCount != 1 {
+		t.Errorf("ApplicationCount: got %d, want 1 (Lane E's hydrated ingest DOES contribute, unlike Lane D)", res.ApplicationCount)
+	}
+	if len(backfillState.saves) != 0 {
+		t.Errorf("backfill_state saves: got %d, want 0 (no Lane E path may touch backfill_state)", len(backfillState.saves))
+	}
+	if backfillFetcher.calls != 0 {
+		t.Errorf("backfill fetcher calls: got %d, want 0", backfillFetcher.calls)
+	}
+}
+
+// TestNationalPollHandler_Handle_LaneERateLimitBubblesToNextCycle proves a 429
+// hitting Lane E bubbles into the cycle's RateLimited/TerminationReason/
+// RetryAfter fields, so the scheduler backs off the next poll cycle.
+func TestNationalPollHandler_Handle_LaneERateLimitBubblesToNextCycle(t *testing.T) {
+	t.Parallel()
+	night := time.Date(2026, 9, 7, 3, 0, 0, 0, time.UTC)
+	fetcherA := newFakeNationalFetcher()
+	fetcherB := newFakeNationalFetcher()
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	watermark := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	state.states[sentinelLaneA] = PollState{HighWaterMark: watermark, LastPollTime: night}
+	state.states[sentinelLaneB] = PollState{HighWaterMark: watermark, LastPollTime: night}
+	logger := slog.New(slog.NewTextHandler(discard{}, nil))
+	clock := func() time.Time { return night }
+
+	laneAHandler := NewNationalLaneHandler(fetcherA, state, apps, laneAOpts(), clock, logger)
+	laneBHandler := NewNationalLaneHandler(fetcherB, state, apps, laneBOpts(20), clock, logger)
+	planner := NewPlanner(newTestPlannerOpts())
+	handler := NewNationalPollHandler(laneAHandler, laneBHandler, nil, planner, NationalPollOptions{HandlerBudget: 4 * time.Minute}, clock, logger)
+
+	retryAfter := 45 * time.Second
+	sweepFetcher := newFakeRecentSweepFetcher(fakeRecentSweepResponse{err: &planit.RateLimitError{RetryAfter: &retryAfter}})
+	handler.WithRecentSweep(newLaneEHandlerForTest(t, sweepFetcher, newFakeRecentSweepStateStore(), apps, clock))
+
+	res, err := handler.Handle(context.Background())
+	if err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if !res.RateLimited || res.TerminationReason != TerminationRateLimited {
+		t.Errorf("rate limit not bubbled: RateLimited=%v reason=%v", res.RateLimited, res.TerminationReason)
+	}
+	if res.RetryAfter == nil || *res.RetryAfter != retryAfter {
+		t.Errorf("RetryAfter: got %v, want %v", res.RetryAfter, retryAfter)
+	}
+}
+
 // TestNationalPollHandler_Handle_LaneDRateLimitBubblesToNextCycle proves a
 // 429 hitting Lane D alone still bubbles into the cycle's
 // RateLimited/TerminationReason/RetryAfter fields, so Orchestrator.RunOnce
