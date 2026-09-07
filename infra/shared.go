@@ -636,16 +636,33 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 	}
 
 	// Scheduled query (log) alert — PlanIt poll lane query pathologically slow (tc-hbbki / GH
-	// #1130 / tc-777e7 Bug 1). Catches any lane (A/B or C) whose PlanIt query has gone
-	// pathological regardless of ingest outcome — Bug 1's signature was 30-200s hung requests
-	// every cycle. The threshold is >= 10 such spans in 24h, not "any single one": a healthy Lane
-	// A/B tops out at ~1 slow span/day from ordinary PlanIt slowness, so 10/day cannot trip on a
-	// healthy-but-slow lane while a wedged lane clears it many times over. Same regional-Location
-	// and wide-window rationale as the rule above.
+	// #1130 / tc-777e7 Bug 1). Catches a national lane whose PlanIt query has gone pathological
+	// regardless of ingest outcome — Bug 1's signature was 30-200s hung requests every cycle. The
+	// threshold is >= 10 such spans in 24h, not "any single one": a healthy Lane A/B tops out at
+	// ~1 slow span/day from ordinary PlanIt slowness, so 10/day cannot trip on a healthy-but-slow
+	// lane while a wedged lane clears it many times over.
+	//
+	// Explicit two-name allow-list, not a startswith/endswith pattern (PR #1132 review finding):
+	//   - "PlanIt Lane C inverse-mask poll" — Lane C's reconciliation query (lanec.go).
+	//   - "PlanIt national lane poll"        — Lanes A and B share this span name (nationallane.go).
+	// Deliberately excluded:
+	//   - "PlanIt authority poll" — the legacy pre-ADR-0041/0044 per-authority path (pollAuthority
+	//     in api-go/internal/polling/handler.go), which #1130 lists as out of scope. It is kept
+	//     compiling-but-unwired for an architecture rollback; if re-wired it does ~186 req/cycle
+	//     with 429 storms and would plausibly clear 10 slow spans/day on ordinary behaviour,
+	//     flapping this alert exactly when noise is least wanted.
+	//   - "PlanIt backfill sweep" — Lane D ends in "sweep", not "poll", so it was never in scope.
+	// The summarize is `by Name, lane` (poll.lane is always stamped "A"/"B"/"C"), so a fired alert
+	// names the specific slow lane — Lanes A and B are otherwise indistinguishable under the shared
+	// "PlanIt national lane poll" name — and splitting the count by lane keeps the per-lane A/B
+	// totals even further under the threshold.
+	//
+	// Same regional-Location and wide-window (P1D) rationale as the rule above.
 	const planitLaneSlowQuery = `AppDependencies
-| where Name startswith "PlanIt " and Name endswith " poll"
+| where Name in ("PlanIt Lane C inverse-mask poll", "PlanIt national lane poll")
 | where DurationMs > 90000
-| summarize slowSpans = count() by Name
+| extend lane = tostring(Properties["poll.lane"])
+| summarize slowSpans = count() by Name, lane
 | where slowSpans >= 10`
 
 	_, err = monitor.NewScheduledQueryRule(ctx, "alert-planit-lane-slow-shared", &monitor.ScheduledQueryRuleArgs{
