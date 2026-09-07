@@ -99,6 +99,29 @@ func TestToDomain_ParsesNoTimezoneFractionalLastDifferent(t *testing.T) {
 	}
 }
 
+// TestToDomain_AbsentLastDifferentMapsToZeroTime pins ADR 0047's Lane E
+// consequence: the light recent-sweep projection omits last_different on
+// purpose, so a record arrives with an empty last_different string. toDomain
+// must map that to the zero time, not error — while a non-empty malformed
+// value still errors.
+func TestToDomain_AbsentLastDifferentMapsToZeroTime(t *testing.T) {
+	t.Parallel()
+
+	absent := planItRecord{UID: "26/0001/FUL", AreaID: 300, AppState: "Undecided"}
+	app, err := absent.toDomain()
+	if err != nil {
+		t.Fatalf("toDomain with absent last_different: %v", err)
+	}
+	if !app.LastDifferent.IsZero() {
+		t.Errorf("LastDifferent: got %v, want zero time", app.LastDifferent)
+	}
+
+	malformed := planItRecord{UID: "26/0002/FUL", AreaID: 300, LastDifferent: "not-a-time"}
+	if _, err := malformed.toDomain(); err == nil {
+		t.Error("toDomain must still error on a non-empty malformed last_different")
+	}
+}
+
 // richmondshireFixture mirrors the real 2026-07-12 Richmondshire record
 // (GH#935): the 18 existing core fields, the six new top-level fields (altid
 // and associated_id null in the real sample; reference also null), a 24-key
