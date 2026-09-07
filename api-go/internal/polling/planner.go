@@ -26,6 +26,11 @@ import (
 // (ADR 0044: "Lane D unchanged internally").
 const LaneD LaneName = "D"
 
+// LaneE is ADR 0047's looping recent-window start_date sweep (recentsweep.go),
+// tagged into the same vocabulary. It shares Lane D's out-of-hours slot and
+// tier-2 LRU round-robin, and must never outrank Lane A/B.
+const LaneE LaneName = "E"
+
 // CivilTime is a wall-clock hour:minute, used to bound Lane C's daytime
 // eligibility window (ADR 0044 §3) independent of any date — the caller
 // supplies the *time.Location the comparison happens in.
@@ -67,9 +72,17 @@ type LaneDState struct {
 	Complete     bool
 }
 
+// LaneEState is Lane E's (ADR 0047) planner-relevant state: its own
+// LastPollTime for LRU ordering and the idle-interval pacing gate. Lane E has
+// no Complete flag — it is a perpetual verifier — and no cursor the planner
+// needs to see (RecentSweepHandler.Run re-reads its own state).
+type LaneEState struct {
+	LastPollTime time.Time
+}
+
 // PlannerState is the pure planner's typed snapshot of every lane's
-// planner-relevant state. LaneC and LaneD are pointers: nil means the lane
-// is not wired at all (POLLING_BACKFILL_ENABLED off, or a test exercising a
+// planner-relevant state. LaneC, LaneD and LaneE are pointers: nil means the
+// lane is not wired at all (its enable flag off, or a test exercising a
 // narrower lane set) — NextWork must never pick a lane that is not present,
 // however eligible it would otherwise be. LaneA and LaneB are always
 // present: NewNationalPollHandler requires both non-nil at construction.
@@ -78,6 +91,7 @@ type PlannerState struct {
 	LaneB LaneState
 	LaneC *LaneState
 	LaneD *LaneDState
+	LaneE *LaneEState
 }
 
 // WorkItem is the next lane the executor loop should run this iteration, as

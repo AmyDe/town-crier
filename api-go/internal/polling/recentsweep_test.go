@@ -598,9 +598,9 @@ func TestRecentSweepHandler_Run_HydratesRowThatDiverges(t *testing.T) {
 // returns with NO error.
 func TestRecentSweepHandler_Run_HydrationStopsAtCap(t *testing.T) {
 	t.Parallel()
-	var rows []applications.PlanningApplication
+	rows := make([]applications.PlanningApplication, 0, maxHydrationsPerSweepTurn+3)
 	fetcher := newFakeRecentSweepFetcher()
-	for i := 0; i < maxHydrationsPerSweepTurn+3; i++ {
+	for i := range maxHydrationsPerSweepTurn + 3 {
 		uid := "cap-" + string(rune('a'+i)) + "/FUL"
 		rows = append(rows, recentLightRow(uid, 300, "Undecided"))
 		fetcher.hydrated[uid] = applications.PlanningApplication{UID: uid, AreaID: 300}
@@ -643,12 +643,12 @@ func TestRecentSweepHandler_Run_SkipsHydratedRecordWithWrongAreaID(t *testing.T)
 	t.Parallel()
 	fetcher := newFakeRecentSweepFetcher(fakeRecentSweepResponse{
 		result: planit.FetchPageResult{
-			Applications: []applications.PlanningApplication{recentLightRow("coll/FUL", 300, "Undecided")},
+			Applications: []applications.PlanningApplication{recentLightRow("coll/FUL", 301, "Undecided")},
 			HasMorePages: false,
 		},
 	})
 	fetcher.hydratedMulti["coll/FUL"] = []applications.PlanningApplication{
-		{UID: "coll/FUL", AreaID: 999}, // wrong authority
+		{UID: "coll/FUL", AreaID: 999}, // wrong authority (light row flagged area 301)
 	}
 	apps := newFakeApps()
 	state := newFakeRecentSweepStateStore()
