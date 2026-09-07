@@ -564,6 +564,121 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		return err
 	}
 
+	// Scheduled query (log) alert — PlanIt poll lane running with zero forward progress
+	// (tc-hbbki / GH #1130 / tc-777e7).
+	//
+	// Why this exists: alert-planit-failure-rate-shared above is a fleet-wide non-429 failure
+	// *ratio*. A single chronically-broken lane (Lane C, livelocked ~7 weeks 2026-07-19 to
+	// 2026-09-06, tc-777e7) contributes only a handful of failing calls/day, which never move a
+	// ratio diluted by the hundreds of healthy Lane A/B calls sharing the same denominator. That
+	// 7-week failure was found by a manual SRE observatory run, not by an alert. Per-lane forward
+	// progress needs its own alert that is not a ratio.
+	//
+	// The signal: over a P1D window Lane C emitted >= 4 poll spans (so it actually ran), *every*
+	// one of those spans had poll.records_ingested == 0, and at least one had planit.total > 0
+	// (PlanIt had drift to reconcile). Lane C's job is reconciliation with an always-nonzero
+	// workload, so sustained zero-ingest-with-data is unambiguously stuck — unlike Lanes A/B,
+	// which legitimately have many zero-ingest cycles when nothing new landed.
+	//
+	// Why P1D / Sev2: matches the tc-x5xsx (2026-08-25) alert-noise posture for PlanIt-adjacent
+	// alerts. A data-quality backstop stalling is not a customer-facing outage, and 24h detection
+	// latency on a 7-week failure mode is fine.
+	//
+	// Inert while POLLING_LANE_C_ENABLED=false: no spans => `spans >= 4` is false => no fire. The
+	// gate is deliberately "spans present AND all zero-progress", never "no successful spans".
+	//
+	// Deliberately NOT gating on poll.last_clean_scan_at staleness (which issue #1130 floats as an
+	// alternative signal): on the imminent Lane C re-enable the poll_state watermark cold-starts
+	// from the frozen 2026-07-19 value, so a `freshestClean < ago(3d)` disjunct would false-fire
+	// for the first few days of a *correct* catch-up. The zero-ingest-with-data signal has no such
+	// interaction.
+	//
+	// Location is pinned to uksouth (not left to the provider default) because Log Analytics-based
+	// scheduled query rules are regional and must be explicit, unlike the Global action group —
+	// same rationale as alert-planit-failure-rate-shared above.
+	const planitLaneStuckQuery = `AppDependencies
+| where Name == "PlanIt Lane C inverse-mask poll"
+| extend ingested = toint(Properties["poll.records_ingested"]),
+         total    = toint(Properties["planit.total"])
+| summarize spans = count(), maxIngested = max(ingested), maxTotal = max(total)
+| where spans >= 4
+| where maxIngested == 0 and maxTotal > 0`
+
+	_, err = monitor.NewScheduledQueryRule(ctx, "alert-planit-lane-stuck-shared", &monitor.ScheduledQueryRuleArgs{
+		RuleName:            pulumi.String("alert-planit-lane-stuck-shared"),
+		ResourceGroupName:   resourceGroup.Name,
+		Location:            pulumi.String("uksouth"),
+		Kind:                pulumi.String("LogAlert"),
+		DisplayName:         pulumi.String("PlanIt poll lane stuck (zero forward progress)"),
+		Description:         pulumi.String("Lane C poll ran but ingested nothing over 24h while PlanIt reported data to reconcile; a per-lane progress alert that the fleet-wide failure-rate ratio cannot see (GH #1130 / tc-777e7)."),
+		Severity:            pulumi.Float64(2), // Warning
+		Enabled:             pulumi.Bool(true),
+		EvaluationFrequency: pulumi.String("PT1H"),
+		WindowSize:          pulumi.String("P1D"),
+		Scopes:              pulumi.StringArray{logAnalytics.ID()},
+		Criteria: monitor.ScheduledQueryRuleCriteriaArgs{
+			AllOf: monitor.ConditionArray{
+				monitor.ConditionArgs{
+					Query:           pulumi.String(planitLaneStuckQuery),
+					TimeAggregation: pulumi.String("Count"),
+					Operator:        pulumi.String("GreaterThan"),
+					Threshold:       pulumi.Float64(0),
+				},
+			},
+		},
+		Actions: monitor.ActionsArgs{
+			ActionGroups: pulumi.StringArray{actionGroup.ID()},
+		},
+		Tags: tags,
+	})
+	if err != nil {
+		return err
+	}
+
+	// Scheduled query (log) alert — PlanIt poll lane query pathologically slow (tc-hbbki / GH
+	// #1130 / tc-777e7 Bug 1). Catches any lane (A/B or C) whose PlanIt query has gone
+	// pathological regardless of ingest outcome — Bug 1's signature was 30-200s hung requests
+	// every cycle. The threshold is >= 10 such spans in 24h, not "any single one": a healthy Lane
+	// A/B tops out at ~1 slow span/day from ordinary PlanIt slowness, so 10/day cannot trip on a
+	// healthy-but-slow lane while a wedged lane clears it many times over. Same regional-Location
+	// and wide-window rationale as the rule above.
+	const planitLaneSlowQuery = `AppDependencies
+| where Name startswith "PlanIt " and Name endswith " poll"
+| where DurationMs > 90000
+| summarize slowSpans = count() by Name
+| where slowSpans >= 10`
+
+	_, err = monitor.NewScheduledQueryRule(ctx, "alert-planit-lane-slow-shared", &monitor.ScheduledQueryRuleArgs{
+		RuleName:            pulumi.String("alert-planit-lane-slow-shared"),
+		ResourceGroupName:   resourceGroup.Name,
+		Location:            pulumi.String("uksouth"),
+		Kind:                pulumi.String("LogAlert"),
+		DisplayName:         pulumi.String("PlanIt poll lane query pathologically slow"),
+		Description:         pulumi.String("A national poll lane (A/B or C) logged 10+ PlanIt query spans over 90s in 24h, the signature of a wedged inverse-mask/watermark query (GH #1130 / tc-777e7 Bug 1)."),
+		Severity:            pulumi.Float64(2), // Warning
+		Enabled:             pulumi.Bool(true),
+		EvaluationFrequency: pulumi.String("PT1H"),
+		WindowSize:          pulumi.String("P1D"),
+		Scopes:              pulumi.StringArray{logAnalytics.ID()},
+		Criteria: monitor.ScheduledQueryRuleCriteriaArgs{
+			AllOf: monitor.ConditionArray{
+				monitor.ConditionArgs{
+					Query:           pulumi.String(planitLaneSlowQuery),
+					TimeAggregation: pulumi.String("Count"),
+					Operator:        pulumi.String("GreaterThan"),
+					Threshold:       pulumi.Float64(0),
+				},
+			},
+		},
+		Actions: monitor.ActionsArgs{
+			ActionGroups: pulumi.StringArray{actionGroup.ID()},
+		},
+		Tags: tags,
+	})
+	if err != nil {
+		return err
+	}
+
 	// Azure Communication Services (Email) — UK data location.
 	emailServiceUk, err := communication.NewEmailService(ctx, "email-town-crier-uk", &communication.EmailServiceArgs{
 		EmailServiceName:  pulumi.String("email-town-crier-uk"),
