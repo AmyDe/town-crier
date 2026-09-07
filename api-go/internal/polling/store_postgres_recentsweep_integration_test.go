@@ -7,22 +7,26 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/AmyDe/town-crier/api-go/internal/platform/postgres/pgtest"
 )
 
 // newPGRecentSweepStateStore returns a PostgresRecentSweepStateStore over a
 // migrated test database, with the migration's seeded singleton row restored
-// after Truncate. Integration tests MUST NOT call t.Parallel: the pgtest
-// harness serialises all integration tests on the single docker-compose
-// database via a session-level advisory lock (see pgtest.New doc).
-func newPGRecentSweepStateStore(t *testing.T) *PostgresRecentSweepStateStore {
+// after Truncate, PLUS the underlying pool so a test that also needs a raw
+// query can reuse it. Integration tests MUST NOT call t.Parallel, and MUST NOT
+// call pgtest.New more than once per test: it takes a process-global advisory
+// lock released only in t.Cleanup, so a second call in the same test would
+// block on itself forever (see pgtest.New doc).
+func newPGRecentSweepStateStore(t *testing.T) (*PostgresRecentSweepStateStore, *pgxpool.Pool) {
 	t.Helper()
 	pool := pgtest.New(t)
 	pgtest.Truncate(t, pool, "recent_sweep_state")
 	if _, err := pool.Exec(context.Background(), "INSERT INTO recent_sweep_state (id) VALUES (1)"); err != nil {
 		t.Fatalf("reseed singleton recent_sweep_state row: %v", err)
 	}
-	return NewPostgresRecentSweepStateStore(pool)
+	return NewPostgresRecentSweepStateStore(pool), pool
 }
 
 // TestPostgresRecentSweepStateStore_SaveThenGet_RoundTrips proves a full Save
@@ -31,7 +35,7 @@ func newPGRecentSweepStateStore(t *testing.T) *PostgresRecentSweepStateStore {
 // columns.
 func TestPostgresRecentSweepStateStore_SaveThenGet_RoundTrips(t *testing.T) {
 	ctx := context.Background()
-	store := newPGRecentSweepStateStore(t)
+	store, _ := newPGRecentSweepStateStore(t)
 
 	lapAnchor := time.Date(2026, 9, 7, 0, 0, 0, 0, time.UTC)
 	windowEnd := time.Date(2026, 8, 8, 0, 0, 0, 0, time.UTC)
@@ -79,7 +83,7 @@ func TestPostgresRecentSweepStateStore_SaveThenGet_RoundTrips(t *testing.T) {
 // a "not found" case, and the never-started sentinels are the zero values.
 func TestPostgresRecentSweepStateStore_GetReturnsSeededRowBeforeAnySave(t *testing.T) {
 	ctx := context.Background()
-	store := newPGRecentSweepStateStore(t)
+	store, _ := newPGRecentSweepStateStore(t)
 
 	got, err := store.Get(ctx)
 	if err != nil {
@@ -101,10 +105,12 @@ func TestPostgresRecentSweepStateStore_GetReturnsSeededRowBeforeAnySave(t *testi
 // insert a second row and never touch anything but id = 1 — the deliberate fix
 // for backfill_state's keyless, WHERE-less UPDATE. The id smallint CHECK (id =
 // 1) makes a second row impossible to insert, so the observable proof is that
-// the singleton invariant holds across successive Saves and id stays 1.
+// the singleton invariant holds across successive Saves and id stays 1. The raw
+// count query reuses the pool newPGRecentSweepStateStore already opened — a
+// second pgtest.New(t) here would self-deadlock on the harness's global lock.
 func TestPostgresRecentSweepStateStore_SaveTargetsSingletonRow(t *testing.T) {
 	ctx := context.Background()
-	store := newPGRecentSweepStateStore(t)
+	store, pool := newPGRecentSweepStateStore(t)
 
 	first := RecentSweepState{LapAnchor: time.Date(2026, 9, 7, 0, 0, 0, 0, time.UTC), CursorNextIndex: 300}
 	second := RecentSweepState{LapAnchor: time.Date(2026, 9, 14, 0, 0, 0, 0, time.UTC), CursorNextIndex: 900, LapsCompleted: 1}
@@ -115,7 +121,6 @@ func TestPostgresRecentSweepStateStore_SaveTargetsSingletonRow(t *testing.T) {
 		t.Fatalf("Save second: %v", err)
 	}
 
-	pool := pgtest.New(t)
 	var (
 		count int
 		id    int
