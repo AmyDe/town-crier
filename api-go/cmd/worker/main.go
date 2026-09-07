@@ -68,6 +68,7 @@ type stores struct {
 	pollState    *polling.PostgresPollStateStore
 	lease        *polling.PostgresLeaseStore
 	backfill     *polling.PostgresBackfillStateStore
+	recentSweep  *polling.PostgresRecentSweepStateStore
 	appleNotif   *subscriptions.PostgresNotificationStore
 }
 
@@ -148,6 +149,7 @@ func run() int {
 		pollState:    polling.NewPostgresPollStateStore(pool),
 		lease:        polling.NewPostgresLeaseStore(pool, time.Now),
 		backfill:     polling.NewPostgresBackfillStateStore(pool),
+		recentSweep:  polling.NewPostgresRecentSweepStateStore(pool),
 		appleNotif:   subscriptions.NewPostgresNotificationStore(pool, time.Now),
 	}
 
@@ -404,13 +406,42 @@ func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, reg
 	}
 	handler.WithBackfill(laneD)
 
-	// Wire the poll-path notification fan-out onto all three lanes: each
+	// Lane E (GH#1134, ADR 0047): the looping recent-window start_date sweep
+	// backstopping Lanes A/B. Unlike Lane D it CAN notify — behind an
+	// event-specific recency gate composed INSIDE RecentSweepHandler.WithFanOut
+	// (recentsweep_gate.go), so the wiring below cannot hand it an ungated
+	// notifier however it is edited.
+	//
+	// Gated behind POLLING_LANE_E_ENABLED (default off): ships dark, soaks,
+	// then flips on deliberately in infra — a dark soak matters more here than
+	// it did for Lane D because this lane sends pushes. WithRecentSweep(nil) is
+	// the safe default when disabled — NationalPollHandler nil-guards it
+	// exactly like Lane C/D.
+	var laneE *polling.RecentSweepHandler
+	if cfg.PollingLaneEEnabled {
+		laneE = polling.NewRecentSweepHandler(
+			planItClient, st.recentSweep, appStore,
+			polling.RecentSweepOptions{
+				DepthDays:           cfg.PollingLaneEDepthDays,
+				WindowWidthDays:     cfg.PollingLaneEWindowWidthDays,
+				MaxPagesPerCycle:    cfg.PollingLaneEMaxPagesPerCycle,
+				NotifyRecencyWindow: time.Duration(cfg.PollingLaneENotifyRecencyDays) * 24 * time.Hour,
+			},
+			time.Now, logger,
+		)
+	} else {
+		logger.Info("Lane E (recent-window sweep) disabled by POLLING_LANE_E_ENABLED unset/false")
+	}
+	handler.WithRecentSweep(laneE)
+
+	// Wire the poll-path notification fan-out onto the notifying lanes: each
 	// upserted/hydrated application drives a decision-event dispatch (on a
 	// non-decision -> decision transition) and a watch-zone notification
 	// fan-out, unchanged from the old drain (GH#784, tc-uc2p — the
 	// CUTOVER-BLOCKER fan-out; without it the Notifications table stays
-	// empty and every alert/digest breaks).
-	wirePollFanOut(cfg, laneA, laneB, laneC, handler, zoneStore, registry, st, logger)
+	// empty and every alert/digest breaks). Lane E's fan-out goes through its
+	// own recency gate, applied inside WithFanOut.
+	wirePollFanOut(cfg, laneA, laneB, laneC, laneE, handler, zoneStore, registry, st, logger)
 
 	scheduler := polling.NewNextRunScheduler(polling.DefaultSchedulerOptions(), polling.NewRandomJitter())
 
@@ -466,12 +497,17 @@ func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, reg
 // laneC is nil when POLLING_LANE_C_ENABLED=false (tc-56ahl / GH#1125,
 // default true, set false in prod as a tc-777e7 livelock mitigation) and
 // also when a test wires a narrower lane set (e.g. only A/B); the nil guards
-// below cover both.
+// below cover both. laneE is nil when POLLING_LANE_E_ENABLED is unset/false
+// (ADR 0047, ships dark) — same nil-guard treatment.
+//
+// Lane E's WithFanOut wraps the collaborators in its own recency decorators
+// before rebuilding its Ingester, so the raw dispatcher/enqueuer never reach
+// Lane E ungated — that is by construction, not a rule this call site enforces.
 //
 // st may be nil in tests that only exercise the zone-containment path; the store
 // fields are extracted under a nil guard so the fan-out wires with no other
 // store dependency.
-func wirePollFanOut(cfg platform.Config, laneA, laneB *polling.NationalLaneHandler, laneC *polling.InverseMaskLaneHandler, handler *polling.NationalPollHandler, zoneStore watchzones.Store, registry *metrics.Registry, st *stores, logger *slog.Logger) {
+func wirePollFanOut(cfg platform.Config, laneA, laneB *polling.NationalLaneHandler, laneC *polling.InverseMaskLaneHandler, laneE *polling.RecentSweepHandler, handler *polling.NationalPollHandler, zoneStore watchzones.Store, registry *metrics.Registry, st *stores, logger *slog.Logger) {
 	dispatcher, enqueuer, coalescer := buildNotifyFanOut(cfg, registry, zoneStore, st, logger)
 
 	// Record towncrier.notifications.created on each dispatcher (tc-21np). Only
@@ -485,6 +521,9 @@ func wirePollFanOut(cfg platform.Config, laneA, laneB *polling.NationalLaneHandl
 	if laneC != nil {
 		laneC.WithFanOut(dispatcher, enqueuer)
 	}
+	if laneE != nil {
+		laneE.WithFanOut(dispatcher, enqueuer)
+	}
 	handler.WithPushFlusher(coalescer)
 
 	// Record towncrier.polling.applications_ingested / cycles_completed /
@@ -497,6 +536,9 @@ func wirePollFanOut(cfg platform.Config, laneA, laneB *polling.NationalLaneHandl
 	laneB.WithMetrics(registry)
 	if laneC != nil {
 		laneC.WithMetrics(registry)
+	}
+	if laneE != nil {
+		laneE.WithMetrics(registry)
 	}
 	handler.WithMetrics(registry)
 }
