@@ -593,6 +593,14 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 	// for the first few days of a *correct* catch-up. The zero-ingest-with-data signal has no such
 	// interaction.
 	//
+	// Lane E is deliberately NOT added to this rule (GH #1134 / ADR 0047). `records_ingested == 0`
+	// with a large `planit.total` is Lane E's HEALTHY steady state, not a stall: Lane E is a
+	// backstop that continuously re-sweeps the recent start_date band, so while it re-reads data
+	// that is already correct it ingests nothing even though planit.total reports the whole window.
+	// Adding Lane E here would make this rule fire permanently and train everyone to ignore it.
+	// Lane E's forward-progress signal is its cursor instead — see the sibling rule
+	// alert-planit-lane-e-cursor-stalled-shared below.
+	//
 	// Location is pinned to uksouth (not left to the provider default) because Log Analytics-based
 	// scheduled query rules are regional and must be explicit, unlike the Global action group —
 	// same rationale as alert-planit-failure-rate-shared above.
@@ -642,24 +650,32 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 	// ~1 slow span/day from ordinary PlanIt slowness, so 10/day cannot trip on a healthy-but-slow
 	// lane while a wedged lane clears it many times over.
 	//
-	// Explicit two-name allow-list, not a startswith/endswith pattern (PR #1132 review finding):
-	//   - "PlanIt Lane C inverse-mask poll" — Lane C's reconciliation query (lanec.go).
-	//   - "PlanIt national lane poll"        — Lanes A and B share this span name (nationallane.go).
+	// Explicit three-name allow-list, not a startswith/endswith pattern (PR #1132 review finding):
+	//   - "PlanIt Lane C inverse-mask poll"   — Lane C's reconciliation query (lanec.go).
+	//   - "PlanIt national lane poll"          — Lanes A and B share this span name (nationallane.go).
+	//   - "PlanIt Lane E recent-window sweep"  — Lane E's recent-band start_date sweep (recentsweep.go,
+	//     GH #1134 / ADR 0047). It stamps poll.lane = "E", so the `by Name, lane` summarize below
+	//     names it correctly on a fire.
 	// Deliberately excluded:
 	//   - "PlanIt authority poll" — the legacy pre-ADR-0041/0044 per-authority path (pollAuthority
 	//     in api-go/internal/polling/handler.go), which #1130 lists as out of scope. It is kept
 	//     compiling-but-unwired for an architecture rollback; if re-wired it does ~186 req/cycle
 	//     with 429 storms and would plausibly clear 10 slow spans/day on ordinary behaviour,
 	//     flapping this alert exactly when noise is least wanted.
-	//   - "PlanIt backfill sweep" — Lane D ends in "sweep", not "poll", so it was never in scope.
-	// The summarize is `by Name, lane` (poll.lane is always stamped "A"/"B"/"C"), so a fired alert
-	// names the specific slow lane — Lanes A and B are otherwise indistinguishable under the shared
-	// "PlanIt national lane poll" name — and splitting the count by lane keeps the per-lane A/B
-	// totals even further under the threshold.
+	//   - "PlanIt backfill sweep" — Lane D. Excluded by lane, not by the "sweep" suffix: Lane E's
+	//     span name also ends in "sweep" and IS in scope (above). Lane D only ever queries a narrow
+	//     bounded window deep in history, years from the present, and never approaches the cliff;
+	//     Lane E's two-sided start_date window over the recent 90-day band can go pathological
+	//     toward PlanIt's ~45s cliff the same way a national poll can (ADR 0044 measured
+	//     different=7 at 43.1s), so it needs the same watch.
+	// The summarize is `by Name, lane` (poll.lane is always stamped "A"/"B"/"C"/"E"), so a fired
+	// alert names the specific slow lane — Lanes A and B are otherwise indistinguishable under the
+	// shared "PlanIt national lane poll" name — and splitting the count by lane keeps the per-lane
+	// A/B totals even further under the threshold.
 	//
 	// Same regional-Location and wide-window (P1D) rationale as the rule above.
 	const planitLaneSlowQuery = `AppDependencies
-| where Name in ("PlanIt Lane C inverse-mask poll", "PlanIt national lane poll")
+| where Name in ("PlanIt Lane C inverse-mask poll", "PlanIt national lane poll", "PlanIt Lane E recent-window sweep")
 | where DurationMs > 90000
 | extend lane = tostring(Properties["poll.lane"])
 | summarize slowSpans = count() by Name, lane
@@ -671,7 +687,7 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		Location:            pulumi.String("uksouth"),
 		Kind:                pulumi.String("LogAlert"),
 		DisplayName:         pulumi.String("PlanIt poll lane query pathologically slow"),
-		Description:         pulumi.String("A national poll lane (A/B or C) logged 10+ PlanIt query spans over 90s in 24h, the signature of a wedged inverse-mask/watermark query (GH #1130 / tc-777e7 Bug 1)."),
+		Description:         pulumi.String("A national poll lane (A/B, C or E) logged 10+ PlanIt query spans over 90s in 24h, the signature of a wedged inverse-mask/watermark/recent-window query (GH #1130 / tc-777e7 Bug 1)."),
 		Severity:            pulumi.Float64(2), // Warning
 		Enabled:             pulumi.Bool(true),
 		EvaluationFrequency: pulumi.String("PT1H"),
@@ -681,6 +697,74 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 			AllOf: monitor.ConditionArray{
 				monitor.ConditionArgs{
 					Query:           pulumi.String(planitLaneSlowQuery),
+					TimeAggregation: pulumi.String("Count"),
+					Operator:        pulumi.String("GreaterThan"),
+					Threshold:       pulumi.Float64(0),
+				},
+			},
+		},
+		Actions: monitor.ActionsArgs{
+			ActionGroups: pulumi.StringArray{actionGroup.ID()},
+		},
+		Tags: tags,
+	})
+	if err != nil {
+		return err
+	}
+
+	// Scheduled query (log) alert — PlanIt Lane E recent-window sweep wedged: its cursor has
+	// stopped advancing (tc-ht8i7 / GH #1134 / ADR 0047).
+	//
+	// Why this is a separate rule and not alert-planit-lane-stuck-shared above: Lane E's
+	// forward-progress signal is the CURSOR (lane_e.window_end, an RFC3339 date string), never the
+	// ingest count. Lane E is a backstop that continuously re-sweeps the recent 90-day start_date
+	// band; in its healthy steady state it re-reads data that is already correct and ingests
+	// nothing, while planit.total reports the whole window. That is exactly the
+	// `records_ingested == 0 and total > 0` shape the stuck rule fires on, so Lane E is
+	// deliberately excluded from it (see the comment there) and watched here on cursor movement
+	// instead.
+	//
+	// The signal: over a P2D window Lane E emitted >= 8 spans (so it actually ran) and every one
+	// of them carried the same lane_e.window_end (dcount <= 1). At ~72 pages/day against a ~15-day
+	// window of roughly 73 pages, window_end slides back about once a day, so two days of spans
+	// all sharing one window_end means the cursor is wedged — a window that will not drain, a
+	// slide that never happens, or a lap that will not re-anchor.
+	//
+	// Inert while POLLING_LANE_E_ENABLED=false: the lane emits no spans, so `spans >= 8` is false
+	// and the rule never fires. Same "spans present AND no progress" gate shape as
+	// alert-planit-lane-stuck-shared, never "no successful spans".
+	//
+	// Why PT6H / P2D / Sev2: window_end only moves ~once a day, so a sub-day window could not
+	// tell a stall from ordinary between-slide quiet; P2D needs two missed slides before it
+	// fires. A data-quality backstop wedging is not a customer-facing outage, so Sev2 and
+	// multi-hour detection latency are fine — same posture as the two rules above.
+	//
+	// Location is pinned to uksouth (not left to the provider default) because Log Analytics-based
+	// scheduled query rules are regional and must be explicit, unlike the Global action group —
+	// same rationale as the neighbouring rules.
+	const planitLaneECursorStalledQuery = `AppDependencies
+| where Name == "PlanIt Lane E recent-window sweep"
+| extend windowEnd = tostring(Properties["lane_e.window_end"])
+| summarize spans = count(), windows = dcount(windowEnd)
+| where spans >= 8
+| where windows <= 1`
+
+	_, err = monitor.NewScheduledQueryRule(ctx, "alert-planit-lane-e-cursor-stalled-shared", &monitor.ScheduledQueryRuleArgs{
+		RuleName:            pulumi.String("alert-planit-lane-e-cursor-stalled-shared"),
+		ResourceGroupName:   resourceGroup.Name,
+		Location:            pulumi.String("uksouth"),
+		Kind:                pulumi.String("LogAlert"),
+		DisplayName:         pulumi.String("PlanIt Lane E recent-window sweep wedged (cursor not advancing)"),
+		Description:         pulumi.String("Lane E logged 8+ recent-window sweep spans over 2 days with only one distinct lane_e.window_end, so the sweep cursor has not advanced and the lane is wedged (GH #1134 / ADR 0047)."),
+		Severity:            pulumi.Float64(2), // Warning
+		Enabled:             pulumi.Bool(true),
+		EvaluationFrequency: pulumi.String("PT6H"),
+		WindowSize:          pulumi.String("P2D"),
+		Scopes:              pulumi.StringArray{logAnalytics.ID()},
+		Criteria: monitor.ScheduledQueryRuleCriteriaArgs{
+			AllOf: monitor.ConditionArray{
+				monitor.ConditionArgs{
+					Query:           pulumi.String(planitLaneECursorStalledQuery),
 					TimeAggregation: pulumi.String("Count"),
 					Operator:        pulumi.String("GreaterThan"),
 					Threshold:       pulumi.Float64(0),
