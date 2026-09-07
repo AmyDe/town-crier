@@ -559,36 +559,59 @@ func TestRecentSweepHandler_Run_HydratesRowMissingFromPostgres(t *testing.T) {
 }
 
 // TestRecentSweepHandler_Run_HydratesRowThatDiverges proves a light row whose
-// app_state or decided_date differs from Postgres is hydrated.
+// app_state OR decided_date differs from Postgres is hydrated (the reused Lane
+// C inverseMaskDiffers test).
 func TestRecentSweepHandler_Run_HydratesRowThatDiverges(t *testing.T) {
 	t.Parallel()
-	apps := newFakeApps()
-	apps.existing["drift/FUL"] = recentLightRow("drift/FUL", 300, "Undecided")
 
-	fetcher := newFakeRecentSweepFetcher(fakeRecentSweepResponse{
-		result: planit.FetchPageResult{
-			Applications: []applications.PlanningApplication{recentLightRow("drift/FUL", 300, "Permitted")},
-			HasMorePages: false,
+	decidedNew := time.Date(2026, 9, 3, 0, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		name     string
+		existing applications.PlanningApplication
+		light    applications.PlanningApplication
+	}{
+		{
+			name:     "app_state drift",
+			existing: recentLightRow("drift/FUL", 300, "Undecided"),
+			light:    recentLightRow("drift/FUL", 300, "Permitted"),
 		},
-	})
-	full := testApp("drift", 300, time.Date(2026, 9, 2, 0, 0, 0, 0, time.UTC))
-	permitted := "Permitted"
-	full.AppState = &permitted
-	fetcher.hydrated["drift/FUL"] = full
-	state := newFakeRecentSweepStateStore()
-	state.state = RecentSweepState{LapAnchor: recentSweepToday, WindowEnd: recentSweepToday}
-
-	h := newRecentSweepHandler(t, fetcher, apps, state, recentSweepOpts(1))
-	out := h.Run(context.Background())
-
-	if out.err != nil {
-		t.Fatalf("Run: %v", out.err)
+		{
+			name:     "decided_date drift",
+			existing: recentLightRow("drift/FUL", 300, "Permitted"),
+			light: func() applications.PlanningApplication {
+				r := recentLightRow("drift/FUL", 300, "Permitted")
+				r.DecidedDate = &decidedNew
+				return r
+			}(),
+		},
 	}
-	if len(fetcher.hydrateCalls) != 1 {
-		t.Errorf("hydrateCalls: got %v, want one", fetcher.hydrateCalls)
-	}
-	if len(apps.upserts) != 1 || apps.upserts[0].AppState == nil || *apps.upserts[0].AppState != "Permitted" {
-		t.Fatalf("upserts: got %+v", apps.upserts)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			apps := newFakeApps()
+			apps.existing["drift/FUL"] = tc.existing
+
+			fetcher := newFakeRecentSweepFetcher(fakeRecentSweepResponse{
+				result: planit.FetchPageResult{Applications: []applications.PlanningApplication{tc.light}, HasMorePages: false},
+			})
+			fetcher.hydrated["drift/FUL"] = testApp("drift", 300, time.Date(2026, 9, 2, 0, 0, 0, 0, time.UTC))
+			state := newFakeRecentSweepStateStore()
+			state.state = RecentSweepState{LapAnchor: recentSweepToday, WindowEnd: recentSweepToday}
+
+			h := newRecentSweepHandler(t, fetcher, apps, state, recentSweepOpts(1))
+			out := h.Run(context.Background())
+
+			if out.err != nil {
+				t.Fatalf("Run: %v", out.err)
+			}
+			if len(fetcher.hydrateCalls) != 1 {
+				t.Errorf("hydrateCalls: got %v, want exactly one (the divergent row)", fetcher.hydrateCalls)
+			}
+			if len(apps.upserts) != 1 {
+				t.Fatalf("upserts: got %d, want 1", len(apps.upserts))
+			}
+		})
 	}
 }
 
