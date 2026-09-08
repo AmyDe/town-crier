@@ -26,6 +26,11 @@ import (
 // (ADR 0044: "Lane D unchanged internally").
 const LaneD LaneName = "D"
 
+// LaneE is ADR 0047's looping recent-window start_date sweep (recentsweep.go),
+// tagged into the same vocabulary. It shares Lane D's out-of-hours slot and
+// tier-2 LRU round-robin, and must never outrank Lane A/B.
+const LaneE LaneName = "E"
+
 // CivilTime is a wall-clock hour:minute, used to bound Lane C's daytime
 // eligibility window (ADR 0044 §3) independent of any date — the caller
 // supplies the *time.Location the comparison happens in.
@@ -67,9 +72,17 @@ type LaneDState struct {
 	Complete     bool
 }
 
+// LaneEState is Lane E's (ADR 0047) planner-relevant state: its own
+// LastPollTime for LRU ordering and the idle-interval pacing gate. Lane E has
+// no Complete flag — it is a perpetual verifier — and no cursor the planner
+// needs to see (RecentSweepHandler.Run re-reads its own state).
+type LaneEState struct {
+	LastPollTime time.Time
+}
+
 // PlannerState is the pure planner's typed snapshot of every lane's
-// planner-relevant state. LaneC and LaneD are pointers: nil means the lane
-// is not wired at all (POLLING_BACKFILL_ENABLED off, or a test exercising a
+// planner-relevant state. LaneC, LaneD and LaneE are pointers: nil means the
+// lane is not wired at all (its enable flag off, or a test exercising a
 // narrower lane set) — NextWork must never pick a lane that is not present,
 // however eligible it would otherwise be. LaneA and LaneB are always
 // present: NewNationalPollHandler requires both non-nil at construction.
@@ -78,6 +91,7 @@ type PlannerState struct {
 	LaneB LaneState
 	LaneC *LaneState
 	LaneD *LaneDState
+	LaneE *LaneEState
 }
 
 // WorkItem is the next lane the executor loop should run this iteration, as
@@ -121,14 +135,15 @@ func NewPlanner(opts PlannerOptions) *Planner {
 
 // Eligible reports whether lane may run AT ALL right now, independent of
 // whether it currently has work (ADR 0044 §3's "Eligible" column): A and B
-// are eligible 24/7; C only inside the daytime window; D only outside it.
+// are eligible 24/7; C only inside the daytime window; D and E only outside it
+// (ADR 0047: Lane E shares Lane D's exact out-of-hours slot).
 func (p *Planner) Eligible(lane LaneName, now time.Time) bool {
 	switch lane {
 	case LaneA, LaneB:
 		return true
 	case LaneC:
 		return p.daytime(now)
-	case LaneD:
+	case LaneD, LaneE:
 		return !p.daytime(now)
 	default:
 		return false
@@ -196,15 +211,33 @@ func hasWorkC(s LaneState, now time.Time) bool {
 	return s.LastPollTime.IsZero() || now.Sub(s.LastPollTime) >= laneCIdleAnchorInterval
 }
 
+// laneEIdleInterval bounds how often Lane E (ADR 0047) starts a turn: one turn
+// per hour ceiling, which at the ~1h out-of-hours natural cadence is one turn
+// per cycle, regardless of how often a TimeBounded or RateLimited termination
+// re-fires the cycle. With MaxPagesPerCycle=6 that paces a 440-page lap to land
+// in about six days at full health. Lane E's counterpart to
+// laneCIdleAnchorInterval; a hardcoded constant for the same reason.
+const laneEIdleInterval = 1 * time.Hour
+
+// hasWorkE reports whether Lane E is due for a turn: it has never run, or
+// laneEIdleInterval has elapsed since its last run. Lane E has no cursor the
+// planner needs to consult — RecentSweepHandler.Run re-reads its own state and
+// always has more of the recent band to verify — so the pacing gate is the
+// whole test.
+func hasWorkE(s LaneEState, now time.Time) bool {
+	return s.LastPollTime.IsZero() || now.Sub(s.LastPollTime) >= laneEIdleInterval
+}
+
 // NextWork picks the next lane to run using a TIERED priority (GH#986): Lane
 // A/B (new-application and decision detection, the notification-bearing
-// critical path) always outrank Lane C/D (reconciliation and backfill, both
-// data-quality/coverage lanes) whenever A/B has work at all, regardless of
-// how LRU-stale C or D have become. Only once NEITHER A nor B has work does
-// C/D become candidates. Within whichever tier is in play, selection is
-// unchanged: the eligible-with-work lane with the oldest LastPollTime (LRU /
-// round-robin — ADR 0044 §3). Returns nil when nothing eligible has work
-// (everything is caught up — the "Natural" cycle-end case).
+// critical path) always outrank Lane C/D/E (reconciliation, backfill and the
+// recent-window sweep — all data-quality/coverage lanes) whenever A/B has work
+// at all, regardless of how LRU-stale the lower tier has become. Only once
+// NEITHER A nor B has work do C/D/E become candidates. Within whichever tier
+// is in play, selection is unchanged: the eligible-with-work lane with the
+// oldest LastPollTime (LRU / round-robin — ADR 0044 §3). Returns nil when
+// nothing eligible has work (everything is caught up — the "Natural" cycle-end
+// case).
 //
 // Before this fix NextWork ran pure LRU across all four lanes uniformly: a
 // lane whose last_poll_time never advances (e.g. Lane C livelocked on a
@@ -231,14 +264,17 @@ func (p *Planner) NextWork(state PlannerState, now time.Time) *WorkItem {
 	candidates := tier1
 	if len(candidates) == 0 {
 		// Tier 1 has nothing to do this iteration: only now does tier 2
-		// (Lane C/D — reconciliation and backfill) become eligible for
-		// selection at all.
+		// (Lane C/D/E — reconciliation, backfill and the recent-window
+		// sweep) become eligible for selection at all.
 		var tier2 []candidate
 		if state.LaneC != nil && p.Eligible(LaneC, now) && hasWorkC(*state.LaneC, now) {
 			tier2 = append(tier2, candidate{LaneC, state.LaneC.LastPollTime, state.LaneC.Cursor})
 		}
 		if state.LaneD != nil && p.Eligible(LaneD, now) && !state.LaneD.Complete {
 			tier2 = append(tier2, candidate{LaneD, state.LaneD.LastPollTime, nil})
+		}
+		if state.LaneE != nil && p.Eligible(LaneE, now) && hasWorkE(*state.LaneE, now) {
+			tier2 = append(tier2, candidate{LaneE, state.LaneE.LastPollTime, nil})
 		}
 		candidates = tier2
 	}

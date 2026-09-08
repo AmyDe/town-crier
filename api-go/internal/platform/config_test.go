@@ -418,6 +418,8 @@ func TestLoadConfig_PollingDefaults(t *testing.T) {
 		"POLLING_LANE_C_ENABLED",
 		"POLLING_BACKFILL_ENABLED", "POLLING_BACKFILL_WINDOW_WIDTH_DAYS",
 		"POLLING_BACKFILL_MAX_PAGES_PER_CYCLE", "POLLING_BACKFILL_EMPTY_WINDOWS_BEFORE_COMPLETE",
+		"POLLING_LANE_E_ENABLED", "POLLING_LANE_E_DEPTH_DAYS", "POLLING_LANE_E_WINDOW_WIDTH_DAYS",
+		"POLLING_LANE_E_MAX_PAGES_PER_CYCLE", "POLLING_LANE_E_NOTIFY_RECENCY_DAYS",
 	} {
 		t.Setenv(k, "")
 	}
@@ -479,6 +481,81 @@ func TestLoadConfig_PollingDefaults(t *testing.T) {
 	if cfg.PollingBackfillEmptyWindowsBeforeComplete != 12 {
 		t.Errorf("backfill empty-windows-before-complete default: got %d, want 12", cfg.PollingBackfillEmptyWindowsBeforeComplete)
 	}
+	if cfg.PollingLaneEEnabled {
+		t.Error("PollingLaneEEnabled: got true, want false by default (ADR 0047, ships dark)")
+	}
+	if cfg.PollingLaneEDepthDays != 90 {
+		t.Errorf("Lane E depth days default: got %d, want 90 (= POLLING_LANE_A_MASK_DAYS, not a literal)", cfg.PollingLaneEDepthDays)
+	}
+	if cfg.PollingLaneEWindowWidthDays != 15 {
+		t.Errorf("Lane E window width default: got %d, want 15", cfg.PollingLaneEWindowWidthDays)
+	}
+	if cfg.PollingLaneEMaxPagesPerCycle != 6 {
+		t.Errorf("Lane E max pages per cycle default: got %d, want 6", cfg.PollingLaneEMaxPagesPerCycle)
+	}
+	if cfg.PollingLaneENotifyRecencyDays != 30 {
+		t.Errorf("Lane E notify recency days default: got %d, want 30", cfg.PollingLaneENotifyRecencyDays)
+	}
+}
+
+// TestLoadConfig_PollingLaneEEnabled pins Lane E's dark-ship default (ADR
+// 0047): POLLING_LANE_E_ENABLED unset or falsy stays disabled — this lane can
+// notify, so the dark soak matters more here than it did for Lane D. An
+// explicit truthy value opts in.
+func TestLoadConfig_PollingLaneEEnabled(t *testing.T) {
+	tests := []struct {
+		name string
+		env  string
+		want bool
+	}{
+		{"unset defaults false", "", false},
+		{"true enables", "true", true},
+		{"1 enables", "1", true},
+		{"false stays disabled", "false", false},
+		{"garbage fails safe to false", "yes-please", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("POLLING_LANE_E_ENABLED", tc.env)
+
+			cfg, err := LoadConfig()
+			if err != nil {
+				t.Fatalf("LoadConfig: %v", err)
+			}
+			if cfg.PollingLaneEEnabled != tc.want {
+				t.Errorf("PollingLaneEEnabled: got %v, want %v", cfg.PollingLaneEEnabled, tc.want)
+			}
+		})
+	}
+}
+
+// TestLoadConfig_PollingLaneEDepthDaysTracksLaneAMask proves
+// POLLING_LANE_E_DEPTH_DAYS defaults to whatever POLLING_LANE_A_MASK_DAYS
+// resolves to (not a hardcoded 90), so Lanes A, E and C stay partitioned if
+// the mask is ever retuned — and that an explicit override still wins.
+func TestLoadConfig_PollingLaneEDepthDaysTracksLaneAMask(t *testing.T) {
+	t.Run("tracks a retuned Lane A mask", func(t *testing.T) {
+		t.Setenv("POLLING_LANE_A_MASK_DAYS", "45")
+		t.Setenv("POLLING_LANE_E_DEPTH_DAYS", "")
+		cfg, err := LoadConfig()
+		if err != nil {
+			t.Fatalf("LoadConfig: %v", err)
+		}
+		if cfg.PollingLaneEDepthDays != 45 {
+			t.Errorf("PollingLaneEDepthDays: got %d, want 45 (tracks the retuned Lane A mask)", cfg.PollingLaneEDepthDays)
+		}
+	})
+	t.Run("explicit override wins", func(t *testing.T) {
+		t.Setenv("POLLING_LANE_A_MASK_DAYS", "90")
+		t.Setenv("POLLING_LANE_E_DEPTH_DAYS", "120")
+		cfg, err := LoadConfig()
+		if err != nil {
+			t.Fatalf("LoadConfig: %v", err)
+		}
+		if cfg.PollingLaneEDepthDays != 120 {
+			t.Errorf("PollingLaneEDepthDays: got %d, want 120", cfg.PollingLaneEDepthDays)
+		}
+	})
 }
 
 // TestLoadConfig_PollingBackfillEnabled pins Lane D's dark-ship default

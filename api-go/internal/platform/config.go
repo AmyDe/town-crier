@@ -294,6 +294,30 @@ type Config struct {
 	PollingBackfillMaxPagesPerCycle           int
 	PollingBackfillEmptyWindowsBeforeComplete int
 
+	// PollingLaneE* configure Lane E, the looping recent-window start_date
+	// sweep that backstops Lanes A/B (GH#1134, ADR 0047). Unlike Lane D it CAN
+	// notify — behind an event-specific recency gate composed inside
+	// RecentSweepHandler.WithFanOut. PollingLaneEEnabled gates whether the lane
+	// is constructed and wired at all; loaded from POLLING_LANE_E_ENABLED and
+	// DEFAULT FALSE — this lane can send a push, so the dark soak matters more
+	// than it did for Lane D. PollingLaneEDepthDays is how far back the sweep
+	// reaches; it defaults to POLLING_LANE_A_MASK_DAYS (not a literal) so
+	// Lanes A, E and C partition the national start_date axis with no gap or
+	// overlap and stay partitioned if the mask is retuned.
+	// PollingLaneEWindowWidthDays is the width of each backward-sliding window
+	// (default 15; RecentSweepHandler hard-caps it at
+	// maxRecentSweepWindowWidthDays). PollingLaneEMaxPagesPerCycle bounds pages
+	// fetched per poll cycle (default 6 — the pacing dial to turn down first if
+	// PlanIt shows strain). PollingLaneENotifyRecencyDays feeds both fan-out
+	// decorators: an event older than this (by start_date for a new
+	// application, decided_date for a decision) produces no notification record
+	// at all (default 30).
+	PollingLaneEEnabled           bool
+	PollingLaneEDepthDays         int
+	PollingLaneEWindowWidthDays   int
+	PollingLaneEMaxPagesPerCycle  int
+	PollingLaneENotifyRecencyDays int
+
 	// NotificationsRetentionDays is the number of days to keep Notifications rows
 	// when running the pg-purge job. Loaded from NOTIFICATIONS_RETENTION_DAYS;
 	// defaults to 90.
@@ -373,6 +397,10 @@ func (c Config) Auth0M2MConfigured() bool {
 // LoadConfig reads configuration from the environment, applying defaults
 // where a variable is unset.
 func LoadConfig() (Config, error) {
+	// Lane A's mask width is read once up here so Lane E's depth can default to
+	// it (ADR 0047: the A/E/C partition stays gapless if the mask is retuned).
+	pollingLaneAMaskDays := getenvInt("POLLING_LANE_A_MASK_DAYS", 90)
+
 	cfg := Config{
 		Port:               getenv("PORT", "8080"),
 		LogLevel:           slog.LevelInfo,
@@ -435,7 +463,7 @@ func LoadConfig() (Config, error) {
 		PollShutdownGraceSeconds:            getenvInt("POLL_SHUTDOWN_GRACE_SECONDS", 30),
 		PollingPlanItPageSize:               getenvInt("POLLING_PLANIT_PAGE_SIZE", 100),
 
-		PollingLaneAMaskDays:         getenvInt("POLLING_LANE_A_MASK_DAYS", 90),
+		PollingLaneAMaskDays:         pollingLaneAMaskDays,
 		PollingLaneBMaskDays:         getenvInt("POLLING_LANE_B_MASK_DAYS", 90),
 		PollingLaneBMaxPages:         getenvInt("POLLING_LANE_B_MAX_PAGES", 20),
 		PollingDayStart:              getenv("POLLING_DAY_START", "07:00"),
@@ -448,6 +476,12 @@ func LoadConfig() (Config, error) {
 		PollingBackfillWindowWidthDays:            getenvInt("POLLING_BACKFILL_WINDOW_WIDTH_DAYS", 90),
 		PollingBackfillMaxPagesPerCycle:           getenvInt("POLLING_BACKFILL_MAX_PAGES_PER_CYCLE", 2),
 		PollingBackfillEmptyWindowsBeforeComplete: getenvInt("POLLING_BACKFILL_EMPTY_WINDOWS_BEFORE_COMPLETE", 12),
+
+		PollingLaneEEnabled:           getenvBool("POLLING_LANE_E_ENABLED"),
+		PollingLaneEDepthDays:         getenvInt("POLLING_LANE_E_DEPTH_DAYS", pollingLaneAMaskDays),
+		PollingLaneEWindowWidthDays:   getenvInt("POLLING_LANE_E_WINDOW_WIDTH_DAYS", 15),
+		PollingLaneEMaxPagesPerCycle:  getenvInt("POLLING_LANE_E_MAX_PAGES_PER_CYCLE", 6),
+		PollingLaneENotifyRecencyDays: getenvInt("POLLING_LANE_E_NOTIFY_RECENCY_DAYS", 30),
 
 		NotificationsRetentionDays:       getenvInt("NOTIFICATIONS_RETENTION_DAYS", 90),
 		DeviceRegistrationsRetentionDays: getenvInt("DEVICE_REGISTRATIONS_RETENTION_DAYS", 180),

@@ -422,6 +422,148 @@ func TestPlanner_NextWork_LaneDCompleteNeverHasWork(t *testing.T) {
 	}
 }
 
+// TestPlanner_Eligible_LaneE pins ADR 0047: Lane E shares Lane D's exact
+// out-of-hours eligibility slot — eligible only OUTSIDE the 07:00-19:00
+// Europe/London window, evaluated in local time so the GMT/BST shift is
+// covered.
+func TestPlanner_Eligible_LaneE(t *testing.T) {
+	t.Parallel()
+	p := NewPlanner(testPlannerOptions(t))
+
+	tests := []struct {
+		name     string
+		utc      time.Time
+		eligible bool
+	}{
+		{"E at 03:00 GMT: eligible (out of hours)", time.Date(2026, 1, 15, 3, 0, 0, 0, time.UTC), true},
+		{"E at 15:00 GMT: not eligible (daytime)", time.Date(2026, 1, 15, 15, 0, 0, 0, time.UTC), false},
+		{"E exactly at window open (07:00 GMT): not eligible", time.Date(2026, 1, 15, 7, 0, 0, 0, time.UTC), false},
+		{"E exactly at window close (19:00 GMT): eligible", time.Date(2026, 1, 15, 19, 0, 0, 0, time.UTC), true},
+		{"E at 06:30 UTC in BST (07:30 local): not eligible", time.Date(2026, 7, 15, 6, 30, 0, 0, time.UTC), false},
+		{"E at 06:30 UTC in GMT (06:30 local): eligible", time.Date(2026, 1, 15, 6, 30, 0, 0, time.UTC), true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := p.Eligible(LaneE, tc.utc); got != tc.eligible {
+				t.Errorf("Eligible(LaneE, %v): got %v, want %v", tc.utc, got, tc.eligible)
+			}
+		})
+	}
+}
+
+// TestPlanner_hasWorkE pins ADR 0047's idle-interval pacing gate: Lane E has
+// work when it has never run or when laneEIdleInterval has elapsed since its
+// last run — one turn per hour ceiling, so one turn per out-of-hours cycle at
+// the natural cadence regardless of how often a termination re-fires the cycle.
+func TestPlanner_hasWorkE(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 1, 15, 3, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		name         string
+		lastPollTime time.Time
+		wantWork     bool
+	}{
+		{"never polled", time.Time{}, true},
+		{"ran seconds ago", now.Add(-time.Minute), false},
+		{"ran just under the interval ago", now.Add(-laneEIdleInterval + time.Minute), false},
+		{"ran exactly the interval ago", now.Add(-laneEIdleInterval), true},
+		{"ran over the interval ago", now.Add(-laneEIdleInterval - time.Hour), true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := hasWorkE(LaneEState{LastPollTime: tc.lastPollTime}, now); got != tc.wantWork {
+				t.Errorf("hasWorkE(%v): got %v, want %v", tc.lastPollTime, got, tc.wantWork)
+			}
+		})
+	}
+}
+
+// TestPlanner_NextWork_LaneENeverOutranksAB is ADR 0047's tiering guarantee:
+// with Lane A due (tier 1 has work), NextWork returns A even when Lane E is
+// eligible and vastly more LRU-stale — pure LRU across all lanes would have
+// picked E.
+func TestPlanner_NextWork_LaneENeverOutranksAB(t *testing.T) {
+	t.Parallel()
+	p := NewPlanner(testPlannerOptions(t))
+	night := time.Date(2026, 1, 15, 3, 0, 0, 0, time.UTC) // Lane E eligible (out of hours)
+
+	state := PlannerState{
+		LaneA: LaneState{LastPollTime: night.Add(-20 * time.Minute)}, // due (> 15m freshness)
+		LaneB: LaneState{LastPollTime: night},                        // not due
+		LaneD: &LaneDState{Complete: true},
+		LaneE: &LaneEState{LastPollTime: night.Add(-72 * time.Hour)}, // vastly older: pure LRU would pick E
+	}
+	item := p.NextWork(state, night)
+	if item == nil || item.Lane != LaneA {
+		t.Fatalf("NextWork: got %+v, want lane A (A/B must categorically outrank Lane E whenever A/B has work)", item)
+	}
+}
+
+// TestPlanner_NextWork_LaneERoundRobinsWithLaneD proves Lane E joins Lane D's
+// tier-2 out-of-hours slot on plain LRU: the lane with the older LastPollTime
+// wins, either way round.
+func TestPlanner_NextWork_LaneERoundRobinsWithLaneD(t *testing.T) {
+	t.Parallel()
+	p := NewPlanner(testPlannerOptions(t))
+	night := time.Date(2026, 1, 15, 3, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		name string
+		dLRU time.Time
+		eLRU time.Time
+		want LaneName
+	}{
+		{"E older than D: E wins", night.Add(-2 * time.Hour), night.Add(-3 * time.Hour), LaneE},
+		{"D older than E: D wins", night.Add(-3 * time.Hour), night.Add(-2 * time.Hour), LaneD},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			state := PlannerState{
+				LaneA: LaneState{LastPollTime: night.Add(time.Hour)}, // not due
+				LaneB: LaneState{LastPollTime: night.Add(time.Hour)}, // not due
+				LaneD: &LaneDState{LastPollTime: tc.dLRU},
+				LaneE: &LaneEState{LastPollTime: tc.eLRU},
+			}
+			item := p.NextWork(state, night)
+			if item == nil || item.Lane != tc.want {
+				t.Fatalf("NextWork: got %+v, want lane %s", item, tc.want)
+			}
+		})
+	}
+}
+
+// TestPlanner_NextWork_NilLaneESkipsIt is acceptance criterion: with Lane E
+// unwired (POLLING_LANE_E_ENABLED=false => PlannerState.LaneE == nil), NextWork
+// must never yield a Lane E candidate at ANY wall-clock time, swept every 15
+// minutes across a full 24h on both a GMT and a BST day.
+func TestPlanner_NextWork_NilLaneESkipsIt(t *testing.T) {
+	t.Parallel()
+	p := NewPlanner(testPlannerOptions(t))
+
+	for _, day := range []time.Time{
+		time.Date(2026, 1, 15, 0, 0, 0, 0, time.UTC), // GMT
+		time.Date(2026, 7, 15, 0, 0, 0, 0, time.UTC), // BST
+	} {
+		for offset := time.Duration(0); offset < 24*time.Hour; offset += 15 * time.Minute {
+			now := day.Add(offset)
+			state := PlannerState{
+				LaneA: LaneState{LastPollTime: now.Add(time.Hour)},
+				LaneB: LaneState{LastPollTime: now.Add(time.Hour)},
+				LaneC: nil,
+				LaneD: nil,
+				LaneE: nil, // POLLING_LANE_E_ENABLED=false: not wired
+			}
+			if item := p.NextWork(state, now); item != nil && item.Lane == LaneE {
+				t.Fatalf("NextWork at %s: yielded Lane E, want it never selected when unwired", now)
+			}
+		}
+	}
+}
+
 // TestPlanner_NextWork_ReturnsCursorFromState proves the returned WorkItem
 // carries the picked lane's currently-known cursor, so a caller that wants
 // it has it without a second lookup.

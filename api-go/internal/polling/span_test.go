@@ -194,6 +194,48 @@ func TestPollAuthority_SpanTagsCapHitProbeRanAndFrozenHWM(t *testing.T) {
 	}
 }
 
+// TestRecentSweepRun_EmitsSpanWithLaneEAttributes pins ADR 0047 §8's Lane E
+// span: the name, poll.lane = "E", and the lane_e.* attributes a dashboard and
+// the cursor-stall alert group on — window_end, lap_anchor, laps_completed —
+// verified in the style of the other span tests in this file.
+func TestRecentSweepRun_EmitsSpanWithLaneEAttributes(t *testing.T) {
+	fetcher := newFakeRecentSweepFetcher(fakeRecentSweepResponse{
+		result: planit.FetchPageResult{Applications: nil, HasMorePages: false, Total: platform.Ptr(9824)},
+	})
+	apps := newFakeApps()
+	state := newFakeRecentSweepStateStore()
+	// A lap sitting one drain away from its floor, so this Run completes it and
+	// re-anchors — laps_completed lands at 1 and the anchor/window flip to today.
+	oldAnchor := recentSweepToday.AddDate(0, 0, -3)
+	state.state = RecentSweepState{LapAnchor: oldAnchor, WindowEnd: oldAnchor.AddDate(0, 0, -75)}
+
+	h := newRecentSweepHandler(t, fetcher, apps, state, recentSweepOpts(1))
+
+	spans := recordSpans(t, func() {
+		h.Run(context.Background())
+	})
+	span, ok := spanNamed(spans, "PlanIt Lane E recent-window sweep")
+	if !ok {
+		t.Fatalf("expected a %q span among %d recorded", "PlanIt Lane E recent-window sweep", len(spans))
+	}
+
+	if v, ok := attrValue(span, "poll.lane"); !ok || v.AsString() != "E" {
+		t.Errorf("poll.lane: got %v (ok=%v), want E", v, ok)
+	}
+	if v, ok := attrValue(span, "lane_e.window_end"); !ok || v.AsString() != "2026-09-07" {
+		t.Errorf("lane_e.window_end: got %v (ok=%v), want 2026-09-07 (re-anchored to today)", v, ok)
+	}
+	if v, ok := attrValue(span, "lane_e.lap_anchor"); !ok || v.AsString() != "2026-09-07" {
+		t.Errorf("lane_e.lap_anchor: got %v (ok=%v), want 2026-09-07", v, ok)
+	}
+	if v, ok := attrValue(span, "lane_e.laps_completed"); !ok || v.AsInt64() != 1 {
+		t.Errorf("lane_e.laps_completed: got %v (ok=%v), want 1", v, ok)
+	}
+	if v, ok := attrValue(span, "planit.total"); !ok || v.AsInt64() != 9824 {
+		t.Errorf("planit.total: got %v (ok=%v), want 9824", v, ok)
+	}
+}
+
 // TestPollAuthority_EmitsOneSpanPerVisitedAuthority proves the span is emitted
 // once per authority, not once per cycle.
 func TestPollAuthority_EmitsOneSpanPerVisitedAuthority(t *testing.T) {

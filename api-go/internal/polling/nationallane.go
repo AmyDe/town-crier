@@ -633,9 +633,9 @@ type NationalPollOptions struct {
 }
 
 // NationalPollHandler runs the ADR 0044 resumable, checkpointed poll cycle:
-// a planner/executor loop across four lanes (A/B always eligible, C
-// daytime-only, D out-of-hours), one page per iteration, checkpointed after
-// every page. It satisfies the Orchestrator's cycleHandler interface, so it
+// a planner/executor loop across up to five lanes (A/B always eligible, C
+// daytime-only, D and E out-of-hours — ADR 0047), one page per iteration,
+// checkpointed after every page. It satisfies the Orchestrator's cycleHandler interface, so it
 // plugs into the existing Service-Bus-triggered orchestrator (orchestrator.go,
 // ADR 0024) unchanged — the trigger/lease machinery does not know or care
 // which concrete handler it drives.
@@ -644,6 +644,7 @@ type NationalPollHandler struct {
 	laneB   *NationalLaneHandler
 	laneC   *InverseMaskLaneHandler // nil skips Lane C entirely (e.g. a test exercising only the critical path)
 	laneD   *BackfillHandler        // nil skips Lane D (GH#967, ADR 0042) — the shape until POLLING_BACKFILL_ENABLED flips on
+	laneE   *RecentSweepHandler     // nil skips Lane E (GH#1134, ADR 0047) — the shape until POLLING_LANE_E_ENABLED flips on
 	planner nextWorkPlanner
 	opts    NationalPollOptions
 	flusher pushFlusher
@@ -677,6 +678,16 @@ func NewNationalPollHandler(
 // for chaining.
 func (h *NationalPollHandler) WithBackfill(laneD *BackfillHandler) *NationalPollHandler {
 	h.laneD = laneD
+	return h
+}
+
+// WithRecentSweep wires Lane E (GH#1134, ADR 0047), the looping recent-window
+// start_date sweep. nil is the safe default — loadPlannerState/execOnePage's
+// nil guards skip it entirely — so cmd/worker can call this unconditionally
+// with whatever POLLING_LANE_E_ENABLED produced (a real *RecentSweepHandler,
+// or nil). Returns the handler for chaining.
+func (h *NationalPollHandler) WithRecentSweep(laneE *RecentSweepHandler) *NationalPollHandler {
+	h.laneE = laneE
 	return h
 }
 
@@ -836,11 +847,11 @@ loop:
 }
 
 // loadPlannerState loads fresh PlannerState from the stores: a handful of
-// cheap point-reads (one per wired lane's sentinel row, plus Lane D's
-// singleton backfill state) — there are only 4 lanes, not 485 authorities,
-// so this is called once per loop iteration rather than once per Handle
-// call, keeping the planner's view of the world always current without any
-// manual in-memory bookkeeping to keep in sync.
+// cheap point-reads (one per wired lane's sentinel row, plus Lane D's and
+// Lane E's singleton state rows) — there are at most 5 lanes, not 485
+// authorities, so this is called once per loop iteration rather than once per
+// Handle call, keeping the planner's view of the world always current without
+// any manual in-memory bookkeeping to keep in sync.
 //
 // pagesRun is this Handle call's own in-memory per-lane page counter
 // (reset every call, never persisted): a lane with a configured MaxPages
@@ -879,6 +890,14 @@ func (h *NationalPollHandler) loadPlannerState(ctx context.Context, pagesRun map
 			return st, fmt.Errorf("load lane D state: %w", err)
 		}
 		st.LaneD = &LaneDState{LastPollTime: bs.LastRunTime, Complete: bs.Complete}
+	}
+
+	if h.laneE != nil {
+		rs, err := h.laneE.state.Get(ctx)
+		if err != nil {
+			return st, fmt.Errorf("load lane E state: %w", err)
+		}
+		st.LaneE = &LaneEState{LastPollTime: rs.LastRunTime}
 	}
 
 	if maxPages := h.laneA.opts.MaxPages; maxPages != nil && pagesRun[LaneA] >= *maxPages {
@@ -932,6 +951,17 @@ func (h *NationalPollHandler) execOnePage(ctx context.Context, lane LaneName) co
 			h.logger.ErrorContext(ctx, "lane D backfill error", "error", out.err)
 		}
 		return commonLaneOutcome{rateLimited: out.rateLimited, retryAfter: out.retryAfter, err: out.err, planitOrigin: out.planitOrigin}
+	case LaneE:
+		if h.laneE == nil {
+			return commonLaneOutcome{}
+		}
+		out := h.laneE.Run(ctx)
+		if out.err != nil {
+			h.logger.ErrorContext(ctx, "lane E recent-window sweep error", "error", out.err)
+		}
+		// Unlike Lane D, Lane E's recordsIngested DOES flow into
+		// ApplicationCount: it is on the notification-bearing path (ADR 0047).
+		return commonLaneOutcome{recordsIngested: out.recordsIngested, rateLimited: out.rateLimited, retryAfter: out.retryAfter, err: out.err, planitOrigin: out.planitOrigin}
 	default:
 		return commonLaneOutcome{}
 	}

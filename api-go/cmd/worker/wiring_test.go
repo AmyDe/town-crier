@@ -67,21 +67,23 @@ func TestWirePollFanOut_AcceptsZoneStoreInterface(t *testing.T) {
 	laneA := &polling.NationalLaneHandler{}
 	laneB := &polling.NationalLaneHandler{}
 	laneC := &polling.InverseMaskLaneHandler{}
+	laneE := &polling.RecentSweepHandler{}
 	handler := &polling.NationalPollHandler{}
 	spy := newSpyZoneStore()
 
 	// wirePollFanOut must accept the watchzones.Store interface (the spy) and wire
-	// the fan-out onto all four lanes without panicking on a nil stores pointer.
-	wirePollFanOut(platform.Config{}, laneA, laneB, laneC, handler, spy, testRegistry(), nil, discardLogger())
+	// the fan-out onto every notifying lane without panicking on a nil stores pointer.
+	wirePollFanOut(platform.Config{}, laneA, laneB, laneC, laneE, handler, spy, testRegistry(), nil, discardLogger())
 }
 
-// TestWirePollFanOut_NilLaneCDoesNotPanic proves wirePollFanOut's nil guard
-// holds when Lane C is not wired: with POLLING_LANE_C_ENABLED=false (tc-56ahl)
-// buildPollOrchestrator leaves laneC nil, and a test exercising a narrower
-// lane set must not need to stub Lane C either. Before the original tc-5lu8h
-// fix, wirePollFanOut called laneC.WithFanOut unconditionally, which
-// nil-panics on a nil receiver method value dereference.
-func TestWirePollFanOut_NilLaneCDoesNotPanic(t *testing.T) {
+// TestWirePollFanOut_NilLaneCAndLaneEDoNotPanic proves wirePollFanOut's nil
+// guards hold when Lane C and Lane E are not wired: with
+// POLLING_LANE_C_ENABLED=false (tc-56ahl) or POLLING_LANE_E_ENABLED unset
+// (ADR 0047, ships dark) buildPollOrchestrator leaves them nil, and a test
+// exercising a narrower lane set must not need to stub them either. Before the
+// original tc-5lu8h fix, wirePollFanOut called laneC.WithFanOut
+// unconditionally, which nil-panics on a nil receiver method value dereference.
+func TestWirePollFanOut_NilLaneCAndLaneEDoNotPanic(t *testing.T) {
 	t.Parallel()
 
 	laneA := &polling.NationalLaneHandler{}
@@ -89,7 +91,7 @@ func TestWirePollFanOut_NilLaneCDoesNotPanic(t *testing.T) {
 	handler := &polling.NationalPollHandler{}
 	spy := newSpyZoneStore()
 
-	wirePollFanOut(platform.Config{}, laneA, laneB, nil, handler, spy, testRegistry(), nil, discardLogger())
+	wirePollFanOut(platform.Config{}, laneA, laneB, nil, nil, handler, spy, testRegistry(), nil, discardLogger())
 }
 
 // TestEnqueuer_FindZonesContainingFlowsThroughInterface proves the notify fan-out
