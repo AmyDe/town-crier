@@ -760,6 +760,17 @@ func addGoWorkerEnv(envVars app.EnvironmentVarArray, ec envContext, workerMode s
 			// "false" and cut a tag. The Go gate is POLLING_LANE_C_ENABLED (default true).
 			app.EnvironmentVarArgs{Name: pulumi.String("POLLING_LANE_C_ENABLED"), Value: pulumi.String("true")},
 			app.EnvironmentVarArgs{Name: pulumi.String("POLLING_LANE_C_AUTHORITIES_PER_CYCLE"), Value: pulumi.String("50")},
+			// Lane E (ADR 0047 / GH#1134): the looping recent-window start_date sweep
+			// backstopping Lanes A/B. Dark-shipped disabled (PR #1136/#1137, POLLING_LANE_E_ENABLED
+			// default false), flipped on here (tc-t27re) after a dark soak in prod — Lane E can
+			// send push notifications about back-dated applications, gated by
+			// POLLING_LANE_E_NOTIFY_RECENCY_DAYS (default 30), so the soak matters more than it did
+			// for Lane D. Paces at ~1 turn/hour in the out-of-hours slot it shares with Lane D
+			// (laneEIdleInterval), ~6 pages/turn; a 440-page lap lands in ~6-7 days. Watched by
+			// alert-planit-lane-e-cursor-stalled-shared (#1137) on cursor movement, deliberately
+			// NOT alert-planit-lane-stuck-shared. Rollback: flip back to "false" and cut a tag. The
+			// Go gate is POLLING_LANE_E_ENABLED (default false).
+			app.EnvironmentVarArgs{Name: pulumi.String("POLLING_LANE_E_ENABLED"), Value: pulumi.String("true")},
 		)
 	}
 
