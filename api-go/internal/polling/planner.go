@@ -184,39 +184,45 @@ func hasWorkAB(s LaneState, now time.Time, freshness time.Duration) bool {
 	return s.LastPollTime.IsZero() || now.Sub(s.LastPollTime) >= freshness
 }
 
-// laneCIdleAnchorInterval bounds how often Lane C starts a BRAND NEW scan
-// once it has no backlog mid-flight — ADR 0044 §5/§6's "daily cadence" (no
-// dedicated env var is named for it, unlike FreshnessInterval or the day
-// window, so this is a hardcoded constant, mirroring resumeOverlapRecords in
-// handler.go). Without this gate, a fully caught-up Lane C would start a
-// fresh rolling-window scan on every single planner iteration it wins and
-// busy-loop issuing a different=N first page (the whole total+sort cost) for
-// the rest of every daytime cycle — a request-volume hammering risk distinct
-// from (and not covered by) the rows-served metric ADR 0041/0044 are built
-// around. A lane with an ACTIVE cursor (a genuine mid-scan resume) is exempt:
-// it must keep grinding without waiting out this interval, or a real backlog
-// would take up to a day per scan to clear.
-const laneCIdleAnchorInterval = 24 * time.Hour
-
 // hasWorkC reports whether Lane C currently has scan pages left to walk: an
 // active cursor (mid-scan) always has work, so a genuine backlog drains
-// without delay; otherwise a fresh scan starts only once
-// laneCIdleAnchorInterval has elapsed since Lane C's last run, so a fully
-// caught-up lane settles to a quiet daily check instead of busy-starting a
-// fresh scan every time it is picked.
+// without delay; otherwise a fresh scan starts as soon as the UTC calendar
+// day has rolled over since Lane C last ran (tc-hku56 / GH#1140), never
+// mid-day, which would busy-loop issuing a different=N first page (the whole
+// total+sort cost) for the rest of every daytime cycle once caught up — a
+// request-volume hammering risk distinct from (and not covered by) the
+// rows-served metric ADR 0041/0044 are built around.
+//
+// This replaces the original fixed 24h laneCIdleAnchorInterval (ADR 0044
+// §5/§6's "daily cadence"), which made every day's scan start at the
+// PREVIOUS day's finish time rather than the daytime window's open: a
+// 138-page different=3 scan at 15 pages/hour starting at 06:00Z finishes
+// around 15:00Z, so the next one couldn't start until 15:00Z the following
+// day, got about 45 pages in before the window closed at 18:00Z, and was
+// thrown away whole by the UTC-midnight cursor reset (lanec.go's
+// RunOnePage) — Lane C completed a scan only every OTHER day, wasting 45 to
+// 90 pages on the day it didn't. Anchoring on the UTC calendar date instead
+// means a scan idle since yesterday (or longer) is due the instant today's
+// daytime window opens, sized against InverseMaskOptions.MaxPages to finish
+// well inside it.
+//
+// A lane with an ACTIVE cursor (a genuine mid-scan resume) is exempt from
+// even this: it must keep grinding without waiting for the next day, or a
+// real backlog would take up to a day per scan to clear.
 func hasWorkC(s LaneState, now time.Time) bool {
 	if s.Cursor != nil {
 		return true
 	}
-	return s.LastPollTime.IsZero() || now.Sub(s.LastPollTime) >= laneCIdleAnchorInterval
+	return s.LastPollTime.IsZero() || !sameDate(s.LastPollTime, now)
 }
 
 // laneEIdleInterval bounds how often Lane E (ADR 0047) starts a turn: one turn
 // per hour ceiling, which at the ~1h out-of-hours natural cadence is one turn
 // per cycle, regardless of how often a TimeBounded or RateLimited termination
 // re-fires the cycle. With MaxPagesPerCycle=6 that paces a 440-page lap to land
-// in about six days at full health. Lane E's counterpart to
-// laneCIdleAnchorInterval; a hardcoded constant for the same reason.
+// in about six days at full health. A hardcoded constant, not an env var: a
+// fixed pacing rule, mirroring the other lanes' fixed safety constants
+// (e.g. planit.nationalPageSize).
 const laneEIdleInterval = 1 * time.Hour
 
 // hasWorkE reports whether Lane E is due for a turn: it has never run, or
