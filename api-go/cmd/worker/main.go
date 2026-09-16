@@ -335,6 +335,7 @@ func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, reg
 	// wirePollFanOut all nil-guard it, exactly like Lane D.
 	var laneC *polling.InverseMaskLaneHandler
 	if cfg.PollingLaneCEnabled {
+		laneCMaxPages := cfg.PollingLaneCMaxPagesPerCycle
 		laneC = polling.NewInverseMaskLaneHandler(
 			planItClient, stateStore, appStore,
 			polling.InverseMaskOptions{
@@ -342,6 +343,15 @@ func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, reg
 				// end_date bound is that cutoff inverted, so the two lanes
 				// partition the national change axis with no gap or overlap.
 				MaskWindow: time.Duration(cfg.PollingLaneAMaskDays) * 24 * time.Hour,
+				// tc-hku56 / GH#1140: bounds Lane C's per-cycle page burst now
+				// that a page costs one PlanIt request instead of an
+				// id_match hydration fan-out that used to 429 the page loop
+				// shut on its own.
+				MaxPages: &laneCMaxPages,
+				// tc-hku56 / GH#1140: Lane C's own recency gate, composed
+				// inside WithFanOut below — see InverseMaskOptions'
+				// NotifyRecencyWindow doc comment.
+				NotifyRecencyWindow: time.Duration(cfg.PollingLaneCNotifyRecencyDays) * 24 * time.Hour,
 			},
 			time.Now, logger,
 		)
