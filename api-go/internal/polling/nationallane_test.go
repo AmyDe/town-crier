@@ -1615,3 +1615,59 @@ func TestNationalPollHandler_Handle_ExcludesCappedLaneForRestOfCycle(t *testing.
 		t.Fatal("lane B's persisted cursor: got nil, want an active mid-drain cursor (untouched by the in-cycle cap, ready to resume next cycle)")
 	}
 }
+
+// TestNationalPollHandler_Handle_ExcludesCappedLaneCForRestOfCycle proves
+// InverseMaskOptions.MaxPages (tc-hku56 / GH#1140) is enforced exactly like
+// Lane A/B's NationalLaneOptions.MaxPages: once Lane C has run MaxPages pages
+// within a single Handle call, it is excluded from planner candidacy for the
+// rest of THIS cycle (its real persisted cursor is untouched, so it resumes
+// normally next cycle) — modelled on
+// TestNationalPollHandler_Handle_ExcludesCappedLaneForRestOfCycle above.
+// Lane A/B are parked with no work at all (LastPollTime == now, well inside
+// the freshness interval) so Lane C is the only tier-2 candidate every
+// iteration; its page never completes on its own (HasMorePages always true,
+// zero records so the cursor never advances past the resume-overlap
+// checkpoint), so only the per-cycle cap can end the cycle.
+func TestNationalPollHandler_Handle_ExcludesCappedLaneCForRestOfCycle(t *testing.T) {
+	t.Parallel()
+	watermark := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+
+	fetcherA := newFakeNationalFetcher()
+	fetcherB := newFakeNationalFetcher()
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	state.states[sentinelLaneA] = PollState{HighWaterMark: watermark, LastPollTime: laneCNow}
+	state.states[sentinelLaneB] = PollState{HighWaterMark: watermark, LastPollTime: laneCNow}
+	state.states[sentinelLaneC] = PollState{
+		HighWaterMark: laneCNow.AddDate(0, 0, -2),
+		Cursor:        &PollCursor{DifferentStart: laneCToday, NextIndex: 300},
+	}
+
+	fetcherC := newFakeInverseMaskFetcher()
+	fetcherC.pages[290] = planit.FetchPageResult{From: 290, Applications: nil, HasMorePages: true} // 300 - the 10-record Lane C resume overlap
+
+	logger := slog.New(slog.NewTextHandler(discard{}, nil))
+	clock := func() time.Time { return laneCNow }
+
+	laneAHandler := NewNationalLaneHandler(fetcherA, state, apps, laneAOpts(), clock, logger)
+	laneBHandler := NewNationalLaneHandler(fetcherB, state, apps, laneBOpts(20), clock, logger)
+	maxPages := 2
+	laneCHandler := newLaneCHandlerAt(t, fetcherC, apps, state, InverseMaskOptions{MaskWindow: 90 * 24 * time.Hour, MaxPages: &maxPages}, clock)
+	planner := NewPlanner(newTestPlannerOpts())
+	handler := NewNationalPollHandler(laneAHandler, laneBHandler, laneCHandler, planner, NationalPollOptions{HandlerBudget: 4 * time.Minute}, clock, logger)
+
+	res, err := handler.Handle(context.Background())
+	if err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if fetcherC.calls != 2 {
+		t.Errorf("lane C fetches: got %d, want exactly 2 (the per-cycle cap)", fetcherC.calls)
+	}
+	if res.TerminationReason != TerminationNatural {
+		t.Errorf("TerminationReason: got %v, want TerminationNatural (A/B idle, C capped — nothing left eligible-with-work)", res.TerminationReason)
+	}
+	cursor2 := state.states[sentinelLaneC].Cursor
+	if cursor2 == nil {
+		t.Fatal("lane C's persisted cursor: got nil, want an active mid-drain cursor (untouched by the in-cycle cap, ready to resume next cycle)")
+	}
+}
