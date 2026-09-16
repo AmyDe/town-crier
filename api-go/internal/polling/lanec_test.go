@@ -1103,6 +1103,9 @@ func TestInverseMaskLane_WithFanOut_WrapsBothCollaborators(t *testing.T) {
 	if ge.inner != NotificationEnqueuer(enq) {
 		t.Error("gated enqueuer must wrap the raw enqueuer passed to WithFanOut")
 	}
+	if ge.window != h.opts.NotifyRecencyWindow {
+		t.Errorf("gated enqueuer window: got %v, want %v", ge.window, h.opts.NotifyRecencyWindow)
+	}
 }
 
 // TestInverseMaskLane_WithFanOutGatesOldApplicationNotifications proves the
