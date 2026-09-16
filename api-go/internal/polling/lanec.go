@@ -14,6 +14,18 @@
 // limit (bead tc-777e7, the 2026-07 → 2026-09 prod livelock). A rolling
 // different=N window with N hard-capped small is inherently bounded: the
 // query cost cannot grow without limit no matter how long the lane stalls.
+//
+// tc-hku56 (GH#1140) removed the second layer of that same problem: this
+// file's page loop used to trigger one separate id_match hydration request
+// per differing row, and PlanIt's rate limiter never tolerated the resulting
+// burst — a complete different=3 scan cost ~138 page fetches plus ~12,400
+// hydration requests, so a page routinely 429'd after its 11th hydration and
+// Lane C never got past ~5% of its own window before the checkpoint froze.
+// The page fetch now requests planit.ingestSelectFields directly (the same
+// full projection Lane D already runs in prod), and processStraggler ingests
+// the page row itself: the only PlanIt request RunOnePage makes is the page
+// fetch. See InverseMaskOptions.MaxPages (the per-cycle page cap this makes
+// necessary) and the ADR 0044 second amendment.
 package polling
 
 import (
@@ -33,23 +45,13 @@ import (
 )
 
 // inverseMaskFetcher is the consumer-side slice of the PlanIt client Lane C
-// needs: one ascending rolling-window page, and a full-record hydration
-// fetch by uid. *planit.Client satisfies both.
+// needs: one ascending rolling-window page. *planit.Client satisfies it. Its
+// FetchByUID method is deliberately NOT part of this interface (tc-hku56 /
+// GH#1140 removed Lane C's per-record id_match hydration fan-out entirely —
+// Lane E still calls FetchByUID directly, via its own recentSweepFetcher).
 type inverseMaskFetcher interface {
 	FetchInverseMaskPage(ctx context.Context, q planit.NationalInverseMaskQuery) (planit.FetchPageResult, error)
-	FetchByUID(ctx context.Context, uid string) (planit.FetchPageResult, error)
 }
-
-// maxHydrationsPerPass bounds Lane C's straggler hydration fan-out within a
-// single RunOnePage call (GH#986). Unlike Lane A/B's plain fetch-then-ingest
-// walk, Lane C's page loop can trigger one FetchByUID PER changed row, so an
-// unbounded page (many genuine stragglers clustered together) could burst
-// dozens of hydration requests in a single call and trip PlanIt's 429
-// threshold outright. Once the cap is reached the walk stops cleanly (the
-// same checkpoint-and-return path as a rate limit or hydration error, NOT an
-// error itself) so the pass resumes past the already-hydrated rows next
-// time, bounding the burst without losing progress.
-const maxHydrationsPerPass = 25
 
 // laneCResumeOverlapRecords is the record overlap Lane C subtracts from a
 // resumed scan's persisted NextIndex (it resumes at
@@ -58,22 +60,26 @@ const maxHydrationsPerPass = 25
 // counterpart to the shared resumeOverlapRecords (100, handler.go) that
 // Lanes A/B and the legacy per-authority drain use.
 //
-// It MUST stay < maxHydrationsPerPass (25). A resume that lands on a cluster
-// of permanently-unhydratable rows — cross-authority uid collisions PlanIt
-// resolves to the wrong authority, e.g. area 198 (Bassetlaw) vs area 301
-// (Croydon), bead tc-777e7 Bug 2 — burns one hydration-cap slot per phantom
-// row on every pass, and such a row never dedupes via
-// GetByUID/inverseMaskDiffers. If the overlap were >= the cap the pass would
-// re-spend its whole hydration budget re-failing rows it already walked, i
-// would bank short of the overlap it subtracted, startIndex+i would land
-// below the loaded cursor, and the tc-6u4da anti-retreat clamp would pin the
-// cursor there forever (the observed 2026-07 → 2026-09 prod livelock). At 10,
-// every pass nets at least (maxHydrationsPerPass - laneCResumeOverlapRecords)
-// = 15 records of forward progress even against a pure-phantom cluster of any
-// size, while keeping a useful PlanIt-record-shift tolerance.
+// tc-hku56 retired this constant's original rationale. Before the page
+// projection widened to ingestSelectFields, a resume landing on a cluster of
+// permanently-unhydratable rows (cross-authority uid collisions PlanIt
+// resolved to the wrong authority, e.g. area 198 (Bassetlaw) vs area 301
+// (Croydon), bead tc-777e7 Bug 2) burned one FetchByUID-hydration-cap slot
+// per phantom row on every pass, and such a row never deduped via
+// GetByUID/inverseMaskDiffers — so the overlap had to stay strictly below the
+// old maxHydrationsPerPass cap, or the pass would re-spend its whole
+// hydration budget re-failing rows it already walked and the tc-6u4da
+// anti-retreat clamp would pin the cursor there forever (the observed
+// 2026-07 → 2026-09 prod livelock). With the id_match hydration fan-out gone
+// there is no hydration cap left for the overlap to stay under, and no
+// per-record PlanIt request that can fail: GetByUID/Ingest errors are
+// Postgres-origin and dedupe identically on a resume. The value stays at 10
+// simply as a sensible small tolerance for PlanIt's own record-shift across
+// the intra-day gap between one cycle's page fetch and the next's; changing
+// the number is unnecessary churn.
 //
-// A const, not an env var: a fixed safety rule, mirroring maxHydrationsPerPass
-// and planit.nationalPageSize (ADR 0041).
+// A const, not an env var: a fixed safety rule, mirroring planit.nationalPageSize
+// (ADR 0041).
 const laneCResumeOverlapRecords = 10
 
 // defaultMaxInverseMaskWindowDays is the hard cap on Lane C's rolling
@@ -91,8 +97,9 @@ const laneCResumeOverlapRecords = 10
 // mirroring planit.nationalPageSize's rationale (ADR 0041).
 const defaultMaxInverseMaskWindowDays = 3
 
-// InverseMaskOptions tune Lane C's mask cutoff and window cap (ADR 0044 §5,
-// as amended by #1127).
+// InverseMaskOptions tune Lane C's mask cutoff, window cap, per-cycle page
+// budget and notification recency gate (ADR 0044 §5, as amended by #1127 and
+// tc-hku56 / GH#1140).
 type InverseMaskOptions struct {
 	// MaskWindow is Lane A's start_date mask width. Lane C's end_date bound
 	// is the same cutoff, inverted (today - MaskWindow), so the two lanes
@@ -104,18 +111,44 @@ type InverseMaskOptions struct {
 	// defaultMaxInverseMaskWindowDays; the handler never surfaces this as a
 	// config dial (there is no env var), it exists so tests can pin it.
 	MaxWindowDays int
+	// MaxPages bounds how many pages of Lane C NationalPollHandler.Handle
+	// will run within a single Handle call (nil = unbounded), mirroring
+	// NationalLaneOptions.MaxPages: NationalPollHandler.loadPlannerState
+	// excludes a lane that has already run MaxPages pages this cycle from
+	// planner candidacy for the rest of THIS cycle, without touching its real
+	// persisted state, so the walk resumes exactly where it left off next
+	// cycle via the persisted cursor. Necessary now that a page costs one
+	// request instead of triggering an id_match hydration burst that used to
+	// 429 the page loop shut on its own: uncapped, the handler budget would
+	// let Lane C fire far more requests in one cycle than the burst that
+	// caused the tc-vgbl7 rollback. Config: POLLING_LANE_C_MAX_PAGES_PER_CYCLE,
+	// default 15 (sized for a worst-case 138-page different=3 scan to finish
+	// inside the ~12-cycle daytime window).
+	MaxPages *int
+	// NotifyRecencyWindow feeds the recency gate WithFanOut composes around
+	// both fan-out collaborators (recencyGatedDispatcher / recencyGatedEnqueuer,
+	// ADR 0047's gate — see recentsweep_gate.go), mirroring Lane E's
+	// RecentSweepOptions.NotifyRecencyWindow: an event older than this (by
+	// start_date for a new application, decided_date for a decision) produces
+	// no notification record at all. Config: POLLING_LANE_C_NOTIFY_RECENCY_DAYS,
+	// default 30. Lane C's band is start_date <= today-90d by construction, so
+	// this suppresses ALL NewApplication fan-out from Lane C — intended, not a
+	// regression: an application filed 90+ days ago is not new to anybody. A
+	// genuine recent decision on an old application still dispatches, which is
+	// the backstop role Lane C exists for.
+	NotifyRecencyWindow time.Duration
 }
 
 // InverseMaskLaneHandler runs ADR 0044's Lane C: one page per call of a
 // national, ascending, bounded rolling different=N window inverse-mask query
-// (§5, as amended by #1127) — the complement of Lane A/B's masked-delta band,
-// reconciling old applications' status drift the delta axis structurally
-// cannot see. Diffs each light row against
-// Postgres on app_state and decided_date only (last_different is DROPPED
-// from the diff — PlanIt bumps it on every re-index, so keeping it would
-// flag every churned old record as a straggler, the old per-authority
-// lane's measured hydration-amplification bug) and hydrates only genuine
-// changes.
+// (§5, as amended by #1127 and tc-hku56 / GH#1140) — the complement of
+// Lane A/B's masked-delta band, reconciling old applications' status drift
+// the delta axis structurally cannot see. Diffs each row against Postgres on
+// app_state and decided_date only (last_different is DROPPED from the diff —
+// PlanIt bumps it on every re-index, so keeping it would flag every churned
+// old record as a straggler, the old per-authority lane's measured
+// hydration-amplification bug) and ingests only genuine changes directly
+// from the already-full page row (tc-hku56: no separate hydration request).
 type InverseMaskLaneHandler struct {
 	fetcher   inverseMaskFetcher
 	watermark *laneWatermarkStore
@@ -149,16 +182,20 @@ func NewInverseMaskLaneHandler(
 	}
 }
 
-// WithFanOut wires the notification fan-out collaborators onto Lane C's
-// hydration ingests, mirroring the other lanes' WithFanOut (including the
-// nil-ingester guard, so calling this on a zero-value InverseMaskLaneHandler
-// never panics). Returns the handler for chaining.
+// WithFanOut wraps the incoming notification fan-out collaborators in Lane
+// C's own recency decorators (recencyGatedDispatcher / recencyGatedEnqueuer,
+// ADR 0047's gate — see recentsweep_gate.go) ITSELF, then wires them onto the
+// handler's Ingester, exactly as RecentSweepHandler.WithFanOut does
+// (tc-hku56 / GH#1140): the wiring site cannot hand Lane C an ungated
+// notifier, because the gate is applied inside this setter rather than at the
+// call site. Includes the nil-ingester guard, so calling this on a zero-value
+// InverseMaskLaneHandler never panics. Returns the handler for chaining.
 func (h *InverseMaskLaneHandler) WithFanOut(decision DecisionDispatcher, enqueuer NotificationEnqueuer) *InverseMaskLaneHandler {
 	if h.ingester == nil {
 		h.ingester = &Ingester{}
 	}
-	h.ingester.decision = decision
-	h.ingester.enqueuer = enqueuer
+	h.ingester.decision = recencyGatedDispatcher{inner: decision, window: h.opts.NotifyRecencyWindow, now: h.now}
+	h.ingester.enqueuer = recencyGatedEnqueuer{inner: enqueuer, window: h.opts.NotifyRecencyWindow, now: h.now}
 	return h
 }
 
@@ -180,16 +217,21 @@ func (h *InverseMaskLaneHandler) recorder() metricsRecorder {
 }
 
 // RunOnePage executes exactly one page of Lane C's ascending, bounded
-// rolling-window scan (ADR 0044 §5, as amended by #1127): compute this
-// cycle's window width N, resume an in-progress same-day scan (with a resume
-// overlap, GH#986) at its persisted NextIndex or start a fresh one at index
-// 0; fetch one page; diff/hydrate genuinely changed rows up to
-// maxHydrationsPerPass; checkpoint.
+// rolling-window scan (ADR 0044 §5, as amended by #1127 and tc-hku56 /
+// GH#1140): compute this cycle's window width N, resume an in-progress
+// same-day scan (with a resume overlap, GH#986) at its persisted NextIndex or
+// start a fresh one at index 0; fetch one page (the full ingestSelectFields
+// projection — tc-hku56, no separate hydration request); diff every row
+// against Postgres and ingest genuinely changed rows directly from the page;
+// checkpoint. The only PlanIt request this call ever makes is the one page
+// fetch, so a mid-page 429 is now structurally impossible — the per-cycle
+// page budget lives in InverseMaskOptions.MaxPages instead (enforced by the
+// caller, NationalPollHandler.loadPlannerState).
 //
 // State reuses the existing PollCursor shape with no schema migration, but
 // the semantics changed with #1127:
 //   - HighWaterMark holds last_clean_scan_at — when the lane last finished a
-//     whole scan with no 429 and no hydration-cap bail. It is what N is
+//     whole scan with no 429 and no straggler-error bail. It is what N is
 //     recomputed from every cycle (a longer gap → a wider window, hard-capped
 //     at maxWindowDays). A zero or stale value yields the cap.
 //   - Cursor.DifferentStart holds the in-flight scan's anchor date, valid
@@ -201,13 +243,13 @@ func (h *InverseMaskLaneHandler) recorder() metricsRecorder {
 //
 // GH#986: every early-exit path checkpoints before returning — a page-fetch
 // 429/error re-saves the state exactly as loaded with last_poll_time bumped
-// to now, and a mid-scan bail (a hydration 429, a straggler error, or the
-// hydration cap) saves a cursor at the offset actually reached. Previously
-// both paths returned with no save at all, so a persistently-failing record
-// froze last_poll_time forever: the planner's LRU then read Lane C as
-// perpetually least-recently-polled, picked it every cycle, and it re-walked
-// (and re-failed on) the same page — the observed prod livelock that also
-// starved Lane A/B of every daytime cycle.
+// to now, and a mid-scan bail (a processStraggler error: a Postgres GetByUID
+// read or an Ingest failure) saves a cursor at the offset actually reached.
+// Previously both paths returned with no save at all, so a
+// persistently-failing record froze last_poll_time forever: the planner's LRU
+// then read Lane C as perpetually least-recently-polled, picked it every
+// cycle, and it re-walked (and re-failed on) the same page — the observed
+// prod livelock that also starved Lane A/B of every daytime cycle.
 func (h *InverseMaskLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 	ctx, span := otel.Tracer(tracerName).Start(ctx, "PlanIt Lane C inverse-mask poll")
 	defer span.End()
@@ -248,15 +290,12 @@ func (h *InverseMaskLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 
 	// GH#986: resume WITH a safety overlap. Lane C uses its OWN
 	// laneCResumeOverlapRecords (10), deliberately smaller than Lane A/B's
-	// shared resumeOverlapRecords (100): the overlap MUST stay below
-	// maxHydrationsPerPass (25) or a resume landing on a cluster of
-	// permanently-unhydratable rows re-spends its whole hydration budget
-	// re-failing rows it already passed, i banks short of the overlap it
-	// subtracted, and the tc-6u4da anti-retreat clamp then pins the cursor
-	// forever (bead tc-777e7 Bug 2). Safe because Lane C dedups every row via
-	// GetByUID/inverseMaskDiffers plus the Ingester, so re-processing up to
-	// laneCResumeOverlapRecords rows on a resume is idempotent and cheap —
-	// and, now that a mid-scan bail checkpoints at the exact failing offset,
+	// shared resumeOverlapRecords (100) — see its doc comment for why the
+	// value stays small even though the hydration-cap rationale that used to
+	// bound it from above no longer applies. Safe because Lane C dedups every
+	// row via GetByUID/inverseMaskDiffers plus the Ingester, so re-processing
+	// up to laneCResumeOverlapRecords rows on a resume is idempotent and cheap
+	// — and, now that a mid-scan bail checkpoints at the exact failing offset,
 	// the overlap is what makes that checkpoint skip-safe against any
 	// off-by-one in PlanIt's own ordering.
 	startIndex := 0
@@ -308,32 +347,22 @@ func (h *InverseMaskLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 	// stop past epoch_upper): with no pinned epoch there is no epoch_lower or
 	// epoch_upper, and every row different=N returns is within the last N
 	// days by construction. Process every row, still subject to
-	// inverseMaskDiffers + the hydration cap; re-processing a row seen in a
-	// previous overlapping window is idempotent (GetByUID dedup).
+	// inverseMaskDiffers; re-processing a row seen in a previous overlapping
+	// window is idempotent (GetByUID dedup).
+	//
+	// tc-hku56: with the id_match hydration fan-out gone, processStraggler
+	// makes no PlanIt request at all — only a Postgres GetByUID read and, on
+	// a genuine diff, an Ingest call — so a mid-page 429 can no longer
+	// happen. stoppedEarly now fires only on a processStraggler error
+	// (never PlanIt-origin: isTimeoutError/out.planitOrigin are never
+	// consulted on this path, tc-c5tmz), keeping the existing
+	// checkpoint-and-clamp behaviour below for that one remaining case.
 	stoppedEarly := false
-	hydrationsThisPass := 0
-	hydrationCapHit := false
 	i := 0
 	for ; i < len(res.Applications); i++ {
 		light := res.Applications[i]
-		if perr := h.processStraggler(ctx, light, &out, &hydrationsThisPass, &hydrationCapHit); perr != nil {
-			// timedOut (when applicable) is set inside hydrate itself, not
-			// re-derived here from the aggregate perr: processStraggler wraps
-			// errors from TWO sources (a Postgres GetByUID read, and a PlanIt
-			// hydrate() fetch), and isTimeoutError must only ever be
-			// consulted against the PlanIt one (tc-c5tmz, CodeRabbit
-			// follow-up on tc-pmh5y).
+		if perr := h.processStraggler(ctx, light, &out); perr != nil {
 			out.err = perr
-			stoppedEarly = true
-			break
-		}
-		if out.rateLimited || hydrationCapHit {
-			// A hydration 429 trips the SAME "stop everything" rule as a
-			// page-fetch 429 (ADR 0044: one break on the first 429 from ANY
-			// lane) — never follow a rejected request with more requests.
-			// The hydration cap (GH#986) is a distinct, non-error reason to
-			// stop the same way: it bounds the FetchByUID burst a page of
-			// clustered stragglers can trigger.
 			stoppedEarly = true
 			break
 		}
@@ -352,20 +381,14 @@ func (h *InverseMaskLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 		// re-walking it forever. last_clean_scan_at is left UNCHANGED: this
 		// scan did not finish, so N must not reset.
 		nextIndex := startIndex + i
-		// tc-6u4da: the persisted cursor must never retreat. With Lane C's
-		// laneCResumeOverlapRecords (10) now smaller than maxHydrationsPerPass
-		// (25), a plain hydration-cap stop always lands startIndex+i at least
-		// (maxHydrationsPerPass - laneCResumeOverlapRecords) records past the
-		// loaded cursor, so a cluster of permanently-unhydratable rows can no
-		// longer spiral the checkpoint backward (bead tc-777e7 Bug 2, the
-		// 2026-07 → 2026-09 prod livelock). The clamp still matters for the
-		// residual case: a hydration error or 429 that breaks the loop within
-		// the first laneCResumeOverlapRecords rows of a resume leaves
-		// i < laneCResumeOverlapRecords, so startIndex+i is below the loaded
-		// cursor. Clamp to the loaded cursor's own NextIndex (only meaningful
-		// when a same-day cursor was actually loaded — a fresh scan has no
-		// prior checkpoint to protect) so such an early bail holds the cursor
-		// in place, never walks it backward.
+		// tc-6u4da: the persisted cursor must never retreat. A processStraggler
+		// error (a Postgres GetByUID read or an Ingest failure) that breaks the
+		// loop within the first laneCResumeOverlapRecords rows of a resume
+		// leaves i < laneCResumeOverlapRecords, so startIndex+i is below the
+		// loaded cursor. Clamp to the loaded cursor's own NextIndex (only
+		// meaningful when a same-day cursor was actually loaded — a fresh scan
+		// has no prior checkpoint to protect) so such an early bail holds the
+		// cursor in place, never walks it backward.
 		if activeCursor != nil && nextIndex < activeCursor.NextIndex {
 			nextIndex = activeCursor.NextIndex
 		}
@@ -387,9 +410,9 @@ func (h *InverseMaskLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 	spanLastCleanScanAt := lastCleanScanAt
 
 	if scanComplete {
-		// Clean scan: reached the last page with no 429 and no hydration-cap
-		// bail. Stamp last_clean_scan_at = now (this is what resets N to 2
-		// next cycle) and clear the cursor.
+		// Clean scan: reached the last page with no 429 and no
+		// processStraggler error. Stamp last_clean_scan_at = now (this is
+		// what resets N to 2 next cycle) and clear the cursor.
 		spanLastCleanScanAt = now
 		out.watermarkAfter = now
 		if serr := h.watermark.save(ctx, now, now, nil); serr != nil && out.err == nil {
@@ -436,27 +459,22 @@ func clampInt(x, lo, hi int) int {
 	return max(lo, min(x, hi))
 }
 
-// processStraggler diffs one light inverse-mask row against Postgres on
-// app_state and decided_date only (existence counts as a difference too) and
-// hydrates when it genuinely differs. authorityCode is built from the light
-// row's area_id (ADR 0044's national-query correctness fix — see
-// planit.inverseMaskSelectFields): PlanIt's uid is only unique within one
-// authority, so a national query cannot diff/hydrate by uid alone without an
-// authority scope, or two authorities sharing a bare uid could
-// cross-contaminate. Any local failure (the existence read, or a hydrated
-// Ingest) is a hard stop — out.err set, mirroring Lane A/B's own "never
-// silently skip, freeze and let the next call resume" behaviour — so it is
-// surfaced as an error rather than logged-and-skipped, unlike the deleted
-// per-authority ReconciliationHandler.
-//
-// hydrationsThisPass/hydrationCapHit (GH#986) bound the FetchByUID fan-out a
-// single RunOnePage call can trigger: once hydrationsThisPass reaches
-// maxHydrationsPerPass, a row that would otherwise hydrate is left alone
-// (hydrationCapHit set instead) so the caller stops the walk and checkpoints
-// at this exact record rather than burst-hydrating an unbounded page of
-// clustered stragglers. A row that dedupes via GetByUID/inverseMaskDiffers
-// never counts against the cap — only a genuine FetchByUID attempt does.
-func (h *InverseMaskLaneHandler) processStraggler(ctx context.Context, light applications.PlanningApplication, out *laneOutcome, hydrationsThisPass *int, hydrationCapHit *bool) error {
+// processStraggler diffs one inverse-mask page row against Postgres on
+// app_state and decided_date only (existence counts as a difference too) and,
+// when it genuinely differs, ingests the row DIRECTLY (tc-hku56 / GH#1140:
+// the page row already carries the full ingestSelectFields projection, so
+// there is no second PlanIt request to make). authorityCode is built from the
+// row's area_id (ADR 0044's national-query correctness fix): PlanIt's uid is
+// only unique within one authority, so a national query cannot diff/ingest by
+// uid alone without an authority scope, or two authorities sharing a bare uid
+// could cross-contaminate. Any local failure (the existence read, or the
+// Ingest itself) is a hard stop — out.err set, mirroring Lane A/B's own
+// "never silently skip, freeze and let the next call resume" behaviour — so
+// it is surfaced as an error rather than logged-and-skipped, unlike the
+// deleted per-authority ReconciliationHandler. Neither error source is
+// PlanIt-origin: isTimeoutError/out.planitOrigin are never consulted here
+// (tc-c5tmz) — only the page fetch above can set them.
+func (h *InverseMaskLaneHandler) processStraggler(ctx context.Context, light applications.PlanningApplication, out *laneOutcome) error {
 	authorityCode := strconv.Itoa(light.AreaID)
 	existing, found, gerr := h.apps.GetByUID(ctx, light.UID, authorityCode)
 	if gerr != nil {
@@ -465,62 +483,21 @@ func (h *InverseMaskLaneHandler) processStraggler(ctx context.Context, light app
 	if found && !inverseMaskDiffers(existing, light) {
 		return nil
 	}
-	if *hydrationsThisPass >= maxHydrationsPerPass {
-		*hydrationCapHit = true
-		return nil
+	if ierr := h.ingester.Ingest(ctx, light); ierr != nil {
+		return fmt.Errorf("lane C: ingest %q: %w", light.UID, ierr)
 	}
-	*hydrationsThisPass++
-	return h.hydrate(ctx, light.UID, light.AreaID, out)
-}
-
-// hydrate fetches one straggler's full record by uid and feeds it through
-// the standard Ingester (identical fan-out to Lane A/B). wantAreaID guards
-// against PlanIt's id_match lookup crossing authorities (FetchByUID carries
-// no auth param): only a hydrated record whose AreaID matches the light row
-// that flagged it is ingested; any other match is treated as "no matching
-// record" and logged, exactly like a genuine miss. A rate limit is recorded
-// on out (the caller stops the whole page/epoch on it, same as a page-fetch
-// 429); any other fetch error, or an Ingest failure, is a hard stop.
-func (h *InverseMaskLaneHandler) hydrate(ctx context.Context, uid string, wantAreaID int, out *laneOutcome) error {
-	full, err := h.fetcher.FetchByUID(ctx, uid)
-	if err != nil {
-		var rl *planit.RateLimitError
-		if errors.As(err, &rl) {
-			out.rateLimited = true
-			out.retryAfter = rl.RetryAfter
-			return nil
-		}
-		// timedOut/planitOrigin are set here, at the actual PlanIt fetch site,
-		// rather than re-derived from processStraggler's aggregate error at
-		// the RunOnePage call site -- so a Postgres GetByUID error (the
-		// sibling error source processStraggler wraps) never gets
-		// misclassified as PlanIt-origin (tc-c5tmz, CodeRabbit follow-up on
-		// tc-pmh5y; tc-uitxr).
-		out.timedOut = isTimeoutError(err)
-		out.planitOrigin = true
-		return fmt.Errorf("lane C: hydration fetch %q: %w", uid, err)
-	}
-	for _, app := range full.Applications {
-		if app.UID != uid || app.AreaID != wantAreaID {
-			continue
-		}
-		if ierr := h.ingester.Ingest(ctx, app); ierr != nil {
-			return fmt.Errorf("lane C: hydrated ingest %q: %w", uid, ierr)
-		}
-		out.recordsIngested++
-		return nil
-	}
-	h.logger.WarnContext(ctx, "lane C: hydration fetch returned no matching record", "uid", uid, "areaId", wantAreaID)
+	out.recordsIngested++
 	return nil
 }
 
-// inverseMaskDiffers reports whether the light inverse-mask row's app_state
-// or decided_date differs from the persisted application — Lane C's
-// straggler test (ADR 0044 §4). last_different is DELIBERATELY excluded:
-// PlanIt bumps it on every re-index, so comparing it would flag every
-// churned old record as a straggler and hydrate it for nothing — the
-// measured hydration-amplification bug the old per-authority lane hit. A
-// last_different-only churned row must NOT hydrate.
+// inverseMaskDiffers reports whether the inverse-mask row's app_state or
+// decided_date differs from the persisted application — Lane C's straggler
+// test (ADR 0044 §4). last_different is DELIBERATELY excluded: PlanIt bumps
+// it on every re-index, so comparing it would flag every churned old record
+// as a straggler and ingest it for nothing — the measured
+// ingest-amplification bug the old per-authority lane hit (a hydration
+// fan-out at the time; the same anti-churn contract applies unchanged to the
+// direct-ingest model). A last_different-only churned row must NOT ingest.
 func inverseMaskDiffers(existing, light applications.PlanningApplication) bool {
 	if !eqOptionalString(existing.AppState, light.AppState) {
 		return true

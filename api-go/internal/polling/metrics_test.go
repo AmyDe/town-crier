@@ -339,7 +339,8 @@ func TestNationalLane_NilMetricsRecorderIsNoOp(t *testing.T) {
 
 // TestInverseMaskLane_RecordsApplicationsIngestedWithLaneTag covers Lane C:
 // RunOnePage records ApplicationsIngested tagged "C" with the count of
-// stragglers actually hydrated this page.
+// stragglers actually ingested this page (tc-hku56: directly from the page
+// row, no separate hydration fetch).
 func TestInverseMaskLane_RecordsApplicationsIngestedWithLaneTag(t *testing.T) {
 	t.Parallel()
 	ld := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
@@ -348,11 +349,6 @@ func TestInverseMaskLane_RecordsApplicationsIngestedWithLaneTag(t *testing.T) {
 	fetcher.pages[0] = planit.FetchPageResult{
 		Applications: []applications.PlanningApplication{lightApp("24/0001/FUL", 99, "Permitted", ld)},
 	}
-	full := testApp("24/0001", 99, ld)
-	full.UID = "24/0001/FUL"
-	permitted := "Permitted"
-	full.AppState = &permitted
-	fetcher.hydrated["24/0001/FUL"] = full
 
 	apps := newFakeApps()
 	undecided := "Undecided"
