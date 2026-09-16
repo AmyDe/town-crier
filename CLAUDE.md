@@ -119,6 +119,22 @@ When diagnosing issues, ask the user for the data source or context before explo
 - Workers and subagents implement ONLY what their bead or brief describes. If the task seems to imply broader changes — auth, telemetry, logging, anything privacy- or GDPR-sensitive — STOP and flag it rather than commit. Work that has to be reverted costs more than the question would have.
 - Explicit holds survive the whole task. If the user said "don't touch X," that applies to every subagent you dispatch too, not just your own edits.
 
+## Code Comments
+
+**MUST, unconditional.** This applies to every stack, to test code as well as production code, and to every session, worker and subagent. Claude leaves a comment ONLY when it does one of these two things:
+
+1. **Documents a public contract.** A doc comment on an API that other code relies on across a package or module boundary: exported Go identifiers, Swift `public`/`open` declarations, exported TypeScript and Kotlin APIs, HTTP endpoints, CLI flags, and wire or storage formats. State the contract (inputs, guarantees, errors) and nothing else.
+2. **Explains genuinely non-standard behaviour.** The *why* behind code that a competent reader would otherwise "fix": a workaround for an upstream bug, a deliberate break from the obvious approach, or a non-obvious invariant, ordering or limit. One or two sentences, not an essay.
+
+Every other comment is banned, including:
+
+- Comments that restate what the code does, or narrate it step by step.
+- History notes: what the code used to do, which PR or bead changed it. Git history holds that.
+- Section banners, commented-out code, and speculative TODOs.
+- Long explanations where one sentence carries the non-obvious part.
+
+**Remove verbose comments from code you touch.** When you edit a function, type, test or block, delete or cut down every comment in it that fails the bar above. This is part of the change, not scope creep, so it overrides "implement ONLY what the bead describes" for comments inside the code you edit. Do not sweep code you did not otherwise change.
+
 ## Testing & CI
 
 When fixing CI failures, always check for ALL root causes before declaring the fix complete. Run the full test suite and verify end-to-end, not just the first failure.
