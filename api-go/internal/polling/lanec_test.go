@@ -986,6 +986,47 @@ func TestInverseMaskLane_FullPageAdvancesCursorByPageSize(t *testing.T) {
 	}
 }
 
+// TestInverseMaskLane_TruncatedPageAdvancesByRecordsReturned proves GH#955's
+// truncation-immune checkpoint holds for Lane C's no-hydration model: a page
+// that returns fewer records than the requested page size (PlanIt's own
+// ~1MB response cap can truncate a pathological page short, per the issue's
+// probe) still checkpoints NextIndex by the records ACTUALLY received, not a
+// fixed 300 — so the next page resumes correctly rather than skipping or
+// re-treading records.
+func TestInverseMaskLane_TruncatedPageAdvancesByRecordsReturned(t *testing.T) {
+	t.Parallel()
+	ld := laneCNow.Add(-time.Hour)
+	same := "Undecided"
+	const truncatedCount = 137 // fewer than the requested 300
+
+	fetcher := newFakeInverseMaskFetcher()
+	apps := newFakeApps()
+	rows := make([]applications.PlanningApplication, truncatedCount)
+	for i := range rows {
+		uid := fmt.Sprintf("trunc-%03d/FUL", i)
+		rows[i] = lightApp(uid, 99, same, ld)
+		apps.existing[uid] = applications.PlanningApplication{UID: uid, AreaID: 99, AppState: &same}
+	}
+	// HasMorePages true: PlanIt's own total says there is still more beyond
+	// this short page (from + len(apps) < total, GH#955), distinct from a
+	// genuine last page that happens to be short.
+	fetcher.pages[0] = planit.FetchPageResult{From: 0, Applications: rows, HasMorePages: true}
+
+	state := newFakeStateStore()
+	state.states[sentinelLaneC] = PollState{HighWaterMark: laneCNow.AddDate(0, 0, -1)}
+
+	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
+	out := h.RunOnePage(context.Background())
+
+	if out.err != nil {
+		t.Fatalf("RunOnePage: %v", out.err)
+	}
+	got := state.states[sentinelLaneC].Cursor
+	if got == nil || got.NextIndex != truncatedCount {
+		t.Errorf("cursor.NextIndex: got %+v, want %d (advance by records actually returned, not a fixed page size)", got, truncatedCount)
+	}
+}
+
 // TestInverseMaskLane_LastPageStampsLastCleanScanAt extends
 // TestRunOnePage_CleanScanStampsLastCleanScanAtAndClearsCursor's trivial
 // empty-page case: reaching HasMorePages == false stamps last_clean_scan_at
