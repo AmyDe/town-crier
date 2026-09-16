@@ -74,12 +74,13 @@ func TestNationalLane_CrossCycleCursorResume_RealPostgres(t *testing.T) {
 }
 
 // TestInverseMaskLane_ScanCursorCrossCycleResume_RealPostgres is Lane C's
-// analogue (§5, as amended by #1127): a mid-scan cursor (HighWaterMark =
-// last_clean_scan_at, Cursor.DifferentStart = the scan's anchor date =
-// today, Cursor.NextIndex = the within-scan offset — ADR 0044's reuse of the
-// existing PollCursor shape, no migration) round-trips through real Postgres,
-// and a fresh handler + store instance resumes the SAME scan at the
-// checkpointed index.
+// analogue (§5, as amended by #1127 and tc-hku56 / GH#1140): a mid-scan
+// cursor (HighWaterMark = last_clean_scan_at, Cursor.DifferentStart = the
+// scan's anchor date = today, Cursor.NextIndex = the within-scan offset —
+// ADR 0044's reuse of the existing PollCursor shape, no migration)
+// round-trips through real Postgres, and a fresh handler + store instance
+// resumes the SAME scan at the checkpointed index, ingesting the resumed
+// page row directly (no separate hydration fetch).
 func TestInverseMaskLane_ScanCursorCrossCycleResume_RealPostgres(t *testing.T) {
 	ctx := context.Background()
 	pool := pgtest.New(t)
@@ -95,15 +96,15 @@ func TestInverseMaskLane_ScanCursorCrossCycleResume_RealPostgres(t *testing.T) {
 	}
 
 	newLD := now.Add(-2 * time.Hour)
+	resumed := testApp("resumed", 99, newLD)
+	permitted := "Permitted"
+	resumed.AppState = &permitted
 	fetcher := newFakeInverseMaskFetcher()
 	fetcher.pages[290] = planit.FetchPageResult{
 		From:         290,
-		Applications: []applications.PlanningApplication{lightApp("resumed/FUL", 99, "Permitted", newLD)},
+		Applications: []applications.PlanningApplication{resumed},
 		HasMorePages: false,
 	}
-	full := testApp("resumed", 99, newLD)
-	full.UID = "resumed/FUL"
-	fetcher.hydrated["resumed/FUL"] = full
 
 	apps := newFakeApps()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -120,8 +121,8 @@ func TestInverseMaskLane_ScanCursorCrossCycleResume_RealPostgres(t *testing.T) {
 	if fetcher.queries[0].WindowDays != 3 {
 		t.Errorf("WindowDays: got %d, want 3 (last clean scan two days ago -> clamp(2+1, 2, 3))", fetcher.queries[0].WindowDays)
 	}
-	if len(apps.upserts) != 1 || apps.upserts[0].UID != "resumed/FUL" {
-		t.Fatalf("expected the hydrated record ingested: got %+v", apps.upserts)
+	if len(apps.upserts) != 1 || apps.upserts[0].UID != resumed.UID {
+		t.Fatalf("expected the resumed page row ingested directly (no hydration fetch): got %+v", apps.upserts)
 	}
 
 	got, found, err := state.Get(ctx, sentinelLaneC)

@@ -415,7 +415,7 @@ func TestLoadConfig_PollingDefaults(t *testing.T) {
 		"POLLING_PLANIT_PAGE_SIZE",
 		"POLLING_LANE_A_MASK_DAYS", "POLLING_LANE_B_MASK_DAYS", "POLLING_LANE_B_MAX_PAGES",
 		"POLLING_DAY_START", "POLLING_DAY_END", "POLLING_LANE_FRESHNESS_INTERVAL",
-		"POLLING_LANE_C_ENABLED",
+		"POLLING_LANE_C_ENABLED", "POLLING_LANE_C_MAX_PAGES_PER_CYCLE", "POLLING_LANE_C_NOTIFY_RECENCY_DAYS",
 		"POLLING_BACKFILL_ENABLED", "POLLING_BACKFILL_WINDOW_WIDTH_DAYS",
 		"POLLING_BACKFILL_MAX_PAGES_PER_CYCLE", "POLLING_BACKFILL_EMPTY_WINDOWS_BEFORE_COMPLETE",
 		"POLLING_LANE_E_ENABLED", "POLLING_LANE_E_DEPTH_DAYS", "POLLING_LANE_E_WINDOW_WIDTH_DAYS",
@@ -468,6 +468,12 @@ func TestLoadConfig_PollingDefaults(t *testing.T) {
 	}
 	if !cfg.PollingLaneCEnabled {
 		t.Error("PollingLaneCEnabled: got false, want true by default (tc-56ahl, unset => Lane C runs as today)")
+	}
+	if cfg.PollingLaneCMaxPagesPerCycle != 15 {
+		t.Errorf("Lane C max pages per cycle default: got %d, want 15", cfg.PollingLaneCMaxPagesPerCycle)
+	}
+	if cfg.PollingLaneCNotifyRecencyDays != 30 {
+		t.Errorf("Lane C notify recency days default: got %d, want 30", cfg.PollingLaneCNotifyRecencyDays)
 	}
 	if cfg.PollingBackfillEnabled {
 		t.Error("PollingBackfillEnabled: got true, want false by default (GH#967, ships dark)")
@@ -865,5 +871,25 @@ func TestLoadConfig_PollingOverrides(t *testing.T) {
 	}
 	if cfg.PollingLaneFreshnessInterval != 10*time.Minute {
 		t.Errorf("PollingLaneFreshnessInterval override: got %v, want 10m", cfg.PollingLaneFreshnessInterval)
+	}
+}
+
+// TestLoadConfig_PollingLaneCMaxPagesAndNotifyRecencyOverrides covers the two
+// tc-hku56 / GH#1140 config dials: the per-cycle page cap and the
+// notification recency window, both loaded independently of
+// POLLING_LANE_C_ENABLED.
+func TestLoadConfig_PollingLaneCMaxPagesAndNotifyRecencyOverrides(t *testing.T) {
+	t.Setenv("POLLING_LANE_C_MAX_PAGES_PER_CYCLE", "5")
+	t.Setenv("POLLING_LANE_C_NOTIFY_RECENCY_DAYS", "14")
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.PollingLaneCMaxPagesPerCycle != 5 {
+		t.Errorf("Lane C max pages per cycle override: got %d, want 5", cfg.PollingLaneCMaxPagesPerCycle)
+	}
+	if cfg.PollingLaneCNotifyRecencyDays != 14 {
+		t.Errorf("Lane C notify recency days override: got %d, want 14", cfg.PollingLaneCNotifyRecencyDays)
 	}
 }

@@ -273,6 +273,29 @@ type Config struct {
 	// Disabled in prod pending the real fix (tc-777e7 Parts 2/3).
 	PollingLaneCEnabled bool
 
+	// PollingLaneCMaxPagesPerCycle bounds how many pages Lane C fetches per
+	// poll cycle (tc-hku56 / GH#1140), mirroring PollingLaneBMaxPages: with
+	// the id_match hydration fan-out removed, a page costs one PlanIt request
+	// instead of triggering a hydration burst that used to 429 the page loop
+	// shut on its own — uncapped, the handler budget would let Lane C fire
+	// far more requests in one cycle than the burst that caused the tc-vgbl7
+	// rollback. Loaded from POLLING_LANE_C_MAX_PAGES_PER_CYCLE, default 15
+	// (sized so a worst-case 138-page different=3 scan finishes inside the
+	// ~12-cycle daytime window).
+	PollingLaneCMaxPagesPerCycle int
+	// PollingLaneCNotifyRecencyDays feeds Lane C's own recency gate
+	// (recencyGatedDispatcher / recencyGatedEnqueuer, composed inside
+	// InverseMaskLaneHandler.WithFanOut, tc-hku56 / GH#1140), mirroring
+	// PollingLaneENotifyRecencyDays: an event older than this (by start_date
+	// for a new application, decided_date for a decision) produces no
+	// notification record at all. Loaded from
+	// POLLING_LANE_C_NOTIFY_RECENCY_DAYS, default 30. Lane C's band is
+	// start_date <= today-90d by construction, so this suppresses ALL
+	// NewApplication fan-out from Lane C — intended: an application filed
+	// 90+ days ago is not new to anybody. A genuine recent decision on an old
+	// application still dispatches.
+	PollingLaneCNotifyRecencyDays int
+
 	// PollingBackfill* configure Lane D, the paced historical backfill lane
 	// (GH#967, ADR 0042): a national, date-windowed backward sweep that
 	// enriches stale/NULL GH#935 fields and fills coverage gaps, but never
@@ -470,7 +493,9 @@ func LoadConfig() (Config, error) {
 		PollingDayEnd:                getenv("POLLING_DAY_END", "19:00"),
 		PollingLaneFreshnessInterval: getenvDuration("POLLING_LANE_FRESHNESS_INTERVAL", 15*time.Minute),
 
-		PollingLaneCEnabled: getenvBoolDefault("POLLING_LANE_C_ENABLED", true),
+		PollingLaneCEnabled:           getenvBoolDefault("POLLING_LANE_C_ENABLED", true),
+		PollingLaneCMaxPagesPerCycle:  getenvInt("POLLING_LANE_C_MAX_PAGES_PER_CYCLE", 15),
+		PollingLaneCNotifyRecencyDays: getenvInt("POLLING_LANE_C_NOTIFY_RECENCY_DAYS", 30),
 
 		PollingBackfillEnabled:                    getenvBool("POLLING_BACKFILL_ENABLED"),
 		PollingBackfillWindowWidthDays:            getenvInt("POLLING_BACKFILL_WINDOW_WIDTH_DAYS", 90),

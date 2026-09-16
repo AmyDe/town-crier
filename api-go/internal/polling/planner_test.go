@@ -233,12 +233,12 @@ func TestPlanner_NextWork_LRUPicksOldestAmongEligibleWithWork(t *testing.T) {
 }
 
 // TestPlanner_NextWork_LaneCHasWork covers Lane C's has-work rule (ADR 0044
-// §5/§6, as amended by #1127): an active mid-scan cursor always has work
-// regardless of how recently it last ran (a genuine backlog must grind
-// without delay), but an idle lane (no cursor) only starts a fresh scan once
-// laneCIdleAnchorInterval has elapsed since its last run — never on every
-// single pick, which would busy-loop issuing a different=N first page
-// forever once caught up.
+// §5/§6, as amended by #1127 and tc-hku56 / GH#1140): an active mid-scan
+// cursor always has work regardless of how recently it last ran (a genuine
+// backlog must grind without delay), but an idle lane (no cursor) only
+// starts a fresh scan once the UTC calendar day has rolled over since its
+// last run — never mid-day, which would busy-loop issuing a different=N
+// first page forever once caught up.
 func TestPlanner_NextWork_LaneCHasWork(t *testing.T) {
 	t.Parallel()
 	p := NewPlanner(testPlannerOptions(t))
@@ -251,10 +251,8 @@ func TestPlanner_NextWork_LaneCHasWork(t *testing.T) {
 		wantWork     bool
 	}{
 		{"never polled: has work", time.Time{}, false, true},
-		{"idle, ran seconds ago: no work yet", daytime.Add(-time.Minute), false, false},
-		{"idle, ran just under a day ago: no work yet", daytime.Add(-laneCIdleAnchorInterval + time.Minute), false, false},
-		{"idle, ran exactly a day ago: has work", daytime.Add(-laneCIdleAnchorInterval), false, true},
-		{"idle, ran over a day ago: has work", daytime.Add(-laneCIdleAnchorInterval - time.Hour), false, true},
+		{"idle, last polled earlier the same UTC day: no work yet", time.Date(2026, 1, 15, 6, 0, 0, 0, time.UTC), false, false},
+		{"idle, last polled 23:59Z the previous UTC day: has work", time.Date(2026, 1, 14, 23, 59, 0, 0, time.UTC), false, true},
 		{"mid-scan, ran seconds ago: has work regardless (genuine backlog)", daytime.Add(-time.Minute), true, true},
 	}
 	for _, tc := range tests {

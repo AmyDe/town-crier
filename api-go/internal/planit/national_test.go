@@ -75,13 +75,15 @@ func TestBuildNationalDeltaPath(t *testing.T) {
 	}
 }
 
-// TestBuildInverseMaskPath pins ADR 0044 §5 (as amended by #1127) Lane C's
-// national inverse-mask projection shape: no auth param (national, zero
-// per-authority requests), a bounded rolling different=N window (N days), an
-// end_date ceiling (the inverse of Lane A's start_date mask, still applied as
-// a query param), ASCENDING sort (no leading "-", unlike the descending Lane
-// A/B query), the light select set (containing the sort field, plus area_id —
-// ADR 0044's uid-uniqueness-within-authority fix), pg_sz=300, compress=on.
+// TestBuildInverseMaskPath pins ADR 0044 §5 (as amended by #1127 and tc-hku56
+// / GH#1140) Lane C's national inverse-mask projection shape: no auth param
+// (national, zero per-authority requests), a bounded rolling different=N
+// window (N days), an end_date ceiling (the inverse of Lane A's start_date
+// mask, still applied as a query param), ASCENDING sort (no leading "-",
+// unlike the descending Lane A/B query), the FULL ingestSelectFields
+// projection in order (tc-hku56 widened this from a light 5-field set — see
+// FetchInverseMaskPage's doc comment — because per-record id_match hydration
+// could not survive PlanIt's rate limit), pg_sz=300, compress=on.
 func TestBuildInverseMaskPath(t *testing.T) {
 	t.Parallel()
 	maskCutoff := time.Date(2026, 4, 15, 0, 0, 0, 0, time.UTC)
@@ -91,9 +93,12 @@ func TestBuildInverseMaskPath(t *testing.T) {
 		StartIndex: 600,
 	}
 
-	// The exact string is pinned (#1127 acceptance criterion): a rolling
-	// different=<N> window replaces the old absolute different_start floor.
-	want := "/api/applics/json?different=2&end_date=2026-04-15&sort=last_different&pg_sz=300&index=600&select=uid,area_id,app_state,decided_date,last_different&compress=on"
+	// The exact string is pinned: a rolling different=<N> window (#1127
+	// acceptance criterion) plus the full ingest select set (tc-hku56).
+	want := fmt.Sprintf(
+		"/api/applics/json?different=2&end_date=2026-04-15&sort=last_different&pg_sz=300&index=600&select=%s&compress=on",
+		selectParam(ingestSelectFields),
+	)
 	if got := buildInverseMaskPath(q); got != want {
 		t.Fatalf("buildInverseMaskPath:\n got %q\nwant %q", got, want)
 	}
@@ -119,18 +124,37 @@ func TestBuildInverseMaskPath(t *testing.T) {
 	if got.Get("sort") != "last_different" {
 		t.Errorf("sort: got %q, want last_different (ascending, no leading '-')", got.Get("sort"))
 	}
+
 	fields := strings.Split(got.Get("select"), ",")
+	if len(fields) != len(ingestSelectFields) {
+		t.Fatalf("select field count: got %d (%v), want %d (%v)", len(fields), fields, len(ingestSelectFields), ingestSelectFields)
+	}
+	for i, want := range ingestSelectFields {
+		if fields[i] != want {
+			t.Errorf("select field %d: got %q, want %q (order must match ingestSelectFields exactly): %v", i, fields[i], want, fields)
+		}
+	}
 	if !containsString(fields, "area_id") {
 		t.Errorf("select must contain area_id (uid is only unique within an authority): got %v", fields)
+	}
+	if !containsString(fields, "other_fields") {
+		t.Errorf("select must contain other_fields (GH#1027 regression: an absent select field nulls the stored value on every re-poll): got %v", fields)
+	}
+	oldLightProjection := "uid,area_id,app_state,decided_date,last_different"
+	if got.Get("select") == oldLightProjection {
+		t.Errorf("select must no longer be the retired 5-field light projection %q: got %v", oldLightProjection, fields)
 	}
 }
 
 // TestFetchInverseMaskPage_SendsExpectedQueryAndParsesResponse drives the
-// client end-to-end against an httptest server on localhost.
+// client end-to-end against an httptest server on localhost. The response
+// carries the full ingest field set (tc-hku56: Lane C's page row is now
+// exactly what Ingest consumes — description and other_fields included, not
+// just the retired 5-field light projection).
 func TestFetchInverseMaskPage_SendsExpectedQueryAndParsesResponse(t *testing.T) {
 	t.Parallel()
 	body := `{"total":42,"pg_sz":300,"from":0,"records":[
-		{"uid":"26/0001/FUL","area_id":300,"app_state":"Undecided","last_different":"2026-07-14T09:00:00.123456"}
+		{"name":"26/0001","uid":"26/0001/FUL","area_name":"Camden","area_id":300,"address":"1 High St","description":"A shed","app_type":"Full","app_state":"Undecided","start_date":"2026-01-01","last_different":"2026-07-14T09:00:00.123456","other_fields":{"comment_url":"https://example.test/comments"}}
 	]}`
 	var gotQuery url.Values
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -160,11 +184,20 @@ func TestFetchInverseMaskPage_SendsExpectedQueryAndParsesResponse(t *testing.T) 
 		gotQuery.Has("auth") {
 		t.Errorf("unexpected request query: %s", gotQuery.Encode())
 	}
+	if gotQuery.Get("select") != selectParam(ingestSelectFields) {
+		t.Errorf("select: got %q, want the full ingestSelectFields projection %q (tc-hku56)", gotQuery.Get("select"), selectParam(ingestSelectFields))
+	}
 	if res.Total == nil || *res.Total != 42 {
 		t.Errorf("Total: got %v, want 42", res.Total)
 	}
 	if len(res.Applications) != 1 || res.Applications[0].UID != "26/0001/FUL" || res.Applications[0].AreaID != 300 {
 		t.Fatalf("Applications: got %+v", res.Applications)
+	}
+	if res.Applications[0].Description != "A shed" {
+		t.Errorf("Description: got %q, want %q (the page row must carry the full ingest field set, not just the retired light projection)", res.Applications[0].Description, "A shed")
+	}
+	if res.Applications[0].OtherFields == nil {
+		t.Error("OtherFields: got nil, want the parsed map (tc-hku56: the page row is what Ingest consumes directly)")
 	}
 }
 

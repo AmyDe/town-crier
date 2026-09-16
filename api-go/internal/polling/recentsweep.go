@@ -32,12 +32,15 @@ import (
 )
 
 // maxHydrationsPerSweepTurn bounds Lane E's FetchByUID fan-out within a single
-// Run call, exactly as maxHydrationsPerPass bounds Lane C. A page of clustered
-// missing/diverged rows could otherwise burst dozens of hydration requests and
-// trip PlanIt's 429 threshold. Once the cap is reached the remaining rows are
-// left alone, the page is checkpointed, and the turn returns cleanly (NOT an
-// error) — a real backlog then drains across laps instead of bursting. A fixed
-// safety rule, not an operator dial (mirrors planit.nationalPageSize).
+// Run call — Lane E still hydrates each differing row via a separate id_match
+// request, unlike Lane C, which tc-hku56 / GH#1140 moved onto a full-page
+// projection with no hydration fan-out at all (see lanec.go's package doc).
+// A page of clustered missing/diverged rows could otherwise burst dozens of
+// hydration requests and trip PlanIt's 429 threshold. Once the cap is reached
+// the remaining rows are left alone, the page is checkpointed, and the turn
+// returns cleanly (NOT an error) — a real backlog then drains across laps
+// instead of bursting. A fixed safety rule, not an operator dial (mirrors
+// planit.nationalPageSize).
 const maxHydrationsPerSweepTurn = 10
 
 // maxRecentSweepWindowWidthDays hard-caps the WindowWidthDays dial so nobody

@@ -859,7 +859,8 @@ loop:
 // planner as if it had just run and had no active cursor — i.e. excluded
 // from candidacy for the rest of this cycle — without touching its real
 // persisted state at all, so the walk resumes exactly where it left off
-// next cycle (see NationalLaneOptions.MaxPages).
+// next cycle (see NationalLaneOptions.MaxPages for Lane A/B,
+// InverseMaskOptions.MaxPages for Lane C — tc-hku56 added the latter).
 func (h *NationalPollHandler) loadPlannerState(ctx context.Context, pagesRun map[LaneName]int) (PlannerState, error) {
 	var st PlannerState
 	now := h.now().UTC()
@@ -905,6 +906,16 @@ func (h *NationalPollHandler) loadPlannerState(ctx context.Context, pagesRun map
 	}
 	if maxPages := h.laneB.opts.MaxPages; maxPages != nil && pagesRun[LaneB] >= *maxPages {
 		st.LaneB = LaneState{LastPollTime: now}
+	}
+	// tc-hku56 / GH#1140: Lane C gets the identical per-cycle page-cap
+	// exclusion Lane A/B already have (InverseMaskOptions.MaxPages), now that
+	// a page costs exactly one PlanIt request instead of triggering an
+	// unbounded id_match hydration burst that used to 429 the page loop shut
+	// on its own well before the handler budget did.
+	if h.laneC != nil {
+		if maxPages := h.laneC.opts.MaxPages; maxPages != nil && pagesRun[LaneC] >= *maxPages {
+			st.LaneC = &LaneState{LastPollTime: now}
+		}
 	}
 
 	return st, nil
