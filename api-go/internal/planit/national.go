@@ -48,19 +48,6 @@ var ingestSelectFields = []string{
 	"associated_id", "last_changed", "last_scraped", "scraper_name", "other_fields",
 }
 
-// inverseMaskSelectFields is ADR 0044 Lane C's light national projection:
-// just enough to detect a straggler — a row whose PlanIt state has drifted
-// from what Postgres holds — without paying for the full ~778 bytes/record
-// ingest set. area_id is a deliberate ADR 0044 addition on top of the old
-// per-authority reconciliation's light set (uid, app_state, decided_date,
-// last_different): PlanIt's uid is only unique WITHIN one authority
-// (applications.PostgresStore.GetByUID's doc comment), so a NATIONAL query —
-// unlike the old per-authority sweep, which already knew its authority from
-// the loop it ran inside — needs area_id on every row to build the correct
-// authorityCode for the existence/diff check, or two authorities sharing a
-// bare uid could cross-contaminate.
-var inverseMaskSelectFields = []string{"uid", "area_id", "app_state", "decided_date", "last_different"}
-
 // MaskParam names the churn-mask query parameter ADR 0041 defines: Lane A
 // masks on start_date (the council's own date, which a PlanIt re-index cannot
 // move); Lane B masks on decided_start for the same reason, scoped to
@@ -135,8 +122,9 @@ type NationalInverseMaskQuery struct {
 // (unlike FetchNationalDeltaPage's descending walk — Lane C reconciles the
 // old-application band a bounded rolling window at a time, oldest-first, so a
 // mid-scan stall resumes at a stable index= rather than re-treading committed
-// ground), pg_sz=300, the light inverseMaskSelectFields projection,
-// compress=on.
+// ground), pg_sz=300, the full ingestSelectFields projection (tc-hku56 /
+// GH#1140 — widened from a light 5-field projection so the page row itself
+// carries everything Ingest needs; see buildInverseMaskPath), compress=on.
 func (c *Client) FetchInverseMaskPage(ctx context.Context, q NationalInverseMaskQuery) (FetchPageResult, error) {
 	target := c.baseURL + buildInverseMaskPath(q)
 	return c.fetchPage(ctx, target, 0, q.StartIndex, nationalPageSize)
@@ -178,20 +166,22 @@ func buildNationalDeltaPath(q NationalDeltaQuery) string {
 	)
 }
 
-// buildInverseMaskPath builds ADR 0044 §5 (as amended by #1127) Lane C's
-// national inverse-mask query path: no auth param, a bounded rolling
-// different=N window (N = q.WindowDays — replaces the old absolute epoch
-// floor, bead tc-777e7), an end_date ceiling (the inverse of
+// buildInverseMaskPath builds ADR 0044 §5 (as amended by #1127, and tc-hku56 /
+// GH#1140) Lane C's national inverse-mask query path: no auth param, a
+// bounded rolling different=N window (N = q.WindowDays — replaces the old
+// absolute epoch floor, bead tc-777e7), an end_date ceiling (the inverse of
 // Lane A's start_date mask — see NationalInverseMaskQuery.MaskCutoff),
 // sort=last_different ASCENDING (no leading "-", unlike buildNationalDeltaPath),
-// the light select set (containing the sort field, satisfying PlanIt's "sort
-// field must be selected" rule), pg_sz=300, and compress=on.
+// the full ingestSelectFields projection (tc-hku56: widened from a light
+// 5-field set — see FetchInverseMaskPage's doc comment for why — which of
+// course contains the sort field, satisfying PlanIt's "sort field must be
+// selected" rule), pg_sz=300, and compress=on.
 func buildInverseMaskPath(q NationalInverseMaskQuery) string {
 	return fmt.Sprintf(
 		"/api/applics/json?different=%d&end_date=%s&sort=last_different&pg_sz=%d&index=%d&select=%s&compress=on",
 		q.WindowDays,
 		q.MaskCutoff.UTC().Format("2006-01-02"),
-		nationalPageSize, q.StartIndex, selectParam(inverseMaskSelectFields),
+		nationalPageSize, q.StartIndex, selectParam(ingestSelectFields),
 	)
 }
 
