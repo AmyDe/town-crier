@@ -746,23 +746,10 @@ func addGoWorkerEnv(envVars app.EnvironmentVarArray, ec envContext, workerMode s
 			app.EnvironmentVarArgs{Name: pulumi.String("POLLING_HANDLER_BUDGET_SECONDS"), Value: pulumi.String("240")},
 			app.EnvironmentVarArgs{Name: pulumi.String("POLL_REPLICA_TIMEOUT_SECONDS"), Value: pulumi.String("600")},
 			app.EnvironmentVarArgs{Name: pulumi.String("POLL_SHUTDOWN_GRACE_SECONDS"), Value: pulumi.String("30")},
-			// Lane D (ADR 0042 / GH#967, PR #968): dark-shipped disabled, flipped on here.
 			app.EnvironmentVarArgs{Name: pulumi.String("POLLING_BACKFILL_ENABLED"), Value: pulumi.String("true")},
-			// Lane C (ADR 0041 reconciliation/completeness backstop, tc-tuge8 / GH#971):
-			// DISABLED. Re-enabled 2026-09-07 (tc-x67ti / #1133, v0.21.29) after the
-			// tc-777e7 livelock fix, then rolled back 2026-09-08 (tc-vgbl7) when it drove
-			// PlanIt call volume ~12x: Lane C uid-hydration still issues ~11 id_match
-			// fetches per cycle (~90% of all PlanIt traffic) despite the Part 3 fix
-			// (#1131), and PlanIt retaliated with multi-hour Retry-After values that the
-			// scheduler's 3h RetryAfterCap turned into ~3h prod polling blackouts (two in
-			// 24h, no self-heal). Prior disable 2026-09-06 (tc-56ahl / #1126) was for the
-			// frozen poll_state row -3 timeout livelock. The real re-enable is gated on
-			// tc-nkvil-follow-up (hydration budget still burnt on unhydratable uids).
-			// Watched by alert-planit-lane-stuck-shared / -slow-shared (#1132). Re-enable:
-			// flip back to "true" and cut a tag. The Go gate is POLLING_LANE_C_ENABLED
-			// (default true).
-			app.EnvironmentVarArgs{Name: pulumi.String("POLLING_LANE_C_ENABLED"), Value: pulumi.String("false")},
-			app.EnvironmentVarArgs{Name: pulumi.String("POLLING_LANE_C_AUTHORITIES_PER_CYCLE"), Value: pulumi.String("50")},
+			// Lane C's rollback lever: set "false" and cut a tag. The Go default is true, so
+			// deleting this line does not turn Lane C off.
+			app.EnvironmentVarArgs{Name: pulumi.String("POLLING_LANE_C_ENABLED"), Value: pulumi.String("true")},
 		)
 	}
 
