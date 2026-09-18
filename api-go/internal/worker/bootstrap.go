@@ -1,14 +1,5 @@
-// Package worker holds the Town Crier background-worker modes that run as
-// short-lived Container Apps Jobs. The poll-bootstrap mode is the tracer-bullet
-// slice: a safety net that reseeds the poll-trigger queue when the adaptive
-// polling chain has gone silent, and a reconciler that collapses a forked
-// chain back to exactly one live trigger and drains dead letters. It shares
-// the Postgres polling lease with the orchestrator (poll-sb mode): only the
-// current lease holder may mutate the trigger queue, so a bootstrap tick
-// landing mid-cycle cannot fork the chain (GH#938 PR1), and any fork that
-// appears anyway is race-free to reconcile under the same lease (GH#938 PR2).
-// The heavier poll-sb / digest / dormant-cleanup modes land in later beads
-// (see epic tc-wad3).
+// Package worker holds the background-worker modes that run as short-lived
+// Container Apps Jobs.
 package worker
 
 import (
@@ -22,20 +13,38 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/servicebus"
 )
 
-// naturalCadence and jitterBound define the reseed schedule: a 5-minute base
-// delay with up to 10s of jitter on either side. The bootstrap trigger represents
-// a healthy cycle starting from scratch, so it uses the same cadence the
-// orchestrator would.
+// A reseed restarts the chain 5m out, not at the scheduler's 1h natural cadence.
 const (
 	naturalCadence = 5 * time.Minute
 	jitterBound    = 10 * time.Second
 
-	// bootstrapLeaseTTL is the polling-lease TTL the bootstrap requests. A probe
-	// + publish is a sub-second operation, so a short TTL suffices; it never
-	// holds the lease anywhere near the natural-cadence gap between reseeds
-	// (GH#938 PR1).
 	bootstrapLeaseTTL = 1 * time.Minute
+
+	// Absorbs jitter, clock skew and a trigger published late in a deploy.
+	parkedTriggerMargin = 15 * time.Minute
 )
+
+// JitterBound is excluded because parkedTriggerMargin already covers it.
+func maxLegitimateDelay(opts polling.SchedulerOptions) time.Duration {
+	longest := opts.NaturalCadence
+	for _, d := range [...]time.Duration{
+		opts.TimeBoundedCadence,
+		opts.RetryAfterCap,
+		opts.RateLimitDefault,
+		opts.TimeoutCadence,
+	} {
+		if d > longest {
+			longest = d
+		}
+	}
+	return longest
+}
+
+// Derived from opts, never a literal, so that a longer scheduler delay can never
+// make the bootstrap cancel a trigger the scheduler parked on purpose.
+func parkedTriggerThreshold(opts polling.SchedulerOptions) time.Duration {
+	return maxLegitimateDelay(opts) + parkedTriggerMargin
+}
 
 // triggerQueue is the consumer-side interface the bootstrapper depends on. It
 // is satisfied by *servicebus.Client in production and by a hand-written fake
@@ -70,43 +79,33 @@ type leaseMetricsRecorder interface {
 	LeaseAcquired(ctx context.Context, caller string)
 }
 
-// BootstrapResult is the outcome of TryBootstrap. The field names match the
-// App Insights telemetry tags (polling.safety_net.bootstrap_published /
-// bootstrap_probe_failed / lease_unavailable / reconciled / …).
+// BootstrapResult is the outcome of TryBootstrap. Each field is emitted as a
+// polling.safety_net.* span attribute.
 type BootstrapResult struct {
-	// Published reports whether a seed trigger was successfully published.
+	// Published reports that a seed trigger was published.
 	Published bool
-	// ProbeFailed reports whether the depth probe, the reconciliation peek, or a
-	// publish failed. All are absorbed (a failed cycle retries on the next cron
-	// tick); the flag exists purely for telemetry.
+	// ProbeFailed reports that a lease acquire, probe, peek or publish failed.
 	ProbeFailed bool
-	// LeaseUnavailable reports that the polling lease was held by a peer (the
-	// chain owner is alive), so TryBootstrap skipped cleanly without probing or
-	// publishing. Mirrors OrchestratorRunResult.LeaseUnavailable.
+	// LeaseUnavailable reports that a peer held the polling lease, so the queue
+	// was not probed.
 	LeaseUnavailable bool
-	// Reconciled reports whether the queue held more than one live
-	// (active+scheduled) trigger and TryBootstrap collapsed it back to one
-	// (GH#938 PR2).
+	// Reconciled reports that a forked queue was collapsed to one live trigger.
 	Reconciled bool
-	// ScheduledCancelled is the number of surplus scheduled messages cancelled
-	// while reconciling a fork. Zero on every cycle that did not reconcile.
+	// ParkedRecovered reports that a lone scheduled trigger due beyond every
+	// legitimate scheduler delay was cancelled and its replacement published.
+	ParkedRecovered bool
+	// ScheduledCancelled is the number of scheduled triggers cancelled. It
+	// counts a parked-trigger cancel even when the replacement publish failed.
 	ScheduledCancelled int
-	// ActiveDiscarded is the number of surplus active messages destructively
-	// received and discarded while reconciling a fork. Zero on every cycle that
-	// did not reconcile.
+	// ActiveDiscarded is the number of surplus active triggers discarded while
+	// reconciling a fork.
 	ActiveDiscarded int
-	// DeadLettered is the number of dead-lettered messages drained from the
-	// trigger queue's DLQ this cycle. The DLQ is drained on every cycle
-	// TryBootstrap runs (lease held), independent of Published/Reconciled.
+	// DeadLettered is the number of dead-lettered messages drained.
 	DeadLettered int
 }
 
-// Bootstrapper is the poll-trigger safety net and reconciler. Under the shared
-// Postgres polling lease, it probes the trigger queue and either publishes one
-// jittered seed trigger (queue empty), leaves a healthy single trigger alone,
-// or collapses a fork back to exactly one trigger (GH#938 PR2) — then drains
-// the dead-letter sub-queue. It never invokes the poll handler — that is the
-// orchestrator's job (poll-sb mode).
+// Bootstrapper keeps the poll-trigger queue at one live trigger under the
+// shared polling lease, and drains its dead letters.
 type Bootstrapper struct {
 	queue   triggerQueue
 	lease   leaseAccess
@@ -137,18 +136,9 @@ type triggerPayload struct {
 	PublishedAtUtc string `json:"publishedAtUtc"`
 }
 
-// TryBootstrap acquires the polling lease, then probes the queue, reconciles
-// it to exactly one live trigger (GH#938 PR2 — seeding an empty queue,
-// leaving a healthy single trigger untouched, or collapsing a fork), drains
-// the dead-letter sub-queue, and releases the lease. When the lease is held by
-// a peer, TryBootstrap is a clean no-op: the chain owner is alive, and if it
-// had instead crashed, the lease's own TTL expiry lets the next cron tick
-// reseed (Pre-Resolved Design Decision, GH#938 — bootstrap skips rather than
-// waits/retries). All lease-acquire, probe, reconciliation and publish
-// failures are absorbed into the returned result (never returned as an error)
-// so a transient failure does not fail the job — the next cron tick retries.
-// The returned error is reserved for caller-side concerns; today it is always
-// nil.
+// TryBootstrap runs one bootstrap tick. When a peer holds the polling lease it
+// does nothing and reports LeaseUnavailable. It absorbs every failure into the
+// result, so the returned error is always nil.
 func (b *Bootstrapper) TryBootstrap(ctx context.Context) (BootstrapResult, error) {
 	acquire, err := b.lease.TryAcquire(ctx, bootstrapLeaseTTL)
 	if err != nil {
@@ -160,8 +150,6 @@ func (b *Bootstrapper) TryBootstrap(ctx context.Context) (BootstrapResult, error
 		return BootstrapResult{ProbeFailed: true}, nil
 	}
 	if !acquire.Acquired {
-		// Held by a peer: the chain owner is alive, so this is a clean no-op, not a
-		// probe failure.
 		b.logger.InfoContext(ctx, "poll-bootstrap skipped; polling lease held")
 		return BootstrapResult{LeaseUnavailable: true}, nil
 	}
@@ -184,9 +172,7 @@ func (b *Bootstrapper) TryBootstrap(ctx context.Context) (BootstrapResult, error
 
 	result := b.reconcileToSingleTrigger(ctx, depth)
 
-	// The DLQ is drained on every cycle that holds the lease, independent of the
-	// active/scheduled outcome above — dead-lettered corpses never self-clear
-	// (GH#938 PR2 Proposed Approach: "always drain the DLQ").
+	// Dead letters never clear themselves, so drain whatever the outcome above.
 	drained, drainErr := b.queue.DrainDeadLetters(ctx)
 	if drainErr != nil {
 		b.logger.WarnContext(ctx, "poll-bootstrap dead-letter drain failed; next cron tick will retry", "error", drainErr)
@@ -198,21 +184,14 @@ func (b *Bootstrapper) TryBootstrap(ctx context.Context) (BootstrapResult, error
 	return result, nil
 }
 
-// reconcileToSingleTrigger enforces the GH#938 PR2 invariant: after this call
-// (barring an absorbed failure), the trigger queue carries at most one live
-// (active+scheduled) trigger. An empty queue is reseeded exactly as before
-// PR2; a queue already carrying exactly one trigger is left untouched; a
-// forked queue (TriggerCount > 1) is collapsed to one via reconcileFork.
+// reconcileToSingleTrigger leaves at most one live (active+scheduled) trigger,
+// barring an absorbed failure.
 func (b *Bootstrapper) reconcileToSingleTrigger(ctx context.Context, depth servicebus.QueueDepth) BootstrapResult {
 	switch triggerCount := depth.TriggerCount(); triggerCount {
 	case 0:
 		return b.seed(ctx)
 	case 1:
-		b.logger.InfoContext(ctx, "poll-bootstrap skipped; trigger queue already seeded",
-			"active", depth.ActiveMessageCount,
-			"scheduled", depth.ScheduledMessageCount,
-			"deadLettered", depth.DeadLetterMessageCount)
-		return BootstrapResult{}
+		return b.reconcileSingleTrigger(ctx, depth)
 	default:
 		b.logger.WarnContext(ctx, "poll-bootstrap detected forked trigger chain; reconciling to one",
 			"active", depth.ActiveMessageCount,
@@ -220,6 +199,76 @@ func (b *Bootstrapper) reconcileToSingleTrigger(ctx context.Context, depth servi
 			"deadLettered", depth.DeadLetterMessageCount)
 		return b.reconcileFork(ctx)
 	}
+}
+
+func (b *Bootstrapper) reconcileSingleTrigger(ctx context.Context, depth servicebus.QueueDepth) BootstrapResult {
+	if depth.ActiveMessageCount > 0 {
+		// KEDA runs an active trigger, so leave the queue alone.
+		b.logger.InfoContext(ctx, "poll-bootstrap skipped; trigger queue already seeded",
+			"active", depth.ActiveMessageCount,
+			"scheduled", depth.ScheduledMessageCount,
+			"deadLettered", depth.DeadLetterMessageCount)
+		return BootstrapResult{}
+	}
+	return b.recoverParkedTrigger(ctx, depth)
+}
+
+// KEDA scales on active messages only, so a lone scheduled trigger parked too
+// far out stalls the whole chain until it activates.
+func (b *Bootstrapper) recoverParkedTrigger(ctx context.Context, depth servicebus.QueueDepth) BootstrapResult {
+	now := b.now()
+
+	peeked, err := b.queue.PeekMessages(ctx)
+	if err != nil {
+		b.logger.WarnContext(ctx, "poll-bootstrap parked-trigger peek failed; skipping this cycle", "error", err)
+		return BootstrapResult{ProbeFailed: true}
+	}
+
+	var scheduled []servicebus.PeekedMessage
+	for _, m := range peeked {
+		if m.State == servicebus.MessageStateScheduled {
+			scheduled = append(scheduled, m)
+		}
+	}
+	if len(scheduled) != 1 {
+		// The queue changed between probe and peek; do not guess, the next tick
+		// re-probes.
+		b.logger.WarnContext(ctx, "poll-bootstrap depth probe reported one scheduled trigger but peek disagreed; skipping this cycle",
+			"scheduledPeeked", len(scheduled), "totalPeeked", len(peeked))
+		return BootstrapResult{}
+	}
+
+	msg := scheduled[0]
+	threshold := parkedTriggerThreshold(polling.DefaultSchedulerOptions())
+	deadline := now.Add(threshold)
+
+	if !msg.ScheduledEnqueueTime.After(deadline) {
+		b.logger.InfoContext(ctx, "poll-bootstrap skipped; trigger queue already seeded",
+			"active", depth.ActiveMessageCount,
+			"scheduled", depth.ScheduledMessageCount,
+			"deadLettered", depth.DeadLetterMessageCount,
+			"activatesAt", msg.ScheduledEnqueueTime.UTC(),
+			"sequenceNumber", msg.SequenceNumber)
+		return BootstrapResult{}
+	}
+
+	b.logger.WarnContext(ctx, "poll-bootstrap detected a parked trigger beyond every legitimate scheduler delay; cancelling and reseeding",
+		"activatesAt", msg.ScheduledEnqueueTime.UTC(),
+		"sequenceNumber", msg.SequenceNumber,
+		"threshold", threshold)
+
+	// Cancel before publish: a failed cancel keeps the old trigger and a failed
+	// publish leaves an empty queue for the next tick, so the chain never forks.
+	if err := b.queue.CancelScheduled(ctx, []int64{msg.SequenceNumber}); err != nil {
+		b.logger.WarnContext(ctx, "poll-bootstrap cancel of parked trigger failed; leaving it in place",
+			"error", err, "sequenceNumber", msg.SequenceNumber)
+		return BootstrapResult{}
+	}
+
+	result := b.seed(ctx)
+	result.ScheduledCancelled = 1
+	result.ParkedRecovered = result.Published
+	return result
 }
 
 // seed publishes one jittered seed trigger for a queue found completely empty.

@@ -497,10 +497,7 @@ func runAppStoreReconcile(ctx context.Context, runner AppStoreReconcileRunner, l
 	return 0
 }
 
-// runPollBootstrap executes one bootstrap cycle under a soft self-cancel budget,
-// recording the safety-net telemetry tags. A probe/publish failure is absorbed
-// by the bootstrapper (the next cron tick retries), so it does not fail the job;
-// only a missing Service Bus client (nil bootstrapper) is an exit-1 condition.
+// Failures that TryBootstrap absorbs still exit 0: the next cron tick retries.
 func runPollBootstrap(ctx context.Context, bootstrapper *Bootstrapper, logger *slog.Logger) int {
 	tracer := otel.Tracer(tracerName)
 	ctx, span := tracer.Start(ctx, "Polling Bootstrap")
@@ -516,22 +513,18 @@ func runPollBootstrap(ctx context.Context, bootstrapper *Bootstrapper, logger *s
 
 	res, err := bootstrapper.TryBootstrap(cycleCtx)
 	if err != nil {
-		// TryBootstrap absorbs Service Bus failures itself; a returned error is a
-		// caller-side concern (e.g. context cancelled).
 		span.SetAttributes(attribute.Bool("polling.safety_net.bootstrap_probe_failed", true))
 		logger.ErrorContext(ctx, "poll-bootstrap cycle failed", "error", err)
 		return 1
 	}
 
-	// Tag names match the App Insights telemetry schema so existing queries
-	// and dashboards keep working. lease_unavailable (PR1) and the
-	// reconciliation counts (PR2) are additive: they let an alert fire on a
-	// forked chain or a stuck DLQ without a human happening to look (GH#938).
+	// Do not rename these tags: App Insights queries and alerts depend on them.
 	span.SetAttributes(
 		attribute.Bool("polling.safety_net.bootstrap_published", res.Published),
 		attribute.Bool("polling.safety_net.bootstrap_probe_failed", res.ProbeFailed),
 		attribute.Bool("polling.safety_net.lease_unavailable", res.LeaseUnavailable),
 		attribute.Bool("polling.safety_net.reconciled", res.Reconciled),
+		attribute.Bool("polling.safety_net.parked_recovered", res.ParkedRecovered),
 		attribute.Int("polling.safety_net.scheduled_cancelled", res.ScheduledCancelled),
 		attribute.Int("polling.safety_net.active_discarded", res.ActiveDiscarded),
 		attribute.Int("polling.safety_net.dead_lettered", res.DeadLettered),

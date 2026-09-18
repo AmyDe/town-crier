@@ -9,9 +9,7 @@ type Jitter interface {
 	NextOffset(bound time.Duration) time.Duration
 }
 
-// SchedulerOptions are the next-run scheduler tunables: 1h natural cadence, 1m
-// resume after a time-bounded cut-off, 3h cap on a Retry-After hint, 5m
-// rate-limit default, 2h timeout cadence, 10s jitter bound.
+// SchedulerOptions are the tunables for NextRunScheduler.
 type SchedulerOptions struct {
 	NaturalCadence     time.Duration
 	TimeBoundedCadence time.Duration
@@ -21,21 +19,17 @@ type SchedulerOptions struct {
 	JitterBound        time.Duration
 }
 
-// DefaultSchedulerOptions returns the default scheduler tunables. NaturalCadence
-// is hourly (ADR 0041 / GH#962): the churn-masked national delta poll is
-// measured at ~72 records/hour nationally, so an hourly cadence is the right
-// natural rhythm for the new lanes — replacing the old per-authority drain's
-// 5-minute cadence, which existed to keep a 485-authority LRU queue moving.
+// DefaultSchedulerOptions returns the production scheduler tunables.
 func DefaultSchedulerOptions() SchedulerOptions {
 	return SchedulerOptions{
 		NaturalCadence:     1 * time.Hour,
 		TimeBoundedCadence: 1 * time.Minute,
-		RetryAfterCap:      3 * time.Hour,
-		RateLimitDefault:   5 * time.Minute,
-		// TimeoutCadence is deliberately longer than NaturalCadence: a
-		// client-side timeout is more than "nothing happened" (ADR 0041's
-		// natural-cadence rationale), so it should back off further than a
-		// quiet cycle would, not resume sooner than the 429 default either.
+		// Equal to NaturalCadence: one trigger chain serves every lane, so a
+		// longer hint would stall all ingest for longer than a quiet cycle.
+		RetryAfterCap:    1 * time.Hour,
+		RateLimitDefault: 5 * time.Minute,
+		// Deliberately longer than NaturalCadence: a timeout backs off further
+		// than a quiet cycle.
 		TimeoutCadence: 2 * time.Hour,
 		JitterBound:    10 * time.Second,
 	}

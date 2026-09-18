@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/codes"
@@ -698,6 +699,45 @@ func TestRunPollBootstrap_TagsLeaseUnavailableAttribute(t *testing.T) {
 	}
 	if got, ok := attrInt(span, "polling.safety_net.dead_lettered"); !ok || got != 0 {
 		t.Errorf("polling.safety_net.dead_lettered: got %d (ok=%v), want 0 (lease held; never probed)", got, ok)
+	}
+}
+
+func TestRunPollBootstrap_TagsParkedRecoveredAttribute(t *testing.T) {
+	q := &fakeTriggerQueue{
+		depth: servicebus.QueueDepth{ScheduledMessageCount: 1},
+		peeked: []servicebus.PeekedMessage{
+			{SequenceNumber: 66, State: servicebus.MessageStateScheduled, ScheduledEnqueueTime: testNow.Add(3 * time.Hour)},
+		},
+	}
+	b := newTestBootstrapper(t, q)
+	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
+
+	span := recordBootstrapSpan(t, func() {
+		code := Run(context.Background(), "poll-bootstrap", b, nil, nil, nil, nil, nil, nil, nil, logger)
+		if code != 0 {
+			t.Errorf("exit code: got %d, want 0", code)
+		}
+	})
+
+	if got, ok := attrBool(span, "polling.safety_net.parked_recovered"); !ok || !got {
+		t.Errorf("polling.safety_net.parked_recovered: got %v (ok=%v), want true", got, ok)
+	}
+}
+
+func TestRunPollBootstrap_TagsParkedRecoveredFalseOnNormalRun(t *testing.T) {
+	q := &fakeTriggerQueue{depth: servicebus.QueueDepth{}}
+	b := newTestBootstrapper(t, q)
+	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
+
+	span := recordBootstrapSpan(t, func() {
+		code := Run(context.Background(), "poll-bootstrap", b, nil, nil, nil, nil, nil, nil, nil, logger)
+		if code != 0 {
+			t.Errorf("exit code: got %d, want 0", code)
+		}
+	})
+
+	if got, ok := attrBool(span, "polling.safety_net.parked_recovered"); !ok || got {
+		t.Errorf("polling.safety_net.parked_recovered: got %v (ok=%v), want false", got, ok)
 	}
 }
 
