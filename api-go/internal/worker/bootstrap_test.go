@@ -3,15 +3,24 @@ package worker
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
+	"reflect"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/AmyDe/town-crier/api-go/internal/polling"
 	"github.com/AmyDe/town-crier/api-go/internal/servicebus"
 )
+
+// testNow is the fixed clock value every test bootstrapper is pinned to
+// (newTestBootstrapperWithLease). Shared as a var so parked-trigger tests can
+// express an activation time as an offset from it without repeating the
+// literal.
+var testNow = time.Date(2026, 6, 14, 12, 0, 0, 0, time.UTC)
 
 // fakeTriggerQueue is a hand-written double for the bootstrapper's consumer-side
 // triggerQueue interface. It records publish calls and can be primed with a
@@ -135,8 +144,7 @@ func newTestBootstrapper(t *testing.T, q *fakeTriggerQueue) *Bootstrapper {
 func newTestBootstrapperWithLease(t *testing.T, q *fakeTriggerQueue, lease *fakeLeaseAccess) *Bootstrapper {
 	t.Helper()
 	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
-	now := time.Date(2026, 6, 14, 12, 0, 0, 0, time.UTC)
-	return NewBootstrapper(q, lease, logger, func() time.Time { return now })
+	return NewBootstrapper(q, lease, logger, func() time.Time { return testNow })
 }
 
 func TestBootstrapper_PublishesSeedWhenQueueEmpty(t *testing.T) {
@@ -159,9 +167,8 @@ func TestBootstrapper_PublishesSeedWhenQueueEmpty(t *testing.T) {
 	}
 	// The seed is scheduled in the future (jittered natural cadence), never
 	// enqueued immediately.
-	now := time.Date(2026, 6, 14, 12, 0, 0, 0, time.UTC)
-	if !q.publishedAt.After(now) {
-		t.Errorf("publishedAt: got %v, want strictly after %v", q.publishedAt, now)
+	if !q.publishedAt.After(testNow) {
+		t.Errorf("publishedAt: got %v, want strictly after %v", q.publishedAt, testNow)
 	}
 	if len(q.publishedBig) == 0 {
 		t.Error("published body is empty; want a diagnostic payload")
@@ -171,17 +178,24 @@ func TestBootstrapper_PublishesSeedWhenQueueEmpty(t *testing.T) {
 func TestBootstrapper_SkipsWhenQueueNotEmpty(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name  string
-		depth servicebus.QueueDepth
+		name   string
+		depth  servicebus.QueueDepth
+		peeked []servicebus.PeekedMessage
 	}{
-		{"active message present", servicebus.QueueDepth{ActiveMessageCount: 1}},
-		{"scheduled message present", servicebus.QueueDepth{ScheduledMessageCount: 1}},
-		{"both present", servicebus.QueueDepth{ActiveMessageCount: 2, ScheduledMessageCount: 3}},
+		{"active message present", servicebus.QueueDepth{ActiveMessageCount: 1}, nil},
+		// The lone scheduled message activates inside the parked-trigger
+		// threshold (tc-a426z / GH#1151), so this row proves a healthy,
+		// deliberately-delayed cycle is left alone -- not merely that an empty
+		// peek happens to short-circuit the check.
+		{"scheduled message present", servicebus.QueueDepth{ScheduledMessageCount: 1}, []servicebus.PeekedMessage{
+			{SequenceNumber: 900, State: servicebus.MessageStateScheduled, ScheduledEnqueueTime: testNow.Add(1 * time.Hour)},
+		}},
+		{"both present", servicebus.QueueDepth{ActiveMessageCount: 2, ScheduledMessageCount: 3}, nil},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			q := &fakeTriggerQueue{depth: tc.depth}
+			q := &fakeTriggerQueue{depth: tc.depth, peeked: tc.peeked}
 			b := newTestBootstrapper(t, q)
 
 			res, err := b.TryBootstrap(context.Background())
@@ -480,5 +494,370 @@ func TestNextSeedDelay_JitteredWithinBounds(t *testing.T) {
 		if d <= 0 {
 			t.Fatalf("nextSeedDelay must be positive, got %v", d)
 		}
+	}
+}
+
+// --- Parked trigger recovery (tc-a426z / GH#1151) ---
+//
+// A queue holding no active message and exactly one scheduled message that
+// activates further out than any delay the scheduler could legitimately
+// choose is "parked": KEDA will not scale on it (it only counts active
+// messages) and the pre-GH#1151 bootstrap counted it as a healthy chain. The
+// tests below cover the bounded recovery check added to reconcileToSingleTrigger's
+// case 1 arm.
+
+// TestMaxLegitimateDelay_LargerRetryAfterCapWins proves the max helper picks
+// whichever duration field is actually largest, not a fixed field, so a
+// future options change is honoured automatically.
+func TestMaxLegitimateDelay_LargerRetryAfterCapWins(t *testing.T) {
+	t.Parallel()
+	opts := polling.SchedulerOptions{
+		NaturalCadence:     1 * time.Hour,
+		TimeBoundedCadence: 1 * time.Minute,
+		RetryAfterCap:      5 * time.Hour, // deliberately larger than TimeoutCadence
+		RateLimitDefault:   5 * time.Minute,
+		TimeoutCadence:     2 * time.Hour,
+		JitterBound:        10 * time.Second,
+	}
+	got := maxLegitimateDelay(opts)
+	if got != opts.RetryAfterCap {
+		t.Errorf("maxLegitimateDelay: got %v, want %v (RetryAfterCap should win)", got, opts.RetryAfterCap)
+	}
+}
+
+// TestParkedTriggerThreshold_ExceedsEveryDefaultOption uses reflection over
+// SchedulerOptions (test-only; the banned pattern is reflection-based
+// MOCKING, not a reflective assertion) so that adding a new time.Duration
+// field to SchedulerOptions without folding it into maxLegitimateDelay fails
+// this test loudly, rather than silently under-deriving the threshold.
+func TestParkedTriggerThreshold_ExceedsEveryDefaultOption(t *testing.T) {
+	t.Parallel()
+	opts := polling.DefaultSchedulerOptions()
+	threshold := parkedTriggerThreshold(opts)
+
+	durationType := reflect.TypeOf(time.Duration(0))
+	v := reflect.ValueOf(opts)
+	tp := v.Type()
+	for i := range tp.NumField() {
+		field := tp.Field(i)
+		if field.Type != durationType {
+			continue
+		}
+		got := v.Field(i).Interface().(time.Duration) //nolint:forcetypeassert // guarded by the Type equality check above
+		if threshold <= got {
+			t.Errorf("parkedTriggerThreshold (%v) must exceed SchedulerOptions.%s (%v)", threshold, field.Name, got)
+		}
+	}
+}
+
+// TestParkedTriggerThreshold_DefaultIs2h15m pins the concrete value derived
+// from today's DefaultSchedulerOptions as a regression check: 2h TimeoutCadence
+// (the largest legitimate delay) plus the 15m parkedTriggerMargin. Production
+// code must never hardcode this value -- only this test may.
+func TestParkedTriggerThreshold_DefaultIs2h15m(t *testing.T) {
+	t.Parallel()
+	got := parkedTriggerThreshold(polling.DefaultSchedulerOptions())
+	want := 2*time.Hour + 15*time.Minute
+	if got != want {
+		t.Errorf("parkedTriggerThreshold(default): got %v, want %v", got, want)
+	}
+}
+
+// TestTryBootstrap_ParkedTriggerCheck is the core behavioural table: a lone
+// scheduled trigger activating within the derived threshold (including one
+// deliberately parked by the 2h timeout backoff, and one sitting exactly on
+// the boundary) is left strictly alone, while one activating beyond it --
+// the real 2026-09-08 incident shape, and one a minute past the boundary --
+// is cancelled and replaced by a fresh seed.
+func TestTryBootstrap_ParkedTriggerCheck(t *testing.T) {
+	t.Parallel()
+	threshold := parkedTriggerThreshold(polling.DefaultSchedulerOptions())
+
+	tests := []struct {
+		name        string
+		activatesIn time.Duration
+		wantRecover bool
+	}{
+		{"natural cadence: left alone", 1 * time.Hour, false},
+		{"2h timeout backoff plus max jitter: left alone", 2*time.Hour + 10*time.Second, false},
+		{"exactly at threshold: left alone", threshold, false},
+		{"real incident shape (3h): recovered", 3 * time.Hour, true},
+		{"one minute past threshold: recovered", threshold + time.Minute, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			activatesAt := testNow.Add(tc.activatesIn)
+			q := &fakeTriggerQueue{
+				depth: servicebus.QueueDepth{ScheduledMessageCount: 1},
+				peeked: []servicebus.PeekedMessage{
+					{SequenceNumber: 77, State: servicebus.MessageStateScheduled, ScheduledEnqueueTime: activatesAt},
+				},
+			}
+			b := newTestBootstrapper(t, q)
+
+			res, err := b.TryBootstrap(context.Background())
+			if err != nil {
+				t.Fatalf("TryBootstrap: %v", err)
+			}
+			if res.ParkedRecovered != tc.wantRecover {
+				t.Errorf("ParkedRecovered: got %v, want %v", res.ParkedRecovered, tc.wantRecover)
+			}
+			if !tc.wantRecover {
+				if q.cancelCalls != 0 {
+					t.Errorf("cancel calls: got %d, want 0", q.cancelCalls)
+				}
+				if q.publishCalls != 0 {
+					t.Errorf("publish calls: got %d, want 0", q.publishCalls)
+				}
+				if res.ScheduledCancelled != 0 {
+					t.Errorf("ScheduledCancelled: got %d, want 0", res.ScheduledCancelled)
+				}
+				if res.Published {
+					t.Error("Published: got true, want false")
+				}
+				return
+			}
+
+			if q.cancelCalls != 1 {
+				t.Fatalf("cancel calls: got %d, want 1", q.cancelCalls)
+			}
+			if !slices.Equal(q.cancelledSeqs, []int64{77}) {
+				t.Errorf("cancelledSeqs: got %v, want [77] (exactly the parked sequence number)", q.cancelledSeqs)
+			}
+			if q.publishCalls != 1 {
+				t.Errorf("publish calls: got %d, want 1 (exactly one replacement)", q.publishCalls)
+			}
+			wantEarliest := testNow.Add(naturalCadence - jitterBound)
+			wantLatest := testNow.Add(naturalCadence + jitterBound)
+			if q.publishedAt.Before(wantEarliest) || q.publishedAt.After(wantLatest) {
+				t.Errorf("publishedAt: got %v, want within [%v, %v]", q.publishedAt, wantEarliest, wantLatest)
+			}
+			if res.ScheduledCancelled != 1 {
+				t.Errorf("ScheduledCancelled: got %d, want 1", res.ScheduledCancelled)
+			}
+			if !res.Published {
+				t.Error("Published: got false, want true")
+			}
+		})
+	}
+}
+
+// TestTryBootstrap_ActiveMessagePresentNeverTouchesQueue proves the
+// active=1/scheduled=0 arm of case 1 never peeks, cancels, publishes or
+// receives -- KEDA will run the active message, so there is nothing to
+// recover and nothing to inspect.
+func TestTryBootstrap_ActiveMessagePresentNeverTouchesQueue(t *testing.T) {
+	t.Parallel()
+	q := &fakeTriggerQueue{depth: servicebus.QueueDepth{ActiveMessageCount: 1}}
+	b := newTestBootstrapper(t, q)
+
+	res, err := b.TryBootstrap(context.Background())
+	if err != nil {
+		t.Fatalf("TryBootstrap: %v", err)
+	}
+	if q.peekCalls != 0 {
+		t.Errorf("peek calls: got %d, want 0 (active message present; KEDA will run it)", q.peekCalls)
+	}
+	if q.cancelCalls != 0 {
+		t.Errorf("cancel calls: got %d, want 0", q.cancelCalls)
+	}
+	if q.publishCalls != 0 {
+		t.Errorf("publish calls: got %d, want 0", q.publishCalls)
+	}
+	if q.receiveCalls != 0 {
+		t.Errorf("receive calls: got %d, want 0", q.receiveCalls)
+	}
+	if res.ParkedRecovered {
+		t.Error("ParkedRecovered: got true, want false")
+	}
+}
+
+// TestTryBootstrap_ParkedCheckPeekFailureIsAbsorbed proves a peek failure in
+// the parked-trigger path is absorbed exactly like every other probe failure
+// in TryBootstrap: ProbeFailed, no mutation, no error.
+func TestTryBootstrap_ParkedCheckPeekFailureIsAbsorbed(t *testing.T) {
+	t.Parallel()
+	q := &fakeTriggerQueue{
+		depth:   servicebus.QueueDepth{ScheduledMessageCount: 1},
+		peekErr: errors.New("network down"),
+	}
+	b := newTestBootstrapper(t, q)
+
+	res, err := b.TryBootstrap(context.Background())
+	if err != nil {
+		t.Fatalf("TryBootstrap: %v", err)
+	}
+	if !res.ProbeFailed {
+		t.Error("ProbeFailed: got false, want true")
+	}
+	if q.cancelCalls != 0 {
+		t.Errorf("cancel calls: got %d, want 0", q.cancelCalls)
+	}
+	if q.publishCalls != 0 {
+		t.Errorf("publish calls: got %d, want 0", q.publishCalls)
+	}
+}
+
+// TestTryBootstrap_ParkedCheckCancelFailureIsAbsorbed proves a CancelScheduled
+// failure never publishes a replacement (that would fork the chain): the
+// queue is left untouched and the next tick retries, mirroring reconcileFork's
+// cancel-failure handling.
+func TestTryBootstrap_ParkedCheckCancelFailureIsAbsorbed(t *testing.T) {
+	t.Parallel()
+	q := &fakeTriggerQueue{
+		depth: servicebus.QueueDepth{ScheduledMessageCount: 1},
+		peeked: []servicebus.PeekedMessage{
+			{SequenceNumber: 88, State: servicebus.MessageStateScheduled, ScheduledEnqueueTime: testNow.Add(3 * time.Hour)},
+		},
+		cancelErr: errors.New("cancel rejected"),
+	}
+	b := newTestBootstrapper(t, q)
+
+	res, err := b.TryBootstrap(context.Background())
+	if err != nil {
+		t.Fatalf("TryBootstrap: %v", err)
+	}
+	if q.publishCalls != 0 {
+		t.Errorf("publish calls: got %d, want 0 (no fork: cancel failed, so never publish)", q.publishCalls)
+	}
+	if res.ParkedRecovered {
+		t.Error("ParkedRecovered: got true, want false")
+	}
+	if res.ScheduledCancelled != 0 {
+		t.Errorf("ScheduledCancelled: got %d, want 0 (the cancel did not succeed)", res.ScheduledCancelled)
+	}
+}
+
+// TestTryBootstrap_ParkedCheckPublishFailureAfterCancel proves the
+// cancel-then-publish ordering: when the cancel succeeds but the replacement
+// publish fails, ScheduledCancelled still reports 1 (that part genuinely
+// happened) while ParkedRecovered stays false and ProbeFailed is set -- the
+// queue is left empty, so the next tick reseeds it rather than forking
+// (GH#938).
+func TestTryBootstrap_ParkedCheckPublishFailureAfterCancel(t *testing.T) {
+	t.Parallel()
+	q := &fakeTriggerQueue{
+		depth: servicebus.QueueDepth{ScheduledMessageCount: 1},
+		peeked: []servicebus.PeekedMessage{
+			{SequenceNumber: 99, State: servicebus.MessageStateScheduled, ScheduledEnqueueTime: testNow.Add(3 * time.Hour)},
+		},
+		publishErr: errors.New("send rejected"),
+	}
+	b := newTestBootstrapper(t, q)
+
+	res, err := b.TryBootstrap(context.Background())
+	if err != nil {
+		t.Fatalf("TryBootstrap: %v", err)
+	}
+	if res.ScheduledCancelled != 1 {
+		t.Errorf("ScheduledCancelled: got %d, want 1 (the cancel succeeded)", res.ScheduledCancelled)
+	}
+	if res.ParkedRecovered {
+		t.Error("ParkedRecovered: got true, want false (the replacement publish failed)")
+	}
+	if !res.ProbeFailed {
+		t.Error("ProbeFailed: got false, want true (the replacement publish failed)")
+	}
+	if !slices.Equal(q.cancelledSeqs, []int64{99}) {
+		t.Errorf("cancelledSeqs: got %v, want [99]", q.cancelledSeqs)
+	}
+}
+
+// TestTryBootstrap_ParkedCheckPeekRaceIsAbsorbed proves that when the queue
+// changes between the depth probe and the peek -- the depth probe reported
+// exactly one scheduled message but the peek disagrees -- TryBootstrap never
+// guesses: it logs and returns a no-op result, leaving the next cron tick to
+// re-probe with a fresh, consistent view.
+func TestTryBootstrap_ParkedCheckPeekRaceIsAbsorbed(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		peeked []servicebus.PeekedMessage
+	}{
+		{"peek returned nothing", nil},
+		{"peek returned one active message instead", []servicebus.PeekedMessage{
+			{SequenceNumber: 1, State: servicebus.MessageStateActive},
+		}},
+		{"peek returned two scheduled messages", []servicebus.PeekedMessage{
+			{SequenceNumber: 1, State: servicebus.MessageStateScheduled, ScheduledEnqueueTime: testNow.Add(3 * time.Hour)},
+			{SequenceNumber: 2, State: servicebus.MessageStateScheduled, ScheduledEnqueueTime: testNow.Add(4 * time.Hour)},
+		}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			q := &fakeTriggerQueue{
+				depth:  servicebus.QueueDepth{ScheduledMessageCount: 1},
+				peeked: tc.peeked,
+			}
+			b := newTestBootstrapper(t, q)
+
+			res, err := b.TryBootstrap(context.Background())
+			if err != nil {
+				t.Fatalf("TryBootstrap: %v", err)
+			}
+			if q.cancelCalls != 0 {
+				t.Errorf("cancel calls: got %d, want 0", q.cancelCalls)
+			}
+			if q.publishCalls != 0 {
+				t.Errorf("publish calls: got %d, want 0", q.publishCalls)
+			}
+			if res.ParkedRecovered {
+				t.Error("ParkedRecovered: got true, want false")
+			}
+		})
+	}
+}
+
+// parkedCheckLogLine is the subset of the JSON-encoded slog record this test
+// file inspects when proving a log line carries specific structured fields.
+type parkedCheckLogLine struct {
+	Msg            string    `json:"msg"`
+	ActivatesAt    time.Time `json:"activatesAt"`
+	SequenceNumber int64     `json:"sequenceNumber"`
+}
+
+// TestTryBootstrap_ParkedCheckWithinThresholdLogsActivationTime proves the
+// "already seeded" info log, on the path where the parked check ran and found
+// the trigger healthy, carries the surviving trigger's activation time and
+// sequence number -- the pre-GH#1151 log omitted both, which is exactly why
+// the 2026-09-08 stall was undiagnosable from the log alone.
+func TestTryBootstrap_ParkedCheckWithinThresholdLogsActivationTime(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+	activatesAt := testNow.Add(1 * time.Hour)
+	q := &fakeTriggerQueue{
+		depth: servicebus.QueueDepth{ScheduledMessageCount: 1},
+		peeked: []servicebus.PeekedMessage{
+			{SequenceNumber: 55, State: servicebus.MessageStateScheduled, ScheduledEnqueueTime: activatesAt},
+		},
+	}
+	b := NewBootstrapper(q, newAcquiredLeaseFake(), logger, func() time.Time { return testNow })
+
+	if _, err := b.TryBootstrap(context.Background()); err != nil {
+		t.Fatalf("TryBootstrap: %v", err)
+	}
+
+	var found bool
+	for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
+		var ll parkedCheckLogLine
+		if err := json.Unmarshal([]byte(line), &ll); err != nil {
+			t.Fatalf("unmarshal log line %q: %v", line, err)
+		}
+		if !strings.Contains(ll.Msg, "already seeded") {
+			continue
+		}
+		found = true
+		if !ll.ActivatesAt.Equal(activatesAt) {
+			t.Errorf("activatesAt: got %v, want %v", ll.ActivatesAt, activatesAt)
+		}
+		if ll.SequenceNumber != 55 {
+			t.Errorf("sequenceNumber: got %d, want 55", ll.SequenceNumber)
+		}
+	}
+	if !found {
+		t.Fatalf("no %q log line found in: %s", "already seeded", buf.String())
 	}
 }
