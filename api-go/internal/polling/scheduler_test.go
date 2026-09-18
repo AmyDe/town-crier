@@ -36,11 +36,25 @@ func TestNextRunScheduler_ComputeNextRun(t *testing.T) {
 			want:       now.Add(90 * time.Second),
 		},
 		{
+			name:       "rate-limited honours a hint below the cap",
+			reason:     TerminationRateLimited,
+			retryAfter: 50 * time.Minute, // observed baseline band is 5-50m; must not truncate
+			hasRetry:   true,
+			want:       now.Add(50 * time.Minute),
+		},
+		{
+			name:       "rate-limited hint exactly at the cap is honoured",
+			reason:     TerminationRateLimited,
+			retryAfter: 1 * time.Hour, // == cap, not > cap, so no truncation
+			hasRetry:   true,
+			want:       now.Add(1 * time.Hour),
+		},
+		{
 			name:       "rate-limited caps an oversized retry-after",
 			reason:     TerminationRateLimited,
-			retryAfter: 10 * time.Hour, // > 3h cap
+			retryAfter: 3 * time.Hour, // > 1h cap
 			hasRetry:   true,
-			want:       now.Add(3 * time.Hour),
+			want:       now.Add(1 * time.Hour),
 		},
 		{
 			name:   "rate-limited without retry-after uses default",
@@ -73,6 +87,34 @@ func TestNextRunScheduler_ComputeNextRun(t *testing.T) {
 				t.Errorf("ComputeNextRun(%v): got %v, want %v", tc.reason, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestDefaultSchedulerOptions_RetryAfterCap(t *testing.T) {
+	t.Parallel()
+	got := DefaultSchedulerOptions().RetryAfterCap
+	want := 1 * time.Hour
+	if got != want {
+		t.Errorf("RetryAfterCap = %v, want %v", got, want)
+	}
+}
+
+func TestNextRunScheduler_RateLimitedCapAppliesJitterAfterCapping(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 6, 14, 12, 0, 0, 0, time.UTC)
+	opts := DefaultSchedulerOptions()
+	// A hint above the cap is truncated to RetryAfterCap first, and jitter at its
+	// maximum bound is added on top -- proves the whole delay stays at most
+	// RetryAfterCap+JitterBound, and that jitter still applies after capping.
+	s := NewNextRunScheduler(opts, fixedJitter{offset: opts.JitterBound})
+
+	ra := 3 * time.Hour
+	got := s.ComputeNextRun(TerminationRateLimited, &ra, now)
+	// Expected value is a literal, not opts.RetryAfterCap, so this test fails
+	// honestly if the cap ever drifts from 1h rather than trivially matching it.
+	want := now.Add(1*time.Hour + opts.JitterBound)
+	if !got.Equal(want) {
+		t.Errorf("capped+jittered next run: got %v, want %v", got, want)
 	}
 }
 
