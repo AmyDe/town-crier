@@ -16,10 +16,6 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/servicebus"
 )
 
-// testNow is the fixed clock value every test bootstrapper is pinned to
-// (newTestBootstrapperWithLease). Shared as a var so parked-trigger tests can
-// express an activation time as an offset from it without repeating the
-// literal.
 var testNow = time.Date(2026, 6, 14, 12, 0, 0, 0, time.UTC)
 
 // fakeTriggerQueue is a hand-written double for the bootstrapper's consumer-side
@@ -165,8 +161,6 @@ func TestBootstrapper_PublishesSeedWhenQueueEmpty(t *testing.T) {
 	if q.publishCalls != 1 {
 		t.Fatalf("publish calls: got %d, want exactly 1", q.publishCalls)
 	}
-	// The seed is scheduled in the future (jittered natural cadence), never
-	// enqueued immediately.
 	if !q.publishedAt.After(testNow) {
 		t.Errorf("publishedAt: got %v, want strictly after %v", q.publishedAt, testNow)
 	}
@@ -183,10 +177,6 @@ func TestBootstrapper_SkipsWhenQueueNotEmpty(t *testing.T) {
 		peeked []servicebus.PeekedMessage
 	}{
 		{"active message present", servicebus.QueueDepth{ActiveMessageCount: 1}, nil},
-		// The lone scheduled message activates inside the parked-trigger
-		// threshold (tc-a426z / GH#1151), so this row proves a healthy,
-		// deliberately-delayed cycle is left alone -- not merely that an empty
-		// peek happens to short-circuit the check.
 		{"scheduled message present", servicebus.QueueDepth{ScheduledMessageCount: 1}, []servicebus.PeekedMessage{
 			{SequenceNumber: 900, State: servicebus.MessageStateScheduled, ScheduledEnqueueTime: testNow.Add(1 * time.Hour)},
 		}},
@@ -497,24 +487,12 @@ func TestNextSeedDelay_JitteredWithinBounds(t *testing.T) {
 	}
 }
 
-// --- Parked trigger recovery (tc-a426z / GH#1151) ---
-//
-// A queue holding no active message and exactly one scheduled message that
-// activates further out than any delay the scheduler could legitimately
-// choose is "parked": KEDA will not scale on it (it only counts active
-// messages) and the pre-GH#1151 bootstrap counted it as a healthy chain. The
-// tests below cover the bounded recovery check added to reconcileToSingleTrigger's
-// case 1 arm.
-
-// TestMaxLegitimateDelay_LargerRetryAfterCapWins proves the max helper picks
-// whichever duration field is actually largest, not a fixed field, so a
-// future options change is honoured automatically.
 func TestMaxLegitimateDelay_LargerRetryAfterCapWins(t *testing.T) {
 	t.Parallel()
 	opts := polling.SchedulerOptions{
 		NaturalCadence:     1 * time.Hour,
 		TimeBoundedCadence: 1 * time.Minute,
-		RetryAfterCap:      5 * time.Hour, // deliberately larger than TimeoutCadence
+		RetryAfterCap:      5 * time.Hour,
 		RateLimitDefault:   5 * time.Minute,
 		TimeoutCadence:     2 * time.Hour,
 		JitterBound:        10 * time.Second,
@@ -525,11 +503,8 @@ func TestMaxLegitimateDelay_LargerRetryAfterCapWins(t *testing.T) {
 	}
 }
 
-// TestParkedTriggerThreshold_ExceedsEveryDefaultOption uses reflection over
-// SchedulerOptions (test-only; the banned pattern is reflection-based
-// MOCKING, not a reflective assertion) so that adding a new time.Duration
-// field to SchedulerOptions without folding it into maxLegitimateDelay fails
-// this test loudly, rather than silently under-deriving the threshold.
+// Reflection makes a new Duration field in SchedulerOptions fail this test
+// until maxLegitimateDelay covers it.
 func TestParkedTriggerThreshold_ExceedsEveryDefaultOption(t *testing.T) {
 	t.Parallel()
 	opts := polling.DefaultSchedulerOptions()
@@ -550,10 +525,6 @@ func TestParkedTriggerThreshold_ExceedsEveryDefaultOption(t *testing.T) {
 	}
 }
 
-// TestParkedTriggerThreshold_DefaultIs2h15m pins the concrete value derived
-// from today's DefaultSchedulerOptions as a regression check: 2h TimeoutCadence
-// (the largest legitimate delay) plus the 15m parkedTriggerMargin. Production
-// code must never hardcode this value -- only this test may.
 func TestParkedTriggerThreshold_DefaultIs2h15m(t *testing.T) {
 	t.Parallel()
 	got := parkedTriggerThreshold(polling.DefaultSchedulerOptions())
@@ -563,12 +534,6 @@ func TestParkedTriggerThreshold_DefaultIs2h15m(t *testing.T) {
 	}
 }
 
-// TestTryBootstrap_ParkedTriggerCheck is the core behavioural table: a lone
-// scheduled trigger activating within the derived threshold (including one
-// deliberately parked by the 2h timeout backoff, and one sitting exactly on
-// the boundary) is left strictly alone, while one activating beyond it --
-// the real 2026-09-08 incident shape, and one a minute past the boundary --
-// is cancelled and replaced by a fresh seed.
 func TestTryBootstrap_ParkedTriggerCheck(t *testing.T) {
 	t.Parallel()
 	threshold := parkedTriggerThreshold(polling.DefaultSchedulerOptions())
@@ -643,10 +608,6 @@ func TestTryBootstrap_ParkedTriggerCheck(t *testing.T) {
 	}
 }
 
-// TestTryBootstrap_ActiveMessagePresentNeverTouchesQueue proves the
-// active=1/scheduled=0 arm of case 1 never peeks, cancels, publishes or
-// receives -- KEDA will run the active message, so there is nothing to
-// recover and nothing to inspect.
 func TestTryBootstrap_ActiveMessagePresentNeverTouchesQueue(t *testing.T) {
 	t.Parallel()
 	q := &fakeTriggerQueue{depth: servicebus.QueueDepth{ActiveMessageCount: 1}}
@@ -673,9 +634,6 @@ func TestTryBootstrap_ActiveMessagePresentNeverTouchesQueue(t *testing.T) {
 	}
 }
 
-// TestTryBootstrap_ParkedCheckPeekFailureIsAbsorbed proves a peek failure in
-// the parked-trigger path is absorbed exactly like every other probe failure
-// in TryBootstrap: ProbeFailed, no mutation, no error.
 func TestTryBootstrap_ParkedCheckPeekFailureIsAbsorbed(t *testing.T) {
 	t.Parallel()
 	q := &fakeTriggerQueue{
@@ -699,10 +657,6 @@ func TestTryBootstrap_ParkedCheckPeekFailureIsAbsorbed(t *testing.T) {
 	}
 }
 
-// TestTryBootstrap_ParkedCheckCancelFailureIsAbsorbed proves a CancelScheduled
-// failure never publishes a replacement (that would fork the chain): the
-// queue is left untouched and the next tick retries, mirroring reconcileFork's
-// cancel-failure handling.
 func TestTryBootstrap_ParkedCheckCancelFailureIsAbsorbed(t *testing.T) {
 	t.Parallel()
 	q := &fakeTriggerQueue{
@@ -729,12 +683,6 @@ func TestTryBootstrap_ParkedCheckCancelFailureIsAbsorbed(t *testing.T) {
 	}
 }
 
-// TestTryBootstrap_ParkedCheckPublishFailureAfterCancel proves the
-// cancel-then-publish ordering: when the cancel succeeds but the replacement
-// publish fails, ScheduledCancelled still reports 1 (that part genuinely
-// happened) while ParkedRecovered stays false and ProbeFailed is set -- the
-// queue is left empty, so the next tick reseeds it rather than forking
-// (GH#938).
 func TestTryBootstrap_ParkedCheckPublishFailureAfterCancel(t *testing.T) {
 	t.Parallel()
 	q := &fakeTriggerQueue{
@@ -764,11 +712,6 @@ func TestTryBootstrap_ParkedCheckPublishFailureAfterCancel(t *testing.T) {
 	}
 }
 
-// TestTryBootstrap_ParkedCheckPeekRaceIsAbsorbed proves that when the queue
-// changes between the depth probe and the peek -- the depth probe reported
-// exactly one scheduled message but the peek disagrees -- TryBootstrap never
-// guesses: it logs and returns a no-op result, leaving the next cron tick to
-// re-probe with a fresh, consistent view.
 func TestTryBootstrap_ParkedCheckPeekRaceIsAbsorbed(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -810,19 +753,12 @@ func TestTryBootstrap_ParkedCheckPeekRaceIsAbsorbed(t *testing.T) {
 	}
 }
 
-// parkedCheckLogLine is the subset of the JSON-encoded slog record this test
-// file inspects when proving a log line carries specific structured fields.
 type parkedCheckLogLine struct {
 	Msg            string    `json:"msg"`
 	ActivatesAt    time.Time `json:"activatesAt"`
 	SequenceNumber int64     `json:"sequenceNumber"`
 }
 
-// TestTryBootstrap_ParkedCheckWithinThresholdLogsActivationTime proves the
-// "already seeded" info log, on the path where the parked check ran and found
-// the trigger healthy, carries the surviving trigger's activation time and
-// sequence number -- the pre-GH#1151 log omitted both, which is exactly why
-// the 2026-09-08 stall was undiagnosable from the log alone.
 func TestTryBootstrap_ParkedCheckWithinThresholdLogsActivationTime(t *testing.T) {
 	t.Parallel()
 	var buf bytes.Buffer

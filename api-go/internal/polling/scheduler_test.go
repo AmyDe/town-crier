@@ -18,8 +18,7 @@ func TestNextRunScheduler_ComputeNextRun(t *testing.T) {
 		want       time.Time
 	}{
 		{
-			name: "natural uses natural cadence",
-			// 1h natural cadence (ADR 0041), no jitter (jitter is zero in this test).
+			name:   "natural uses natural cadence",
 			reason: TerminationNatural,
 			want:   now.Add(1 * time.Hour),
 		},
@@ -38,35 +37,31 @@ func TestNextRunScheduler_ComputeNextRun(t *testing.T) {
 		{
 			name:       "rate-limited honours a hint below the cap",
 			reason:     TerminationRateLimited,
-			retryAfter: 50 * time.Minute, // observed baseline band is 5-50m; must not truncate
+			retryAfter: 50 * time.Minute,
 			hasRetry:   true,
 			want:       now.Add(50 * time.Minute),
 		},
 		{
 			name:       "rate-limited hint exactly at the cap is honoured",
 			reason:     TerminationRateLimited,
-			retryAfter: 1 * time.Hour, // == cap, not > cap, so no truncation
+			retryAfter: 1 * time.Hour,
 			hasRetry:   true,
 			want:       now.Add(1 * time.Hour),
 		},
 		{
 			name:       "rate-limited caps an oversized retry-after",
 			reason:     TerminationRateLimited,
-			retryAfter: 3 * time.Hour, // > 1h cap
+			retryAfter: 3 * time.Hour,
 			hasRetry:   true,
 			want:       now.Add(1 * time.Hour),
 		},
 		{
 			name:   "rate-limited without retry-after uses default",
 			reason: TerminationRateLimited,
-			// no retry-after -> RateLimitDefault (5m)
-			want: now.Add(5 * time.Minute),
+			want:   now.Add(5 * time.Minute),
 		},
 		{
-			name: "timeout uses timeout cadence",
-			// 2h timeout cadence, deliberately longer than the 1h natural
-			// cadence -- a client-side timeout is more than "nothing
-			// happened", so it should back off further, not resume sooner.
+			name:   "timeout uses timeout cadence",
 			reason: TerminationTimeout,
 			want:   now.Add(2 * time.Hour),
 		},
@@ -74,8 +69,6 @@ func TestNextRunScheduler_ComputeNextRun(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			// Zero jitter makes the result deterministic; jitter coverage is a
-			// separate test below.
 			s := NewNextRunScheduler(opts, zeroJitter{})
 			var retry *time.Duration
 			if tc.hasRetry {
@@ -103,15 +96,11 @@ func TestNextRunScheduler_RateLimitedCapAppliesJitterAfterCapping(t *testing.T) 
 	t.Parallel()
 	now := time.Date(2026, 6, 14, 12, 0, 0, 0, time.UTC)
 	opts := DefaultSchedulerOptions()
-	// A hint above the cap is truncated to RetryAfterCap first, and jitter at its
-	// maximum bound is added on top -- proves the whole delay stays at most
-	// RetryAfterCap+JitterBound, and that jitter still applies after capping.
 	s := NewNextRunScheduler(opts, fixedJitter{offset: opts.JitterBound})
 
 	ra := 3 * time.Hour
 	got := s.ComputeNextRun(TerminationRateLimited, &ra, now)
-	// Expected value is a literal, not opts.RetryAfterCap, so this test fails
-	// honestly if the cap ever drifts from 1h rather than trivially matching it.
+	// A literal, not opts.RetryAfterCap, so a change to the cap fails this test.
 	want := now.Add(1*time.Hour + opts.JitterBound)
 	if !got.Equal(want) {
 		t.Errorf("capped+jittered next run: got %v, want %v", got, want)

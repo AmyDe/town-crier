@@ -702,12 +702,6 @@ func TestRunPollBootstrap_TagsLeaseUnavailableAttribute(t *testing.T) {
 	}
 }
 
-// TestRunPollBootstrap_TagsParkedRecoveredAttribute proves the "Polling
-// Bootstrap" span surfaces BootstrapResult.ParkedRecovered (tc-a426z /
-// GH#1151): a lone scheduled trigger parked beyond every delay the scheduler
-// could legitimately choose is cancelled and replaced, and the span records
-// polling.safety_net.parked_recovered=true so an alert can fire on a stall
-// without a human happening to look.
 func TestRunPollBootstrap_TagsParkedRecoveredAttribute(t *testing.T) {
 	q := &fakeTriggerQueue{
 		depth: servicebus.QueueDepth{ScheduledMessageCount: 1},
@@ -730,10 +724,6 @@ func TestRunPollBootstrap_TagsParkedRecoveredAttribute(t *testing.T) {
 	}
 }
 
-// TestRunPollBootstrap_TagsParkedRecoveredFalseOnNormalRun proves a normal
-// (non-parked) bootstrap cycle still tags polling.safety_net.parked_recovered
-// as present and false, so the attribute is queryable on every cycle rather
-// than only appearing on a recovery.
 func TestRunPollBootstrap_TagsParkedRecoveredFalseOnNormalRun(t *testing.T) {
 	q := &fakeTriggerQueue{depth: servicebus.QueueDepth{}}
 	b := newTestBootstrapper(t, q)
