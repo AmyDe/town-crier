@@ -527,11 +527,14 @@ func runPollBootstrap(ctx context.Context, bootstrapper *Bootstrapper, logger *s
 	// and dashboards keep working. lease_unavailable (PR1) and the
 	// reconciliation counts (PR2) are additive: they let an alert fire on a
 	// forked chain or a stuck DLQ without a human happening to look (GH#938).
+	// parked_recovered (tc-a426z / GH#1151) is the same idea for a trigger
+	// parked beyond every delay the scheduler could legitimately choose.
 	span.SetAttributes(
 		attribute.Bool("polling.safety_net.bootstrap_published", res.Published),
 		attribute.Bool("polling.safety_net.bootstrap_probe_failed", res.ProbeFailed),
 		attribute.Bool("polling.safety_net.lease_unavailable", res.LeaseUnavailable),
 		attribute.Bool("polling.safety_net.reconciled", res.Reconciled),
+		attribute.Bool("polling.safety_net.parked_recovered", res.ParkedRecovered),
 		attribute.Int("polling.safety_net.scheduled_cancelled", res.ScheduledCancelled),
 		attribute.Int("polling.safety_net.active_discarded", res.ActiveDiscarded),
 		attribute.Int("polling.safety_net.dead_lettered", res.DeadLettered),
