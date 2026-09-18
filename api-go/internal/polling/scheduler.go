@@ -10,7 +10,7 @@ type Jitter interface {
 }
 
 // SchedulerOptions are the next-run scheduler tunables: 1h natural cadence, 1m
-// resume after a time-bounded cut-off, 3h cap on a Retry-After hint, 5m
+// resume after a time-bounded cut-off, 1h cap on a Retry-After hint, 5m
 // rate-limit default, 2h timeout cadence, 10s jitter bound.
 type SchedulerOptions struct {
 	NaturalCadence     time.Duration
@@ -30,8 +30,16 @@ func DefaultSchedulerOptions() SchedulerOptions {
 	return SchedulerOptions{
 		NaturalCadence:     1 * time.Hour,
 		TimeBoundedCadence: 1 * time.Minute,
-		RetryAfterCap:      3 * time.Hour,
-		RateLimitDefault:   5 * time.Minute,
+		// RetryAfterCap equals NaturalCadence, so a rate-limited cycle never
+		// delays ingest longer than an ordinary quiet cycle would. It bounds
+		// the all-lane blast radius of a single 429 (there is one trigger
+		// chain for every lane) at 1h instead of the prior 3h, which blacked
+		// out prod polling twice in 24h during the 2026-09-08 incident
+		// (tc-vgbl7). Observed baseline hints are 5-50 min, so the whole
+		// observed band is still honoured verbatim; a hint above the cap is
+		// truncated, which is existing behaviour -- only the value changed.
+		RetryAfterCap:    1 * time.Hour,
+		RateLimitDefault: 5 * time.Minute,
 		// TimeoutCadence is deliberately longer than NaturalCadence: a
 		// client-side timeout is more than "nothing happened" (ADR 0041's
 		// natural-cadence rationale), so it should back off further than a
