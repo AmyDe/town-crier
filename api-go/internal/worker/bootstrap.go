@@ -66,16 +66,16 @@ func maxLegitimateDelay(opts polling.SchedulerOptions) time.Duration {
 	return longest
 }
 
-// parkedTriggerThreshold is the age at which a lone scheduled trigger counts
-// as parked rather than a healthy, deliberately-delayed cycle: the longest
-// delay the scheduler could legitimately choose for opts (maxLegitimateDelay),
-// plus parkedTriggerMargin. It is always derived from opts, never written as a
+// parkedTriggerThreshold is how far beyond now a lone scheduled trigger may
+// activate before it counts as parked rather than a healthy,
+// deliberately-delayed cycle: the longest delay the scheduler could
+// legitimately choose for opts (maxLegitimateDelay), plus
+// parkedTriggerMargin. It is always derived from opts, never written as a
 // literal in production code, so a future change to any scheduler cadence
 // (e.g. a longer TimeoutCadence) automatically widens this threshold too --
 // otherwise the bootstrap could start fighting the scheduler's own deliberate
 // backoff (tc-a426z / GH#1151). With today's polling.DefaultSchedulerOptions
-// this evaluates to 2h15m (2h TimeoutCadence + 15m margin); no test in this
-// package should assume production code hardcodes that value.
+// this evaluates to 2h15m (2h TimeoutCadence + 15m margin).
 func parkedTriggerThreshold(opts polling.SchedulerOptions) time.Duration {
 	return maxLegitimateDelay(opts) + parkedTriggerMargin
 }
