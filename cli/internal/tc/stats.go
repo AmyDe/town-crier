@@ -111,6 +111,7 @@ const (
 	proPence       = 499
 	personalPence  = 199
 	proAnnualPence = 2999
+	monthsPerYear  = 12
 )
 
 // mrrPence computes the estimated MRR in integer pence. Annual Pro payers
@@ -125,7 +126,7 @@ func mrrPence(p statsPaying) int {
 	if p.AppStoreProAnnual != nil {
 		annual = *p.AppStoreProAnnual
 	}
-	return t.Personal*personalPence + (t.Pro-annual)*proPence + (annual*proAnnualPence+6)/12
+	return t.Personal*personalPence + (t.Pro-annual)*proPence + (annual*proAnnualPence+monthsPerYear/2)/monthsPerYear
 }
 
 // formatMRR renders the integer-pence MRR as "£X.YY/mo".
