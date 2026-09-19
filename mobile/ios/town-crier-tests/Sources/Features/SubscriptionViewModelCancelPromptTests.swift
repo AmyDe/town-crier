@@ -17,8 +17,6 @@ struct SubscriptionViewModelCancelPromptTests {
     return (sut, subscriptionSpy)
   }
 
-  // MARK: - Cancel-old-subscription prompt
-
   @Test func init_cancelPromptAndManageSheetAreNotPresented() {
     let (sut, _) = makeSUT()
     #expect(!sut.isCancelSubscriptionPromptPresented)

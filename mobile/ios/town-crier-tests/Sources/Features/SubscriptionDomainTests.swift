@@ -5,15 +5,11 @@ import TownCrierDomain
 @Suite("Subscription domain types")
 struct SubscriptionDomainTests {
 
-  // MARK: - SubscriptionPeriod
-
   @Test func period_ordersMonthlyThenAnnualThenLifetime() {
     #expect(SubscriptionPeriod.monthly < .annual)
     #expect(SubscriptionPeriod.annual < .lifetime)
     #expect(SubscriptionPeriod.allCases.sorted() == [.monthly, .annual, .lifetime])
   }
-
-  // MARK: - SubscriptionProduct
 
   @Test func product_defaultsToMonthlyWithZeroPriceAndPoundsCurrency() {
     let product = SubscriptionProduct(
@@ -43,8 +39,6 @@ struct SubscriptionDomainTests {
     #expect(product.price == 29.99)
     #expect(product.currencyCode == "EUR")
   }
-
-  // MARK: - SubscriptionEntitlement
 
   @Test func entitlement_defaultsToNoProductAndNotLifetime() {
     let entitlement = SubscriptionEntitlement(tier: .pro, expiryDate: .distantFuture)

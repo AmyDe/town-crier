@@ -253,8 +253,6 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
     )
   }
 
-  /// Picks the entitlement to surface when several are active: the higher tier
-  /// wins, and at equal tier a lifetime purchase beats a subscription.
   static func preferredEntitlement(
     current: SubscriptionEntitlement?,
     candidate: SubscriptionEntitlement

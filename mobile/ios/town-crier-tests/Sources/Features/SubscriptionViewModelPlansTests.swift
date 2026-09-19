@@ -17,8 +17,6 @@ struct SubscriptionViewModelPlansTests {
     return (sut, subscriptionSpy)
   }
 
-  // MARK: - Product grouping
-
   @Test func personalProducts_containsOnlyPersonalTier() async {
     let (sut, spy) = makeSUT()
     spy.availableProductsResult = .success([.personal, .pro, .proAnnual, .proLifetime])
@@ -36,8 +34,6 @@ struct SubscriptionViewModelPlansTests {
 
     #expect(sut.proOptions == [.pro, .proAnnual, .proLifetime])
   }
-
-  // MARK: - Selected Pro period
 
   @Test func init_selectedProPeriodIsAnnual() {
     let (sut, _) = makeSUT()
@@ -111,8 +107,6 @@ struct SubscriptionViewModelPlansTests {
 
     #expect(sut.selectedProProduct == .proLifetime)
   }
-
-  // MARK: - Annual savings
 
   @Test func annualSavingsPercent_is50_for2999Against499() async {
     let (sut, spy) = makeSUT()
@@ -194,8 +188,6 @@ struct SubscriptionViewModelPlansTests {
     #expect(sut.annualSavingsBadge == nil)
   }
 
-  // MARK: - Price and button copy
-
   @Test func priceLine_monthly_appendsSlashMonth() {
     let (sut, _) = makeSUT()
     #expect(sut.priceLine(for: .pro) == "£4.99/month")
@@ -237,8 +229,6 @@ struct SubscriptionViewModelPlansTests {
     #expect(SubscriptionPeriod.lifetime.pickerTitle == "Lifetime")
   }
 
-  // MARK: - Period disclosures
-
   @Test func subscriptionDisclosure_annual_returnsAnnualText() {
     let (sut, _) = makeSUT()
 
@@ -260,8 +250,6 @@ struct SubscriptionViewModelPlansTests {
     )
   }
 
-  // MARK: - Current product
-
   @Test func isCurrentProduct_isTrueOnlyForTheEntitlementsProductId() async {
     let (sut, spy) = makeSUT()
     spy.availableProductsResult = .success([.personal, .pro, .proAnnual, .proLifetime])
@@ -278,8 +266,6 @@ struct SubscriptionViewModelPlansTests {
     let (sut, _) = makeSUT()
     #expect(!sut.isCurrentProduct(.pro))
   }
-
-  // MARK: - Purchase buttons
 
   @Test func showsPurchaseButtons_isTrue_withoutLifetimeEntitlement() async {
     let (sut, spy) = makeSUT()

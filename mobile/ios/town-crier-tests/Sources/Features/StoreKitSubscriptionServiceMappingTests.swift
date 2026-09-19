@@ -7,8 +7,6 @@ import TownCrierDomain
 @Suite("StoreKitSubscriptionService — product mapping")
 struct StoreKitSubscriptionServiceMappingTests {
 
-  // MARK: - Product IDs
-
   @Test func productIds_includeAllFourProducts() {
     #expect(
       Set(StoreKitSubscriptionService.productIds)
@@ -20,8 +18,6 @@ struct StoreKitSubscriptionServiceMappingTests {
         ]
     )
   }
-
-  // MARK: - Tier and period
 
   @Test(
     arguments: [
@@ -55,8 +51,6 @@ struct StoreKitSubscriptionServiceMappingTests {
     #expect(StoreKitSubscriptionService.period(forProductId: "uk.towncrierapp.unknown") == nil)
   }
 
-  // MARK: - Ordering
-
   @Test func sorted_ordersByTierThenMonthlyAnnualLifetime() {
     let shuffled: [SubscriptionProduct] = [.proLifetime, .pro, .proAnnual, .personal]
 
@@ -64,8 +58,6 @@ struct StoreKitSubscriptionServiceMappingTests {
 
     #expect(sorted == [.personal, .pro, .proAnnual, .proLifetime])
   }
-
-  // MARK: - Entitlement mapping
 
   @Test func entitlement_forNonConsumable_isLifetimeWithDistantFutureExpiry() {
     let entitlement = StoreKitSubscriptionService.entitlement(
@@ -108,8 +100,6 @@ struct StoreKitSubscriptionServiceMappingTests {
 
     #expect(entitlement.isTrialPeriod)
   }
-
-  // MARK: - Restore preference
 
   @Test func preferred_whenNoCurrent_returnsCandidate() {
     let result = StoreKitSubscriptionService.preferredEntitlement(

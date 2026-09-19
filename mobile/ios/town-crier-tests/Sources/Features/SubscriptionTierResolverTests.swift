@@ -218,8 +218,6 @@ struct SubscriptionTierResolverTests {
     #expect(!result.isTrialPeriod)
   }
 
-  // MARK: - Lifetime
-
   @Test
   func whenStoreKitLifetimeIsHighestTier_isLifetimeIsTrue() async {
     let (sut, _) = makeSUT(
