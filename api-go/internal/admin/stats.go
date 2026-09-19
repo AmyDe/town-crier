@@ -34,17 +34,14 @@ type statsByTier struct {
 }
 
 type statsPaying struct {
-	EffectivePaid  int                 `json:"effectivePaid"`
-	AppStore       int                 `json:"appStore"`
-	Comped         int                 `json:"comped"`
-	Lapsed         int                 `json:"lapsed"`
-	InGrace        int                 `json:"inGrace"`
-	AppStoreByTier statsAppStoreByTier `json:"appStoreByTier"`
-	// Lifetime counts effective-paid profiles holding a lifetime purchase. They
-	// are excluded from AppStore and Comped, and from AppStoreProAnnual.
-	Lifetime int `json:"lifetime"`
-	// AppStoreProAnnual counts the AppStore Pro payers on the annual product.
-	AppStoreProAnnual int `json:"appStoreProAnnual"`
+	EffectivePaid     int                 `json:"effectivePaid"`
+	AppStore          int                 `json:"appStore"`
+	Comped            int                 `json:"comped"`
+	Lapsed            int                 `json:"lapsed"`
+	InGrace           int                 `json:"inGrace"`
+	AppStoreByTier    statsAppStoreByTier `json:"appStoreByTier"`
+	Lifetime          int                 `json:"lifetime"`
+	AppStoreProAnnual int                 `json:"appStoreProAnnual"`
 }
 
 // statsAppStoreByTier is an explicit struct (not a map) so the two paid tier

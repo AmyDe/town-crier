@@ -551,8 +551,6 @@ func paidCandidate(userID string, tier profiles.SubscriptionTier, expiry *time.T
 	}
 }
 
-// lifetimeCandidate builds a Pro lifetime holder. subExpiry and subTxn describe
-// an optional subscription alongside the lifetime grant.
 func lifetimeCandidate(userID string, subExpiry, grace *time.Time, subTxn *string) *profiles.UserProfile {
 	lifeTxn := "life-" + userID
 	purchased := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)

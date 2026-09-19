@@ -204,19 +204,18 @@ func (h *handler) verify(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(r, w, http.StatusOK, result)
 }
 
-// lifetimeCandidate is the highest lifetime (non-consumable) purchase seen while
-// verifying a set of transactions. The zero value means none was seen.
+// lifetimeCandidate is the highest lifetime purchase seen while verifying a
+// set of transactions. The zero value means none was seen.
 type lifetimeCandidate struct {
 	tier                  profiles.SubscriptionTier
 	originalTransactionID string
 	purchasedAt           time.Time
 }
 
-// runVerify verifies every supplied JWS and applies the result to the caller's
-// profile: the highest active subscription, and the highest lifetime purchase.
-// A lifetime purchase is never revoked here (the JWS list is client-supplied, so
-// a missing transaction is not proof of a refund). It persists the profile and
-// syncs Auth0 — the VerifySubscriptionCommandHandler logic.
+// runVerify verifies every supplied JWS, applies the highest active subscription
+// and the highest lifetime purchase to the caller's profile, persists it, and
+// syncs Auth0. It never revokes a lifetime grant: the JWS list is
+// client-supplied, so a missing transaction is not proof of a refund.
 func (h *handler) runVerify(ctx context.Context, userID string, signedTransactions []string) (verifyResponse, error) {
 	profile, err := h.profilesByUser.Get(ctx, userID)
 	if err != nil {
@@ -318,11 +317,10 @@ func (h *handler) runVerify(ctx context.Context, userID string, signedTransactio
 	}, nil
 }
 
-// requireOwnedBy enforces single-owner on an Apple original transaction id: a
-// transaction signed by Apple proves nothing about which account bought it, so
-// linking it to a second account would let one JWS grant Pro on unlimited
-// accounts. The same user (idempotent re-verify) or no owner yet (first-time
-// claim) passes; a different owner yields a *conflictError.
+// requireOwnedBy enforces single-owner on an Apple original transaction id. A
+// signed transaction proves nothing about which account bought it, so without
+// this check one JWS could grant Pro on unlimited accounts. It returns a
+// *conflictError when a different user already owns the id.
 func (h *handler) requireOwnedBy(ctx context.Context, userID, originalTransactionID string) error {
 	existing, err := h.profilesByTxn.GetByOriginalTransactionID(ctx, originalTransactionID)
 	switch {

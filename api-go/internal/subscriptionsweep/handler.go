@@ -87,12 +87,10 @@ func (h *Handler) Run(ctx context.Context) (int, error) {
 	return downgraded, nil
 }
 
-// downgrade ends one lapsed profile's subscription: ExpireSubscription clears
-// the stored expiry/grace and drops the tier to Free (or the lifetime floor), Save
-// persists it, then the Auth0 metadata is synced. Cosmos is written before Auth0 (mirroring the erasure cascade): if
-// Save fails the stored state is untouched and the next cycle retries; if Auth0
-// fails after a successful Save the stored tier is already Free, so the read path
-// is correct and only the informational Auth0 metadata is momentarily stale.
+// downgrade ends one lapsed profile's subscription, saves it, then syncs Auth0.
+// The save comes first: if it fails the stored state is untouched and the next
+// cycle retries, and if the sync fails only the informational Auth0 metadata is
+// stale because entitlements gate on EffectiveTier.
 func (h *Handler) downgrade(ctx context.Context, p *profiles.UserProfile) error {
 	p.ExpireSubscription()
 	if err := h.saver.Save(ctx, p); err != nil {

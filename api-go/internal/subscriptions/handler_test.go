@@ -258,8 +258,6 @@ func TestVerify_PurchaseActivatesPro(t *testing.T) {
 	}
 }
 
-// --- lifetime verify tests ---
-
 func TestVerify_LifetimeOnlyGrantsPro(t *testing.T) {
 	t.Parallel()
 	d := newTestDeps()

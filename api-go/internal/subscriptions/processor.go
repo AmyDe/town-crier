@@ -163,7 +163,6 @@ func applyNotification(profile *profiles.UserProfile, notification DecodedNotifi
 		return true, nil
 
 	default:
-		// TEST, PRICE_INCREASE, REFUND_DECLINED, etc. — ignore.
 		return false, nil
 	}
 }

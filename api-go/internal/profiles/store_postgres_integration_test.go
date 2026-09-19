@@ -464,8 +464,6 @@ func requireLifetimeColumns(t *testing.T, got *UserProfile, purchased time.Time)
 	}
 }
 
-// TestPostgresStore_LifetimeColumnsRoundTrip proves the four lifetime and
-// product columns survive Save/Get on both save paths and the CAS update path.
 func TestPostgresStore_LifetimeColumnsRoundTrip(t *testing.T) {
 	pool := pgtest.New(t)
 	pgtest.Truncate(t, pool, "users")
@@ -510,9 +508,6 @@ func TestPostgresStore_LifetimeColumnsRoundTrip(t *testing.T) {
 	requireLifetimeColumns(t, afterCAS, purchased)
 }
 
-// TestPostgresStore_NewProfileDefaultsToNoLifetime proves the migration
-// defaults: an untouched profile reads back with LifetimeTier Free and no
-// lifetime or product columns.
 func TestPostgresStore_NewProfileDefaultsToNoLifetime(t *testing.T) {
 	store, _ := newUserPGStore(t)
 	ctx := context.Background()
@@ -530,9 +525,6 @@ func TestPostgresStore_NewProfileDefaultsToNoLifetime(t *testing.T) {
 	}
 }
 
-// TestPostgresAdminStore_GetByOriginalTransactionID_FindsByLifetimeID proves the
-// webhook lookup resolves a lifetime transaction id as well as a subscription
-// one.
 func TestPostgresAdminStore_GetByOriginalTransactionID_FindsByLifetimeID(t *testing.T) {
 	pool := pgtest.New(t)
 	pgtest.Truncate(t, pool, "users")
@@ -563,8 +555,6 @@ func TestPostgresAdminStore_GetByOriginalTransactionID_FindsByLifetimeID(t *test
 	}
 }
 
-// TestPostgresAdminStore_LapsedPaid_ExcludesLifetimeHolder proves a lifetime
-// holder whose subscription expiry has passed is never reported as lapsed.
 func TestPostgresAdminStore_LapsedPaid_ExcludesLifetimeHolder(t *testing.T) {
 	pool := pgtest.New(t)
 	pgtest.Truncate(t, pool, "users")

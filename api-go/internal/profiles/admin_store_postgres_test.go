@@ -232,8 +232,6 @@ func TestList_BadCursor_ReturnsError(t *testing.T) {
 	}
 }
 
-// withLifetime overrides the lifetime_tier and lifetime_original_transaction_id
-// columns of a userSelectCols projection built by paidUserRow.
 func withLifetime(row []any, tier string, originalTransactionID any) []any {
 	out := append([]any(nil), row...)
 	out[12] = tier
