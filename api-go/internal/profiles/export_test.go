@@ -183,6 +183,66 @@ func TestNewExportUserData_PopulatedShapes(t *testing.T) {
 	}
 }
 
+func exportedSubscriptionOf(t *testing.T, p *UserProfile) map[string]any {
+	t.Helper()
+	export, err := newExportUserData(context.Background(), p, ExportReaders{})
+	if err != nil {
+		t.Fatalf("newExportUserData: %v", err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(mustMarshal(t, export)), &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	sub, ok := got["subscription"].(map[string]any)
+	if !ok {
+		t.Fatalf("subscription block missing: %v", got)
+	}
+	return sub
+}
+
+func TestNewExportUserData_SubscriptionIncludesLifetimeAndProductID(t *testing.T) {
+	t.Parallel()
+
+	p := testExportProfile()
+	p.GrantLifetime(TierPro, "life-orig-1", time.Date(2026, 9, 1, 10, 30, 0, 0, time.UTC))
+	p.LinkOriginalTransactionID("sub-orig-1")
+	p.ActivateAppStoreSubscription(TierPro, time.Date(2027, 9, 1, 10, 30, 0, 0, time.UTC), "uk.towncrierapp.pro.annual")
+
+	sub := exportedSubscriptionOf(t, p)
+
+	if sub["productId"] != "uk.towncrierapp.pro.annual" {
+		t.Errorf("productId = %v, want uk.towncrierapp.pro.annual", sub["productId"])
+	}
+	if sub["lifetimeTier"] != "Pro" {
+		t.Errorf("lifetimeTier = %v, want Pro", sub["lifetimeTier"])
+	}
+	if sub["lifetimeOriginalTransactionId"] != "life-orig-1" {
+		t.Errorf("lifetimeOriginalTransactionId = %v, want life-orig-1", sub["lifetimeOriginalTransactionId"])
+	}
+	if sub["lifetimePurchasedAt"] != "2026-09-01T10:30:00+00:00" {
+		t.Errorf("lifetimePurchasedAt = %v, want 2026-09-01T10:30:00+00:00", sub["lifetimePurchasedAt"])
+	}
+	if sub["originalTransactionId"] != "sub-orig-1" {
+		t.Errorf("originalTransactionId = %v, want sub-orig-1", sub["originalTransactionId"])
+	}
+}
+
+func TestNewExportUserData_SubscriptionLifetimeDefaults(t *testing.T) {
+	t.Parallel()
+
+	sub := exportedSubscriptionOf(t, testExportProfile())
+
+	if sub["lifetimeTier"] != "Free" {
+		t.Errorf("lifetimeTier = %v, want Free", sub["lifetimeTier"])
+	}
+	for _, key := range []string{"productId", "lifetimeOriginalTransactionId", "lifetimePurchasedAt"} {
+		v, present := sub[key]
+		if !present || v != nil {
+			t.Errorf("%s = %v (present=%v), want present and null", key, v, present)
+		}
+	}
+}
+
 // TestNewExportUserData_NilReadersYieldEmptyArrays guards the Cosmos-less local
 // boot: when the readers are absent (zero-valued bundle) every child collection
 // must still render as [] — never null.
