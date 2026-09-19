@@ -34,11 +34,11 @@ final class SpySubscriptionService: SubscriptionService, @unchecked Sendable {
     return currentEntitlementResult
   }
 
-  private(set) var hasActiveAutoRenewingSubscriptionCallCount = 0
+  private(set) var autoRenewingCheckCallCount = 0
   var hasActiveAutoRenewingSubscriptionResult = false
 
   func hasActiveAutoRenewingSubscription() async -> Bool {
-    hasActiveAutoRenewingSubscriptionCallCount += 1
+    autoRenewingCheckCallCount += 1
     return hasActiveAutoRenewingSubscriptionResult
   }
 }

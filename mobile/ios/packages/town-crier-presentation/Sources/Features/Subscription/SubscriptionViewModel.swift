@@ -63,7 +63,7 @@ public final class SubscriptionViewModel: ObservableObject, ErrorHandlingViewMod
     else { return nil }
     let yearOfMonthly = monthly.price * 12
     let fraction = (yearOfMonthly - annual.price) / yearOfMonthly * 100
-    let percent = Int(NSDecimalNumber(decimal: fraction).doubleValue.rounded())
+    let percent = Int((Double(fraction.description) ?? 0).rounded())
     return percent >= 1 ? percent : nil
   }
 

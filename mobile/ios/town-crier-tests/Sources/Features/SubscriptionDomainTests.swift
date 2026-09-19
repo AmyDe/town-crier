@@ -17,7 +17,10 @@ struct SubscriptionDomainTests {
 
   @Test func product_defaultsToMonthlyWithZeroPriceAndPoundsCurrency() {
     let product = SubscriptionProduct(
-      id: "id", displayName: "Name", displayPrice: "£1.00", tier: .personal
+      id: "id",
+      displayName: "Name",
+      displayPrice: "£1.00",
+      tier: .personal
     )
 
     #expect(product.period == .monthly)
@@ -27,8 +30,13 @@ struct SubscriptionDomainTests {
 
   @Test func product_carriesPeriodPriceAndCurrency() {
     let product = SubscriptionProduct(
-      id: "id", displayName: "Name", displayPrice: "€29.99", tier: .pro,
-      period: .annual, price: 29.99, currencyCode: "EUR"
+      id: "id",
+      displayName: "Name",
+      displayPrice: "€29.99",
+      tier: .pro,
+      period: .annual,
+      price: 29.99,
+      currencyCode: "EUR"
     )
 
     #expect(product.period == .annual)
