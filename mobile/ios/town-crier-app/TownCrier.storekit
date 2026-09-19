@@ -4,7 +4,21 @@
 
   ],
   "products" : [
-
+    {
+      "displayPrice" : "69.99",
+      "familyShareable" : false,
+      "internalID" : "21040",
+      "localizations" : [
+        {
+          "description" : "Unlimited watch zones, all alert types, and an hourly digest.",
+          "displayName" : "Pro Lifetime",
+          "locale" : "en_GB"
+        }
+      ],
+      "productID" : "uk.towncrierapp.pro.lifetime",
+      "referenceName" : "Pro Lifetime",
+      "type" : "NonConsumable"
+    }
   ],
   "settings" : {
     "_compatibilityTimeRate" : {
@@ -78,7 +92,7 @@
           ],
           "displayPrice" : "1.99",
           "familyShareable" : false,
-          "groupNumber" : 1,
+          "groupNumber" : 2,
           "internalID" : "21010",
           "introductoryOffer" : {
             "internalID" : "21011",
@@ -120,6 +134,31 @@
           "productID" : "uk.towncrierapp.pro.monthly",
           "recurringSubscriptionPeriod" : "P1M",
           "referenceName" : "Pro Monthly",
+          "subscriptionGroupID" : "21001",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "29.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "21030",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Unlimited watch zones, all alert types, and an hourly digest.",
+              "displayName" : "Pro Annual",
+              "locale" : "en_GB"
+            }
+          ],
+          "productID" : "uk.towncrierapp.pro.annual",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Pro Annual",
           "subscriptionGroupID" : "21001",
           "type" : "RecurringSubscription"
         }

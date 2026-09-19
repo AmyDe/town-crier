@@ -176,9 +176,10 @@ public struct SettingsView: View {
             .font(TCTypography.bodyEmphasis)
             .foregroundStyle(Color.tcTextPrimary)
           if viewModel.isTrialPeriod {
-            Text("Trial")
-              .font(TCTypography.captionEmphasis)
-              .foregroundStyle(Color.tcStatusPending)
+            tierBadge("Trial")
+          }
+          if viewModel.isLifetime {
+            tierBadge("Lifetime")
           }
         }
       }
@@ -196,6 +197,12 @@ public struct SettingsView: View {
       Text("Subscription")
         .font(TCTypography.captionEmphasis)
     }
+  }
+
+  private func tierBadge(_ title: String) -> some View {
+    Text(title)
+      .font(TCTypography.captionEmphasis)
+      .foregroundStyle(Color.tcStatusPending)
   }
 
   // MARK: - Attribution
