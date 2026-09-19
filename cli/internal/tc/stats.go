@@ -37,6 +37,9 @@ func renderStats(out io.Writer, s *statsResponse) {
 
 	fmt.Fprintln(out, "Paying")
 	fmt.Fprintf(out, "  %s\n", payingAppStoreLine(s.Paying))
+	if s.Paying.Lifetime != nil {
+		fmt.Fprintf(out, "  Lifetime (App Store): %d\n", *s.Paying.Lifetime)
+	}
 	fmt.Fprintf(out, "  %s\n", estMRRLine(s.Paying))
 	fmt.Fprintf(out, "  Comped (offer/admin): %d\n", s.Paying.Comped)
 	fmt.Fprintf(out, "  Lapsed: %d\n", s.Paying.Lapsed)
@@ -140,16 +143,24 @@ func mrrSummarySegment(p statsPaying) string {
 	return "MRR " + formatMRR(p)
 }
 
+// lifetimeSummarySegment renders the optional lifetime segment of
+// statsSummaryLine, empty when the API predates lifetime Pro.
+func lifetimeSummarySegment(p statsPaying) string {
+	if p.Lifetime == nil {
+		return ""
+	}
+	return fmt.Sprintf(" · lifetime %d", *p.Lifetime)
+}
+
 // statsSummaryLine condenses the aggregate into a single line for the
-// list-users first-page header: total + tier split, the App Store-only paying
-// headline with estimated MRR, comped/lapsed, and the two freshest signals
-// (new-in-24h, active-in-24h). The headline paying figure is App Store
-// only — offer/admin comps are reported separately, never bundled in.
+// list-users first-page header. The headline paying figure is App Store only;
+// offer/admin comps are reported separately, never bundled in.
 func statsSummaryLine(s *statsResponse) string {
 	return fmt.Sprintf(
-		"%d users (Free %d, Personal %d, Pro %d) · paying %d · %s · comped %d · lapsed %d · new 24h %d · active 24h %d",
+		"%d users (Free %d, Personal %d, Pro %d) · paying %d · %s%s · comped %d · lapsed %d · new 24h %d · active 24h %d",
 		s.Users.Total, s.Users.ByTier.Free, s.Users.ByTier.Personal, s.Users.ByTier.Pro,
-		s.Paying.AppStore, mrrSummarySegment(s.Paying), s.Paying.Comped, s.Paying.Lapsed,
+		s.Paying.AppStore, mrrSummarySegment(s.Paying), lifetimeSummarySegment(s.Paying),
+		s.Paying.Comped, s.Paying.Lapsed,
 		s.Signups.Last24h, s.Activity.Active24h,
 	)
 }
