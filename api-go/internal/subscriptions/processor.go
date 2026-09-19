@@ -122,23 +122,20 @@ func (p *NotificationProcessor) Process(ctx context.Context, signedPayload strin
 }
 
 // applyNotification mutates the profile per the App Store notification type and
-// reports whether any state changed (a no-change event needs no save/sync).
+// reports whether any state changed (a no-change event needs no save/sync). A
+// non-consumable (lifetime) transaction only ever touches the lifetime grant.
 func applyNotification(profile *profiles.UserProfile, notification DecodedNotification, txn DecodedTransaction) (bool, error) {
-	switch notification.NotificationType {
-	case "SUBSCRIBED", "OFFER_REDEEMED":
-		tier, err := TierForProduct(txn.ProductID)
-		if err != nil {
-			return false, err
-		}
-		profile.ActivateSubscription(tier, txn.ExpiresDate)
-		return true, nil
+	if txn.Type == TransactionTypeNonConsumable {
+		return applyLifetimeNotification(profile, notification, txn)
+	}
 
-	case "DID_RENEW":
+	switch notification.NotificationType {
+	case "SUBSCRIBED", "OFFER_REDEEMED", "DID_RENEW":
 		tier, err := TierForProduct(txn.ProductID)
 		if err != nil {
 			return false, err
 		}
-		profile.ActivateSubscription(tier, txn.ExpiresDate)
+		profile.ActivateAppStoreSubscription(tier, txn.ExpiresDate, txn.ProductID)
 		return true, nil
 
 	case "DID_CHANGE_RENEWAL_PREF":
@@ -147,7 +144,7 @@ func applyNotification(profile *profiles.UserProfile, notification DecodedNotifi
 			if err != nil {
 				return false, err
 			}
-			profile.ActivateSubscription(tier, txn.ExpiresDate)
+			profile.ActivateAppStoreSubscription(tier, txn.ExpiresDate, txn.ProductID)
 			return true, nil
 		}
 		// DOWNGRADE: no state change — it takes effect at the next renewal.
@@ -167,6 +164,25 @@ func applyNotification(profile *profiles.UserProfile, notification DecodedNotifi
 
 	default:
 		// TEST, PRICE_INCREASE, REFUND_DECLINED, etc. — ignore.
+		return false, nil
+	}
+}
+
+func applyLifetimeNotification(profile *profiles.UserProfile, notification DecodedNotification, txn DecodedTransaction) (bool, error) {
+	switch notification.NotificationType {
+	case "ONE_TIME_CHARGE", "REFUND_REVERSED":
+		tier, err := TierForProduct(txn.ProductID)
+		if err != nil {
+			return false, err
+		}
+		profile.GrantLifetime(tier, txn.OriginalTransactionID, txn.PurchaseDate)
+		return true, nil
+
+	case "REFUND", "REVOKE":
+		profile.RevokeLifetime()
+		return true, nil
+
+	default:
 		return false, nil
 	}
 }
