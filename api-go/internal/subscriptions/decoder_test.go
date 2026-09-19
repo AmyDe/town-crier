@@ -41,6 +41,70 @@ func TestDecodeTransaction_Valid(t *testing.T) {
 	}
 }
 
+func TestDecodeTransaction_TypeAndRevocationDate(t *testing.T) {
+	t.Parallel()
+	const revokedMs = 1_700_100_000_000
+	json := `{
+		"transactionId":"txn-1",
+		"originalTransactionId":"orig-1",
+		"productId":"uk.towncrierapp.pro.lifetime",
+		"bundleId":"uk.towncrierapp.mobile",
+		"purchaseDate":1700000000000,
+		"type":"Non-Consumable",
+		"revocationDate":1700100000000,
+		"environment":"Production"
+	}`
+
+	got, err := DecodeTransaction(json)
+	if err != nil {
+		t.Fatalf("DecodeTransaction: %v", err)
+	}
+	if got.Type != TransactionTypeNonConsumable {
+		t.Errorf("Type = %q, want %q", got.Type, TransactionTypeNonConsumable)
+	}
+	if want := time.UnixMilli(revokedMs).UTC(); !got.RevocationDate.Equal(want) {
+		t.Errorf("RevocationDate = %v, want %v", got.RevocationDate, want)
+	}
+}
+
+func TestDecodeTransaction_AbsentRevocationDateIsZero(t *testing.T) {
+	t.Parallel()
+	json := `{
+		"transactionId":"txn-1",
+		"originalTransactionId":"orig-1",
+		"productId":"uk.towncrierapp.pro.monthly",
+		"bundleId":"uk.towncrierapp.mobile",
+		"purchaseDate":1700000000000,
+		"expiresDate":1702592000000,
+		"type":"Auto-Renewable Subscription",
+		"environment":"Production"
+	}`
+
+	got, err := DecodeTransaction(json)
+	if err != nil {
+		t.Fatalf("DecodeTransaction: %v", err)
+	}
+	if !got.RevocationDate.IsZero() {
+		t.Errorf("RevocationDate = %v, want zero time", got.RevocationDate)
+	}
+	if got.Type != "Auto-Renewable Subscription" {
+		t.Errorf("Type = %q, want Auto-Renewable Subscription", got.Type)
+	}
+}
+
+func TestDecodeTransaction_AbsentTypeIsEmpty(t *testing.T) {
+	t.Parallel()
+	json := `{"transactionId":"t","originalTransactionId":"o","productId":"p","bundleId":"b","environment":"e"}`
+
+	got, err := DecodeTransaction(json)
+	if err != nil {
+		t.Fatalf("DecodeTransaction: %v", err)
+	}
+	if got.Type != "" {
+		t.Errorf("Type = %q, want empty", got.Type)
+	}
+}
+
 func TestDecodeTransaction_Errors(t *testing.T) {
 	t.Parallel()
 	base := `{"transactionId":"t","originalTransactionId":"o","productId":"p","bundleId":"b","purchaseDate":1,"expiresDate":2,"environment":"e"}`
