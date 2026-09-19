@@ -79,6 +79,53 @@ func TestRenderStats_ContainsAggregates(t *testing.T) {
 	}
 }
 
+const legacyStatsRender = `Users
+  Total: 42
+  By tier: Free 30, Personal 8, Pro 4
+
+Paying
+  Paying (App Store): 9 (Personal 3, Pro 6)
+  Est. MRR: £35.91/mo
+  Comped (offer/admin): 3
+  Lapsed: 2
+  In grace: 1
+
+Signups
+  Last 24h: 3
+  Last 7d: 11
+  Last 30d: 28
+  Most recent: auth0|u1 (alice@example.com) at 2026-07-01T09:00:00Z
+
+Activity
+  Active 24h: 5
+  Active 7d: 20
+  Zero watch zones: 7
+  No email: 2
+
+Reach
+  Watch zones: 88
+  Saved applications: 150
+  Device registrations: 40
+  Notifications sent: 500
+  Notifications unread: 45
+`
+
+const legacyStatsSummary = "42 users (Free 30, Personal 8, Pro 4) · paying 9 · MRR £35.91/mo · comped 3 · lapsed 2 · new 24h 3 · active 24h 5"
+
+func TestRenderStats_WithoutNewFields_IsUnchanged(t *testing.T) {
+	t.Parallel()
+	s := sampleStats()
+
+	var sb strings.Builder
+	renderStats(&sb, s)
+	if got := sb.String(); got != legacyStatsRender {
+		t.Errorf("render changed for a response without the new fields:\ngot:\n%s\nwant:\n%s", got, legacyStatsRender)
+	}
+	if got := statsSummaryLine(s); got != legacyStatsSummary {
+		t.Errorf("summary changed for a response without the new fields:\ngot:  %s\nwant: %s", got, legacyStatsSummary)
+	}
+}
+
 // TestRenderStats_NullMostRecentAndEmail covers the two null-degradation paths:
 // a nil mostRecent (empty user base) and a non-nil mostRecent with a nil email.
 func TestRenderStats_NullMostRecentAndEmail(t *testing.T) {
