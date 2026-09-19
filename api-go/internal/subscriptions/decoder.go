@@ -17,8 +17,14 @@ type PayloadError struct {
 
 func (e *PayloadError) Error() string { return e.Message }
 
+// TransactionTypeNonConsumable is the Apple transaction type of a one-off,
+// non-renewing purchase such as the Pro lifetime product.
+const TransactionTypeNonConsumable = "Non-Consumable"
+
 // DecodedTransaction is the decoded JWSTransactionDecodedPayload (StoreKit 2).
 // Dates are converted from Apple's Unix epoch milliseconds to UTC time.
+// RevocationDate is the zero time unless Apple refunded or revoked the
+// transaction; Type is empty when the payload omits it.
 type DecodedTransaction struct {
 	TransactionID         string
 	OriginalTransactionID string
@@ -26,6 +32,8 @@ type DecodedTransaction struct {
 	BundleID              string
 	PurchaseDate          time.Time
 	ExpiresDate           time.Time
+	RevocationDate        time.Time
+	Type                  string
 	Environment           string
 }
 
@@ -48,6 +56,8 @@ type appleTransactionPayload struct {
 	BundleID              string `json:"bundleId"`
 	PurchaseDate          int64  `json:"purchaseDate"`
 	ExpiresDate           int64  `json:"expiresDate"`
+	RevocationDate        int64  `json:"revocationDate"`
+	Type                  string `json:"type"`
 	Environment           string `json:"environment"`
 }
 
@@ -87,6 +97,11 @@ func DecodeTransaction(jsonStr string) (DecodedTransaction, error) {
 		}
 	}
 
+	var revocationDate time.Time
+	if p.RevocationDate != 0 {
+		revocationDate = time.UnixMilli(p.RevocationDate).UTC()
+	}
+
 	return DecodedTransaction{
 		TransactionID:         p.TransactionID,
 		OriginalTransactionID: p.OriginalTransactionID,
@@ -94,6 +109,8 @@ func DecodeTransaction(jsonStr string) (DecodedTransaction, error) {
 		BundleID:              p.BundleID,
 		PurchaseDate:          time.UnixMilli(p.PurchaseDate).UTC(),
 		ExpiresDate:           time.UnixMilli(p.ExpiresDate).UTC(),
+		RevocationDate:        revocationDate,
+		Type:                  p.Type,
 		Environment:           p.Environment,
 	}, nil
 }
