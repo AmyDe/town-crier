@@ -126,6 +126,37 @@ func TestRenderStats_WithoutNewFields_IsUnchanged(t *testing.T) {
 	}
 }
 
+func TestRenderStats_AnnualPro(t *testing.T) {
+	t.Parallel()
+	s := sampleStats()
+	s.Paying.AppStore = 4
+	s.Paying.AppStoreByTier = &statsAppStoreByTier{Personal: 1, Pro: 3}
+	s.Paying.AppStoreProAnnual = intptr(1)
+	var sb strings.Builder
+	renderStats(&sb, s)
+	out := sb.String()
+
+	for _, want := range []string{
+		"  Paying (App Store): 4 (Personal 1, Pro 3, of which 1 annual)\n",
+		"  Est. MRR: £14.47/mo\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("render missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestRenderStats_ZeroAnnualStillRendersSplit(t *testing.T) {
+	t.Parallel()
+	s := sampleStats()
+	s.Paying.AppStoreProAnnual = intptr(0)
+	var sb strings.Builder
+	renderStats(&sb, s)
+	if want := "Paying (App Store): 9 (Personal 3, Pro 6, of which 0 annual)\n"; !strings.Contains(sb.String(), want) {
+		t.Errorf("render missing %q:\n%s", want, sb.String())
+	}
+}
+
 // TestRenderStats_NullMostRecentAndEmail covers the two null-degradation paths:
 // a nil mostRecent (empty user base) and a non-nil mostRecent with a nil email.
 func TestRenderStats_NullMostRecentAndEmail(t *testing.T) {
@@ -195,46 +226,67 @@ func TestRenderStats_ZeroPayers(t *testing.T) {
 	}
 }
 
-// TestMRRPence covers the integer-pence MRR arithmetic directly: Pro payers at
-// 499p/mo, Personal payers at 199p/mo, no floats anywhere near the money.
 func TestMRRPence(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name string
-		tier *statsAppStoreByTier
-		want int
+		name   string
+		paying statsPaying
+		want   int
 	}{
-		{"nil tier", nil, 0},
-		{"zero payers", &statsAppStoreByTier{Personal: 0, Pro: 0}, 0},
-		{"2 pro + 3 personal", &statsAppStoreByTier{Personal: 3, Pro: 2}, 2*499 + 3*199},
+		{"nil tier", statsPaying{}, 0},
+		{"zero payers", statsPaying{AppStoreByTier: &statsAppStoreByTier{}}, 0},
+		{"2 pro + 3 personal", statsPaying{AppStoreByTier: &statsAppStoreByTier{Personal: 3, Pro: 2}}, 2*499 + 3*199},
+		{
+			"nil annual prices every pro payer monthly",
+			statsPaying{AppStoreByTier: &statsAppStoreByTier{Personal: 1, Pro: 3}},
+			199 + 3*499,
+		},
+		{
+			"personal 1, pro 3 of which 1 annual",
+			statsPaying{AppStoreByTier: &statsAppStoreByTier{Personal: 1, Pro: 3}, AppStoreProAnnual: intptr(1)},
+			1447,
+		},
+		{
+			"zero annual equals nil annual",
+			statsPaying{AppStoreByTier: &statsAppStoreByTier{Personal: 1, Pro: 3}, AppStoreProAnnual: intptr(0)},
+			199 + 3*499,
+		},
+		{
+			"all pro annual rounds to nearest penny",
+			statsPaying{AppStoreByTier: &statsAppStoreByTier{Pro: 2}, AppStoreProAnnual: intptr(2)},
+			500,
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			if got := mrrPence(tc.tier); got != tc.want {
-				t.Errorf("mrrPence(%+v) = %d, want %d", tc.tier, got, tc.want)
+			if got := mrrPence(tc.paying); got != tc.want {
+				t.Errorf("mrrPence(%+v) = %d, want %d", tc.paying, got, tc.want)
 			}
 		})
 	}
 }
 
-// TestFormatMRR covers the pence-to-"£X.YY/mo" rendering, including the
-// zero-payer case (a real, formatted £0.00/mo — not the nil-degradation dash).
 func TestFormatMRR(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name string
-		tier *statsAppStoreByTier
-		want string
+		name   string
+		paying statsPaying
+		want   string
 	}{
-		{"zero payers", &statsAppStoreByTier{}, "£0.00/mo"},
-		{"2 pro + 3 personal", &statsAppStoreByTier{Personal: 3, Pro: 2}, "£15.95/mo"},
+		{"zero payers", statsPaying{AppStoreByTier: &statsAppStoreByTier{}}, "£0.00/mo"},
+		{"2 pro + 3 personal", statsPaying{AppStoreByTier: &statsAppStoreByTier{Personal: 3, Pro: 2}}, "£15.95/mo"},
+		{
+			"personal 1, pro 3 of which 1 annual",
+			statsPaying{AppStoreByTier: &statsAppStoreByTier{Personal: 1, Pro: 3}, AppStoreProAnnual: intptr(1)},
+			"£14.47/mo",
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			if got := formatMRR(tc.tier); got != tc.want {
-				t.Errorf("formatMRR(%+v) = %q, want %q", tc.tier, got, tc.want)
+			if got := formatMRR(tc.paying); got != tc.want {
+				t.Errorf("formatMRR(%+v) = %q, want %q", tc.paying, got, tc.want)
 			}
 		})
 	}
