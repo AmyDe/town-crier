@@ -78,17 +78,19 @@ func mostRecentCell(mr *statsMostRecent) string {
 	return fmt.Sprintf("%s (%s) at %s", mr.UserID, email, mr.CreatedAt)
 }
 
-// payingAppStoreLine renders the App Store-only paying headline — the
-// "effective paid" figure (which bundles offer/admin comps) never appears
-// here — with the Personal/Pro tier split when the API supplies it. A nil
-// AppStoreByTier means an older API build that predates the split: degrade to
-// the bare count rather than guess a breakdown.
+// payingAppStoreLine renders the App Store-only paying headline. A nil
+// AppStoreByTier means an API build that predates the tier split, so it
+// degrades to the bare count rather than guess a breakdown.
 func payingAppStoreLine(p statsPaying) string {
 	if p.AppStoreByTier == nil {
 		return fmt.Sprintf("Paying (App Store): %d", p.AppStore)
 	}
-	return fmt.Sprintf("Paying (App Store): %d (Personal %d, Pro %d)",
+	line := fmt.Sprintf("Paying (App Store): %d (Personal %d, Pro %d",
 		p.AppStore, p.AppStoreByTier.Personal, p.AppStoreByTier.Pro)
+	if p.AppStoreProAnnual != nil {
+		line += fmt.Sprintf(", of which %d annual", *p.AppStoreProAnnual)
+	}
+	return line + ")"
 }
 
 // estMRRLine renders the estimated monthly recurring revenue line, or "-"
@@ -97,29 +99,35 @@ func estMRRLine(p statsPaying) string {
 	if p.AppStoreByTier == nil {
 		return "Est. MRR: -"
 	}
-	return fmt.Sprintf("Est. MRR: %s", formatMRR(p.AppStoreByTier))
+	return fmt.Sprintf("Est. MRR: %s", formatMRR(p))
 }
 
-// Per-tier monthly price in pence, App Store-backed payers only. Comped
-// (offer/admin) users never contribute to MRR.
+// Per-plan price in pence, App Store-backed payers only. Comped (offer/admin)
+// users never contribute to MRR.
 const (
-	proPence      = 499
-	personalPence = 199
+	proPence       = 499
+	personalPence  = 199
+	proAnnualPence = 2999
 )
 
-// mrrPence computes the estimated MRR in integer pence — no floats anywhere
-// near money. A nil tier (API predates the split) is zero, not an error: the
-// caller decides whether to render that as "-" or "£0.00/mo".
-func mrrPence(t *statsAppStoreByTier) int {
+// mrrPence computes the estimated MRR in integer pence. Annual Pro payers
+// count at a twelfth of the yearly price, rounded to the nearest penny; the
+// remaining Pro payers count at the monthly price. A nil tier split is zero.
+func mrrPence(p statsPaying) int {
+	t := p.AppStoreByTier
 	if t == nil {
 		return 0
 	}
-	return t.Pro*proPence + t.Personal*personalPence
+	annual := 0
+	if p.AppStoreProAnnual != nil {
+		annual = *p.AppStoreProAnnual
+	}
+	return t.Personal*personalPence + (t.Pro-annual)*proPence + (annual*proAnnualPence+6)/12
 }
 
-// formatMRR renders the tier split's integer-pence MRR as "£X.YY/mo".
-func formatMRR(t *statsAppStoreByTier) string {
-	pence := mrrPence(t)
+// formatMRR renders the integer-pence MRR as "£X.YY/mo".
+func formatMRR(p statsPaying) string {
+	pence := mrrPence(p)
 	return fmt.Sprintf("£%d.%02d/mo", pence/100, pence%100)
 }
 
@@ -129,7 +137,7 @@ func mrrSummarySegment(p statsPaying) string {
 	if p.AppStoreByTier == nil {
 		return "MRR -"
 	}
-	return "MRR " + formatMRR(p.AppStoreByTier)
+	return "MRR " + formatMRR(p)
 }
 
 // statsSummaryLine condenses the aggregate into a single line for the
