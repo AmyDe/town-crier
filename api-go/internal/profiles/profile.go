@@ -182,6 +182,15 @@ type UserProfile struct {
 	SubscriptionExpiry    *time.Time
 	OriginalTransactionID *string
 	GracePeriodExpiry     *time.Time
+	// LifetimeTier is the tier granted by a one-off lifetime purchase, independent
+	// of any subscription. Invariant: Tier is never lower than LifetimeTier, so
+	// readers of the raw stored Tier stay correct without knowing about lifetime.
+	LifetimeTier                  SubscriptionTier
+	LifetimeOriginalTransactionID *string
+	LifetimePurchasedAt           *time.Time
+	// SubscriptionProductID is the App Store product behind the current
+	// subscription window. It is nil for offer-code and admin grants.
+	SubscriptionProductID *string
 	LastActiveAt          time.Time
 	// CreatedAt is the profile's creation time. It is owned by the database
 	// (users.created_at DEFAULT CURRENT_TIMESTAMP) and read-only in Go: Save
@@ -240,20 +249,25 @@ func (p *UserProfile) UpdatePreferences(prefs NotificationPreferences) {
 // passed — with no grace period, or a grace period that has also passed —
 // collapses to Free regardless of the stored Tier. Free and any paid tier still
 // within its window (including a live grace period and the far-future admin
-// grant) are returned unchanged.
+// grant) are returned unchanged. The result is never lower than LifetimeTier,
+// which no expiry can revoke.
 //
 // Every entitlement gate reads this, never the raw stored Tier, so an offer-code
 // grant that has run out — or an App Store sub past expiry whose webhook never
 // arrived — is treated as Free everywhere without mutating the stored document
 // (the daily sweep, Phase 2, reverts the stored state separately).
 func (p *UserProfile) EffectiveTier(now time.Time) SubscriptionTier {
+	return max(p.subscriptionTier(now), p.LifetimeTier)
+}
+
+func (p *UserProfile) subscriptionTier(now time.Time) SubscriptionTier {
 	if p.Tier == TierFree {
 		return TierFree
 	}
 	if p.SubscriptionExpiry == nil {
-		// Invariant: every paid grant sets an expiry (ActivateSubscription /
-		// admin grant). A paid tier with no expiry is malformed; treat
-		// as still-entitled rather than silently downgrade (no proof of expiry).
+		// A lifetime-only profile is paid with no expiry. Any other paid tier
+		// without an expiry is malformed; treat it as still-entitled rather than
+		// silently downgrade (no proof of expiry).
 		return p.Tier
 	}
 	// "expired" mirrors the lapsed-txn filter on the verify path: expired when
@@ -267,21 +281,56 @@ func (p *UserProfile) EffectiveTier(now time.Time) SubscriptionTier {
 }
 
 // ActivateSubscription moves the profile to a paid tier with the given expiry
-// and clears any grace period.
+// and clears any grace period and App Store product. The stored Tier never drops
+// below LifetimeTier. Used by offer-code redemption and admin grants.
 func (p *UserProfile) ActivateSubscription(tier SubscriptionTier, expiry time.Time) {
-	p.Tier = tier
+	p.Tier = max(tier, p.LifetimeTier)
 	exp := expiry
 	p.SubscriptionExpiry = &exp
 	p.GracePeriodExpiry = nil
+	p.SubscriptionProductID = nil
 }
 
-// ExpireSubscription drops the profile back to the Free tier and clears the
-// subscription expiry and grace period. Used by the admin grant endpoint when
-// granting the Free tier (a downgrade).
+// ActivateAppStoreSubscription is ActivateSubscription for an App Store
+// subscription: it also records the product ID behind the subscription window.
+func (p *UserProfile) ActivateAppStoreSubscription(tier SubscriptionTier, expiry time.Time, productID string) {
+	p.ActivateSubscription(tier, expiry)
+	id := productID
+	p.SubscriptionProductID = &id
+}
+
+// ExpireSubscription ends the subscription entitlement: it clears the expiry,
+// grace period and App Store product, and drops the stored Tier to LifetimeTier
+// (Free when the profile holds no lifetime purchase). OriginalTransactionID is
+// left in place so a later notification can still find the profile.
 func (p *UserProfile) ExpireSubscription() {
-	p.Tier = TierFree
+	p.Tier = p.LifetimeTier
 	p.SubscriptionExpiry = nil
 	p.GracePeriodExpiry = nil
+	p.SubscriptionProductID = nil
+}
+
+// GrantLifetime records a lifetime purchase and raises the stored Tier to at
+// least tier. Granting the same purchase again is a no-op in effect.
+func (p *UserProfile) GrantLifetime(tier SubscriptionTier, originalTransactionID string, purchasedAt time.Time) {
+	p.LifetimeTier = tier
+	id := originalTransactionID
+	p.LifetimeOriginalTransactionID = &id
+	at := purchasedAt
+	p.LifetimePurchasedAt = &at
+	p.Tier = max(p.Tier, tier)
+}
+
+// RevokeLifetime removes a lifetime purchase (an Apple refund or revocation).
+// With no subscription window open the stored Tier drops to Free. Otherwise the
+// stored Tier stays as it is: lazy expiry and the next App Store event settle it.
+func (p *UserProfile) RevokeLifetime() {
+	p.LifetimeTier = TierFree
+	p.LifetimeOriginalTransactionID = nil
+	p.LifetimePurchasedAt = nil
+	if p.SubscriptionExpiry == nil {
+		p.Tier = TierFree
+	}
 }
 
 // RenewSubscription extends the subscription to a new expiry and clears any
