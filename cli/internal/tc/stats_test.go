@@ -157,6 +157,44 @@ func TestRenderStats_ZeroAnnualStillRendersSplit(t *testing.T) {
 	}
 }
 
+func TestRenderStats_Lifetime(t *testing.T) {
+	t.Parallel()
+	s := sampleStats()
+	s.Paying.Lifetime = intptr(2)
+	var sb strings.Builder
+	renderStats(&sb, s)
+	out := sb.String()
+
+	const want = "  Paying (App Store): 9 (Personal 3, Pro 6)\n  Lifetime (App Store): 2\n  Est. MRR: £35.91/mo\n"
+	if !strings.Contains(out, want) {
+		t.Errorf("render missing lifetime line directly after the paying line:\n%s", out)
+	}
+}
+
+func TestRenderStats_ZeroLifetimeStillRendersLine(t *testing.T) {
+	t.Parallel()
+	s := sampleStats()
+	s.Paying.Lifetime = intptr(0)
+	var sb strings.Builder
+	renderStats(&sb, s)
+	if want := "  Lifetime (App Store): 0\n"; !strings.Contains(sb.String(), want) {
+		t.Errorf("render missing %q:\n%s", want, sb.String())
+	}
+}
+
+func TestRenderStats_LifetimeWithoutTierSplit(t *testing.T) {
+	t.Parallel()
+	s := sampleStats()
+	s.Paying.AppStoreByTier = nil
+	s.Paying.Lifetime = intptr(2)
+	var sb strings.Builder
+	renderStats(&sb, s)
+	out := sb.String()
+	if !strings.Contains(out, "  Paying (App Store): 9\n  Lifetime (App Store): 2\n  Est. MRR: -\n") {
+		t.Errorf("lifetime line must render independently of the tier split:\n%s", out)
+	}
+}
+
 // TestRenderStats_NullMostRecentAndEmail covers the two null-degradation paths:
 // a nil mostRecent (empty user base) and a non-nil mostRecent with a nil email.
 func TestRenderStats_NullMostRecentAndEmail(t *testing.T) {
@@ -252,6 +290,11 @@ func TestMRRPence(t *testing.T) {
 			199 + 3*499,
 		},
 		{
+			"lifetime does not add revenue",
+			statsPaying{AppStoreByTier: &statsAppStoreByTier{Pro: 1}, Lifetime: intptr(5)},
+			499,
+		},
+		{
 			"all pro annual rounds to nearest penny",
 			statsPaying{AppStoreByTier: &statsAppStoreByTier{Pro: 2}, AppStoreProAnnual: intptr(2)},
 			500,
@@ -307,6 +350,26 @@ func TestStatsSummaryLine(t *testing.T) {
 	}
 }
 
+func TestStatsSummaryLine_Lifetime(t *testing.T) {
+	t.Parallel()
+	s := sampleStats()
+	s.Paying.Lifetime = intptr(2)
+	const want = "42 users (Free 30, Personal 8, Pro 4) · paying 9 · MRR £35.91/mo · lifetime 2 · comped 3 · lapsed 2 · new 24h 3 · active 24h 5"
+	if got := statsSummaryLine(s); got != want {
+		t.Errorf("summary line:\ngot:  %s\nwant: %s", got, want)
+	}
+}
+
+func TestStatsSummaryLine_AnnualMRR(t *testing.T) {
+	t.Parallel()
+	s := sampleStats()
+	s.Paying.AppStoreByTier = &statsAppStoreByTier{Personal: 1, Pro: 3}
+	s.Paying.AppStoreProAnnual = intptr(1)
+	if got := statsSummaryLine(s); !strings.Contains(got, "MRR £14.47/mo") {
+		t.Errorf("summary line missing annual-adjusted MRR:\n%s", got)
+	}
+}
+
 // TestStatsSummaryLine_NilAppStoreByTier_Degrades covers the same older-API
 // nil case for the one-line list-users header: the paying (App Store) count
 // is unaffected (it was never part of the split), but the MRR segment
@@ -354,6 +417,55 @@ func TestRunStats_SuccessRendersBlock(t *testing.T) {
 	}
 	if got := out.String(); !strings.Contains(got, "Total: 2") || !strings.Contains(got, "Paying") {
 		t.Fatalf("stdout missing rendered stats:\n%s", got)
+	}
+}
+
+func TestRunStats_DecodesLifetimeAndAnnual(t *testing.T) {
+	t.Parallel()
+	const body = `{"users":{"total":6,"byTier":{"Free":1,"Personal":1,"Pro":4}},` +
+		`"paying":{"effectivePaid":6,"appStore":4,"comped":0,"lapsed":0,"inGrace":0,` +
+		`"appStoreByTier":{"Personal":1,"Pro":3},"appStoreProAnnual":1,"lifetime":2},` +
+		`"signups":{"last24h":0,"last7d":0,"last30d":0,"mostRecent":null},` +
+		`"activity":{"active24h":0,"active7d":0,"zeroWatchZones":0,"noEmail":0},` +
+		`"reach":{"watchZones":0,"savedApplications":0,"deviceRegistrations":0,"notificationsSent":0,"notificationsUnread":0}}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, body)
+	}))
+	defer server.Close()
+
+	env, out, errBuf := captureEnv()
+	code := runStats(context.Background(), clientFor(server), env, ParseArgs([]string{"stats"}))
+	if code != exitOK {
+		t.Fatalf("exit code = %d, want 0; stderr=%q", code, errBuf.String())
+	}
+	for _, want := range []string{
+		"  Paying (App Store): 4 (Personal 1, Pro 3, of which 1 annual)\n",
+		"  Lifetime (App Store): 2\n",
+		"  Est. MRR: £14.47/mo\n",
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("stdout missing %q:\n%s", want, out.String())
+		}
+	}
+}
+
+func TestRunStats_OlderAPIWithoutNewFieldsRendersNoLifetimeOrAnnual(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, testStatsJSON)
+	}))
+	defer server.Close()
+
+	env, out, _ := captureEnv()
+	if code := runStats(context.Background(), clientFor(server), env, ParseArgs([]string{"stats"})); code != exitOK {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+	for _, banned := range []string{"Lifetime", "annual"} {
+		if strings.Contains(out.String(), banned) {
+			t.Errorf("output must not mention %q for an older API:\n%s", banned, out.String())
+		}
 	}
 }
 
