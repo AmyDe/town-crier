@@ -336,7 +336,7 @@ struct AppCoordinatorWatchZoneTests {
   /// gate must reflect the live tier.
   @Test func makeWatchZoneListViewModel_rebuildsGate_whenTierChanges() async throws {
     let resolver = FakeSubscriptionTierResolver()
-    resolver.resolveResult = (.pro, false)
+    resolver.resolveResult = (.pro, false, false)
     let defaults = try #require(UserDefaults(suiteName: UUID().uuidString))
     let sut = AppCoordinator(
       repository: SpyPlanningApplicationRepository(),

@@ -261,7 +261,7 @@ struct AppCoordinatorTierResolutionTests {
     let defaults = try #require(UserDefaults(suiteName: UUID().uuidString))
     defaults.set("personal", forKey: "cachedSubscriptionTier")
     let fakeResolver = FakeSubscriptionTierResolver()
-    fakeResolver.resolveResult = (.pro, false)
+    fakeResolver.resolveResult = (.pro, false, false)
     let (sut, _, _, _) = makeSUT(
       authSession: .pro,
       tierResolver: fakeResolver,

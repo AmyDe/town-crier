@@ -24,7 +24,7 @@ struct AppCoordinatorPostPurchaseNotificationTests {
     let notificationSpy = SpyNotificationService()
     notificationSpy.nextAuthorizationStatus = authorizationStatus
     let tierResolver = FakeSubscriptionTierResolver()
-    tierResolver.resolveResult = (resolvedTier, false)
+    tierResolver.resolveResult = (resolvedTier, false, false)
     let coordinator = AppCoordinator(
       repository: SpyPlanningApplicationRepository(),
       authService: SpyAuthenticationService(),

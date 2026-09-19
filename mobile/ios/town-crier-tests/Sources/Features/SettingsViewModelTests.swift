@@ -101,6 +101,35 @@ struct SettingsViewModelTests {
     #expect(sut.isTrialPeriod)
   }
 
+  @Test func init_isNotLifetime() {
+    let (sut, _, _, _, _, _) = makeSUT()
+
+    #expect(!sut.isLifetime)
+  }
+
+  @Test func load_lifetimeEntitlement_showsLifetimeFlag() async {
+    let (sut, _, _, _, _, _) = makeSUT(
+      entitlement: .proLifetime,
+      serverProfile: .success(.proUser)
+    )
+
+    await sut.load()
+
+    #expect(sut.subscriptionTier == .pro)
+    #expect(sut.isLifetime)
+  }
+
+  @Test func load_subscriptionEntitlement_hidesLifetimeFlag() async {
+    let (sut, _, _, _, _, _) = makeSUT(
+      entitlement: .proMonthlyActive,
+      serverProfile: .success(.proUser)
+    )
+
+    await sut.load()
+
+    #expect(!sut.isLifetime)
+  }
+
   // MARK: - Server Profile Tier (source of truth)
 
   @Test func load_usesServerProfileTierAsSourceOfTruth() async {
@@ -275,6 +304,19 @@ struct SettingsViewModelTests {
     await sut.logout()
 
     #expect(sut.userEmail == nil)
+  }
+
+  @Test func logout_resetsLifetimeFlag() async {
+    let (sut, _, _, _, _, _) = makeSUT(
+      entitlement: .proLifetime,
+      serverProfile: .success(.proUser)
+    )
+    await sut.load()
+    #expect(sut.isLifetime)
+
+    await sut.logout()
+
+    #expect(!sut.isLifetime)
   }
 
   @Test func logout_notifiesCoordinator() async {

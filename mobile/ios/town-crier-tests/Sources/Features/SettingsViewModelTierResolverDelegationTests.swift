@@ -35,7 +35,7 @@ struct SettingsViewModelTierResolverDelegationTests {
   @Test
   func load_delegatesToSharedResolver_passingJwtAndPreviousTier() async throws {
     let fakeResolver = FakeSubscriptionTierResolver()
-    fakeResolver.resolveResult = (.pro, false)
+    fakeResolver.resolveResult = (.pro, false, false)
     let sut = makeSUT(session: .pro, tierResolver: fakeResolver)
 
     await sut.load()
@@ -52,7 +52,7 @@ struct SettingsViewModelTierResolverDelegationTests {
     // Once the resolver has returned .pro, a subsequent load() must pass
     // .pro as previousTier so the no-downgrade fallback can preserve it.
     let fakeResolver = FakeSubscriptionTierResolver()
-    fakeResolver.resolveResult = (.pro, false)
+    fakeResolver.resolveResult = (.pro, false, false)
     let sut = makeSUT(session: .valid, tierResolver: fakeResolver)
 
     await sut.load()
@@ -76,12 +76,24 @@ struct SettingsViewModelTierResolverDelegationTests {
   @Test
   func load_propagatesIsTrialPeriodFromResolver() async {
     let fakeResolver = FakeSubscriptionTierResolver()
-    fakeResolver.resolveResult = (.personal, true)
+    fakeResolver.resolveResult = (.personal, true, false)
     let sut = makeSUT(session: .valid, tierResolver: fakeResolver)
 
     await sut.load()
 
     #expect(sut.subscriptionTier == .personal)
     #expect(sut.isTrialPeriod)
+  }
+
+  @Test
+  func load_propagatesIsLifetimeFromResolver() async {
+    let fakeResolver = FakeSubscriptionTierResolver()
+    fakeResolver.resolveResult = (.pro, false, true)
+    let sut = makeSUT(session: .valid, tierResolver: fakeResolver)
+
+    await sut.load()
+
+    #expect(sut.subscriptionTier == .pro)
+    #expect(sut.isLifetime)
   }
 }
