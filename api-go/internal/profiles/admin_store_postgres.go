@@ -73,11 +73,13 @@ func (s *PostgresAdminStore) GetByEmail(ctx context.Context, email string) (*Use
 	return profiles[0], nil
 }
 
-// GetByOriginalTransactionID returns the profile whose stored Apple original
-// transaction id matches, or ErrNotFound. The App Store Server Notification
-// webhook locates the subscriber by this cross-user lookup.
+// GetByOriginalTransactionID returns the profile whose Apple original
+// transaction id matches, or ErrNotFound. It matches either the subscription
+// original_transaction_id or the lifetime_original_transaction_id column. The
+// App Store Server Notification webhook locates the subscriber by this
+// cross-user lookup.
 func (s *PostgresAdminStore) GetByOriginalTransactionID(ctx context.Context, originalTransactionID string) (*UserProfile, error) {
-	rows, err := s.db.Query(ctx, pgAdminSelectCols+"WHERE original_transaction_id = $1 LIMIT 1", originalTransactionID)
+	rows, err := s.db.Query(ctx, pgAdminSelectCols+"WHERE original_transaction_id = $1 OR lifetime_original_transaction_id = $1 LIMIT 1", originalTransactionID)
 	if err != nil {
 		return nil, fmt.Errorf("query profile by original transaction id: %w", err)
 	}
@@ -320,6 +322,7 @@ func (s *PostgresAdminStore) Save(ctx context.Context, p *UserProfile) error {
 		p.UserID, p.Email, p.Preferences.PushEnabled, int(p.Preferences.DigestDay),
 		&emailDigest, &savedPush, &savedEmail, zonePrefText,
 		p.Tier.String(), p.SubscriptionExpiry, p.OriginalTransactionID, p.GracePeriodExpiry,
+		p.LifetimeTier.String(), p.LifetimeOriginalTransactionID, p.LifetimePurchasedAt, p.SubscriptionProductID,
 		p.LastActiveAt, p.LastActiveAt.UnixMilli(), p.WatchZoneCount,
 	)
 	if err != nil {
