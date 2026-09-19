@@ -204,8 +204,18 @@ func (h *handler) verify(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(r, w, http.StatusOK, result)
 }
 
-// runVerify verifies every supplied JWS, applies the highest active entitlement
-// to the caller's profile (or expires it when none is active), persists it, and
+// lifetimeCandidate is the highest lifetime (non-consumable) purchase seen while
+// verifying a set of transactions. The zero value means none was seen.
+type lifetimeCandidate struct {
+	tier                  profiles.SubscriptionTier
+	originalTransactionID string
+	purchasedAt           time.Time
+}
+
+// runVerify verifies every supplied JWS and applies the result to the caller's
+// profile: the highest active subscription, and the highest lifetime purchase.
+// A lifetime purchase is never revoked here (the JWS list is client-supplied, so
+// a missing transaction is not proof of a refund). It persists the profile and
 // syncs Auth0 — the VerifySubscriptionCommandHandler logic.
 func (h *handler) runVerify(ctx context.Context, userID string, signedTransactions []string) (verifyResponse, error) {
 	profile, err := h.profilesByUser.Get(ctx, userID)
@@ -220,7 +230,8 @@ func (h *handler) runVerify(ctx context.Context, userID string, signedTransactio
 	now := h.now()
 	highestTier := profiles.TierFree
 	var highestExpiry time.Time
-	var highestOriginalTxn string
+	var highestOriginalTxn, highestProductID string
+	var lifetime lifetimeCandidate
 
 	for _, signed := range signedTransactions {
 		jsonStr, err := h.verifier.VerifyAndDecode(signed)
@@ -234,11 +245,22 @@ func (h *handler) runVerify(ctx context.Context, userID string, signedTransactio
 		if txn.BundleID != h.bundleID {
 			return verifyResponse{}, &PayloadError{Message: fmt.Sprintf("Bundle ID mismatch: expected '%s', got '%s'.", h.bundleID, txn.BundleID)}
 		}
-		// F1: reject transactions from environments not in the allowlist.
 		if !envAllowed(txn.Environment, h.allowedEnvironments) {
 			return verifyResponse{}, &PayloadError{Message: fmt.Sprintf("Transaction environment '%s' is not accepted.", txn.Environment)}
 		}
-		// A restore may legitimately include lapsed transactions — skip them.
+		if !txn.RevocationDate.IsZero() {
+			continue
+		}
+		if txn.Type == TransactionTypeNonConsumable {
+			tier, err := TierForProduct(txn.ProductID)
+			if err != nil {
+				return verifyResponse{}, err
+			}
+			if tier > lifetime.tier {
+				lifetime = lifetimeCandidate{tier: tier, originalTransactionID: txn.OriginalTransactionID, purchasedAt: txn.PurchaseDate}
+			}
+			continue
+		}
 		if !txn.ExpiresDate.After(now) {
 			continue
 		}
@@ -250,26 +272,25 @@ func (h *handler) runVerify(ctx context.Context, userID string, signedTransactio
 			highestTier = tier
 			highestExpiry = txn.ExpiresDate
 			highestOriginalTxn = txn.OriginalTransactionID
+			highestProductID = txn.ProductID
 		}
+	}
+
+	if lifetime.tier.IsPaid() {
+		if err := h.requireOwnedBy(ctx, userID, lifetime.originalTransactionID); err != nil {
+			return verifyResponse{}, err
+		}
+		profile.GrantLifetime(lifetime.tier, lifetime.originalTransactionID, lifetime.purchasedAt)
 	}
 
 	if highestTier == profiles.TierFree {
 		profile.ExpireSubscription()
 	} else {
-		// F2: enforce single-owner on the original transaction id. A transaction
-		// signed by Apple proves nothing about which account made the purchase; we
-		// reject cross-user linking to prevent one JWS from granting Pro on
-		// unlimited accounts. Same user (idempotent re-verify) or ErrNotFound
-		// (first-time claim) both proceed.
-		existing, err := h.profilesByTxn.GetByOriginalTransactionID(ctx, highestOriginalTxn)
-		switch {
-		case err != nil && !errors.Is(err, profiles.ErrNotFound):
-			return verifyResponse{}, fmt.Errorf("look up transaction owner %q: %w", highestOriginalTxn, err)
-		case err == nil && existing.UserID != userID:
-			return verifyResponse{}, &conflictError{}
+		if err := h.requireOwnedBy(ctx, userID, highestOriginalTxn); err != nil {
+			return verifyResponse{}, err
 		}
 		profile.LinkOriginalTransactionID(highestOriginalTxn)
-		profile.ActivateSubscription(highestTier, highestExpiry)
+		profile.ActivateAppStoreSubscription(highestTier, highestExpiry, highestProductID)
 	}
 
 	if err := h.profilesByUser.Save(ctx, profile); err != nil {
@@ -279,17 +300,10 @@ func (h *handler) runVerify(ctx context.Context, userID string, signedTransactio
 		return verifyResponse{}, fmt.Errorf("sync auth0 tier %q: %w", userID, err)
 	}
 
-	// Report the effective tier so entitlements never outlive the subscription
-	// window. In the verify path the profile was just activated (future expiry) or
-	// expired in this same request, so this equals the stored tier today; routing
-	// it through EffectiveTier keeps the contract that no entitlement read trusts
-	// the raw stored Tier.
 	effective := profile.EffectiveTier(now)
 
-	// tc-mqa4: log the verify outcome at info so we can confirm from server logs
-	// alone whether a verify call arrived and what it resolved to, without
-	// logging anything user-identifying (no userID, no JWS/transaction content,
-	// no Apple original transaction id).
+	// Deliberately logs nothing user-identifying: no user id, JWS content or Apple
+	// original transaction id.
 	h.logger.InfoContext(ctx, "subscription verify completed",
 		"tier", effective.String(),
 		"transactionCount", len(signedTransactions),
@@ -302,6 +316,22 @@ func (h *handler) runVerify(ctx context.Context, userID string, signedTransactio
 		Entitlements:       effective.Entitlements(),
 		WatchZoneLimit:     effective.WatchZoneLimit(),
 	}, nil
+}
+
+// requireOwnedBy enforces single-owner on an Apple original transaction id: a
+// transaction signed by Apple proves nothing about which account bought it, so
+// linking it to a second account would let one JWS grant Pro on unlimited
+// accounts. The same user (idempotent re-verify) or no owner yet (first-time
+// claim) passes; a different owner yields a *conflictError.
+func (h *handler) requireOwnedBy(ctx context.Context, userID, originalTransactionID string) error {
+	existing, err := h.profilesByTxn.GetByOriginalTransactionID(ctx, originalTransactionID)
+	switch {
+	case err != nil && !errors.Is(err, profiles.ErrNotFound):
+		return fmt.Errorf("look up transaction owner %q: %w", originalTransactionID, err)
+	case err == nil && existing.UserID != userID:
+		return &conflictError{}
+	}
+	return nil
 }
 
 // webhook implements POST /v1/webhooks/appstore (App Store Server Notifications
