@@ -10,6 +10,7 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
   @Published public private(set) var authMethod: AuthMethod?
   @Published public private(set) var subscriptionTier: SubscriptionTier = .free
   @Published public private(set) var isTrialPeriod = false
+  @Published public private(set) var isLifetime = false
   @Published public private(set) var isLoading = false
   @Published public internal(set) var error: DomainError?
   @Published public var isShowingDeleteConfirmation = false
@@ -117,6 +118,7 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
     )
     subscriptionTier = resolved.tier
     isTrialPeriod = resolved.isTrialPeriod
+    isLifetime = resolved.isLifetime
 
     isLoading = false
   }
@@ -208,5 +210,6 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
     authMethod = nil
     subscriptionTier = .free
     isTrialPeriod = false
+    isLifetime = false
   }
 }
