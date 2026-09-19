@@ -47,10 +47,14 @@ type exportedZonePreference struct {
 }
 
 type exportedSubscription struct {
-	Tier                  string               `json:"tier"`
-	ExpiresAt             *platform.DotNetTime `json:"expiresAt"`
-	OriginalTransactionID *string              `json:"originalTransactionId"`
-	GracePeriodExpiresAt  *platform.DotNetTime `json:"gracePeriodExpiresAt"`
+	Tier                          string               `json:"tier"`
+	ExpiresAt                     *platform.DotNetTime `json:"expiresAt"`
+	OriginalTransactionID         *string              `json:"originalTransactionId"`
+	GracePeriodExpiresAt          *platform.DotNetTime `json:"gracePeriodExpiresAt"`
+	ProductID                     *string              `json:"productId"`
+	LifetimeTier                  string               `json:"lifetimeTier"`
+	LifetimeOriginalTransactionID *string              `json:"lifetimeOriginalTransactionId"`
+	LifetimePurchasedAt           *platform.DotNetTime `json:"lifetimePurchasedAt"`
 }
 
 // The following child-record shapes are the neutral return types of the
@@ -207,10 +211,14 @@ func newExportUserData(ctx context.Context, p *UserProfile, readers ExportReader
 			ZonePreferences:    zones,
 		},
 		Subscription: exportedSubscription{
-			Tier:                  p.Tier.String(),
-			ExpiresAt:             platform.DotNetTimePtr(p.SubscriptionExpiry),
-			OriginalTransactionID: p.OriginalTransactionID,
-			GracePeriodExpiresAt:  platform.DotNetTimePtr(p.GracePeriodExpiry),
+			Tier:                          p.Tier.String(),
+			ExpiresAt:                     platform.DotNetTimePtr(p.SubscriptionExpiry),
+			OriginalTransactionID:         p.OriginalTransactionID,
+			GracePeriodExpiresAt:          platform.DotNetTimePtr(p.GracePeriodExpiry),
+			ProductID:                     p.SubscriptionProductID,
+			LifetimeTier:                  p.LifetimeTier.String(),
+			LifetimeOriginalTransactionID: p.LifetimeOriginalTransactionID,
+			LifetimePurchasedAt:           platform.DotNetTimePtr(p.LifetimePurchasedAt),
 		},
 		WatchZones:           watchZones,
 		Notifications:        notifs,

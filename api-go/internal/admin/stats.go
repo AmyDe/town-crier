@@ -7,6 +7,7 @@ import (
 
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
+	"github.com/AmyDe/town-crier/api-go/internal/subscriptions"
 )
 
 // statsResponse is the pinned JSON contract for GET /v1/admin/stats. The field
@@ -39,6 +40,11 @@ type statsPaying struct {
 	Lapsed         int                 `json:"lapsed"`
 	InGrace        int                 `json:"inGrace"`
 	AppStoreByTier statsAppStoreByTier `json:"appStoreByTier"`
+	// Lifetime counts effective-paid profiles holding a lifetime purchase. They
+	// are excluded from AppStore and Comped, and from AppStoreProAnnual.
+	Lifetime int `json:"lifetime"`
+	// AppStoreProAnnual counts the AppStore Pro payers on the annual product.
+	AppStoreProAnnual int `json:"appStoreProAnnual"`
 }
 
 // statsAppStoreByTier is an explicit struct (not a map) so the two paid tier
@@ -154,10 +160,15 @@ func (h *handler) stats(w http.ResponseWriter, r *http.Request) {
 // classifyPaying buckets the paid-tier candidates by their EffectiveTier(now),
 // mirroring the domain's lazy-expiry rule rather than the raw stored tier:
 //   - effectivePaid: EffectiveTier(now) is still paid.
-//   - appStore: effective-paid AND backed by an Apple original transaction id.
+//   - lifetime: effective-paid AND holding a lifetime purchase. A lifetime
+//     holder is counted here only, even with a subscription alongside.
+//   - appStore: effective-paid, no lifetime purchase, AND backed by an Apple
+//     original transaction id.
 //   - appStoreByTier: appStore, additionally bucketed by EffectiveTier(now);
 //     Personal+Pro always sums to appStore.
-//   - comped: effective-paid with no original transaction id (offer/admin grant).
+//   - appStoreProAnnual: appStore Pro payers on the annual product.
+//   - comped: effective-paid with no lifetime purchase and no original
+//     transaction id (offer/admin grant).
 //   - lapsed: stored tier paid but EffectiveTier(now) has collapsed to Free.
 //   - inGrace: effective-paid held alive ONLY by a live grace period (expiry
 //     passed, grace end still ahead). It overlaps appStore/comped by design.
@@ -168,7 +179,10 @@ func classifyPaying(candidates []*profiles.UserProfile, now time.Time) statsPayi
 		switch {
 		case effective.IsPaid():
 			p.EffectivePaid++
-			if c.OriginalTransactionID != nil {
+			switch {
+			case c.LifetimeOriginalTransactionID != nil && c.LifetimeTier.IsPaid():
+				p.Lifetime++
+			case c.OriginalTransactionID != nil:
 				p.AppStore++
 				switch effective {
 				case profiles.TierPersonal:
@@ -176,7 +190,10 @@ func classifyPaying(candidates []*profiles.UserProfile, now time.Time) statsPayi
 				case profiles.TierPro:
 					p.AppStoreByTier.Pro++
 				}
-			} else {
+				if c.SubscriptionProductID != nil && *c.SubscriptionProductID == subscriptions.ProductProAnnual {
+					p.AppStoreProAnnual++
+				}
+			default:
 				p.Comped++
 			}
 			if inGrace(c, now) {
