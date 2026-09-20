@@ -33,7 +33,7 @@ const (
 	TierFree SubscriptionTier = iota
 	// TierPersonal is the £1.99/mo tier.
 	TierPersonal
-	// TierPro is the £5.99/mo tier.
+	// TierPro is the £4.99/mo tier.
 	TierPro
 )
 
