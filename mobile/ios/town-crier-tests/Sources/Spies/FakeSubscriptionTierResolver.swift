@@ -15,13 +15,15 @@ final class FakeSubscriptionTierResolver: SubscriptionTierResolving, @unchecked 
   }
 
   private(set) var resolveCalls: [ResolveCall] = []
-  var resolveResult: (tier: SubscriptionTier, isTrialPeriod: Bool) = (.free, false)
+  var resolveResult: (tier: SubscriptionTier, isTrialPeriod: Bool, isLifetime: Bool) = (
+    .free, false, false
+  )
 
   func resolve(
     jwtTier: SubscriptionTier,
     previousTier: SubscriptionTier,
     userSub: String?
-  ) async -> (tier: SubscriptionTier, isTrialPeriod: Bool) {
+  ) async -> (tier: SubscriptionTier, isTrialPeriod: Bool, isLifetime: Bool) {
     resolveCalls.append(
       ResolveCall(
         jwtTier: jwtTier,

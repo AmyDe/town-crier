@@ -41,7 +41,7 @@ struct AppCoordinatorReviewPromptTests {
     let notificationSpy = SpyNotificationService()
     notificationSpy.nextAuthorizationStatus = authorizationStatus
     let tierResolver = FakeSubscriptionTierResolver()
-    tierResolver.resolveResult = (resolvedTier, false)
+    tierResolver.resolveResult = (resolvedTier, false, false)
     let watchZoneRepository = SpyWatchZoneRepository()
     watchZoneRepository.loadAllResult = .success(watchZones)
 

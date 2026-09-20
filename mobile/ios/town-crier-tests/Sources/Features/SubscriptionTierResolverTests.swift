@@ -217,4 +217,93 @@ struct SubscriptionTierResolverTests {
     #expect(result.tier == .pro)
     #expect(!result.isTrialPeriod)
   }
+
+  @Test
+  func whenStoreKitLifetimeIsHighestTier_isLifetimeIsTrue() async {
+    let (sut, _) = makeSUT(
+      serverTier: .free,
+      storeKitEntitlement: .proLifetime
+    )
+
+    let result = await sut.resolve(
+      jwtTier: .free,
+      previousTier: .free,
+      userSub: nil
+    )
+
+    #expect(result.tier == .pro)
+    #expect(result.isLifetime)
+    #expect(!result.isTrialPeriod)
+  }
+
+  @Test
+  func whenServerTierMatchesStoreKitLifetime_isLifetimeIsTrue() async {
+    let (sut, _) = makeSUT(
+      serverTier: .pro,
+      storeKitEntitlement: .proLifetime
+    )
+
+    let result = await sut.resolve(
+      jwtTier: .pro,
+      previousTier: .pro,
+      userSub: nil
+    )
+
+    #expect(result.tier == .pro)
+    #expect(result.isLifetime)
+  }
+
+  @Test
+  func whenStoreKitEntitlementIsASubscription_isLifetimeIsFalse() async {
+    let (sut, _) = makeSUT(
+      serverTier: .free,
+      storeKitEntitlement: .proMonthlyActive
+    )
+
+    let result = await sut.resolve(
+      jwtTier: .free,
+      previousTier: .free,
+      userSub: nil
+    )
+
+    #expect(result.tier == .pro)
+    #expect(!result.isLifetime)
+  }
+
+  @Test
+  func whenNoStoreKitEntitlement_isLifetimeIsFalse() async {
+    let (sut, _) = makeSUT(serverTier: .pro)
+
+    let result = await sut.resolve(
+      jwtTier: .pro,
+      previousTier: .pro,
+      userSub: nil
+    )
+
+    #expect(result.tier == .pro)
+    #expect(!result.isLifetime)
+  }
+
+  @Test
+  func whenJwtTierExceedsStoreKitLifetime_isLifetimeIsFalse() async {
+    let personalLifetime = SubscriptionEntitlement(
+      tier: .personal,
+      expiryDate: .distantFuture,
+      productId: "uk.towncrierapp.personal.lifetime",
+      isLifetime: true
+    )
+    let (sut, _) = makeSUT(
+      serverTier: .free,
+      storeKitEntitlement: personalLifetime
+    )
+
+    let result = await sut.resolve(
+      jwtTier: .pro,
+      previousTier: .free,
+      userSub: nil
+    )
+
+    #expect(result.tier == .pro)
+    #expect(!result.isLifetime)
+  }
 }

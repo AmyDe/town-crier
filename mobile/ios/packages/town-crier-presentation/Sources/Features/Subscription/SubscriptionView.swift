@@ -1,6 +1,10 @@
 import SwiftUI
 import TownCrierDomain
 
+#if os(iOS)
+  import StoreKit
+#endif
+
 /// Subscription paywall displaying products, purchase buttons, and App Store disclosures.
 public struct SubscriptionView: View {
   @StateObject private var viewModel: SubscriptionViewModel
@@ -40,6 +44,22 @@ public struct SubscriptionView: View {
         LegalDocumentView(viewModel: LegalDocumentViewModel(documentType: documentType))
       }
     }
+    .alert(
+      SubscriptionViewModel.cancelPromptTitle,
+      isPresented: $viewModel.isCancelSubscriptionPromptPresented
+    ) {
+      Button(SubscriptionViewModel.cancelPromptManageButtonTitle) {
+        viewModel.showManageSubscriptions()
+      }
+      Button(SubscriptionViewModel.cancelPromptDismissButtonTitle, role: .cancel) {}
+    } message: {
+      Text(SubscriptionViewModel.cancelPromptMessage)
+    }
+    #if os(iOS)
+      .manageSubscriptionsSheet(
+        isPresented: $viewModel.isManageSubscriptionsPresented.dispatchingSetOnMain()
+      )
+    #endif
   }
 
   // MARK: - Header
@@ -65,13 +85,17 @@ public struct SubscriptionView: View {
 
   private var productsSection: some View {
     VStack(spacing: TCSpacing.medium) {
-      ForEach(viewModel.products, id: \.id) { product in
-        productCard(product)
+      ForEach(viewModel.personalProducts, id: \.id) { product in
+        personalCard(product)
+      }
+
+      if let selected = viewModel.selectedProProduct {
+        proCard(selected)
       }
     }
   }
 
-  private func productCard(_ product: SubscriptionProduct) -> some View {
+  private func personalCard(_ product: SubscriptionProduct) -> some View {
     VStack(alignment: .leading, spacing: TCSpacing.small) {
       HStack {
         VStack(alignment: .leading, spacing: TCSpacing.extraSmall) {
@@ -79,7 +103,7 @@ public struct SubscriptionView: View {
             .font(TCTypography.headline)
             .foregroundStyle(Color.tcTextPrimary)
 
-          Text("\(product.displayPrice)/month")
+          Text(viewModel.priceLine(for: product))
             .font(TCTypography.body)
             .foregroundStyle(Color.tcTextSecondary)
         }
@@ -95,19 +119,83 @@ public struct SubscriptionView: View {
         .padding(.top, TCSpacing.extraSmall)
         .padding(.bottom, TCSpacing.small)
 
-      if isCurrentTier(product) {
-        currentPlanLabel
-      } else {
-        purchaseButton(for: product)
+      if viewModel.showsPurchaseButtons {
+        if viewModel.isCurrentProduct(product) {
+          currentPlanLabel
+        } else {
+          purchaseButton(for: product)
+        }
       }
 
-      Text(viewModel.subscriptionDisclosure(for: product))
-        .font(TCTypography.caption)
-        .foregroundStyle(Color.tcTextTertiary)
+      disclosure(for: product)
     }
     .padding(TCSpacing.medium)
     .background(Color.tcSurface)
     .clipShape(RoundedRectangle(cornerRadius: TCCornerRadius.medium))
+  }
+
+  private func proCard(_ selected: SubscriptionProduct) -> some View {
+    VStack(alignment: .leading, spacing: TCSpacing.small) {
+      Text(selected.tier.rawValue.capitalized)
+        .font(TCTypography.headline)
+        .foregroundStyle(Color.tcTextPrimary)
+
+      periodPicker
+
+      HStack(alignment: .top) {
+        VStack(alignment: .leading, spacing: TCSpacing.extraSmall) {
+          Text(viewModel.priceLine(for: selected))
+            .font(TCTypography.body)
+            .foregroundStyle(Color.tcTextSecondary)
+
+          if selected.period == .annual, let subLine = viewModel.annualSubLine {
+            Text(subLine)
+              .font(TCTypography.caption)
+              .foregroundStyle(Color.tcTextSecondary)
+          }
+        }
+
+        Spacer()
+
+        if selected.hasFreeTrial {
+          trialBadge(days: selected.trialDays)
+        }
+
+        if selected.period == .annual, let savings = viewModel.annualSavingsBadge {
+          badge(savings)
+        }
+      }
+
+      featureList(for: selected)
+        .padding(.top, TCSpacing.extraSmall)
+        .padding(.bottom, TCSpacing.small)
+
+      if viewModel.showsPurchaseButtons, !viewModel.isCurrentProduct(selected) {
+        purchaseButton(for: selected)
+      } else {
+        currentPlanLabel
+      }
+
+      disclosure(for: selected)
+    }
+    .padding(TCSpacing.medium)
+    .background(Color.tcSurface)
+    .clipShape(RoundedRectangle(cornerRadius: TCCornerRadius.medium))
+  }
+
+  private var periodPicker: some View {
+    Picker("Pro plan", selection: $viewModel.selectedProPeriod) {
+      ForEach(viewModel.proOptions, id: \.id) { option in
+        Text(option.period.pickerTitle).tag(option.period)
+      }
+    }
+    .pickerStyle(.segmented)
+  }
+
+  private func disclosure(for product: SubscriptionProduct) -> some View {
+    Text(viewModel.subscriptionDisclosure(for: product))
+      .font(TCTypography.caption)
+      .foregroundStyle(Color.tcTextTertiary)
   }
 
   private func featureList(for product: SubscriptionProduct) -> some View {
@@ -129,7 +217,11 @@ public struct SubscriptionView: View {
   }
 
   private func trialBadge(days: Int) -> some View {
-    Text("\(days)-day free trial")
+    badge("\(days)-day free trial")
+  }
+
+  private func badge(_ text: String) -> some View {
+    Text(text)
       .font(TCTypography.captionEmphasis)
       .foregroundStyle(Color.tcStatusPermitted)
       .padding(.horizontal, TCSpacing.small)
@@ -146,7 +238,7 @@ public struct SubscriptionView: View {
         ProgressView()
           .tint(Color.tcTextOnAccent)
       } else {
-        Text(product.hasFreeTrial ? "Start Free Trial" : "Subscribe")
+        Text(viewModel.purchaseButtonTitle(for: product))
       }
     }
     .disabled(viewModel.isPurchasing)
@@ -162,10 +254,6 @@ public struct SubscriptionView: View {
     }
     .frame(maxWidth: .infinity)
     .frame(minHeight: 44)
-  }
-
-  private func isCurrentTier(_ product: SubscriptionProduct) -> Bool {
-    viewModel.currentEntitlement?.tier == product.tier
   }
 
   // MARK: - Restore

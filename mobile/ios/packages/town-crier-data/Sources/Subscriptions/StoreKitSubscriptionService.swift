@@ -5,14 +5,25 @@ import os
 
 /// StoreKit 2 adapter implementing the SubscriptionService domain protocol.
 public final class StoreKitSubscriptionService: SubscriptionService, @unchecked Sendable {
-  private static let productIds = [
+  static let productIds = [
     "uk.towncrierapp.personal.monthly",
     "uk.towncrierapp.pro.monthly",
+    "uk.towncrierapp.pro.annual",
+    "uk.towncrierapp.pro.lifetime",
   ]
 
   private static let tierMapping: [String: SubscriptionTier] = [
     "uk.towncrierapp.personal.monthly": .personal,
     "uk.towncrierapp.pro.monthly": .pro,
+    "uk.towncrierapp.pro.annual": .pro,
+    "uk.towncrierapp.pro.lifetime": .pro,
+  ]
+
+  private static let periodMapping: [String: TownCrierDomain.SubscriptionPeriod] = [
+    "uk.towncrierapp.personal.monthly": .monthly,
+    "uk.towncrierapp.pro.monthly": .monthly,
+    "uk.towncrierapp.pro.annual": .annual,
+    "uk.towncrierapp.pro.lifetime": .lifetime,
   ]
 
   private static let logger = Logger(
@@ -39,8 +50,10 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
   public func availableProducts() async throws -> [SubscriptionProduct] {
     do {
       let storeProducts = try await Product.products(for: Self.productIds)
-      return storeProducts.compactMap { product in
-        guard let tier = Self.tierMapping[product.id] else { return nil }
+      let products: [SubscriptionProduct] = storeProducts.compactMap { product in
+        guard let tier = Self.tier(forProductId: product.id),
+          let period = Self.period(forProductId: product.id)
+        else { return nil }
 
         let subscription = product.subscription
         let hasFreeTrial = subscription?.introductoryOffer?.paymentMode == .freeTrial
@@ -57,10 +70,13 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
           displayPrice: product.displayPrice,
           tier: tier,
           hasFreeTrial: hasFreeTrial,
-          trialDays: trialDays
+          trialDays: trialDays,
+          period: period,
+          price: product.price,
+          currencyCode: product.priceFormatStyle.currencyCode
         )
       }
-      .sorted { tierOrder($0.tier) < tierOrder($1.tier) }
+      return Self.sorted(products)
     } catch {
       throw DomainError.unexpected(error.localizedDescription)
     }
@@ -81,7 +97,7 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
       // Tell the backend about the purchase so tier-gated API requests see
       // the new tier (ADR 0010). Best-effort — never fails the purchase.
       await reportPurchase(signedTransaction: verification.jwsRepresentation)
-      return entitlement(from: transaction)
+      return Self.entitlement(from: transaction)
 
     case .userCancelled:
       throw DomainError.purchaseCancelled
@@ -99,29 +115,17 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
     var signedTransactions: [String] = []
 
     for await result in Transaction.currentEntitlements {
-      // Collect the signed JWS verbatim so the backend can re-verify it
-      // (ADR 0010 — Restore Purchases). Apple signs every entitlement
-      // regardless of verification state, so include unverified ones too;
-      // the server is the authority on a restore.
+      // Unverified entitlements are sent too: the server is the authority on a restore.
       signedTransactions.append(result.jwsRepresentation)
 
       if let transaction = try? checkVerification(result) {
-        let ent = entitlement(from: transaction)
+        let ent = Self.entitlement(from: transaction)
         if ent.isActive {
-          if let current = latestEntitlement {
-            if tierOrder(ent.tier) > tierOrder(current.tier) {
-              latestEntitlement = ent
-            }
-          } else {
-            latestEntitlement = ent
-          }
+          latestEntitlement = Self.preferredEntitlement(current: latestEntitlement, candidate: ent)
         }
       }
     }
 
-    // Re-verify the restored entitlements server-side so Cosmos reflects the
-    // restored tier (ADR 0010). Unlike a purchase, a restore is an explicit
-    // user action, so a verification rejection propagates to the caller.
     try await reportRestore(signedTransactions: signedTransactions)
 
     return latestEntitlement
@@ -129,6 +133,26 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
 
   public func currentEntitlement() async -> SubscriptionEntitlement? {
     try? await restorePurchases()
+  }
+
+  public func hasActiveAutoRenewingSubscription() async -> Bool {
+    for await result in Transaction.currentEntitlements {
+      guard case .verified(let transaction) = result,
+        transaction.productType == .autoRenewable,
+        let expirationDate = transaction.expirationDate,
+        expirationDate > Date()
+      else { continue }
+
+      // Unreadable renewal info counts as renewing: asking twice beats a double charge.
+      guard let status = await transaction.subscriptionStatus else { return true }
+      switch status.renewalInfo {
+      case .verified(let renewalInfo):
+        if renewalInfo.willAutoRenew { return true }
+      case .unverified:
+        return true
+      }
+    }
+    return false
   }
 
   // MARK: - Transaction listener
@@ -190,19 +214,57 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
     }
   }
 
-  private func entitlement(from transaction: Transaction) -> SubscriptionEntitlement {
-    let tier = Self.tierMapping[transaction.productID] ?? .free
-    let expiry = transaction.expirationDate ?? Date.distantFuture
-    let isTrial = transaction.offerType == .introductory
+  static func tier(forProductId productId: String) -> SubscriptionTier? {
+    tierMapping[productId]
+  }
 
-    return SubscriptionEntitlement(
-      tier: tier,
-      expiryDate: expiry,
-      isTrialPeriod: isTrial
+  static func period(forProductId productId: String) -> TownCrierDomain.SubscriptionPeriod? {
+    periodMapping[productId]
+  }
+
+  static func sorted(_ products: [SubscriptionProduct]) -> [SubscriptionProduct] {
+    products.sorted { lhs, rhs in
+      if lhs.tier != rhs.tier { return tierOrder(lhs.tier) < tierOrder(rhs.tier) }
+      return lhs.period < rhs.period
+    }
+  }
+
+  static func entitlement(from transaction: Transaction) -> SubscriptionEntitlement {
+    entitlement(
+      productId: transaction.productID,
+      expirationDate: transaction.expirationDate,
+      isIntroductoryOffer: transaction.offerType == .introductory,
+      isNonConsumable: transaction.productType == .nonConsumable
     )
   }
 
-  private func tierOrder(_ tier: SubscriptionTier) -> Int {
+  static func entitlement(
+    productId: String,
+    expirationDate: Date?,
+    isIntroductoryOffer: Bool,
+    isNonConsumable: Bool
+  ) -> SubscriptionEntitlement {
+    SubscriptionEntitlement(
+      tier: tierMapping[productId] ?? .free,
+      expiryDate: expirationDate ?? Date.distantFuture,
+      isTrialPeriod: isIntroductoryOffer,
+      productId: productId,
+      isLifetime: isNonConsumable
+    )
+  }
+
+  static func preferredEntitlement(
+    current: SubscriptionEntitlement?,
+    candidate: SubscriptionEntitlement
+  ) -> SubscriptionEntitlement {
+    guard let current else { return candidate }
+    if tierOrder(candidate.tier) != tierOrder(current.tier) {
+      return tierOrder(candidate.tier) > tierOrder(current.tier) ? candidate : current
+    }
+    return candidate.isLifetime && !current.isLifetime ? candidate : current
+  }
+
+  private static func tierOrder(_ tier: SubscriptionTier) -> Int {
     switch tier {
     case .free:
       return 0

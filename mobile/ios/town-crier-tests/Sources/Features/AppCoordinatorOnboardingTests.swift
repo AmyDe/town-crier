@@ -116,7 +116,7 @@ struct AppCoordinatorOnboardingTests {
 
   @Test func resolveSubscriptionTier_pushesResolvedTierIntoLiveWizard() async {
     let resolver = FakeSubscriptionTierResolver()
-    resolver.resolveResult = (.pro, false)
+    resolver.resolveResult = (.pro, false, false)
     let sut = makeSUT(tierResolver: resolver)
     let vm = sut.makeOnboardingViewModel()
     #expect(vm.subscriptionTier == .free)
@@ -141,7 +141,7 @@ struct AppCoordinatorOnboardingTests {
 
   @Test func reconcileTierAfterUpgrade_reResolvesTier_unlockingLargerRadiusLive() async {
     let resolver = FakeSubscriptionTierResolver()
-    resolver.resolveResult = (.pro, false)
+    resolver.resolveResult = (.pro, false, false)
     let sut = makeSUT(tierResolver: resolver)
     let vm = sut.makeOnboardingViewModel()
     #expect(vm.canUnlockLargerRadius)
@@ -160,7 +160,7 @@ struct AppCoordinatorOnboardingTests {
 
   @Test func reconcileTierAfterCustomShapeUpgrade_swapsRadiusStepForBoundaryDrawing() async {
     let resolver = FakeSubscriptionTierResolver()
-    resolver.resolveResult = (.personal, false)
+    resolver.resolveResult = (.personal, false, false)
     let sut = makeSUT(tierResolver: resolver)
     let vm = sut.makeOnboardingViewModel()
     vm.advance()  // -> postcodeEntry

@@ -11,4 +11,9 @@ public protocol SubscriptionService: Sendable {
 
   /// Returns the current active entitlement, or nil if on the free tier.
   func currentEntitlement() async -> SubscriptionEntitlement?
+
+  /// Returns true when an active auto-renewing subscription is still set to renew,
+  /// or when its renewal state cannot be read. Used after a lifetime purchase to
+  /// decide whether to ask the user to cancel their old subscription.
+  func hasActiveAutoRenewingSubscription() async -> Bool
 }
