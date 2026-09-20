@@ -78,4 +78,32 @@ struct StoreKitSubscriptionServiceVerificationTests {
     // Must not crash and must not throw.
     try await sut.reportRestore(signedTransactions: ["jws.one"])
   }
+
+  @Test("reportRestoreBestEffort POSTs the collected JWS list to the verification service")
+  func reportRestoreBestEffort_postsSignedTransactionList() async {
+    let verifier = SpySubscriptionVerifier()
+    let sut = StoreKitSubscriptionService(verificationService: verifier)
+
+    await sut.reportRestoreBestEffort(signedTransactions: ["jws.one", "jws.two"])
+
+    #expect(verifier.restoredTransactionBatches == [["jws.one", "jws.two"]])
+  }
+
+  @Test("reportRestoreBestEffort swallows a verification failure so the entitlement survives")
+  func reportRestoreBestEffort_swallowsVerificationFailure() async {
+    let verifier = SpySubscriptionVerifier()
+    verifier.setVerifyResult(.failure(DomainError.networkUnavailable))
+    let sut = StoreKitSubscriptionService(verificationService: verifier)
+
+    await sut.reportRestoreBestEffort(signedTransactions: ["jws.one"])
+
+    #expect(verifier.restoredTransactionBatches == [["jws.one"]])
+  }
+
+  @Test("reportRestoreBestEffort is a no-op when no verification service is injected")
+  func reportRestoreBestEffort_noVerifier_isNoOp() async {
+    let sut = StoreKitSubscriptionService()
+
+    await sut.reportRestoreBestEffort(signedTransactions: ["jws.one"])
+  }
 }

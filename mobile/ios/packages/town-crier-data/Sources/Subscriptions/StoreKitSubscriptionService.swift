@@ -111,6 +111,20 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
   }
 
   public func restorePurchases() async throws -> SubscriptionEntitlement? {
+    let collected = await collectEntitlements()
+    try await reportRestore(signedTransactions: collected.signedTransactions)
+    return collected.latest
+  }
+
+  public func currentEntitlement() async -> SubscriptionEntitlement? {
+    let collected = await collectEntitlements()
+    await reportRestoreBestEffort(signedTransactions: collected.signedTransactions)
+    return collected.latest
+  }
+
+  private func collectEntitlements() async -> (
+    latest: SubscriptionEntitlement?, signedTransactions: [String]
+  ) {
     var latestEntitlement: SubscriptionEntitlement?
     var signedTransactions: [String] = []
 
@@ -126,13 +140,7 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
       }
     }
 
-    try await reportRestore(signedTransactions: signedTransactions)
-
-    return latestEntitlement
-  }
-
-  public func currentEntitlement() async -> SubscriptionEntitlement? {
-    try? await restorePurchases()
+    return (latestEntitlement, signedTransactions)
   }
 
   public func hasActiveAutoRenewingSubscription() async -> Bool {
@@ -199,6 +207,18 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
   func reportRestore(signedTransactions: [String]) async throws {
     guard let verificationService, !signedTransactions.isEmpty else { return }
     _ = try await verificationService.verifyRestore(signedTransactions: signedTransactions)
+  }
+
+  /// Reports the entitlement list for a passive read and swallows any failure. StoreKit already
+  /// holds a verified entitlement, and hiding it would show a paying user the Free tier over a
+  /// transient network error.
+  func reportRestoreBestEffort(signedTransactions: [String]) async {
+    do {
+      try await reportRestore(signedTransactions: signedTransactions)
+    } catch {
+      Self.logger.error(
+        "Passive entitlement report failed: \(error.localizedDescription, privacy: .public)")
+    }
   }
 
   // MARK: - Helpers
