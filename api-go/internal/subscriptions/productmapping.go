@@ -26,6 +26,10 @@ const (
 	ProductPersonalMonthly = "uk.towncrierapp.personal.monthly"
 	// ProductProMonthly is the Pro-tier monthly subscription.
 	ProductProMonthly = "uk.towncrierapp.pro.monthly"
+	// ProductProAnnual is the Pro-tier annual auto-renewing subscription.
+	ProductProAnnual = "uk.towncrierapp.pro.annual"
+	// ProductProLifetime is the Pro-tier one-off, non-consumable lifetime purchase.
+	ProductProLifetime = "uk.towncrierapp.pro.lifetime"
 )
 
 // UnknownProductError signals a product ID with no tier mapping. Its message is
@@ -45,7 +49,7 @@ func TierForProduct(productID string) (profiles.SubscriptionTier, error) {
 	switch productID {
 	case ProductPersonalMonthly:
 		return profiles.TierPersonal, nil
-	case ProductProMonthly:
+	case ProductProMonthly, ProductProAnnual, ProductProLifetime:
 		return profiles.TierPro, nil
 	default:
 		return profiles.TierFree, &UnknownProductError{ProductID: productID}

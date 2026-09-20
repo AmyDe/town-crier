@@ -80,6 +80,8 @@ func userRow(userID string, createdAt time.Time) []any {
 		"{}",
 		// tier, subscription_expiry, original_transaction_id, grace_period_expiry,
 		"Free", nil, nil, nil,
+		// lifetime_tier, lifetime_original_transaction_id, lifetime_purchased_at, subscription_product_id,
+		"Free", nil, nil, nil,
 		// last_active_at, last_active_at_epoch, created_at, watch_zone_count, version
 		createdAt, createdAt.UnixMilli(), createdAt, nil, 0,
 	}
@@ -230,6 +232,51 @@ func TestList_BadCursor_ReturnsError(t *testing.T) {
 	}
 }
 
+func withLifetime(row []any, tier string, originalTransactionID any) []any {
+	out := append([]any(nil), row...)
+	out[12] = tier
+	out[13] = originalTransactionID
+	return out
+}
+
+func TestGetByOriginalTransactionID_MatchesEitherColumn(t *testing.T) {
+	t.Parallel()
+	q := &recordingQuerier{rows: &fakeUserRows{rows: [][]any{userRow("auth0|u1", time.Now())}}}
+	store := NewPostgresAdminStore(q)
+
+	if _, err := store.GetByOriginalTransactionID(context.Background(), "life-1"); err != nil {
+		t.Fatalf("GetByOriginalTransactionID: %v", err)
+	}
+
+	for _, col := range []string{"original_transaction_id = $1", "lifetime_original_transaction_id = $1"} {
+		if !strings.Contains(q.sql, col) {
+			t.Errorf("SQL missing %q: %s", col, q.sql)
+		}
+	}
+	if !strings.Contains(q.sql, " OR ") {
+		t.Errorf("SQL must match either column with OR: %s", q.sql)
+	}
+}
+
+func TestLapsedPaid_ExcludesLifetimeHolderWithPastExpiry(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)
+	expired := now.Add(-30 * 24 * time.Hour)
+	q := &recordingQuerier{rows: &fakeUserRows{rows: [][]any{
+		withLifetime(paidUserRow("auth0|lifetime", "Pro", expired, nil), "Pro", "life-1"),
+		paidUserRow("auth0|lapsed", "Personal", expired, nil),
+	}}}
+	store := NewPostgresAdminStore(q)
+
+	got, err := store.LapsedPaid(context.Background(), now)
+	if err != nil {
+		t.Fatalf("LapsedPaid: %v", err)
+	}
+	if len(got) != 1 || got[0].UserID != "auth0|lapsed" {
+		t.Errorf("LapsedPaid = %v, want only auth0|lapsed", got)
+	}
+}
+
 // --- PaidCandidates ---
 
 // paidUserRow builds a full userSelectCols projection for a paid-tier user. The
@@ -243,6 +290,7 @@ func paidUserRow(userID, tier string, expiry, otid any) []any {
 		true, true, true,
 		"{}",
 		tier, expiry, otid, nil,
+		"Free", nil, nil, nil,
 		created, created.UnixMilli(), created, nil, 0,
 	}
 }

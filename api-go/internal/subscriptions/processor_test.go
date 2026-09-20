@@ -2,8 +2,10 @@ package subscriptions
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"testing"
+	"time"
 
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 )
@@ -216,5 +218,205 @@ func TestNotificationProcessor_Process_VerifierErrorPropagates(t *testing.T) {
 	}
 	if wasNew {
 		t.Error("wasNew = true, want false on error")
+	}
+}
+
+func lifetimeProfile(t *testing.T) *profiles.UserProfile {
+	t.Helper()
+	p := freshProfile(t)
+	p.GrantLifetime(profiles.TierPro, "life-1", testNow.AddDate(0, -1, 0))
+	return p
+}
+
+func TestNotificationProcessor_Process_ExpiredMonthlyKeepsLifetime(t *testing.T) {
+	t.Parallel()
+	d := newTestProcessor(testAllowedEnvs)
+	p := lifetimeProfile(t)
+	p.LinkOriginalTransactionID("orig-sub")
+	p.ActivateAppStoreSubscription(profiles.TierPro, testNow.AddDate(0, 0, -1), ProductProMonthly)
+	d.byTxn.profile = p
+	d.verifier.results["hdr.OUTER.sig"] = notificationJSON("EXPIRED", "uuid-exp", "INNER")
+	d.verifier.results["INNER"] = txnJSON(ProductProMonthly, testBundleID, "orig-sub", pastExpiryMs())
+
+	wasNew, err := d.processor.Process(context.Background(), "hdr.OUTER.sig")
+
+	if err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+	if !wasNew {
+		t.Error("wasNew = false, want true")
+	}
+	saved := d.byTxn.saved
+	if saved == nil {
+		t.Fatal("profile not saved")
+	}
+	if saved.Tier != profiles.TierPro {
+		t.Errorf("Tier = %v, want Pro", saved.Tier)
+	}
+	if got := saved.EffectiveTier(testNow); got != profiles.TierPro {
+		t.Errorf("EffectiveTier = %v, want Pro", got)
+	}
+	if len(d.auth0.tiers) != 1 || d.auth0.tiers[0] != "Pro" {
+		t.Errorf("auth0 sync = %v, want [Pro]", d.auth0.tiers)
+	}
+}
+
+func TestNotificationProcessor_Process_RefundLifetimeRevokes(t *testing.T) {
+	t.Parallel()
+	d := newTestProcessor(testAllowedEnvs)
+	d.byTxn.profile = lifetimeProfile(t)
+	d.verifier.results["hdr.OUTER.sig"] = notificationJSON("REFUND", "uuid-refund", "INNER")
+	d.verifier.results["INNER"] = lifetimeTxnJSON(ProductProLifetime, "life-1", lifetimePurchaseMs+1000)
+
+	wasNew, err := d.processor.Process(context.Background(), "hdr.OUTER.sig")
+
+	if err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+	if !wasNew {
+		t.Error("wasNew = false, want true")
+	}
+	requireLifetimeRevoked(t, d)
+}
+
+func TestNotificationProcessor_Process_RevokeLifetimeRevokes(t *testing.T) {
+	t.Parallel()
+	d := newTestProcessor(testAllowedEnvs)
+	d.byTxn.profile = lifetimeProfile(t)
+	d.verifier.results["hdr.OUTER.sig"] = notificationJSON("REVOKE", "uuid-revoke", "INNER")
+	d.verifier.results["INNER"] = lifetimeTxnJSON(ProductProLifetime, "life-1", lifetimePurchaseMs+1000)
+
+	if _, err := d.processor.Process(context.Background(), "hdr.OUTER.sig"); err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+
+	requireLifetimeRevoked(t, d)
+}
+
+func requireLifetimeRevoked(t *testing.T, d *processorTestDeps) {
+	t.Helper()
+	saved := d.byTxn.saved
+	if saved == nil {
+		t.Fatal("profile not saved")
+	}
+	if saved.Tier != profiles.TierFree || saved.LifetimeTier != profiles.TierFree {
+		t.Errorf("Tier/LifetimeTier = %v/%v, want Free/Free", saved.Tier, saved.LifetimeTier)
+	}
+	if saved.LifetimeOriginalTransactionID != nil || saved.LifetimePurchasedAt != nil {
+		t.Errorf("lifetime fields = %v/%v, want nil", saved.LifetimeOriginalTransactionID, saved.LifetimePurchasedAt)
+	}
+	if len(d.auth0.tiers) != 1 || d.auth0.tiers[0] != "Free" {
+		t.Errorf("auth0 sync = %v, want [Free]", d.auth0.tiers)
+	}
+}
+
+func TestNotificationProcessor_Process_OneTimeChargeGrantsLifetime(t *testing.T) {
+	t.Parallel()
+	d := newTestProcessor(testAllowedEnvs)
+	d.byTxn.profile = freshProfile(t)
+	d.verifier.results["hdr.OUTER.sig"] = notificationJSON("ONE_TIME_CHARGE", "uuid-otc", "INNER")
+	d.verifier.results["INNER"] = lifetimeTxnJSON(ProductProLifetime, "life-1", 0)
+
+	wasNew, err := d.processor.Process(context.Background(), "hdr.OUTER.sig")
+
+	if err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+	if !wasNew {
+		t.Error("wasNew = false, want true")
+	}
+	saved := d.byTxn.saved
+	if saved == nil {
+		t.Fatal("profile not saved")
+	}
+	if saved.Tier != profiles.TierPro || saved.LifetimeTier != profiles.TierPro {
+		t.Errorf("Tier/LifetimeTier = %v/%v, want Pro/Pro", saved.Tier, saved.LifetimeTier)
+	}
+	if saved.LifetimeOriginalTransactionID == nil || *saved.LifetimeOriginalTransactionID != "life-1" {
+		t.Errorf("LifetimeOriginalTransactionID = %v, want life-1", saved.LifetimeOriginalTransactionID)
+	}
+	if want := time.UnixMilli(lifetimePurchaseMs).UTC(); saved.LifetimePurchasedAt == nil || !saved.LifetimePurchasedAt.Equal(want) {
+		t.Errorf("LifetimePurchasedAt = %v, want %v", saved.LifetimePurchasedAt, want)
+	}
+	if len(d.auth0.tiers) != 1 || d.auth0.tiers[0] != "Pro" {
+		t.Errorf("auth0 sync = %v, want [Pro]", d.auth0.tiers)
+	}
+}
+
+func TestNotificationProcessor_Process_RefundReversedRestoresLifetime(t *testing.T) {
+	t.Parallel()
+	d := newTestProcessor(testAllowedEnvs)
+	p := lifetimeProfile(t)
+	p.RevokeLifetime()
+	d.byTxn.profile = p
+	d.verifier.results["hdr.OUTER.sig"] = notificationJSON("REFUND_REVERSED", "uuid-rr", "INNER")
+	d.verifier.results["INNER"] = lifetimeTxnJSON(ProductProLifetime, "life-1", 0)
+
+	wasNew, err := d.processor.Process(context.Background(), "hdr.OUTER.sig")
+
+	if err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+	if !wasNew {
+		t.Error("wasNew = false, want true")
+	}
+	saved := d.byTxn.saved
+	if saved == nil || saved.Tier != profiles.TierPro || saved.LifetimeTier != profiles.TierPro {
+		t.Errorf("saved = %+v, want lifetime Pro restored", saved)
+	}
+}
+
+func TestNotificationProcessor_Process_LifetimeUnrelatedNotificationIsNoChange(t *testing.T) {
+	t.Parallel()
+	d := newTestProcessor(testAllowedEnvs)
+	d.byTxn.profile = lifetimeProfile(t)
+	d.verifier.results["hdr.OUTER.sig"] = notificationJSON("EXPIRED", "uuid-x", "INNER")
+	d.verifier.results["INNER"] = lifetimeTxnJSON(ProductProLifetime, "life-1", 0)
+
+	wasNew, err := d.processor.Process(context.Background(), "hdr.OUTER.sig")
+
+	if err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+	if wasNew || d.byTxn.saved != nil {
+		t.Errorf("wasNew=%v saved=%v, want no change for a non-consumable EXPIRED", wasNew, d.byTxn.saved)
+	}
+	if len(d.idempotency.marked) != 1 {
+		t.Errorf("marked = %v, want exactly one entry", d.idempotency.marked)
+	}
+}
+
+func TestNotificationProcessor_Process_OneTimeChargeUnknownProductErrors(t *testing.T) {
+	t.Parallel()
+	d := newTestProcessor(testAllowedEnvs)
+	d.byTxn.profile = freshProfile(t)
+	d.verifier.results["hdr.OUTER.sig"] = notificationJSON("ONE_TIME_CHARGE", "uuid-unk", "INNER")
+	d.verifier.results["INNER"] = lifetimeTxnJSON("uk.towncrierapp.mystery.lifetime", "life-1", 0)
+
+	_, err := d.processor.Process(context.Background(), "hdr.OUTER.sig")
+
+	var upe *UnknownProductError
+	if !errors.As(err, &upe) {
+		t.Fatalf("Process err = %v, want *UnknownProductError", err)
+	}
+	if d.byTxn.saved != nil {
+		t.Error("profile must not be saved for an unknown product")
+	}
+}
+
+func TestNotificationProcessor_Process_DidRenewStoresProductID(t *testing.T) {
+	t.Parallel()
+	d := newTestProcessor(testAllowedEnvs)
+	d.byTxn.profile = freshProfile(t)
+	d.verifier.results["hdr.OUTER.sig"] = notificationJSON("DID_RENEW", "uuid-renew-annual", "INNER")
+	d.verifier.results["INNER"] = txnJSON(ProductProAnnual, testBundleID, "orig-1", futureExpiryMs())
+
+	if _, err := d.processor.Process(context.Background(), "hdr.OUTER.sig"); err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+
+	saved := d.byTxn.saved
+	if saved == nil || saved.SubscriptionProductID == nil || *saved.SubscriptionProductID != ProductProAnnual {
+		t.Errorf("saved = %+v, want SubscriptionProductID %s", saved, ProductProAnnual)
 	}
 }

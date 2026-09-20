@@ -13,6 +13,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
 	"github.com/AmyDe/town-crier/api-go/internal/offercodes"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
+	"github.com/AmyDe/town-crier/api-go/internal/subscriptions"
 )
 
 // errBoom is a shared sentinel error for tests that just need "some failure".
@@ -550,6 +551,67 @@ func paidCandidate(userID string, tier profiles.SubscriptionTier, expiry *time.T
 	}
 }
 
+func lifetimeCandidate(userID string, subExpiry, grace *time.Time, subTxn *string) *profiles.UserProfile {
+	lifeTxn := "life-" + userID
+	purchased := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	return &profiles.UserProfile{
+		UserID:                        userID,
+		Tier:                          profiles.TierPro,
+		SubscriptionExpiry:            subExpiry,
+		GracePeriodExpiry:             grace,
+		OriginalTransactionID:         subTxn,
+		LifetimeTier:                  profiles.TierPro,
+		LifetimeOriginalTransactionID: &lifeTxn,
+		LifetimePurchasedAt:           &purchased,
+	}
+}
+
+func annualCandidate(userID string, expiry *time.Time, otid *string) *profiles.UserProfile {
+	product := subscriptions.ProductProAnnual
+	p := paidCandidate(userID, profiles.TierPro, expiry, nil, otid)
+	p.SubscriptionProductID = &product
+	return p
+}
+
+func TestClassifyPaying_LifetimeWinsOverSubscriptionBuckets(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)
+	past := now.Add(-24 * time.Hour)
+	subTxn := "sub-orig"
+
+	got := classifyPaying([]*profiles.UserProfile{
+		lifetimeCandidate("auth0|only", nil, nil, nil),
+		lifetimeCandidate("auth0|lapsed-sub", &past, nil, &subTxn),
+	}, now)
+
+	want := statsPaying{EffectivePaid: 2, Lifetime: 2}
+	if got != want {
+		t.Errorf("classifyPaying = %+v, want %+v", got, want)
+	}
+}
+
+func TestClassifyPaying_AnnualCountsInsideAppStoreAndByTier(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)
+	future := now.Add(30 * 24 * time.Hour)
+	monthlyProduct := subscriptions.ProductProMonthly
+	monthlyTxn, annualTxn := "orig-m", "orig-a"
+	monthly := paidCandidate("auth0|monthly", profiles.TierPro, &future, nil, &monthlyTxn)
+	monthly.SubscriptionProductID = &monthlyProduct
+
+	got := classifyPaying([]*profiles.UserProfile{monthly, annualCandidate("auth0|annual", &future, &annualTxn)}, now)
+
+	want := statsPaying{
+		EffectivePaid:     2,
+		AppStore:          2,
+		AppStoreByTier:    statsAppStoreByTier{Pro: 2},
+		AppStoreProAnnual: 1,
+	}
+	if got != want {
+		t.Errorf("classifyPaying = %+v, want %+v", got, want)
+	}
+}
+
 // TestStats_ReturnsPinnedContract exercises the full aggregate: the paying
 // buckets classified via EffectiveTier (an App Store Pro, an App Store
 // Personal, a comped, a lapsed and an in-grace candidate), the user/tier/
@@ -564,6 +626,7 @@ func TestStats_ReturnsPinnedContract(t *testing.T) {
 	past := now.Add(-1 * time.Hour)
 	txn := "1000000000000001"
 	txn2 := "1000000000000002"
+	txn3 := "1000000000000003"
 
 	recent := time.Date(2026, 6, 30, 9, 0, 0, 0, time.UTC)
 	recentEmail := "new@example.com"
@@ -587,6 +650,8 @@ func TestStats_ReturnsPinnedContract(t *testing.T) {
 			paidCandidate("auth0|comped", profiles.TierPersonal, &future, nil, nil),              // effective-paid + comped
 			paidCandidate("auth0|lapsed", profiles.TierPro, &past, nil, nil),                     // lapsed (expired, no grace)
 			paidCandidate("auth0|grace", profiles.TierPro, &past, &future, nil),                  // effective-paid via live grace + comped + inGrace
+			lifetimeCandidate("auth0|lifetime", nil, nil, nil),                                   // effective-paid + lifetime
+			annualCandidate("auth0|annual", &future, &txn3),                                      // effective-paid + appStore + Pro + annual
 		},
 	}
 	counts := &fakeNotifCounts{totals: notifications.NotificationTotals{Sent: 9000, Unread: 1200}}
@@ -602,7 +667,7 @@ func TestStats_ReturnsPinnedContract(t *testing.T) {
 	}
 	want := `{` +
 		`"users":{"total":100,"byTier":{"Free":70,"Personal":20,"Pro":10}},` +
-		`"paying":{"effectivePaid":4,"appStore":2,"comped":2,"lapsed":1,"inGrace":1,"appStoreByTier":{"Personal":1,"Pro":1}},` +
+		`"paying":{"effectivePaid":6,"appStore":3,"comped":2,"lapsed":1,"inGrace":1,"appStoreByTier":{"Personal":1,"Pro":2},"lifetime":1,"appStoreProAnnual":1},` +
 		`"signups":{"last24h":5,"last7d":12,"last30d":30,"mostRecent":{"userId":"auth0|new","email":"new@example.com","createdAt":"2026-06-30T09:00:00Z"}},` +
 		`"activity":{"active24h":8,"active7d":20,"zeroWatchZones":15,"noEmail":3},` +
 		`"reach":{"watchZones":250,"savedApplications":500,"deviceRegistrations":300,"notificationsSent":9000,"notificationsUnread":1200}` +
@@ -629,7 +694,7 @@ func TestStats_NoUsers_NullMostRecentAndNilStores(t *testing.T) {
 	}
 	want := `{` +
 		`"users":{"total":0,"byTier":{"Free":0,"Personal":0,"Pro":0}},` +
-		`"paying":{"effectivePaid":0,"appStore":0,"comped":0,"lapsed":0,"inGrace":0,"appStoreByTier":{"Personal":0,"Pro":0}},` +
+		`"paying":{"effectivePaid":0,"appStore":0,"comped":0,"lapsed":0,"inGrace":0,"appStoreByTier":{"Personal":0,"Pro":0},"lifetime":0,"appStoreProAnnual":0},` +
 		`"signups":{"last24h":0,"last7d":0,"last30d":0,"mostRecent":null},` +
 		`"activity":{"active24h":0,"active7d":0,"zeroWatchZones":0,"noEmail":0},` +
 		`"reach":{"watchZones":0,"savedApplications":0,"deviceRegistrations":0,"notificationsSent":0,"notificationsUnread":0}` +

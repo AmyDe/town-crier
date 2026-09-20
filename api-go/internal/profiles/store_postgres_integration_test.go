@@ -438,6 +438,147 @@ func TestPostgresAdminStore_GetByOriginalTransactionID(t *testing.T) {
 	}
 }
 
+func lifetimeProfileFixture(t *testing.T) (*UserProfile, time.Time) {
+	t.Helper()
+	p := pgProfile(t, "auth0|life1", "lifetime@example.com")
+	purchased := time.Date(2026, 9, 1, 10, 30, 0, 0, time.UTC)
+	p.GrantLifetime(TierPro, "life-orig-1", purchased)
+	p.LinkOriginalTransactionID("sub-orig-1")
+	p.ActivateAppStoreSubscription(TierPro, time.Date(2027, 9, 1, 10, 30, 0, 0, time.UTC), "uk.towncrierapp.pro.annual")
+	return p, purchased
+}
+
+func requireLifetimeColumns(t *testing.T, got *UserProfile, purchased time.Time) {
+	t.Helper()
+	if got.LifetimeTier != TierPro {
+		t.Errorf("LifetimeTier = %v, want Pro", got.LifetimeTier)
+	}
+	if got.LifetimeOriginalTransactionID == nil || *got.LifetimeOriginalTransactionID != "life-orig-1" {
+		t.Errorf("LifetimeOriginalTransactionID = %v, want life-orig-1", got.LifetimeOriginalTransactionID)
+	}
+	if got.LifetimePurchasedAt == nil || !got.LifetimePurchasedAt.Equal(purchased) {
+		t.Errorf("LifetimePurchasedAt = %v, want %v", got.LifetimePurchasedAt, purchased)
+	}
+	if got.SubscriptionProductID == nil || *got.SubscriptionProductID != "uk.towncrierapp.pro.annual" {
+		t.Errorf("SubscriptionProductID = %v, want uk.towncrierapp.pro.annual", got.SubscriptionProductID)
+	}
+}
+
+func TestPostgresStore_LifetimeColumnsRoundTrip(t *testing.T) {
+	pool := pgtest.New(t)
+	pgtest.Truncate(t, pool, "users")
+	store := NewPostgresStore(pool)
+	admin := NewPostgresAdminStore(pool)
+	ctx := context.Background()
+
+	p, purchased := lifetimeProfileFixture(t)
+	if err := store.Save(ctx, p); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	got, err := store.Get(ctx, p.UserID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	requireLifetimeColumns(t, got, purchased)
+
+	got.RevokeLifetime()
+	if err := admin.Save(ctx, got); err != nil {
+		t.Fatalf("admin Save: %v", err)
+	}
+	revoked, err := store.Get(ctx, p.UserID)
+	if err != nil {
+		t.Fatalf("Get after revoke: %v", err)
+	}
+	if revoked.LifetimeTier != TierFree || revoked.LifetimeOriginalTransactionID != nil || revoked.LifetimePurchasedAt != nil {
+		t.Errorf("revoked lifetime = %v/%v/%v, want Free/nil/nil", revoked.LifetimeTier, revoked.LifetimeOriginalTransactionID, revoked.LifetimePurchasedAt)
+	}
+
+	revoked.GrantLifetime(TierPro, "life-orig-1", purchased)
+	_, etag, err := store.GetWithETag(ctx, p.UserID)
+	if err != nil {
+		t.Fatalf("GetWithETag: %v", err)
+	}
+	if err := store.UpdateZoneCountWithCAS(ctx, p.UserID, revoked, etag); err != nil {
+		t.Fatalf("UpdateZoneCountWithCAS: %v", err)
+	}
+	afterCAS, err := store.Get(ctx, p.UserID)
+	if err != nil {
+		t.Fatalf("Get after CAS: %v", err)
+	}
+	requireLifetimeColumns(t, afterCAS, purchased)
+}
+
+func TestPostgresStore_NewProfileDefaultsToNoLifetime(t *testing.T) {
+	store, _ := newUserPGStore(t)
+	ctx := context.Background()
+
+	p := pgProfile(t, "auth0|nolife", "nolife@example.com")
+	if err := store.Save(ctx, p); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	got, err := store.Get(ctx, p.UserID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.LifetimeTier != TierFree || got.LifetimeOriginalTransactionID != nil || got.LifetimePurchasedAt != nil || got.SubscriptionProductID != nil {
+		t.Errorf("defaults = %v/%v/%v/%v, want Free/nil/nil/nil", got.LifetimeTier, got.LifetimeOriginalTransactionID, got.LifetimePurchasedAt, got.SubscriptionProductID)
+	}
+}
+
+func TestPostgresAdminStore_GetByOriginalTransactionID_FindsByLifetimeID(t *testing.T) {
+	pool := pgtest.New(t)
+	pgtest.Truncate(t, pool, "users")
+	store := NewPostgresStore(pool)
+	admin := NewPostgresAdminStore(pool)
+	ctx := context.Background()
+
+	p, _ := lifetimeProfileFixture(t)
+	other := pgProfile(t, "auth0|other", "other@example.com")
+	if err := store.Save(ctx, p); err != nil {
+		t.Fatalf("Save lifetime profile: %v", err)
+	}
+	if err := store.Save(ctx, other); err != nil {
+		t.Fatalf("Save other profile: %v", err)
+	}
+
+	for _, id := range []string{"life-orig-1", "sub-orig-1"} {
+		got, err := admin.GetByOriginalTransactionID(ctx, id)
+		if err != nil {
+			t.Fatalf("GetByOriginalTransactionID(%q): %v", id, err)
+		}
+		if got.UserID != p.UserID {
+			t.Errorf("GetByOriginalTransactionID(%q) = %q, want %q", id, got.UserID, p.UserID)
+		}
+	}
+	if _, err := admin.GetByOriginalTransactionID(ctx, "no-such-tx"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("miss: got %v, want ErrNotFound", err)
+	}
+}
+
+func TestPostgresAdminStore_LapsedPaid_ExcludesLifetimeHolder(t *testing.T) {
+	pool := pgtest.New(t)
+	pgtest.Truncate(t, pool, "users")
+	store := NewPostgresStore(pool)
+	admin := NewPostgresAdminStore(pool)
+	ctx := context.Background()
+
+	now := time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)
+	holder := pgProfile(t, "auth0|holder", "holder@example.com")
+	holder.GrantLifetime(TierPro, "life-orig-2", now.Add(-90*24*time.Hour))
+	holder.ActivateSubscription(TierPersonal, now.Add(-30*24*time.Hour))
+	if err := store.Save(ctx, holder); err != nil {
+		t.Fatalf("Save holder: %v", err)
+	}
+
+	lapsed, err := admin.LapsedPaid(ctx, now)
+	if err != nil {
+		t.Fatalf("LapsedPaid: %v", err)
+	}
+	if len(lapsed) != 0 {
+		t.Errorf("LapsedPaid = %d profiles, want 0 for a lifetime holder", len(lapsed))
+	}
+}
+
 // TestPostgresAdminStore_ByDigestDay verifies that only profiles whose
 // DigestDay matches are returned.
 func TestPostgresAdminStore_ByDigestDay(t *testing.T) {

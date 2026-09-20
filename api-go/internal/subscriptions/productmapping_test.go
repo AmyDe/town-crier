@@ -18,6 +18,9 @@ func TestTierForProduct(t *testing.T) {
 	}{
 		{"personal monthly", "uk.towncrierapp.personal.monthly", profiles.TierPersonal, false},
 		{"pro monthly", "uk.towncrierapp.pro.monthly", profiles.TierPro, false},
+		{"pro annual", "uk.towncrierapp.pro.annual", profiles.TierPro, false},
+		{"pro lifetime", "uk.towncrierapp.pro.lifetime", profiles.TierPro, false},
+		{"personal annual is not sold", "uk.towncrierapp.personal.annual", profiles.TierFree, true},
 		// The legacy typo IDs (extra ".co.") must NOT map — they are the bug this
 		// mapping deliberately does not carry over (tc-7g3i.12).
 		{"legacy personal typo", "uk.co.towncrier.personal.monthly", profiles.TierFree, true},
@@ -56,7 +59,7 @@ func TestTierForProduct_UnknownErrorMessage(t *testing.T) {
 // "uk.co.towncrier" domain typo into the canonical constants.
 func TestProductIDs_NoLegacyDomain(t *testing.T) {
 	t.Parallel()
-	for _, id := range []string{ProductPersonalMonthly, ProductProMonthly} {
+	for _, id := range []string{ProductPersonalMonthly, ProductProMonthly, ProductProAnnual, ProductProLifetime} {
 		if strings.Contains(id, "uk.co.towncrier") {
 			t.Errorf("product id %q contains the legacy uk.co.towncrier typo", id)
 		}

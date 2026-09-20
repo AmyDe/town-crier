@@ -189,6 +189,29 @@ func txnJSONEnv(productID, bundleID, origTxn string, expiresMs int64, environmen
 		origTxn, productID, bundleID, expiresMs, environment)
 }
 
+const lifetimePurchaseMs = 1_700_000_000_000
+
+func lifetimeTxnJSON(productID, origTxn string, revocationMs int64) string {
+	revocation := ""
+	if revocationMs != 0 {
+		revocation = fmt.Sprintf(`"revocationDate":%d,`, revocationMs)
+	}
+	return fmt.Sprintf(`{"transactionId":"t-life","originalTransactionId":%q,"productId":%q,"bundleId":%q,"purchaseDate":%d,%s"type":"Non-Consumable","environment":"Production"}`,
+		origTxn, productID, testBundleID, lifetimePurchaseMs, revocation)
+}
+
+func verifyTier(t *testing.T, rec *httptest.ResponseRecorder) verifyResponse {
+	t.Helper()
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	var resp verifyResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	return resp
+}
+
 func decodeError(t *testing.T, rec *httptest.ResponseRecorder) apiErrorResponse {
 	t.Helper()
 	var e apiErrorResponse
@@ -229,6 +252,215 @@ func TestVerify_PurchaseActivatesPro(t *testing.T) {
 	}
 	if d.byUser.saved.OriginalTransactionID == nil || *d.byUser.saved.OriginalTransactionID != "orig-1" {
 		t.Error("original transaction id not linked")
+	}
+	if len(d.auth0.tiers) != 1 || d.auth0.tiers[0] != "Pro" {
+		t.Errorf("auth0 sync = %v, want [Pro]", d.auth0.tiers)
+	}
+}
+
+func TestVerify_LifetimeOnlyGrantsPro(t *testing.T) {
+	t.Parallel()
+	d := newTestDeps()
+	d.byUser.profile = freshProfile(t)
+	d.verifier.results["LIFE"] = lifetimeTxnJSON(ProductProLifetime, "life-1", 0)
+
+	rec := d.serve(t, "/v1/subscriptions/verify", `{"signedTransaction":"LIFE"}`, true)
+
+	resp := verifyTier(t, rec)
+	if resp.Tier != "Pro" {
+		t.Errorf("tier = %q, want Pro", resp.Tier)
+	}
+	if resp.SubscriptionExpiry != nil {
+		t.Errorf("subscriptionExpiry = %v, want null", resp.SubscriptionExpiry)
+	}
+	saved := d.byUser.saved
+	if saved == nil {
+		t.Fatal("profile not saved")
+	}
+	if saved.LifetimeTier != profiles.TierPro || saved.Tier != profiles.TierPro {
+		t.Errorf("LifetimeTier/Tier = %v/%v, want Pro/Pro", saved.LifetimeTier, saved.Tier)
+	}
+	if saved.SubscriptionExpiry != nil {
+		t.Errorf("SubscriptionExpiry = %v, want nil", saved.SubscriptionExpiry)
+	}
+	if saved.LifetimeOriginalTransactionID == nil || *saved.LifetimeOriginalTransactionID != "life-1" {
+		t.Errorf("LifetimeOriginalTransactionID = %v, want life-1", saved.LifetimeOriginalTransactionID)
+	}
+	if want := time.UnixMilli(lifetimePurchaseMs).UTC(); saved.LifetimePurchasedAt == nil || !saved.LifetimePurchasedAt.Equal(want) {
+		t.Errorf("LifetimePurchasedAt = %v, want %v", saved.LifetimePurchasedAt, want)
+	}
+	if len(d.auth0.tiers) != 1 || d.auth0.tiers[0] != "Pro" {
+		t.Errorf("auth0 sync = %v, want [Pro]", d.auth0.tiers)
+	}
+}
+
+func TestVerify_LifetimeWithExpiredMonthlyStaysPro(t *testing.T) {
+	t.Parallel()
+	d := newTestDeps()
+	d.byUser.profile = freshProfile(t)
+	d.verifier.results["LIFE"] = lifetimeTxnJSON(ProductProLifetime, "life-1", 0)
+	d.verifier.results["OLD"] = txnJSON(ProductProMonthly, testBundleID, "orig-old", pastExpiryMs())
+
+	rec := d.serve(t, "/v1/subscriptions/verify", `{"signedTransactions":["OLD","LIFE"]}`, true)
+
+	resp := verifyTier(t, rec)
+	if resp.Tier != "Pro" {
+		t.Errorf("tier = %q, want Pro (expired monthly must not drop lifetime)", resp.Tier)
+	}
+	if d.byUser.saved == nil || d.byUser.saved.LifetimeTier != profiles.TierPro || d.byUser.saved.Tier != profiles.TierPro {
+		t.Errorf("saved = %+v, want lifetime Pro kept", d.byUser.saved)
+	}
+}
+
+func TestVerify_LifetimeWithActiveMonthlyGrantsBoth(t *testing.T) {
+	t.Parallel()
+	d := newTestDeps()
+	d.byUser.profile = freshProfile(t)
+	d.verifier.results["LIFE"] = lifetimeTxnJSON(ProductProLifetime, "life-1", 0)
+	d.verifier.results["SUB"] = txnJSON(ProductPersonalMonthly, testBundleID, "orig-sub", futureExpiryMs())
+
+	rec := d.serve(t, "/v1/subscriptions/verify", `{"signedTransactions":["SUB","LIFE"]}`, true)
+
+	resp := verifyTier(t, rec)
+	if resp.Tier != "Pro" {
+		t.Errorf("tier = %q, want Pro", resp.Tier)
+	}
+	saved := d.byUser.saved
+	if saved.Tier != profiles.TierPro || saved.LifetimeTier != profiles.TierPro {
+		t.Errorf("Tier/LifetimeTier = %v/%v, want Pro/Pro", saved.Tier, saved.LifetimeTier)
+	}
+	if saved.SubscriptionExpiry == nil {
+		t.Error("SubscriptionExpiry = nil, want the Personal subscription window recorded")
+	}
+	if saved.OriginalTransactionID == nil || *saved.OriginalTransactionID != "orig-sub" {
+		t.Errorf("OriginalTransactionID = %v, want orig-sub", saved.OriginalTransactionID)
+	}
+}
+
+func TestVerify_RevokedLifetimeIsNotGranted(t *testing.T) {
+	t.Parallel()
+	d := newTestDeps()
+	d.byUser.profile = freshProfile(t)
+	d.verifier.results["LIFE"] = lifetimeTxnJSON(ProductProLifetime, "life-1", lifetimePurchaseMs+1000)
+
+	rec := d.serve(t, "/v1/subscriptions/verify", `{"signedTransaction":"LIFE"}`, true)
+
+	resp := verifyTier(t, rec)
+	if resp.Tier != "Free" {
+		t.Errorf("tier = %q, want Free", resp.Tier)
+	}
+	saved := d.byUser.saved
+	if saved.LifetimeTier != profiles.TierFree || saved.LifetimeOriginalTransactionID != nil {
+		t.Errorf("lifetime = %v/%v, want none", saved.LifetimeTier, saved.LifetimeOriginalTransactionID)
+	}
+}
+
+func TestVerify_RevokedSubscriptionIsSkipped(t *testing.T) {
+	t.Parallel()
+	d := newTestDeps()
+	d.byUser.profile = freshProfile(t)
+	d.verifier.results["REV"] = fmt.Sprintf(`{"transactionId":"t1","originalTransactionId":"o1","productId":%q,"bundleId":%q,"purchaseDate":1,"expiresDate":%d,"revocationDate":2,"environment":"Production"}`,
+		ProductProMonthly, testBundleID, futureExpiryMs())
+
+	rec := d.serve(t, "/v1/subscriptions/verify", `{"signedTransaction":"REV"}`, true)
+
+	if resp := verifyTier(t, rec); resp.Tier != "Free" {
+		t.Errorf("tier = %q, want Free (revoked subscription must not grant)", resp.Tier)
+	}
+}
+
+func TestVerify_LifetimeOwnedByAnotherUserConflicts(t *testing.T) {
+	t.Parallel()
+	d := newTestDeps()
+	d.byUser.profile = freshProfile(t)
+	otherUser, err := profiles.NewProfile("auth0|other", "other@example.com", testNow)
+	if err != nil {
+		t.Fatalf("NewProfile: %v", err)
+	}
+	d.byTxn.profilesByTxnID = map[string]*profiles.UserProfile{"life-claimed": otherUser}
+	d.verifier.results["LIFE"] = lifetimeTxnJSON(ProductProLifetime, "life-claimed", 0)
+
+	rec := d.serve(t, "/v1/subscriptions/verify", `{"signedTransaction":"LIFE"}`, true)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409 (body=%s)", rec.Code, rec.Body.String())
+	}
+	if got := decodeError(t, rec).Error; got != "transaction_already_claimed" {
+		t.Errorf("error = %q, want transaction_already_claimed", got)
+	}
+	if d.byUser.saved != nil {
+		t.Error("caller profile must not be saved on conflict")
+	}
+}
+
+func TestVerify_LifetimeReVerifyBySameOwner(t *testing.T) {
+	t.Parallel()
+	d := newTestDeps()
+	p := freshProfile(t)
+	d.byUser.profile = p
+	d.byTxn.profilesByTxnID = map[string]*profiles.UserProfile{"life-1": p}
+	d.verifier.results["LIFE"] = lifetimeTxnJSON(ProductProLifetime, "life-1", 0)
+
+	rec := d.serve(t, "/v1/subscriptions/verify", `{"signedTransaction":"LIFE"}`, true)
+
+	if resp := verifyTier(t, rec); resp.Tier != "Pro" {
+		t.Errorf("tier = %q, want Pro", resp.Tier)
+	}
+}
+
+func TestVerify_LifetimeUnknownProductIsRejected(t *testing.T) {
+	t.Parallel()
+	d := newTestDeps()
+	d.byUser.profile = freshProfile(t)
+	d.verifier.results["LIFE"] = lifetimeTxnJSON("uk.towncrierapp.mystery.lifetime", "life-1", 0)
+
+	rec := d.serve(t, "/v1/subscriptions/verify", `{"signedTransaction":"LIFE"}`, true)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 (body=%s)", rec.Code, rec.Body.String())
+	}
+	if got := decodeError(t, rec).Error; got != "invalid_transaction_payload" {
+		t.Errorf("error = %q, want invalid_transaction_payload", got)
+	}
+}
+
+func TestVerify_AnnualStoresProductID(t *testing.T) {
+	t.Parallel()
+	d := newTestDeps()
+	d.byUser.profile = freshProfile(t)
+	d.verifier.results["ANNUAL"] = txnJSON(ProductProAnnual, testBundleID, "orig-annual", futureExpiryMs())
+
+	rec := d.serve(t, "/v1/subscriptions/verify", `{"signedTransaction":"ANNUAL"}`, true)
+
+	if resp := verifyTier(t, rec); resp.Tier != "Pro" {
+		t.Errorf("tier = %q, want Pro", resp.Tier)
+	}
+	saved := d.byUser.saved
+	if saved.Tier != profiles.TierPro {
+		t.Errorf("Tier = %v, want Pro", saved.Tier)
+	}
+	if saved.SubscriptionProductID == nil || *saved.SubscriptionProductID != ProductProAnnual {
+		t.Errorf("SubscriptionProductID = %v, want %s", saved.SubscriptionProductID, ProductProAnnual)
+	}
+}
+
+func TestVerify_RestoreWithNoActiveSubscriptionKeepsLifetime(t *testing.T) {
+	t.Parallel()
+	d := newTestDeps()
+	p := freshProfile(t)
+	p.GrantLifetime(profiles.TierPro, "life-1", testNow.AddDate(0, -2, 0))
+	d.byUser.profile = p
+	d.verifier.results["OLD"] = txnJSON(ProductProMonthly, testBundleID, "orig-old", pastExpiryMs())
+
+	rec := d.serve(t, "/v1/subscriptions/verify", `{"signedTransactions":["OLD"]}`, true)
+
+	resp := verifyTier(t, rec)
+	if resp.Tier != "Pro" {
+		t.Errorf("tier = %q, want Pro", resp.Tier)
+	}
+	saved := d.byUser.saved
+	if saved.LifetimeTier != profiles.TierPro || saved.Tier != profiles.TierPro {
+		t.Errorf("LifetimeTier/Tier = %v/%v, want Pro/Pro (verify never revokes lifetime)", saved.LifetimeTier, saved.Tier)
 	}
 	if len(d.auth0.tiers) != 1 || d.auth0.tiers[0] != "Pro" {
 		t.Errorf("auth0 sync = %v, want [Pro]", d.auth0.tiers)

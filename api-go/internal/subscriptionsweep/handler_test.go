@@ -198,3 +198,25 @@ func TestHandler_Run_Auth0FailureIsolatedAndContinues(t *testing.T) {
 		t.Errorf("healthy profile not fully downgraded: saved=%v synced=%v", saver.saved["auth0|ok"], auth0.synced["auth0|ok"])
 	}
 }
+
+func TestHandler_Run_LifetimeHolderKeepsProAndSyncsStoredTier(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 6, 23, 9, 0, 0, 0, time.UTC)
+	holder := lapsedProfile(t, "auth0|lifetime")
+	holder.GrantLifetime(profiles.TierPro, "life-1", now.AddDate(0, -3, 0))
+	finder := &fakeFinder{lapsed: []*profiles.UserProfile{holder}}
+	saver := newFakeSaver()
+	auth0 := newFakeAuth0()
+	h := newHandler(finder, saver, auth0, now)
+
+	if _, err := h.Run(context.Background()); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if got := saver.saved["auth0|lifetime"]; got != profiles.TierPro {
+		t.Errorf("saved tier = %v, want Pro (lifetime floor)", got)
+	}
+	if got := auth0.synced["auth0|lifetime"]; got != "Pro" {
+		t.Errorf("auth0 tier = %q, want Pro (stored tier, not a Free literal)", got)
+	}
+}

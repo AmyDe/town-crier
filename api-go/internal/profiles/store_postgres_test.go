@@ -112,6 +112,8 @@ func TestScanUserRow_CreatedAt(t *testing.T) {
 		"{}",
 		// tier, subscription_expiry, original_transaction_id, grace_period_expiry,
 		"Free", nil, nil, nil,
+		// lifetime_tier, lifetime_original_transaction_id, lifetime_purchased_at, subscription_product_id,
+		"Free", nil, nil, nil,
 		// last_active_at, last_active_at_epoch, created_at, watch_zone_count, version
 		lastActive, lastActive.UnixMilli(), created, nil, 0,
 	}}
@@ -125,6 +127,54 @@ func TestScanUserRow_CreatedAt(t *testing.T) {
 	}
 	if !p.LastActiveAt.Equal(lastActive) {
 		t.Errorf("LastActiveAt: got %v, want %v", p.LastActiveAt, lastActive)
+	}
+}
+
+func TestScanUserRow_LifetimeColumns(t *testing.T) {
+	t.Parallel()
+	lastActive := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
+	purchased := time.Date(2026, 5, 1, 8, 0, 0, 0, time.UTC)
+	row := &fakeScanRow{cols: []any{
+		"auth0|u1", "u@example.com", true, 1,
+		true, true, true,
+		"{}",
+		"Pro", nil, nil, nil,
+		"Pro", "life-1", purchased, "uk.towncrierapp.pro.annual",
+		lastActive, lastActive.UnixMilli(), lastActive, nil, 0,
+	}}
+
+	p, _, err := scanUserRow(row)
+	if err != nil {
+		t.Fatalf("scanUserRow: %v", err)
+	}
+	if p.LifetimeTier != TierPro {
+		t.Errorf("LifetimeTier = %v, want Pro", p.LifetimeTier)
+	}
+	if p.LifetimeOriginalTransactionID == nil || *p.LifetimeOriginalTransactionID != "life-1" {
+		t.Errorf("LifetimeOriginalTransactionID = %v, want life-1", p.LifetimeOriginalTransactionID)
+	}
+	if p.LifetimePurchasedAt == nil || !p.LifetimePurchasedAt.Equal(purchased) {
+		t.Errorf("LifetimePurchasedAt = %v, want %v", p.LifetimePurchasedAt, purchased)
+	}
+	if p.SubscriptionProductID == nil || *p.SubscriptionProductID != "uk.towncrierapp.pro.annual" {
+		t.Errorf("SubscriptionProductID = %v, want uk.towncrierapp.pro.annual", p.SubscriptionProductID)
+	}
+}
+
+func TestScanUserRow_RejectsUnknownLifetimeTier(t *testing.T) {
+	t.Parallel()
+	lastActive := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
+	row := &fakeScanRow{cols: []any{
+		"auth0|u1", nil, true, 1,
+		true, true, true,
+		"{}",
+		"Free", nil, nil, nil,
+		"Platinum", nil, nil, nil,
+		lastActive, lastActive.UnixMilli(), lastActive, nil, 0,
+	}}
+
+	if _, _, err := scanUserRow(row); !errors.Is(err, ErrUnknownTier) {
+		t.Fatalf("scanUserRow err = %v, want ErrUnknownTier", err)
 	}
 }
 
