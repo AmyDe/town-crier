@@ -103,6 +103,12 @@ type statsPaying struct {
 	// tier split decodes it as nil, rather than a zeroed-but-present struct
 	// that would silently render a wrong (zero) MRR.
 	AppStoreByTier *statsAppStoreByTier `json:"appStoreByTier"`
+	// AppStoreProAnnual is a pointer for the same reason: nil means an API
+	// build that predates annual Pro, not zero annual payers.
+	AppStoreProAnnual *int `json:"appStoreProAnnual"`
+	// Lifetime is a pointer for the same reason: nil means an API build that
+	// predates lifetime Pro, not zero lifetime holders.
+	Lifetime *int `json:"lifetime"`
 }
 
 // statsAppStoreByTier is an explicit struct (not a map) so the two paid tier
