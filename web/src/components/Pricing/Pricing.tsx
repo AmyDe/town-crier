@@ -23,12 +23,18 @@ interface Tier {
   period?: string;
   recommended?: boolean;
   trialText?: string;
+  note?: string;
 }
 
 const TIERS: Tier[] = [
   { name: 'Free', price: '£0' },
   { name: 'Personal', price: '£1.99', period: '/mo', recommended: true, trialText: '7-day free trial' },
-  { name: 'Pro', price: '£4.99', period: '/mo' },
+  {
+    name: 'Pro',
+    price: '£4.99',
+    period: '/mo',
+    note: 'Or £29.99 a year, or £69.99 once, in the iOS app.',
+  },
 ];
 
 export function Pricing() {
@@ -52,6 +58,7 @@ export function Pricing() {
             {tier.trialText && (
               <p className={styles.trialText}>{tier.trialText}</p>
             )}
+            {tier.note && <p className={styles.trialText}>{tier.note}</p>}
             <ul className={styles.featureList}>
               {FEATURES.map((feature) => {
                 const value =
