@@ -39,23 +39,10 @@ describe('Pricing', () => {
     expect(screen.queryByText('£5.99')).not.toBeInTheDocument();
   });
 
-  it('shows the yearly and lifetime note under the Pro price', () => {
+  it('does not mention the yearly or lifetime Pro plans', () => {
     render(<Pricing />);
 
-    const cards = screen.getAllByRole('article');
-    const proCard = cards.find((card) => within(card).queryByText('Pro'));
-    expect(proCard).toBeDefined();
-
-    expect(
-      within(proCard!).getByText('Or £29.99 a year, or £69.99 once, in the iOS app.'),
-    ).toBeInTheDocument();
-  });
-
-  it('shows the yearly and lifetime note only on the Pro card', () => {
-    render(<Pricing />);
-
-    const notes = screen.getAllByText(/in the iOS app/i);
-    expect(notes).toHaveLength(1);
+    expect(screen.queryByText(/£29\.99|£69\.99/)).not.toBeInTheDocument();
   });
 
   it('shows "per month" text for paid tiers', () => {
