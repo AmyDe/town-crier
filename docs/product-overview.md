@@ -34,8 +34,6 @@ Town Crier sources data from [PlanIt](https://www.planit.org.uk), which covers *
 | Historical data | Forward-only | Instant backfill | Instant backfill |
 | Search | Browse only | Browse + filter | Full-text search |
 
-Pro is also sold yearly (£29.99) and as a one-off lifetime purchase (£69.99) in the iOS app.
-
 Subscriptions are managed via StoreKit 2 with a 7-day free trial on the Personal tier. See [ADR 0010](adr/0010-subscription-entitlement-flow.md) for the entitlement flow.
 
 ## Authentication
