@@ -33,6 +33,9 @@ const (
 	// pre-encoded static body with no dependency calls (api-go/internal/health/handler.go), so
 	// probing it on every cycle costs nothing and can't itself fail from a downstream outage.
 	apiHealthPath = "/health"
+	// apiOriginCertName is the Cloudflare Origin CA certificate uploaded to the shared
+	// Container Apps environment. Both api hosts share it, so it is not per-stack.
+	apiOriginCertName = "cert-api-origin-ca"
 )
 
 // cloudflareIPv4Ranges is Cloudflare's published list of IPv4 origin-pull ranges.
@@ -223,21 +226,20 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 		return err
 	}
 
-	// Managed Certificate for API custom domain (phase >= 2 binds it with SniEnabled).
-	var apiManagedCert *app.ManagedCertificate
+	// An Azure managed certificate cannot issue or renew for the api host: the record is
+	// proxied by Cloudflare, so the CNAME points at an intermediate value, and the ingress
+	// admits Cloudflare ranges only, so DigiCert cannot fetch the validation token. Both api
+	// managed certs silently failed renewal and expired. The origin serves a Cloudflare
+	// Origin CA certificate instead, which Cloudflare trusts under Full (strict). It is
+	// uploaded to the shared environment out of band (the private key is not in this repo)
+	// and looked up here by name.
+	var apiCert app.LookupCertificateResultOutput
 	if customDomainPhase >= 2 {
-		apiManagedCert, err = app.NewManagedCertificate(ctx, fmt.Sprintf("cert-api-%s", env), &app.ManagedCertificateArgs{
-			EnvironmentName:        containerAppsEnvironmentName,
-			ManagedCertificateName: pulumi.String(fmt.Sprintf("cert-api-%s", env)),
-			ResourceGroupName:      sharedResourceGroupName,
-			Properties: &app.ManagedCertificatePropertiesArgs{
-				SubjectName:             pulumi.String(apiDomain),
-				DomainControlValidation: pulumi.String("CNAME"),
-			},
+		apiCert = app.LookupCertificateOutput(ctx, app.LookupCertificateOutputArgs{
+			CertificateName:   pulumi.String(apiOriginCertName),
+			EnvironmentName:   containerAppsEnvironmentName,
+			ResourceGroupName: sharedResourceGroupName,
 		})
-		if err != nil {
-			return err
-		}
 	}
 
 	// The Go app owns the api custom domain unconditionally. Phase >= 2 binds with
@@ -247,7 +249,7 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 		goApiCustomDomains = app.CustomDomainArray{
 			&app.CustomDomainArgs{
 				Name:          pulumi.String(apiDomain),
-				CertificateId: apiManagedCert.ID(),
+				CertificateId: apiCert.Id(),
 				BindingType:   app.BindingTypeSniEnabled,
 			},
 		}
