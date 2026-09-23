@@ -25,13 +25,15 @@ struct WatchZoneEditorViewModelFilterTests {
 
   private func makeSUT(
     tier: SubscriptionTier = .pro,
-    editing zone: WatchZone? = nil
+    editing zone: WatchZone? = nil,
+    isFilterSectionVisible: Bool = true
   ) -> WatchZoneEditorViewModel {
     WatchZoneEditorViewModel(
       geocoder: spyGeocoder,
       repository: spyRepository,
       tier: tier,
-      editing: zone
+      editing: zone,
+      isFilterSectionVisible: isFilterSectionVisible
     )
   }
 
@@ -319,5 +321,50 @@ struct WatchZoneEditorViewModelFilterTests {
     #expect(didSave)
     let saved = spyRepository.updateCalls.first
     #expect(saved?.filterKey == "loft_extension")
+  }
+
+  @Test func save_editingFilteredZone_filterSectionHidden_stillSendsExistingFilterKey() async throws {
+    let sut = makeSUT(
+      tier: .pro,
+      editing: try filteredZone(filterKey: "hmo_house_shares"),
+      isFilterSectionVisible: false
+    )
+
+    let didSave = await sut.save()
+
+    #expect(didSave)
+    let saved = spyRepository.updateCalls.first
+    #expect(saved?.filterKey == "hmo_house_shares")
+  }
+
+  // MARK: - isFilterSectionVisible (tc-a8367, GH#1169)
+
+  @Test(arguments: [SubscriptionTier.free, .personal, .pro])
+  func isFilterSectionVisible_falseByDefault_createMode(tier: SubscriptionTier) {
+    let sut = WatchZoneEditorViewModel(
+      geocoder: spyGeocoder,
+      repository: spyRepository,
+      tier: tier
+    )
+
+    #expect(!sut.isFilterSectionVisible)
+  }
+
+  @Test(arguments: [SubscriptionTier.free, .personal, .pro])
+  func isFilterSectionVisible_falseByDefault_editMode(tier: SubscriptionTier) throws {
+    let sut = WatchZoneEditorViewModel(
+      geocoder: spyGeocoder,
+      repository: spyRepository,
+      tier: tier,
+      editing: try filteredZone()
+    )
+
+    #expect(!sut.isFilterSectionVisible)
+  }
+
+  @Test func isFilterSectionVisible_trueWhenInjected() {
+    let sut = makeSUT(isFilterSectionVisible: true)
+
+    #expect(sut.isFilterSectionVisible)
   }
 }
