@@ -116,8 +116,9 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
 
   public func currentEntitlement() async -> SubscriptionEntitlement? {
     let collected = await collectEntitlements()
-    await reportRestoreBestEffort(signedTransactions: collected.signedTransactions)
-    return collected.latest
+    let claimedByAnotherAccount = await reportRestoreBestEffort(
+      signedTransactions: collected.signedTransactions)
+    return claimedByAnotherAccount ? nil : collected.latest
   }
 
   private func collectEntitlements() async -> (
@@ -212,15 +213,22 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
     _ = try await verificationService.verifyRestore(signedTransactions: signedTransactions)
   }
 
-  /// Reports the entitlement list for a passive read and swallows any failure. StoreKit already
-  /// holds a verified entitlement, and hiding it would show a paying user the Free tier over a
-  /// transient network error.
-  func reportRestoreBestEffort(signedTransactions: [String]) async {
+  /// Reports the entitlement list for a passive read. Returns `true` when the server rejected the
+  /// report with ``DomainError/transactionAlreadyClaimed`` -- that answer is definitive, so the
+  /// caller must not trust the local StoreKit entitlement (GH#1165). Any other failure is
+  /// transient and swallowed: StoreKit already holds a verified entitlement, and hiding it would
+  /// show a paying user the Free tier over a network blip.
+  @discardableResult
+  func reportRestoreBestEffort(signedTransactions: [String]) async -> Bool {
     do {
       try await reportRestore(signedTransactions: signedTransactions)
+      return false
+    } catch DomainError.transactionAlreadyClaimed {
+      return true
     } catch {
       Self.logger.error(
         "Passive entitlement report failed: \(error.localizedDescription, privacy: .public)")
+      return false
     }
   }
 
