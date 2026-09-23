@@ -3,6 +3,7 @@ package profiles
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -142,8 +143,25 @@ func TestAuth0Client_UpdateTier_PropagatesServerError(t *testing.T) {
 	fake.userStatus = http.StatusInternalServerError
 	client := newTestAuth0Client(srv)
 
-	if err := client.UpdateSubscriptionTier(context.Background(), "auth0|abc", "Pro"); err == nil {
+	err := client.UpdateSubscriptionTier(context.Background(), "auth0|abc", "Pro")
+	if err == nil {
 		t.Error("UpdateSubscriptionTier: want error on 500, got nil")
+	}
+	if errors.Is(err, ErrAuth0UserNotFound) {
+		t.Error("UpdateSubscriptionTier 500: err matches ErrAuth0UserNotFound, want no match")
+	}
+}
+
+func TestAuth0Client_UpdateTier_404ReturnsErrAuth0UserNotFound(t *testing.T) {
+	t.Parallel()
+
+	fake, srv := newAuth0Server(t)
+	fake.userStatus = http.StatusNotFound
+	client := newTestAuth0Client(srv)
+
+	err := client.UpdateSubscriptionTier(context.Background(), "auth0|abc", "Pro")
+	if !errors.Is(err, ErrAuth0UserNotFound) {
+		t.Errorf("UpdateSubscriptionTier 404: err = %v, want errors.Is match on ErrAuth0UserNotFound", err)
 	}
 }
 
