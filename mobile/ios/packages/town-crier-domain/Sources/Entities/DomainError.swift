@@ -39,6 +39,10 @@ public enum DomainError: Error, Equatable, Sendable {
   /// watch zone for the same user. Mirrors the server's `zone_name_taken`
   /// (`409`). GH#1085.
   case watchZoneNameTaken
+  /// A StoreKit transaction's `originalTransactionId` is already linked to a
+  /// different Town Crier account. Mirrors the server's
+  /// `transaction_already_claimed` (`409`). GH#1165.
+  case transactionAlreadyClaimed
   case networkUnavailable
   case serverError(statusCode: Int, message: String?)
   case authenticationFailed(String)
@@ -94,6 +98,8 @@ public enum DomainError: Error, Equatable, Sendable {
       return "Invalid Filter"
     case .watchZoneNameTaken:
       return "Name Already Used"
+    case .transactionAlreadyClaimed:
+      return "Subscription Already Claimed"
     case .invalidCoordinate, .invalidWatchZoneRadius,
       .invalidWatchZoneName, .invalidStatusTransition,
       .notificationPermissionDenied, .unexpected:
@@ -142,6 +148,10 @@ public enum DomainError: Error, Equatable, Sendable {
       return "That filter isn't recognised. Please choose another one."
     case .watchZoneNameTaken:
       return "You already have a watch zone with this name. Choose a different name."
+    case .transactionAlreadyClaimed:
+      return
+        "The subscription on this Apple ID is already linked to a different Town Crier account. "
+        + "Sign in with that account to use it, or get in touch and we'll sort it out."
     case .invalidCoordinate, .invalidWatchZoneRadius,
       .invalidWatchZoneName, .invalidStatusTransition, .unexpected:
       return "An unexpected error occurred. Please try again."
@@ -161,7 +171,7 @@ public enum DomainError: Error, Equatable, Sendable {
       .deviceLocalZoneLimitReached, .invalidWatchZoneBoundaryVertexCount,
       .invalidWatchZoneBoundaryDuplicateVertex, .invalidWatchZoneBoundarySelfIntersecting,
       .invalidWatchZoneBoundaryOutOfBounds, .invalidWatchZoneBoundaryTooLarge,
-      .invalidWatchZoneFilterKey, .watchZoneNameTaken:
+      .invalidWatchZoneFilterKey, .watchZoneNameTaken, .transactionAlreadyClaimed:
       return false
     }
   }
