@@ -29,7 +29,7 @@ public struct WatchZoneEditorView: View {
             } else {
               lockedCustomShapeSection
             }
-            WatchZoneFilterSection(viewModel: viewModel)
+            if viewModel.isFilterSectionVisible { WatchZoneFilterSection(viewModel: viewModel) }
           }
           if viewModel.areNotificationTogglesVisible {
             notificationsSection
