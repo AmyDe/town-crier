@@ -84,8 +84,7 @@ public final class WatchZoneEditorViewModel: ObservableObject, EntitlementGating
 
   public let isEditing: Bool
 
-  /// Whether the pre-canned filter section renders in the editor. Defaults
-  /// to `false` (tc-a8367, GH#1169); tests inject `true` to exercise it.
+  /// Whether the editor renders the pre-canned filter section. Defaults to `false`.
   public let isFilterSectionVisible: Bool
 
   private let geocoder: PostcodeGeocoder
