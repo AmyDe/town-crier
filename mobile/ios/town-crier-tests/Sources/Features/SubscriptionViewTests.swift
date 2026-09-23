@@ -54,6 +54,17 @@ struct SubscriptionViewTests {
     #expect(viewModel.isCancelSubscriptionPromptPresented)
   }
 
+  @Test func body_rendersWhileTransactionClaimedAlertIsPresented() async {
+    let (viewModel, spy) = makeLoadableViewModel()
+    spy.purchaseResult = .failure(DomainError.transactionAlreadyClaimed)
+    await viewModel.purchase(productId: "uk.towncrierapp.pro.annual")
+
+    let sut = SubscriptionView(viewModel: viewModel)
+    _ = sut.body
+
+    #expect(viewModel.isTransactionClaimedAlertPresented)
+  }
+
   private func makeLoadableViewModel() -> (SubscriptionViewModel, SpySubscriptionService) {
     let spy = SpySubscriptionService()
     let viewModel = SubscriptionViewModel(
