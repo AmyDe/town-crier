@@ -87,8 +87,10 @@ public final class SubscriptionTierResolver: SubscriptionTierResolving {
     jwtTier: SubscriptionTier,
     previousTier: SubscriptionTier
   ) async -> (tier: SubscriptionTier, isTrialPeriod: Bool, isLifetime: Bool) {
-    let serverTier = await serverFetcher()
+    // storeKitFetcher() also reports the entitlement to the server, so it must run
+    // before serverFetcher() reads the server's tier, or the read misses that write.
     let storeKitEntitlement = await storeKitFetcher()
+    let serverTier = await serverFetcher()
     let storeKitTier = storeKitEntitlement?.tier ?? .free
 
     let effectiveServerTier = serverTier ?? max(previousTier, jwtTier)
