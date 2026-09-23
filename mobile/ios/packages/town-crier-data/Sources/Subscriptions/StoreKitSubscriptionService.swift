@@ -175,16 +175,11 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
   // MARK: - Server reporting
 
   /// POSTs an Apple-signed StoreKit 2 JWS transaction to the Town Crier
-  /// backend via the injected ``SubscriptionVerificationService``.
-  ///
-  /// Best-effort for transient failures: on-device StoreKit verification has
-  /// already succeeded and is the source of truth for local feature gating,
-  /// while Cosmos remains the source of truth for tier-gated API requests
-  /// (ADR 0010). A network or server failure here is swallowed — the App
-  /// Store Server Notifications webhook and the next server tier resolution
-  /// reconcile it. ``DomainError/transactionAlreadyClaimed`` is a definitive
-  /// answer, not a transient one, so it is rethrown for the caller to surface
-  /// (GH#1165).
+  /// backend via the injected ``SubscriptionVerificationService``. A network
+  /// or server failure here is swallowed, since on-device StoreKit
+  /// verification is already the source of truth for local feature gating.
+  /// ``DomainError/transactionAlreadyClaimed`` is rethrown, since that answer
+  /// is definitive rather than transient.
   func reportPurchase(signedTransaction: String) async throws {
     guard let verificationService else { return }
     do {
@@ -213,11 +208,8 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
     _ = try await verificationService.verifyRestore(signedTransactions: signedTransactions)
   }
 
-  /// Reports the entitlement list for a passive read. Returns `true` when the server rejected the
-  /// report with ``DomainError/transactionAlreadyClaimed`` -- that answer is definitive, so the
-  /// caller must not trust the local StoreKit entitlement (GH#1165). Any other failure is
-  /// transient and swallowed: StoreKit already holds a verified entitlement, and hiding it would
-  /// show a paying user the Free tier over a network blip.
+  /// Reports the entitlement list for a passive read. Returns `true` only when the report failed
+  /// with ``DomainError/transactionAlreadyClaimed``; every other failure is swallowed.
   @discardableResult
   func reportRestoreBestEffort(signedTransactions: [String]) async -> Bool {
     do {

@@ -41,7 +41,7 @@ public enum DomainError: Error, Equatable, Sendable {
   case watchZoneNameTaken
   /// A StoreKit transaction's `originalTransactionId` is already linked to a
   /// different Town Crier account. Mirrors the server's
-  /// `transaction_already_claimed` (`409`). GH#1165.
+  /// `transaction_already_claimed` (`409`).
   case transactionAlreadyClaimed
   case networkUnavailable
   case serverError(statusCode: Int, message: String?)

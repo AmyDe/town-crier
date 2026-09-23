@@ -272,7 +272,7 @@ public final class URLSessionAPIClient: Sendable {
   /// Maps a `409` conflict body to a specific ``DomainError`` — a duplicate
   /// watch-zone name, or a StoreKit transaction already claimed by another
   /// account. Any other error code, or a decode failure, falls back to the
-  /// generic `serverError` unchanged (GH#1085, GH#1165).
+  /// generic `serverError` unchanged.
   private func mapConflict(data: Data) throws {
     if let body = try? decoder.decode(ErrorCodeBody.self, from: data) {
       if body.error == "zone_name_taken" {
