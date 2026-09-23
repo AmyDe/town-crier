@@ -189,4 +189,16 @@ struct DomainErrorMessageTests {
         == "You already have a watch zone with this name. Choose a different name.")
     #expect(!error.isRetryable)
   }
+
+  // MARK: - transactionAlreadyClaimed (tc-k42ce.2, GH#1165)
+
+  @Test func transactionAlreadyClaimed_hasSubscriptionAlreadyClaimedTitle() {
+    let error = DomainError.transactionAlreadyClaimed
+    #expect(error.userTitle == "Subscription Already Claimed")
+    #expect(
+      error.userMessage
+        == "The subscription on this Apple ID is already linked to a different Town Crier "
+        + "account. Sign in with that account to use it, or get in touch and we'll sort it out.")
+    #expect(!error.isRetryable)
+  }
 }
