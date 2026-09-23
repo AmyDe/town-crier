@@ -306,4 +306,68 @@ struct SubscriptionTierResolverTests {
     #expect(result.tier == .pro)
     #expect(!result.isLifetime)
   }
+
+  // MARK: - Fetch ordering
+
+  @Test
+  func resolve_callsStoreKitFetcherBeforeServerFetcher() async {
+    let order = CallOrderRecorder()
+    let sut = SubscriptionTierResolver(
+      serverFetcher: {
+        order.record("server")
+        return .pro
+      },
+      storeKitFetcher: {
+        order.record("storeKit")
+        return nil
+      },
+      authService: SpyAuthenticationService()
+    )
+
+    _ = await sut.resolve(jwtTier: .free, previousTier: .free, userSub: nil)
+
+    #expect(order.calls == ["storeKit", "server"])
+  }
+
+  @Test
+  func resolve_serverFetcherSeesTheStoreKitFetchersWrite_onTheFirstPass() async {
+    let box = ServerTierBox()
+    let authSpy = SpyAuthenticationService()
+    authSpy.refreshSessionResult = .failure(DomainError.networkUnavailable)
+    let sut = SubscriptionTierResolver(
+      serverFetcher: { box.value },
+      storeKitFetcher: {
+        box.value = .pro
+        return nil
+      },
+      authService: authSpy
+    )
+
+    let result = await sut.resolve(jwtTier: .free, previousTier: .free, userSub: nil)
+
+    #expect(result.tier == .pro)
+  }
+}
+
+private final class CallOrderRecorder: @unchecked Sendable {
+  private let lock = NSLock()
+  private var recorded: [String] = []
+
+  var calls: [String] {
+    lock.withLock { recorded }
+  }
+
+  func record(_ name: String) {
+    lock.withLock { recorded.append(name) }
+  }
+}
+
+private final class ServerTierBox: @unchecked Sendable {
+  private let lock = NSLock()
+  private var storedValue: SubscriptionTier?
+
+  var value: SubscriptionTier? {
+    get { lock.withLock { storedValue } }
+    set { lock.withLock { storedValue = newValue } }
+  }
 }
