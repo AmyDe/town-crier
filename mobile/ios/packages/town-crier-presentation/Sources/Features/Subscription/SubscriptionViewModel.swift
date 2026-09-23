@@ -18,6 +18,7 @@ public final class SubscriptionViewModel: ObservableObject, ErrorHandlingViewMod
   @Published public var selectedProPeriod: SubscriptionPeriod = .annual
   @Published public var isCancelSubscriptionPromptPresented = false
   @Published public var isManageSubscriptionsPresented = false
+  @Published public var isTransactionClaimedAlertPresented = false
 
   /// The legal document currently presented over the paywall, if any.
   /// Drives a `.sheet(item:)` local to `SubscriptionView` so the Privacy Policy
@@ -89,6 +90,16 @@ public final class SubscriptionViewModel: ObservableObject, ErrorHandlingViewMod
   public static let cancelPromptManageButtonTitle = "Manage subscription"
   public static let cancelPromptDismissButtonTitle = "Not now"
 
+  /// Shown when a purchase or restore's Apple ID transaction is already
+  /// linked to a different Town Crier account. Never names or hints at the
+  /// other account -- the app holds no information about it that it is
+  /// allowed to show.
+  public static let transactionClaimedAlertTitle = "This subscription is on another account"
+  public static let transactionClaimedAlertMessage =
+    "The subscription on this Apple ID is already linked to a different Town Crier "
+    + "account. Sign in with that account to use it, or get in touch and we'll sort it out."
+  public static let transactionClaimedAlertButtonTitle = "OK"
+
   public init(
     subscriptionService: SubscriptionService,
     authenticationService: AuthenticationService,
@@ -129,6 +140,9 @@ public final class SubscriptionViewModel: ObservableObject, ErrorHandlingViewMod
       }
     } catch DomainError.purchaseCancelled {
       // User cancelled — not an error
+    } catch DomainError.transactionAlreadyClaimed {
+      isTransactionClaimedAlertPresented = true
+      onPurchaseFailed?()
     } catch {
       handleError(error) { .purchaseFailed($0) }
       onPurchaseFailed?()
@@ -148,6 +162,8 @@ public final class SubscriptionViewModel: ObservableObject, ErrorHandlingViewMod
       if entitlement != nil {
         await refreshAuthSession()
       }
+    } catch DomainError.transactionAlreadyClaimed {
+      isTransactionClaimedAlertPresented = true
     } catch {
       handleError(error) { .restoreFailed($0) }
     }

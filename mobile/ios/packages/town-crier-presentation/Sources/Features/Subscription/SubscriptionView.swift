@@ -55,6 +55,14 @@ public struct SubscriptionView: View {
     } message: {
       Text(SubscriptionViewModel.cancelPromptMessage)
     }
+    .alert(
+      SubscriptionViewModel.transactionClaimedAlertTitle,
+      isPresented: $viewModel.isTransactionClaimedAlertPresented
+    ) {
+      Button(SubscriptionViewModel.transactionClaimedAlertButtonTitle) {}
+    } message: {
+      Text(SubscriptionViewModel.transactionClaimedAlertMessage)
+    }
     #if os(iOS)
       .manageSubscriptionsSheet(
         isPresented: $viewModel.isManageSubscriptionsPresented.dispatchingSetOnMain()

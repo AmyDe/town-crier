@@ -8,33 +8,42 @@ import TownCrierDomain
 struct StoreKitSubscriptionServiceVerificationTests {
 
   @Test("reportPurchase POSTs the signed transaction to the verification service")
-  func reportPurchase_postsSignedTransaction() async {
+  func reportPurchase_postsSignedTransaction() async throws {
     let verifier = SpySubscriptionVerifier()
     let sut = StoreKitSubscriptionService(verificationService: verifier)
 
-    await sut.reportPurchase(signedTransaction: "header.payload.signature")
+    try await sut.reportPurchase(signedTransaction: "header.payload.signature")
 
     #expect(verifier.verifiedTransactions == ["header.payload.signature"])
   }
 
-  @Test("reportPurchase swallows verification failures so the purchase still succeeds")
-  func reportPurchase_swallowsVerificationFailure() async {
+  @Test("reportPurchase swallows a transient verification failure so the purchase still succeeds")
+  func reportPurchase_swallowsVerificationFailure() async throws {
     let verifier = SpySubscriptionVerifier()
     verifier.setVerifyResult(.failure(DomainError.networkUnavailable))
     let sut = StoreKitSubscriptionService(verificationService: verifier)
 
-    // Must not throw — server reporting is best-effort.
-    await sut.reportPurchase(signedTransaction: "header.payload.signature")
+    try await sut.reportPurchase(signedTransaction: "header.payload.signature")
 
     #expect(verifier.verifiedTransactions == ["header.payload.signature"])
   }
 
   @Test("reportPurchase is a no-op when no verification service is injected")
-  func reportPurchase_noVerifier_isNoOp() async {
+  func reportPurchase_noVerifier_isNoOp() async throws {
     let sut = StoreKitSubscriptionService()
 
-    // Simply must not crash.
-    await sut.reportPurchase(signedTransaction: "header.payload.signature")
+    try await sut.reportPurchase(signedTransaction: "header.payload.signature")
+  }
+
+  @Test("reportPurchase rethrows transactionAlreadyClaimed (tc-k42ce.2, GH#1165)")
+  func reportPurchase_rethrowsTransactionAlreadyClaimed() async {
+    let verifier = SpySubscriptionVerifier()
+    verifier.setVerifyResult(.failure(DomainError.transactionAlreadyClaimed))
+    let sut = StoreKitSubscriptionService(verificationService: verifier)
+
+    await #expect(throws: DomainError.transactionAlreadyClaimed) {
+      try await sut.reportPurchase(signedTransaction: "header.payload.signature")
+    }
   }
 
   // MARK: - Restore
@@ -104,6 +113,32 @@ struct StoreKitSubscriptionServiceVerificationTests {
   func reportRestoreBestEffort_noVerifier_isNoOp() async {
     let sut = StoreKitSubscriptionService()
 
-    await sut.reportRestoreBestEffort(signedTransactions: ["jws.one"])
+    _ = await sut.reportRestoreBestEffort(signedTransactions: ["jws.one"])
+  }
+
+  @Test("reportRestoreBestEffort returns true when claimed by another account (tc-k42ce.2, GH#1165)")
+  func reportRestoreBestEffort_returnsTrue_whenClaimedByAnotherAccount() async {
+    let verifier = SpySubscriptionVerifier()
+    verifier.setVerifyResult(.failure(DomainError.transactionAlreadyClaimed))
+    let sut = StoreKitSubscriptionService(verificationService: verifier)
+
+    let claimedByAnotherAccount = await sut.reportRestoreBestEffort(
+      signedTransactions: ["jws.one"])
+
+    #expect(claimedByAnotherAccount)
+  }
+
+  @Test(
+    "reportRestoreBestEffort returns false on a transient failure (tc-k42ce.2, GH#1165 / #1161 regression)"
+  )
+  func reportRestoreBestEffort_returnsFalse_onTransientFailure() async {
+    let verifier = SpySubscriptionVerifier()
+    verifier.setVerifyResult(.failure(DomainError.networkUnavailable))
+    let sut = StoreKitSubscriptionService(verificationService: verifier)
+
+    let claimedByAnotherAccount = await sut.reportRestoreBestEffort(
+      signedTransactions: ["jws.one"])
+
+    #expect(!claimedByAnotherAccount)
   }
 }

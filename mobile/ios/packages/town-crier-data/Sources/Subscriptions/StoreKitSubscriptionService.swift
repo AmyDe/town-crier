@@ -94,9 +94,7 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
     case .success(let verification):
       let transaction = try checkVerification(verification)
       await transaction.finish()
-      // Tell the backend about the purchase so tier-gated API requests see
-      // the new tier (ADR 0010). Best-effort — never fails the purchase.
-      await reportPurchase(signedTransaction: verification.jwsRepresentation)
+      try await reportPurchase(signedTransaction: verification.jwsRepresentation)
       return Self.entitlement(from: transaction)
 
     case .userCancelled:
@@ -118,8 +116,9 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
 
   public func currentEntitlement() async -> SubscriptionEntitlement? {
     let collected = await collectEntitlements()
-    await reportRestoreBestEffort(signedTransactions: collected.signedTransactions)
-    return collected.latest
+    let claimedByAnotherAccount = await reportRestoreBestEffort(
+      signedTransactions: collected.signedTransactions)
+    return claimedByAnotherAccount ? nil : collected.latest
   }
 
   private func collectEntitlements() async -> (
@@ -176,17 +175,17 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
   // MARK: - Server reporting
 
   /// POSTs an Apple-signed StoreKit 2 JWS transaction to the Town Crier
-  /// backend via the injected ``SubscriptionVerificationService``.
-  ///
-  /// Best-effort by design: on-device StoreKit verification has already
-  /// succeeded and is the source of truth for local feature gating, while
-  /// Cosmos remains the source of truth for tier-gated API requests (ADR
-  /// 0010). A network failure here is swallowed — the App Store Server
-  /// Notifications webhook and the next server tier resolution reconcile it.
-  func reportPurchase(signedTransaction: String) async {
+  /// backend via the injected ``SubscriptionVerificationService``. A network
+  /// or server failure here is swallowed, since on-device StoreKit
+  /// verification is already the source of truth for local feature gating.
+  /// ``DomainError/transactionAlreadyClaimed`` is rethrown, since that answer
+  /// is definitive rather than transient.
+  func reportPurchase(signedTransaction: String) async throws {
     guard let verificationService else { return }
     do {
       _ = try await verificationService.verify(signedTransaction: signedTransaction)
+    } catch DomainError.transactionAlreadyClaimed {
+      throw DomainError.transactionAlreadyClaimed
     } catch {
       Self.logger.error(
         "Subscription verify POST failed: \(error.localizedDescription, privacy: .public)")
@@ -209,15 +208,19 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
     _ = try await verificationService.verifyRestore(signedTransactions: signedTransactions)
   }
 
-  /// Reports the entitlement list for a passive read and swallows any failure. StoreKit already
-  /// holds a verified entitlement, and hiding it would show a paying user the Free tier over a
-  /// transient network error.
-  func reportRestoreBestEffort(signedTransactions: [String]) async {
+  /// Reports the entitlement list for a passive read. Returns `true` only when the report failed
+  /// with ``DomainError/transactionAlreadyClaimed``; every other failure is swallowed.
+  @discardableResult
+  func reportRestoreBestEffort(signedTransactions: [String]) async -> Bool {
     do {
       try await reportRestore(signedTransactions: signedTransactions)
+      return false
+    } catch DomainError.transactionAlreadyClaimed {
+      return true
     } catch {
       Self.logger.error(
         "Passive entitlement report failed: \(error.localizedDescription, privacy: .public)")
+      return false
     }
   }
 
