@@ -94,9 +94,7 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
     case .success(let verification):
       let transaction = try checkVerification(verification)
       await transaction.finish()
-      // Tell the backend about the purchase so tier-gated API requests see
-      // the new tier (ADR 0010). Best-effort — never fails the purchase.
-      await reportPurchase(signedTransaction: verification.jwsRepresentation)
+      try await reportPurchase(signedTransaction: verification.jwsRepresentation)
       return Self.entitlement(from: transaction)
 
     case .userCancelled:
@@ -178,15 +176,20 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
   /// POSTs an Apple-signed StoreKit 2 JWS transaction to the Town Crier
   /// backend via the injected ``SubscriptionVerificationService``.
   ///
-  /// Best-effort by design: on-device StoreKit verification has already
-  /// succeeded and is the source of truth for local feature gating, while
-  /// Cosmos remains the source of truth for tier-gated API requests (ADR
-  /// 0010). A network failure here is swallowed — the App Store Server
-  /// Notifications webhook and the next server tier resolution reconcile it.
-  func reportPurchase(signedTransaction: String) async {
+  /// Best-effort for transient failures: on-device StoreKit verification has
+  /// already succeeded and is the source of truth for local feature gating,
+  /// while Cosmos remains the source of truth for tier-gated API requests
+  /// (ADR 0010). A network or server failure here is swallowed — the App
+  /// Store Server Notifications webhook and the next server tier resolution
+  /// reconcile it. ``DomainError/transactionAlreadyClaimed`` is a definitive
+  /// answer, not a transient one, so it is rethrown for the caller to surface
+  /// (GH#1165).
+  func reportPurchase(signedTransaction: String) async throws {
     guard let verificationService else { return }
     do {
       _ = try await verificationService.verify(signedTransaction: signedTransaction)
+    } catch DomainError.transactionAlreadyClaimed {
+      throw DomainError.transactionAlreadyClaimed
     } catch {
       Self.logger.error(
         "Subscription verify POST failed: \(error.localizedDescription, privacy: .public)")
