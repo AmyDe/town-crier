@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,6 +14,10 @@ import (
 
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
 )
+
+// ErrAuth0UserNotFound wraps a 404 from the Auth0 Management API in
+// UpdateSubscriptionTier. Callers detect it with errors.Is.
+var ErrAuth0UserNotFound = errors.New("auth0 user not found")
 
 // Auth0Manager is the consumer-side interface the profile handlers use to keep
 // Auth0's app_metadata in sync and to remove users on account deletion. Both the
@@ -91,6 +96,9 @@ func (c *Auth0Client) UpdateSubscriptionTier(ctx context.Context, userID, tier s
 	}
 	defer func() { _ = resp.Body.Close() }()
 
+	if resp.StatusCode == http.StatusNotFound {
+		return fmt.Errorf("patch user %q: %w", userID, ErrAuth0UserNotFound)
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("patch user %q: unexpected status %d", userID, resp.StatusCode)
 	}
