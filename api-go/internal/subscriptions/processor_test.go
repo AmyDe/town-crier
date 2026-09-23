@@ -1,9 +1,11 @@
 package subscriptions
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -23,13 +25,20 @@ type processorTestDeps struct {
 }
 
 func newTestProcessor(allowedEnvs []string) *processorTestDeps {
+	return newTestProcessorWithLogger(allowedEnvs, slog.New(slog.DiscardHandler))
+}
+
+// newTestProcessorWithLogger builds a processor with a caller-supplied logger,
+// so a test can assert on emitted log lines (mirrors handler_test.go's
+// newTestDepsWithEnvsAndLogger).
+func newTestProcessorWithLogger(allowedEnvs []string, logger *slog.Logger) *processorTestDeps {
 	d := &processorTestDeps{
 		verifier:    &fakeVerifier{results: map[string]string{}, errs: map[string]error{}},
 		byTxn:       &fakeProfileByTxn{},
 		auth0:       &fakeAuth0{},
 		idempotency: newFakeIdempotency(),
 	}
-	d.processor = NewNotificationProcessor(d.verifier, d.byTxn, d.auth0, d.idempotency, allowedEnvs, slog.New(slog.DiscardHandler))
+	d.processor = NewNotificationProcessor(d.verifier, d.byTxn, d.auth0, d.idempotency, allowedEnvs, logger)
 	return d
 }
 
@@ -218,6 +227,95 @@ func TestNotificationProcessor_Process_VerifierErrorPropagates(t *testing.T) {
 	}
 	if wasNew {
 		t.Error("wasNew = true, want false on error")
+	}
+}
+
+// TestNotificationProcessor_Process_Auth0UserNotFoundIsNotFatal pins the
+// GH#1165 Phase 1 contract: a missing Auth0 user during the tier sync does not
+// fail the notification, because the Postgres profile is already saved and is
+// the source of truth.
+func TestNotificationProcessor_Process_Auth0UserNotFoundIsNotFatal(t *testing.T) {
+	t.Parallel()
+	d := newTestProcessor(testAllowedEnvs)
+	d.byTxn.profile = freshProfile(t)
+	d.auth0.err = profiles.ErrAuth0UserNotFound
+	d.verifier.results["hdr.OUTER.sig"] = notificationJSON("SUBSCRIBED", "uuid-404", "INNER")
+	d.verifier.results["INNER"] = txnJSON(ProductProMonthly, testBundleID, "orig-1", futureExpiryMs())
+
+	wasNew, err := d.processor.Process(context.Background(), "hdr.OUTER.sig")
+
+	if err != nil {
+		t.Fatalf("Process: %v, want nil (missing Auth0 user is not fatal)", err)
+	}
+	if !wasNew {
+		t.Error("wasNew = false, want true (profile still activated)")
+	}
+	if d.byTxn.saved == nil || d.byTxn.saved.Tier != profiles.TierPro {
+		t.Error("profile not saved despite missing Auth0 user")
+	}
+	if len(d.idempotency.marked) != 1 || d.idempotency.marked[0] != "uuid-404" {
+		t.Errorf("marked = %v, want [uuid-404]", d.idempotency.marked)
+	}
+}
+
+// TestNotificationProcessor_Process_Auth0GenericErrorFails asserts that a
+// non-404 Auth0 failure still fails the notification, so Apple retries a real
+// outage.
+func TestNotificationProcessor_Process_Auth0GenericErrorFails(t *testing.T) {
+	t.Parallel()
+	d := newTestProcessor(testAllowedEnvs)
+	d.byTxn.profile = freshProfile(t)
+	d.auth0.err = errors.New("auth0 unreachable")
+	d.verifier.results["hdr.OUTER.sig"] = notificationJSON("SUBSCRIBED", "uuid-500", "INNER")
+	d.verifier.results["INNER"] = txnJSON(ProductProMonthly, testBundleID, "orig-1", futureExpiryMs())
+
+	_, err := d.processor.Process(context.Background(), "hdr.OUTER.sig")
+
+	if err == nil {
+		t.Fatal("Process: want error, got nil")
+	}
+	if len(d.idempotency.marked) != 0 {
+		t.Errorf("must not mark processed on a real Auth0 failure, got %v", d.idempotency.marked)
+	}
+}
+
+// TestNotificationProcessor_Process_Auth0UserNotFoundLogsWarnWithoutIdentifiers
+// asserts the Warn log carries no user id, notification uuid, transaction id
+// or JWS content.
+func TestNotificationProcessor_Process_Auth0UserNotFoundLogsWarnWithoutIdentifiers(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+	d := newTestProcessorWithLogger(testAllowedEnvs, logger)
+	d.byTxn.profile = freshProfile(t)
+	d.auth0.err = profiles.ErrAuth0UserNotFound
+	d.verifier.results["hdr.OUTER.sig"] = notificationJSON("SUBSCRIBED", "uuid-warn", "INNER")
+	d.verifier.results["INNER"] = txnJSON(ProductProMonthly, testBundleID, "orig-warn", futureExpiryMs())
+
+	if _, err := d.processor.Process(context.Background(), "hdr.OUTER.sig"); err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+
+	line, ok := findLogLine(decodeJSONLogLines(t, buf.Bytes()), "auth0 user missing for subscription profile")
+	if !ok {
+		t.Fatalf("expected warn log not found in log output: %s", buf.String())
+	}
+	if line["level"] != "WARN" {
+		t.Errorf("level = %v, want WARN", line["level"])
+	}
+	for _, forbidden := range []string{"userID", "user", "userId", "notificationUUID", "originalTransactionId", "jws", "signedPayload"} {
+		if _, present := line[forbidden]; present {
+			t.Errorf("log line must not contain %q, got %v", forbidden, line[forbidden])
+		}
+	}
+	if strings.Contains(buf.String(), testUserID) {
+		t.Errorf("log output must not contain the userID %q: %s", testUserID, buf.String())
+	}
+	if strings.Contains(buf.String(), "uuid-warn") {
+		t.Errorf("log output must not contain the notification uuid: %s", buf.String())
+	}
+	if strings.Contains(buf.String(), "orig-warn") {
+		t.Errorf("log output must not contain the Apple original transaction id: %s", buf.String())
 	}
 }
 

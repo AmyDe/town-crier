@@ -109,7 +109,13 @@ func (p *NotificationProcessor) Process(ctx context.Context, signedPayload strin
 				return false, fmt.Errorf("save profile %q: %w", profile.UserID, err)
 			}
 			if err := p.auth0.UpdateSubscriptionTier(ctx, profile.UserID, profile.Tier.String()); err != nil {
-				return false, fmt.Errorf("sync auth0 tier %q: %w", profile.UserID, err)
+				if !errors.Is(err, profiles.ErrAuth0UserNotFound) {
+					return false, fmt.Errorf("sync auth0 tier %q: %w", profile.UserID, err)
+				}
+				// The Postgres profile is already saved and is the source of
+				// truth, so a user deleted from Auth0 out of band must not fail
+				// the notification.
+				p.logger.WarnContext(ctx, "auth0 user missing for subscription profile")
 			}
 			wasNew = true
 		}

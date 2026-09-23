@@ -94,11 +94,14 @@ func (f *fakeProfileByTxn) Save(_ context.Context, p *profiles.UserProfile) erro
 	return nil
 }
 
-type fakeAuth0 struct{ tiers []string }
+type fakeAuth0 struct {
+	tiers []string
+	err   error
+}
 
 func (f *fakeAuth0) UpdateSubscriptionTier(_ context.Context, _, tier string) error {
 	f.tiers = append(f.tiers, tier)
-	return nil
+	return f.err
 }
 
 type fakeIdempotency struct {
@@ -605,6 +608,30 @@ func TestWebhook_SubscribedActivatesProfile(t *testing.T) {
 	}
 	if len(d.idempotency.marked) != 1 || d.idempotency.marked[0] != "uuid-1" {
 		t.Errorf("marked = %v, want [uuid-1]", d.idempotency.marked)
+	}
+}
+
+// TestWebhook_Auth0UserNotFoundReturns200 pins the GH#1165 Phase 1 contract: a
+// missing Auth0 user during the tier sync must not fail the webhook, since the
+// Postgres profile (already saved) is the source of truth.
+func TestWebhook_Auth0UserNotFoundReturns200(t *testing.T) {
+	t.Parallel()
+	d := newTestDeps()
+	d.byTxn.profile = freshProfile(t)
+	d.auth0.err = profiles.ErrAuth0UserNotFound
+	d.verifier.results["hdr.OUTER.sig"] = notificationJSON("SUBSCRIBED", "uuid-webhook-404", "INNER")
+	d.verifier.results["INNER"] = txnJSON(ProductProMonthly, testBundleID, "orig-1", futureExpiryMs())
+
+	rec := d.serve(t, "/v1/webhooks/appstore", `{"signedPayload":"hdr.OUTER.sig"}`, false)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (missing Auth0 user must not fail the webhook), body=%s", rec.Code, rec.Body.String())
+	}
+	if d.byTxn.saved == nil || d.byTxn.saved.Tier != profiles.TierPro {
+		t.Error("profile not saved despite missing Auth0 user")
+	}
+	if len(d.idempotency.marked) != 1 || d.idempotency.marked[0] != "uuid-webhook-404" {
+		t.Errorf("marked = %v, want [uuid-webhook-404]", d.idempotency.marked)
 	}
 }
 
