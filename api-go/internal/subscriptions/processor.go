@@ -113,8 +113,8 @@ func (p *NotificationProcessor) Process(ctx context.Context, signedPayload strin
 					return false, fmt.Errorf("sync auth0 tier %q: %w", profile.UserID, err)
 				}
 				// The Postgres profile is already saved and is the source of
-				// truth; a deleted-out-of-band Auth0 user must not fail the
-				// notification (GH#1165).
+				// truth, so a user deleted from Auth0 out of band must not fail
+				// the notification.
 				p.logger.WarnContext(ctx, "auth0 user missing for subscription profile")
 			}
 			wasNew = true
