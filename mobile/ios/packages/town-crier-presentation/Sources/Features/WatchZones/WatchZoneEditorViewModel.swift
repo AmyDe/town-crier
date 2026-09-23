@@ -84,6 +84,9 @@ public final class WatchZoneEditorViewModel: ObservableObject, EntitlementGating
 
   public let isEditing: Bool
 
+  /// Whether the editor renders the pre-canned filter section. Defaults to `false`.
+  public let isFilterSectionVisible: Bool
+
   private let geocoder: PostcodeGeocoder
   /// `internal` (not `private`) so `WatchZoneEditorViewModel+FilterCatalog.swift`
   /// can call `filterCatalog()` -- split out to keep this file under
@@ -97,7 +100,8 @@ public final class WatchZoneEditorViewModel: ObservableObject, EntitlementGating
     geocoder: PostcodeGeocoder,
     repository: WatchZoneRepository,
     tier: SubscriptionTier,
-    editing zone: WatchZone? = nil
+    editing zone: WatchZone? = nil,
+    isFilterSectionVisible: Bool = false
   ) {
     self.geocoder = geocoder
     self.repository = repository
@@ -105,6 +109,7 @@ public final class WatchZoneEditorViewModel: ObservableObject, EntitlementGating
     self.tier = tier
     self.isEditing = zone != nil
     self.existingId = zone?.id
+    self.isFilterSectionVisible = isFilterSectionVisible
 
     if let zone {
       self.nameInput = zone.name

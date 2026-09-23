@@ -24,13 +24,15 @@ struct WatchZoneEditorViewFilterTests {
 
   private func makeViewModel(
     tier: SubscriptionTier = .pro,
-    editing zone: WatchZone? = nil
+    editing zone: WatchZone? = nil,
+    isFilterSectionVisible: Bool = true
   ) -> WatchZoneEditorViewModel {
     WatchZoneEditorViewModel(
       geocoder: SpyPostcodeGeocoder(),
       repository: spyRepository,
       tier: tier,
-      editing: zone
+      editing: zone,
+      isFilterSectionVisible: isFilterSectionVisible
     )
   }
 
@@ -165,5 +167,25 @@ struct WatchZoneEditorViewFilterTests {
     let displayName = vm.filterDisplayName(for: vm.selectedFilterKey)
     #expect(displayName != nil)
     #expect(displayName != "None")
+  }
+
+  // MARK: - Filter section hidden behind isFilterSectionVisible (tc-a8367, GH#1169)
+
+  @Test(arguments: [SubscriptionTier.free, .personal, .pro])
+  func body_renders_filterSectionHidden_createMode(tier: SubscriptionTier) {
+    let vm = makeViewModel(tier: tier, isFilterSectionVisible: false)
+    #expect(!vm.isFilterSectionVisible)
+
+    let sut = WatchZoneEditorView(viewModel: vm)
+    _ = sut.body
+  }
+
+  @Test(arguments: [SubscriptionTier.free, .personal, .pro])
+  func body_renders_filterSectionHidden_editMode(tier: SubscriptionTier) throws {
+    let vm = makeViewModel(tier: tier, editing: try filteredZone(), isFilterSectionVisible: false)
+    #expect(!vm.isFilterSectionVisible)
+
+    let sut = WatchZoneEditorView(viewModel: vm)
+    _ = sut.body
   }
 }
