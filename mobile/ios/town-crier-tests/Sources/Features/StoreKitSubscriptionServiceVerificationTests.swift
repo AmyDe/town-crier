@@ -113,6 +113,32 @@ struct StoreKitSubscriptionServiceVerificationTests {
   func reportRestoreBestEffort_noVerifier_isNoOp() async {
     let sut = StoreKitSubscriptionService()
 
-    await sut.reportRestoreBestEffort(signedTransactions: ["jws.one"])
+    _ = await sut.reportRestoreBestEffort(signedTransactions: ["jws.one"])
+  }
+
+  @Test("reportRestoreBestEffort returns true when claimed by another account (tc-k42ce.2, GH#1165)")
+  func reportRestoreBestEffort_returnsTrue_whenClaimedByAnotherAccount() async {
+    let verifier = SpySubscriptionVerifier()
+    verifier.setVerifyResult(.failure(DomainError.transactionAlreadyClaimed))
+    let sut = StoreKitSubscriptionService(verificationService: verifier)
+
+    let claimedByAnotherAccount = await sut.reportRestoreBestEffort(
+      signedTransactions: ["jws.one"])
+
+    #expect(claimedByAnotherAccount)
+  }
+
+  @Test(
+    "reportRestoreBestEffort returns false on a transient failure (tc-k42ce.2, GH#1165 / #1161 regression)"
+  )
+  func reportRestoreBestEffort_returnsFalse_onTransientFailure() async {
+    let verifier = SpySubscriptionVerifier()
+    verifier.setVerifyResult(.failure(DomainError.networkUnavailable))
+    let sut = StoreKitSubscriptionService(verificationService: verifier)
+
+    let claimedByAnotherAccount = await sut.reportRestoreBestEffort(
+      signedTransactions: ["jws.one"])
+
+    #expect(!claimedByAnotherAccount)
   }
 }
