@@ -257,7 +257,7 @@ public final class URLSessionAPIClient: Sendable {
   /// filter key (GH#1098). Any other error code, or a decode failure, falls
   /// back to the generic `serverError` unchanged (GH#1085).
   private func mapBadRequest(data: Data) throws {
-    if let body = try? decoder.decode(WatchZoneErrorBody.self, from: data) {
+    if let body = try? decoder.decode(ErrorCodeBody.self, from: data) {
       if body.error == "boundary_too_large" {
         throw DomainError.invalidWatchZoneBoundaryTooLarge
       }
@@ -269,13 +269,18 @@ public final class URLSessionAPIClient: Sendable {
     throw APIError.serverError(statusCode: 400, message: message)
   }
 
-  /// Maps a watch-zone `409` — a duplicate watch-zone name for the same
-  /// user. Any other error code, or a decode failure, falls back to the
-  /// generic `serverError` unchanged (GH#1085).
+  /// Maps a `409` conflict body to a specific ``DomainError`` — a duplicate
+  /// watch-zone name, or a StoreKit transaction already claimed by another
+  /// account. Any other error code, or a decode failure, falls back to the
+  /// generic `serverError` unchanged (GH#1085, GH#1165).
   private func mapConflict(data: Data) throws {
-    if let body = try? decoder.decode(WatchZoneErrorBody.self, from: data),
-      body.error == "zone_name_taken" {
-      throw DomainError.watchZoneNameTaken
+    if let body = try? decoder.decode(ErrorCodeBody.self, from: data) {
+      if body.error == "zone_name_taken" {
+        throw DomainError.watchZoneNameTaken
+      }
+      if body.error == "transaction_already_claimed" {
+        throw DomainError.transactionAlreadyClaimed
+      }
     }
     let message = String(data: data, encoding: .utf8)
     throw APIError.serverError(statusCode: 409, message: message)
