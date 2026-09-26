@@ -1108,6 +1108,285 @@ func TestInverseMaskLane_WithFanOut_WrapsBothCollaborators(t *testing.T) {
 	}
 }
 
+// --- GH#1171: coverage watermark ---
+
+// TestInverseMaskLane_PartialScanRecordsCoverageHead proves a mid-scan page
+// checkpoints its own ascending progress: the cursor's WalkHead becomes the
+// maximum LastDifferent over the rows checked this page, while the coverage
+// mark (HighWaterMark) is left unchanged because the scan has not completed.
+func TestInverseMaskLane_PartialScanRecordsCoverageHead(t *testing.T) {
+	t.Parallel()
+	same := "Undecided"
+	t1 := laneCNow.Add(-3 * time.Hour)
+	t2 := laneCNow.Add(-2 * time.Hour)
+	t3 := laneCNow.Add(-1 * time.Hour)
+
+	fetcher := newFakeInverseMaskFetcher()
+	fetcher.pages[0] = planit.FetchPageResult{
+		From: 0,
+		Applications: []applications.PlanningApplication{
+			lightApp("head-a/FUL", 99, same, t1),
+			lightApp("head-b/FUL", 99, same, t2),
+			lightApp("head-c/FUL", 99, same, t3),
+		},
+		HasMorePages: true,
+	}
+	apps := newFakeApps()
+	for _, uid := range []string{"head-a/FUL", "head-b/FUL", "head-c/FUL"} {
+		apps.existing[uid] = applications.PlanningApplication{UID: uid, AreaID: 99, AppState: &same}
+	}
+	state := newFakeStateStore()
+	hwm := laneCNow.AddDate(0, 0, -1)
+	state.states[sentinelLaneC] = PollState{HighWaterMark: hwm}
+
+	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
+	out := h.RunOnePage(context.Background())
+
+	if out.err != nil {
+		t.Fatalf("RunOnePage: %v", out.err)
+	}
+	got := state.states[sentinelLaneC]
+	if got.Cursor == nil || !got.Cursor.WalkHead.Equal(t3) {
+		t.Errorf("cursor.WalkHead: got %+v, want %v (max LastDifferent over rows checked)", got.Cursor, t3)
+	}
+	if !got.HighWaterMark.Equal(hwm) {
+		t.Errorf("HighWaterMark: got %v, want unchanged %v (scan not finished)", got.HighWaterMark, hwm)
+	}
+}
+
+// TestInverseMaskLane_ResumeCarriesCoverageHeadForward proves the coverage
+// head is monotonic across a resume: a page whose rows all have an earlier
+// LastDifferent than the loaded cursor's WalkHead must not regress it.
+func TestInverseMaskLane_ResumeCarriesCoverageHeadForward(t *testing.T) {
+	t.Parallel()
+	same := "Undecided"
+	tX := laneCNow.Add(-1 * time.Hour)
+	lowerLD := laneCNow.Add(-5 * time.Hour)
+
+	fetcher := newFakeInverseMaskFetcher()
+	fetcher.pages[290] = planit.FetchPageResult{ // 300 - the 10-record Lane C resume overlap
+		From:         290,
+		Applications: []applications.PlanningApplication{lightApp("resume-head/FUL", 99, same, lowerLD)},
+		HasMorePages: true,
+	}
+	apps := newFakeApps()
+	apps.existing["resume-head/FUL"] = applications.PlanningApplication{UID: "resume-head/FUL", AreaID: 99, AppState: &same}
+	state := newFakeStateStore()
+	state.states[sentinelLaneC] = PollState{
+		HighWaterMark: laneCNow.AddDate(0, 0, -1),
+		Cursor:        &PollCursor{DifferentStart: laneCToday, NextIndex: 300, WalkHead: tX},
+	}
+
+	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
+	out := h.RunOnePage(context.Background())
+
+	if out.err != nil {
+		t.Fatalf("RunOnePage: %v", out.err)
+	}
+	got := state.states[sentinelLaneC].Cursor
+	if got == nil || !got.WalkHead.Equal(tX) {
+		t.Errorf("cursor.WalkHead: got %+v, want unchanged %v (this page's max %v is earlier)", got, tX, lowerLD)
+	}
+}
+
+// TestInverseMaskLane_FreshScanFoldsStaleCoverageHead proves a stale cursor's
+// in-flight coverage head is folded into the watermark N is computed from
+// once the day rolls and the cursor is discarded: the resulting window uses
+// the folded mark, and a mid-scan save persists it as the coverage mark.
+func TestInverseMaskLane_FreshScanFoldsStaleCoverageHead(t *testing.T) {
+	t.Parallel()
+	lastCleanScanAt := laneCNow.AddDate(0, 0, -30)
+	staleCursorDate := laneCToday.AddDate(0, 0, -1)
+	staleWalkHead := staleCursorDate.Add(15 * time.Hour)
+
+	fetcher := newFakeInverseMaskFetcher()
+	fetcher.pages[0] = planit.FetchPageResult{From: 0, Applications: nil, HasMorePages: true}
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	state.states[sentinelLaneC] = PollState{
+		HighWaterMark: lastCleanScanAt,
+		Cursor:        &PollCursor{DifferentStart: staleCursorDate, NextIndex: 900, WalkHead: staleWalkHead},
+	}
+
+	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
+	out := h.RunOnePage(context.Background())
+
+	if out.err != nil {
+		t.Fatalf("RunOnePage: %v", out.err)
+	}
+	if got := fetcher.queries[0].WindowDays; got != 2 {
+		t.Errorf("WindowDays: got %d, want 2 (recomputed from the folded mark, one day old)", got)
+	}
+	if got := state.states[sentinelLaneC].HighWaterMark; !got.Equal(staleWalkHead) {
+		t.Errorf("HighWaterMark: got %v, want the folded stale WalkHead %v", got, staleWalkHead)
+	}
+}
+
+// TestInverseMaskLane_FreshScanIgnoresOlderStaleHead proves the fold is
+// one-directional: a stale cursor's WalkHead that is OLDER than the
+// persisted HighWaterMark must never regress it.
+func TestInverseMaskLane_FreshScanIgnoresOlderStaleHead(t *testing.T) {
+	t.Parallel()
+	lastCleanScanAt := laneCNow.AddDate(0, 0, -2)
+	staleCursorDate := laneCToday.AddDate(0, 0, -10)
+	olderWalkHead := staleCursorDate.Add(3 * time.Hour)
+
+	fetcher := newFakeInverseMaskFetcher()
+	fetcher.pages[0] = planit.FetchPageResult{From: 0, Applications: nil, HasMorePages: true}
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	state.states[sentinelLaneC] = PollState{
+		HighWaterMark: lastCleanScanAt,
+		Cursor:        &PollCursor{DifferentStart: staleCursorDate, NextIndex: 500, WalkHead: olderWalkHead},
+	}
+
+	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
+	out := h.RunOnePage(context.Background())
+
+	if out.err != nil {
+		t.Fatalf("RunOnePage: %v", out.err)
+	}
+	if got := fetcher.queries[0].WindowDays; got != 3 {
+		t.Errorf("WindowDays: got %d, want 3 (cap, computed from the unfolded HighWaterMark)", got)
+	}
+	if got := state.states[sentinelLaneC].HighWaterMark; !got.Equal(lastCleanScanAt) {
+		t.Errorf("HighWaterMark: got %v, want unchanged %v (an older stale head must not fold forward)", got, lastCleanScanAt)
+	}
+}
+
+// TestInverseMaskLane_StaleCursorWithoutHeadBehavesAsToday proves a stale
+// cursor with no captured WalkHead (the pre-#1171 shape) computes WindowDays
+// from HighWaterMark alone, exactly as before this change.
+func TestInverseMaskLane_StaleCursorWithoutHeadBehavesAsToday(t *testing.T) {
+	t.Parallel()
+	lastCleanScanAt := laneCNow.AddDate(0, 0, -1)
+	staleCursorDate := laneCToday.AddDate(0, 0, -1)
+
+	fetcher := newFakeInverseMaskFetcher()
+	fetcher.pages[0] = planit.FetchPageResult{From: 0, Applications: nil, HasMorePages: false}
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	state.states[sentinelLaneC] = PollState{
+		HighWaterMark: lastCleanScanAt,
+		Cursor:        &PollCursor{DifferentStart: staleCursorDate, NextIndex: 700},
+	}
+
+	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
+	out := h.RunOnePage(context.Background())
+
+	if out.err != nil {
+		t.Fatalf("RunOnePage: %v", out.err)
+	}
+	if got := fetcher.queries[0]; got.WindowDays != 2 || got.StartIndex != 0 {
+		t.Errorf("first fetch: got WindowDays=%d StartIndex=%d, want 2 / 0", got.WindowDays, got.StartIndex)
+	}
+}
+
+// TestInverseMaskLane_WindowDaysStableWithinScan pins the "N never changes
+// mid-scan" invariant (GH#1171): a same-day resume computes WindowDays from
+// HighWaterMark, never from the active cursor's own (necessarily more
+// recent) WalkHead — otherwise N would shift under an already-persisted
+// index= offset and skip rows.
+func TestInverseMaskLane_WindowDaysStableWithinScan(t *testing.T) {
+	t.Parallel()
+	fetcher := newFakeInverseMaskFetcher()
+	fetcher.pages[290] = planit.FetchPageResult{From: 290, Applications: nil, HasMorePages: false}
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	state.states[sentinelLaneC] = PollState{
+		HighWaterMark: laneCNow.AddDate(0, 0, -2),
+		Cursor:        &PollCursor{DifferentStart: laneCToday, NextIndex: 300, WalkHead: laneCNow},
+	}
+
+	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
+	out := h.RunOnePage(context.Background())
+
+	if out.err != nil {
+		t.Fatalf("RunOnePage: %v", out.err)
+	}
+	if got := fetcher.queries[0].WindowDays; got != 3 {
+		t.Errorf("WindowDays: got %d, want 3 (derived from HighWaterMark, not the head)", got)
+	}
+}
+
+// TestInverseMaskLane_IngestErrorCountsOnlyRowsBeforeFailure extends the
+// tc-6u4da clamp coverage to the coverage head: an Ingest hard-error on row i
+// must save WalkHead as the max LastDifferent over rows 0..i-1 only, never
+// including the failing row.
+func TestInverseMaskLane_IngestErrorCountsOnlyRowsBeforeFailure(t *testing.T) {
+	t.Parallel()
+	same := "Undecided"
+	t1 := laneCNow.Add(-3 * time.Hour)
+	t2 := laneCNow.Add(-2 * time.Hour)
+	t3 := laneCNow.Add(-1 * time.Hour) // the failing row's own LastDifferent -- must not count
+	ingestErr := errors.New("postgres: upsert failed")
+
+	fetcher := newFakeInverseMaskFetcher()
+	fetcher.pages[0] = planit.FetchPageResult{
+		From: 0,
+		Applications: []applications.PlanningApplication{
+			lightApp("errhead-a/FUL", 99, same, t1),
+			lightApp("errhead-b/FUL", 99, same, t2),
+			lightApp("errhead-c/FUL", 99, "Permitted", t3), // differs: Ingest hard-errors
+		},
+		HasMorePages: false,
+	}
+	apps := newFakeApps()
+	for _, uid := range []string{"errhead-a/FUL", "errhead-b/FUL"} {
+		apps.existing[uid] = applications.PlanningApplication{UID: uid, AreaID: 99, AppState: &same}
+	}
+	apps.upsertErr = ingestErr
+	state := newFakeStateStore()
+	state.states[sentinelLaneC] = PollState{HighWaterMark: laneCNow.AddDate(0, 0, -2)}
+
+	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
+	out := h.RunOnePage(context.Background())
+
+	if out.err == nil || !errors.Is(out.err, ingestErr) {
+		t.Fatalf("out.err: got %v, want it to wrap the Ingest error %v", out.err, ingestErr)
+	}
+	got := state.states[sentinelLaneC].Cursor
+	if got == nil || !got.WalkHead.Equal(t2) {
+		t.Errorf("cursor.WalkHead: got %+v, want %v (max over the two rows checked before the failure)", got, t2)
+	}
+}
+
+// TestInverseMaskLane_FreshScanFetch429PersistsFold proves the page-fetch
+// error/429 path applies the same fold as a successful fetch: a fresh start
+// (stale cursor discarded) that immediately hits a 429 still persists the
+// folded coverage mark as HighWaterMark, with the loaded cursor re-saved
+// exactly as it was.
+func TestInverseMaskLane_FreshScanFetch429PersistsFold(t *testing.T) {
+	t.Parallel()
+	lastCleanScanAt := laneCNow.AddDate(0, 0, -5)
+	staleCursorDate := laneCToday.AddDate(0, 0, -1)
+	staleWalkHead := staleCursorDate.Add(10 * time.Hour)
+	retryAfter := 20 * time.Second
+
+	fetcher := newFakeInverseMaskFetcher()
+	fetcher.failNth[1] = &planit.RateLimitError{RetryAfter: &retryAfter}
+	apps := newFakeApps()
+	state := newFakeStateStore()
+	state.states[sentinelLaneC] = PollState{
+		HighWaterMark: lastCleanScanAt,
+		Cursor:        &PollCursor{DifferentStart: staleCursorDate, NextIndex: 900, WalkHead: staleWalkHead},
+	}
+
+	h := newLaneCHandler(t, fetcher, apps, state, defaultInverseMaskOpts())
+	out := h.RunOnePage(context.Background())
+
+	if !out.rateLimited {
+		t.Fatal("expected rateLimited=true")
+	}
+	got := state.states[sentinelLaneC]
+	if !got.HighWaterMark.Equal(staleWalkHead) {
+		t.Errorf("HighWaterMark: got %v, want the folded mark %v", got.HighWaterMark, staleWalkHead)
+	}
+	if got.Cursor == nil || got.Cursor.NextIndex != 900 || !got.Cursor.WalkHead.Equal(staleWalkHead) {
+		t.Errorf("cursor: got %+v, want it re-saved exactly as loaded (NextIndex=900, WalkHead=%v)", got.Cursor, staleWalkHead)
+	}
+}
+
 // TestInverseMaskLane_WithFanOutGatesOldApplicationNotifications proves the
 // consequence ADR 0047/tc-hku56 call out as intended: Lane C's band is
 // start_date <= today-90d by construction, so gating on recency suppresses
