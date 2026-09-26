@@ -22,14 +22,11 @@ type PollCursor struct {
 	// WalkHead is a national lane's descending-walk true maximum LastDifferent
 	// (ADR 0044 / GH#983), captured from the first record of the walk's first
 	// page (index 0) and carried unchanged through every resume until the
-	// walk completes. Lane C (lanec.go, GH#1171) reuses the same field for its
-	// own ascending scan as the in-flight coverage head: the maximum
-	// LastDifferent over rows the scan has checked so far, folded into
-	// HighWaterMark once a stale cursor is discarded at a fresh start. The
-	// zero value means unset -- no walk-head captured yet, or a
-	// pre-migration legacy cursor -- same zero-time convention as
-	// HighWaterMark elsewhere in this package. Unused by the legacy
-	// per-authority drain (handler.go), which never sets or reads it.
+	// walk completes. Lane C (lanec.go) reuses it as its own ascending scan's
+	// in-flight coverage head. The zero value means unset -- no walk-head
+	// captured yet, or a pre-migration legacy cursor -- same zero-time
+	// convention as HighWaterMark elsewhere in this package. Unused by the
+	// legacy per-authority drain (handler.go), which never sets or reads it.
 	WalkHead time.Time
 }
 

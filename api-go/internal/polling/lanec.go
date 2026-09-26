@@ -229,13 +229,11 @@ func (h *InverseMaskLaneHandler) recorder() metricsRecorder {
 // caller, NationalPollHandler.loadPlannerState).
 //
 // State reuses the existing PollCursor shape with no schema migration, but
-// the semantics changed with #1127 and again with #1171:
-//   - HighWaterMark holds the coverage watermark: last_clean_scan_at, folded
-//     forward with a stale cursor's WalkHead when a fresh scan starts, and
-//     advanced to now only once a scan completes. It is what N is recomputed
-//     from every cycle, and it moves ONLY at these two scan boundaries —
-//     never mid-scan — because changing it mid-scan would recompute N under
-//     an already-persisted index= offset and skip rows.
+// the semantics changed with #1127:
+//   - HighWaterMark folds a stale cursor's WalkHead in at a fresh scan's
+//     start, and is set to now on completion. It never changes mid-scan,
+//     because N is recomputed from it every cycle and a mid-scan change
+//     would point an already-persisted index= offset at the wrong rows.
 //   - Cursor.DifferentStart holds the in-flight scan's anchor date, valid
 //     only while it still equals today: on a calendar-day rollover the
 //     rolling window has shifted a full day and PlanIt's total has changed
@@ -243,8 +241,7 @@ func (h *InverseMaskLaneHandler) recorder() metricsRecorder {
 //     the cursor is discarded and the scan restarts at index 0.
 //   - Cursor.NextIndex is the within-scan record offset (unchanged).
 //   - Cursor.WalkHead is this scan's in-flight coverage head: the maximum
-//     LastDifferent over rows the scan has checked so far, folded into
-//     HighWaterMark when a stale cursor is discarded at a fresh start.
+//     LastDifferent over rows checked so far.
 //
 // GH#986: every early-exit path checkpoints before returning — a page-fetch
 // 429/error re-saves the state exactly as loaded with last_poll_time bumped
@@ -282,12 +279,11 @@ func (h *InverseMaskLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 		activeCursor = cursor
 	}
 
-	// coverageMark (GH#1171) folds a discarded stale cursor's in-flight
-	// coverage head into the watermark N is computed from, so a scan that
-	// never finished before the day rolled still counts the progress it
-	// made. It is the value this call treats as last_clean_scan_at
-	// everywhere below; it only ever moves here (a fresh-start fold) or on a
-	// completed scan (advanced to now), never mid-scan.
+	// coverageMark folds a discarded stale cursor's WalkHead into the
+	// watermark N is computed from, so an unfinished scan's progress
+	// survives the day rolling over. It stands in for last_clean_scan_at
+	// everywhere below and only moves here or on scan completion, never
+	// mid-scan.
 	coverageMark := lastCleanScanAt
 	if cursor != nil && activeCursor == nil && cursor.WalkHead.After(coverageMark) {
 		coverageMark = cursor.WalkHead
@@ -376,11 +372,7 @@ func (h *InverseMaskLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 	// consulted on this path, tc-c5tmz), keeping the existing
 	// checkpoint-and-clamp behaviour below for that one remaining case.
 	//
-	// GH#1171: head tracks the ascending scan's own coverage progress — the
-	// max LastDifferent over rows processStraggler has actually checked. A
-	// row only counts once it succeeds, so a hard stop below leaves head at
-	// the last row actually checked, never the failing one; a zero
-	// LastDifferent (never a genuine PlanIt value) never advances it.
+	// head counts only rows processStraggler checked successfully.
 	stoppedEarly := false
 	i := 0
 	for ; i < len(res.Applications); i++ {
@@ -575,12 +567,10 @@ func (h *InverseMaskLaneHandler) recordOutcome(ctx context.Context, out laneOutc
 // setSpanAttributes stamps the "PlanIt Lane C inverse-mask poll" span,
 // mirroring the other lanes' setSpanAttributes. windowDays is the rolling
 // different=N width used this cycle; lastCleanScanAt is the coverage mark in
-// effect after this call (advanced to now on a clean scan, folded forward
-// from a stale cursor's head at a fresh start, unchanged otherwise);
-// coverageHead is the in-flight scan's own progress (GH#1171), empty when no
-// scan is active. Spans can be grouped to check the records_seen ==
-// planit.total invariant and to see how far Lane C has drifted from a clean
-// completion.
+// effect after this call; coverageHead is the in-flight scan's own progress,
+// empty when no scan is active. Spans can be grouped to check the
+// records_seen == planit.total invariant and to see how far Lane C has
+// drifted from a clean completion.
 func (h *InverseMaskLaneHandler) setSpanAttributes(span trace.Span, out laneOutcome, windowDays int, lastCleanScanAt, coverageHead time.Time) {
 	attrs := []attribute.KeyValue{
 		attribute.String("poll.lane", string(LaneC)),
