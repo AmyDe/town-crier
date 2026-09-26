@@ -752,6 +752,7 @@ func addGoWorkerEnv(envVars app.EnvironmentVarArray, ec envContext, workerMode s
 			// Lane C's rollback lever: set "false" and cut a tag. The Go default is true, so
 			// deleting this line does not turn Lane C off.
 			app.EnvironmentVarArgs{Name: pulumi.String("POLLING_LANE_C_ENABLED"), Value: pulumi.String("true")},
+			app.EnvironmentVarArgs{Name: pulumi.String("POLLING_LANE_E_ENABLED"), Value: pulumi.String("true")},
 		)
 	}
 
