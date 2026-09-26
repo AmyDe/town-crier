@@ -230,16 +230,18 @@ func (h *InverseMaskLaneHandler) recorder() metricsRecorder {
 //
 // State reuses the existing PollCursor shape with no schema migration, but
 // the semantics changed with #1127:
-//   - HighWaterMark holds last_clean_scan_at — when the lane last finished a
-//     whole scan with no 429 and no straggler-error bail. It is what N is
-//     recomputed from every cycle (a longer gap → a wider window, hard-capped
-//     at maxWindowDays). A zero or stale value yields the cap.
+//   - HighWaterMark folds a stale cursor's WalkHead in at a fresh scan's
+//     start, and is set to now on completion. It never changes mid-scan,
+//     because N is recomputed from it every cycle and a mid-scan change
+//     would point an already-persisted index= offset at the wrong rows.
 //   - Cursor.DifferentStart holds the in-flight scan's anchor date, valid
 //     only while it still equals today: on a calendar-day rollover the
 //     rolling window has shifted a full day and PlanIt's total has changed
 //     materially, so the persisted index= offset points at different rows —
 //     the cursor is discarded and the scan restarts at index 0.
 //   - Cursor.NextIndex is the within-scan record offset (unchanged).
+//   - Cursor.WalkHead is this scan's in-flight coverage head: the maximum
+//     LastDifferent over rows checked so far.
 //
 // GH#986: every early-exit path checkpoints before returning — a page-fetch
 // 429/error re-saves the state exactly as loaded with last_poll_time bumped
@@ -267,17 +269,6 @@ func (h *InverseMaskLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 
 	maskCutoff := truncateToDate(now.Add(-h.opts.MaskWindow))
 
-	// N = clamp(days since the last clean scan + 1, 2, maxWindowDays). A zero
-	// or long-stale last_clean_scan_at (never run, or a long outage, or the
-	// frozen 2026-07 epoch-shaped row from before #1127) yields a large
-	// daysSince and therefore the cap — bounded either way, no historical
-	// replay, because different=N is inherently N-day bounded.
-	maxWindowDays := h.opts.MaxWindowDays
-	if maxWindowDays <= 0 {
-		maxWindowDays = defaultMaxInverseMaskWindowDays
-	}
-	windowDays := clampInt(daysSince(now, lastCleanScanAt)+1, 2, maxWindowDays)
-
 	// The cursor is an in-flight scan's checkpoint only while its anchor date
 	// is still today; once the day rolls the rolling window has shifted and
 	// the offset is meaningless, so drop it and restart at index 0 (mirrors
@@ -287,6 +278,27 @@ func (h *InverseMaskLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 	if cursor != nil && sameDate(cursor.DifferentStart, now) {
 		activeCursor = cursor
 	}
+
+	// coverageMark folds a discarded stale cursor's WalkHead into the
+	// watermark N is computed from, so an unfinished scan's progress
+	// survives the day rolling over. It stands in for last_clean_scan_at
+	// everywhere below and only moves here or on scan completion, never
+	// mid-scan.
+	coverageMark := lastCleanScanAt
+	if cursor != nil && activeCursor == nil && cursor.WalkHead.After(coverageMark) {
+		coverageMark = cursor.WalkHead
+	}
+
+	// N = clamp(days since the coverage mark + 1, 2, maxWindowDays). A zero
+	// or long-stale mark (never run, or a long outage, or the frozen 2026-07
+	// epoch-shaped row from before #1127) yields a large daysSince and
+	// therefore the cap — bounded either way, no historical replay, because
+	// different=N is inherently N-day bounded.
+	maxWindowDays := h.opts.MaxWindowDays
+	if maxWindowDays <= 0 {
+		maxWindowDays = defaultMaxInverseMaskWindowDays
+	}
+	windowDays := clampInt(daysSince(now, coverageMark)+1, 2, maxWindowDays)
 
 	// GH#986: resume WITH a safety overlap. Lane C uses its OWN
 	// laneCResumeOverlapRecords (10), deliberately smaller than Lane A/B's
@@ -299,8 +311,10 @@ func (h *InverseMaskLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 	// the overlap is what makes that checkpoint skip-safe against any
 	// off-by-one in PlanIt's own ordering.
 	startIndex := 0
+	var head time.Time
 	if activeCursor != nil {
 		startIndex = max(0, activeCursor.NextIndex-laneCResumeOverlapRecords)
+		head = activeCursor.WalkHead
 	}
 
 	res, ferr := h.fetcher.FetchInverseMaskPage(ctx, planit.NationalInverseMaskQuery{
@@ -318,12 +332,12 @@ func (h *InverseMaskLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 			out.timedOut = isTimeoutError(ferr)
 			out.planitOrigin = true
 		}
-		// GH#986: re-persist last_clean_scan_at and the cursor exactly as
+		// GH#986: re-persist the coverage mark and the cursor exactly as
 		// loaded (nothing was fetched, so there is no progress to
 		// checkpoint) but with last_poll_time advanced to now, so a
 		// page-fetch 429/error still rotates this lane off the LRU front
 		// instead of freezing it there.
-		if serr := h.watermark.save(ctx, now, lastCleanScanAt, cursor); serr != nil {
+		if serr := h.watermark.save(ctx, now, coverageMark, cursor); serr != nil {
 			// A save failure is a state-store problem, never PlanIt's fault —
 			// join it onto any PlanIt fetch error above and clear
 			// planitOrigin, so a genuine persistence failure never gets
@@ -332,9 +346,9 @@ func (h *InverseMaskLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 			out.err = errors.Join(out.err, serr)
 			out.planitOrigin = false
 		}
-		out.watermarkAfter = lastCleanScanAt
+		out.watermarkAfter = coverageMark
 		h.recordOutcome(ctx, out)
-		h.setSpanAttributes(span, out, windowDays, lastCleanScanAt)
+		h.setSpanAttributes(span, out, windowDays, coverageMark, head)
 		return out
 	}
 
@@ -357,6 +371,8 @@ func (h *InverseMaskLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 	// (never PlanIt-origin: isTimeoutError/out.planitOrigin are never
 	// consulted on this path, tc-c5tmz), keeping the existing
 	// checkpoint-and-clamp behaviour below for that one remaining case.
+	//
+	// head counts only rows processStraggler checked successfully.
 	stoppedEarly := false
 	i := 0
 	for ; i < len(res.Applications); i++ {
@@ -365,6 +381,9 @@ func (h *InverseMaskLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 			out.err = perr
 			stoppedEarly = true
 			break
+		}
+		if light.LastDifferent.After(head) {
+			head = light.LastDifferent
 		}
 	}
 
@@ -378,7 +397,7 @@ func (h *InverseMaskLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 		// where i counts every record iterated this page — so both the
 		// cursor and last_poll_time advance even on a mid-scan bail, and the
 		// next pass resumes past what this one already handled instead of
-		// re-walking it forever. last_clean_scan_at is left UNCHANGED: this
+		// re-walking it forever. The coverage mark is left UNCHANGED: this
 		// scan did not finish, so N must not reset.
 		nextIndex := startIndex + i
 		// tc-6u4da: the persisted cursor must never retreat. A processStraggler
@@ -392,35 +411,36 @@ func (h *InverseMaskLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 		if activeCursor != nil && nextIndex < activeCursor.NextIndex {
 			nextIndex = activeCursor.NextIndex
 		}
-		newCursor := &PollCursor{DifferentStart: scanAnchor, NextIndex: nextIndex, KnownTotal: res.Total}
-		if serr := h.watermark.save(ctx, now, lastCleanScanAt, newCursor); serr != nil {
+		newCursor := &PollCursor{DifferentStart: scanAnchor, NextIndex: nextIndex, KnownTotal: res.Total, WalkHead: head}
+		if serr := h.watermark.save(ctx, now, coverageMark, newCursor); serr != nil {
 			// See the page-fetch save above: a save failure is never
 			// PlanIt's fault, even when it lands on top of a PlanIt-origin
 			// hydration error (CodeRabbit follow-up on tc-uitxr).
 			out.err = errors.Join(out.err, serr)
 			out.planitOrigin = false
 		}
-		out.watermarkAfter = lastCleanScanAt
+		out.watermarkAfter = coverageMark
 		h.recordOutcome(ctx, out)
-		h.setSpanAttributes(span, out, windowDays, lastCleanScanAt)
+		h.setSpanAttributes(span, out, windowDays, coverageMark, head)
 		return out
 	}
 
 	scanComplete := !res.HasMorePages
-	spanLastCleanScanAt := lastCleanScanAt
+	spanCoverageMark := coverageMark
 
 	if scanComplete {
 		// Clean scan: reached the last page with no 429 and no
-		// processStraggler error. Stamp last_clean_scan_at = now (this is
+		// processStraggler error. Stamp the coverage mark = now (this is
 		// what resets N to 2 next cycle) and clear the cursor.
-		spanLastCleanScanAt = now
+		spanCoverageMark = now
 		out.watermarkAfter = now
 		if serr := h.watermark.save(ctx, now, now, nil); serr != nil && out.err == nil {
 			out.err = serr
 		}
 	} else {
-		// More pages remain this cycle: checkpoint the within-scan offset,
-		// leave last_clean_scan_at unchanged (the scan is not finished).
+		// More pages remain this cycle: checkpoint the within-scan offset
+		// and coverage head, leave the coverage mark unchanged (the scan is
+		// not finished).
 		nextIndex := startIndex + len(res.Applications)
 		// tc-6u4da: same monotonic clamp as the stoppedEarly branch — a
 		// fully-consumed page's nextIndex is normally well past the prior
@@ -429,15 +449,15 @@ func (h *InverseMaskLaneHandler) RunOnePage(ctx context.Context) laneOutcome {
 		if activeCursor != nil && nextIndex < activeCursor.NextIndex {
 			nextIndex = activeCursor.NextIndex
 		}
-		newCursor := &PollCursor{DifferentStart: scanAnchor, NextIndex: nextIndex, KnownTotal: res.Total}
-		out.watermarkAfter = lastCleanScanAt
-		if serr := h.watermark.save(ctx, now, lastCleanScanAt, newCursor); serr != nil && out.err == nil {
+		newCursor := &PollCursor{DifferentStart: scanAnchor, NextIndex: nextIndex, KnownTotal: res.Total, WalkHead: head}
+		out.watermarkAfter = coverageMark
+		if serr := h.watermark.save(ctx, now, coverageMark, newCursor); serr != nil && out.err == nil {
 			out.err = serr
 		}
 	}
 
 	h.recordOutcome(ctx, out)
-	h.setSpanAttributes(span, out, windowDays, spanLastCleanScanAt)
+	h.setSpanAttributes(span, out, windowDays, spanCoverageMark, head)
 	return out
 }
 
@@ -546,11 +566,12 @@ func (h *InverseMaskLaneHandler) recordOutcome(ctx context.Context, out laneOutc
 
 // setSpanAttributes stamps the "PlanIt Lane C inverse-mask poll" span,
 // mirroring the other lanes' setSpanAttributes. windowDays is the rolling
-// different=N width used this cycle; lastCleanScanAt is the value in effect
-// after this call (advanced to now on a clean scan, unchanged otherwise), so
-// spans can be grouped to check the records_seen == planit.total invariant
-// and to see how far Lane C has drifted from a clean completion.
-func (h *InverseMaskLaneHandler) setSpanAttributes(span trace.Span, out laneOutcome, windowDays int, lastCleanScanAt time.Time) {
+// different=N width used this cycle; lastCleanScanAt is the coverage mark in
+// effect after this call; coverageHead is the in-flight scan's own progress,
+// empty when no scan is active. Spans can be grouped to check the
+// records_seen == planit.total invariant and to see how far Lane C has
+// drifted from a clean completion.
+func (h *InverseMaskLaneHandler) setSpanAttributes(span trace.Span, out laneOutcome, windowDays int, lastCleanScanAt, coverageHead time.Time) {
 	attrs := []attribute.KeyValue{
 		attribute.String("poll.lane", string(LaneC)),
 		attribute.Int("poll.records_seen", out.recordsSeen),
@@ -558,6 +579,7 @@ func (h *InverseMaskLaneHandler) setSpanAttributes(span trace.Span, out laneOutc
 		attribute.Int("poll.pages", out.pages),
 		attribute.Int("poll.window_days", windowDays),
 		attribute.String("poll.last_clean_scan_at", formatWatermark(lastCleanScanAt)),
+		attribute.String("poll.coverage_head", formatWatermark(coverageHead)),
 		attribute.Bool("poll.rate_limited", out.rateLimited),
 	}
 	if out.planitTotal != nil {

@@ -122,6 +122,49 @@ func TestPostgresPollStateStore_RoundTrip_WalkHeadZeroWhenNeverSet(t *testing.T)
 	}
 }
 
+// TestPostgresPollStateStore_LaneCCoverageHeadRoundTrip proves GH#1171's
+// storage assumption: Lane C's own laneWatermarkStore.save/get (sentinel row
+// -3) round-trips a non-zero cursor_walk_head exactly like any other
+// sentinel row -- laneWatermarkStore is a thin wrapper over the same
+// poll_state table TestPostgresPollStateStore_RoundTrip already covers, so
+// no lane-specific column or migration is needed.
+func TestPostgresPollStateStore_LaneCCoverageHeadRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	store := newPGPollStateStore(t)
+	watermark := newLaneWatermarkStore(store, sentinelLaneC)
+
+	lastRun := time.Date(2026, 9, 26, 8, 0, 0, 0, time.UTC)
+	coverageMark := time.Date(2026, 9, 25, 15, 0, 0, 0, time.UTC)
+	head := time.Date(2026, 9, 25, 13, 0, 0, 0, time.UTC)
+	cursor := &PollCursor{
+		DifferentStart: time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC),
+		NextIndex:      290,
+		KnownTotal:     platform.Ptr(34350),
+		WalkHead:       head,
+	}
+
+	if err := watermark.save(ctx, lastRun, coverageMark, cursor); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	gotWatermark, gotLastRun, gotCursor, err := watermark.get(ctx)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if !gotWatermark.Equal(coverageMark) {
+		t.Errorf("watermark: got %v, want %v", gotWatermark, coverageMark)
+	}
+	if !gotLastRun.Equal(lastRun) {
+		t.Errorf("lastRun: got %v, want %v", gotLastRun, lastRun)
+	}
+	if gotCursor == nil {
+		t.Fatal("cursor: expected non-nil")
+	}
+	if !gotCursor.WalkHead.Equal(head) {
+		t.Errorf("cursor.WalkHead: got %v, want %v (Lane C's own coverage head)", gotCursor.WalkHead, head)
+	}
+}
+
 // TestPostgresPollStateStore_RoundTrip_NilCursor confirms that a Save with a nil
 // cursor stores NULL cursor columns and that a subsequent Get returns nil Cursor.
 func TestPostgresPollStateStore_RoundTrip_NilCursor(t *testing.T) {
