@@ -18,6 +18,11 @@ public final class AppCoordinator: ObservableObject {
   @Published public var presentedLegalDocument: LegalDocumentType?
   @Published public var isManageSubscriptionPresented = false
   @Published public var isSubscriptionPresented = false
+  /// Nested paywall sheet presented from within the Settings sheet (App
+  /// Review 2.1(b) fix, GH#1173) — `isSubscriptionPresented` is attached to
+  /// the root `TabView` and cannot present over `isSettingsPresented`'s own
+  /// sheet, so "View Plans" in Settings needs its own flag.
+  @Published public var isSettingsPaywallPresented = false
   /// Set to `true` from the in-app preferences screen footer; the view layer
   /// opens ``AppCoordinator/systemNotificationSettingsURLString`` and resets it.
   @Published public var isOpeningSystemNotificationSettings = false
@@ -33,7 +38,6 @@ public final class AppCoordinator: ObservableObject {
   @Published public var selectedTab: MainTab = .applications
   @Published public var isAddingWatchZone = false
   @Published public var editingWatchZone: WatchZone?
-  @Published public var isRedeemOfferCodePresented = false
   /// Drives the post-signup "Add your other areas" conversion sheet (GH#879
   /// Phase 5) — presented once immediately after ``completeOnboarding()``
   /// when unconverted device-local zones remain, and reopened from the
@@ -95,7 +99,6 @@ public final class AppCoordinator: ObservableObject {
   private let versionConfigService: VersionConfigService
   // Internal (not private) so the AppCoordinator+Detail extension can read it.
   let savedApplicationRepository: SavedApplicationRepository?
-  let offerCodeService: OfferCodeService?
   private let tierCache: UserDefaults
   let notificationStateRepository: NotificationStateRepository?
   let badgeSetter: BadgeSetting?
@@ -118,8 +121,6 @@ public final class AppCoordinator: ObservableObject {
   // In-flight refresh of the authed Zones list after a device-local zone
   // conversion pass (GH#879 Phase 5); tests await it, mirroring `pendingWatchZoneRefresh`.
   var pendingDeviceLocalZoneConversionRefresh: Task<Void, Never>?
-  // In-flight tasks tests can await deterministically (no `Task.sleep`).
-  var pendingOfferCodeRefresh: Task<Void, Never>?
   // Internal (not private) so the AppCoordinator+WatchZones extension can drive it.
   var pendingWatchZoneRefresh: Task<Void, Never>?
   var pendingDetailLoad: Task<Void, Never>?
@@ -146,7 +147,6 @@ public final class AppCoordinator: ObservableObject {
     appVersionProvider: AppVersionProvider,
     versionConfigService: VersionConfigService,
     savedApplicationRepository: SavedApplicationRepository? = nil,
-    offerCodeService: OfferCodeService? = nil,
     tierCache: UserDefaults? = nil,
     notificationStateRepository: NotificationStateRepository? = nil,
     badgeSetter: BadgeSetting? = nil,
@@ -176,7 +176,6 @@ public final class AppCoordinator: ObservableObject {
     self.appVersionProvider = appVersionProvider
     self.versionConfigService = versionConfigService
     self.savedApplicationRepository = savedApplicationRepository
-    self.offerCodeService = offerCodeService
     self.tierCache = tierCache ?? .standard
     self.notificationStateRepository = notificationStateRepository
     self.badgeSetter = badgeSetter
@@ -378,6 +377,11 @@ public final class AppCoordinator: ObservableObject {
 
   public func showManageSubscription() {
     isManageSubscriptionPresented = true
+  }
+
+  /// Presents the subscription paywall nested inside the Settings sheet.
+  public func showPlansFromSettings() {
+    isSettingsPaywallPresented = true
   }
 
   /// Presents the Settings view as a sheet from any tab. Bound to the gear

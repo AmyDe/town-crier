@@ -92,9 +92,6 @@ struct TownCrierApp: App {
 
     let savedApplicationRepository = APISavedApplicationRepository(apiClient: apiClient)
     let notificationStateRepository = APINotificationStateRepository(apiClient: apiClient)
-    // Offer-code redemption — POSTs to /v1/offer-codes/redeem (ADR 0022).
-    // Injecting the service unhides the "Redeem Offer Code" row in Settings.
-    let offerCodeService = HttpOfferCodeService(apiClient: apiClient)
 
     // App Store review prompt (GH #628): device-local gating only, no server/PII.
     let reviewRequester = CoordinatorReviewRequester()
@@ -115,7 +112,6 @@ struct TownCrierApp: App {
       appVersionProvider: appVersionProvider,
       versionConfigService: versionConfigService,
       savedApplicationRepository: savedApplicationRepository,
-      offerCodeService: offerCodeService,
       notificationStateRepository: notificationStateRepository,
       badgeSetter: UIApplicationBadgeSetter(),
       reviewPromptTracker: reviewPromptTracker,

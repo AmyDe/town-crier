@@ -21,10 +21,29 @@ struct SettingsViewTests {
     )
   }
 
+  private func makeLifetimeCapableViewModel(
+    entitlement: SubscriptionEntitlement
+  ) -> SettingsViewModel {
+    let authSpy = SpyAuthenticationService()
+    authSpy.currentSessionResult = .valid
+    let subscriptionSpy = SpySubscriptionService()
+    subscriptionSpy.currentEntitlementResult = entitlement
+    let profileSpy = SpyUserProfileRepository()
+    profileSpy.createResult = .success(.proUser)
+    return SettingsViewModel(
+      authService: authSpy,
+      subscriptionService: subscriptionSpy,
+      userProfileRepository: profileSpy,
+      appVersionProvider: SpyAppVersionProvider(),
+      notificationService: SpyNotificationService(),
+      defaults: UserDefaults(suiteName: UUID().uuidString) ?? .standard
+    )
+  }
+
   // MARK: - View Construction
 
-  @Test("SettingsView can be constructed without the offer-code callback")
-  func construction_withoutOfferCodeCallback_succeeds() {
+  @Test("SettingsView can be constructed without the view-plans callback")
+  func construction_withoutViewPlansCallback_succeeds() {
     let vm = makeViewModel()
 
     let view = SettingsView(viewModel: vm)
@@ -32,26 +51,34 @@ struct SettingsViewTests {
     _ = view
   }
 
-  @Test("SettingsView can be constructed with the offer-code callback")
-  func construction_withOfferCodeCallback_succeeds() {
-    let vm = makeViewModel()
-    let noop: () -> Void = {}
-
-    let view = SettingsView(viewModel: vm, onRedeemOfferCode: noop)
-
-    _ = view
-  }
-
-  @Test("SettingsView forwards the redeem-offer-code tap to the callback")
-  func redeemOfferCodeCallback_isInvokedOnRequest() {
+  @Test("SettingsView forwards the view-plans tap to the callback")
+  func viewPlansCallback_isInvokedOnRequest() {
     let vm = makeViewModel()
     var tapped = false
     let handler: () -> Void = { tapped = true }
-    let view = SettingsView(viewModel: vm, onRedeemOfferCode: handler)
+    let view = SettingsView(viewModel: vm, onViewPlans: handler)
 
-    view.requestRedeemOfferCode()
+    view.requestViewPlans()
 
     #expect(tapped)
+  }
+
+  @Test("SettingsView shows the view-plans row when the user is not a lifetime holder")
+  func showsViewPlansRow_whenNotLifetime_isTrue() async {
+    let vm = makeLifetimeCapableViewModel(entitlement: .proMonthlyActive)
+    await vm.load()
+    let view = SettingsView(viewModel: vm)
+
+    #expect(view.showsViewPlansRow)
+  }
+
+  @Test("SettingsView hides the view-plans row for a lifetime holder")
+  func showsViewPlansRow_whenLifetime_isFalse() async {
+    let vm = makeLifetimeCapableViewModel(entitlement: .proLifetime)
+    await vm.load()
+    let view = SettingsView(viewModel: vm)
+
+    #expect(!view.showsViewPlansRow)
   }
 
   @Test("SettingsView forwards the notification-preferences tap to the callback")
