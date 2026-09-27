@@ -6,6 +6,16 @@ Date: 2026-04-21
 
 Accepted
 
+Amended 2026-09-27 (see below).
+
+## Amendment (2026-09-27)
+
+In-app offer-code redemption was removed from the iOS app after App Review rejected 1.2.11 under guideline 3.1.1 on 2026-09-26 (an in-app mechanism other than IAP must not unlock paid features).
+
+- Codes are now redeemed on the web only. The API offercodes package and the web redemption page are unchanged; a tier granted by a web redemption is picked up by the iOS app from `/v1/me`, which guideline 3.1.3(b) allows because the same tiers are sold as IAP in the app.
+- The iOS app must not mention the website, codes or redemption (anti-steering).
+- Spec: GitHub issue #1173, bead tc-vycou.
+
 ## Context
 
 [ADR 0010](0010-subscription-entitlement-flow.md) established the App Store as the sole path to a paid subscription: the iOS app initiates a StoreKit 2 purchase, the API verifies the resulting JWS, and entitlements are written to Cosmos. That flow is correct for revenue-bearing purchases, but it does not serve several cases that came up as the product matured:
