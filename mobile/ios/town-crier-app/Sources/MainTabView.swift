@@ -141,11 +141,9 @@ struct MainTabView: View {
         onTermsOfService: {
           coordinator.showTermsOfService()
         },
-        // Surfacing the "Redeem Offer Code" row only when an OfferCodeService
-        // was injected — SettingsView hides the row when this callback is nil.
-        onRedeemOfferCode: coordinator.isOfferCodeRedemptionAvailable
-          ? { coordinator.showRedeemOfferCode() }
-          : nil,
+        onViewPlans: {
+          coordinator.showPlansFromSettings()
+        },
         onRateApp: coordinator.rateApp
       )
       .navigationDestination(isPresented: $coordinator.isNotificationPreferencesPresented) {
@@ -166,17 +164,18 @@ struct MainTabView: View {
         LegalDocumentView(viewModel: LegalDocumentViewModel(documentType: documentType))
       }
     }
-    // Offer-code redemption — presented from the "Redeem Offer Code" row in
-    // Settings (ADR 0022). The factory returns nil if no OfferCodeService was
-    // injected, in which case the row is also hidden, so the sheet body is a
-    // no-op fallback that should never render.
-    .sheet(isPresented: $coordinator.isRedeemOfferCodePresented) {
-      NavigationStack {
-        if let viewModel = coordinator.makeRedeemOfferCodeViewModel() {
-          RedeemOfferCodeView(viewModel: viewModel)
+    // "View Plans" paywall — nested inside the Settings sheet (rather than
+    // hoisted to the TabView like the root paywall) because a sheet cannot
+    // present over another sheet; Settings is itself presented as a sheet.
+    .sheet(
+      isPresented: $coordinator.isSettingsPaywallPresented,
+      onDismiss: { Task { await coordinator.resolveSubscriptionTier() } },
+      content: {
+        NavigationStack {
+          SubscriptionView(viewModel: coordinator.makeSubscriptionViewModel())
         }
       }
-    }
+    )
     #if os(iOS)
       .manageSubscriptionsSheet(
         isPresented: $coordinator.isManageSubscriptionPresented.dispatchingSetOnMain()

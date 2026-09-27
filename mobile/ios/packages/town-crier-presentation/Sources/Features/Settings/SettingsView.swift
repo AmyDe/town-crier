@@ -8,7 +8,7 @@ public struct SettingsView: View {
   private var onManageSubscription: (() -> Void)?
   private var onPrivacyPolicy: (() -> Void)?
   private var onTermsOfService: (() -> Void)?
-  private var onRedeemOfferCode: (() -> Void)?
+  private var onViewPlans: (() -> Void)?
   private var onRateApp: (() -> Void)?
 
   public init(
@@ -17,7 +17,7 @@ public struct SettingsView: View {
     onManageSubscription: (() -> Void)? = nil,
     onPrivacyPolicy: (() -> Void)? = nil,
     onTermsOfService: (() -> Void)? = nil,
-    onRedeemOfferCode: (() -> Void)? = nil,
+    onViewPlans: (() -> Void)? = nil,
     onRateApp: (() -> Void)? = nil
   ) {
     _viewModel = StateObject(wrappedValue: viewModel)
@@ -25,20 +25,26 @@ public struct SettingsView: View {
     self.onManageSubscription = onManageSubscription
     self.onPrivacyPolicy = onPrivacyPolicy
     self.onTermsOfService = onTermsOfService
-    self.onRedeemOfferCode = onRedeemOfferCode
+    self.onViewPlans = onViewPlans
     self.onRateApp = onRateApp
   }
 
-  /// Test-only seam: invoke the redeem-offer-code callback as if the user had
+  /// Test-only seam: whether the "View Plans" row would render — mirrors the
+  /// condition the body applies (hidden once there's nothing left to buy).
+  public var showsViewPlansRow: Bool {
+    !viewModel.isLifetime
+  }
+
+  /// Test-only seam: invoke the view-plans callback as if the user had
   /// tapped the row in Settings. Production code routes through SwiftUI's
   /// `Button` action; this mirror keeps the callback testable without
   /// requiring ViewInspector or UI-level automation.
-  public func requestRedeemOfferCode() {
-    onRedeemOfferCode?()
+  public func requestViewPlans() {
+    onViewPlans?()
   }
 
   /// Test-only seam: invoke the notification-preferences callback as if the
-  /// user had tapped the row in Settings. Mirrors `requestRedeemOfferCode` so
+  /// user had tapped the row in Settings. Mirrors `requestViewPlans` so
   /// the wiring is verifiable without UI-level automation.
   public func requestNotificationPreferences() {
     onNotificationPreferences?()
@@ -52,7 +58,7 @@ public struct SettingsView: View {
   }
 
   /// Test-only seam: invoke the rate-app callback as if the user had tapped the
-  /// "Rate the App" row in Settings. Mirrors `requestRedeemOfferCode` so the
+  /// "Rate the App" row in Settings. Mirrors `requestViewPlans` so the
   /// wiring is verifiable without UI-level automation (GH #629).
   public func requestRateApp() {
     onRateApp?()
@@ -184,14 +190,14 @@ public struct SettingsView: View {
         }
       }
 
-      SettingsRowStyling.navigationRow("Manage Subscription", systemImage: "creditcard") {
-        onManageSubscription?()
+      if showsViewPlansRow {
+        SettingsRowStyling.navigationRow("View Plans", systemImage: "star") {
+          onViewPlans?()
+        }
       }
 
-      if onRedeemOfferCode != nil {
-        SettingsRowStyling.navigationRow("Redeem Offer Code", systemImage: "ticket") {
-          onRedeemOfferCode?()
-        }
+      SettingsRowStyling.navigationRow("Manage Subscription", systemImage: "creditcard") {
+        onManageSubscription?()
       }
     } header: {
       Text("Subscription")
