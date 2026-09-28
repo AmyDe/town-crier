@@ -7,6 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | Layer | Where | How it loads |
 |-------|-------|--------------|
 | Per-stack coding patterns | `.claude/skills/*/SKILL.md` — compact core + `references/` pulled per topic | Auto-triggers on path/task (see the routing table below) |
+| PlanIt + polling facts and requirements | `POLLING.md` | Read before any PlanIt or polling work |
 | Design rationale | `docs/adr/` (decisions), `docs/memo/` (analysis without a decision) | Read when touching that area |
 | Feature designs / specs | GitHub issue bodies — never committed files | `gh issue view <n>` |
 | Operational gotchas | Auto-memory (`MEMORY.md` index) | Injected each session |
@@ -14,21 +15,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Town Crier is a mobile-first app for monitoring UK local authority planning applications, delivering push notifications to residents, community groups, and property professionals. It uses PlanIt (planit.org.uk) as its primary data provider, with a polling-based ingestion model (see ADR 0006). PlanIt is a free, single-operator service — read the hard call limits below before calling it from a local session.
+Town Crier is a mobile-first app for monitoring UK local authority planning applications, delivering push notifications to residents, community groups, and property professionals. It uses PlanIt (planit.org.uk) as its primary data provider, with a polling-based ingestion model (see ADR 0006).
 
-## PlanIt: Hard Call Limits
+## PlanIt and Polling
 
-PlanIt is a **free service run by one individual** and our sole planning-data provider (ADR 0006). Not hammering it is non-negotiable — but that is a rule about **behaviour, not a daily quota**. There is **no fixed daily call budget**: don't introduce one, don't enforce one, and don't raise findings on the basis of one. (ADR 0041 and ADR 0042 cite a `~1,500 requests/day` figure; that is historical context from when those decisions were made, not a live limit.)
-
-**The deployed poller is not the risk.** It honours `Retry-After` (a 429 is never retried internally — it ends the cycle so the scheduler reschedules), backs off for 2h after a timeout, caps attempts at 4, and sleeps 2s before *every* attempt including retries. That behaviour is what "polite" means here, and it is enforced in `api-go/internal/planit/client.go`.
-
-**A local session is the risk** — a `curl` loop, a throwaway Python script, a "let me just test this quickly" harness. It has none of those brakes and no review. So, binding on any local or agent session calling PlanIt by hand:
-
-- **Never more than 10 requests total in a session.**
-- **Never more than one request per 60 seconds.**
-- **Never write a loop that hits PlanIt without an explicit sleep of 60s or more between iterations.**
-
-No exceptions for "it's only a few more", for batching, or for running it in parallel. If a task looks like it needs more than 10 calls, **stop and ask** rather than proceeding. Prefer the `httptest`-backed doubles in `api-go/internal/planit/*_test.go` over live calls.
+**MUST:** Before you design, change, debug, review or discuss anything that touches PlanIt or polling, read [`POLLING.md`](POLLING.md). That includes calling PlanIt by hand, even once. It holds the hard call limits for local sessions, the facts about PlanIt, and the polling requirements.
 
 ## Business Status
 
