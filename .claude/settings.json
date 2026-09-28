@@ -40,7 +40,7 @@
       {
         "hooks": [
           {
-            "command": "bd prime",
+            "command": "[ \"$CLAUDE_CODE_REMOTE\" != true ] || bd prime",
             "type": "command"
           }
         ],
@@ -126,7 +126,7 @@
             "type": "command"
           },
           {
-            "command": "bd prime",
+            "command": "[ \"$CLAUDE_CODE_REMOTE\" != true ] || bd prime",
             "type": "command"
           }
         ],
