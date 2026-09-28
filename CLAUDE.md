@@ -1,181 +1,137 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
-**How this file works.** It is the always-loaded layer: a map of the repo plus the rules that must be known *before* acting. Everything else lives one hop away and loads on demand — reach for the deeper layer instead of guessing:
+Guidance for Claude Code in this repository. This file is the always-loaded layer: a repo map plus the rules you must know *before* acting. Everything else loads on demand; reach for it instead of guessing:
 
 | Layer | Where | How it loads |
 |-------|-------|--------------|
-| Per-stack coding patterns | `.claude/skills/*/SKILL.md` — compact core + `references/` pulled per topic | Auto-triggers on path/task (see the routing table below) |
-| PlanIt + polling facts and requirements | `POLLING.md` | Read before any PlanIt or polling work |
+| Per-stack coding patterns | `.claude/skills/*/SKILL.md` (compact core + per-topic `references/`) | Auto-triggers on path/task (routing table below) |
 | Design rationale | `docs/adr/` (decisions), `docs/memo/` (analysis without a decision) | Read when touching that area |
-| Feature designs / specs | GitHub issue bodies — never committed files | `gh issue view <n>` |
+| Feature designs / specs | GitHub issue bodies, never committed files | `gh issue view <n>` |
 | Operational gotchas | Auto-memory (`MEMORY.md` index) | Injected each session |
 | Beads workflow | `bd prime` | Injected each session |
 
-## Project Overview
+## Project and Business Status
 
-Town Crier is a mobile-first app for monitoring UK local authority planning applications, delivering push notifications to residents, community groups, and property professionals. It uses PlanIt (planit.org.uk) as its primary data provider, with a polling-based ingestion model (see ADR 0006).
+Town Crier is a mobile-first app that monitors UK local authority planning applications and pushes notifications to residents, community groups and property professionals.
+
+**No longer pre-revenue.** First arm's-length paying customer landed 2026-06-29; treat the product as live. The old **fix-forward-always, no-rollback** posture is **reversed**: a broken deploy can harm a paying user, so rollback safety, soak/verification gates before promoting, and staged cutovers are back on the table. Never assume "just fix forward" is fine for anything user-facing; judge blast radius instead of reaching for blunt cutovers.
 
 ## PlanIt and Polling
 
 **MUST:** Before you design, change, debug, review or discuss anything that touches PlanIt or polling, read [`POLLING.md`](POLLING.md). That includes calling PlanIt by hand, even once. It holds the hard call limits for local sessions, the facts about PlanIt, and the polling requirements.
 
-## Business Status
-
-**Town Crier is no longer pre-revenue.** As of 2026-06-29 we have our first arm's-length paying customer. Treat the product as live with real customers.
-
-Operational consequence: the pre-revenue **fix-forward-always, no-rollback** posture is **reversed**. A broken deploy can harm a paying user. Rollback safety, soak/verification gates before promoting, and staged cutovers are back on the table; don't assume "we can just fix forward" is acceptable for anything user-facing. Judge blast radius rather than reaching for blunt cutovers.
-
-## Repository Map
+## Repository Map and Stack
 
 ```
-/api-go             Go backend. Binaries: cmd/api (HTTP), cmd/worker (background jobs),
-                    cmd/pgmigrate, cmd/pgbootstrap. ~40 feature packages under internal/
-                    (one feature = one package: watchzones, notifications, polling, planit,
-                    subscriptions, sharepage, erasure, digest, apns, offercodes, …);
+/api-go             Go backend (net/http, log/slog) on Azure Container Apps. Binaries: cmd/api (HTTP),
+                    cmd/worker (background jobs), cmd/pgmigrate, cmd/pgbootstrap. ~40 feature packages
+                    under internal/ (one feature = one package: watchzones, notifications, polling,
+                    planit, subscriptions, sharepage, erasure, digest, apns, offercodes, …);
                     cross-cutting code in internal/platform/ (incl. postgres/pgtest harness).
+                    DB: Azure Database for PostgreSQL Flexible Server + PostGIS via pgx (no ORM).
 /cli                Go admin CLI (`tc`).
-/mobile/ios         Native iOS app (SwiftUI, MVVM-C). SPM packages under packages/:
+/mobile/ios         Native iOS (Swift, SwiftUI, SwiftData, MVVM-C). SPM packages under packages/:
                     town-crier-domain, town-crier-data, town-crier-presentation; app shell
                     town-crier-app/, tests town-crier-tests/. xcodegen: project.yml → xcodeproj.
-/web                React/TypeScript frontend (Vite). src/features/<Feature>/ slices (Map,
-                    WatchZones, Dashboard, onboarding, …) plus api/, auth/, components/, hooks/.
-/infra              Pulumi IaC (Go). Mostly two files — environment.go (per-env resources)
-                    and shared.go — plus Pulumi.{dev,prod,shared}.yaml stacks.
-/docs               adr/ (accepted decisions), memo/ (open analysis), cost-forecast/,
-                    product-overview.md.
-/scripts            Release + legal helpers (ios-release-notes.sh, sync-legal.sh,
-                    check-legal-drift.sh) and wf/ orchestration helpers
-                    (worktree-setup.sh, watch-pr.sh, next-version.sh, release-notes.sh).
+/web                React/TypeScript (Vite). src/features/<Feature>/ slices (Map, WatchZones,
+                    Dashboard, onboarding, …) plus api/, auth/, components/, hooks/.
+/infra              Pulumi IaC (Go). Mostly environment.go (per-env resources) and shared.go,
+                    plus Pulumi.{dev,prod,shared}.yaml stacks.
+/docs               adr/, memo/, cost-forecast/, product-overview.md.
+/scripts            Release + legal helpers (ios-release-notes.sh, sync-legal.sh, check-legal-drift.sh);
+                    wf/ orchestration (worktree-setup.sh, watch-pr.sh, next-version.sh, release-notes.sh).
 /.github/workflows  pr-gate, cd-dev, cd-prod, cd-ios-testflight, auto-merge, seo-refresh,
                     dev-container-app-cleanup, ios-capability-ops, legal-drift-check.
-/.claude            skills/ (per-stack + task skills), agents/ (worker definitions),
-                    PreToolUse hooks (require-bead.sh, require-worktree.sh), worktrees/.
-/.beads             bd issue DB (Dolt server mode). Deliberately NO issues.jsonl — see
-                    "Beads: Dolt is the sole source of truth" below.
+/.claude            skills/, agents/ (worker definitions), PreToolUse hooks (require-bead.sh,
+                    require-worktree.sh), worktrees/.
+/.beads             bd issue DB (Dolt server mode). Deliberately NO issues.jsonl (see Beads below).
 ```
 
-## Tech Stack
+Testing: go test (API, CLI, infra), Swift Testing (iOS), Vitest (web). CI/CD: GitHub Actions.
 
-| Component | Technology |
-|-----------|-----------|
-| Backend API | Go (net/http, log/slog), Azure Container Apps |
-| Database | Azure Database for PostgreSQL Flexible Server + PostGIS via pgx (no ORM) |
-| iOS App | Swift, SwiftUI, SwiftData, SPM |
-| Infrastructure | Pulumi (Go) |
-| CI/CD | GitHub Actions |
-| Testing | go test (API, CLI, infra), Swift Testing (iOS), Vitest (web) |
+## Data Sources and Debugging
 
-## Data Sources
+- Look up user/entity data in our own Postgres (`town_crier_prod`) first, not Auth0 or other external IdPs. Auth0 tenants may be deleted or unavailable, and onboarding already stores most user data in Postgres.
+- When diagnosing, ask the user for the data source or context before exploring the codebase broadly. Don't assume where data comes from (Auth0 vs Postgres, OpenTelemetry vs logs).
 
-When looking up user data or entity information, query our own Postgres database first (the `town_crier_prod` database) — not Auth0 or other external identity providers. Auth0 tenants may be deleted or unavailable, and most user data is already stored in Postgres from onboarding.
+## Git, PRs and Releases
 
-## Git & Release Workflow
+- Never commit directly to main; always branch and open a PR, even for small fixes.
+- **Create the branch as its own step.** A PreToolUse hook blocks `git push` while on `main`, so sequence it: `git checkout -b <branch>`, `git push -u origin <branch>`, `gh pr create`.
+- If branch protection hooks block a git push or tag push, fall back to `gh release create` immediately instead of debugging the hook.
+- After a squash-merge, never `git pull --rebase` local main; use `git fetch origin && git reset --hard origin/main`.
+- **User-facing iOS commits get a `Release-Note:` trailer**: one plain-English line, e.g. `Release-Note: Saved searches now refresh the moment an application changes.` `scripts/ios-release-notes.sh` builds the TestFlight changelog from these verbatim (never from the raw GitHub release body); commits without one fall back to cleaned `feat`/`fix` subjects. Skip it for backend-only, infra, CI or refactor commits. A squash-merge can collapse trailers; confirm they survived before releasing.
 
-- Never commit directly to main. Always create a feature branch and open a PR, even for small fixes.
-- **Create the branch as its own step before pushing.** Don't bundle branch creation and `git push` into one move from `main` — a PreToolUse hook blocks `git push` while the current branch is `main`. Sequence it: `git checkout -b <branch>`, then `git push -u origin <branch>`, then `gh pr create`.
-- When git push or tag push is blocked by branch protection hooks, immediately fall back to `gh release create` instead of debugging the hook.
-- **User-facing iOS changes get a `Release-Note:` git trailer.** The TestFlight changelog is generated by `scripts/ios-release-notes.sh`, which never shows the raw GitHub release body. For any commit that changes what an iOS user sees or does, add one plain-English line, e.g. `Release-Note: Saved searches now refresh the moment an application changes.` Trailers ship verbatim; commits without one fall back to cleaned `feat`/`fix` subjects. Skip the trailer for backend-only, infra, CI, or refactor commits.
+### PR merge: no auto-merge, Claude-routine triage
 
-### PR merge — no auto-merge, Claude-routine triage
+The **Auto-merge** workflow (`.github/workflows/auto-merge.yml`) is deliberately disabled (`disabled_manually`, confirmed 2026-07-29), not broken. Claude routines watch open PRs, triage CodeRabbit comments, and merge. A green PR Gate means **ready for triage**, not **ready to merge**. Do not re-enable Auto-merge.
 
-The **Auto-merge** GitHub Actions workflow (`.github/workflows/auto-merge.yml`) is deliberately disabled (`disabled_manually`, confirmed 2026-07-29). This is by design, not an outage: Claude routines now watch open PRs, triage CodeRabbit review comments, and handle merging themselves. A green PR Gate means **ready for triage**, not **ready to merge**.
+- **Automated or scheduled context** (cron routine, unattended `/loop`, any session not driven live by the user): never merge, even with all checks green. Stop at "PR Gate passed". Scheduled work can land when the user can't test it; that is exactly what this control is for.
+- **Interactive local session:** a human-directed merge is a judgment call. Ask first by default (live product, paying customers); the user may say go ahead for a small, well-tested change.
+- The `ship` skill stops at "PR Gate passed" and does not merge.
 
-- Do not re-enable the Auto-merge workflow.
-- **In an automated or scheduled context** (a cron routine, an unattended `/loop`, or any session not driven live by the user) — never merge a PR yourself, even with all checks green. Stop at "PR Gate passed" and leave it for the triage routine. Work done on a schedule can land at a time the user isn't available to test it; that is exactly the case this control exists for.
-- **In an interactive local session** — a human-directed manual merge is a judgment call, not a hard rule; ask first by default, since this is a live product with paying customers, but the user may reasonably say go ahead for a small, well-tested change.
-- The `ship` skill stops at "PR Gate passed" and does not merge — it no longer assumes Auto-merge will finish the job.
+### iOS releases
 
-## Release Process
+- **The beta lane is fastlane.** `cd-ios-testflight` runs `xcodegen generate` then `bundle exec fastlane beta` (`mobile/ios/fastlane/Fastfile`, signing via match). The `.xcodeproj` is generated; edit `mobile/ios/project.yml`, never the project file.
+- **The version train can close.** After an App Store release the `MARKETING_VERSION` train closes and the next TestFlight upload fails with altool **409**. CD bumps only the *build* number. On a 409, or pre-emptively when the last release shipped to the App Store, bump `MARKETING_VERSION` in `mobile/ios/project.yml` and re-release.
+- **Anchor "What's New" to the LIVE App Store version**, not the previous tag or latest TestFlight build. Use the `ios-whats-new` skill.
 
-**The iOS beta lane is fastlane.** `cd-ios-testflight` runs `xcodegen generate` then `bundle exec fastlane beta` (`mobile/ios/fastlane/Fastfile`, signing via match). The `.xcodeproj` is generated output — edit `mobile/ios/project.yml`, never the project file.
+## Deployments, CLIs and Follow-ups
 
-iOS patch releases keep tripping on the same two snags — bake the checks in:
-
-- **The version train can close.** After an App Store release, the `MARKETING_VERSION` train closes and the next TestFlight upload fails with an altool **409**. The CD beta lane bumps the *build* number, never `MARKETING_VERSION`. On a 409 — or pre-emptively when the last release shipped to the App Store — bump `MARKETING_VERSION` in `mobile/ios/project.yml` and re-release.
-- **Anchor "What's New" to the LIVE App Store version**, not the previous tag or latest TestFlight build. Use the `ios-whats-new` skill for store copy. The TestFlight changelog is driven by `Release-Note:` trailers, which a squash-merge can collapse — confirm they survived before releasing.
-
-## Follow-up Checks
-
-Never suggest `/schedule` for future checks (deploy verification, post-merge monitoring). Cloud agents lack the local credentials this repo's checks rely on — `gh`, `az`, `auth0`, `pulumi`, the Postgres endpoint, the Dolt-backed `bd` server — and fail silently. `/loop` runs in the local session with full credentials; it is the only viable follow-up mechanism. Offer `/loop`, never `/schedule`.
-
-## Debugging Guidelines
-
-When diagnosing issues, ask the user for the data source or context before exploring the codebase broadly. Don't assume where data comes from (e.g., Auth0 vs Postgres, OpenTelemetry vs logs).
+- **PR-only deploys.** NEVER deploy with `az`, `pulumi` or any other CLI. All code ships via PR and deploys through GitHub Actions; direct deploys bypass review, testing and audit trails.
+- **CLI-first.** Use installed CLIs before asking the user to do anything manually or in a web console: `gh` (repos, PRs, issues, releases, Actions), `az` (resources, deployments, config), `auth0` (tenant, apps, APIs, users), `cloudflared` (tunnels, DNS, access, routing), `pulumi` (provisioning, stacks, config). Ask the user only when a command fails or needs interactive auth.
+- **Follow-up checks use `/loop`, never `/schedule`.** Cloud agents lack the local credentials these checks need (`gh`, `az`, `auth0`, `pulumi`, the Postgres endpoint, the Dolt-backed `bd` server) and fail silently.
 
 ## Scope Discipline
 
-- When asked only to plan, scope, or rewrite a prompt or spec, do NOT start implementing. Produce the plan and stop for an explicit go-ahead.
-- Workers and subagents implement ONLY what their bead or brief describes. If the task seems to imply broader changes — auth, telemetry, logging, anything privacy- or GDPR-sensitive — STOP and flag it rather than commit. Work that has to be reverted costs more than the question would have.
-- Explicit holds survive the whole task. If the user said "don't touch X," that applies to every subagent you dispatch too, not just your own edits.
+- Asked only to plan, scope, or rewrite a prompt/spec? Do NOT implement. Produce it and stop for an explicit go-ahead.
+- Workers and subagents implement ONLY what their bead or brief describes. If the task seems to imply broader changes (auth, telemetry, logging, anything privacy- or GDPR-sensitive), STOP and flag it rather than commit. A revert costs more than the question.
+- Explicit holds survive the whole task. "Don't touch X" binds every subagent you dispatch too.
 
 ## Code Comments
 
-**MUST, unconditional.** This applies to every stack, to test code as well as production code, and to every session, worker and subagent. Claude leaves a comment ONLY when it does one of these two things:
+**MUST, unconditional**, for every stack, test and production code, and every session, worker and subagent. Leave a comment ONLY when it:
 
-1. **Documents a public contract.** A doc comment on an API that other code relies on across a package or module boundary: exported Go identifiers, Swift `public`/`open` declarations, exported TypeScript and Kotlin APIs, HTTP endpoints, CLI flags, and wire or storage formats. State the contract (inputs, guarantees, errors) and nothing else.
-2. **Explains genuinely non-standard behaviour.** The *why* behind code that a competent reader would otherwise "fix": a workaround for an upstream bug, a deliberate break from the obvious approach, or a non-obvious invariant, ordering or limit. One or two sentences, not an essay.
+1. **Documents a public contract.** A doc comment on an API other code relies on across a package or module boundary: exported Go identifiers, Swift `public`/`open` declarations, exported TypeScript and Kotlin APIs, HTTP endpoints, CLI flags, wire or storage formats. State the contract (inputs, guarantees, errors) and nothing else.
+2. **Explains genuinely non-standard behaviour.** The *why* behind code a competent reader would otherwise "fix": an upstream-bug workaround, a deliberate break from the obvious approach, a non-obvious invariant, ordering or limit. One or two sentences.
 
-Every other comment is banned, including:
+Everything else is banned: restating or narrating the code; history notes (what it used to do, which PR or bead changed it; git holds that); section banners, commented-out code, speculative TODOs; long explanations where one sentence carries the point.
 
-- Comments that restate what the code does, or narrate it step by step.
-- History notes: what the code used to do, which PR or bead changed it. Git history holds that.
-- Section banners, commented-out code, and speculative TODOs.
-- Long explanations where one sentence carries the non-obvious part.
+**Remove verbose comments from code you touch.** When you edit a function, type, test or block, delete or cut every comment in it that fails the bar. This is part of the change, not scope creep, and overrides "implement ONLY what the bead describes" for comments inside edited code. Do not sweep code you did not otherwise change.
 
-**Remove verbose comments from code you touch.** When you edit a function, type, test or block, delete or cut down every comment in it that fails the bar above. This is part of the change, not scope creep, so it overrides "implement ONLY what the bead describes" for comments inside the code you edit. Do not sweep code you did not otherwise change.
+## Testing, CI and UI Verification
 
-## Testing & CI
-
-When fixing CI failures, always check for ALL root causes before declaring the fix complete. Run the full test suite and verify end-to-end, not just the first failure.
-
-## UI Verification — Agent-Run, No Human in the Loop
-
-Front-end changes are verified live before the work is declared done — but never drive the UI directly from the main/parent session. Screenshots are expensive to load into context, so always dispatch a `model: sonnet` subagent (`Agent` tool) to do the driving and inspect its own screenshots, then have it report back a concise pass/fail summary and any defects found — not the raw images:
-
-- **Web** — subagent drives the `agent-browser` CLI (screenshot paths must be absolute).
-- **iOS / Android** — subagent drives the `mobile-mcp` MCP server against the iOS simulator and the Android emulator (AVD `towncrier` on the dev machine): install, launch, tap, type, screenshot.
-
-Never ask the human to click through a UI to confirm a change, and never call `agent-browser` or `mobile-mcp` tools directly from the main session — always through a dispatched subagent.
+- When fixing CI, find ALL root causes before declaring done: run the full suite and verify end-to-end, not just the first failure.
+- **Front-end changes are verified live before the work is declared done, by an agent, never by the human and never from the main session.** Screenshots are expensive in context, so dispatch a `model: sonnet` subagent (`Agent` tool) to drive the UI, inspect its own screenshots, and report a concise pass/fail plus defects, not raw images.
+  - **Web:** `agent-browser` CLI (screenshot paths must be absolute).
+  - **iOS / Android:** `mobile-mcp` against the iOS simulator and the Android emulator (AVD `towncrier` on the dev machine): install, launch, tap, type, screenshot.
 
 ## Development Commands
 
-### Go API (`/api-go`)
-
 ```bash
-# Run from api-go/
+# Go — run from api-go/
 go build ./...                      # Build
-go test ./...                       # All unit tests (hand-written fakes; no Docker)
+go test ./...                       # Unit tests (hand-written fakes; excludes integration tag, no Docker)
 go vet ./...                        # Static analysis
-gofmt -l .                          # List files needing formatting (empty = clean)
-make test-integration               # Real Postgres+PostGIS suite — boots a local Docker DB
+gofmt -l .                          # Files needing formatting (empty = clean)
+make test-integration               # Real Postgres+PostGIS suite; boots a local Docker DB
 go test -tags=integration ./...     # Same, against a running DB (TEST_DATABASE_URL); skips cleanly if none
-```
 
-The default `go test ./...` excludes the `integration`-tagged real-DB suite, so it needs no Docker. The `go-coding-standards` skill documents the `pgtest` harness API and when real-DB tests are required.
+# iOS — run from mobile/ios/
+swift build && swift test
+swiftlint lint --strict
+swift-format format --in-place --recursive .
 
-### iOS (`/mobile/ios`)
-
-```bash
-swift build                         # Build
-swift test                          # Run all tests
-swiftlint lint --strict             # Lint
-swift-format format --in-place --recursive .  # Auto-format
-```
-
-### Web (`/web`)
-
-```bash
-cd web && npm run dev               # Vite dev server with hot reload
+# Web
+cd web && npm run dev               # Vite dev server, hot reload
 cd web && npm run build             # Production build to /web/dist
-cd web && npx tsc --noEmit          # Type check without emitting
-cd web && npx vitest run            # Run tests
+cd web && npx tsc --noEmit          # Type check
+cd web && npx vitest run            # Tests
 ```
 
 ## Coding Standards Skills and Workers
 
-When a bead targets a given tech stack, use the matching skill and worker agent. The mapping is a straight lookup — pick the row, use those tools.
+When a bead targets a stack, use its row. Consult the skill before writing, reviewing or scaffolding code for that stack.
 
 | Tech stack          | Path             | Skill                     | Worker agent           |
 |---------------------|------------------|---------------------------|------------------------|
@@ -185,132 +141,92 @@ When a bead targets a given tech stack, use the matching skill and worker agent.
 | Web / React / TS    | `/web`           | `react-coding-standards`  | `react-tdd-worker`     |
 | Pulumi infra (Go)   | `/infra`         | `go-coding-standards`     | `pulumi-infra-worker`  |
 | GitHub Actions      | `.github/`       | —                         | `github-actions-worker`|
-| UI (any platform)   | UI code in any of the above | `design-language` (in addition to the platform skill) | — |
+| UI (any platform)   | UI code in any of the above | `design-language` (plus the platform skill) | — |
 
-Consult the skill before writing, reviewing, or scaffolding code for that stack. Standard lint configs ship as skill assets (`.golangci.yml` under `go-coding-standards`, `.swiftlint.yml` under `ios-coding-standards`, `.editorconfig` + `detekt.yml` under `android-coding-standards`).
+Lint configs ship as skill assets: `.golangci.yml` (go), `.swiftlint.yml` (ios), `.editorconfig` + `detekt.yml` (android).
 
-### Worker model policy
+**Worker model policy.** Workers default to `model: sonnet` via their frontmatter, the single control; never pin `model:` at the `Agent()` call site for workers. Sonnet-first with a retry is cheaper than Opus-always.
 
-Worker agents default to `model: sonnet` (set in each agent's frontmatter) — Sonnet-first with a retry is cheaper than Opus-always. Escalate deliberately:
-
-- **Re-dispatch a bead once with `model: opus`** only after a Sonnet worker fails its pre-flight gates (tests/lint/build) or the PR gate rejects the work.
-- **Read-only fan-out** (`Explore`, locating code) can use `model: haiku`; **read-and-summarise** subagents use `model: sonnet`.
-- Reserve the premium default model for design/spec sessions; a goal-runner session that only dispatches, watches gates, and merges can itself run on Sonnet.
-
-Do not pin `model:` at the `Agent()` call site for workers; the frontmatter is the single control.
+- Re-dispatch a bead once with `model: opus` only after a Sonnet worker fails its pre-flight gates (tests/lint/build) or the PR gate rejects the work.
+- Read-only fan-out (`Explore`, locating code) can use `model: haiku`; read-and-summarise subagents use `model: sonnet`.
+- Reserve the premium default model for design/spec sessions; a goal-runner that only dispatches, watches gates and merges can run on Sonnet.
 
 ## Key Architectural Constraints
 
-Per-stack architecture and patterns live in that stack's coding-standards skill. Cross-cutting:
+Per-stack patterns live in the stack's skill. Cross-cutting:
 
-- **No ORM** — read and write Postgres through the pgx driver directly. Business logic lives in domain entities and value objects; HTTP handlers are lightweight orchestrators.
-- **TDD workflow: Red-Green-Refactor.** Primary unit of test by stack: HTTP handlers and stores (Go); ViewModels and Use Cases (iOS); hooks (web).
-- **Hand-written fakes/spies** — no reflection-based mocking libraries.
-- **Real-DB integration tests (Go).** Postgres store ports have real-database tests against local PostGIS in Docker (`//go:build integration`, `pgtest` harness) covering spatial/SQL behaviour fakes can't honestly model (`ST_DWithin`, KNN ordering, accurate `COUNT`). Additive to the unit fakes, not a replacement. See ADR 0032 and the `go-coding-standards` skill.
+- **No ORM:** Postgres through pgx directly. Business logic in domain entities and value objects; HTTP handlers are thin orchestrators.
+- **TDD, Red-Green-Refactor.** Primary unit of test: HTTP handlers and stores (Go); ViewModels and Use Cases (iOS); hooks (web).
+- **Hand-written fakes/spies**, no reflection-based mocking libraries.
+- **Real-DB integration tests (Go).** Postgres store ports also get tests against local PostGIS in Docker (`//go:build integration`, `pgtest` harness) for spatial/SQL behaviour fakes can't honestly model (`ST_DWithin`, KNN ordering, accurate `COUNT`). Additive to unit fakes. See ADR 0032 and `go-coding-standards` (which documents the `pgtest` API and when real-DB tests are required).
 - **Naming:** directories lowercase-hyphenated; Swift types PascalCase, no `I` prefix on protocols, classes `final` by default.
 
 ## Legal Documents
 
-Privacy Policy and Terms of Service live as JSON at `api-go/internal/legal/resources/{privacy,terms}.json`, embedded and served via `/v1/legal/{type}`, with a byte-equal iOS mirror. To change legal copy, use the `legal` skill; mechanically: edit the API JSON, run `scripts/sync-legal.sh`, commit both — CI fails on drift (`scripts/check-legal-drift.sh`).
+Privacy Policy and Terms live as JSON at `api-go/internal/legal/resources/{privacy,terms}.json`, embedded and served via `/v1/legal/{type}`, with a byte-equal iOS mirror. Use the `legal` skill; mechanically: edit the API JSON, run `scripts/sync-legal.sh`, commit both. CI fails on drift (`scripts/check-legal-drift.sh`).
 
-## Specs and Beads
+## ADRs, Memos and Specs
 
-### Philosophy
+- **ADR** (`docs/adr/NNNN-title.md`, copy `0000-template.md`: Status / Context / Decision / Consequences) for major architectural decisions: adopting or rejecting a technology, a structural pattern, a significant trade-off, or reversing a prior decision.
+- **Memo** (`docs/memo/NNNN-title.md`, copy `0000-template.md`: Status / Question / Analysis / Options Considered / Recommendation) for analysis without a decision: trade-offs, future migration paths, options with no action taken. When a decision lands it graduates to an ADR (mark it `Superseded by ADR NNNN`).
+- **Never commit spec files.** No `docs/specs/*.md`, no design markdown beside code, no per-feature plans; they rot faster than code and mislead. Beads track *what* and *dependencies*; the *how* and *why* live in the GitHub issue body ([Yegge, Issue #976](https://github.com/gastownhall/beads/issues/976)). Raise a self-contained issue with the `file-issue` skill (problem, approach, acceptance criteria, edge cases, test plan) and reference it from the bead (`GH: https://github.com/<org>/<repo>/issues/123`); workers read it with `gh issue view <n>`. If a bead is too thin, push the design into the issue.
 
-Beads track *what to do* and *dependencies*. The `how` and `why` of a feature live in **the GitHub issue body** — never in a committed spec file. ([Yegge, Issue #976](https://github.com/gastownhall/beads/issues/976))
+## Beads
 
-**Never commit spec files to the repo.** No `docs/specs/*.md`, no design markdown alongside code, no per-feature plan files — they rot faster than the code and mislead future readers. When a feature needs design context: raise a self-contained GitHub issue with the `file-issue` skill (problem, approach, acceptance criteria, edge cases, test plan), then reference it from the bead description (`GH: https://github.com/<org>/<repo>/issues/123`). Workers read it with `gh issue view <n>`. If a bead is too thin to act on, push the design into the issue, not into a markdown file.
+Use `bd` for ALL task tracking; never TodoWrite, TaskCreate or markdown files. `bd prime` loads the workflow context. Never use `bd edit` (interactive editor blocks agents).
 
-### Beads (Exclusive Issue Tracker)
+**Never trust local Dolt state without syncing.** Many cloud agents and parallel local sessions read and write the same beads; the local replica goes stale within minutes with no warning (a bead can read `open` locally an hour after another session closed it and merged the PR).
 
-Use `bd` for ALL task tracking. Do NOT use TodoWrite, TaskCreate, or markdown files.
+- **Before any read you'll act or report on** (`bd show`, `bd list`, `bd ready`, epic status, choosing next work): `bd dolt pull`. A stale "still open" reads as confidently as a true one.
+- **After every write** (`bd create`, `update`, `close`, `dep add`, `label`, …): `bd dolt push` immediately, not batched. An un-pushed write is invisible to other agents and can conflict or be lost. The bd pre-push hook (install once per clone: `bd hooks install`) runs `bd dolt push` on `git push`, but only covers writes that ride with a code push.
 
-- **NEVER trust local Dolt state without syncing first.** This repo is worked by numerous cloud agents and parallel local sessions, all reading and writing the same beads concurrently — the local Dolt replica goes stale within minutes and there is no warning when it does. A bead can read `open` locally when another session closed it and merged the PR an hour ago. Concretely:
-  - **Before any read you'll act or report on** (`bd show`, `bd list`, `bd ready`, checking an epic's status, deciding what to work on next) — run `bd dolt pull` first. Do not answer "what's the status of X" from a bare `bd show` without pulling; a stale "still open" reads as confidently wrong as a true one.
-  - **After any write** (`bd create`, `bd update`, `bd close`, `bd dep add`, `bd label`, etc.) — run `bd dolt push` immediately, not batched at session end. An un-pushed write is invisible to every other agent and can silently conflict or get lost if another session pushes first.
-  - `git push` triggers `bd dolt push` via the pre-push hook, but that only covers writes tied to a code push — a bare `bd close` or `bd update --notes` with no accompanying commit still needs an explicit `bd dolt push`.
-- Run `bd prime` to load workflow context (commands, session protocol).
-- Do NOT use `bd edit` — it opens an interactive editor that blocks agents.
-- `bd dolt push` runs automatically on `git push` via the bd pre-push hook (install once per clone with `bd hooks install`).
-- **End every commit subject with `(<bead-id>)`** (e.g. `fix: expire stale sessions (tc-a1b2)`) so `bd doctor` can detect orphan beads.
-- **Write handoff notes before stopping** — beads survive compaction; conversation history doesn't. Use `COMPLETED: … IN PROGRESS: … NEXT: … BLOCKER: … KEY DECISIONS: …` (overwrite, don't append).
-- **Link side-quest work with `discovered-from`** — file a new bead and `bd dep add <new> <current> --type=discovered-from`.
+**Bead-first:** every code change needs a bead, even a one-line typo fix. `bd create --title="<change>" --type=task --priority=3`, `bd update <id> --claim`, `bd close <id>` when done. `.claude/require-bead.sh` blocks Write/Edit on code files with no in_progress bead; do not work around it.
 
-### Bead-First Rule
+- End every commit subject with `(<bead-id>)`, e.g. `fix: expire stale sessions (tc-a1b2)`, so `bd doctor` can detect orphans.
+- File side-quests as new beads linked with `bd dep add <new> <current> --type=discovered-from`.
 
-**Every code change requires a bead — no exceptions.** Even a one-line typo fix. Before editing any source file: `bd create --title="<change>" --type=task --priority=3`, then `bd update <id> --claim`; `bd close <id>` when done. A PreToolUse hook (`.claude/require-bead.sh`) blocks Write/Edit on code files when no bead is in_progress. Do not work around it.
+### Worktree-first
 
-### Worktree-First Rule
+All local code changes happen in a worktree, never the main tree (parallel conversations conflict).
 
-**All code changes happen in a worktree — never in the main working tree.** Parallel conversations editing the main tree conflict.
+- **Location: `<repo>/.claude/worktrees/<name>`.** EnterWorktree auto-approves only there; elsewhere it prompts, which can't be pre-approved and stalls unattended sessions. So bd's default `<repo>/<name>` layout is banned: `bd worktree create .claude/worktrees/<name>` (path), but `bd worktree remove <name>` (bare name).
+- **Use `scripts/wf/worktree-setup.sh <name> [--branch <branch>]`.** It resets local main to `origin/main`, runs `bd worktree create` (never raw `git worktree add`), verifies git registered the path, applies the bd workarounds (GH#3421 port symlink, beads#3593 chmod; remove when upstream fixes ship), resets the worktree to `origin/main`, and prints the absolute path. Its header documents the manual fallback. Then `EnterWorktree path: "<printed path>"`; finish with `/ship` or `ExitWorktree`.
+- Hooks block Write/Edit on code files outside a worktree and raw `git worktree add`; do not work around them. Legacy worktrees at `<repo>/<name>` are still accepted so in-flight work isn't stranded; create new ones under `.claude/worktrees/`.
+- **The orchestrator creates the worktree**, not the subagent, and dispatches workers with the path in hand, keeping create/verify/remove in one place.
+- **Exception: cloud (web) sessions work in the main tree.** They run alone in a container on their own clone and branch, which already isolates them. Worktrees also fail there: bd's SEC-003 check reads home from the account database, not `$HOME`, and containers run as root (`/root`) with the repo under `/home/user`, so `bd worktree create` rejects `.beads` as an "unsafe location" (tc-aj2pn). `.claude/require-worktree.sh` exits early when `CLAUDE_CODE_REMOTE=true`.
 
-**Exception: cloud (web) sessions work in the main tree.** A cloud session runs alone in an ephemeral container, on its own fresh clone and its own feature branch, so the container already provides the isolation a worktree gives locally. Worktrees are also unavailable there: bd's SEC-003 boundary check reads the current user's home from the account database rather than `$HOME`, and cloud containers run as root (passwd home `/root`) with the repo under `/home/user`, so `bd worktree create` rejects `.beads` as an "unsafe location" regardless of `$HOME` (tc-aj2pn). `.claude/require-worktree.sh` exits early when `CLAUDE_CODE_REMOTE=true`; everything below applies to local sessions unchanged.
+### Dolt is the sole source of truth (DO NOT re-add issues.jsonl)
 
-- **Every worktree lives at `<repo>/.claude/worktrees/<name>`.** EnterWorktree auto-approves paths under `.claude/worktrees/`; anywhere else it raises a permission prompt that cannot be pre-approved in settings, which stalls unattended sessions. bd's default `<repo>/<name>` layout is therefore banned — pass bd the path (`bd worktree create .claude/worktrees/<name>`), not a bare name. `bd worktree remove <name>` still takes the bare name.
-- **`scripts/wf/worktree-setup.sh <name> [--branch <branch>]` runs the whole recipe**: resets local main to `origin/main`, runs `bd worktree create .claude/worktrees/<name>` (never raw `git worktree add`), verifies git registered it there, applies the two bd workarounds (GH#3421 port symlink, beads#3593 chmod), resets the worktree to `origin/main`, and prints the absolute path. Always prefer it; the script's header documents the manual fallback. Remove the workarounds when the upstream bd fixes ship.
-- Then `EnterWorktree path: "<printed path>"`, make changes there, and use `/ship` or `ExitWorktree` when done; `bd worktree remove <name>` for cleanup (name, not path).
-- PreToolUse hooks enforce this: Write/Edit on code files is blocked outside a worktree, and raw `git worktree add` is blocked in favour of `bd worktree create`. Do not work around them. Worktrees created before this rule still sit at `<repo>/<name>`; the edit hook keeps accepting them so in-flight work isn't stranded, but create new ones under `.claude/worktrees/`.
-- **The orchestrator creates the worktree, not the subagent.** Dispatch workers with the worktree path already in hand — keeps the lifecycle (create, verify, remove) in one place.
+bd 1.0.4 server mode re-imported `.beads/issues.jsonl` on every command and could clobber fresh writes (gastownhall/beads #3849, fixed upstream 2026-05-26 via #4170). The workaround stays regardless: the jsonl is removed (archived at `~/.beads-archive/town-crier/`), `export.auto = false` and `export.git-add = false` in `.beads/config.yaml`, and only the pinned `~/.local/bin/bd` exists (never `brew install beads`: silent version drift). Sync is Dolt only, `bd dolt push`/`pull` against DoltHub `amyde/town-crier`; a fresh clone hydrates via `bd bootstrap`/`bd dolt pull`, never a jsonl import.
 
-### Cleanup Discipline
+- **Never** re-create or re-track `.beads/issues.jsonl`, re-enable `export.auto`/`export.git-add`, or `bd export` to the default path.
+- Re-running `bd init`, `bd init --server` or `bd setup claude`: always pass `--skip-agents`, or bd re-inserts a drifting duplicate of this section.
+- Pinned to **stable bd 1.1.2** (from 1.0.4 on 2026-07-27, ADR 0046). Before bumping, check `gastownhall/beads#4800` and `#4176` (open server-mode schema-migration bugs matching our external dolt sql-server config).
+- Root cause and recovery: `docs/memo/0011-beads-dolt-write-thrash-root-cause.md`, `docs/adr/0046-upgrade-bd-to-1.1.2.md`, auto-memory `project_bd_thrash_and_105_breakage`.
 
-Keep the working set (open + in-progress) under ~200 issues.
+### Cleanup
 
-- **`bd flatten --force`** — squash Dolt commit history when `bd` gets sluggish (main speed lever; prefer over `bd compact`, whose squash can fail on a churned DB).
-- **`bd admin compact`** — semantic decay of old closed issues; run ~quarterly: `bd compact --analyze --json` → write summaries → `bd compact --apply --id <id> --summary -`.
-- Pinned to **stable bd 1.1.2** (upgraded 2026-07-27 from 1.0.4 — see ADR 0046). Before bumping further, check `gastownhall/beads#4800` and `#4176` — open server-mode schema-migration bugs that match this repo's exact config (external dolt sql-server) — for their fix status.
+Keep the working set (open + in-progress) under ~200.
 
-## Beads: Dolt is the sole source of truth (DO NOT re-add issues.jsonl)
-
-bd 1.0.4 server mode used to re-import `.beads/issues.jsonl` on every command and could clobber just-made writes (gastownhall/beads #3849, fixed upstream 2026-05-26 via #4170 — see ADR 0046). The workaround stays in force regardless: the jsonl is **removed** from `.beads/` (archived at `~/.beads-archive/town-crier/`), `export.auto = false` and `export.git-add = false` in `.beads/config.yaml`, and only the pinned `~/.local/bin/bd` binary exists (never `brew install beads`, to avoid silent version drift). Sync is **Dolt only**: `bd dolt push` / `bd dolt pull` against the DoltHub remote (`amyde/town-crier`); a fresh clone hydrates via `bd bootstrap`/`bd dolt pull`, never a jsonl import.
-
-**Rules:** never re-create `.beads/issues.jsonl`, never re-enable `export.auto`/`export.git-add`, never run `bd export` to the default path, never re-track the jsonl. Full root cause + recovery recipe: `docs/memo/0011-beads-dolt-write-thrash-root-cause.md`, the version-upgrade decision in `docs/adr/0046-upgrade-bd-to-1.1.2.md`, and auto-memory `project_bd_thrash_and_105_breakage`.
-
-After a squash-merge, never `git pull --rebase` local main onto origin/main. Use `git fetch origin && git reset --hard origin/main` instead.
-
-When re-running `bd init`, `bd init --server`, or `bd setup claude`, always pass `--skip-agents` — otherwise bd re-inserts its own integration block, which duplicates and drifts from this section.
-
-## CLI-First Policy
-
-ALWAYS use installed CLI tools before asking the user to do something manually — no web consoles or manual steps when a CLI can do it:
-
-| Tool | CLI | Use for |
-|------|-----|---------|
-| GitHub | `gh` | Repos, PRs, issues, releases, Actions |
-| Azure | `az` | Resource management, deployments, configuration |
-| Auth0 | `auth0` | Tenant management, apps, APIs, users |
-| Cloudflare | `cloudflared` | Tunnels, DNS, access, routing |
-| Pulumi | `pulumi` | Infrastructure provisioning, stacks, config |
-
-If a command fails or requires interactive auth, only then ask the user to intervene.
-
-### Deployments — PR-Only Policy
-
-NEVER deploy code directly using `az`, `pulumi`, or any other CLI. ALL code changes ship via pull requests and deploy through CI/CD (GitHub Actions). Direct deployments bypass review, testing, and audit trails.
+- `bd flatten --force` squashes Dolt history when `bd` gets sluggish: the main speed lever, preferred over `bd compact`, whose squash can fail on a churned DB.
+- `bd admin compact` (semantic decay of old closed issues), ~quarterly: `bd compact --analyze --json` → write summaries → `bd compact --apply --id <id> --summary -`.
 
 ## Shell & Tooling
 
-- **Non-interactive flags always.** Some systems alias `cp`/`mv`/`rm` to `-i`, hanging agents on prompts: use `cp -f`, `mv -f`, `rm -f`, `rm -rf`. Same principle for CLI fix/format commands — pass `--yes` or equivalent; never assume interactive prompts will work.
-- **RTK rewrites `rg`/`grep`.** A shell hook proxies these through RTK, which can mangle output and make the Grep tool come back empty. If a Grep result looks wrong or empty, fall back to plain `grep`/`rg` in Bash (or `rtk proxy <cmd>`).
-- **Bash CWD persists between calls.** A stale `cd` into a worktree makes a later reset/create hit the wrong tree. Anchor every cleanup/sync/create to the repo root with `git -C <repo-root> …` or an absolute path.
-- **Escape backticks in bead notes.** A `` ` `` in `bd update --notes "…"` triggers shell command substitution. Wrap notes in single quotes.
+- **Non-interactive flags always.** `cp`/`mv`/`rm` may be aliased to `-i`: use `cp -f`, `mv -f`, `rm -f`, `rm -rf`. Pass `--yes` or equivalent to fix/format CLIs.
+- **RTK rewrites `rg`/`grep`** via a shell hook and can mangle output, making Grep come back empty. If a result looks wrong, use plain `grep`/`rg` in Bash or `rtk proxy <cmd>`.
+- **Bash CWD persists between calls.** A stale `cd` makes a later reset/create hit the wrong tree; anchor with `git -C <repo-root> …` or absolute paths.
+- **Single-quote bead notes.** A backtick in `bd update --notes "…"` triggers command substitution.
 
 ## Session Completion Checklist
 
-When ending a work session where code was changed:
+When ending a session that changed code:
 
-1. **File issues for remaining work** — `bd create` for anything needing follow-up (`--type=discovered-from` when it came out of the current task).
-2. **Update bead notes on the in-progress bead** — overwrite with the `COMPLETED/IN PROGRESS/NEXT/BLOCKER/KEY DECISIONS` shape so the next session can resume with zero conversation context.
-3. **Run quality gates** — tests, linters, builds.
-4. **Update issue status** — `bd close` finished work, update in-progress items.
-5. **Sync and push** — from a feature branch, `git pull --rebase && git push`; on main, sync only via `git fetch origin && git reset --hard origin/main` (never rebase-pull main after a squash-merge). The pre-push hook runs `bd dolt push` automatically.
-6. **Verify** — `git status` shows "up to date with origin".
+1. **File remaining work** as beads (`discovered-from` when it came out of this task).
+2. **Write handoff notes** on the in-progress bead (beads survive compaction; conversation doesn't). Overwrite, don't append: `COMPLETED: … IN PROGRESS: … NEXT: … BLOCKER: … KEY DECISIONS: …`, so the next session resumes with zero context.
+3. **Run quality gates:** tests, linters, builds.
+4. **Update status:** `bd close` finished work, update in-progress items, `bd dolt push`.
+5. **Sync and push:** on a feature branch `git pull --rebase && git push`; on main only `git fetch origin && git reset --hard origin/main`.
+6. **Verify** `git status` shows "up to date with origin".
 
-## Memory Management
-
-Proactively update Claude Code memory (`~/.claude/projects/.../memory/`) whenever you learn something noteworthy — new architectural decisions or constraints, user preferences or workflow patterns, project context useful in future sessions, corrections or feedback. Do not wait to be asked.
-
-## ADRs and Memos
-
-- **ADR** (`docs/adr/NNNN-title.md`) for any major architectural decision: adopting or rejecting a technology, choosing a structural pattern, making a significant trade-off, or reversing a prior decision. Copy `docs/adr/0000-template.md` (Status / Context / Decision / Consequences).
-- **Memo** (`docs/memo/NNNN-title.md`) for analysis that hasn't produced a decision yet: explored trade-offs, future migration paths, options evaluated with no action taken. Copy `docs/memo/0000-template.md` (Status / Question / Analysis / Options Considered / Recommendation). A memo graduates to an ADR when a decision lands (mark it `Superseded by ADR NNNN`).
+Proactively update auto-memory (`~/.claude/projects/.../memory/`) whenever you learn something noteworthy (architectural decisions or constraints, user preferences, workflow patterns, useful project context, corrections). Don't wait to be asked.
