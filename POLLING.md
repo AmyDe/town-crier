@@ -21,11 +21,11 @@ One application can produce both alerts: one when it is created, and one later w
 
 ## Hard call limits for local sessions
 
-PlanIt is a free service run by one person and our only planning-data provider (ADR 0006). Not hammering it is non-negotiable, but the rule is about behaviour, not a daily quota. There is no daily call budget: do not introduce one, enforce one, or raise findings based on one. ADR 0041 and ADR 0042 cite a `~1,500 requests/day` figure. That is history, not a live limit.
+PlanIt is a free service run by one person and our only planning-data provider (ADR 0006). Not hammering it is non-negotiable. PlanIt's operator publishes usage guidance for API users, including a daily request cap (see "Operator guidance" below). ADR 0041 and ADR 0042 cite a `~1,500 requests/day` figure. That is history, not a live limit.
 
-**The deployed poller is not the risk.** It honours `Retry-After` (a 429 is never retried internally; it ends the cycle and the scheduler reschedules), backs off for 2h after a timeout, caps attempts at 4, and sleeps 2s before every attempt including retries. That is what "polite" means here, and `api-go/internal/planit/client.go` enforces it.
+**The deployed poller has brakes, but it does not meet the operator's guidance.** It honours `Retry-After` (a 429 is never retried internally; it ends the cycle and the scheduler reschedules), backs off for 2h after a timeout, caps attempts at 4, and sleeps before every attempt including retries (`api-go/internal/planit/client.go`). It does not follow the published pacing, daily cap, time window or User-Agent rules. See "Known gaps".
 
-**A local session is the risk**: a `curl` loop, a throwaway script, a "let me just test this quickly" harness. It has none of those brakes and no review. Binding on any local or agent session calling PlanIt by hand:
+**A local session is the biggest risk**: a `curl` loop, a throwaway script, a "let me just test this quickly" harness. It has none of those brakes and no review. Binding on any local or agent session calling PlanIt by hand:
 
 - **Never more than 10 requests total in a session.**
 - **Never more than one request per 60 seconds.**
@@ -37,11 +37,22 @@ No exceptions for "it's only a few more", for batching, or for running in parall
 
 ### The service
 
-1. PlanIt (planit.org.uk) is our only data source. It is free and run by one person.
-2. There is no other feed, export or push mechanism. The search API is all we have.
-3. PlanIt publishes no rate limit. When it decides we are sending too much it returns 429 with `Retry-After`, which can be several hours.
+1. PlanIt (planit.org.uk) is our only data source. It is free and run by one person as a "retirement hobby" on a "best efforts" basis, with no service standards. The FAQ says "it would not be wise to base any commercial services on the API".
+2. There is no other feed, export or push mechanism. The search API is all we have. `georss` is only another output format of `/api/applics`, not a push feed, and the same limits apply. PlanIt does not make the full dataset available, and there are "no commercial terms". The paid client list for the scraper software is "currently full".
+3. PlanIt publishes guidance, not a hard limit (see "Operator guidance" below). The API page says rate limits exist but does not state them. When it decides we are sending too much it returns 429 with `Retry-After`, which can be several hours.
 4. Under load PlanIt usually gets slower and times out before it starts returning 429s. The timeout rate is the better load signal.
 5. PlanIt has full outages (for example 2026-06-18: 89 of 89 calls failed).
+
+### Operator guidance
+
+From the PlanIt FAQ (https://www.planit.org.uk/faq/, read 2026-09-28), for anyone keeping a database up to date with the API:
+
+- "Run overnight, 18:00-06:00, so as not to compete with daytime users"
+- "Leave a minimum 60 seconds between requests, with adaptive backoff that honours the Retry-After header"
+- "Try to limit yourself to a daily request cap of 300"
+- "Place an identifier string, including your email, in the User-Agent field"
+
+The FAQ also says "you can safely make one request to the /api/applics endpoint every minute", and "I will block requests without a valid user agent or those that exceed a reasonable number per day". Donations are welcome. The contact is andrew@planit.org.uk.
 
 ### The query API
 
@@ -70,7 +81,7 @@ No exceptions for "it's only a few more", for batching, or for running in parall
 3. **No churn alerts.** A record that only looks changed because PlanIt re-indexed it must not alert. The only changes that alert are a new application and a decision. Before ADR 0041 this was about 450 false alerts a day for one user.
 4. **At most one push per watch zone per poll cycle.**
 5. **National coverage.** Watch zones are circles up to 10 km anywhere in the UK, so polling must cover the whole country.
-6. **Polite behaviour** as described under the hard call limits.
+6. **Polite behaviour** as described under the hard call limits and the operator guidance.
 7. **Safe rollout.** We have paying customers, so polling changes need a soak and a rollback path.
 
 Entitlements (who gets instant push, email or only the weekly digest) are decided at dispatch time, not by polling. Polling must ingest every record regardless of tier.
@@ -78,17 +89,30 @@ Entitlements (who gets instant push, email or only the weekly digest) are decide
 ## Settled decisions
 
 - **Do not poll per authority.** We ran per-authority polling. It was much more complicated, it was not required, and we will not revisit it. Poll nationally. The old per-authority code (`PollPlanItHandler` in `api-go/internal/polling/handler.go`) is unwired and must not be revived.
-- **No daily call budget** (see above).
+- **Daily call budget: open.** An earlier decision said the deployed poller has no daily call budget. That decision was made before we read the operator guidance, which asks for about 300 requests a day. The owner must decide again (see "Known gaps").
 
 ## Useful numbers
 
 - Only about 5 to 12 recent applications a day land inside any watch zone nationally. The set that matters is small, but we cannot tell which records matter until we have their location.
 - Prod polls about once an hour.
+- Prod made 500 to 760 PlanIt requests a day from 2026-09-23 to 2026-09-27, and about half of them between 06:00 and 18:00 UTC (App Insights `AppDependencies`).
+- The national delta query (ADR 0041) returns one day of changes for the whole country in about 6 pages of 300. Per-record `id_match` lookups (fact 12) cost one request each.
 
 ## Known gaps (as of 2026-09-28)
 
 - Lane A stops at the first record not newer than its `last_different` watermark, so late records (fact 17) are skipped permanently. Nothing currently enabled catches them. Lane E (ADR 0047) was built to, but is not enabled in prod.
 - The code does not use the 14-day limit. Lanes A and B can alert on anything inside their 90-day masks (`POLLING_LANE_A_MASK_DAYS`, `POLLING_LANE_B_MASK_DAYS`), and Lanes C and E gate alerts at 30 days (`POLLING_LANE_C_NOTIFY_RECENCY_DAYS`, `POLLING_LANE_E_NOTIFY_RECENCY_DAYS`).
+- The deployed poller does not meet the operator guidance:
+
+  | Operator guidance | Prod poller |
+  |---|---|
+  | 60 s between requests | `PLANIT_THROTTLE_DELAY_SECONDS=2` (`infra/environment.go`) |
+  | User-Agent with an email | None set in `api-go/internal/planit/client.go`, so Go sends `Go-http-client/1.1` |
+  | About 300 requests a day | 500 to 760 a day |
+  | 18:00 to 06:00 only | About half the requests are in daytime |
+
+  The FAQ says requests without a valid User-Agent, or too many a day, are blocked. This is a probable cause of some 429s and timeouts, but that is not proven.
+- The overnight window conflicts with same-day alerting. We have not asked the operator whether light daytime polling is acceptable. ADR 0006 planned to contact him after the MVP, and there is no record that we did.
 - `docs/product-overview.md` is out of date on polling. It says 15 minutes and Cosmos DB change feed. Trust this file.
 
 ## Further reading
