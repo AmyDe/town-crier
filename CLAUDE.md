@@ -7,7 +7,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | Layer | Where | How it loads |
 |-------|-------|--------------|
 | Per-stack coding patterns | `.claude/skills/*/SKILL.md` — compact core + `references/` pulled per topic | Auto-triggers on path/task (see the routing table below) |
-| PlanIt + polling facts and requirements | `POLLING.md` | Read before any PlanIt or polling work |
 | Design rationale | `docs/adr/` (decisions), `docs/memo/` (analysis without a decision) | Read when touching that area |
 | Feature designs / specs | GitHub issue bodies — never committed files | `gh issue view <n>` |
 | Operational gotchas | Auto-memory (`MEMORY.md` index) | Injected each session |
@@ -15,7 +14,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Town Crier is a mobile-first app for monitoring UK local authority planning applications, delivering push notifications to residents, community groups, and property professionals. It uses PlanIt (planit.org.uk) as its primary data provider, with a polling-based ingestion model (see ADR 0006).
+Town Crier is a mobile-first app for monitoring UK local authority planning applications, delivering push notifications to residents, community groups, and property professionals.
 
 ## PlanIt and Polling
 
