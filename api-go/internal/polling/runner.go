@@ -320,6 +320,13 @@ func (r *Runner) health(ctx context.Context) Health {
 		r.d.Log.WarnContext(ctx, "poll.health_failed", slog.Any("error", err))
 		return Health{}
 	}
+	local := now.In(budgetLocation)
+	today := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, time.UTC)
+	in.Windows, err = r.d.State.Load(ctx, today.AddDate(0, 0, -alertBandMaxAge), today)
+	if err != nil {
+		r.d.Log.WarnContext(ctx, "poll.health_failed", slog.Any("error", err))
+		return Health{}
+	}
 	in.OracleEnabled = r.cfg.OracleEnabled
 	return ComputeHealth(in, now)
 }
