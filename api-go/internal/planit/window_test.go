@@ -54,15 +54,15 @@ func newWindowClient(t *testing.T, baseURL string, mutate func(*Options)) *Clien
 	return c
 }
 
-func day(y int, m time.Month, d int) time.Time {
-	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+func day(m time.Month, d int) time.Time {
+	return time.Date(2026, m, d, 0, 0, 0, 0, time.UTC)
 }
 
 func TestFetchWindowPage_QueryShapes(t *testing.T) {
 	t.Parallel()
 	sel := selectParam(ingestSelectFields)
 	tail := "&sort=last_different&pg_sz=300&index=%d&select=" + sel + "&compress=on"
-	diff := day(2026, 9, 28)
+	diff := day(9, 28)
 
 	tests := []struct {
 		name   string
@@ -70,19 +70,19 @@ func TestFetchWindowPage_QueryShapes(t *testing.T) {
 		q      WindowQuery
 		want   string
 	}{
-		{"start window", 0, WindowQuery{Axis: AxisStart, From: day(2026, 9, 20), To: day(2026, 9, 20), Index: 0},
+		{"start window", 0, WindowQuery{Axis: AxisStart, From: day(9, 20), To: day(9, 20), Index: 0},
 			"start_date=2026-09-20&end_date=2026-09-20" + strings.Replace(tail, "%d", "0", 1)},
-		{"decided window page 2", 0, WindowQuery{Axis: AxisDecided, From: day(2026, 9, 20), To: day(2026, 9, 20), Index: 600},
+		{"decided window page 2", 0, WindowQuery{Axis: AxisDecided, From: day(9, 20), To: day(9, 20), Index: 600},
 			"decided_start=2026-09-20&decided_end=2026-09-20" + strings.Replace(tail, "%d", "600", 1)},
-		{"start delta", 0, WindowQuery{Axis: AxisStart, From: day(2026, 9, 15), To: day(2026, 9, 29), DifferentStart: &diff},
+		{"start delta", 0, WindowQuery{Axis: AxisStart, From: day(9, 15), To: day(9, 29), DifferentStart: &diff},
 			"different_start=2026-09-28&start_date=2026-09-15" + strings.Replace(tail, "%d", "0", 1)},
-		{"decided delta", 0, WindowQuery{Axis: AxisDecided, From: day(2026, 9, 15), To: day(2026, 9, 29), DifferentStart: &diff},
+		{"decided delta", 0, WindowQuery{Axis: AxisDecided, From: day(9, 15), To: day(9, 29), DifferentStart: &diff},
 			"different_start=2026-09-28&decided_start=2026-09-15" + strings.Replace(tail, "%d", "0", 1)},
-		{"oracle start wide read with auth", 42, WindowQuery{Axis: AxisStart, From: day(2026, 7, 1), To: day(2026, 9, 29)},
+		{"oracle start wide read with auth", 42, WindowQuery{Axis: AxisStart, From: day(7, 1), To: day(9, 29)},
 			"start_date=2026-07-01&end_date=2026-09-29" + strings.Replace(tail, "%d", "0", 1) + "&auth=42"},
-		{"oracle decided wide read with auth", 42, WindowQuery{Axis: AxisDecided, From: day(2026, 7, 1), To: day(2026, 9, 29)},
+		{"oracle decided wide read with auth", 42, WindowQuery{Axis: AxisDecided, From: day(7, 1), To: day(9, 29)},
 			"decided_start=2026-07-01&decided_end=2026-09-29" + strings.Replace(tail, "%d", "0", 1) + "&auth=42"},
-		{"window with auth", 7, WindowQuery{Axis: AxisStart, From: day(2026, 9, 20), To: day(2026, 9, 20)},
+		{"window with auth", 7, WindowQuery{Axis: AxisStart, From: day(9, 20), To: day(9, 20)},
 			"start_date=2026-09-20&end_date=2026-09-20" + strings.Replace(tail, "%d", "0", 1) + "&auth=7"},
 	}
 	for _, tc := range tests {
@@ -110,7 +110,7 @@ func TestFetchWindowPage_SendsUserAgent(t *testing.T) {
 	t.Parallel()
 	srv, got, _ := windowServer(t, 200, emptyPage, nil)
 	c := newWindowClient(t, srv.URL, nil)
-	if _, err := c.FetchWindowPage(context.Background(), WindowQuery{Axis: AxisStart, From: day(2026, 9, 20), To: day(2026, 9, 20)}); err != nil {
+	if _, err := c.FetchWindowPage(context.Background(), WindowQuery{Axis: AxisStart, From: day(9, 20), To: day(9, 20)}); err != nil {
 		t.Fatalf("FetchWindowPage: %v", err)
 	}
 	want := "TownCrier/1.2.3 (+https://towncrierapp.uk; support@towncrierapp.uk)"
@@ -123,7 +123,7 @@ func TestFetchWindowPage_EmptyVersionUsesDev(t *testing.T) {
 	t.Parallel()
 	srv, got, _ := windowServer(t, 200, emptyPage, nil)
 	c := newWindowClient(t, srv.URL, func(o *Options) { o.Version = "" })
-	if _, err := c.FetchWindowPage(context.Background(), WindowQuery{Axis: AxisStart, From: day(2026, 9, 20), To: day(2026, 9, 20)}); err != nil {
+	if _, err := c.FetchWindowPage(context.Background(), WindowQuery{Axis: AxisStart, From: day(9, 20), To: day(9, 20)}); err != nil {
 		t.Fatalf("FetchWindowPage: %v", err)
 	}
 	if !strings.HasPrefix((*got)[0].userAgent, "TownCrier/dev (") {
@@ -135,7 +135,7 @@ func TestFetchWindowPage_ParsesTotalAndHasMore(t *testing.T) {
 	t.Parallel()
 	srv, _, _ := windowServer(t, 200, `{"total":301,"from":0,"pg_sz":300,"records":[]}`, nil)
 	c := newWindowClient(t, srv.URL, nil)
-	_, err := c.FetchWindowPage(context.Background(), WindowQuery{Axis: AxisStart, From: day(2026, 9, 20), To: day(2026, 9, 20)})
+	_, err := c.FetchWindowPage(context.Background(), WindowQuery{Axis: AxisStart, From: day(9, 20), To: day(9, 20)})
 	if !errors.Is(err, ErrZeroProgress) {
 		t.Fatalf("zero records below total should be ErrZeroProgress, got %v", err)
 	}
@@ -143,7 +143,7 @@ func TestFetchWindowPage_ParsesTotalAndHasMore(t *testing.T) {
 
 func TestFetchWindowPage_ErrorMappingAndNoRetry(t *testing.T) {
 	t.Parallel()
-	q := WindowQuery{Axis: AxisStart, From: day(2026, 9, 20), To: day(2026, 9, 20)}
+	q := WindowQuery{Axis: AxisStart, From: day(9, 20), To: day(9, 20)}
 
 	t.Run("429 with Retry-After", func(t *testing.T) {
 		t.Parallel()
@@ -221,7 +221,7 @@ func TestFetchWindowPage_SpanAttributes(t *testing.T) {
 		o.TraceOptions = []otelhttp.Option{otelhttp.WithTracerProvider(tp)}
 	})
 	_, err := c.FetchWindowPage(context.Background(), WindowQuery{
-		Work: WorkWindowStart, Axis: AxisStart, From: day(2026, 9, 20), To: day(2026, 9, 20),
+		Work: WorkWindowStart, Axis: AxisStart, From: day(9, 20), To: day(9, 20),
 	})
 	if err != nil {
 		t.Fatalf("FetchWindowPage: %v", err)
@@ -245,9 +245,9 @@ func TestFetchWindowPage_DeltaSpanHasNoWindowDay(t *testing.T) {
 	c := newWindowClient(t, srv.URL, func(o *Options) {
 		o.TraceOptions = []otelhttp.Option{otelhttp.WithTracerProvider(tp)}
 	})
-	diff := day(2026, 9, 28)
+	diff := day(9, 28)
 	_, err := c.FetchWindowPage(context.Background(), WindowQuery{
-		Work: WorkDeltaStart, Axis: AxisStart, From: day(2026, 9, 15), To: day(2026, 9, 29), DifferentStart: &diff,
+		Work: WorkDeltaStart, Axis: AxisStart, From: day(9, 15), To: day(9, 29), DifferentStart: &diff,
 	})
 	if err != nil {
 		t.Fatalf("FetchWindowPage: %v", err)

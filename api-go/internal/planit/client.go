@@ -237,7 +237,7 @@ func (c *Client) FetchApplicationsPage(ctx context.Context, authorityID int, dif
 // comparison context and the length-heuristic HasMorePages fallback for a
 // response that omits total.
 func (c *Client) fetchPage(ctx context.Context, target string, authorityIDForMetrics, startIndex, pageSize int) (FetchPageResult, error) {
-	resp, err := c.sendWithThrottle(ctx, target, authorityIDForMetrics)
+	resp, err := c.sendWithThrottle(ctx, target, authorityIDForMetrics) //nolint:bodyclose // decodePage closes the body
 	if err != nil {
 		return FetchPageResult{}, err
 	}
