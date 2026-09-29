@@ -1,7 +1,11 @@
 package polling
 
 import (
+	"fmt"
 	"time"
+
+	// Bundles IANA tzdata so Europe/London resolves in a minimal container.
+	_ "time/tzdata"
 
 	"github.com/AmyDe/town-crier/api-go/internal/planit"
 )
@@ -14,6 +18,21 @@ const (
 	dayStartHour       = 6
 	dayEndHour         = 18
 )
+
+// CivilTime is a wall-clock hour and minute in Europe/London.
+type CivilTime struct {
+	Hour   int
+	Minute int
+}
+
+// ParseCivilTime parses a 24-hour "HH:MM" config value.
+func ParseCivilTime(s string) (CivilTime, error) {
+	t, err := time.Parse("15:04", s)
+	if err != nil {
+		return CivilTime{}, fmt.Errorf("parse civil time %q: %w", s, err)
+	}
+	return CivilTime{Hour: t.Hour(), Minute: t.Minute()}, nil
+}
 
 // WindowPlanConfig holds the planner limits (POLLING_DELTA_SLOTS,
 // POLLING_DELTA_MAX_PAGES, POLLING_DAILY_CALL_CAP, POLLING_DAY_ALLOWANCE).

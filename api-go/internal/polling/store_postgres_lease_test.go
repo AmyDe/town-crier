@@ -221,3 +221,15 @@ func TestPostgresLeaseStore_ReleaseTransientOnExecError(t *testing.T) {
 		t.Errorf("Release: got %v, want LeaseTransientError", outcome)
 	}
 }
+
+type fakePollRows struct{}
+
+func (r *fakePollRows) Next() bool                                   { return false }
+func (r *fakePollRows) Scan(_ ...any) error                          { return nil }
+func (r *fakePollRows) Values() ([]any, error)                       { return nil, nil }
+func (r *fakePollRows) Close()                                       {}
+func (r *fakePollRows) Err() error                                   { return nil }
+func (r *fakePollRows) RawValues() [][]byte                          { return nil }
+func (r *fakePollRows) FieldDescriptions() []pgconn.FieldDescription { return nil }
+func (r *fakePollRows) CommandTag() pgconn.CommandTag                { return pgconn.CommandTag{} }
+func (r *fakePollRows) Conn() *pgx.Conn                              { return nil }

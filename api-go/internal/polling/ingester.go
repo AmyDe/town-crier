@@ -2,105 +2,158 @@ package polling
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strconv"
 	"strings"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
 )
 
-// Ingester ingests a single planning application: upsert (with the reindex-flood
-// dedup guard), decision-transition detection, decision-event dispatch, and
-// watch-zone notification fan-out. It is exported so callers other than the
-// PlanIt poll cycle can feed it one application at a time without pulling in the
-// fetch/state/authority/cycle machinery PollPlanItHandler needs to walk PlanIt
-// itself — e.g. the dev-seed job (bd tc-grvu.4), which sources applications from
-// a read-only prod mirror instead of PlanIt.
+// Event kinds written to application_event; they match the table's CHECK constraint.
+const (
+	EventNewApplication = "new_application"
+	EventDecision       = "decision"
+)
+
+// ApplicationEvent is one outbox row: something worth alerting on happened to an application.
+type ApplicationEvent struct {
+	UID           string
+	AuthorityCode string
+	Kind          string
+	EventDate     *time.Time
+}
+
+// ingestUnit is one transaction's worth of ingest work.
+type ingestUnit interface {
+	GetByUID(ctx context.Context, uid, authorityCode string) (applications.PlanningApplication, bool, error)
+	Upsert(ctx context.Context, a applications.PlanningApplication) error
+	InsertEvent(ctx context.Context, e ApplicationEvent) error
+	Commit(ctx context.Context) error
+	Rollback(ctx context.Context) error
+}
+
+type ingestUnitOpener interface {
+	Begin(ctx context.Context) (ingestUnit, error)
+}
+
+// Ingester upserts a planning application and records outbox events in a
+// single transaction. It has no notification dependencies: a dispatcher drains
+// application_event separately.
 type Ingester struct {
-	apps     applicationStore
-	decision DecisionDispatcher   // may be nil: ingestion-only mode skips decision dispatch
-	enqueuer NotificationEnqueuer // may be nil: ingestion-only mode skips zone fan-out
+	opener ingestUnitOpener
 }
 
-// NewIngester wires an Ingester. decision and enqueuer may be nil for
-// ingestion-only callers that don't want notification fan-out.
-func NewIngester(apps applicationStore, decision DecisionDispatcher, enqueuer NotificationEnqueuer) *Ingester {
-	return &Ingester{apps: apps, decision: decision, enqueuer: enqueuer}
+// NewIngester wires an Ingester over opener.
+func NewIngester(opener ingestUnitOpener) *Ingester {
+	return &Ingester{opener: opener}
 }
 
-// Ingest point-reads the persisted application by uid within its authority
-// partition, then classifies the incoming record into one of three buckets
-// (GH#935, the PlanIt full-field widening):
-//
-//   - bookkeeping-only (neither the notifiable nor the silent field set
-//     changed — e.g. only last_different/last_changed/last_scraped bumped, the
-//     load-bearing reindex-flood guard): no upsert, no fan-out at all.
-//   - silent-only (the silent field set — other_fields, reference, altid,
-//     associated_id, scraper_name — changed but the notifiable set did not):
-//     upsert, but NO decision dispatch and NO watch-zone enqueue.
-//   - notifiable (the existing 17-field business set changed, or this is a
-//     first-time insert): upsert, plus the full fan-out below.
-//
-// The fan-out itself is unchanged: a decision-event dispatch when the app has
-// just transitioned into a decision state, and the watch-zone notification
-// fan-out for any notifiable change.
-//
-// The new-decision check is computed BEFORE the upsert so it compares the
-// PERSISTED state, not the incoming one: a non-decision -> decision transition
-// (Permitted/Conditions/Rejected/Appealed), including a first-seen already-decided
-// application (existing is absent), dispatches exactly one decision event.
-// Downstream idempotency (one decision per user/app) makes a re-dispatch harmless,
-// but gating on the transition keeps the dispatch count honest. The fan-out
-// collaborators are skipped entirely when not wired (ingestion-only mode).
-func (i *Ingester) Ingest(ctx context.Context, app applications.PlanningApplication) error {
+// Ingest writes app and its events atomically. An application whose business
+// and silent fields are unchanged writes nothing. Only a first sight
+// (new_application, plus decision when already decided) or a move from a
+// non-decision to a decision state (decision) creates an event.
+func (i *Ingester) Ingest(ctx context.Context, app applications.PlanningApplication) (err error) {
+	unit, err := i.opener.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin ingest: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			if rbErr := unit.Rollback(ctx); rbErr != nil {
+				err = errors.Join(err, rbErr)
+			}
+		}
+	}()
+
 	authorityCode := strconv.Itoa(app.AreaID)
-	existing, found, err := i.apps.GetByUID(ctx, app.UID, authorityCode)
+	existing, found, err := unit.GetByUID(ctx, app.UID, authorityCode)
 	if err != nil {
 		return err
 	}
-
-	notifiableChanged := !found || !existing.HasSameBusinessFieldsAs(app)
-	silentChanged := !found || !existing.HasSameSilentFieldsAs(app)
-	if !notifiableChanged && !silentChanged {
-		return nil
+	if found && existing.HasSameBusinessFieldsAs(app) && existing.HasSameSilentFieldsAs(app) {
+		return unit.Rollback(ctx)
 	}
 
-	var existingState *string
-	if found {
-		existingState = existing.AppState
-	}
-	isNewDecision := isDecisionState(app.AppState) && !isDecisionState(existingState)
-
-	if err := i.apps.Upsert(ctx, app); err != nil {
+	if err = unit.Upsert(ctx, app); err != nil {
 		return err
 	}
 
-	if isNewDecision && i.decision != nil {
-		if err := i.decision.Dispatch(ctx, app); err != nil {
+	var events []ApplicationEvent
+	if !found {
+		events = append(events, ApplicationEvent{app.UID, authorityCode, EventNewApplication, app.StartDate})
+	}
+	var oldState *string
+	if found {
+		oldState = existing.AppState
+	}
+	if isDecisionState(app.AppState) && !isDecisionState(oldState) {
+		events = append(events, ApplicationEvent{app.UID, authorityCode, EventDecision, app.DecidedDate})
+	}
+	for _, e := range events {
+		if err = unit.InsertEvent(ctx, e); err != nil {
 			return err
 		}
 	}
-	if notifiableChanged && i.enqueuer != nil {
-		if err := i.enqueuer.EnqueueForApplication(ctx, app, app.LastDifferent); err != nil {
-			return err
-		}
+	if err = unit.Commit(ctx); err != nil {
+		return fmt.Errorf("commit ingest: %w", err)
+	}
+	return nil
+}
+
+type pgIngestOpener struct{ pool *pgxpool.Pool }
+
+// NewPostgresIngester wires an Ingester over pool.
+func NewPostgresIngester(pool *pgxpool.Pool) *Ingester {
+	return NewIngester(pgIngestOpener{pool: pool})
+}
+
+func (o pgIngestOpener) Begin(ctx context.Context) (ingestUnit, error) {
+	tx, err := o.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &pgIngestUnit{PostgresStore: applications.NewPostgresStore(tx), tx: tx}, nil
+}
+
+type pgIngestUnit struct {
+	*applications.PostgresStore
+	tx pgx.Tx
+}
+
+const insertEventQuery = "INSERT INTO application_event (uid, authority_code, kind, event_date) VALUES ($1, $2, $3, $4)"
+
+func (u *pgIngestUnit) InsertEvent(ctx context.Context, e ApplicationEvent) error {
+	if _, err := u.tx.Exec(ctx, insertEventQuery, e.UID, e.AuthorityCode, e.Kind, e.EventDate); err != nil {
+		return fmt.Errorf("insert application_event %q: %w", e.UID, err)
+	}
+	return nil
+}
+
+func (u *pgIngestUnit) Commit(ctx context.Context) error { return u.tx.Commit(ctx) }
+
+// Rollback is a no-op after Commit, so it is safe on every exit path.
+func (u *pgIngestUnit) Rollback(ctx context.Context) error {
+	if err := u.tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+		return err
 	}
 	return nil
 }
 
 // isDecisionState reports whether a PlanIt app_state is a decision outcome
-// (Permitted, Conditions, Rejected, Appealed), case-insensitively. A nil/empty
-// state is not a decision.
+// (Permitted, Conditions, Rejected, Appealed), case-insensitively.
 func isDecisionState(appState *string) bool {
-	if appState == nil || *appState == "" {
+	if appState == nil {
 		return false
 	}
-	switch {
-	case strings.EqualFold(*appState, "Permitted"),
-		strings.EqualFold(*appState, "Conditions"),
-		strings.EqualFold(*appState, "Rejected"),
-		strings.EqualFold(*appState, "Appealed"):
-		return true
-	default:
-		return false
+	for _, s := range [...]string{"Permitted", "Conditions", "Rejected", "Appealed"} {
+		if strings.EqualFold(*appState, s) {
+			return true
+		}
 	}
+	return false
 }

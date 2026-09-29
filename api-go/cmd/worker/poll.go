@@ -103,7 +103,7 @@ func buildPoller(cfg platform.Config, pool *pgxpool.Pool, registry *metrics.Regi
 	}
 	observer := polling.NewRunObserver(polling.NewPostgresDeltaSeenStore(pool), members, events, dispatcher, now, logger)
 	reader := polling.NewWindowReader(
-		fetcher, polling.NewPostgresEventIngester(pool), windows,
+		fetcher, polling.NewPostgresIngester(pool), windows,
 		polling.WindowReadConfig{FullReadMaxAge: time.Duration(cfg.PollingFullReadMaxAgeDays) * 24 * time.Hour},
 		now, logger,
 	).WithHooks(observer)

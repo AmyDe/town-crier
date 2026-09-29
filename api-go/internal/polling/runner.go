@@ -16,6 +16,7 @@ import (
 const (
 	runLeaseTTL = 65 * time.Minute
 	runSpanName = "PlanIt poll run"
+	tracerName  = "github.com/AmyDe/town-crier/api-go/internal/polling"
 )
 
 // OracleOutcome is what one oracle pass reports: Stop is set when a PlanIt
