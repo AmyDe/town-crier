@@ -18,11 +18,16 @@ const (
 	runSpanName = "PlanIt poll run"
 )
 
-// OracleOutcome is what one oracle pass reports back to the runner. Stop is
-// set when a PlanIt limit ended the pass early.
+// OracleOutcome is what one oracle pass reports: Stop is set when a PlanIt
+// limit ended the pass early, and the counts are the dev trial's per-night
+// figures.
 type OracleOutcome struct {
-	Pages int
-	Stop  StopReason
+	Pages       int
+	Stop        StopReason
+	WideRecords int
+	InBand      int
+	NewDiffs    int
+	Classified  map[string]int
 }
 
 type runLease interface {

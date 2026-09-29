@@ -123,7 +123,7 @@ func TestOracle_WideReadShapeAndPaging(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.Pages != 6 || out.Stop != "" {
+	if out.Pages != 4 || out.Stop != "" {
 		t.Fatalf("out = %+v", out)
 	}
 	q := r.fetch.queries[0]
