@@ -353,3 +353,69 @@ func endPage(from, n, total int) planit.FetchPageResult {
 	p.HasMorePages = false
 	return p
 }
+
+type recordingHooks struct{ calls []string }
+
+func (h *recordingHooks) PageFetched(context.Context, planit.WindowQuery, planit.FetchPageResult) {
+	h.calls = append(h.calls, "fetched")
+}
+
+func (h *recordingHooks) PageIngested(context.Context, planit.WindowQuery, planit.FetchPageResult) error {
+	h.calls = append(h.calls, "ingested")
+	return nil
+}
+
+func (h *recordingHooks) WindowShort(context.Context, WindowRef, int, int) {
+	h.calls = append(h.calls, "short")
+}
+
+func (h *recordingHooks) FullReadComplete(_ context.Context, _ WindowRef, started, done time.Time, read map[AppKey]struct{}) error {
+	h.calls = append(h.calls, fmt.Sprintf("full:%d:%s:%s", len(read), started.Format("15:04"), done.Format("15:04")))
+	return nil
+}
+
+func TestWindowReader_HooksSeeEveryPageAndTheFullRead(t *testing.T) {
+	t.Parallel()
+	r := newReaderRig(t, map[int]planit.FetchPageResult{0: page(0, 300, 350), 300: page(300, 50, 350)})
+	h := &recordingHooks{}
+	r.reader.WithHooks(h)
+
+	res := r.reader.ReadWindow(context.Background(), testWindow(), WindowState{})
+
+	if !res.Complete {
+		t.Fatalf("res = %+v", res)
+	}
+	want := []string{"fetched", "ingested", "fetched", "ingested", "full:350:21:00:21:00"}
+	if fmt.Sprint(h.calls) != fmt.Sprint(want) {
+		t.Fatalf("calls = %v, want %v", h.calls, want)
+	}
+}
+
+func TestWindowReader_HooksSeeAShortRead(t *testing.T) {
+	t.Parallel()
+	r := newReaderRig(t, map[int]planit.FetchPageResult{0: page(0, 300, 400), 300: page(300, 50, 400)})
+	h := &recordingHooks{}
+	r.reader.WithHooks(h)
+
+	res := r.reader.ReadWindow(context.Background(), testWindow(), WindowState{})
+
+	if !res.Short || h.calls[len(h.calls)-1] != "short" {
+		t.Fatalf("res = %+v calls = %v", res, h.calls)
+	}
+}
+
+func TestWindowReader_ProbeAndDeltaSkipFullReadHook(t *testing.T) {
+	t.Parallel()
+	r := newReaderRig(t, map[int]planit.FetchPageResult{0: page(0, 300, 900)})
+	h := &recordingHooks{}
+	r.reader.WithHooks(h)
+	state := WindowState{LastTotal: intPtr(900), LastFullReadAt: tp(r.now.AddDate(0, 0, -3))}
+
+	r.reader.ReadWindow(context.Background(), testWindow(), state)
+
+	for _, c := range h.calls {
+		if strings.HasPrefix(c, "full") {
+			t.Fatalf("probe must not fire the full-read hook: %v", h.calls)
+		}
+	}
+}
