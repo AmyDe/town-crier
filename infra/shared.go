@@ -877,9 +877,7 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 	// issue's Phase 1 item 3 "move it into the shared stack" premise doesn't hold. The prod-stack
 	// copy stays canonical.
 
-	// Phase 2: availability tests. Two standard WebTests against the live prod endpoints, each
-	// with a companion MetricAlert that fires when >=2 of the 3 EMEA probe locations report the
-	// endpoint down.
+	// Phase 2: availability tests.
 	if err = createAvailabilityCheck(ctx, resourceGroup, appInsights, actionGroup, tags,
 		"webtest-api-prod", "https://api.towncrierapp.uk/health"); err != nil {
 		return err
@@ -1709,12 +1707,10 @@ func buildAuthorityNamesDatatable(path string) (string, error) {
 	return b.String(), nil
 }
 
-// availabilityTestLocations is the standard 3-location EMEA coverage set shared by both
-// availability WebTests below (GH #943 Phase 2).
+// availabilityTestLocations is a single UK probe on purpose: every location multiplies the
+// per-run WebTest charge, and multi-region coverage bought nothing for a UK-only service.
 var availabilityTestLocations = appinsights.WebTestGeolocationArray{
 	appinsights.WebTestGeolocationArgs{Location: pulumi.String("emea-gb-db3-azr")},
-	appinsights.WebTestGeolocationArgs{Location: pulumi.String("emea-nl-ams-azr")},
-	appinsights.WebTestGeolocationArgs{Location: pulumi.String("emea-fr-pra-edge")},
 }
 
 // webTestTags merges the standard tag set with the "hidden-link:<appInsightsID>": "Resource"
@@ -1736,10 +1732,8 @@ func webTestTags(appInsightsID pulumi.IDOutput, tags pulumi.StringMap) pulumi.St
 	}).(pulumi.StringMapOutput)
 }
 
-// createAvailabilityCheck provisions one Application Insights standard WebTest against url,
-// plus the companion MetricAlert that fires when >=2 of the 3 EMEA probe locations report it
-// down (GH #943 Phase 2). name is used as both the WebTest's logical/Azure resource name (e.g.
-// "webtest-api-prod") and the basis for its alert's name.
+// createAvailabilityCheck provisions an Application Insights standard WebTest named name
+// against url, plus a MetricAlert that fires when the probe reports it down.
 func createAvailabilityCheck(ctx *pulumi.Context, resourceGroup *resources.ResourceGroup, appInsights *appinsights.Component, actionGroup *monitor.ActionGroup, tags pulumi.StringMap, name, url string) error {
 	webTest, err := appinsights.NewWebTest(ctx, name, &appinsights.WebTestArgs{
 		WebTestName:        pulumi.String(name),
@@ -1749,7 +1743,7 @@ func createAvailabilityCheck(ctx *pulumi.Context, resourceGroup *resources.Resou
 		WebTestKind:        appinsights.WebTestKindStandard,
 		SyntheticMonitorId: pulumi.String(name),
 		Enabled:            pulumi.Bool(true),
-		Frequency:          pulumi.Int(300),
+		Frequency:          pulumi.Int(900),
 		Timeout:            pulumi.Int(30),
 		RetryEnabled:       pulumi.Bool(true),
 		Locations:          availabilityTestLocations,
@@ -1771,18 +1765,18 @@ func createAvailabilityCheck(ctx *pulumi.Context, resourceGroup *resources.Resou
 		RuleName:            pulumi.String(alertName),
 		ResourceGroupName:   resourceGroup.Name,
 		Location:            pulumi.String("global"),
-		Description:         pulumi.String(fmt.Sprintf("Availability test %s failed from >=2 of 3 EMEA locations.", name)),
+		Description:         pulumi.String(fmt.Sprintf("Availability test %s failed from the UK probe location.", name)),
 		Severity:            pulumi.Int(1),
 		Enabled:             pulumi.Bool(true),
 		AutoMitigate:        pulumi.Bool(true),
 		EvaluationFrequency: pulumi.String("PT5M"),
-		WindowSize:          pulumi.String("PT15M"),
+		WindowSize:          pulumi.String("PT30M"),
 		Scopes:              pulumi.StringArray{webTest.ID(), appInsights.ID()},
 		Criteria: monitor.WebtestLocationAvailabilityCriteriaArgs{
 			OdataType:           pulumi.String("Microsoft.Azure.Monitor.WebtestLocationAvailabilityCriteria"),
 			WebTestId:           webTest.ID(),
 			ComponentId:         appInsights.ID(),
-			FailedLocationCount: pulumi.Float64(2),
+			FailedLocationCount: pulumi.Float64(1),
 		},
 		Actions: monitor.MetricAlertActionArray{
 			monitor.MetricAlertActionArgs{ActionGroupId: actionGroup.ID()},
