@@ -104,7 +104,7 @@ func newReaderRig(t *testing.T, pages map[int]planit.FetchPageResult) *readerRig
 
 var testDay = utcDay(2026, 6, 9)
 
-func testWindow() PlannedWork { return windowWork(planit.AxisStart, testDay) }
+func testWindow() PlannedWork { return *windowWork(planit.AxisStart, testDay) }
 
 func TestWindowReader_ProbeWhenTotalUnchangedAndRecentFullRead(t *testing.T) {
 	t.Parallel()
@@ -181,7 +181,7 @@ func TestWindowReader_FullReadMaxAgeZeroAlwaysReadsEverything(t *testing.T) {
 
 func TestWindowReader_ShortReadLeavesWindowDue(t *testing.T) {
 	t.Parallel()
-	r := newReaderRig(t, map[int]planit.FetchPageResult{0: page(0, 300, 700), 300: page(300, 300, 700), 600: page(600, 50, 700)})
+	r := newReaderRig(t, map[int]planit.FetchPageResult{0: page(0, 300, 700), 300: page(300, 300, 700), 600: endPage(600, 50, 700)})
 
 	res := r.reader.ReadWindow(context.Background(), testWindow(), WindowState{})
 
@@ -227,7 +227,7 @@ func TestWindowReader_SameUIDDifferentAreaCountsSeparately(t *testing.T) {
 
 func TestWindowReader_TwoShortReadsInOneBudgetDayAreReported(t *testing.T) {
 	t.Parallel()
-	r := newReaderRig(t, map[int]planit.FetchPageResult{0: page(0, 10, 20), 10: page(10, 5, 20)})
+	r := newReaderRig(t, map[int]planit.FetchPageResult{0: page(0, 10, 20), 10: endPage(10, 5, 20)})
 	ctx := context.Background()
 
 	r.reader.ReadWindow(ctx, testWindow(), WindowState{})
@@ -345,4 +345,11 @@ func TestWindowReader_ReadDeltaStopReason(t *testing.T) {
 	if res.Stop != StopRateLimited {
 		t.Fatalf("res = %+v", res)
 	}
+}
+
+// endPage is a final page that ends the read although fewer records than total were returned.
+func endPage(from, n, total int) planit.FetchPageResult {
+	p := page(from, n, total)
+	p.HasMorePages = false
+	return p
 }
