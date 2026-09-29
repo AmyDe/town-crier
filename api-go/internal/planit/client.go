@@ -132,6 +132,11 @@ type Options struct {
 	// (e.g. WithTracerProvider in hermetic tests). Production leaves this nil and
 	// relies on the global provider installed by SetupTelemetry.
 	TraceOptions []otelhttp.Option
+	// AreaID, when non-zero, adds &auth=<AreaID> to every FetchWindowPage query.
+	AreaID int
+	// Version is the build version sent in the FetchWindowPage User-Agent. Empty
+	// sends "dev".
+	Version string
 }
 
 // FetchPageResult is one fetch of a PlanIt index-paginated response: the parsed
@@ -158,6 +163,8 @@ type Client struct {
 	sleep      func(ctx context.Context, d time.Duration) error
 	metrics    httpErrorRecorder
 	pageSize   int
+	areaID     int
+	userAgent  string
 }
 
 // NewClient validates the base URL and wires the client. A non-HTTPS base URL is
@@ -182,7 +189,9 @@ func NewClient(opts Options) (*Client, error) {
 	// Wrap the transport so every PlanIt GET emits an OTel client span
 	// (Type=HTTP in AppDependencies) named "PlanIt search". The host lands in
 	// server.address; the static span name keeps cardinality low.
-	hc = platform.WrapHTTPClient(hc, func(string, *http.Request) string { return "PlanIt search" }, opts.TraceOptions...)
+	inner := *hc
+	inner.Transport = spanAttrTransport{next: hc.Transport}
+	hc = platform.WrapHTTPClient(&inner, func(string, *http.Request) string { return "PlanIt search" }, opts.TraceOptions...)
 	sleep := opts.Sleep
 	if sleep == nil {
 		sleep = contextSleep
@@ -200,6 +209,8 @@ func NewClient(opts Options) (*Client, error) {
 		sleep:      sleep,
 		metrics:    opts.Metrics,
 		pageSize:   pageSize,
+		areaID:     opts.AreaID,
+		userAgent:  userAgent(opts.Version),
 	}, nil
 }
 
@@ -230,6 +241,12 @@ func (c *Client) fetchPage(ctx context.Context, target string, authorityIDForMet
 	if err != nil {
 		return FetchPageResult{}, err
 	}
+	return decodePage(resp, authorityIDForMetrics, startIndex, pageSize)
+}
+
+// decodePage classifies resp, decodes the PlanIt envelope, and maps its
+// records. It closes resp.Body.
+func decodePage(resp *http.Response, authorityIDForMetrics, startIndex, pageSize int) (FetchPageResult, error) {
 	defer func() { _ = resp.Body.Close() }()
 
 	if err := classify(resp); err != nil {
