@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/AmyDe/town-crier/api-go/internal/applications"
 	"github.com/AmyDe/town-crier/api-go/internal/appevents"
+	"github.com/AmyDe/town-crier/api-go/internal/applications"
 	"github.com/AmyDe/town-crier/api-go/internal/planit"
 )
 

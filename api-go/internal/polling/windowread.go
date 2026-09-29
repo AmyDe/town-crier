@@ -123,6 +123,7 @@ type WindowReader struct {
 	now    func() time.Time
 	log    *slog.Logger
 
+	hooks  ReadHooks
 	mu     sync.Mutex
 	shorts map[shortKey]int
 }
@@ -137,9 +138,28 @@ func NewWindowReader(fetch windowPageFetcher, ingest applicationIngester, store 
 	return &WindowReader{fetch: fetch, ingest: ingest, store: store, cfg: cfg, now: now, log: log, shorts: map[shortKey]int{}}
 }
 
-type appKey struct {
-	uid  string
-	area int
+// AppKey identifies an application as PlanIt does: uid within an area.
+type AppKey struct {
+	UID    string
+	AreaID int
+}
+
+// ReadHooks lets the runner observe a WindowReader. PageFetched runs before a
+// page is ingested, PageIngested after. WindowShort fires when the
+// completeness check fails. FullReadComplete fires once the completeness check
+// passed on a full read, before poll_window is advanced, with the distinct
+// records read; an error from it stops the read.
+type ReadHooks interface {
+	PageFetched(ctx context.Context, q planit.WindowQuery, p planit.FetchPageResult)
+	PageIngested(ctx context.Context, q planit.WindowQuery, p planit.FetchPageResult) error
+	WindowShort(ctx context.Context, ref WindowRef, distinct, total int)
+	FullReadComplete(ctx context.Context, ref WindowRef, startedAt, completedAt time.Time, read map[AppKey]struct{}) error
+}
+
+// WithHooks attaches h to the reader and returns it.
+func (r *WindowReader) WithHooks(h ReadHooks) *WindowReader {
+	r.hooks = h
+	return r
 }
 
 // ReadWindow reads one day window: a count probe when page 0's total matches
@@ -147,16 +167,17 @@ type appKey struct {
 func (r *WindowReader) ReadWindow(ctx context.Context, w PlannedWork, state WindowState) WindowReadResult {
 	ref := WindowRef{Axis: w.Axis, Day: w.Day}
 	q := planit.WindowQuery{Work: w.Work, Axis: w.Axis, From: w.From, To: w.To}
+	startedAt := r.now()
 
 	first, err := r.fetch.FetchPage(ctx, q)
 	if err != nil {
 		return stopped(0, err)
 	}
 	pages := 1
-	if err := r.ingestPage(ctx, first); err != nil {
+	if err := r.ingestPage(ctx, q, first); err != nil {
 		return stopped(pages, err)
 	}
-	seen := map[appKey]struct{}{}
+	seen := map[AppKey]struct{}{}
 	addSeen(seen, first)
 	total := len(first.Applications)
 	if first.Total != nil {
@@ -180,7 +201,7 @@ func (r *WindowReader) ReadWindow(ctx context.Context, w PlannedWork, state Wind
 			return stopped(pages, err)
 		}
 		pages++
-		if err := r.ingestPage(ctx, cur); err != nil {
+		if err := r.ingestPage(ctx, q, cur); err != nil {
 			return stopped(pages, err)
 		}
 		addSeen(seen, cur)
@@ -188,10 +209,18 @@ func (r *WindowReader) ReadWindow(ctx context.Context, w PlannedWork, state Wind
 
 	if len(seen) < total {
 		r.recordShort(ref, now)
+		if r.hooks != nil {
+			r.hooks.WindowShort(ctx, ref, len(seen), total)
+		}
 		r.log.WarnContext(ctx, "poll.window_short",
 			slog.Int("axis", int(w.Axis)), slog.String("day", w.Day.Format(time.DateOnly)),
 			slog.Int("distinct", len(seen)), slog.Int("total", total), slog.Int("pages", pages))
 		return WindowReadResult{Pages: pages, Short: true}
+	}
+	if r.hooks != nil {
+		if err := r.hooks.FullReadComplete(ctx, ref, startedAt, now, seen); err != nil {
+			return stopped(pages, err)
+		}
 	}
 	if err := r.store.MarkFullRead(ctx, ref, now, total); err != nil {
 		return stopped(pages, err)
@@ -209,7 +238,7 @@ func (r *WindowReader) ReadDelta(ctx context.Context, w PlannedWork) WindowReadR
 			return stopped(pages, err)
 		}
 		pages++
-		if err := r.ingestPage(ctx, res); err != nil {
+		if err := r.ingestPage(ctx, q, res); err != nil {
 			return stopped(pages, err)
 		}
 		if !res.HasMorePages || len(res.Applications) == 0 {
@@ -245,18 +274,26 @@ func (r *WindowReader) recordShort(ref WindowRef, now time.Time) {
 	r.mu.Unlock()
 }
 
-func (r *WindowReader) ingestPage(ctx context.Context, p planit.FetchPageResult) error {
+func (r *WindowReader) ingestPage(ctx context.Context, q planit.WindowQuery, p planit.FetchPageResult) error {
+	if r.hooks != nil {
+		r.hooks.PageFetched(ctx, q, p)
+	}
 	for _, app := range p.Applications {
 		if err := r.ingest.Ingest(ctx, app); err != nil {
 			return fmt.Errorf("ingest %s: %w", app.UID, err)
 		}
 	}
+	if r.hooks != nil {
+		if err := r.hooks.PageIngested(ctx, q, p); err != nil {
+			return fmt.Errorf("after page %d: %w", q.Index, err)
+		}
+	}
 	return nil
 }
 
-func addSeen(seen map[appKey]struct{}, p planit.FetchPageResult) {
+func addSeen(seen map[AppKey]struct{}, p planit.FetchPageResult) {
 	for _, a := range p.Applications {
-		seen[appKey{a.UID, a.AreaID}] = struct{}{}
+		seen[AppKey{UID: a.UID, AreaID: a.AreaID}] = struct{}{}
 	}
 }
 

@@ -393,7 +393,9 @@ func TestWindowReader_HooksSeeEveryPageAndTheFullRead(t *testing.T) {
 
 func TestWindowReader_HooksSeeAShortRead(t *testing.T) {
 	t.Parallel()
-	r := newReaderRig(t, map[int]planit.FetchPageResult{0: page(0, 300, 400), 300: page(300, 50, 400)})
+	last := page(300, 50, 400)
+	last.HasMorePages = false
+	r := newReaderRig(t, map[int]planit.FetchPageResult{0: page(0, 300, 400), 300: last})
 	h := &recordingHooks{}
 	r.reader.WithHooks(h)
 
