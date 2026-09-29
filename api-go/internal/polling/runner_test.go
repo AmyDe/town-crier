@@ -116,7 +116,6 @@ func (f *fakeRunFlusher) Flush(context.Context) error {
 type fakeCounters struct{ c RunCounts }
 
 func (f *fakeCounters) Counts() RunCounts { return f.c }
-func (f *fakeCounters) Reset()            { f.c = RunCounts{} }
 
 type fakeHealthSource struct {
 	in  HealthInputs
@@ -329,9 +328,6 @@ func TestRunner_ShortWindowIsNotReadAgainInTheSameRun(t *testing.T) {
 		if len(w.reads) == 1 {
 			return WindowReadResult{Pages: 3, Short: true}
 		}
-		if len(w.reads) > 40 {
-			return WindowReadResult{Stop: StopError}
-		}
 		return w.complete(item)
 	}
 
@@ -343,8 +339,8 @@ func TestRunner_ShortWindowIsNotReadAgainInTheSameRun(t *testing.T) {
 			t.Fatalf("short window %+v was read again", first)
 		}
 	}
-	if res.Stop == StopError {
-		t.Fatal("run looped instead of ending")
+	if res.Stop != StopNoWork {
+		t.Fatalf("stop = %s", res.Stop)
 	}
 }
 

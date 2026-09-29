@@ -88,18 +88,12 @@ func NewRunObserver(delta deltaSeenStore, members memberStore, events pollEventR
 	return &RunObserver{delta: delta, members: members, events: events, disp: disp, now: now, log: log}
 }
 
-// Counts returns the totals since the last Reset.
+// Counts returns the totals since the observer was created; each process
+// makes one run.
 func (o *RunObserver) Counts() RunCounts {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	return o.counts
-}
-
-// Reset zeroes the per-run totals.
-func (o *RunObserver) Reset() {
-	o.mu.Lock()
-	o.counts = RunCounts{}
-	o.mu.Unlock()
 }
 
 // PageFetched checks that every record's axis date is inside the window (or,
