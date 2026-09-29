@@ -3,7 +3,6 @@ package polling
 import (
 	"context"
 	"errors"
-	"strconv"
 	"testing"
 	"time"
 
@@ -70,7 +69,8 @@ func TestEventIngester_Ingest(t *testing.T) {
 	rej := "Rejected"
 	toRejected.AppState = &rej
 	silentOnly := oldUndecided
-	silentOnly.Reference = "ref-2"
+	ref := "ref-2"
+	silentOnly.Reference = &ref
 	descChange := oldUndecided
 	descChange.Description = "other"
 	toPermitted := evApp("Permitted", day(1), day(6))
@@ -113,7 +113,7 @@ func TestEventIngester_Ingest(t *testing.T) {
 					t.Errorf("event %d = %+v, want %+v", i, g, w)
 				}
 			}
-			if !u.committed || u.rolledBack && false {
+			if !u.committed && tc.wantUpsert {
 				t.Errorf("committed=%v", u.committed)
 			}
 		})
@@ -139,5 +139,3 @@ func TestEventIngester_Ingest_ErrorRollsBackAndSkipsCommit(t *testing.T) {
 		})
 	}
 }
-
-var _ = strconv.Itoa
