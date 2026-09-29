@@ -115,7 +115,7 @@ func TestEnqueuer_FindZonesContainingFlowsThroughInterface(t *testing.T) {
 	lat, lng := 51.501, -0.142
 	app := applications.PlanningApplication{Latitude: &lat, Longitude: &lng}
 
-	if err := enqueuer.EnqueueForApplication(context.Background(), app); err != nil {
+	if err := enqueuer.EnqueueForApplication(context.Background(), app, app.LastDifferent); err != nil {
 		t.Fatalf("EnqueueForApplication: %v", err)
 	}
 

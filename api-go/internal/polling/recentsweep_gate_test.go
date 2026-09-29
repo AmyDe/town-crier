@@ -42,7 +42,7 @@ func TestRecencyGatedEnqueuer_GatesOnStartDate(t *testing.T) {
 			gate := recencyGatedEnqueuer{inner: inner, window: recencyGateWindow, now: gateNow}
 
 			app := applications.PlanningApplication{UID: "26/0001/FUL", AreaID: 300, StartDate: tc.startDate}
-			if err := gate.EnqueueForApplication(context.Background(), app); err != nil {
+			if err := gate.EnqueueForApplication(context.Background(), app, app.LastDifferent); err != nil {
 				t.Fatalf("EnqueueForApplication: %v", err)
 			}
 
@@ -103,7 +103,7 @@ func TestRecencyGates_EventSpecificDates(t *testing.T) {
 
 	// Fresh start_date, stale decided_date.
 	app := applications.PlanningApplication{UID: "x", AreaID: 1, StartDate: fresh, DecidedDate: stale}
-	if err := enqGate.EnqueueForApplication(context.Background(), app); err != nil {
+	if err := enqGate.EnqueueForApplication(context.Background(), app, app.LastDifferent); err != nil {
 		t.Fatalf("EnqueueForApplication: %v", err)
 	}
 	if err := dispGate.Dispatch(context.Background(), app); err != nil {

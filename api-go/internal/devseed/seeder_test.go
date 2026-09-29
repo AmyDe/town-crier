@@ -160,7 +160,7 @@ type fakeEnqueuer struct {
 	err   error
 }
 
-func (f *fakeEnqueuer) EnqueueForApplication(ctx context.Context, app applications.PlanningApplication) error {
+func (f *fakeEnqueuer) EnqueueForApplication(ctx context.Context, app applications.PlanningApplication, detectedAt time.Time) error {
 	f.calls = append(f.calls, app)
 	return f.err
 }

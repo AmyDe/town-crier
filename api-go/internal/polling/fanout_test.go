@@ -35,7 +35,7 @@ type fakeEnqueuer struct {
 	enqueued []applications.PlanningApplication
 }
 
-func (f *fakeEnqueuer) EnqueueForApplication(_ context.Context, app applications.PlanningApplication) error {
+func (f *fakeEnqueuer) EnqueueForApplication(_ context.Context, app applications.PlanningApplication, _ time.Time) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.enqueued = append(f.enqueued, app)
