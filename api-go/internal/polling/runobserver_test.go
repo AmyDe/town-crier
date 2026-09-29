@@ -75,7 +75,7 @@ type observerRig struct {
 func newObserverRig(t *testing.T, withMembers bool) *observerRig {
 	t.Helper()
 	r := &observerRig{delta: &fakeDeltaSeen{}, mem: &fakeMembers{}, evs: &fakeEvents{}, disp: &fakePageDispatcher{}, logs: &bytes.Buffer{}, now: londonAt(6, 10, 21, 0)}
-	var members memberStore
+	var members MemberStore
 	if withMembers {
 		members = r.mem
 	}

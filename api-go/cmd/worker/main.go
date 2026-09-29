@@ -2,8 +2,8 @@
 // Container Apps Jobs. One process per job: WORKER_MODE selects the mode,
 // the process runs it once, flushes telemetry, and exits with a status code.
 //
-// poll-bootstrap, poll-sb, digest, hourly-digest, dormant-cleanup,
-// subscription-sweep and pg-purge are implemented. Every store is backed by
+// poll, digest, hourly-digest, dormant-cleanup, subscription-sweep, pg-purge
+// and appstore-reconcile are implemented. Every store is backed by
 // Postgres + PostGIS (the single datastore); the shared pool is built once at
 // boot and a pool failure is fatal.
 package main
@@ -11,14 +11,12 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log"
 	"log/slog"
 	"net/http"
 	"os"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/google/uuid"
 
 	"github.com/AmyDe/town-crier/api-go/internal/acsemail"
@@ -27,7 +25,6 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/appstorereconcile"
 	"github.com/AmyDe/town-crier/api-go/internal/appstoreserverapi"
 	"github.com/AmyDe/town-crier/api-go/internal/devicetokens"
-	"github.com/AmyDe/town-crier/api-go/internal/devseed"
 	"github.com/AmyDe/town-crier/api-go/internal/digest"
 	"github.com/AmyDe/town-crier/api-go/internal/dormant"
 	"github.com/AmyDe/town-crier/api-go/internal/erasure"
@@ -38,13 +35,11 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/notifydispatch"
 	"github.com/AmyDe/town-crier/api-go/internal/offercodes"
 	"github.com/AmyDe/town-crier/api-go/internal/pgpurge"
-	"github.com/AmyDe/town-crier/api-go/internal/planit"
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
 	"github.com/AmyDe/town-crier/api-go/internal/platform/postgres"
 	"github.com/AmyDe/town-crier/api-go/internal/polling"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 	"github.com/AmyDe/town-crier/api-go/internal/savedapplications"
-	"github.com/AmyDe/town-crier/api-go/internal/servicebus"
 	"github.com/AmyDe/town-crier/api-go/internal/subscriptions"
 	"github.com/AmyDe/town-crier/api-go/internal/subscriptionsweep"
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
@@ -65,10 +60,7 @@ type stores struct {
 	device       *devicetokens.PostgresStore
 	savedApp     *savedapplications.PostgresStore
 	offerCode    *offercodes.PostgresStore
-	pollState    *polling.PostgresPollStateStore
 	lease        *polling.PostgresLeaseStore
-	backfill     *polling.PostgresBackfillStateStore
-	recentSweep  *polling.PostgresRecentSweepStateStore
 	appleNotif   *subscriptions.PostgresNotificationStore
 }
 
@@ -120,8 +112,8 @@ func run() int {
 
 	// The business-metric registry is built from the global MeterProvider
 	// SetupTelemetry just installed (a no-op provider when telemetry is disabled).
-	// It is threaded through the builders below so the poll handler / orchestrator,
-	// the PlanIt client and the notification dispatchers emit their towncrier.*
+	// It is threaded through the builders below so the PlanIt client and the
+	// notification dispatchers emit their towncrier.*
 	// metrics (tc-21np).
 	registry := metrics.New(otel.Meter(metrics.MeterName))
 
@@ -146,42 +138,8 @@ func run() int {
 		device:       devicetokens.NewPostgresStore(pool),
 		savedApp:     savedapplications.NewPostgresStore(pool),
 		offerCode:    offercodes.NewPostgresStore(pool, logger),
-		pollState:    polling.NewPostgresPollStateStore(pool),
 		lease:        polling.NewPostgresLeaseStore(pool, time.Now),
-		backfill:     polling.NewPostgresBackfillStateStore(pool),
-		recentSweep:  polling.NewPostgresRecentSweepStateStore(pool),
 		appleNotif:   subscriptions.NewPostgresNotificationStore(pool, time.Now),
-	}
-
-	// The Service Bus client (and thus the bootstrapper and the poll-sb
-	// orchestrator) is built only when the job carries Service Bus config. Jobs
-	// that don't touch Service Bus (digest, hourly-digest, dormant-cleanup) leave
-	// the bootstrapper nil; poll-bootstrap then refuses to run rather than
-	// crashing.
-	var (
-		bootstrapper *worker.Bootstrapper
-		sbClient     *servicebus.Client
-	)
-	if cfg.ServiceBusNamespace != "" && cfg.ServiceBusQueueName != "" {
-		sbClient, err = servicebus.NewClient(cfg.ServiceBusNamespace, cfg.ServiceBusQueueName, cfg.AzureClientID)
-		if err != nil {
-			logger.Error("build service bus client", "error", err)
-			return 1
-		}
-		defer func() {
-			closeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			if err := sbClient.Close(closeCtx); err != nil {
-				logger.Error("service bus client close", "error", err)
-			}
-		}()
-		// The bootstrapper shares the same Postgres polling lease the poll-sb
-		// orchestrator uses (built into st.lease below) — this is what closes the
-		// unleased-bootstrap fork mechanism (GH#938 PR1): only the current lease
-		// holder may mutate the trigger queue. WithLeaseMetrics records
-		// towncrier.polling.lease.acquired with caller "bootstrap" (registry.go:264,
-		// designed for but never wired until now).
-		bootstrapper = worker.NewBootstrapper(sbClient, st.lease, logger, time.Now).WithLeaseMetrics(registry)
 	}
 
 	// The digest, dormant-cleanup, subscription-sweep and pg-purge handlers build
@@ -191,21 +149,6 @@ func run() int {
 	digester := buildDigester(cfg, registry, st, logger)
 	dormantRunner := buildDormant(cfg, st, logger)
 	sweepRunner := buildSweep(cfg, st, logger)
-
-	// The poll-sb orchestrator is built only when the job carries Service Bus
-	// (trigger queue) config. A job missing it leaves poller a genuinely nil
-	// interface; poll-sb then refuses to run rather than crashing. Declared as the
-	// interface so the "unconfigured" case stays a nil interface value (a typed-nil
-	// adapter would defeat the guard).
-	var poller worker.PollOrchestrator
-	pollAdapter, err := buildPollOrchestrator(cfg, sbClient, registry, st, logger)
-	if err != nil {
-		logger.Error("build poll-sb orchestrator", "error", err)
-		return 1
-	}
-	if pollAdapter != nil {
-		poller = pollAdapter
-	}
 
 	// The pg-purge runner enforces row retention for Notifications (90 days by
 	// default, NOTIFICATIONS_RETENTION_DAYS) and DeviceRegistrations (180 days,
@@ -219,13 +162,18 @@ func run() int {
 		logger,
 	)
 
-	// The dev-seed job is built only when its dedicated prod-read config
-	// (DEV_SEED_PROD_AZURE_CLIENT_ID / DEV_SEED_PROD_POSTGRES_USER) is present.
-	// It is created dev-only (tc-grvu.6), so a job missing it (every prod job,
-	// and any dev job before that infra bead deploys) leaves devSeeder a
-	// genuinely nil interface; dev-seed then refuses to run rather than
-	// crashing.
-	devSeeder := buildDevSeeder(cfg, registry, st, logger)
+	// The poll runner is built only for WORKER_MODE=poll: it needs PlanIt config
+	// and validates the poll settings, so a malformed value fails only that job.
+	// Declared as the interface so the unbuilt case stays a genuinely nil value.
+	var poller worker.PollRunner
+	if mode == "poll" {
+		adapter, err := buildPoller(cfg, pool, registry, st, logger)
+		if err != nil {
+			logger.Error("build poller", "error", err)
+			return 1
+		}
+		poller = adapter
+	}
 
 	// The appstore-reconcile runner is built only when APPSTORE_RECONCILE_ENABLED
 	// is set and its App Store Server API key material parses. A job missing
@@ -237,341 +185,14 @@ func run() int {
 		reconciler = r
 	}
 
-	return worker.Run(context.Background(), mode, bootstrapper, digester, dormantRunner, poller, sweepRunner, purger, devSeeder, reconciler, logger)
-}
-
-// buildPollOrchestrator wires the poll-sb orchestrator: the PlanIt client,
-// the Postgres poll-state and lease stores, ADR 0044's four-lane
-// planner/executor loop (A/B/C/D), and the next-run scheduler — bridged to
-// the receive/publish operations of the shared Service Bus client. It
-// returns (nil, nil) when Service Bus config is absent, so poll-sb refuses
-// to run rather than nil-panicking. The cycle budget (replicaTimeout −
-// grace) and the handler/lease budgets all come from config.
-//
-// ADR 0041 / GH#962 (bead tc-5m3tw) replaced the original per-authority
-// drain this function used to build — the LRU authority selection, the
-// watched/seed cycle alternation, and the per-authority cursor/high-water-
-// mark handler — with a single national query per lane and one global
-// watermark per lane. That old wiring (polling.NewMinuteCycleSelector,
-// NewCycleAlternatingProvider, NewWatchZoneAuthorityProvider,
-// NewPollPlanItHandler, NewAllAuthorityProvider) is left compiling but
-// unwired (the ADR's explicit migration posture: rollback is a config
-// change, not a revert) — ADR 0044 (this function's current shape) removed
-// the last remaining use of it, the per-authority Lane C sweep.
-func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, registry *metrics.Registry, st *stores, logger *slog.Logger) (*pollOrchestratorAdapter, error) {
-	if sbClient == nil {
-		return nil, nil //nolint:nilnil // absent Service Bus config is a valid "no poller" state, not an error
-	}
-
-	planItClient, err := planit.NewClient(planit.Options{
-		BaseURL: cfg.PlanItBaseURL,
-		Throttle: planit.ThrottleOptions{
-			DelayBetweenRequests: secondsToDuration(cfg.PlanItThrottleDelaySeconds),
-		},
-		Retry: planit.RetryOptions{
-			MaxRetries:       cfg.PlanItMaxRetries,
-			InitialBackoff:   secondsToDuration(cfg.PlanItInitialBackoffSeconds),
-			RateLimitBackoff: secondsToDuration(cfg.PlanItRateLimitBackoffSeconds),
-		},
-		Metrics: registry,
-		// PageSize governs only the legacy per-authority FetchApplicationsPage
-		// path (unwired below); the national lanes hardcode pg_sz=300
-		// (planit.nationalPageSize) — a fixed safety rule, not a config dial.
-		PageSize: cfg.PollingPlanItPageSize,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	// appStore and zoneStore are the Postgres stores every lane's ingester
-	// (Upsert + change dedup) and the watch-zone notify fan-out
-	// (FindZonesContaining) consume.
-	appStore := st.app
-	zoneStore := st.zone
-
-	var stateStore polling.PollStateAccess = st.pollState
-	var leaseStore polling.LeaseAccess = st.lease
-
-	// Lane A (new applications) and Lane B (decisions): the national
-	// churn-masked delta poll. Each lane owns ONE global watermark (persisted
-	// in the existing poll_state table via a reserved sentinel authority_id —
-	// no schema migration) instead of the retired per-authority cursors.
-	laneA := polling.NewNationalLaneHandler(
-		planItClient, stateStore, appStore,
-		polling.NationalLaneOptions{
-			Lane:       polling.LaneA,
-			Mask:       planit.MaskStartDate,
-			MaskWindow: time.Duration(cfg.PollingLaneAMaskDays) * 24 * time.Hour,
-			MaxPages:   nil, // unbounded: the national delta is measured at ~6 pages/day (ADR 0041)
-		},
-		time.Now, logger,
-	)
-	laneBMaxPages := cfg.PollingLaneBMaxPages
-	laneB := polling.NewNationalLaneHandler(
-		planItClient, stateStore, appStore,
-		polling.NationalLaneOptions{
-			Lane:       polling.LaneB,
-			Mask:       planit.MaskDecidedStart,
-			MaskWindow: time.Duration(cfg.PollingLaneBMaskDays) * 24 * time.Hour,
-			MaxPages:   &laneBMaxPages, // decision volume is unmeasured pre-cutover; do not remove this cap
-		},
-		time.Now, logger,
-	)
-
-	// Lane C (ADR 0044): the national inverse-mask reconciliation lane,
-	// replacing the deleted per-authority ReconciliationHandler (485
-	// requests/pass plus hydration fan-out, the source of the tc-mc0hf 429
-	// storms).
-	//
-	// Gated behind POLLING_LANE_C_ENABLED (tc-56ahl / GH#1125, default true —
-	// unset leaves Lane C running exactly as today). ADR 0044 dropped this
-	// gate on the reasoning that the bounded national query shape made Lane C
-	// safe to run unconditionally; that has not held — the query shape is the
-	// tc-777e7 livelock bug, and every in-hours cycle now issues ~135s of
-	// timed-out national queries against PlanIt for zero useful work. The gate
-	// is back as a reversible mitigation and is set false in prod pending the
-	// real fix (tc-777e7 Parts 2/3). A nil laneC is the safe default when
-	// disabled: NationalPollHandler.loadPlannerState/execOnePage and
-	// wirePollFanOut all nil-guard it, exactly like Lane D.
-	var laneC *polling.InverseMaskLaneHandler
-	if cfg.PollingLaneCEnabled {
-		laneCMaxPages := cfg.PollingLaneCMaxPagesPerCycle
-		laneC = polling.NewInverseMaskLaneHandler(
-			planItClient, stateStore, appStore,
-			polling.InverseMaskOptions{
-				// The same mask width as Lane A's start_date mask: Lane C's
-				// end_date bound is that cutoff inverted, so the two lanes
-				// partition the national change axis with no gap or overlap.
-				MaskWindow: time.Duration(cfg.PollingLaneAMaskDays) * 24 * time.Hour,
-				// tc-hku56 / GH#1140: bounds Lane C's per-cycle page burst now
-				// that a page costs one PlanIt request instead of an
-				// id_match hydration fan-out that used to 429 the page loop
-				// shut on its own.
-				MaxPages: &laneCMaxPages,
-				// tc-hku56 / GH#1140: Lane C's own recency gate, composed
-				// inside WithFanOut below — see InverseMaskOptions'
-				// NotifyRecencyWindow doc comment.
-				NotifyRecencyWindow: time.Duration(cfg.PollingLaneCNotifyRecencyDays) * 24 * time.Hour,
-			},
-			time.Now, logger,
-		)
-	} else {
-		logger.Info("Lane C (national inverse-mask reconciliation) disabled by POLLING_LANE_C_ENABLED=false")
-	}
-
-	// The ADR 0044 planner: eligibility windows in Europe/London local time
-	// (Lane C daytime-only, Lane D out-of-hours) — the blank time/tzdata
-	// import in internal/polling/planner.go guarantees this resolves even on
-	// a container base image with no system tzdata.
-	loc, err := time.LoadLocation("Europe/London")
-	if err != nil {
-		return nil, fmt.Errorf("load Europe/London location: %w", err)
-	}
-	dayStart, err := polling.ParseCivilTime(cfg.PollingDayStart)
-	if err != nil {
-		return nil, fmt.Errorf("parse POLLING_DAY_START: %w", err)
-	}
-	dayEnd, err := polling.ParseCivilTime(cfg.PollingDayEnd)
-	if err != nil {
-		return nil, fmt.Errorf("parse POLLING_DAY_END: %w", err)
-	}
-	plnr := polling.NewPlanner(polling.PlannerOptions{
-		FreshnessInterval: cfg.PollingLaneFreshnessInterval,
-		DayStart:          dayStart,
-		DayEnd:            dayEnd,
-		Location:          loc,
-	})
-
-	handler := polling.NewNationalPollHandler(
-		laneA, laneB, laneC, plnr,
-		polling.NationalPollOptions{HandlerBudget: secondsToDuration(float64(cfg.PollingHandlerBudgetSeconds))},
-		time.Now, logger,
-	)
-
-	// Lane D (GH#967, ADR 0042): the paced historical backfill lane. A
-	// national, date-windowed backward sweep that enriches stale/NULL GH#935
-	// fields and fills coverage gaps via the existing Ingester — structurally
-	// incapable of notifying (its Ingester is always built with nil
-	// decision/enqueuer collaborators, and BackfillHandler has no method that
-	// could wire one; see internal/polling/backfill.go's package doc).
-	//
-	// Gated behind POLLING_BACKFILL_ENABLED (default off), mirroring the
-	// Lane C rollout precedent (tc-5lu8h): ships dark, soaks, then flips on
-	// deliberately. WithBackfill(nil) is the safe default when disabled —
-	// NationalPollHandler.Handle nil-guards it exactly like Lane C.
-	//
-	// Deliberately NOT passed to wirePollFanOut below: there is no fan-out to
-	// wire for this lane, by construction.
-	var laneD *polling.BackfillHandler
-	if cfg.PollingBackfillEnabled {
-		laneD = polling.NewBackfillHandler(
-			planItClient, st.backfill, appStore,
-			polling.BackfillOptions{
-				WindowWidthDays:            cfg.PollingBackfillWindowWidthDays,
-				MaxPagesPerCycle:           cfg.PollingBackfillMaxPagesPerCycle,
-				EmptyWindowsBeforeComplete: cfg.PollingBackfillEmptyWindowsBeforeComplete,
-			},
-			time.Now, logger,
-		).WithMetrics(registry)
-	}
-	handler.WithBackfill(laneD)
-
-	// Lane E (GH#1134, ADR 0047): the looping recent-window start_date sweep
-	// backstopping Lanes A/B. Unlike Lane D it CAN notify — behind an
-	// event-specific recency gate composed INSIDE RecentSweepHandler.WithFanOut
-	// (recentsweep_gate.go), so the wiring below cannot hand it an ungated
-	// notifier however it is edited.
-	//
-	// Gated behind POLLING_LANE_E_ENABLED (default off): ships dark, soaks,
-	// then flips on deliberately in infra — a dark soak matters more here than
-	// it did for Lane D because this lane sends pushes. WithRecentSweep(nil) is
-	// the safe default when disabled — NationalPollHandler nil-guards it
-	// exactly like Lane C/D.
-	var laneE *polling.RecentSweepHandler
-	if cfg.PollingLaneEEnabled {
-		laneE = polling.NewRecentSweepHandler(
-			planItClient, st.recentSweep, appStore,
-			polling.RecentSweepOptions{
-				DepthDays:           cfg.PollingLaneEDepthDays,
-				WindowWidthDays:     cfg.PollingLaneEWindowWidthDays,
-				MaxPagesPerCycle:    cfg.PollingLaneEMaxPagesPerCycle,
-				NotifyRecencyWindow: time.Duration(cfg.PollingLaneENotifyRecencyDays) * 24 * time.Hour,
-			},
-			time.Now, logger,
-		)
-	} else {
-		logger.Info("Lane E (recent-window sweep) disabled by POLLING_LANE_E_ENABLED unset/false")
-	}
-	handler.WithRecentSweep(laneE)
-
-	// Wire the poll-path notification fan-out onto the notifying lanes: each
-	// upserted/hydrated application drives a decision-event dispatch (on a
-	// non-decision -> decision transition) and a watch-zone notification
-	// fan-out, unchanged from the old drain (GH#784, tc-uc2p — the
-	// CUTOVER-BLOCKER fan-out; without it the Notifications table stays
-	// empty and every alert/digest breaks). Lane E's fan-out goes through its
-	// own recency gate, applied inside WithFanOut.
-	wirePollFanOut(cfg, laneA, laneB, laneC, laneE, handler, zoneStore, registry, st, logger)
-
-	scheduler := polling.NewNextRunScheduler(polling.DefaultSchedulerOptions(), polling.NewRandomJitter())
-
-	// Lease TTL must exceed the handler's worst-case runtime so the lease cannot
-	// expire mid-handler (which would let a peer start a duplicate cycle, forking
-	// the trigger chain). leaseTTLFor's +5m margin (GH#938 PR1) replaces a +30s
-	// margin that was observed too tight: the 4-minute handler budget is soft
-	// (checked between authorities, not preemptive), and an in-flight timeout plus
-	// container startup (acquire happens before receive) overran the old slack —
-	// a cycle ran ~4.9m against a 4.5m TTL during the 2026-07-12 PlanIt outage.
-	// RunOnce's Confirm-before-publish CAS is the second, TOCTOU-safe layer that
-	// still catches any residual overrun.
-	leaseTTL := leaseTTLFor(secondsToDuration(float64(cfg.PollingHandlerBudgetSeconds)))
-
-	orchestrator := polling.NewOrchestrator(
-		handler,
-		sbClient,
-		sbClient,
-		leaseStore,
-		scheduler,
-		polling.OrchestratorOptions{
-			LeaseTTL:               leaseTTL,
-			LeaseAcquireRetryDelay: 1 * time.Second,
-		},
-		time.Now,
-		logger,
-	)
-	// Record towncrier.polling.lease.acquired with caller "orchestrator" (tc-21np).
-	orchestrator.WithLeaseMetrics(registry)
-
-	// The hard cycle budget is replicaTimeout − grace; it bounds the whole
-	// RunOnce so the process exits cleanly before Container Apps SIGTERMs the
-	// replica.
-	cycleBudget := time.Duration(maxInt(1, cfg.PollReplicaTimeoutSeconds-cfg.PollShutdownGraceSeconds)) * time.Second
-
-	return &pollOrchestratorAdapter{orchestrator: orchestrator, cycleBudget: cycleBudget}, nil
-}
-
-// wirePollFanOut builds the poll-path notification fan-out collaborators — the
-// decision-event dispatcher, the watch-zone enqueuer, and the push coalescer
-// that batches the cycle's queued pushes into at most one per (user, watch
-// zone) — and attaches them to all three ADR 0044 lanes (GH#784). They share
-// the WatchZones store with the Postgres Notifications / Users /
-// NotificationState / DeviceRegistrations / SavedApplications stores.
-// zoneStore is the same Postgres watchzones.Store from buildPollOrchestrator
-// so FindZonesContaining already runs against the right backend. The APNs
-// push sender is real when its credentials are present, NoOp otherwise so the
-// poll job boots even without APNs config (the record is still written, so
-// the digest pipeline keeps working). The push coalescer is wired onto the
-// top-level handler, not the individual lanes: one Reset/Flush per cycle
-// covers every lane's pushes, mirroring the old drain's single flush point.
-//
-// laneC is nil when POLLING_LANE_C_ENABLED=false (tc-56ahl / GH#1125,
-// default true, set false in prod as a tc-777e7 livelock mitigation) and
-// also when a test wires a narrower lane set (e.g. only A/B); the nil guards
-// below cover both. laneE is nil when POLLING_LANE_E_ENABLED is unset/false
-// (ADR 0047, ships dark) — same nil-guard treatment.
-//
-// Lane E's WithFanOut wraps the collaborators in its own recency decorators
-// before rebuilding its Ingester, so the raw dispatcher/enqueuer never reach
-// Lane E ungated — that is by construction, not a rule this call site enforces.
-//
-// st may be nil in tests that only exercise the zone-containment path; the store
-// fields are extracted under a nil guard so the fan-out wires with no other
-// store dependency.
-func wirePollFanOut(cfg platform.Config, laneA, laneB *polling.NationalLaneHandler, laneC *polling.InverseMaskLaneHandler, laneE *polling.RecentSweepHandler, handler *polling.NationalPollHandler, zoneStore watchzones.Store, registry *metrics.Registry, st *stores, logger *slog.Logger) {
-	dispatcher, enqueuer, coalescer := buildNotifyFanOut(cfg, registry, zoneStore, st, logger)
-
-	// Record towncrier.notifications.created on each dispatcher (tc-21np). Only
-	// the real poll-sb path is on this KPI surface, so metrics wiring is this
-	// caller's job, not buildNotifyFanOut's.
-	enqueuer = enqueuer.WithMetrics(registry)
-	dispatcher = dispatcher.WithMetrics(registry)
-
-	laneA.WithFanOut(dispatcher, enqueuer)
-	laneB.WithFanOut(dispatcher, enqueuer)
-	if laneC != nil {
-		laneC.WithFanOut(dispatcher, enqueuer)
-	}
-	if laneE != nil {
-		laneE.WithFanOut(dispatcher, enqueuer)
-	}
-	handler.WithPushFlusher(coalescer)
-
-	// Record towncrier.polling.applications_ingested / cycles_completed /
-	// oldest_hwm_age_seconds on the four ADR 0044 lanes and the top-level
-	// handler (tc-7ef9g) — the same registry already wired onto the
-	// notification fan-out above. Without this the national-lane code path
-	// is invisible on those instruments even though ingestion itself works
-	// (confirmed via AppDependencies span inspection).
-	laneA.WithMetrics(registry)
-	laneB.WithMetrics(registry)
-	if laneC != nil {
-		laneC.WithMetrics(registry)
-	}
-	if laneE != nil {
-		laneE.WithMetrics(registry)
-	}
-	handler.WithMetrics(registry)
+	return worker.Run(context.Background(), mode, digester, dormantRunner, poller, sweepRunner, purger, reconciler, logger)
 }
 
 // buildNotifyFanOut constructs the decision-dispatch, zone-enqueue and
-// push-coalescer collaborators the notification fan-out needs. It is shared by
-// wirePollFanOut (the real poll-sb path, prod-only) and buildDevSeeder (the
-// dev-seed job, dev-only, tc-grvu.5/GH#808) so both feed applications through
-// byte-for-byte the same notification pipeline, whatever their application
-// source (PlanIt poll vs. the read-only prod mirror). Metrics wiring
-// (WithMetrics) on the enqueuer/dispatcher themselves is left to the caller:
-// dev-seed is a QA aid, not part of the towncrier.notifications.* KPI surface
-// poll-sb's real cycle feeds, so it deliberately skips that.
-//
-// registry is, however, always wired onto the underlying APNs/FCM push
-// senders (towncrier.push.delivery_failed, tc-97k35.4): dev-seed still sends
-// real pushes to real device tokens, so a delivery failure there is as
-// genuine an operational signal as one from the poll-sb path — unlike
-// notifications.created, it isn't a KPI reserved to the real cycle.
-//
-// st may be nil in tests that only exercise the zone-containment path; the
-// store fields are extracted under a nil guard so the fan-out wires with no
-// other store dependency.
+// push-coalescer collaborators the poll runner's event dispatcher needs.
+// registry is wired onto the APNs/FCM push senders; WithMetrics on the
+// enqueuer and decision dispatcher is left to the caller. st may be nil in
+// tests: the store fields are extracted under a nil guard.
 func buildNotifyFanOut(cfg platform.Config, registry *metrics.Registry, zoneStore watchzones.Store, st *stores, logger *slog.Logger) (*notifydispatch.DecisionDispatcher, *notifydispatch.Enqueuer, *notifydispatch.PushCoalescer) {
 	var (
 		notifStore     *notifications.PostgresStore
@@ -601,120 +222,6 @@ func buildNotifyFanOut(cfg platform.Config, registry *metrics.Registry, zoneStor
 		uuid.NewString, time.Now, logger,
 	)
 	return dispatcher, enqueuer, coalescer
-}
-
-// buildDevSeeder constructs the dev-seed job's collaborators: a second,
-// read-only pgxpool.Pool authenticated as the dedicated
-// towncrier_dev_seed_reader Postgres role via its own managed identity
-// (DEV_SEED_PROD_AZURE_CLIENT_ID, infra bead tc-grvu.1 — a distinct identity
-// from AzureClientID, which stays scoped to this process's own pool), wrapped
-// in applications.PostgresStore to read prod's most-recently-changed
-// applications, fed through a polling.Ingester built over the SAME
-// decision-dispatch/enqueue/push-coalescer collaborators wirePollFanOut builds
-// for the real poll path (via the shared buildNotifyFanOut, bound here to
-// dev's own stores), into a devseed.Seeder.
-//
-// It returns nil when DEV_SEED_PROD_AZURE_CLIENT_ID or
-// DEV_SEED_PROD_POSTGRES_USER is unset — the "unconfigured optional job"
-// posture buildPollOrchestrator/buildPushSender already use — so dev-seed
-// refuses to run rather than nil-panicking. This mode is created dev-only
-// (tc-grvu.6): every prod job, and any dev job before that infra bead deploys,
-// takes this path. A credential or pool build error is also treated as
-// unconfigured (logged, nil returned) rather than fatal, since a malformed
-// managed-identity/DSN input at boot must not crash the OTHER modes this same
-// binary dispatches (digest, dormant-cleanup, etc.) when they share a process.
-func buildDevSeeder(cfg platform.Config, registry *metrics.Registry, st *stores, logger *slog.Logger) worker.DevSeedRunner {
-	if cfg.DevSeedProdAzureClientID == "" || cfg.DevSeedProdPostgresUser == "" {
-		logger.Info("dev-seed unconfigured (DEV_SEED_PROD_AZURE_CLIENT_ID / DEV_SEED_PROD_POSTGRES_USER unset); dev-seed mode will refuse to run")
-		return nil
-	}
-
-	cred, err := azidentity.NewManagedIdentityCredential(&azidentity.ManagedIdentityCredentialOptions{
-		ID: azidentity.ClientID(cfg.DevSeedProdAzureClientID),
-	})
-	if err != nil {
-		logger.Error("dev-seed: build managed-identity credential; dev-seed mode will refuse to run", "error", err)
-		return nil
-	}
-
-	prodPool, err := postgres.NewTokenCredentialPool(context.Background(), postgres.ConnParams{
-		Host:    cfg.PostgresHost,
-		DB:      cfg.DevSeedProdPostgresDB,
-		User:    cfg.DevSeedProdPostgresUser,
-		SSLMode: cfg.PostgresSSLMode,
-	}, cred)
-	if err != nil {
-		logger.Error("dev-seed: build prod read-only pool; dev-seed mode will refuse to run", "error", err)
-		return nil
-	}
-
-	prodApps := applications.NewPostgresStore(prodPool)
-
-	// registry is threaded through for the push-sender delivery-failure metrics
-	// only (tc-97k35.4) — the towncrier.notifications.created KPI wiring on
-	// enqueuer/decision below is still skipped: that's wirePollFanOut's job (the
-	// poll-sb KPI surface), and dev-seed's ingestion is a QA aid, not part of it.
-	decision, enqueuer, coalescer := buildNotifyFanOut(cfg, registry, st.zone, st, logger)
-	ingester := polling.NewIngester(st.app, decision, enqueuer)
-
-	return devseed.NewSeeder(st.zone, prodApps, ingester, coalescer, cfg.DevSeedLimit, logger)
-}
-
-// pollOrchestratorAdapter flattens polling.OrchestratorRunResult into the
-// worker.PollRunResult the dispatcher tags and exit-codes on, and applies the
-// hard cycle-budget timeout around the orchestrator's single run. It satisfies
-// worker.PollOrchestrator.
-type pollOrchestratorAdapter struct {
-	orchestrator *polling.Orchestrator
-	cycleBudget  time.Duration
-}
-
-func (a *pollOrchestratorAdapter) RunOnce(ctx context.Context) (worker.PollRunResult, error) {
-	cycleCtx, cancel := context.WithTimeout(ctx, a.cycleBudget)
-	defer cancel()
-
-	res, err := a.orchestrator.RunOnce(cycleCtx)
-	if err != nil {
-		return worker.PollRunResult{MessageReceived: res.MessageReceived}, err
-	}
-
-	out := worker.PollRunResult{
-		MessageReceived:  res.MessageReceived,
-		PublishedNext:    res.PublishedNext,
-		LeaseUnavailable: res.LeaseUnavailable,
-	}
-	if res.PollResult != nil {
-		out.ApplicationCount = res.PollResult.ApplicationCount
-		out.AuthoritiesPolled = res.PollResult.AuthoritiesPolled
-		out.AuthorityErrors = res.PollResult.AuthorityErrors
-		out.AuthorityErrorIsPlanIt = res.PollResult.AuthorityErrorIsPlanIt
-		out.Termination = res.PollResult.TerminationReason.TelemetryValue()
-		out.OldestHWMAgeSeconds = res.PollResult.OldestHWMAgeSeconds
-		out.OldestHWMNeverPolled = res.PollResult.OldestHWMNeverPolled
-		out.CycleType = res.PollResult.CycleType
-	}
-	return out, nil
-}
-
-// secondsToDuration converts a fractional-seconds config value to a Duration.
-func secondsToDuration(s float64) time.Duration {
-	return time.Duration(s * float64(time.Second))
-}
-
-// leaseTTLFor derives the polling lease TTL from the handler budget: budget
-// plus a 5-minute margin, covering soft-budget overshoot (the budget is checked
-// between authorities, not preemptive) plus container cold-start before the
-// lease is even acquired (GH#938 PR1's "honest TTL").
-func leaseTTLFor(handlerBudget time.Duration) time.Duration {
-	return handlerBudget + 5*time.Minute
-}
-
-// maxInt returns the larger of a and b.
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }
 
 // buildDigester constructs the digest handler, wiring the per-feature Postgres

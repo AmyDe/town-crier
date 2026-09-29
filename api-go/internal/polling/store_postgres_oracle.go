@@ -13,7 +13,7 @@ import (
 
 var (
 	_ deltaSeenStore    = (*PostgresDeltaSeenStore)(nil)
-	_ memberStore       = (*PostgresOracleStore)(nil)
+	_ MemberStore       = (*PostgresOracleStore)(nil)
 	_ oracleMemberStore = (*PostgresOracleStore)(nil)
 	_ oracleDiffStore   = (*PostgresOracleStore)(nil)
 )

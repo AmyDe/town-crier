@@ -46,7 +46,7 @@ type deltaSeenStore interface {
 	Take(ctx context.Context, ref WindowRef, before time.Time) ([]AppKey, error)
 }
 
-type memberStore interface {
+type MemberStore interface {
 	Replace(ctx context.Context, ref WindowRef, readAt time.Time, keys []AppKey) error
 }
 
@@ -70,7 +70,7 @@ type RunCounts struct {
 // page and durable health events.
 type RunObserver struct {
 	delta   deltaSeenStore
-	members memberStore
+	members MemberStore
 	events  pollEventRecorder
 	disp    pageDispatcher
 	now     func() time.Time
@@ -84,7 +84,7 @@ var _ ReadHooks = (*RunObserver)(nil)
 
 // NewRunObserver wires the observer. members is nil in prod, where
 // poll_window_member is never written.
-func NewRunObserver(delta deltaSeenStore, members memberStore, events pollEventRecorder, disp pageDispatcher, now func() time.Time, log *slog.Logger) *RunObserver {
+func NewRunObserver(delta deltaSeenStore, members MemberStore, events pollEventRecorder, disp pageDispatcher, now func() time.Time, log *slog.Logger) *RunObserver {
 	return &RunObserver{delta: delta, members: members, events: events, disp: disp, now: now, log: log}
 }
 
