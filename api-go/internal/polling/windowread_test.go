@@ -95,7 +95,7 @@ func newReaderRig(t *testing.T, pages map[int]planit.FetchPageResult) *readerRig
 		ingest: &fakeAppIngester{},
 		writer: &fakeWindowWriter{},
 		logs:   &bytes.Buffer{},
-		now:    londonAt(2026, 6, 10, 21, 0),
+		now:    londonAt(6, 10, 21, 0),
 	}
 	log := slog.New(slog.NewTextHandler(r.logs, nil))
 	r.reader = NewWindowReader(r.fetch, r.ingest, r.writer, WindowReadConfig{FullReadMaxAge: 7 * 24 * time.Hour}, func() time.Time { return r.now }, log)
@@ -242,7 +242,7 @@ func TestWindowReader_TwoShortReadsInOneBudgetDayAreReported(t *testing.T) {
 		t.Fatalf("ShortWindows = %v", got)
 	}
 
-	next := londonAt(2026, 6, 11, 18, 5)
+	next := londonAt(6, 11, 18, 5)
 	if got := r.reader.ShortWindows(next); len(got) != 0 {
 		t.Fatalf("a new budget day starts clean: %v", got)
 	}
@@ -306,7 +306,7 @@ func TestWindowReader_IngestFailureStopsWithError(t *testing.T) {
 func TestWindowReader_ReadDeltaReadsToEnd(t *testing.T) {
 	t.Parallel()
 	r := newReaderRig(t, map[int]planit.FetchPageResult{0: page(0, 300, 650), 300: page(300, 300, 650), 600: page(600, 50, 650)})
-	w := NextWindowWork(plannerTestConfig(), WindowPlanState{}, londonAt(2026, 6, 10, 9, 5), 0)
+	w := NextWindowWork(plannerTestConfig(), WindowPlanState{}, londonAt(6, 10, 9, 5), 0)
 
 	res := r.reader.ReadDelta(context.Background(), *w)
 
