@@ -74,7 +74,7 @@ type DecisionDispatcher interface {
 // that contain it, enqueuing one notification per eligible zone.
 // *notifydispatch.Enqueuer satisfies it via EnqueueForApplication.
 type NotificationEnqueuer interface {
-	EnqueueForApplication(ctx context.Context, app applications.PlanningApplication) error
+	EnqueueForApplication(ctx context.Context, app applications.PlanningApplication, detectedAt time.Time) error
 }
 
 // pushFlusher drives the poll-cycle push coalescer's lifecycle (GH#784):

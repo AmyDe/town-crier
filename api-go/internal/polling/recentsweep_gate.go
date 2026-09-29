@@ -44,11 +44,11 @@ type recencyGatedEnqueuer struct {
 
 // EnqueueForApplication calls the inner enqueuer only when the application's
 // start_date is present and recent; otherwise it returns nil without a call.
-func (g recencyGatedEnqueuer) EnqueueForApplication(ctx context.Context, app applications.PlanningApplication) error {
+func (g recencyGatedEnqueuer) EnqueueForApplication(ctx context.Context, app applications.PlanningApplication, detectedAt time.Time) error {
 	if !withinRecency(app.StartDate, g.window, g.now) {
 		return nil
 	}
-	return g.inner.EnqueueForApplication(ctx, app)
+	return g.inner.EnqueueForApplication(ctx, app, detectedAt)
 }
 
 // recencyGatedDispatcher drops a decision-event dispatch whose application's

@@ -80,7 +80,7 @@ func (i *Ingester) Ingest(ctx context.Context, app applications.PlanningApplicat
 		}
 	}
 	if notifiableChanged && i.enqueuer != nil {
-		if err := i.enqueuer.EnqueueForApplication(ctx, app); err != nil {
+		if err := i.enqueuer.EnqueueForApplication(ctx, app, app.LastDifferent); err != nil {
 			return err
 		}
 	}
