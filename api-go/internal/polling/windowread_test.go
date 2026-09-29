@@ -65,10 +65,10 @@ func (f *fakeWindowWriter) MarkFullRead(_ context.Context, _ WindowRef, at time.
 	return nil
 }
 
-func recs(area, from, n int) []applications.PlanningApplication {
+func recs(from, n int) []applications.PlanningApplication {
 	out := make([]applications.PlanningApplication, n)
 	for i := range out {
-		out[i] = applications.PlanningApplication{UID: fmt.Sprintf("u%d", from+i), AreaID: area}
+		out[i] = applications.PlanningApplication{UID: fmt.Sprintf("u%d", from+i), AreaID: 1}
 	}
 	return out
 }
@@ -76,7 +76,7 @@ func recs(area, from, n int) []applications.PlanningApplication {
 // page builds a page starting at from with n records out of total.
 func page(from, n, total int) planit.FetchPageResult {
 	t := total
-	return planit.FetchPageResult{From: from, Applications: recs(1, from, n), Total: &t, HasMorePages: from+n < total}
+	return planit.FetchPageResult{From: from, Applications: recs(from, n), Total: &t, HasMorePages: from+n < total}
 }
 
 type readerRig struct {
@@ -200,7 +200,7 @@ func TestWindowReader_DuplicatesDoNotCountTowardsCompleteness(t *testing.T) {
 	t.Parallel()
 	dup := page(0, 300, 400)
 	second := page(300, 100, 400)
-	second.Applications = recs(1, 0, 100) // repeats uids u0..u99
+	second.Applications = recs(0, 100) // repeats uids u0..u99
 	r := newReaderRig(t, map[int]planit.FetchPageResult{0: dup, 300: second})
 
 	res := r.reader.ReadWindow(context.Background(), testWindow(), WindowState{})

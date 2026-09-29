@@ -87,14 +87,14 @@ func appOn(uid string, start, decided *time.Time) applications.PlanningApplicati
 	return applications.PlanningApplication{UID: uid, AreaID: 1, StartDate: start, DecidedDate: decided}
 }
 
-func dayPtr(y int, m time.Month, d int) *time.Time { t := utcDay(y, m, d); return &t }
+func dayPtr(m time.Month, d int) *time.Time { t := utcDay(2026, m, d); return &t }
 
 func pageOf(apps ...applications.PlanningApplication) planit.FetchPageResult {
 	return planit.FetchPageResult{Applications: apps}
 }
 
-func windowQuery(axis planit.Axis, day time.Time) planit.WindowQuery {
-	return planit.WindowQuery{Work: planit.WorkWindowStart, Axis: axis, From: day, To: day}
+func windowQuery(day time.Time) planit.WindowQuery {
+	return planit.WindowQuery{Work: planit.WorkWindowStart, Axis: planit.AxisStart, From: day, To: day}
 }
 
 func TestRunObserver_WindowIntegrity(t *testing.T) {
@@ -106,15 +106,15 @@ func TestRunObserver_WindowIntegrity(t *testing.T) {
 		want int
 	}{
 		{"all inside", pageOf(appOn("a", &day, nil), appOn("b", &day, nil)), 0},
-		{"one outside", pageOf(appOn("a", &day, nil), appOn("b", dayPtr(2026, 6, 8), nil)), 1},
-		{"null axis date", pageOf(appOn("a", nil, dayPtr(2026, 6, 9))), 1},
-		{"two outside", pageOf(appOn("a", dayPtr(2026, 6, 10), nil), appOn("b", dayPtr(2026, 6, 1), nil)), 2},
+		{"one outside", pageOf(appOn("a", &day, nil), appOn("b", dayPtr(6, 8), nil)), 1},
+		{"null axis date", pageOf(appOn("a", nil, dayPtr(6, 9))), 1},
+		{"two outside", pageOf(appOn("a", dayPtr(6, 10), nil), appOn("b", dayPtr(6, 1), nil)), 2},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			r := newObserverRig(t, false)
-			r.obs.PageFetched(context.Background(), windowQuery(planit.AxisStart, day), tt.page)
+			r.obs.PageFetched(context.Background(), windowQuery(day), tt.page)
 			if got := r.obs.Counts().Violations; got != tt.want {
 				t.Fatalf("violations = %d, want %d", got, tt.want)
 			}
@@ -143,8 +143,8 @@ func TestRunObserver_DeltaMaskIntegrity(t *testing.T) {
 	r := newObserverRig(t, false)
 
 	r.obs.PageFetched(context.Background(), q, pageOf(
-		appOn("ok", nil, dayPtr(2026, 6, 1)),
-		appOn("old", nil, dayPtr(2026, 5, 26)),
+		appOn("ok", nil, dayPtr(6, 1)),
+		appOn("old", nil, dayPtr(5, 26)),
 	))
 
 	if got := r.obs.Counts().Violations; got != 1 {
@@ -159,9 +159,9 @@ func TestRunObserver_DeltaPageWritesDeltaSeenForBandRecordsOnly(t *testing.T) {
 	q := planit.WindowQuery{Work: planit.WorkDeltaStart, Axis: planit.AxisStart, From: utcDay(2026, 5, 27), DifferentStart: &diff}
 
 	err := r.obs.PageIngested(context.Background(), q, pageOf(
-		appOn("today", dayPtr(2026, 6, 10), nil),
-		appOn("edge", dayPtr(2026, 5, 27), nil),
-		appOn("outside", dayPtr(2026, 5, 26), nil),
+		appOn("today", dayPtr(6, 10), nil),
+		appOn("edge", dayPtr(5, 27), nil),
+		appOn("outside", dayPtr(5, 26), nil),
 		appOn("nodate", nil, nil),
 	))
 	if err != nil {
@@ -182,7 +182,7 @@ func TestRunObserver_WindowPageWritesNoDeltaSeenAndDispatches(t *testing.T) {
 	r := newObserverRig(t, false)
 	day := utcDay(2026, 6, 9)
 
-	if err := r.obs.PageIngested(context.Background(), windowQuery(planit.AxisStart, day), pageOf(appOn("a", &day, nil))); err != nil {
+	if err := r.obs.PageIngested(context.Background(), windowQuery(day), pageOf(appOn("a", &day, nil))); err != nil {
 		t.Fatal(err)
 	}
 
@@ -199,7 +199,7 @@ func TestRunObserver_SurgeIsRecordedOnce(t *testing.T) {
 	r := newObserverRig(t, false)
 	r.disp.res = appevents.Result{Surge: true}
 	day := utcDay(2026, 6, 9)
-	q := windowQuery(planit.AxisStart, day)
+	q := windowQuery(day)
 
 	_ = r.obs.PageIngested(context.Background(), q, pageOf())
 	_ = r.obs.PageIngested(context.Background(), q, pageOf())
@@ -300,7 +300,7 @@ func TestRunObserver_DispatchFailureDoesNotFailThePage(t *testing.T) {
 	r.obs = NewRunObserver(r.delta, nil, r.evs, failingDispatcher{}, func() time.Time { return r.now }, slog.New(slog.NewTextHandler(r.logs, nil)))
 	day := utcDay(2026, 6, 9)
 
-	if err := r.obs.PageIngested(context.Background(), windowQuery(planit.AxisStart, day), pageOf()); err != nil {
+	if err := r.obs.PageIngested(context.Background(), windowQuery(day), pageOf()); err != nil {
 		t.Fatalf("err = %v", err)
 	}
 	if !strings.Contains(r.logs.String(), "dispatch") {

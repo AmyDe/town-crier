@@ -34,9 +34,9 @@ func (s *PostgresDeltaSeenStore) Upsert(ctx context.Context, rows []DeltaSeen) e
 	for _, r := range rows {
 		latest[fmt.Sprintf("%d|%s|%s|%d", r.Axis, r.Day.Format(time.DateOnly), r.UID, r.AreaID)] = r
 	}
-	var axes, uids []string
-	var days, seen []time.Time
-	var areas []int32
+	axes, uids := make([]string, 0, len(latest)), make([]string, 0, len(latest))
+	days, seen := make([]time.Time, 0, len(latest)), make([]time.Time, 0, len(latest))
+	areas := make([]int32, 0, len(latest))
 	for _, r := range latest {
 		axes = append(axes, axisName(r.Axis))
 		days = append(days, r.Day)
@@ -157,11 +157,14 @@ func (s *PostgresOracleStore) Insert(ctx context.Context, rows []OracleDiff) err
 ON CONFLICT (axis, day, uid, area_id) DO NOTHING`, axisName(d.Axis), d.Day, d.UID, d.AreaID, d.FoundAt)
 	}
 	res := s.pool.SendBatch(ctx, batch)
-	defer res.Close()
 	for range rows {
 		if _, err := res.Exec(); err != nil {
+			res.Close() //nolint:errcheck,gosec // the Exec error is the one to report
 			return fmt.Errorf("insert poll_oracle_diff: %w", err)
 		}
+	}
+	if err := res.Close(); err != nil {
+		return fmt.Errorf("insert poll_oracle_diff: %w", err)
 	}
 	return nil
 }

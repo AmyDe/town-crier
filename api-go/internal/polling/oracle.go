@@ -116,8 +116,8 @@ func (o *Oracle) runAxis(ctx context.Context, axis planit.Axis, res *OracleOutco
 		return fmt.Errorf("record oracle_done: %w", err)
 	}
 	o.log.InfoContext(ctx, "poll.oracle_night",
-		slog.String("axis", axisName(axis)), slog.Int("wide_records", len(wide)),
-		slog.Int("new_diffs", res.NewDiffs), slog.Any("classified", res.Classified))
+		slog.String("axis", axisName(axis)), slog.Int("wideRecords", len(wide)),
+		slog.Int("newDiffs", res.NewDiffs), slog.Any("classified", res.Classified))
 	return nil
 }
 
@@ -181,7 +181,7 @@ func (o *Oracle) classifyPending(ctx context.Context, axis planit.Axis, wide map
 		}
 		res.Classified[reason]++
 		if reason == ReasonOracleMissed {
-			o.log.ErrorContext(ctx, "poll.oracle_miss", slog.String("uid", d.UID), slog.Int("area_id", d.AreaID),
+			o.log.ErrorContext(ctx, "poll.oracle_miss", slog.String("uid", d.UID), slog.Int("areaId", d.AreaID),
 				slog.String("axis", axisName(axis)), slog.String("day", d.Day.Format(time.DateOnly)))
 		}
 	}

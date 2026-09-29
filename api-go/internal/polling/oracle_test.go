@@ -3,7 +3,6 @@ package polling
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"testing"
 	"time"
@@ -76,7 +75,7 @@ func newOracleRig(t *testing.T, pages map[int]planit.FetchPageResult) *oracleRig
 		events:  &fakeOracleEvents{done: map[planit.Axis]time.Time{}},
 		now:     londonAt(6, 11, 2, 0),
 	}
-	r.oracle = NewOracle(r.fetch, r.members, r.diffs, r.events, func() time.Time { return r.now }, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	r.oracle = NewOracle(r.fetch, r.members, r.diffs, r.events, func() time.Time { return r.now }, slog.New(slog.DiscardHandler))
 	return r
 }
 
@@ -114,8 +113,8 @@ func TestOracle_WideReadShapeAndPaging(t *testing.T) {
 	t.Parallel()
 	total := 400
 	r := newOracleRig(t, map[int]planit.FetchPageResult{
-		0:   {From: 0, Applications: recs(1, 0, 300), Total: &total, HasMorePages: true},
-		300: {From: 300, Applications: recs(1, 300, 100), Total: &total},
+		0:   {From: 0, Applications: recs(0, 300), Total: &total, HasMorePages: true},
+		300: {From: 300, Applications: recs(300, 100), Total: &total},
 	})
 
 	out, err := r.oracle.Run(context.Background(), r.now)

@@ -3,7 +3,6 @@ package polling
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"slices"
 	"testing"
@@ -165,7 +164,7 @@ func newRunnerRig(t *testing.T, now time.Time, oracle *fakeOracleRun) *runnerRig
 	deps := RunnerDeps{
 		Lease: r.lease, State: w, Calls: w, Reader: w, Counters: r.counters,
 		Push: r.flusher, Flusher: r.flusher, Health: r.health,
-		Now: w.clock, Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Now: w.clock, Log: slog.New(slog.DiscardHandler),
 	}
 	if oracle != nil {
 		oracle.w = w

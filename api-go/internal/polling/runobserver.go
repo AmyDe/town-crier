@@ -119,7 +119,7 @@ func (o *RunObserver) PageFetched(ctx context.Context, q planit.WindowQuery, p p
 	o.log.ErrorContext(ctx, "poll.window_violation",
 		slog.String("work", string(q.Work)), slog.String("axis", axisName(q.Axis)),
 		slog.String("from", q.From.Format(time.DateOnly)), slog.String("to", q.To.Format(time.DateOnly)),
-		slog.Int("index", q.Index), slog.Int("violations", bad), slog.String("first_uid", first))
+		slog.Int("index", q.Index), slog.Int("violations", bad), slog.String("firstUid", first))
 	o.record(ctx, PollEvent{Kind: EventWindowViolation, Axis: q.Axis, Day: dayFor(q), Detail: bad})
 }
 
