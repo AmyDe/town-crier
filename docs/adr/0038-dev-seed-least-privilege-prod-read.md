@@ -4,7 +4,7 @@ Date: 2026-07-04
 
 ## Status
 
-Accepted
+Superseded by [0049](0049-planit-day-window-polling-rebuild.md)
 
 ## Context
 
