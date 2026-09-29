@@ -23,7 +23,7 @@ func (r *recordingExec) Exec(_ context.Context, sql string, args ...any) (pgconn
 }
 
 func (r *recordingExec) Query(context.Context, string, ...any) (pgx.Rows, error) { return nil, nil }
-func (r *recordingExec) QueryRow(context.Context, string, ...any) pgx.Row       { return nil }
+func (r *recordingExec) QueryRow(context.Context, string, ...any) pgx.Row        { return nil }
 
 func TestPostgresRetentionStore_PurgeUsesEachTablesCutoff(t *testing.T) {
 	t.Parallel()

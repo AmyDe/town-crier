@@ -152,7 +152,7 @@ func run() int {
 
 	// The pg-purge runner enforces row retention for Notifications (90 days by
 	// default, NOTIFICATIONS_RETENTION_DAYS) and DeviceRegistrations (180 days,
-	// DEVICE_REGISTRATIONS_RETENTION_DAYS).
+	// DEVICE_REGISTRATIONS_RETENTION_DAYS), and purges the polling tables.
 	purger := pgpurge.New(
 		st.notification,
 		st.device,
@@ -160,7 +160,7 @@ func run() int {
 		time.Duration(cfg.DeviceRegistrationsRetentionDays)*24*time.Hour,
 		time.Now,
 		logger,
-	)
+	).WithPollRetention(polling.NewPostgresRetentionStore(pool))
 
 	// The poll runner is built only for WORKER_MODE=poll: it needs PlanIt config
 	// and validates the poll settings, so a malformed value fails only that job.
