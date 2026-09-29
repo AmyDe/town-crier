@@ -186,7 +186,7 @@ func TestDispatch_AgeFilter(t *testing.T) {
 		{"today fans out", date(2026, 6, 15), now, StatusSent},
 		{"null date falls back to detected_at, 14 days", nil, now.AddDate(0, 0, -14), StatusSent},
 		{"null date falls back to detected_at, 15 days", nil, now.AddDate(0, 0, -15), StatusStale},
-		{"null date uses london date of detected_at", nil, time.Date(2026, 6, 1, 23, 30, 0, 0, time.UTC), StatusSent},
+		{"null date uses london date of detected_at", nil, time.Date(2026, 5, 31, 23, 30, 0, 0, time.UTC), StatusSent},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
