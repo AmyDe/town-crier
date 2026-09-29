@@ -30,8 +30,15 @@ PlanIt is a free service run by one person and our only planning-data provider (
 - **Never more than 10 requests total in a session.**
 - **Never more than one request per 60 seconds.**
 - **Never write a loop that hits PlanIt without an explicit sleep of 60s or more between iterations.**
+- **Never send a custom User-Agent.** No app name, no `towncrierapp.uk`, no email. Local traffic must never be affiliated with Town Crier, so that a block on local debugging cannot also block the prod poller, and the reverse.
+- **Never put a personal email in any request**, header or payload, and never in a brief or prompt for an agent that calls PlanIt.
 
-No exceptions for "it's only a few more", for batching, or for running in parallel. If a task looks like it needs more than 10 calls, stop and ask. Prefer the `httptest`-backed doubles in `api-go/internal/planit/*_test.go` over live calls.
+No exceptions for "it's only a few more", for batching, or for running in parallel. If a task looks like it needs more than 10 calls, stop and ask. Prefer the `httptest`-backed doubles in `api-go/internal/planit/*_test.go` over live calls. Every brief that lets a subagent call PlanIt must repeat these rules.
+
+## User-Agent
+
+- **Prod poller:** `TownCrier/<version> (+https://towncrierapp.uk; support@towncrierapp.uk)`. The contact is always `support@towncrierapp.uk`, never a personal address.
+- **Local and agent sessions:** no custom User-Agent (see above).
 
 ## PlanIt facts
 
