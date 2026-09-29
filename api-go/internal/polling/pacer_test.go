@@ -41,23 +41,23 @@ func (c *fakeClock) Sleep(ctx context.Context, d time.Duration) error {
 	return nil
 }
 
-// fakeCallLog emulates the advisory lock with a mutex held from Begin until
+// fakePlanItCallLog emulates the advisory lock with a mutex held from Begin until
 // Commit or Rollback.
-type fakeCallLog struct {
+type fakePlanItCallLog struct {
 	lock sync.Mutex
 	mu   sync.Mutex
 	rows []PlanItCall
 	next int64
 }
 
-func (f *fakeCallLog) Begin(ctx context.Context) (callLogTx, error) {
+func (f *fakePlanItCallLog) Begin(ctx context.Context) (planItCallTx, error) {
 	f.lock.Lock()
-	return &fakeCallTx{log: f}, nil
+	return &fakePlanItCallTx{log: f}, nil
 }
 
-func (f *fakeCallLog) Latest(_ context.Context) (*PlanItCall, error) { return f.latest(), nil }
+func (f *fakePlanItCallLog) Latest(_ context.Context) (*PlanItCall, error) { return f.latest(), nil }
 
-func (f *fakeCallLog) latest() *PlanItCall {
+func (f *fakePlanItCallLog) latest() *PlanItCall {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if len(f.rows) == 0 {
@@ -67,11 +67,11 @@ func (f *fakeCallLog) latest() *PlanItCall {
 	return &r
 }
 
-func (f *fakeCallLog) CountBetween(_ context.Context, from, to time.Time) (int, error) {
+func (f *fakePlanItCallLog) CountBetween(_ context.Context, from, to time.Time) (int, error) {
 	return f.count(from, to), nil
 }
 
-func (f *fakeCallLog) count(from, to time.Time) int {
+func (f *fakePlanItCallLog) count(from, to time.Time) int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	n := 0
@@ -83,18 +83,18 @@ func (f *fakeCallLog) count(from, to time.Time) int {
 	return n
 }
 
-type fakeCallTx struct {
-	log  *fakeCallLog
+type fakePlanItCallTx struct {
+	log  *fakePlanItCallLog
 	done bool
 }
 
-func (t *fakeCallTx) Latest(ctx context.Context) (*PlanItCall, error) { return t.log.latest(), nil }
+func (t *fakePlanItCallTx) Latest(ctx context.Context) (*PlanItCall, error) { return t.log.latest(), nil }
 
-func (t *fakeCallTx) CountBetween(ctx context.Context, from, to time.Time) (int, error) {
+func (t *fakePlanItCallTx) CountBetween(ctx context.Context, from, to time.Time) (int, error) {
 	return t.log.count(from, to), nil
 }
 
-func (t *fakeCallTx) Insert(_ context.Context, c PlanItCall) (int64, error) {
+func (t *fakePlanItCallTx) Insert(_ context.Context, c PlanItCall) (int64, error) {
 	t.log.mu.Lock()
 	defer t.log.mu.Unlock()
 	t.log.next++
@@ -103,7 +103,7 @@ func (t *fakeCallTx) Insert(_ context.Context, c PlanItCall) (int64, error) {
 	return c.ID, nil
 }
 
-func (t *fakeCallTx) Finish(_ context.Context, id int64, r CallResult) error {
+func (t *fakePlanItCallTx) Finish(_ context.Context, id int64, r CallResult) error {
 	t.log.mu.Lock()
 	defer t.log.mu.Unlock()
 	for i := range t.log.rows {
@@ -116,7 +116,7 @@ func (t *fakeCallTx) Finish(_ context.Context, id int64, r CallResult) error {
 	return nil
 }
 
-func (t *fakeCallTx) Commit(context.Context) error {
+func (t *fakePlanItCallTx) Commit(context.Context) error {
 	if !t.done {
 		t.done = true
 		t.log.lock.Unlock()
@@ -124,11 +124,11 @@ func (t *fakeCallTx) Commit(context.Context) error {
 	return nil
 }
 
-func (t *fakeCallTx) Rollback(context.Context) error { return t.Commit(context.Background()) }
+func (t *fakePlanItCallTx) Rollback(context.Context) error { return t.Commit(context.Background()) }
 
-func newTestPacer(t *testing.T, now time.Time, cap int) (*Pacer, *fakeCallLog, *fakeClock) {
+func newTestPacer(t *testing.T, now time.Time, cap int) (*Pacer, *fakePlanItCallLog, *fakeClock) {
 	t.Helper()
-	log := &fakeCallLog{}
+	log := &fakePlanItCallLog{}
 	clk := &fakeClock{now: now}
 	p := NewPacer(log, PacerConfig{DailyCap: cap, MinSpacing: 60 * time.Second}, clk.Now, clk.Sleep)
 	return p, log, clk
@@ -230,7 +230,7 @@ func TestPacer_Do_BudgetExhausted_NoRequestNoRow(t *testing.T) {
 	now := time.Date(2026, 6, 10, 20, 0, 0, 0, londonTZ)
 	p, log, _ := newTestPacer(t, now, 300)
 	for i := 0; i < 300; i++ {
-		log.rows = append(log.rows, PlanItCall{ID: int64(i + 1), At: now.Add(-time.Duration(i+2) * time.Minute), Work: "window_start", Status: intp(200)})
+		log.rows = append(log.rows, PlanItCall{ID: int64(i + 1), At: now.Add(-time.Duration(i+2) * 5 * time.Second), Work: "window_start", Status: intp(200)})
 	}
 	calls := 0
 	_, err := p.Do(context.Background(), planit.WorkWindowStart, time.Time{}, 0, func(context.Context) (planit.FetchPageResult, error) {
