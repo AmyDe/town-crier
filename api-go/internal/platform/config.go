@@ -387,6 +387,30 @@ type Config struct {
 	DevSeedProdPostgresDB    string
 	DevSeedProdPostgresUser  string
 	DevSeedProdAzureClientID string
+
+	// PollingDailyCallCap is POLLING_DAILY_CALL_CAP, the PlanIt requests allowed
+	// per budget day (prod 240, dev 60). PollingMinRequestSpacingSeconds is the
+	// gap between requests. PollingDeltaSlots is the comma-separated HH:MM
+	// Europe/London delta slots. PollingDayAllowance is the budget kept back for
+	// the next day's deltas. PollingFullReadMaxAgeDays forces a full window read
+	// after that many days. PollingRunBudgetMinutes bounds one hourly run.
+	// PollingAreaID restricts every query to one PlanIt area (0 = all).
+	PollingDailyCallCap             int
+	PollingMinRequestSpacingSeconds int
+	PollingDeltaSlots               string
+	PollingDeltaMaxPages            int
+	PollingDayAllowance             int
+	PollingFullReadMaxAgeDays       int
+	PollingRunBudgetMinutes         int
+	PollingAreaID                   int
+	PollingOracleEnabled            bool
+
+	// NotifyQuietStart and NotifyQuietEnd are the Europe/London HH:MM quiet
+	// hours; NotifyEventSurgeThreshold is the 24h event count above which the
+	// dispatcher treats pending events as a surge.
+	NotifyQuietStart          string
+	NotifyQuietEnd            string
+	NotifyEventSurgeThreshold int
 }
 
 // defaultDevSeedProdPostgresDB is the prod database name the dev-seed job's
@@ -518,6 +542,27 @@ func LoadConfig() (Config, error) {
 		DevSeedProdPostgresDB:    getenv("DEV_SEED_PROD_POSTGRES_DB", defaultDevSeedProdPostgresDB),
 		DevSeedProdPostgresUser:  os.Getenv("DEV_SEED_PROD_POSTGRES_USER"),
 		DevSeedProdAzureClientID: os.Getenv("DEV_SEED_PROD_AZURE_CLIENT_ID"),
+
+		PollingDailyCallCap:             getenvInt("POLLING_DAILY_CALL_CAP", 240),
+		PollingMinRequestSpacingSeconds: getenvInt("POLLING_MIN_REQUEST_SPACING_SECONDS", 60),
+		PollingDeltaSlots:               getenv("POLLING_DELTA_SLOTS", "09:00,12:00,15:00,17:00"),
+		PollingDeltaMaxPages:            getenvInt("POLLING_DELTA_MAX_PAGES", 20),
+		PollingDayAllowance:             getenvInt("POLLING_DAY_ALLOWANCE", 60),
+		PollingFullReadMaxAgeDays:       getenvInt("POLLING_FULL_READ_MAX_AGE_DAYS", 7),
+		PollingRunBudgetMinutes:         getenvInt("POLLING_RUN_BUDGET_MINUTES", 55),
+		PollingOracleEnabled:            getenvBool("POLLING_ORACLE_ENABLED"),
+
+		NotifyQuietStart:          getenv("NOTIFY_QUIET_START", "22:00"),
+		NotifyQuietEnd:            getenv("NOTIFY_QUIET_END", "07:00"),
+		NotifyEventSurgeThreshold: getenvInt("NOTIFY_EVENT_SURGE_THRESHOLD", 10000),
+	}
+
+	if raw := strings.TrimSpace(os.Getenv("POLLING_AREA_ID")); raw != "" {
+		areaID, err := strconv.Atoi(raw)
+		if err != nil || areaID < 0 {
+			return Config{}, fmt.Errorf("parse POLLING_AREA_ID %q: want a non-negative integer", raw)
+		}
+		cfg.PollingAreaID = areaID
 	}
 
 	if raw := os.Getenv("LOG_LEVEL"); raw != "" {
