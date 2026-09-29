@@ -46,7 +46,7 @@ func TestPostgresStore_PendingOldestFirst(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now()
 	late := insertEvent(t, pool, "late", KindNewApplication, nil, now.Add(-time.Hour))
-	early := insertEvent(t, pool, "early", KindDecision, date(2026, 6, 1), now.Add(-3*time.Hour))
+	early := insertEvent(t, pool, "early", KindDecision, date(6, 1), now.Add(-3*time.Hour))
 	mid := insertEvent(t, pool, "mid", KindNewApplication, nil, now.Add(-2*time.Hour))
 	sent := insertEvent(t, pool, "sent", KindNewApplication, nil, now.Add(-4*time.Hour))
 	if err := store.MarkSent(ctx, sent, now); err != nil {

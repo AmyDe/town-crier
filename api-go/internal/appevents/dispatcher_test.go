@@ -20,8 +20,8 @@ func mustLocation(name string) *time.Location {
 	return loc
 }
 
-func date(y int, m time.Month, d int) *time.Time {
-	t := time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+func date(m time.Month, d int) *time.Time {
+	t := time.Date(2026, m, d, 0, 0, 0, 0, time.UTC)
 	return &t
 }
 
@@ -141,7 +141,7 @@ func TestDispatch_QuietHours(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			ev := Event{ID: 1, UID: "a", Kind: KindNewApplication, EventDate: date(2026, 6, 15), DetectedAt: tc.now}
+			ev := Event{ID: 1, UID: "a", Kind: KindNewApplication, EventDate: date(6, 15), DetectedAt: tc.now}
 			h := newHarness(tc.now, DefaultConfig(), ev)
 			res, err := h.d.Dispatch(context.Background())
 			if err != nil {
@@ -181,9 +181,9 @@ func TestDispatch_AgeFilter(t *testing.T) {
 		detectedAt time.Time
 		want       string
 	}{
-		{"14 days old fans out", date(2026, 6, 1), now, StatusSent},
-		{"15 days old is stale", date(2026, 5, 31), now, StatusStale},
-		{"today fans out", date(2026, 6, 15), now, StatusSent},
+		{"14 days old fans out", date(6, 1), now, StatusSent},
+		{"15 days old is stale", date(5, 31), now, StatusStale},
+		{"today fans out", date(6, 15), now, StatusSent},
 		{"null date falls back to detected_at, 14 days", nil, now.AddDate(0, 0, -14), StatusSent},
 		{"null date falls back to detected_at, 15 days", nil, now.AddDate(0, 0, -15), StatusStale},
 		{"null date uses london date of detected_at", nil, time.Date(2026, 5, 31, 23, 30, 0, 0, time.UTC), StatusSent},
@@ -220,7 +220,7 @@ func TestDispatch_Surge(t *testing.T) {
 	build := func(n int, threshold int) *harness {
 		var evs []Event
 		for i := 1; i <= n; i++ {
-			evs = append(evs, Event{ID: int64(i), UID: "u", Kind: KindNewApplication, EventDate: date(2026, 6, 15), DetectedAt: now.Add(-time.Hour)})
+			evs = append(evs, Event{ID: int64(i), UID: "u", Kind: KindNewApplication, EventDate: date(6, 15), DetectedAt: now.Add(-time.Hour)})
 		}
 		cfg := DefaultConfig()
 		cfg.SurgeThreshold = threshold
@@ -266,7 +266,7 @@ func TestDispatch_StaleEventsDoNotTripSurge(t *testing.T) {
 	now := at(12, 0)
 	var evs []Event
 	for i := 1; i <= 5; i++ {
-		evs = append(evs, Event{ID: int64(i), UID: "u", Kind: KindNewApplication, EventDate: date(2026, 1, 1), DetectedAt: now.Add(-time.Hour)})
+		evs = append(evs, Event{ID: int64(i), UID: "u", Kind: KindNewApplication, EventDate: date(1, 1), DetectedAt: now.Add(-time.Hour)})
 	}
 	cfg := DefaultConfig()
 	cfg.SurgeThreshold = 3
@@ -285,9 +285,9 @@ func TestDispatch_OrderingAndMapping(t *testing.T) {
 	now := at(12, 0)
 	d1, d2, d3 := now.Add(-3*time.Hour), now.Add(-2*time.Hour), now.Add(-time.Hour)
 	h := newHarness(now, DefaultConfig(),
-		Event{ID: 1, UID: "a", Kind: KindNewApplication, EventDate: date(2026, 6, 15), DetectedAt: d1},
-		Event{ID: 2, UID: "b", Kind: KindDecision, EventDate: date(2026, 6, 15), DetectedAt: d2},
-		Event{ID: 3, UID: "c", Kind: KindNewApplication, EventDate: date(2026, 6, 15), DetectedAt: d3},
+		Event{ID: 1, UID: "a", Kind: KindNewApplication, EventDate: date(6, 15), DetectedAt: d1},
+		Event{ID: 2, UID: "b", Kind: KindDecision, EventDate: date(6, 15), DetectedAt: d2},
+		Event{ID: 3, UID: "c", Kind: KindNewApplication, EventDate: date(6, 15), DetectedAt: d3},
 	)
 	res, err := h.d.Dispatch(context.Background())
 	if err != nil {
@@ -313,7 +313,7 @@ func TestDispatch_OrderingAndMapping(t *testing.T) {
 func TestDispatch_MissingApplicationMarkedStale(t *testing.T) {
 	t.Parallel()
 	now := at(12, 0)
-	h := newHarness(now, DefaultConfig(), Event{ID: 1, UID: "a", Kind: KindNewApplication, EventDate: date(2026, 6, 15), DetectedAt: now})
+	h := newHarness(now, DefaultConfig(), Event{ID: 1, UID: "a", Kind: KindNewApplication, EventDate: date(6, 15), DetectedAt: now})
 	h.d.apps = fakeApps{byUID: map[string]applications.PlanningApplication{}}
 	if _, err := h.d.Dispatch(context.Background()); err != nil {
 		t.Fatal(err)
@@ -326,7 +326,7 @@ func TestDispatch_MissingApplicationMarkedStale(t *testing.T) {
 func TestDispatch_FanOutErrorLeavesEventPending(t *testing.T) {
 	t.Parallel()
 	now := at(12, 0)
-	h := newHarness(now, DefaultConfig(), Event{ID: 1, UID: "a", Kind: KindNewApplication, EventDate: date(2026, 6, 15), DetectedAt: now})
+	h := newHarness(now, DefaultConfig(), Event{ID: 1, UID: "a", Kind: KindNewApplication, EventDate: date(6, 15), DetectedAt: now})
 	boom := errors.New("boom")
 	h.fan.err = boom
 	if _, err := h.d.Dispatch(context.Background()); !errors.Is(err, boom) {

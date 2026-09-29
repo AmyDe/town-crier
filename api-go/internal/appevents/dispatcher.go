@@ -158,7 +158,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context) (Result, error) {
 		}
 		res.Stale += len(ids)
 		res.Surge = true
-		d.logger.ErrorContext(ctx, "appevents surge: pending events marked stale", "appevents.surge", true, "count", count, "threshold", d.cfg.SurgeThreshold)
+		d.logger.ErrorContext(ctx, "appevents surge: pending events marked stale", "appeventsSurge", true, "count", count, "threshold", d.cfg.SurgeThreshold)
 		return res, nil
 	}
 
@@ -168,7 +168,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context) (Result, error) {
 			return res, fmt.Errorf("load application %q: %w", e.UID, err)
 		}
 		if !found {
-			d.logger.ErrorContext(ctx, "appevents: application missing, marking event stale", "uid", e.UID, "authority_code", e.AuthorityCode, "event_id", e.ID)
+			d.logger.ErrorContext(ctx, "appevents: application missing, marking event stale", "uid", e.UID, "authorityCode", e.AuthorityCode, "eventId", e.ID)
 			if err := d.markStale(ctx, []int64{e.ID}, now); err != nil {
 				return res, err
 			}
