@@ -5,9 +5,21 @@ import (
 )
 
 func TestLoadConfig_PollRebuildDefaults(t *testing.T) {
+	for _, k := range []string{
+		"PLANIT_BASE_URL", "POLLING_DAILY_CALL_CAP", "POLLING_MIN_REQUEST_SPACING_SECONDS",
+		"POLLING_DELTA_SLOTS", "POLLING_DELTA_MAX_PAGES", "POLLING_DAY_ALLOWANCE",
+		"POLLING_FULL_READ_MAX_AGE_DAYS", "POLLING_RUN_BUDGET_MINUTES", "POLLING_AREA_ID",
+		"POLLING_ORACLE_ENABLED", "NOTIFY_QUIET_START", "NOTIFY_QUIET_END", "NOTIFY_EVENT_SURGE_THRESHOLD",
+	} {
+		t.Setenv(k, "")
+	}
+
 	cfg, err := LoadConfig()
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.PlanItBaseURL != "https://www.planit.org.uk/" {
+		t.Errorf("PlanItBaseURL = %q", cfg.PlanItBaseURL)
 	}
 	if cfg.PollingDailyCallCap != 240 {
 		t.Errorf("PollingDailyCallCap = %d, want 240", cfg.PollingDailyCallCap)

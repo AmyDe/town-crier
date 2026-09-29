@@ -1,6 +1,6 @@
 // Package notifydispatch is the poll-path notification fan-out: the per-app
-// orchestration the poll-sb handler runs after upserting a changed planning
-// application. It implements two dispatch paths: the new-application zone
+// orchestration the poll runner's event dispatcher runs for a new or decided
+// planning application. It implements two dispatch paths: the new-application zone
 // fan-out (Enqueuer) and the non-decision → decision transition fan-out
 // (DecisionDispatcher).
 //

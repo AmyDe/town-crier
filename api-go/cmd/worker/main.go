@@ -365,7 +365,7 @@ func buildAuth0Syncer(cfg platform.Config, logger *slog.Logger) subscriptionswee
 //
 // It returns nil — logged, not fatal — when APPSTORE_RECONCILE_ENABLED is
 // unset or the key material fails to parse, following the same
-// "unconfigured optional job" template as buildDevSeeder: this feature is
+// "unconfigured optional job" posture: this feature is
 // genuinely optional during rollout (tc-97k35.6, GH#1011), so a malformed or
 // absent key must not crash-loop the job's OTHER modes (digest,
 // dormant-cleanup, etc.) that share this process.

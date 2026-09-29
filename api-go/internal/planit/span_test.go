@@ -33,10 +33,10 @@ func attr(attrs []attribute.KeyValue, key string) (attribute.Value, bool) {
 	return attribute.Value{}, false
 }
 
-// TestFetchApplicationsPage_EmitsClientSpan asserts a PlanIt fetch produces a
+// TestFetchWindowPage_EmitsClientSpan asserts a PlanIt fetch produces a
 // client span named "PlanIt search" carrying the upstream host as server.address
 // so it surfaces in AppDependencies as a meaningful HTTP dependency.
-func TestFetchApplicationsPage_EmitsClientSpan(t *testing.T) {
+func TestFetchWindowPage_EmitsClientSpan(t *testing.T) {
 	t.Parallel()
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -49,18 +49,15 @@ func TestFetchApplicationsPage_EmitsClientSpan(t *testing.T) {
 
 	c, err := NewClient(Options{
 		BaseURL:      srv.URL,
-		Throttle:     ThrottleOptions{DelayBetweenRequests: 0},
-		Retry:        RetryOptions{MaxRetries: 0},
 		HTTPClient:   &http.Client{Timeout: 5 * time.Second},
-		Sleep:        func(context.Context, time.Duration) error { return nil },
 		TraceOptions: []otelhttp.Option{otelhttp.WithTracerProvider(tp)},
 	})
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
 
-	if _, err := c.FetchApplicationsPage(context.Background(), 99, nil, 1, false); err != nil {
-		t.Fatalf("FetchApplicationsPage: %v", err)
+	if _, err := c.FetchWindowPage(context.Background(), testQuery(1)); err != nil {
+		t.Fatalf("FetchWindowPage: %v", err)
 	}
 
 	spans := rec.Ended()

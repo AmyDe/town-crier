@@ -6,11 +6,29 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
+
+// nationalPageSize is the pg_sz of every window query. It is a fixed safety
+// rule, not a tunable: the PlanIt operator asked for modest page sizes.
+const nationalPageSize = 300
+
+// ingestSelectFields lists every field the ingest pipeline consumes.
+// last_different must stay: PlanIt returns 400 if the sort field is not selected.
+var ingestSelectFields = []string{
+	"name", "uid", "area_name", "area_id", "address", "postcode", "description",
+	"app_type", "app_state", "app_size", "start_date", "decided_date", "consulted_date",
+	"location_x", "location_y", "url", "link", "last_different", "reference", "altid",
+	"associated_id", "last_changed", "last_scraped", "scraper_name", "other_fields",
+}
+
+func selectParam(fields []string) string {
+	return strings.Join(fields, ",")
+}
 
 // contactUserAgentSuffix identifies Town Crier to PlanIt's operator (POLLING.md
 // "User-Agent"). The address is deliberately a constant, never configuration.

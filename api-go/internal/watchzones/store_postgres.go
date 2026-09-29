@@ -47,7 +47,6 @@ type Store interface {
 	Delete(ctx context.Context, userID, zoneID string) error
 	DeleteAllByUserID(ctx context.Context, userID string) error
 	FindZonesContaining(ctx context.Context, latitude, longitude float64) ([]WatchZone, error)
-	All(ctx context.Context) ([]WatchZone, error)
 }
 
 // Compile-time check: the store satisfies the consumer-side Store interface.
@@ -319,27 +318,6 @@ func (s *PostgresStore) DeleteAllByUserID(ctx context.Context, userID string) er
 		return fmt.Errorf("delete all watch zones for %q: %w", userID, err)
 	}
 	return nil
-}
-
-const pgAllZonesQuery = "SELECT " + pgZoneColumns + " FROM watch_zones ORDER BY id"
-
-// All returns every watch zone across every user, ordered by id for
-// determinism. It backs the dev-seed job's zone-geometry read (bd tc-9nbs4.1,
-// GH#1076 Phase 1): the same "every zone dev currently has" input the now-removed
-// DistinctAuthorityIDs previously served as a set of authority ids, now served
-// as full zone geometries, so devseed can query prod by geography instead of
-// authority id -- notification matching is purely geographic (ADR 0041/0044),
-// so a watch zone no longer needs a "home" authority to scope the read.
-func (s *PostgresStore) All(ctx context.Context) ([]WatchZone, error) {
-	rows, err := s.db.Query(ctx, pgAllZonesQuery)
-	if err != nil {
-		return nil, fmt.Errorf("query all watch zones: %w", err)
-	}
-	zones, err := pgx.CollectRows(rows, scanZoneRow)
-	if err != nil {
-		return nil, fmt.Errorf("query all watch zones: %w", err)
-	}
-	return zones, nil
 }
 
 const pgFindZonesContainingQuery = "SELECT " + pgZoneColumns +

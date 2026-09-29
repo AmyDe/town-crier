@@ -47,19 +47,6 @@ func TestRegistry_RecordsAllInstrumentNames(t *testing.T) {
 
 	// Drive every recording method once so each instrument emits at least one
 	// measurement and therefore appears in the collected metrics.
-	reg.AuthorityPolled(ctx, "Watched")
-	reg.AuthoritySkipped(ctx, "Watched")
-	reg.ApplicationsIngested(ctx, 3, "Watched")
-	reg.RateLimited(ctx, "Watched")
-	reg.RetryAfterSeconds(ctx, 12, "Watched", 7, true)
-	reg.AuthorityProcessingMillis(ctx, 42.0, "Watched")
-	reg.AuthorityTotal(ctx, 99, "Watched", 7)
-	reg.CycleCompleted(ctx, "Watched", "Natural")
-	reg.CursorAdvanced(ctx, "Watched")
-	reg.CursorCleared(ctx, "Watched")
-	reg.LeaseAcquired(ctx, "orchestrator")
-	reg.OldestHighWaterMarkAge(ctx, 3600, "Watched", 7, false)
-	reg.NeverPolledCount(ctx, 5, "Watched")
 	reg.PlanItHTTPError(ctx, 500, 99)
 	reg.NotificationCreated(ctx, "NewApplication", "Zone")
 	reg.WatchZoneCreated(ctx)
@@ -70,19 +57,6 @@ func TestRegistry_RecordsAllInstrumentNames(t *testing.T) {
 	got := metricNames(collect())
 
 	want := []string{
-		"towncrier.polling.authorities_polled",
-		"towncrier.polling.authorities_skipped",
-		"towncrier.polling.applications_ingested",
-		"towncrier.polling.rate_limited",
-		"towncrier.polling.retry_after_seconds",
-		"towncrier.polling.authority_processing_ms",
-		"towncrier.polling.authority_total",
-		"towncrier.polling.cycles_completed",
-		"towncrier.polling.cursor_advanced",
-		"towncrier.polling.cursor_cleared",
-		"towncrier.polling.lease.acquired",
-		"towncrier.polling.oldest_hwm_age_seconds",
-		"towncrier.polling.never_polled_count",
 		"towncrier.planit.http_errors",
 		"towncrier.notifications.created",
 		"towncrier.watchzones.created",
@@ -104,58 +78,12 @@ func TestRegistry_NilIsNoOp(t *testing.T) {
 
 	// Every recording method must be safe to call on a nil registry so call sites
 	// can stay metric-agnostic when telemetry is unconfigured.
-	reg.AuthorityPolled(ctx, "Watched")
-	reg.AuthoritySkipped(ctx, "Watched")
-	reg.ApplicationsIngested(ctx, 1, "Watched")
-	reg.RateLimited(ctx, "Watched")
-	reg.RetryAfterSeconds(ctx, 1, "Watched", 1, false)
-	reg.AuthorityProcessingMillis(ctx, 1, "Watched")
-	reg.AuthorityTotal(ctx, 1, "Watched", 1)
-	reg.CycleCompleted(ctx, "Watched", "Natural")
-	reg.CursorAdvanced(ctx, "Watched")
-	reg.CursorCleared(ctx, "Watched")
-	reg.LeaseAcquired(ctx, "orchestrator")
-	reg.OldestHighWaterMarkAge(ctx, 1, "Watched", 1, false)
-	reg.NeverPolledCount(ctx, 1, "Watched")
 	reg.PlanItHTTPError(ctx, 500, 99)
 	reg.NotificationCreated(ctx, "NewApplication", "Zone")
 	reg.WatchZoneCreated(ctx)
 	reg.WatchZoneUpdated(ctx)
 	reg.WatchZoneDeleted(ctx)
 	reg.PushDeliveryFailed(ctx, "apns")
-}
-
-func TestRegistry_RetryAfterTagsHeaderPresence(t *testing.T) {
-	t.Parallel()
-	reg, collect := newTestRegistry(t)
-	ctx := context.Background()
-
-	reg.RetryAfterSeconds(ctx, 0, "Seed", 7, false)
-
-	rm := collect()
-	var foundHeaderPresent bool
-	for _, sm := range rm.ScopeMetrics {
-		for _, m := range sm.Metrics {
-			if m.Name != "towncrier.polling.retry_after_seconds" {
-				continue
-			}
-			hist, ok := m.Data.(metricdata.Histogram[float64])
-			if !ok {
-				t.Fatalf("retry_after_seconds is not a float64 histogram: %T", m.Data)
-			}
-			for _, dp := range hist.DataPoints {
-				if v, ok := dp.Attributes.Value("header_present"); ok {
-					foundHeaderPresent = true
-					if v.AsString() != "false" {
-						t.Errorf("header_present = %q, want false", v.AsString())
-					}
-				}
-			}
-		}
-	}
-	if !foundHeaderPresent {
-		t.Error("retry_after_seconds missing header_present tag")
-	}
 }
 
 // TestRegistry_PushDeliveryFailedTagsPlatform pins tc-97k35.4: the counter must
