@@ -148,7 +148,7 @@ func (p *Pacer) Do(ctx context.Context, work planit.Work, windowDay time.Time, p
 	settled := false
 	defer func() {
 		if !settled {
-			_ = tx.Rollback(context.WithoutCancel(ctx))
+			tx.Rollback(context.WithoutCancel(ctx)) //nolint:errcheck,contextcheck // best-effort; the tx ends with the connection anyway
 		}
 	}()
 

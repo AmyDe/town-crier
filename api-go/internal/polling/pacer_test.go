@@ -88,7 +88,9 @@ type fakePlanItCallTx struct {
 	done bool
 }
 
-func (t *fakePlanItCallTx) Latest(ctx context.Context) (*PlanItCall, error) { return t.log.latest(), nil }
+func (t *fakePlanItCallTx) Latest(ctx context.Context) (*PlanItCall, error) {
+	return t.log.latest(), nil
+}
 
 func (t *fakePlanItCallTx) CountBetween(ctx context.Context, from, to time.Time) (int, error) {
 	return t.log.count(from, to), nil
@@ -124,14 +126,14 @@ func (t *fakePlanItCallTx) Commit(context.Context) error {
 	return nil
 }
 
-func (t *fakePlanItCallTx) Rollback(context.Context) error { return t.Commit(context.Background()) }
+func (t *fakePlanItCallTx) Rollback(ctx context.Context) error { return t.Commit(ctx) }
 
-func newTestPacer(t *testing.T, now time.Time, cap int) (*Pacer, *fakePlanItCallLog, *fakeClock) {
+func newTestPacer(t *testing.T, now time.Time, cap int) (*Pacer, *fakePlanItCallLog) {
 	t.Helper()
 	log := &fakePlanItCallLog{}
 	clk := &fakeClock{now: now}
 	p := NewPacer(log, PacerConfig{DailyCap: cap, MinSpacing: 60 * time.Second}, clk.Now, clk.Sleep)
-	return p, log, clk
+	return p, log
 }
 
 func okWork(total int) func(context.Context) (planit.FetchPageResult, error) {
@@ -187,7 +189,7 @@ func TestBudgetDay_BoundariesEuropeLondon(t *testing.T) {
 func TestPacer_Do_RecordsSuccessRow(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 6, 10, 20, 0, 0, 0, londonTZ)
-	p, log, _ := newTestPacer(t, now, 300)
+	p, log := newTestPacer(t, now, 300)
 	day := time.Date(2026, 6, 9, 0, 0, 0, 0, time.UTC)
 
 	res, err := p.Do(context.Background(), planit.WorkWindowStart, day, 2, okWork(742))
@@ -212,8 +214,8 @@ func TestPacer_Do_RecordsSuccessRow(t *testing.T) {
 func TestPacer_Do_SpacesCallsAtLeastMinSpacing(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 6, 10, 20, 0, 0, 0, londonTZ)
-	p, log, _ := newTestPacer(t, now, 300)
-	for i := 0; i < 3; i++ {
+	p, log := newTestPacer(t, now, 300)
+	for i := range 3 {
 		if _, err := p.Do(context.Background(), planit.WorkWindowStart, time.Time{}, i, okWork(1)); err != nil {
 			t.Fatalf("Do %d: %v", i, err)
 		}
@@ -228,8 +230,8 @@ func TestPacer_Do_SpacesCallsAtLeastMinSpacing(t *testing.T) {
 func TestPacer_Do_BudgetExhausted_NoRequestNoRow(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 6, 10, 20, 0, 0, 0, londonTZ)
-	p, log, _ := newTestPacer(t, now, 300)
-	for i := 0; i < 300; i++ {
+	p, log := newTestPacer(t, now, 300)
+	for i := range 300 {
 		log.rows = append(log.rows, PlanItCall{ID: int64(i + 1), At: now.Add(-time.Duration(i+2) * 5 * time.Second), Work: "window_start", Status: intp(200)})
 	}
 	calls := 0
@@ -248,7 +250,7 @@ func TestPacer_Do_BudgetExhausted_NoRequestNoRow(t *testing.T) {
 func TestPacer_Do_BudgetDayRollsAt1800(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 6, 10, 18, 1, 0, 0, londonTZ)
-	p, log, _ := newTestPacer(t, now, 1)
+	p, log := newTestPacer(t, now, 1)
 	log.rows = append(log.rows, PlanItCall{ID: 1, At: time.Date(2026, 6, 10, 17, 59, 0, 0, londonTZ), Work: "window_start", Status: intp(200)})
 	if _, err := p.Do(context.Background(), planit.WorkWindowStart, time.Time{}, 0, okWork(1)); err != nil {
 		t.Fatalf("call after 18:00 should be in a fresh budget day: %v", err)
@@ -261,7 +263,7 @@ func TestPacer_Do_BudgetDayRollsAt1800(t *testing.T) {
 func TestPacer_Do_FailedRequestStillCounts(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 6, 10, 20, 0, 0, 0, londonTZ)
-	p, _, _ := newTestPacer(t, now, 300)
+	p, _ := newTestPacer(t, now, 300)
 	boom := &planit.HTTPError{StatusCode: 400}
 	if _, err := p.Do(context.Background(), planit.WorkWindowStart, time.Time{}, 0, func(context.Context) (planit.FetchPageResult, error) {
 		return planit.FetchPageResult{}, boom
@@ -296,7 +298,7 @@ func TestPacer_Do_BackoffFromLatestRow(t *testing.T) {
 			row := tc.row
 			row.ID, row.Work, row.At = 1, "window_start", now.Add(-time.Minute)
 
-			p, log, _ := newTestPacer(t, now, 300)
+			p, log := newTestPacer(t, now, 300)
 			log.rows = append(log.rows, row)
 			calls := 0
 			_, err := p.Do(context.Background(), planit.WorkWindowStart, time.Time{}, 0, func(context.Context) (planit.FetchPageResult, error) {
@@ -337,7 +339,7 @@ func TestPacer_Do_BackoffExpiresAndNonBackoffStatusesPass(t *testing.T) {
 			t.Parallel()
 			row := tc.row
 			row.ID, row.Work = 1, "window_start"
-			p, log, _ := newTestPacer(t, now, 300)
+			p, log := newTestPacer(t, now, 300)
 			log.rows = append(log.rows, row)
 			if _, err := p.Do(context.Background(), planit.WorkWindowStart, time.Time{}, 0, okWork(1)); err != nil {
 				t.Fatalf("Do: %v", err)
@@ -365,7 +367,7 @@ func TestPacer_Do_MapsResultsIntoRow(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			p, log, _ := newTestPacer(t, now, 300)
+			p, log := newTestPacer(t, now, 300)
 			_, err := p.Do(context.Background(), planit.WorkWindowStart, time.Time{}, 0, func(context.Context) (planit.FetchPageResult, error) {
 				return planit.FetchPageResult{}, tc.err
 			})
@@ -386,7 +388,7 @@ func TestPacer_Do_MapsResultsIntoRow(t *testing.T) {
 func TestPacer_Do_CancelledContextDoesNotBackOff(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 6, 10, 20, 0, 0, 0, londonTZ)
-	p, log, _ := newTestPacer(t, now, 300)
+	p, log := newTestPacer(t, now, 300)
 	ctx, cancel := context.WithCancel(context.Background())
 	_, err := p.Do(ctx, planit.WorkWindowStart, time.Time{}, 0, func(context.Context) (planit.FetchPageResult, error) {
 		cancel()
@@ -407,12 +409,12 @@ func TestPacer_Do_CancelledContextDoesNotBackOff(t *testing.T) {
 func TestPacer_Do_ConcurrentCallersHoldSpacingAndCap(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 6, 10, 20, 0, 0, 0, londonTZ)
-	p, log, _ := newTestPacer(t, now, 5)
+	p, log := newTestPacer(t, now, 5)
 
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	sent, exhausted := 0, 0
-	for i := 0; i < 12; i++ {
+	for range 12 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -443,7 +445,7 @@ func TestPacer_Do_ConcurrentCallersHoldSpacingAndCap(t *testing.T) {
 func TestPacer_CallsToday_CountsCurrentBudgetDayOnly(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 6, 10, 20, 0, 0, 0, londonTZ)
-	p, log, _ := newTestPacer(t, now, 300)
+	p, log := newTestPacer(t, now, 300)
 	log.rows = []PlanItCall{
 		{ID: 1, At: time.Date(2026, 6, 10, 17, 59, 0, 0, londonTZ)},
 		{ID: 2, At: time.Date(2026, 6, 10, 18, 0, 0, 0, londonTZ)},
