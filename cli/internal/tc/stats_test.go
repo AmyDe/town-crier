@@ -138,7 +138,7 @@ func TestRenderStats_AnnualPro(t *testing.T) {
 
 	for _, want := range []string{
 		"  Paying (App Store): 4 (Personal 1, Pro 3, of which 1 annual)\n",
-		"  Est. MRR: £14.47/mo\n",
+		"  Est. MRR: £14.47/mo (monthly £11.97 + annual £2.50)\n",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("render missing %q:\n%s", want, out)
@@ -165,9 +165,9 @@ func TestRenderStats_Lifetime(t *testing.T) {
 	renderStats(&sb, s)
 	out := sb.String()
 
-	const want = "  Paying (App Store): 9 (Personal 3, Pro 6)\n  Lifetime (App Store): 2\n  Est. MRR: £35.91/mo\n"
+	const want = "  Est. MRR: £35.91/mo\n  Lifetime (App Store): 2\n  Lifetime revenue: £139.98 (2 × £69.99)\n  Comped (offer/admin): 3\n"
 	if !strings.Contains(out, want) {
-		t.Errorf("render missing lifetime line directly after the paying line:\n%s", out)
+		t.Errorf("render missing lifetime lines between MRR and comped:\n%s", out)
 	}
 }
 
@@ -177,8 +177,10 @@ func TestRenderStats_ZeroLifetimeStillRendersLine(t *testing.T) {
 	s.Paying.Lifetime = intptr(0)
 	var sb strings.Builder
 	renderStats(&sb, s)
-	if want := "  Lifetime (App Store): 0\n"; !strings.Contains(sb.String(), want) {
-		t.Errorf("render missing %q:\n%s", want, sb.String())
+	for _, want := range []string{"  Lifetime (App Store): 0\n", "  Lifetime revenue: £0.00\n"} {
+		if !strings.Contains(sb.String(), want) {
+			t.Errorf("render missing %q:\n%s", want, sb.String())
+		}
 	}
 }
 
@@ -190,7 +192,7 @@ func TestRenderStats_LifetimeWithoutTierSplit(t *testing.T) {
 	var sb strings.Builder
 	renderStats(&sb, s)
 	out := sb.String()
-	if !strings.Contains(out, "  Paying (App Store): 9\n  Lifetime (App Store): 2\n  Est. MRR: -\n") {
+	if !strings.Contains(out, "  Paying (App Store): 9\n  Est. MRR: -\n  Lifetime (App Store): 2\n  Lifetime revenue: £139.98 (2 × £69.99)\n") {
 		t.Errorf("lifetime line must render independently of the tier split:\n%s", out)
 	}
 }
@@ -354,7 +356,7 @@ func TestStatsSummaryLine_Lifetime(t *testing.T) {
 	t.Parallel()
 	s := sampleStats()
 	s.Paying.Lifetime = intptr(2)
-	const want = "42 users (Free 30, Personal 8, Pro 4) · paying 9 · MRR £35.91/mo · lifetime 2 · comped 3 · lapsed 2 · new 24h 3 · active 24h 5"
+	const want = "42 users (Free 30, Personal 8, Pro 4) · paying 9 · MRR £35.91/mo · lifetime 2 (£139.98) · comped 3 · lapsed 2 · new 24h 3 · active 24h 5"
 	if got := statsSummaryLine(s); got != want {
 		t.Errorf("summary line:\ngot:  %s\nwant: %s", got, want)
 	}
@@ -442,7 +444,9 @@ func TestRunStats_DecodesLifetimeAndAnnual(t *testing.T) {
 	for _, want := range []string{
 		"  Paying (App Store): 4 (Personal 1, Pro 3, of which 1 annual)\n",
 		"  Lifetime (App Store): 2\n",
-		"  Est. MRR: £14.47/mo\n",
+		"  Est. MRR: £14.47/mo (monthly £11.97 + annual £2.50)\n",
+		"  Annual plans: 1 × £29.99 = £29.99/yr\n",
+		"  Lifetime revenue: £139.98 (2 × £69.99)\n",
 	} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("stdout missing %q:\n%s", want, out.String())
@@ -462,7 +466,7 @@ func TestRunStats_OlderAPIWithoutNewFieldsRendersNoLifetimeOrAnnual(t *testing.T
 	if code := runStats(context.Background(), clientFor(server), env, ParseArgs([]string{"stats"})); code != exitOK {
 		t.Fatalf("exit code = %d, want 0", code)
 	}
-	for _, banned := range []string{"Lifetime", "annual"} {
+	for _, banned := range []string{"Lifetime", "annual", "In trial", "Annual plans", "Lifetime revenue"} {
 		if strings.Contains(out.String(), banned) {
 			t.Errorf("output must not mention %q for an older API:\n%s", banned, out.String())
 		}
@@ -485,5 +489,125 @@ func TestRunStats_APIErrorReturns2(t *testing.T) {
 	}
 	if !strings.Contains(errBuf.String(), "API error (500): boom") {
 		t.Fatalf("stderr = %q, want API error (500)", errBuf.String())
+	}
+}
+
+func TestRenderStats_InTrial(t *testing.T) {
+	t.Parallel()
+	s := sampleStats()
+	s.Paying.InTrial = intptr(2)
+	var sb strings.Builder
+	renderStats(&sb, s)
+
+	const want = "  Paying (App Store): 9 (Personal 3, Pro 6)\n  In trial: 2\n  Est. MRR: £35.91/mo\n"
+	if !strings.Contains(sb.String(), want) {
+		t.Errorf("render missing In trial line after the paying line:\n%s", sb.String())
+	}
+}
+
+func TestRenderStats_AnnualPlansLine(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		annual *int
+		want   string
+	}{
+		{"one annual payer", intptr(1), "  Annual plans: 1 × £29.99 = £29.99/yr\n"},
+		{"two annual payers", intptr(2), "  Annual plans: 2 × £29.99 = £59.98/yr\n"},
+		{"no annual payers", intptr(0), "  Annual plans: 0\n"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			s := sampleStats()
+			s.Paying.AppStoreProAnnual = tc.annual
+			var sb strings.Builder
+			renderStats(&sb, s)
+			if !strings.Contains(sb.String(), tc.want) {
+				t.Errorf("render missing %q:\n%s", tc.want, sb.String())
+			}
+		})
+	}
+}
+
+func TestRenderStats_LifetimeRevenue(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		lifetime int
+		want     string
+	}{
+		{"two holders", 2, "  Lifetime revenue: £139.98 (2 × £69.99)\n"},
+		{"no holders", 0, "  Lifetime revenue: £0.00\n"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			s := sampleStats()
+			s.Paying.Lifetime = intptr(tc.lifetime)
+			var sb strings.Builder
+			renderStats(&sb, s)
+			if !strings.Contains(sb.String(), tc.want) {
+				t.Errorf("render missing %q:\n%s", tc.want, sb.String())
+			}
+		})
+	}
+}
+
+func TestRenderStats_PayingBlockOrder(t *testing.T) {
+	t.Parallel()
+	s := sampleStats()
+	s.Paying.AppStore = 3
+	s.Paying.AppStoreByTier = &statsAppStoreByTier{Personal: 1, Pro: 2}
+	s.Paying.AppStoreProAnnual = intptr(1)
+	s.Paying.InTrial = intptr(2)
+	s.Paying.Lifetime = intptr(2)
+	var sb strings.Builder
+	renderStats(&sb, s)
+
+	const want = `Paying
+  Paying (App Store): 3 (Personal 1, Pro 2, of which 1 annual)
+  In trial: 2
+  Est. MRR: £9.48/mo (monthly £6.98 + annual £2.50)
+  Annual plans: 1 × £29.99 = £29.99/yr
+  Lifetime (App Store): 2
+  Lifetime revenue: £139.98 (2 × £69.99)
+  Comped (offer/admin): 3
+  Lapsed: 2
+  In grace: 1
+`
+	if !strings.Contains(sb.String(), want) {
+		t.Errorf("paying block mismatch:\n%s", sb.String())
+	}
+}
+
+func TestEstMRRLine_AnnualBreakdown(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		paying statsPaying
+		want   string
+	}{
+		{"annual present", statsPaying{AppStoreByTier: &statsAppStoreByTier{Personal: 1, Pro: 2}, AppStoreProAnnual: intptr(1)}, "Est. MRR: £9.48/mo (monthly £6.98 + annual £2.50)"},
+		{"zero annual has no breakdown", statsPaying{AppStoreByTier: &statsAppStoreByTier{Personal: 1}, AppStoreProAnnual: intptr(0)}, "Est. MRR: £1.99/mo"},
+		{"nil annual has no breakdown", statsPaying{AppStoreByTier: &statsAppStoreByTier{Personal: 1}}, "Est. MRR: £1.99/mo"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := estMRRLine(tc.paying); got != tc.want {
+				t.Errorf("estMRRLine = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestStatsSummaryLine_Trial(t *testing.T) {
+	t.Parallel()
+	s := sampleStats()
+	s.Paying.InTrial = intptr(2)
+	const want = "42 users (Free 30, Personal 8, Pro 4) · paying 9 · trial 2 · MRR £35.91/mo · comped 3 · lapsed 2 · new 24h 3 · active 24h 5"
+	if got := statsSummaryLine(s); got != want {
+		t.Errorf("summary line:\ngot:  %s\nwant: %s", got, want)
 	}
 }
