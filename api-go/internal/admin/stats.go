@@ -42,6 +42,7 @@ type statsPaying struct {
 	AppStoreByTier    statsAppStoreByTier `json:"appStoreByTier"`
 	Lifetime          int                 `json:"lifetime"`
 	AppStoreProAnnual int                 `json:"appStoreProAnnual"`
+	InTrial           int                 `json:"inTrial"`
 }
 
 // statsAppStoreByTier is an explicit struct (not a map) so the two paid tier
