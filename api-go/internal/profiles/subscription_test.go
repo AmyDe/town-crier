@@ -254,7 +254,7 @@ func TestProfile_ActivateAppStoreSubscription_RecordsProductID(t *testing.T) {
 	p := &UserProfile{Tier: TierFree}
 	expiry := lifetimeNow.AddDate(1, 0, 0)
 
-	p.ActivateAppStoreSubscription(TierPro, expiry, "uk.towncrierapp.pro.annual")
+	p.ActivateAppStoreSubscription(TierPro, expiry, "uk.towncrierapp.pro.annual", false)
 
 	if p.Tier != TierPro {
 		t.Errorf("Tier = %v, want Pro", p.Tier)
@@ -321,5 +321,46 @@ func TestProfile_EffectiveTier_LifetimeOutlivesLapsedSubscription(t *testing.T) 
 
 	if got := p.EffectiveTier(lifetimeNow); got != TierPro {
 		t.Errorf("EffectiveTier() = %v, want Pro (lifetime outlives lapsed Personal)", got)
+	}
+}
+
+func TestProfile_SubscriptionInTrial(t *testing.T) {
+	t.Parallel()
+	expiry := lifetimeNow.AddDate(0, 0, 7)
+
+	tests := []struct {
+		name  string
+		apply func(p *UserProfile)
+		want  bool
+	}{
+		{"app store trial sets flag", func(p *UserProfile) {
+			p.ActivateAppStoreSubscription(TierPersonal, expiry, "uk.towncrierapp.personal.monthly", true)
+		}, true},
+		{"app store paid window clears flag", func(p *UserProfile) {
+			p.SubscriptionInTrial = true
+			p.ActivateAppStoreSubscription(TierPersonal, expiry, "uk.towncrierapp.personal.monthly", false)
+		}, false},
+		{"offer code or admin grant clears flag", func(p *UserProfile) {
+			p.SubscriptionInTrial = true
+			p.ActivateSubscription(TierPro, expiry)
+		}, false},
+		{"expire clears flag", func(p *UserProfile) {
+			p.SubscriptionInTrial = true
+			p.ExpireSubscription()
+		}, false},
+		{"renew clears flag", func(p *UserProfile) {
+			p.SubscriptionInTrial = true
+			p.RenewSubscription(expiry)
+		}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			p := &UserProfile{Tier: TierFree}
+			tt.apply(p)
+			if p.SubscriptionInTrial != tt.want {
+				t.Errorf("SubscriptionInTrial = %v, want %v", p.SubscriptionInTrial, tt.want)
+			}
+		})
 	}
 }

@@ -444,7 +444,7 @@ func lifetimeProfileFixture(t *testing.T) (*UserProfile, time.Time) {
 	purchased := time.Date(2026, 9, 1, 10, 30, 0, 0, time.UTC)
 	p.GrantLifetime(TierPro, "life-orig-1", purchased)
 	p.LinkOriginalTransactionID("sub-orig-1")
-	p.ActivateAppStoreSubscription(TierPro, time.Date(2027, 9, 1, 10, 30, 0, 0, time.UTC), "uk.towncrierapp.pro.annual")
+	p.ActivateAppStoreSubscription(TierPro, time.Date(2027, 9, 1, 10, 30, 0, 0, time.UTC), "uk.towncrierapp.pro.annual", true)
 	return p, purchased
 }
 
@@ -461,6 +461,9 @@ func requireLifetimeColumns(t *testing.T, got *UserProfile, purchased time.Time)
 	}
 	if got.SubscriptionProductID == nil || *got.SubscriptionProductID != "uk.towncrierapp.pro.annual" {
 		t.Errorf("SubscriptionProductID = %v, want uk.towncrierapp.pro.annual", got.SubscriptionProductID)
+	}
+	if !got.SubscriptionInTrial {
+		t.Error("SubscriptionInTrial = false, want true")
 	}
 }
 

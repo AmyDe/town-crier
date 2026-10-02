@@ -81,7 +81,8 @@ func userRow(userID string, createdAt time.Time) []any {
 		// tier, subscription_expiry, original_transaction_id, grace_period_expiry,
 		"Free", nil, nil, nil,
 		// lifetime_tier, lifetime_original_transaction_id, lifetime_purchased_at, subscription_product_id,
-		"Free", nil, nil, nil,
+		// subscription_in_trial,
+		"Free", nil, nil, nil, false,
 		// last_active_at, last_active_at_epoch, created_at, watch_zone_count, version
 		createdAt, createdAt.UnixMilli(), createdAt, nil, 0,
 	}
@@ -290,7 +291,7 @@ func paidUserRow(userID, tier string, expiry, otid any) []any {
 		true, true, true,
 		"{}",
 		tier, expiry, otid, nil,
-		"Free", nil, nil, nil,
+		"Free", nil, nil, nil, false,
 		created, created.UnixMilli(), created, nil, 0,
 	}
 }

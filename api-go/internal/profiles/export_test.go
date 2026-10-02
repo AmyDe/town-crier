@@ -206,12 +206,15 @@ func TestNewExportUserData_SubscriptionIncludesLifetimeAndProductID(t *testing.T
 	p := testExportProfile()
 	p.GrantLifetime(TierPro, "life-orig-1", time.Date(2026, 9, 1, 10, 30, 0, 0, time.UTC))
 	p.LinkOriginalTransactionID("sub-orig-1")
-	p.ActivateAppStoreSubscription(TierPro, time.Date(2027, 9, 1, 10, 30, 0, 0, time.UTC), "uk.towncrierapp.pro.annual")
+	p.ActivateAppStoreSubscription(TierPro, time.Date(2027, 9, 1, 10, 30, 0, 0, time.UTC), "uk.towncrierapp.pro.annual", true)
 
 	sub := exportedSubscriptionOf(t, p)
 
 	if sub["productId"] != "uk.towncrierapp.pro.annual" {
 		t.Errorf("productId = %v, want uk.towncrierapp.pro.annual", sub["productId"])
+	}
+	if sub["inTrial"] != true {
+		t.Errorf("inTrial = %v, want true", sub["inTrial"])
 	}
 	if sub["lifetimeTier"] != "Pro" {
 		t.Errorf("lifetimeTier = %v, want Pro", sub["lifetimeTier"])
