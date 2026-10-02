@@ -426,7 +426,7 @@ func TestRunStats_DecodesLifetimeAndAnnual(t *testing.T) {
 	t.Parallel()
 	const body = `{"users":{"total":6,"byTier":{"Free":1,"Personal":1,"Pro":4}},` +
 		`"paying":{"effectivePaid":6,"appStore":4,"comped":0,"lapsed":0,"inGrace":0,` +
-		`"appStoreByTier":{"Personal":1,"Pro":3},"appStoreProAnnual":1,"lifetime":2},` +
+		`"appStoreByTier":{"Personal":1,"Pro":3},"appStoreProAnnual":1,"lifetime":2,"inTrial":2},` +
 		`"signups":{"last24h":0,"last7d":0,"last30d":0,"mostRecent":null},` +
 		`"activity":{"active24h":0,"active7d":0,"zeroWatchZones":0,"noEmail":0},` +
 		`"reach":{"watchZones":0,"savedApplications":0,"deviceRegistrations":0,"notificationsSent":0,"notificationsUnread":0}}`
@@ -443,6 +443,7 @@ func TestRunStats_DecodesLifetimeAndAnnual(t *testing.T) {
 	}
 	for _, want := range []string{
 		"  Paying (App Store): 4 (Personal 1, Pro 3, of which 1 annual)\n",
+		"  In trial: 2\n",
 		"  Lifetime (App Store): 2\n",
 		"  Est. MRR: £14.47/mo (monthly £11.97 + annual £2.50)\n",
 		"  Annual plans: 1 × £29.99 = £29.99/yr\n",
