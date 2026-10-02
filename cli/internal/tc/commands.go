@@ -109,6 +109,9 @@ type statsPaying struct {
 	// Lifetime is a pointer for the same reason: nil means an API build that
 	// predates lifetime Pro, not zero lifetime holders.
 	Lifetime *int `json:"lifetime"`
+	// InTrial is a pointer for the same reason: nil means an API build that
+	// predates free-trial tracking, not zero trials.
+	InTrial *int `json:"inTrial"`
 }
 
 // statsAppStoreByTier is an explicit struct (not a map) so the two paid tier

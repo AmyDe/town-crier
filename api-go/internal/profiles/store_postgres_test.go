@@ -113,7 +113,8 @@ func TestScanUserRow_CreatedAt(t *testing.T) {
 		// tier, subscription_expiry, original_transaction_id, grace_period_expiry,
 		"Free", nil, nil, nil,
 		// lifetime_tier, lifetime_original_transaction_id, lifetime_purchased_at, subscription_product_id,
-		"Free", nil, nil, nil,
+		// subscription_in_trial,
+		"Free", nil, nil, nil, false,
 		// last_active_at, last_active_at_epoch, created_at, watch_zone_count, version
 		lastActive, lastActive.UnixMilli(), created, nil, 0,
 	}}
@@ -139,7 +140,7 @@ func TestScanUserRow_LifetimeColumns(t *testing.T) {
 		true, true, true,
 		"{}",
 		"Pro", nil, nil, nil,
-		"Pro", "life-1", purchased, "uk.towncrierapp.pro.annual",
+		"Pro", "life-1", purchased, "uk.towncrierapp.pro.annual", true,
 		lastActive, lastActive.UnixMilli(), lastActive, nil, 0,
 	}}
 
@@ -159,6 +160,9 @@ func TestScanUserRow_LifetimeColumns(t *testing.T) {
 	if p.SubscriptionProductID == nil || *p.SubscriptionProductID != "uk.towncrierapp.pro.annual" {
 		t.Errorf("SubscriptionProductID = %v, want uk.towncrierapp.pro.annual", p.SubscriptionProductID)
 	}
+	if !p.SubscriptionInTrial {
+		t.Error("SubscriptionInTrial = false, want true")
+	}
 }
 
 func TestScanUserRow_RejectsUnknownLifetimeTier(t *testing.T) {
@@ -169,7 +173,7 @@ func TestScanUserRow_RejectsUnknownLifetimeTier(t *testing.T) {
 		true, true, true,
 		"{}",
 		"Free", nil, nil, nil,
-		"Platinum", nil, nil, nil,
+		"Platinum", nil, nil, nil, false,
 		lastActive, lastActive.UnixMilli(), lastActive, nil, 0,
 	}}
 

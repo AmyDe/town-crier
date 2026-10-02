@@ -323,6 +323,7 @@ func (s *PostgresAdminStore) Save(ctx context.Context, p *UserProfile) error {
 		&emailDigest, &savedPush, &savedEmail, zonePrefText,
 		p.Tier.String(), p.SubscriptionExpiry, p.OriginalTransactionID, p.GracePeriodExpiry,
 		p.LifetimeTier.String(), p.LifetimeOriginalTransactionID, p.LifetimePurchasedAt, p.SubscriptionProductID,
+		p.SubscriptionInTrial,
 		p.LastActiveAt, p.LastActiveAt.UnixMilli(), p.WatchZoneCount,
 	)
 	if err != nil {

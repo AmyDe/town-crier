@@ -444,7 +444,7 @@ func lifetimeProfileFixture(t *testing.T) (*UserProfile, time.Time) {
 	purchased := time.Date(2026, 9, 1, 10, 30, 0, 0, time.UTC)
 	p.GrantLifetime(TierPro, "life-orig-1", purchased)
 	p.LinkOriginalTransactionID("sub-orig-1")
-	p.ActivateAppStoreSubscription(TierPro, time.Date(2027, 9, 1, 10, 30, 0, 0, time.UTC), "uk.towncrierapp.pro.annual")
+	p.ActivateAppStoreSubscription(TierPro, time.Date(2027, 9, 1, 10, 30, 0, 0, time.UTC), "uk.towncrierapp.pro.annual", true)
 	return p, purchased
 }
 
@@ -461,6 +461,9 @@ func requireLifetimeColumns(t *testing.T, got *UserProfile, purchased time.Time)
 	}
 	if got.SubscriptionProductID == nil || *got.SubscriptionProductID != "uk.towncrierapp.pro.annual" {
 		t.Errorf("SubscriptionProductID = %v, want uk.towncrierapp.pro.annual", got.SubscriptionProductID)
+	}
+	if !got.SubscriptionInTrial {
+		t.Error("SubscriptionInTrial = false, want true")
 	}
 }
 
@@ -924,5 +927,54 @@ func TestPostgresAdminStore_UserStats(t *testing.T) {
 	}
 	if got.MostRecent.Email == nil || *got.MostRecent.Email != "a@example.com" {
 		t.Errorf("MostRecent.Email: got %v, want a@example.com", got.MostRecent.Email)
+	}
+}
+
+func TestPostgresStore_SubscriptionInTrialRoundTrip(t *testing.T) {
+	pool := pgtest.New(t)
+	pgtest.Truncate(t, pool, "users")
+	store := NewPostgresStore(pool)
+	admin := NewPostgresAdminStore(pool)
+	ctx := context.Background()
+	expiry := time.Date(2027, 9, 1, 10, 30, 0, 0, time.UTC)
+
+	p := pgProfile(t, "auth0|trial1", "trial@example.com")
+	if err := store.Save(ctx, p); err != nil {
+		t.Fatalf("Save default: %v", err)
+	}
+	got, err := store.Get(ctx, p.UserID)
+	if err != nil {
+		t.Fatalf("Get default: %v", err)
+	}
+	if got.SubscriptionInTrial {
+		t.Error("new profile SubscriptionInTrial = true, want false")
+	}
+
+	got.ActivateAppStoreSubscription(TierPersonal, expiry, "uk.towncrierapp.personal.monthly", true)
+	if err := admin.Save(ctx, got); err != nil {
+		t.Fatalf("admin Save trial: %v", err)
+	}
+	got, err = store.Get(ctx, p.UserID)
+	if err != nil {
+		t.Fatalf("Get after admin save: %v", err)
+	}
+	if !got.SubscriptionInTrial {
+		t.Error("after admin Save SubscriptionInTrial = false, want true")
+	}
+
+	got.ActivateAppStoreSubscription(TierPersonal, expiry, "uk.towncrierapp.personal.monthly", false)
+	_, etag, err := store.GetWithETag(ctx, p.UserID)
+	if err != nil {
+		t.Fatalf("GetWithETag: %v", err)
+	}
+	if err := store.UpdateZoneCountWithCAS(ctx, p.UserID, got, etag); err != nil {
+		t.Fatalf("UpdateZoneCountWithCAS: %v", err)
+	}
+	got, err = store.Get(ctx, p.UserID)
+	if err != nil {
+		t.Fatalf("Get after CAS: %v", err)
+	}
+	if got.SubscriptionInTrial {
+		t.Error("after CAS update SubscriptionInTrial = true, want false")
 	}
 }

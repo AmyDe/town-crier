@@ -37,10 +37,17 @@ func renderStats(out io.Writer, s *statsResponse) {
 
 	fmt.Fprintln(out, "Paying")
 	fmt.Fprintf(out, "  %s\n", payingAppStoreLine(s.Paying))
-	if s.Paying.Lifetime != nil {
-		fmt.Fprintf(out, "  Lifetime (App Store): %d\n", *s.Paying.Lifetime)
+	if s.Paying.InTrial != nil {
+		fmt.Fprintf(out, "  In trial: %d\n", *s.Paying.InTrial)
 	}
 	fmt.Fprintf(out, "  %s\n", estMRRLine(s.Paying))
+	if s.Paying.AppStoreProAnnual != nil {
+		fmt.Fprintf(out, "  %s\n", annualPlansLine(*s.Paying.AppStoreProAnnual))
+	}
+	if s.Paying.Lifetime != nil {
+		fmt.Fprintf(out, "  Lifetime (App Store): %d\n", *s.Paying.Lifetime)
+		fmt.Fprintf(out, "  %s\n", lifetimeRevenueLine(*s.Paying.Lifetime))
+	}
 	fmt.Fprintf(out, "  Comped (offer/admin): %d\n", s.Paying.Comped)
 	fmt.Fprintf(out, "  Lapsed: %d\n", s.Paying.Lapsed)
 	fmt.Fprintf(out, "  In grace: %d\n", s.Paying.InGrace)
@@ -97,42 +104,85 @@ func payingAppStoreLine(p statsPaying) string {
 }
 
 // estMRRLine renders the estimated monthly recurring revenue line, or "-"
-// when the API predates the tier split needed to compute it.
+// when the API predates the tier split needed to compute it. With annual Pro
+// payers it also shows the monthly and annual components.
 func estMRRLine(p statsPaying) string {
 	if p.AppStoreByTier == nil {
 		return "Est. MRR: -"
 	}
-	return fmt.Sprintf("Est. MRR: %s", formatMRR(p))
+	line := "Est. MRR: " + formatMRR(p)
+	if p.AppStoreProAnnual != nil && *p.AppStoreProAnnual > 0 {
+		line += fmt.Sprintf(" (monthly %s + annual %s)", formatPence(monthlyMRRPence(p)), formatPence(annualMRRPence(p)))
+	}
+	return line
+}
+
+// annualPlansLine renders the yearly cash value of annual Pro subscriptions.
+func annualPlansLine(annual int) string {
+	if annual == 0 {
+		return "Annual plans: 0"
+	}
+	return fmt.Sprintf("Annual plans: %d × %s = %s/yr", annual, formatPence(proAnnualPence), formatPence(annual*proAnnualPence))
+}
+
+// lifetimeRevenueLine renders one-off lifetime revenue at list price. It is
+// never part of MRR.
+func lifetimeRevenueLine(lifetime int) string {
+	if lifetime == 0 {
+		return "Lifetime revenue: " + formatPence(0)
+	}
+	return fmt.Sprintf("Lifetime revenue: %s (%d × %s)", formatPence(lifetime*proLifetimePence), lifetime, formatPence(proLifetimePence))
 }
 
 // Per-plan price in pence, App Store-backed payers only. Comped (offer/admin)
 // users never contribute to MRR.
 const (
-	proPence       = 499
-	personalPence  = 199
-	proAnnualPence = 2999
-	monthsPerYear  = 12
+	proPence         = 499
+	personalPence    = 199
+	proAnnualPence   = 2999
+	proLifetimePence = 6999
+	monthsPerYear    = 12
 )
 
-// mrrPence computes the estimated MRR in integer pence. Annual Pro payers
-// count at a twelfth of the yearly price, rounded to the nearest penny; the
-// remaining Pro payers count at the monthly price. A nil tier split is zero.
-func mrrPence(p statsPaying) int {
+// monthlyMRRPence is the MRR from Personal and monthly Pro payers.
+func monthlyMRRPence(p statsPaying) int {
 	t := p.AppStoreByTier
 	if t == nil {
 		return 0
 	}
-	annual := 0
-	if p.AppStoreProAnnual != nil {
-		annual = *p.AppStoreProAnnual
+	return t.Personal*personalPence + (t.Pro-annualCount(p))*proPence
+}
+
+// annualMRRPence is the MRR from annual Pro payers: a twelfth of the yearly
+// price, rounded to the nearest penny.
+func annualMRRPence(p statsPaying) int {
+	if p.AppStoreByTier == nil {
+		return 0
 	}
-	return t.Personal*personalPence + (t.Pro-annual)*proPence + (annual*proAnnualPence+monthsPerYear/2)/monthsPerYear
+	return (annualCount(p)*proAnnualPence + monthsPerYear/2) / monthsPerYear
+}
+
+func annualCount(p statsPaying) int {
+	if p.AppStoreProAnnual == nil {
+		return 0
+	}
+	return *p.AppStoreProAnnual
+}
+
+// mrrPence computes the estimated MRR in integer pence. A nil tier split is
+// zero.
+func mrrPence(p statsPaying) int {
+	return monthlyMRRPence(p) + annualMRRPence(p)
+}
+
+// formatPence renders integer pence as "£X.YY".
+func formatPence(pence int) string {
+	return fmt.Sprintf("£%d.%02d", pence/100, pence%100)
 }
 
 // formatMRR renders the integer-pence MRR as "£X.YY/mo".
 func formatMRR(p statsPaying) string {
-	pence := mrrPence(p)
-	return fmt.Sprintf("£%d.%02d/mo", pence/100, pence%100)
+	return formatPence(mrrPence(p)) + "/mo"
 }
 
 // mrrSummarySegment renders the MRR segment of statsSummaryLine, degrading to
@@ -150,7 +200,16 @@ func lifetimeSummarySegment(p statsPaying) string {
 	if p.Lifetime == nil {
 		return ""
 	}
-	return fmt.Sprintf(" · lifetime %d", *p.Lifetime)
+	return fmt.Sprintf(" · lifetime %d (%s)", *p.Lifetime, formatPence(*p.Lifetime*proLifetimePence))
+}
+
+// trialSummarySegment renders the optional trial segment of statsSummaryLine,
+// empty when the API predates free-trial tracking.
+func trialSummarySegment(p statsPaying) string {
+	if p.InTrial == nil {
+		return ""
+	}
+	return fmt.Sprintf(" · trial %d", *p.InTrial)
 }
 
 // statsSummaryLine condenses the aggregate into a single line for the
@@ -158,9 +217,9 @@ func lifetimeSummarySegment(p statsPaying) string {
 // offer/admin comps are reported separately, never bundled in.
 func statsSummaryLine(s *statsResponse) string {
 	return fmt.Sprintf(
-		"%d users (Free %d, Personal %d, Pro %d) · paying %d · %s%s · comped %d · lapsed %d · new 24h %d · active 24h %d",
+		"%d users (Free %d, Personal %d, Pro %d) · paying %d%s · %s%s · comped %d · lapsed %d · new 24h %d · active 24h %d",
 		s.Users.Total, s.Users.ByTier.Free, s.Users.ByTier.Personal, s.Users.ByTier.Pro,
-		s.Paying.AppStore, mrrSummarySegment(s.Paying), lifetimeSummarySegment(s.Paying),
+		s.Paying.AppStore, trialSummarySegment(s.Paying), mrrSummarySegment(s.Paying), lifetimeSummarySegment(s.Paying),
 		s.Paying.Comped, s.Paying.Lapsed,
 		s.Signups.Last24h, s.Activity.Active24h,
 	)

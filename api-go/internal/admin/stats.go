@@ -42,6 +42,7 @@ type statsPaying struct {
 	AppStoreByTier    statsAppStoreByTier `json:"appStoreByTier"`
 	Lifetime          int                 `json:"lifetime"`
 	AppStoreProAnnual int                 `json:"appStoreProAnnual"`
+	InTrial           int                 `json:"inTrial"`
 }
 
 // statsAppStoreByTier is an explicit struct (not a map) so the two paid tier
@@ -154,21 +155,18 @@ func (h *handler) stats(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(r, w, resp)
 }
 
-// classifyPaying buckets the paid-tier candidates by their EffectiveTier(now),
-// mirroring the domain's lazy-expiry rule rather than the raw stored tier:
-//   - effectivePaid: EffectiveTier(now) is still paid.
-//   - lifetime: effective-paid AND holding a lifetime purchase. A lifetime
-//     holder is counted here only, even with a subscription alongside.
-//   - appStore: effective-paid, no lifetime purchase, AND backed by an Apple
-//     original transaction id.
-//   - appStoreByTier: appStore, additionally bucketed by EffectiveTier(now);
-//     Personal+Pro always sums to appStore.
-//   - appStoreProAnnual: appStore Pro payers on the annual product.
-//   - comped: effective-paid with no lifetime purchase and no original
-//     transaction id (offer/admin grant).
-//   - lapsed: stored tier paid but EffectiveTier(now) has collapsed to Free.
-//   - inGrace: effective-paid held alive ONLY by a live grace period (expiry
-//     passed, grace end still ahead). It overlaps appStore/comped by design.
+// classifyPaying buckets the paid-tier candidates by EffectiveTier(now), not
+// the raw stored tier. Every effective-paid profile counts in effectivePaid and
+// then in exactly one of lifetime, inTrial, appStore or comped:
+//   - lifetime: holds a lifetime purchase; wins over any subscription.
+//   - inTrial: App Store-backed and in a free-trial window; never in appStore.
+//   - appStore: App Store-backed, paid window; appStoreByTier sums to it and
+//     appStoreProAnnual counts the annual Pro payers within it.
+//   - comped: no Apple original transaction id (offer or admin grant).
+//
+// lapsed counts stored-paid profiles whose effective tier is Free. inGrace
+// counts effective-paid profiles held alive only by a live grace period and
+// overlaps the buckets above.
 func classifyPaying(candidates []*profiles.UserProfile, now time.Time) statsPaying {
 	var p statsPaying
 	for _, c := range candidates {
@@ -179,6 +177,8 @@ func classifyPaying(candidates []*profiles.UserProfile, now time.Time) statsPayi
 			switch {
 			case c.LifetimeOriginalTransactionID != nil && c.LifetimeTier.IsPaid():
 				p.Lifetime++
+			case c.OriginalTransactionID != nil && c.SubscriptionInTrial:
+				p.InTrial++
 			case c.OriginalTransactionID != nil:
 				p.AppStore++
 				switch effective {

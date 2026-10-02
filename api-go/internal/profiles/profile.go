@@ -191,7 +191,11 @@ type UserProfile struct {
 	// SubscriptionProductID is the App Store product behind the current
 	// subscription window. It is nil for offer-code and admin grants.
 	SubscriptionProductID *string
-	LastActiveAt          time.Time
+	// SubscriptionInTrial is true while the current App Store subscription
+	// window is a free trial. It is always false for offer-code grants, admin
+	// grants and lifetime purchases.
+	SubscriptionInTrial bool
+	LastActiveAt        time.Time
 	// CreatedAt is the profile's creation time. It is owned by the database
 	// (users.created_at DEFAULT CURRENT_TIMESTAMP) and read-only in Go: Save
 	// never writes it. NewProfile stamps it for the in-memory create response,
@@ -289,14 +293,17 @@ func (p *UserProfile) ActivateSubscription(tier SubscriptionTier, expiry time.Ti
 	p.SubscriptionExpiry = &exp
 	p.GracePeriodExpiry = nil
 	p.SubscriptionProductID = nil
+	p.SubscriptionInTrial = false
 }
 
 // ActivateAppStoreSubscription is ActivateSubscription for an App Store
-// subscription: it also records the product ID behind the subscription window.
-func (p *UserProfile) ActivateAppStoreSubscription(tier SubscriptionTier, expiry time.Time, productID string) {
+// subscription: it also records the product ID behind the subscription window
+// and whether that window is a free trial.
+func (p *UserProfile) ActivateAppStoreSubscription(tier SubscriptionTier, expiry time.Time, productID string, inTrial bool) {
 	p.ActivateSubscription(tier, expiry)
 	id := productID
 	p.SubscriptionProductID = &id
+	p.SubscriptionInTrial = inTrial
 }
 
 // ExpireSubscription ends the subscription entitlement: it clears the expiry,
@@ -308,6 +315,7 @@ func (p *UserProfile) ExpireSubscription() {
 	p.SubscriptionExpiry = nil
 	p.GracePeriodExpiry = nil
 	p.SubscriptionProductID = nil
+	p.SubscriptionInTrial = false
 }
 
 // GrantLifetime records a lifetime purchase and raises the stored Tier to at
@@ -340,6 +348,7 @@ func (p *UserProfile) RenewSubscription(newExpiry time.Time) {
 	exp := newExpiry
 	p.SubscriptionExpiry = &exp
 	p.GracePeriodExpiry = nil
+	p.SubscriptionInTrial = false
 }
 
 // EnterGracePeriod records the grace-period end while leaving the tier and
