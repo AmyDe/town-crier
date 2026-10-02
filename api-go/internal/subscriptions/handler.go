@@ -230,6 +230,7 @@ func (h *handler) runVerify(ctx context.Context, userID string, signedTransactio
 	highestTier := profiles.TierFree
 	var highestExpiry time.Time
 	var highestOriginalTxn, highestProductID string
+	var highestInTrial bool
 	var lifetime lifetimeCandidate
 
 	for _, signed := range signedTransactions {
@@ -272,6 +273,7 @@ func (h *handler) runVerify(ctx context.Context, userID string, signedTransactio
 			highestExpiry = txn.ExpiresDate
 			highestOriginalTxn = txn.OriginalTransactionID
 			highestProductID = txn.ProductID
+			highestInTrial = txn.IsFreeTrial()
 		}
 	}
 
@@ -289,7 +291,7 @@ func (h *handler) runVerify(ctx context.Context, userID string, signedTransactio
 			return verifyResponse{}, err
 		}
 		profile.LinkOriginalTransactionID(highestOriginalTxn)
-		profile.ActivateAppStoreSubscription(highestTier, highestExpiry, highestProductID)
+		profile.ActivateAppStoreSubscription(highestTier, highestExpiry, highestProductID, highestInTrial)
 	}
 
 	if err := h.profilesByUser.Save(ctx, profile); err != nil {

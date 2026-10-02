@@ -202,3 +202,33 @@ func requirePayloadError(t *testing.T, err error, wantMsg string) {
 		t.Errorf("message = %q, want %q", pe.Error(), wantMsg)
 	}
 }
+
+func TestDecodeTransaction_OfferDiscountType(t *testing.T) {
+	t.Parallel()
+	const base = `"transactionId":"t","originalTransactionId":"o","productId":"p","bundleId":"b","environment":"e"`
+	tests := []struct {
+		name      string
+		json      string
+		wantType  string
+		wantTrial bool
+	}{
+		{"free trial", `{` + base + `,"offerType":1,"offerDiscountType":"FREE_TRIAL"}`, "FREE_TRIAL", true},
+		{"absent", `{` + base + `}`, "", false},
+		{"pay as you go is not a trial", `{` + base + `,"offerType":1,"offerDiscountType":"PAY_AS_YOU_GO"}`, "PAY_AS_YOU_GO", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := DecodeTransaction(tt.json)
+			if err != nil {
+				t.Fatalf("DecodeTransaction: %v", err)
+			}
+			if got.OfferDiscountType != tt.wantType {
+				t.Errorf("OfferDiscountType = %q, want %q", got.OfferDiscountType, tt.wantType)
+			}
+			if got.IsFreeTrial() != tt.wantTrial {
+				t.Errorf("IsFreeTrial = %v, want %v", got.IsFreeTrial(), tt.wantTrial)
+			}
+		})
+	}
+}

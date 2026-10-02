@@ -141,7 +141,7 @@ func applyNotification(profile *profiles.UserProfile, notification DecodedNotifi
 		if err != nil {
 			return false, err
 		}
-		profile.ActivateAppStoreSubscription(tier, txn.ExpiresDate, txn.ProductID)
+		profile.ActivateAppStoreSubscription(tier, txn.ExpiresDate, txn.ProductID, txn.IsFreeTrial())
 		return true, nil
 
 	case "DID_CHANGE_RENEWAL_PREF":
@@ -150,7 +150,7 @@ func applyNotification(profile *profiles.UserProfile, notification DecodedNotifi
 			if err != nil {
 				return false, err
 			}
-			profile.ActivateAppStoreSubscription(tier, txn.ExpiresDate, txn.ProductID)
+			profile.ActivateAppStoreSubscription(tier, txn.ExpiresDate, txn.ProductID, txn.IsFreeTrial())
 			return true, nil
 		}
 		// DOWNGRADE: no state change — it takes effect at the next renewal.

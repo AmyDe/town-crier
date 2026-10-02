@@ -331,7 +331,7 @@ func TestNotificationProcessor_Process_ExpiredMonthlyKeepsLifetime(t *testing.T)
 	d := newTestProcessor(testAllowedEnvs)
 	p := lifetimeProfile(t)
 	p.LinkOriginalTransactionID("orig-sub")
-	p.ActivateAppStoreSubscription(profiles.TierPro, testNow.AddDate(0, 0, -1), ProductProMonthly)
+	p.ActivateAppStoreSubscription(profiles.TierPro, testNow.AddDate(0, 0, -1), ProductProMonthly, true)
 	d.byTxn.profile = p
 	d.verifier.results["hdr.OUTER.sig"] = notificationJSON("EXPIRED", "uuid-exp", "INNER")
 	d.verifier.results["INNER"] = txnJSON(ProductProMonthly, testBundleID, "orig-sub", pastExpiryMs())
@@ -516,5 +516,40 @@ func TestNotificationProcessor_Process_DidRenewStoresProductID(t *testing.T) {
 	saved := d.byTxn.saved
 	if saved == nil || saved.SubscriptionProductID == nil || *saved.SubscriptionProductID != ProductProAnnual {
 		t.Errorf("saved = %+v, want SubscriptionProductID %s", saved, ProductProAnnual)
+	}
+}
+
+func TestNotificationProcessor_Process_TrialFlag(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		notif   string
+		inner   string
+		initial bool
+		want    bool
+	}{
+		{"subscribed with free trial sets flag", notificationJSON("SUBSCRIBED", "u1", "INNER"), trialTxnJSON(ProductPersonalMonthly, "orig-1", futureExpiryMs()), false, true},
+		{"did renew without offer clears flag", notificationJSON("DID_RENEW", "u2", "INNER"), txnJSON(ProductPersonalMonthly, testBundleID, "orig-1", futureExpiryMs()), true, false},
+		{"upgrade passes transaction value through", notificationJSONWithSubtype("DID_CHANGE_RENEWAL_PREF", "UPGRADE", "u3", "INNER"), trialTxnJSON(ProductProMonthly, "orig-1", futureExpiryMs()), false, true},
+		{"expired clears flag", notificationJSON("EXPIRED", "u4", "INNER"), txnJSON(ProductPersonalMonthly, testBundleID, "orig-1", pastExpiryMs()), true, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			d := newTestProcessor(testAllowedEnvs)
+			p := freshProfile(t)
+			p.SubscriptionInTrial = tt.initial
+			d.byTxn.profile = p
+			d.verifier.results["hdr.OUTER.sig"] = tt.notif
+			d.verifier.results["INNER"] = tt.inner
+
+			if _, err := d.processor.Process(context.Background(), "hdr.OUTER.sig"); err != nil {
+				t.Fatalf("Process: %v", err)
+			}
+
+			if d.byTxn.saved == nil || d.byTxn.saved.SubscriptionInTrial != tt.want {
+				t.Errorf("saved SubscriptionInTrial = %v, want %v", d.byTxn.saved != nil && d.byTxn.saved.SubscriptionInTrial, tt.want)
+			}
+		})
 	}
 }

@@ -21,10 +21,13 @@ func (e *PayloadError) Error() string { return e.Message }
 // non-renewing purchase such as the Pro lifetime product.
 const TransactionTypeNonConsumable = "Non-Consumable"
 
+// OfferDiscountFreeTrial is Apple's offerDiscountType for a free-trial window.
+const OfferDiscountFreeTrial = "FREE_TRIAL"
+
 // DecodedTransaction is the decoded JWSTransactionDecodedPayload (StoreKit 2).
 // Dates are converted from Apple's Unix epoch milliseconds to UTC time.
 // RevocationDate is the zero time unless Apple refunded or revoked the
-// transaction; Type is empty when the payload omits it.
+// transaction; Type and OfferDiscountType are empty when the payload omits them.
 type DecodedTransaction struct {
 	TransactionID         string
 	OriginalTransactionID string
@@ -34,8 +37,12 @@ type DecodedTransaction struct {
 	ExpiresDate           time.Time
 	RevocationDate        time.Time
 	Type                  string
+	OfferDiscountType     string
 	Environment           string
 }
+
+// IsFreeTrial reports whether the transaction's window is a free trial.
+func (t DecodedTransaction) IsFreeTrial() bool { return t.OfferDiscountType == OfferDiscountFreeTrial }
 
 // DecodedNotification is the decoded App Store Server Notification v2
 // (responseBodyV2DecodedPayload). The signed JWS strings for the transaction
@@ -58,6 +65,7 @@ type appleTransactionPayload struct {
 	ExpiresDate           int64  `json:"expiresDate"`
 	RevocationDate        int64  `json:"revocationDate"`
 	Type                  string `json:"type"`
+	OfferDiscountType     string `json:"offerDiscountType"`
 	Environment           string `json:"environment"`
 }
 
@@ -111,6 +119,7 @@ func DecodeTransaction(jsonStr string) (DecodedTransaction, error) {
 		ExpiresDate:           time.UnixMilli(p.ExpiresDate).UTC(),
 		RevocationDate:        revocationDate,
 		Type:                  p.Type,
+		OfferDiscountType:     p.OfferDiscountType,
 		Environment:           p.Environment,
 	}, nil
 }

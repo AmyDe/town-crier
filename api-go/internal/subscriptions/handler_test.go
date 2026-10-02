@@ -192,6 +192,11 @@ func txnJSONEnv(productID, bundleID, origTxn string, expiresMs int64, environmen
 		origTxn, productID, bundleID, expiresMs, environment)
 }
 
+func trialTxnJSON(productID, origTxn string, expiresMs int64) string {
+	return fmt.Sprintf(`{"transactionId":"t1","originalTransactionId":%q,"productId":%q,"bundleId":%q,"purchaseDate":1,"expiresDate":%d,"offerType":1,"offerDiscountType":"FREE_TRIAL","environment":"Production"}`,
+		origTxn, productID, testBundleID, expiresMs)
+}
+
 const lifetimePurchaseMs = 1_700_000_000_000
 
 func lifetimeTxnJSON(productID, origTxn string, revocationMs int64) string {
@@ -1319,5 +1324,65 @@ func TestWebhook_WellFormedPayloadReachesVerifier(t *testing.T) {
 	}
 	if d.verifier.callCount == 0 {
 		t.Error("verifier was not called — well-formed payload must reach the verifier")
+	}
+}
+
+func TestVerify_SetsSubscriptionInTrial(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		txns map[string]string
+		body string
+		want bool
+		tier profiles.SubscriptionTier
+	}{
+		{
+			name: "single free trial transaction",
+			txns: map[string]string{"JWS_A": trialTxnJSON(ProductPersonalMonthly, "orig-1", futureExpiryMs())},
+			body: `{"signedTransaction":"JWS_A"}`,
+			want: true,
+			tier: profiles.TierPersonal,
+		},
+		{
+			name: "single full-price transaction",
+			txns: map[string]string{"JWS_A": txnJSON(ProductPersonalMonthly, testBundleID, "orig-1", futureExpiryMs())},
+			body: `{"signedTransaction":"JWS_A"}`,
+			want: false,
+			tier: profiles.TierPersonal,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			d := newTestDeps()
+			d.byUser.profile = freshProfile(t)
+			for k, v := range tt.txns {
+				d.verifier.results[k] = v
+			}
+
+			rec := d.serve(t, "/v1/subscriptions/verify", tt.body, true)
+
+			verifyTier(t, rec)
+			if d.byUser.saved == nil || d.byUser.saved.SubscriptionInTrial != tt.want {
+				t.Errorf("saved SubscriptionInTrial = %v, want %v", d.byUser.saved != nil && d.byUser.saved.SubscriptionInTrial, tt.want)
+			}
+		})
+	}
+}
+
+func TestVerify_HigherTierPaidWinsOverLowerTierTrial(t *testing.T) {
+	t.Parallel()
+	d := newTestDeps()
+	d.byUser.profile = freshProfile(t)
+	d.verifier.results["JWS_TRIAL"] = trialTxnJSON(ProductPersonalMonthly, "orig-1", futureExpiryMs())
+	d.verifier.results["JWS_PAID"] = txnJSON(ProductProMonthly, testBundleID, "orig-1", futureExpiryMs())
+
+	rec := d.serve(t, "/v1/subscriptions/verify", `{"signedTransactions":["JWS_TRIAL","JWS_PAID"]}`, true)
+
+	if resp := verifyTier(t, rec); resp.Tier != "Pro" {
+		t.Fatalf("tier = %q, want Pro", resp.Tier)
+	}
+	if d.byUser.saved == nil || d.byUser.saved.SubscriptionInTrial {
+		t.Error("SubscriptionInTrial = true, want false (higher paid tier wins)")
 	}
 }
