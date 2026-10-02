@@ -52,6 +52,7 @@ type exportedSubscription struct {
 	OriginalTransactionID         *string              `json:"originalTransactionId"`
 	GracePeriodExpiresAt          *platform.DotNetTime `json:"gracePeriodExpiresAt"`
 	ProductID                     *string              `json:"productId"`
+	InTrial                       bool                 `json:"inTrial"`
 	LifetimeTier                  string               `json:"lifetimeTier"`
 	LifetimeOriginalTransactionID *string              `json:"lifetimeOriginalTransactionId"`
 	LifetimePurchasedAt           *platform.DotNetTime `json:"lifetimePurchasedAt"`
@@ -216,6 +217,7 @@ func newExportUserData(ctx context.Context, p *UserProfile, readers ExportReader
 			OriginalTransactionID:         p.OriginalTransactionID,
 			GracePeriodExpiresAt:          platform.DotNetTimePtr(p.GracePeriodExpiry),
 			ProductID:                     p.SubscriptionProductID,
+			InTrial:                       p.SubscriptionInTrial,
 			LifetimeTier:                  p.LifetimeTier.String(),
 			LifetimeOriginalTransactionID: p.LifetimeOriginalTransactionID,
 			LifetimePurchasedAt:           platform.DotNetTimePtr(p.LifetimePurchasedAt),

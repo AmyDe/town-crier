@@ -98,6 +98,7 @@ const userSelectCols = `user_id, email, push_enabled, digest_day,
 	zone_preferences::text,
 	tier, subscription_expiry, original_transaction_id, grace_period_expiry,
 	lifetime_tier, lifetime_original_transaction_id, lifetime_purchased_at, subscription_product_id,
+	subscription_in_trial,
 	last_active_at, last_active_at_epoch, created_at, watch_zone_count, version`
 
 // rowScanner is the minimal interface that both pgx.Row (returned by QueryRow)
@@ -120,6 +121,7 @@ func scanUserRow(row rowScanner) (*UserProfile, int, error) {
 		email, originalTransactionID *string
 		lifetimeOriginalTxnID        *string
 		subscriptionProductID        *string
+		subscriptionInTrial          bool
 		pushEnabled                  bool
 		digestDay                    int
 		emailDigestEnabled           *bool
@@ -141,6 +143,7 @@ func scanUserRow(row rowScanner) (*UserProfile, int, error) {
 		&zonePrefText,
 		&tier, &subscriptionExpiry, &originalTransactionID, &gracePeriodExpiry,
 		&lifetimeTier, &lifetimeOriginalTxnID, &lifetimePurchasedAt, &subscriptionProductID,
+		&subscriptionInTrial,
 		&lastActiveAt, &lastActiveAtEpoch, &createdAt, &watchZoneCount, &version,
 	); err != nil {
 		return nil, 0, err
@@ -180,6 +183,7 @@ func scanUserRow(row rowScanner) (*UserProfile, int, error) {
 		LifetimeOriginalTransactionID: lifetimeOriginalTxnID,
 		LifetimePurchasedAt:           lifetimePurchasedAt,
 		SubscriptionProductID:         subscriptionProductID,
+		SubscriptionInTrial:           subscriptionInTrial,
 		LastActiveAt:                  lastActiveAt,
 		CreatedAt:                     createdAt,
 		WatchZoneCount:                watchZoneCount,
@@ -243,10 +247,11 @@ INSERT INTO users (
 	email_digest_enabled, saved_decision_push, saved_decision_email, zone_preferences,
 	tier, subscription_expiry, original_transaction_id, grace_period_expiry,
 	lifetime_tier, lifetime_original_transaction_id, lifetime_purchased_at, subscription_product_id,
+	subscription_in_trial,
 	last_active_at, last_active_at_epoch, watch_zone_count, version
 ) VALUES (
 	$1, $2, $3, $4, $5, $6, $7, $8::jsonb,
-	$9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, 0
+	$9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 0
 )
 ON CONFLICT (user_id) DO UPDATE SET
 	email                            = EXCLUDED.email,
@@ -264,6 +269,7 @@ ON CONFLICT (user_id) DO UPDATE SET
 	lifetime_original_transaction_id = EXCLUDED.lifetime_original_transaction_id,
 	lifetime_purchased_at            = EXCLUDED.lifetime_purchased_at,
 	subscription_product_id          = EXCLUDED.subscription_product_id,
+	subscription_in_trial            = EXCLUDED.subscription_in_trial,
 	last_active_at                   = EXCLUDED.last_active_at,
 	last_active_at_epoch             = EXCLUDED.last_active_at_epoch,
 	watch_zone_count                 = EXCLUDED.watch_zone_count`
@@ -284,6 +290,7 @@ func (s *PostgresStore) Save(ctx context.Context, p *UserProfile) error {
 		&emailDigest, &savedPush, &savedEmail, zonePrefText,
 		p.Tier.String(), p.SubscriptionExpiry, p.OriginalTransactionID, p.GracePeriodExpiry,
 		p.LifetimeTier.String(), p.LifetimeOriginalTransactionID, p.LifetimePurchasedAt, p.SubscriptionProductID,
+		p.SubscriptionInTrial,
 		p.LastActiveAt, p.LastActiveAt.UnixMilli(), p.WatchZoneCount,
 	)
 	if err != nil {
@@ -339,11 +346,12 @@ UPDATE users SET
 	lifetime_original_transaction_id = $14,
 	lifetime_purchased_at            = $15,
 	subscription_product_id          = $16,
-	last_active_at                   = $17,
-	last_active_at_epoch             = $18,
-	watch_zone_count                 = $19,
+	subscription_in_trial            = $17,
+	last_active_at                   = $18,
+	last_active_at_epoch             = $19,
+	watch_zone_count                 = $20,
 	version                          = version + 1
-WHERE user_id = $1 AND version = $20`
+WHERE user_id = $1 AND version = $21`
 
 // UpdateZoneCountWithCAS replaces the profile row only when the stored version
 // matches the expected version encoded in etag. The version is atomically
@@ -373,6 +381,7 @@ func (s *PostgresStore) UpdateZoneCountWithCAS(ctx context.Context, userID strin
 		&emailDigest, &savedPush, &savedEmail, zonePrefText,
 		p.Tier.String(), p.SubscriptionExpiry, p.OriginalTransactionID, p.GracePeriodExpiry,
 		p.LifetimeTier.String(), p.LifetimeOriginalTransactionID, p.LifetimePurchasedAt, p.SubscriptionProductID,
+		p.SubscriptionInTrial,
 		p.LastActiveAt, p.LastActiveAt.UnixMilli(), p.WatchZoneCount,
 		expectedVersion,
 	)
