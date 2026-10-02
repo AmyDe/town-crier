@@ -192,9 +192,9 @@ func txnJSONEnv(productID, bundleID, origTxn string, expiresMs int64, environmen
 		origTxn, productID, bundleID, expiresMs, environment)
 }
 
-func trialTxnJSON(productID, origTxn string, expiresMs int64) string {
+func trialTxnJSON(productID string, expiresMs int64) string {
 	return fmt.Sprintf(`{"transactionId":"t1","originalTransactionId":%q,"productId":%q,"bundleId":%q,"purchaseDate":1,"expiresDate":%d,"offerType":1,"offerDiscountType":"FREE_TRIAL","environment":"Production"}`,
-		origTxn, productID, testBundleID, expiresMs)
+		"orig-1", productID, testBundleID, expiresMs)
 }
 
 const lifetimePurchaseMs = 1_700_000_000_000
@@ -588,9 +588,9 @@ func notificationJSON(notifType, uuid, signedTxn string) string {
 		notifType, uuid, signedTxn)
 }
 
-func notificationJSONWithSubtype(notifType, subtype, uuid, signedTxn string) string {
-	return fmt.Sprintf(`{"notificationType":%q,"subtype":%q,"notificationUUID":%q,"data":{"signedTransactionInfo":%q}}`,
-		notifType, subtype, uuid, signedTxn)
+func renewalPrefJSON(subtype, uuid string) string {
+	return fmt.Sprintf(`{"notificationType":"DID_CHANGE_RENEWAL_PREF","subtype":%q,"notificationUUID":%q,"data":{"signedTransactionInfo":"INNER"}}`,
+		subtype, uuid)
 }
 
 func TestWebhook_SubscribedActivatesProfile(t *testing.T) {
@@ -804,7 +804,7 @@ func TestWebhook_StampsNotificationTypeOnRequestSpan(t *testing.T) {
 func TestWebhook_StampsSubtypeOnRequestSpanWhenPresent(t *testing.T) {
 	d := newTestDeps()
 	d.byTxn.profile = freshProfile(t)
-	d.verifier.results["hdr.OUTER.sig"] = notificationJSONWithSubtype("DID_CHANGE_RENEWAL_PREF", "UPGRADE", "uuid-2", "INNER")
+	d.verifier.results["hdr.OUTER.sig"] = renewalPrefJSON("UPGRADE", "uuid-2")
 	d.verifier.results["INNER"] = txnJSON(ProductProMonthly, testBundleID, "orig-1", futureExpiryMs())
 
 	rec, span := d.serveWithSpan(t, "/v1/webhooks/appstore", `{"signedPayload":"hdr.OUTER.sig"}`)
@@ -1338,7 +1338,7 @@ func TestVerify_SetsSubscriptionInTrial(t *testing.T) {
 	}{
 		{
 			name: "single free trial transaction",
-			txns: map[string]string{"JWS_A": trialTxnJSON(ProductPersonalMonthly, "orig-1", futureExpiryMs())},
+			txns: map[string]string{"JWS_A": trialTxnJSON(ProductPersonalMonthly, futureExpiryMs())},
 			body: `{"signedTransaction":"JWS_A"}`,
 			want: true,
 			tier: profiles.TierPersonal,
@@ -1374,7 +1374,7 @@ func TestVerify_HigherTierPaidWinsOverLowerTierTrial(t *testing.T) {
 	t.Parallel()
 	d := newTestDeps()
 	d.byUser.profile = freshProfile(t)
-	d.verifier.results["JWS_TRIAL"] = trialTxnJSON(ProductPersonalMonthly, "orig-1", futureExpiryMs())
+	d.verifier.results["JWS_TRIAL"] = trialTxnJSON(ProductPersonalMonthly, futureExpiryMs())
 	d.verifier.results["JWS_PAID"] = txnJSON(ProductProMonthly, testBundleID, "orig-1", futureExpiryMs())
 
 	rec := d.serve(t, "/v1/subscriptions/verify", `{"signedTransactions":["JWS_TRIAL","JWS_PAID"]}`, true)

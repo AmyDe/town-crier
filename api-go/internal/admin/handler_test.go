@@ -551,14 +551,13 @@ func paidCandidate(userID string, tier profiles.SubscriptionTier, expiry *time.T
 	}
 }
 
-func lifetimeCandidate(userID string, subExpiry, grace *time.Time, subTxn *string) *profiles.UserProfile {
+func lifetimeCandidate(userID string, subExpiry *time.Time, subTxn *string) *profiles.UserProfile {
 	lifeTxn := "life-" + userID
 	purchased := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
 	return &profiles.UserProfile{
 		UserID:                        userID,
 		Tier:                          profiles.TierPro,
 		SubscriptionExpiry:            subExpiry,
-		GracePeriodExpiry:             grace,
 		OriginalTransactionID:         subTxn,
 		LifetimeTier:                  profiles.TierPro,
 		LifetimeOriginalTransactionID: &lifeTxn,
@@ -598,7 +597,7 @@ func TestClassifyPaying_LifetimeWinsOverTrial(t *testing.T) {
 	now := time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)
 	future := now.Add(7 * 24 * time.Hour)
 	subTxn := "sub-orig"
-	p := lifetimeCandidate("auth0|life-trial", &future, nil, &subTxn)
+	p := lifetimeCandidate("auth0|life-trial", &future, &subTxn)
 	p.SubscriptionInTrial = true
 
 	got := classifyPaying([]*profiles.UserProfile{p}, now)
@@ -616,8 +615,8 @@ func TestClassifyPaying_LifetimeWinsOverSubscriptionBuckets(t *testing.T) {
 	subTxn := "sub-orig"
 
 	got := classifyPaying([]*profiles.UserProfile{
-		lifetimeCandidate("auth0|only", nil, nil, nil),
-		lifetimeCandidate("auth0|lapsed-sub", &past, nil, &subTxn),
+		lifetimeCandidate("auth0|only", nil, nil),
+		lifetimeCandidate("auth0|lapsed-sub", &past, &subTxn),
 	}, now)
 
 	want := statsPaying{EffectivePaid: 2, Lifetime: 2}
@@ -687,7 +686,7 @@ func TestStats_ReturnsPinnedContract(t *testing.T) {
 			paidCandidate("auth0|comped", profiles.TierPersonal, &future, nil, nil),              // effective-paid + comped
 			paidCandidate("auth0|lapsed", profiles.TierPro, &past, nil, nil),                     // lapsed (expired, no grace)
 			paidCandidate("auth0|grace", profiles.TierPro, &past, &future, nil),                  // effective-paid via live grace + comped + inGrace
-			lifetimeCandidate("auth0|lifetime", nil, nil, nil),                                   // effective-paid + lifetime
+			lifetimeCandidate("auth0|lifetime", nil, nil),                                        // effective-paid + lifetime
 			annualCandidate("auth0|annual", &future, &txn3),                                      // effective-paid + appStore + Pro + annual
 			trialCandidate("auth0|trial", &future, &txn4),                                        // effective-paid + inTrial only
 		},

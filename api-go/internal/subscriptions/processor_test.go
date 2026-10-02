@@ -96,7 +96,7 @@ func TestNotificationProcessor_Process_UpgradeIsWasNewTrue(t *testing.T) {
 	t.Parallel()
 	d := newTestProcessor(testAllowedEnvs)
 	d.byTxn.profile = freshProfile(t)
-	d.verifier.results["hdr.OUTER.sig"] = notificationJSONWithSubtype("DID_CHANGE_RENEWAL_PREF", "UPGRADE", "uuid-up", "INNER")
+	d.verifier.results["hdr.OUTER.sig"] = renewalPrefJSON("UPGRADE", "uuid-up")
 	d.verifier.results["INNER"] = txnJSON(ProductProMonthly, testBundleID, "orig-1", futureExpiryMs())
 
 	wasNew, err := d.processor.Process(context.Background(), "hdr.OUTER.sig")
@@ -116,7 +116,7 @@ func TestNotificationProcessor_Process_DowngradeIsWasNewFalse(t *testing.T) {
 	t.Parallel()
 	d := newTestProcessor(testAllowedEnvs)
 	d.byTxn.profile = freshProfile(t)
-	d.verifier.results["hdr.OUTER.sig"] = notificationJSONWithSubtype("DID_CHANGE_RENEWAL_PREF", "DOWNGRADE", "uuid-down", "INNER")
+	d.verifier.results["hdr.OUTER.sig"] = renewalPrefJSON("DOWNGRADE", "uuid-down")
 	d.verifier.results["INNER"] = txnJSON(ProductProMonthly, testBundleID, "orig-1", futureExpiryMs())
 
 	wasNew, err := d.processor.Process(context.Background(), "hdr.OUTER.sig")
@@ -528,9 +528,9 @@ func TestNotificationProcessor_Process_TrialFlag(t *testing.T) {
 		initial bool
 		want    bool
 	}{
-		{"subscribed with free trial sets flag", notificationJSON("SUBSCRIBED", "u1", "INNER"), trialTxnJSON(ProductPersonalMonthly, "orig-1", futureExpiryMs()), false, true},
+		{"subscribed with free trial sets flag", notificationJSON("SUBSCRIBED", "u1", "INNER"), trialTxnJSON(ProductPersonalMonthly, futureExpiryMs()), false, true},
 		{"did renew without offer clears flag", notificationJSON("DID_RENEW", "u2", "INNER"), txnJSON(ProductPersonalMonthly, testBundleID, "orig-1", futureExpiryMs()), true, false},
-		{"upgrade passes transaction value through", notificationJSONWithSubtype("DID_CHANGE_RENEWAL_PREF", "UPGRADE", "u3", "INNER"), trialTxnJSON(ProductProMonthly, "orig-1", futureExpiryMs()), false, true},
+		{"upgrade passes transaction value through", renewalPrefJSON("UPGRADE", "u3"), trialTxnJSON(ProductProMonthly, futureExpiryMs()), false, true},
 		{"expired clears flag", notificationJSON("EXPIRED", "u4", "INNER"), txnJSON(ProductPersonalMonthly, testBundleID, "orig-1", pastExpiryMs()), true, false},
 	}
 	for _, tt := range tests {
