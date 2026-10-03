@@ -4,7 +4,7 @@ Date: 2026-07-17
 
 ## Status
 
-Proposed
+Superseded by [0049](0049-planit-day-window-polling-rebuild.md)
 
 Additive to [0041](0041-poll-planit-on-a-churn-masked-delta-axis.md) and [0042](0042-historical-backward-backfill-lane.md). Decision 2 reverses [0041](0041-poll-planit-on-a-churn-masked-delta-axis.md)'s "no schema migration" constraint (GH #962 constraint 4) and needs an explicit accept before it ships.
 

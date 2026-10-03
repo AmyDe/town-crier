@@ -4,7 +4,7 @@ Date: 2026-07-15
 
 ## Status
 
-Accepted — additive to [0041](0041-poll-planit-on-a-churn-masked-delta-axis.md), ships disabled (`POLLING_BACKFILL_ENABLED=false`)
+Superseded by [0049](0049-planit-day-window-polling-rebuild.md). Previously: Accepted — additive to [0041](0041-poll-planit-on-a-churn-masked-delta-axis.md), ships disabled (`POLLING_BACKFILL_ENABLED=false`)
 
 ## Context
 

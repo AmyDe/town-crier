@@ -31,7 +31,7 @@ func anonRateLimitRequest(t *testing.T, h http.Handler, path, remoteAddr string)
 // production defaults.
 func newRouterWithAnonLimit(t *testing.T, logger *slog.Logger, anonBurst, anonRefillPerMinute int) http.Handler {
 	t.Helper()
-	return newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, nil, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "", nil, nil, "", nil, nil, nil, anonBurst, anonRefillPerMinute, logger)
+	return newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, nil, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "", nil, nil, "", nil, nil, nil, anonBurst, anonRefillPerMinute, pollingAdminDeps{}, logger)
 }
 
 // TestRouter_AnonRateLimitAppliesToAnonymousRoutes proves AnonRateLimit is
@@ -86,7 +86,7 @@ func TestRouter_AnonRateLimitDoesNotThrottleAuthenticatedTraffic(t *testing.T) {
 
 	logger := slog.New(slog.DiscardHandler)
 	validator := staticValidator{claims: auth.Claims{Subject: "auth0|anonwire"}}
-	h := newRouter(validator, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, nil, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "", nil, nil, "", nil, nil, nil, 1, 60, logger)
+	h := newRouter(validator, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, nil, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "", nil, nil, "", nil, nil, nil, 1, 60, pollingAdminDeps{}, logger)
 
 	const sameIP = "203.0.113.92:1"
 
@@ -122,7 +122,7 @@ func TestRouter_AnonRateLimitExemptsValidBuildKeyRequests(t *testing.T) {
 
 	const buildKey = "s3cret-build-key"
 	logger := slog.New(slog.DiscardHandler)
-	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, fakeAppStore{}, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", buildKey, nil, nil, "", nil, nil, nil, 1, 60, logger)
+	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, fakeAppStore{}, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", buildKey, nil, nil, "", nil, nil, nil, 1, 60, pollingAdminDeps{}, logger)
 
 	const sameIP = "203.0.113.93:1"
 
@@ -158,7 +158,7 @@ func TestRouter_AnonRateLimitDoesNotExemptWrongOrMissingBuildKey(t *testing.T) {
 
 	const buildKey = "s3cret-build-key"
 	logger := slog.New(slog.DiscardHandler)
-	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, fakeAppStore{}, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", buildKey, nil, nil, "", nil, nil, nil, 1, 60, logger)
+	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, fakeAppStore{}, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", buildKey, nil, nil, "", nil, nil, nil, 1, 60, pollingAdminDeps{}, logger)
 
 	const sameIP = "203.0.113.94:1"
 

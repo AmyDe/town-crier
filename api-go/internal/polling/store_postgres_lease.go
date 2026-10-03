@@ -7,7 +7,16 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
+
+// querier is the slice of *pgxpool.Pool the lease store uses; a pgx.Tx also
+// satisfies it.
+type querier interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
 
 // LeaseAccess is the full lease-store method set its consumers rely on and the
 // exported consumer-side interface the worker wiring depends on.

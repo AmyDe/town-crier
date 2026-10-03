@@ -1,6 +1,6 @@
 // Package notifydispatch is the poll-path notification fan-out: the per-app
-// orchestration the poll-sb handler runs after upserting a changed planning
-// application. It implements two dispatch paths: the new-application zone
+// orchestration the poll runner's event dispatcher runs for a new or decided
+// planning application. It implements two dispatch paths: the new-application zone
 // fan-out (Enqueuer) and the non-decision → decision transition fan-out
 // (DecisionDispatcher).
 //
@@ -142,11 +142,11 @@ func NewEnqueuer(
 // EnqueueForApplication runs the new-application zone fan-out for one polled
 // application: it finds every watch zone whose circle contains the application's
 // coordinates (cross-partition) and enqueues a NewApplication notification for
-// each zone created on or before the application's LastDifferent timestamp. A
-// zone created after the application last changed is skipped — its owner only
-// subscribes to changes from creation onward, so a back-dated application is not
-// "new" to them. An application without coordinates fans out to nothing.
-func (e *Enqueuer) EnqueueForApplication(ctx context.Context, app applications.PlanningApplication) error {
+// each zone created on or before detectedAt, the moment we first learned of the
+// event. A zone created after that is skipped: its owner only subscribes to
+// events from creation onward. An application without coordinates fans out to
+// nothing.
+func (e *Enqueuer) EnqueueForApplication(ctx context.Context, app applications.PlanningApplication, detectedAt time.Time) error {
 	if app.Latitude == nil || app.Longitude == nil {
 		return nil
 	}
@@ -155,7 +155,7 @@ func (e *Enqueuer) EnqueueForApplication(ctx context.Context, app applications.P
 		return err
 	}
 	for _, zone := range zones {
-		if zone.CreatedAt.After(app.LastDifferent) {
+		if zone.CreatedAt.After(detectedAt) {
 			continue
 		}
 		if err := e.Enqueue(ctx, app, zone); err != nil {

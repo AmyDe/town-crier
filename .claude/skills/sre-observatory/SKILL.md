@@ -313,7 +313,7 @@ Bimodal latency (healthy p50, catastrophic p95) is a known Town Crier failure sh
 
 ### Phase 4: Dependency Health
 
-`AppDependencies` is **worker-only**. It carries outbound HTTP plus named InProc spans for each polling lane and scheduled cycle. There is no Cosmos DB — it was retired 2026-06-27 (ADR 0032) and Postgres replaced it. Ignore any older guidance about RU charges, throttles, or `Leases/docs/polling` 404s.
+`AppDependencies` is **worker-only**. It carries outbound HTTP plus named InProc spans for the poll run and each scheduled cycle. There is no Cosmos DB — it was retired 2026-06-27 (ADR 0032) and Postgres replaced it. Ignore any older guidance about RU charges, throttles, or `Leases/docs/polling` 404s.
 
 **4a. Dependency overview**
 ```kql
@@ -330,17 +330,26 @@ Typical healthy 24h shape (2026-07-24 reference):
 
 | Target | What it is | Rough volume |
 |---|---|---|
-| `PlanIt search` | Raw upstream calls to planit.org.uk | ~1,500 |
-| `PlanIt national lane poll` | ADR 0041/0044 national delta lanes (A/B) | ~170 |
-| `PlanIt Lane C inverse-mask poll` | Lane C inverse-mask sweep | ~70 |
-| `PlanIt backfill sweep` | Lane D historical backfill (ADR 0042) | ~150 |
-| `Polling Cycle (SB)` | Service Bus poll chain (ADR 0024) | ~150 |
-| `Polling Bootstrap` | Cycle bootstrap | ~50 |
+| `PlanIt search` | Raw upstream calls to planit.org.uk. Tagged `planit.work` and `planit.window_day`. Budget is 300 a day across prod and dev | ~175 to 225 prod, ~50 dev |
+| `PlanIt poll run` | The hourly poll run (ADR 0049). Carries `poll.health`, `poll.health_reasons`, `poll.stop_reason`, `poll.pages`, `poll.calls_today` and `deployment.environment` | ~24 (1/h; dev adds another ~24) |
 | `Hourly Digest Cycle` | Digest fan-out | ~48 (2/h) |
 | `ACS email send` | Outbound email | low, bursty |
-| `Dormant Cleanup Cycle`, `Subscription Sweep Cycle`, `Dev Seed Cycle` | Scheduled jobs | 1-24 |
+| `Dormant Cleanup Cycle`, `Subscription Sweep Cycle` | Scheduled jobs | 1-24 |
 
-A lane target **missing entirely** is more significant than a lane target failing. If `PlanIt national lane poll` is absent over a multi-hour window, the poll chain is not running — chase it with `/verify-polling`.
+A missing `PlanIt poll run` span is more significant than a failing one. If none appears over 2 hours, the poll job is not running (`alert-planit-poll-heartbeat-shared` covers this). Chase it with `/verify-polling`.
+
+**4a-ii. Poll health (rebuilt poller, ADR 0049)**
+```kql
+AppDependencies
+| where TimeGenerated > ago(24h) and Name == "PlanIt poll run"
+| extend env = tostring(Properties['deployment.environment']),
+         health = tostring(Properties['poll.health']),
+         reasons = tostring(Properties['poll.health_reasons']),
+         stop = tostring(Properties['poll.stop_reason'])
+| summarize runs = count(), latest = max(TimeGenerated) by env, health, stop, reasons
+| order by env asc, runs desc
+```
+`poll.health` is `ok`, `degraded` or `critical`, computed in Go from the database. Any `critical` (`forbidden`, `surge`) needs a person. A `poll.stop_reason` of `no_work`, `run_budget` or `daily_cap` is normal. The poller's own tables (`planit_call`, `poll_window`, `application_event`, `poll_event`, `poll_oracle_diff`) are checked in `/verify-polling`.
 
 **4b. Failure detail**
 ```kql
@@ -355,14 +364,15 @@ AppDependencies
 
 **PlanIt is a free, single-operator service and hammering it is a non-negotiable red line.** Our client backs off deliberately, so a double-digit `PlanIt search` failure rate is normal operation, not an incident. Reference: 178 failures out of 1,561 calls (11.4%) over 24h on 2026-07-24, with the system healthy.
 
-Judge PlanIt by **whether the poll is progressing**, not by the 429 count:
+Judge PlanIt by **the poll run's health**, not by the 429 count. The poller paces itself at 60 seconds a request and backs off on 429 (up to 3h), so a few 429s are expected and a run stops cleanly:
 
 | Observation | Verdict |
 |---|---|
-| 429s present, poll cursors/high-water marks advancing | ✅ Healthy self-limiting. No bead. |
-| 429s present, cursors flat for hours, backlog growing | ❌ Finding. Poll is starved. |
-| 429s absent but cursors flat | ❌ Finding. Something else is stuck (lease, queue, job). |
-| Sustained 429 immediately after a poll-gap fix | ⚠️ Expected drain burst, self-heals under the 3h cap. Footnote only. |
+| 429s present, `poll.health` `ok`, alert band verified | ✅ Healthy self-limiting. No bead. |
+| 429s present, `poll.health` `degraded` with `alert_band_unverified` for more than a night | ❌ Finding. Poll is starved. |
+| 429s absent but no `PlanIt poll run` span in 2h | ❌ Finding. Job, lease or schedule is stuck. |
+| `poll.health` `critical` with `forbidden` (a 403) | ❌ Finding. Check the User-Agent first. A person must act. |
+| `poll.stop_reason == "daily_cap"` before morning on several nights | ⚠️ Budget too tight. Compare prod 240 plus dev 60 against the operator's 300. |
 | Non-429 failures (5xx, timeouts, DNS) climbing | ❌ Finding. Upstream is genuinely unwell. |
 
 **Split the failure modes before judging.** `ResultCode` on dependency rows is the OTel span status (`"2"` for every failure), so it tells you nothing. The real upstream status is in `Properties['http.response.status_code']`, and rows with no value there never got an HTTP response at all:
@@ -387,7 +397,7 @@ Read the duration alongside the mode — it separates the three shapes cleanly:
 
 Reference reading (2026-07-24, system healthy): 84 × `429` at p50 5.9ms, 103 × `no-response` at p50 30,000.7ms. A rising `no-response` share is the more worrying trend of the two, because backoff does not fix it.
 
-If cursor state matters to the verdict, hand off to `/verify-polling` rather than reimplementing its checks here.
+If window or event state matters to the verdict, hand off to `/verify-polling` rather than reimplementing its checks here.
 
 Other dependency context: **Auth0** (`towncrierapp.uk.auth0.com`) authenticates users, and failures block sessions — but note the API emits no dependency spans, so Auth0 problems surface as API 5xx and `alert-auth0-failures-shared`, not here.
 
@@ -407,7 +417,7 @@ done
 
 Many hourly buckets come back null, so filter them out rather than slicing the array — a positional slice like `data[-6:]` silently lands on empty buckets and reports stale or missing values. For the trend rather than the peak, drop the `max(...)` wrapper and project `{t:timeStamp, max:maximum}` with `-o table`.
 
-**Why this matters:** `psql-town-crier-shared` hosts `town_crier_prod` and `town_crier_dev` on one disk with **storage auto-grow disabled**. Hitting 100% makes Postgres read-only, which is a full outage for a paying customer. ADR 0045 resized it 32 → 64 GiB on 2026-07-23 for headroom. Lane D (ADR 0042) has **no storage-aware stop condition** and will keep accreting history, so the trend line matters more than the current reading.
+**Why this matters:** `psql-town-crier-shared` hosts `town_crier_prod` and `town_crier_dev` on one disk with **storage auto-grow disabled**. Hitting 100% makes Postgres read-only, which is a full outage for a paying customer. ADR 0045 resized it 32 → 64 GiB on 2026-07-23 for headroom. Application ingest keeps accreting history, so the trend line matters more than the current reading.
 
 Matching alert rules (`infra/shared.go:687-702`):
 
@@ -518,9 +528,9 @@ Do **not** close if the issue is intermittent (check the 7-day baseline first), 
 | Replica crash-loop / OOM / step change in `ContainerAppSystemLogs` warnings | P1-P2 | `ReplicaUnhealthy` jumping 10x on one revision |
 | Postgres `storage_percent` > 60%, or slope crossing 80% within 90 days | P2 | Auto-grow is OFF; 100% = read-only outage |
 | Postgres CPU credits trending to zero | P2 | Burstable SKU throttling |
-| PlanIt 429s **with poll cursors flat** | P1-P2 | Poll starvation, not backoff |
+| `PlanIt poll run` `poll.health` `degraded` or `critical`, or PlanIt 429s with the alert band unverified | P1-P2 | Poll starvation, not backoff. Alerts: `alert-planit-poll-critical-shared`, `alert-planit-poll-degraded-shared` |
 | Non-429 dependency failures > 5% | P1-P2 | PlanIt 5xx, ACS send failures |
-| Expected lane/cycle target absent from `AppDependencies` | P2 | `PlanIt national lane poll` missing for hours |
+| Expected cycle target absent from `AppDependencies` | P2 | `PlanIt poll run` missing for 2 hours (`alert-planit-poll-heartbeat-shared`) |
 | P99 latency regression > 50% vs baseline, with real volume | P2 | `/v1/applications` p99 200ms → 400ms |
 | Ingress errors materially exceeding app-observed errors | P2 | Requests dying before handler code |
 | Service reports as `unknown_service:` prefix | P2 | `OTEL_SERVICE_NAME` missing in `infra/environment.go` |
@@ -534,7 +544,7 @@ Do **not** close if the issue is intermittent (check the 7-day baseline first), 
 - Request count is too low to be meaningful (< 5 in the window).
 - It's an OPTIONS preflight or health check.
 - **It's an empty table listed as dark in the availability matrix** — `AppMetrics`, `AppPerformanceCounters`, `towncrier.*` metrics, `AppExceptions`, or the API role's missing `AppDependencies`. Historically the single most common false positive.
-- **It's PlanIt 429s with a healthy, advancing poll cursor.** That is the client behaving correctly.
+- **It's PlanIt 429s with `poll.health` `ok`.** That is the client backing off correctly.
 - **It's "no availability monitoring configured."** Two webtests exist.
 - The "missing telemetry" could be explained by scale-to-zero with no traffic — verify with a probe first.
 
@@ -588,7 +598,7 @@ The dependency type **must** be `--type=parent-child` — the default `blocks` i
 - Create PRs or branches
 - Suggest specific code fixes (that's for whoever picks up the bead)
 - Create, edit, or silence alert rules (read-only on the alert board)
-- Deep-dive polling cursor state — that's `/verify-polling`; hand off rather than duplicate it
+- Deep-dive poll window and event state: that's `/verify-polling`; hand off rather than duplicate it
 - Query application data directly (no `psql` into `town_crier_prod`, no Auth0 management API)
 
 **Read-only Azure reads outside Log Analytics are in scope** and necessary: the Alerts Management API (Phase 0) and `az monitor metrics list` for Postgres (Phase 5). Nothing here writes.

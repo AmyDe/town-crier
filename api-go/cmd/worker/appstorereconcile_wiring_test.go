@@ -18,8 +18,7 @@ xNJnfnRc+/L0iAaJ/rMYuI9O+M8fJ2WRPBQIxHUXMz9WjZ54zVIYD4RH
 // TestBuildAppStoreReconcile_UnconfiguredReturnsNil proves buildAppStoreReconcile
 // returns a genuine nil *appstorereconcile.Handler — not just a nil-checked
 // error — whenever APPSTORE_RECONCILE_ENABLED is unset, mirroring the
-// "unconfigured optional job" posture buildDevSeeder/buildPollOrchestrator
-// already use.
+// "unconfigured optional job" posture.
 func TestBuildAppStoreReconcile_UnconfiguredReturnsNil(t *testing.T) {
 	t.Parallel()
 

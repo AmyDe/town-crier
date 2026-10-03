@@ -4,119 +4,130 @@ package polling
 
 import (
 	"context"
+	"errors"
 	"testing"
-	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
 	"github.com/AmyDe/town-crier/api-go/internal/platform/postgres/pgtest"
 )
 
-// newPGIngester returns an Ingester wired over a real, truncated Postgres
-// applications store (ADR 0032 / ADR 0041): the reindex-flood guard
-// (HasSameBusinessFieldsAs) is the load-bearing mechanism every ADR 0041 lane
-// depends on to make a re-ingested, unchanged record free (no write, no
-// fan-out) — a fake store can assert the guard's LOGIC, but only a real
-// Postgres round trip proves the guarded write genuinely never reaches the
-// database. Integration tests are NOT run in parallel: pgtest.New holds a
-// process-wide advisory lock for the test's duration.
-func newPGIngester(t *testing.T) (*Ingester, *applications.PostgresStore) {
+func newPGEventIngester(t *testing.T) (*Ingester, *pgxpool.Pool, *applications.PostgresStore) {
 	t.Helper()
 	pool := pgtest.New(t)
-	pgtest.Truncate(t, pool, "applications", "watch_zones")
-	store := applications.NewPostgresStore(pool)
-	return NewIngester(store, nil, nil), store
+	pgtest.Truncate(t, pool, "applications", "application_event")
+	return NewPostgresIngester(pool), pool, applications.NewPostgresStore(pool)
 }
 
-// TestIngester_Integration_NewApplicationPersists proves a first-time Ingest
-// actually writes to Postgres and every field survives the round trip.
-func TestIngester_Integration_NewApplicationPersists(t *testing.T) {
-	ctx := context.Background()
-	ingester, store := newPGIngester(t)
-
-	ld := time.Date(2026, 7, 10, 9, 0, 0, 0, time.UTC)
-	app := testApp("24/0001", 300, ld)
-
-	if err := ingester.Ingest(ctx, app); err != nil {
-		t.Fatalf("Ingest: %v", err)
-	}
-
-	got, found, err := store.GetByUID(ctx, app.UID, "300")
+func eventKinds(t *testing.T, pool *pgxpool.Pool) []string {
+	t.Helper()
+	rows, err := pool.Query(context.Background(), "SELECT kind FROM application_event ORDER BY id")
 	if err != nil {
-		t.Fatalf("GetByUID: %v", err)
+		t.Fatal(err)
 	}
-	if !found {
-		t.Fatal("expected the ingested application to be persisted")
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var k string
+		if err := rows.Scan(&k); err != nil {
+			t.Fatal(err)
+		}
+		out = append(out, k)
 	}
-	if got.Name != app.Name || !got.LastDifferent.Equal(ld) {
-		t.Errorf("round trip mismatch: got %+v", got)
+	return out
+}
+
+func TestEventIngester_Integration_Cases(t *testing.T) {
+	ctx := context.Background()
+	ing, pool, _ := newPGEventIngester(t)
+	step := func(name string, app applications.PlanningApplication, want []string) {
+		t.Helper()
+		if err := ing.Ingest(ctx, app); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if got := eventKinds(t, pool); !equalStrings(got, want) {
+			t.Fatalf("%s: events = %v, want %v", name, got, want)
+		}
+	}
+
+	app := evApp("Undecided", day(1), nil)
+	step("new", app, []string{"new_application"})
+	step("unchanged", app, []string{"new_application"})
+
+	ref := "r2"
+	silent := app
+	silent.Reference = &ref
+	step("silent only", silent, []string{"new_application"})
+
+	desc := silent
+	desc.Description = "changed"
+	step("non-decision field change", desc, []string{"new_application"})
+
+	permitted := evApp("Permitted", day(1), day(5))
+	permitted.Reference = &ref
+	permitted.Description = "changed"
+	step("transition", permitted, []string{"new_application", "decision"})
+
+	rejected := permitted
+	rej := "Rejected"
+	rejected.AppState = &rej
+	step("decision to decision", rejected, []string{"new_application", "decision"})
+
+	var d string
+	if err := pool.QueryRow(ctx, "SELECT event_date::text FROM application_event WHERE kind='decision'").Scan(&d); err != nil {
+		t.Fatal(err)
+	}
+	if d != "2026-06-05" {
+		t.Errorf("decision event_date = %s", d)
+	}
+	var s string
+	if err := pool.QueryRow(ctx, "SELECT event_date::text FROM application_event WHERE kind='new_application'").Scan(&s); err != nil {
+		t.Fatal(err)
+	}
+	if s != "2026-06-01" {
+		t.Errorf("new_application event_date = %s", s)
 	}
 }
 
-// TestIngester_Integration_ReindexTouchAloneNeverReachesPostgres proves the
-// reindex-flood guard against the REAL database, not just the fake: a
-// PlanIt re-emission that bumps only LastDifferent (every ADR 0041 lane's
-// steady-state re-touch case, per the churn ADR 0041 documents) must not
-// write at all — the row's stored last_different must stay at the
-// FIRST-ingested value, proving the guarded Upsert genuinely never reached
-// Postgres a second time.
-func TestIngester_Integration_ReindexTouchAloneNeverReachesPostgres(t *testing.T) {
-	ctx := context.Background()
-	ingester, store := newPGIngester(t)
-
-	original := testApp("24/0002", 300, time.Date(2026, 7, 10, 9, 0, 0, 0, time.UTC))
-	if err := ingester.Ingest(ctx, original); err != nil {
-		t.Fatalf("Ingest (first): %v", err)
+func TestEventIngester_Integration_NewDecidedEmitsBoth(t *testing.T) {
+	ing, pool, _ := newPGEventIngester(t)
+	if err := ing.Ingest(context.Background(), evApp("Conditions", day(1), day(3))); err != nil {
+		t.Fatal(err)
 	}
-
-	rebumped := original
-	rebumped.LastDifferent = time.Date(2026, 7, 14, 3, 0, 0, 0, time.UTC) // a re-index touch, business fields unchanged
-	if err := ingester.Ingest(ctx, rebumped); err != nil {
-		t.Fatalf("Ingest (re-touch): %v", err)
-	}
-
-	got, found, err := store.GetByUID(ctx, original.UID, "300")
-	if err != nil {
-		t.Fatalf("GetByUID: %v", err)
-	}
-	if !found {
-		t.Fatal("expected the original row to still exist")
-	}
-	if !got.LastDifferent.Equal(original.LastDifferent) {
-		t.Errorf("last_different: got %v, want unchanged %v (a bookkeeping-only re-touch must never write)", got.LastDifferent, original.LastDifferent)
+	if got := eventKinds(t, pool); !equalStrings(got, []string{"new_application", "decision"}) {
+		t.Fatalf("events = %v", got)
 	}
 }
 
-// TestIngester_Integration_BusinessFieldChangeUpserts proves the converse: a
-// genuine business-field change (a decision landing) DOES reach Postgres and
-// the new value is what a subsequent read returns.
-func TestIngester_Integration_BusinessFieldChangeUpserts(t *testing.T) {
-	ctx := context.Background()
-	ingester, store := newPGIngester(t)
+type failingEventUnit struct{ ingestUnit }
 
-	original := testApp("24/0003", 300, time.Date(2026, 7, 10, 9, 0, 0, 0, time.UTC))
-	if err := ingester.Ingest(ctx, original); err != nil {
-		t.Fatalf("Ingest (first): %v", err)
-	}
+func (failingEventUnit) InsertEvent(context.Context, ApplicationEvent) error {
+	return errors.New("boom")
+}
 
-	permitted := "Permitted"
-	decided := original
-	decided.AppState = &permitted
-	decided.LastDifferent = time.Date(2026, 7, 14, 3, 0, 0, 0, time.UTC)
-	if err := ingester.Ingest(ctx, decided); err != nil {
-		t.Fatalf("Ingest (decision): %v", err)
-	}
+type failingOpener struct{ inner ingestUnitOpener }
 
-	got, found, err := store.GetByUID(ctx, original.UID, "300")
+func (o failingOpener) Begin(ctx context.Context) (ingestUnit, error) {
+	u, err := o.inner.Begin(ctx)
 	if err != nil {
-		t.Fatalf("GetByUID: %v", err)
+		return nil, err
 	}
-	if !found {
-		t.Fatal("expected the row to exist")
+	return failingEventUnit{u}, nil
+}
+
+func TestEventIngester_Integration_RollbackLeavesNeitherRowNorEvent(t *testing.T) {
+	ctx := context.Background()
+	_, pool, store := newPGEventIngester(t)
+	ing := NewIngester(failingOpener{pgIngestOpener{pool: pool}})
+	app := evApp("Undecided", day(1), nil)
+	if err := ing.Ingest(ctx, app); err == nil {
+		t.Fatal("expected error")
 	}
-	if got.AppState == nil || *got.AppState != "Permitted" {
-		t.Errorf("AppState: got %v, want Permitted", got.AppState)
+	if _, found, err := store.GetByUID(ctx, app.UID, "300"); err != nil || found {
+		t.Fatalf("found=%v err=%v", found, err)
 	}
-	if !got.LastDifferent.Equal(decided.LastDifferent) {
-		t.Errorf("last_different: got %v, want %v (a genuine business change must write through)", got.LastDifferent, decided.LastDifferent)
+	if got := eventKinds(t, pool); len(got) != 0 {
+		t.Fatalf("events = %v", got)
 	}
 }

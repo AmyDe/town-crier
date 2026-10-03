@@ -121,11 +121,7 @@ func parsePlanItInstantLenient(value *string) *time.Time {
 // PlanIt actually emits.
 //
 // An ABSENT last_different (empty string) maps to the zero time rather than an
-// error: ADR 0047's Lane E light projection (recentSweepSelectFields) omits the
-// field deliberately — a re-index bumps it and Lane E's divergence test never
-// reads it — so its rows arrive without one. Every other lane keeps
-// last_different in its select, so their rows always carry it and this branch
-// never fires for them. A non-empty but malformed value is still an error.
+// error. A non-empty but malformed value is still an error.
 func (r planItRecord) toDomain() (applications.PlanningApplication, error) {
 	startDate, err := parseDateOnly(r.StartDate)
 	if err != nil {

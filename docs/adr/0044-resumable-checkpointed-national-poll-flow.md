@@ -4,7 +4,7 @@ Date: 2026-07-19
 
 ## Status
 
-Proposed
+Superseded by [0049](0049-planit-day-window-polling-rebuild.md)
 
 Amends [0041](0041-poll-planit-on-a-churn-masked-delta-axis.md): it **keeps 0041's churn-masked delta axis** (what each lane queries is correct) and **replaces 0041's execution model** — the stateless, drain-the-whole-lane-per-cycle re-walk — with a resumable, per-page-checkpointed planner/executor loop. It also **replaces the per-authority Lane C** with a single national inverse-mask lane. Lane D ([0042](0042-historical-backward-backfill-lane.md)) folds into the same loop, gated to out-of-hours. [0043](0043-keep-lane-d-out-of-lane-a-mask-band.md) relies on the deleted per-authority Lane C mask-band sweep and **must be revisited** (see Consequences).
 

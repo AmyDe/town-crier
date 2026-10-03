@@ -212,7 +212,7 @@ jobs:
 
       - uses: ./.github/actions/deploy-worker-jobs
         with:
-          jobs: poll poll-bootstrap digest digest-hourly dormant-cleanup subscription-sweep pg-purge
+          jobs: poll digest digest-hourly dormant-cleanup subscription-sweep pg-purge
           env-suffix: prod
           resource-group: ${{ needs.infra.outputs.resource-group }}
           image: ${{ steps.resolve-image.outputs.image }}

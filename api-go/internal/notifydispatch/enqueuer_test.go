@@ -219,7 +219,7 @@ func TestEnqueuer_EnqueueForApplication_FansOutToContainingZones(t *testing.T) {
 		testLogger(t))
 	app := testApplication(t, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
 
-	if err := enq.EnqueueForApplication(context.Background(), app); err != nil {
+	if err := enq.EnqueueForApplication(context.Background(), app, app.LastDifferent); err != nil {
 		t.Fatalf("EnqueueForApplication: %v", err)
 	}
 	if fz.lastLat != 51.5 || fz.lastLng != -0.1 {
@@ -236,7 +236,7 @@ func TestEnqueuer_EnqueueForApplication_MatchesCrossBorderNeighbourAuthorityZone
 	// (Adur & Worthing) must receive a NewApplication for an in-circle application
 	// tagged authority 246 (Arun) on the other side of the border. The store no
 	// longer scopes the lookup by authority, so the fake returns the 449 zone for
-	// the 246 app. The CreatedAt.After(LastDifferent) skip rule is UNCHANGED: a
+	// the 246 app. The CreatedAt.After(detectedAt) skip rule is UNCHANGED: a
 	// second 449 zone created after the application last changed is still skipped.
 	lastDifferent := time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC)
 	eligible, err := watchzones.NewWatchZone("zone-449", "auth0|alice", "Border", 50.81, -0.42, 2000,
@@ -260,7 +260,7 @@ func TestEnqueuer_EnqueueForApplication_MatchesCrossBorderNeighbourAuthorityZone
 		AppState: &state, Latitude: &la, Longitude: &lo, LastDifferent: lastDifferent,
 	}
 
-	if err := enq.EnqueueForApplication(context.Background(), app); err != nil {
+	if err := enq.EnqueueForApplication(context.Background(), app, app.LastDifferent); err != nil {
 		t.Fatalf("EnqueueForApplication: %v", err)
 	}
 	if fz.lastLat != la || fz.lastLng != lo {
@@ -283,7 +283,7 @@ func TestEnqueuer_EnqueueForApplication_NonBorderZoneMatchesUnchanged(t *testing
 	enq, notifs, _, _ := newEnqueuerHarnessWithZones(t, profiles.TierPro, zones)
 	app := testApplication(t, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC)) // authority 99
 
-	if err := enq.EnqueueForApplication(context.Background(), app); err != nil {
+	if err := enq.EnqueueForApplication(context.Background(), app, app.LastDifferent); err != nil {
 		t.Fatalf("EnqueueForApplication: %v", err)
 	}
 	if len(notifs.created) != 1 {
@@ -301,7 +301,7 @@ func TestEnqueuer_EnqueueForApplication_OneUserTwoZonesDedupsToOneRecord(t *test
 	enq, notifs, _, _ := newEnqueuerHarnessWithZones(t, profiles.TierPro, zones)
 	app := testApplication(t, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
 
-	if err := enq.EnqueueForApplication(context.Background(), app); err != nil {
+	if err := enq.EnqueueForApplication(context.Background(), app, app.LastDifferent); err != nil {
 		t.Fatalf("EnqueueForApplication: %v", err)
 	}
 	if len(notifs.created) != 1 {
@@ -309,21 +309,20 @@ func TestEnqueuer_EnqueueForApplication_OneUserTwoZonesDedupsToOneRecord(t *test
 	}
 }
 
-func TestEnqueuer_EnqueueForApplication_SkipsZonesCreatedAfterLastDifferent(t *testing.T) {
+func TestEnqueuer_EnqueueForApplication_SkipsZonesCreatedAfterDetectedAt(t *testing.T) {
 	t.Parallel()
-	lastDifferent := time.Date(2026, 6, 10, 0, 0, 0, 0, time.UTC)
-	// One zone created before the change (eligible), one created after (skip).
+	detectedAt := time.Date(2026, 6, 10, 0, 0, 0, 0, time.UTC)
 	before := testZoneAt(t, "zone-old", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
 	after := testZoneAt(t, "zone-new", "auth0|alice", time.Date(2026, 6, 12, 0, 0, 0, 0, time.UTC))
 	zones := &fakeZones{zones: []watchzones.WatchZone{before, after}}
 	enq, notifs, _, _ := newEnqueuerHarnessWithZones(t, profiles.TierPro, zones)
-	app := testApplication(t, lastDifferent)
+	app := testApplication(t, detectedAt.AddDate(0, 0, 5))
 
-	if err := enq.EnqueueForApplication(context.Background(), app); err != nil {
+	if err := enq.EnqueueForApplication(context.Background(), app, detectedAt); err != nil {
 		t.Fatalf("EnqueueForApplication: %v", err)
 	}
 	if len(notifs.created) != 1 {
-		t.Fatalf("only zones created on/before LastDifferent should fan out, got %d", len(notifs.created))
+		t.Fatalf("only zones created on/before detectedAt should fan out, got %d", len(notifs.created))
 	}
 	if notifs.created[0].WatchZoneID == nil || *notifs.created[0].WatchZoneID != "zone-old" {
 		t.Errorf("wrong zone fanned out: %+v", notifs.created[0].WatchZoneID)
@@ -341,7 +340,7 @@ func TestEnqueuer_EnqueueForApplication_NoCoordsSkipsLookup(t *testing.T) {
 		LastDifferent: time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC),
 	}
 
-	if err := enq.EnqueueForApplication(context.Background(), app); err != nil {
+	if err := enq.EnqueueForApplication(context.Background(), app, app.LastDifferent); err != nil {
 		t.Fatalf("EnqueueForApplication: %v", err)
 	}
 	if fz.lastLat != 0 || fz.lastLng != 0 {
@@ -592,7 +591,7 @@ func TestEnqueuer_EnqueueForApplication_FansOutToContainingPolygonZone(t *testin
 	enq, notifs, _, _ := newEnqueuerHarnessWithZones(t, profiles.TierPro, zones)
 	app := testApplication(t, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
 
-	if err := enq.EnqueueForApplication(context.Background(), app); err != nil {
+	if err := enq.EnqueueForApplication(context.Background(), app, app.LastDifferent); err != nil {
 		t.Fatalf("EnqueueForApplication: %v", err)
 	}
 	if len(notifs.created) != 1 {

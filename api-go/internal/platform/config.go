@@ -6,7 +6,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
 )
 
 // defaultCorsOrigin is the fallback when CORS_ALLOWED_ORIGINS is unset.
@@ -68,8 +67,8 @@ type Config struct {
 	AnonRateLimitRefillPerMinute int
 
 	// AzureClientID pins the user-assigned managed identity used for AAD auth
-	// (azidentity) by the Postgres pool (passwordless Entra token) and the Service
-	// Bus client (tc-6ig5). Empty falls back to the ambient managed identity.
+	// (azidentity) by the Postgres pool (passwordless Entra token). Empty falls
+	// back to the ambient managed identity.
 	AzureClientID string
 
 	// Auth0M2MClientID / Auth0M2MClientSecret are the machine-to-machine
@@ -79,25 +78,11 @@ type Config struct {
 	Auth0M2MClientID     string
 	Auth0M2MClientSecret SecretString
 
-	// ServiceBusNamespace and ServiceBusQueueName address the Azure Service Bus
-	// poll-trigger queue the worker probes and seeds (WORKER_MODE=poll-bootstrap
-	// and poll-sb). ServiceBusNamespace is the fully-qualified namespace
-	// (e.g. sb-town-crier-prod.servicebus.windows.net); ServiceBusQueueName is the
-	// trigger queue name. Authentication is the pinned user-assigned managed
-	// identity (AzureClientID) — no SAS / connection string, mirroring the Postgres
-	// identity model. Both are empty on jobs that don't touch Service Bus (digest,
-	// hourly-digest, dormant-cleanup), in which case the Service Bus client is not
-	// constructed and the poll modes refuse to run rather than crash. The infra
-	// bead tc-uzm1 wires these env vars additively onto the prod poll jobs.
-	ServiceBusNamespace string
-	ServiceBusQueueName string
-
 	// ShareCardsBlobURL is the Azure Blob account URL the baked share-card PNGs
 	// are cached in (the share-cards container, #738 Slice 3 / ADR 0037), e.g.
 	// https://sttowncrierdev.blob.core.windows.net. Loaded from
 	// SHARE_CARDS_BLOB_URL (the exact name infra emits). Empty means the cache is
-	// unwired — mirroring the ServiceBusNamespace empty-means-off convention — so
-	// the API boots normally and the og:image handler regenerates on demand.
+	// unwired — so the API boots normally and the og:image handler regenerates on demand.
 	// Authentication is the pinned user-assigned managed identity (AzureClientID).
 	ShareCardsBlobURL string
 
@@ -192,7 +177,7 @@ type Config struct {
 	// exchange uses — the mirror of how APNsAuthKey carries the .p8. FCM has no
 	// sandbox concept (dev and prod share one Firebase project), so there is no
 	// FCM_USE_SANDBOX. A separate infra bead wires these env vars additively onto
-	// the push-sending worker jobs (poll-sb, digest, hourly-digest).
+	// the push-sending worker jobs (poll, digest, hourly-digest).
 	FCMEnabled            bool
 	FCMProjectID          string
 	FCMServiceAccountJSON SecretString
@@ -205,142 +190,6 @@ type Config struct {
 	// acs-connection-string secret to this env var.
 	ACSConnectionString SecretString
 
-	// PlanIt* configure the rate-limited PlanIt HTTP client the poll-sb worker
-	// mode uses to fetch planning applications (epic tc-wad3, bead tc-yng2).
-	// PlanItBaseURL defaults to the live PlanIt service. The throttle/retry knobs
-	// use the planit package defaults. The infra bead tc-uzm1 wires these env
-	// vars additively onto the prod poll job.
-	PlanItBaseURL                 string
-	PlanItThrottleDelaySeconds    float64
-	PlanItMaxRetries              int
-	PlanItInitialBackoffSeconds   float64
-	PlanItRateLimitBackoffSeconds float64
-
-	// Polling* configure the poll-sb ingestion cycle (bead tc-yng2).
-	// PollingMaxPagesPerAuthorityPerCycle caps PlanIt pagination per authority
-	// (default 3). PollingHandlerBudgetSeconds is the soft per-cycle wall-clock
-	// budget (default 240); under ADR 0024's receive-and-delete model it is a
-	// safety cap, not a Service-Bus-lock bound — the lease TTL (> handler
-	// budget) prevents concurrent runs. PollReplicaTimeoutSeconds and
-	// PollShutdownGraceSeconds size the hard cycle budget (replicaTimeout − grace).
-	PollingMaxPagesPerAuthorityPerCycle int
-	PollingHandlerBudgetSeconds         int
-	PollReplicaTimeoutSeconds           int
-	PollShutdownGraceSeconds            int
-
-	// PollingPlanItPageSize is the pg_sz sent on every PlanIt fetch (default
-	// 100, unchanged behaviour). Loaded from POLLING_PLANIT_PAGE_SIZE. This PR
-	// (GH#955 PR A, tc-nlvpz) only adds the capability to configure it via env;
-	// PR B flips the prod value to 300 through infra, not a code default change.
-	// Governs only the legacy per-authority drain (unwired since ADR 0041) —
-	// the national lanes below hardcode pg_sz=300, not this field.
-	PollingPlanItPageSize int
-
-	// PollingLane* configure ADR 0041's churn-masked national delta poll
-	// (GH#962, bead tc-5m3tw), which replaces the per-authority drain above.
-	// PollingLaneAMaskDays / PollingLaneBMaskDays are the start_date /
-	// decided_start churn-mask widths in days (default 90 — "a config dial,
-	// not a correctness boundary": ADR 0041, Lane C is the backstop for
-	// anything a mask misses). PollingLaneBMaxPages hard-caps how many pages
-	// of Lane B NationalPollHandler.Handle runs per CYCLE under ADR 0044's
-	// checkpointed executor (decision volume is unmeasured pre-cutover) — do
-	// not remove this cap.
-	PollingLaneAMaskDays int
-	PollingLaneBMaskDays int
-	PollingLaneBMaxPages int
-	// PollingDayStart / PollingDayEnd bound Lane C's daytime eligibility
-	// window (ADR 0044 §3), in Europe/London local time — Lane D (the
-	// historical backfill) is eligible exactly outside this window. Loaded
-	// from POLLING_DAY_START / POLLING_DAY_END as "HH:MM" (default
-	// "07:00" / "19:00"), parsed via polling.ParseCivilTime.
-	PollingDayStart string
-	PollingDayEnd   string
-	// PollingLaneFreshnessInterval is how often Lane A/B are due absent an
-	// active mid-drain cursor (ADR 0044 §3, default 15m). Loaded from
-	// POLLING_LANE_FRESHNESS_INTERVAL via time.ParseDuration.
-	PollingLaneFreshnessInterval time.Duration
-
-	// PollingLaneCEnabled gates whether Lane C (the ADR 0044 national
-	// inverse-mask reconciliation lane) is constructed and wired into the
-	// poll cycle. Loaded from POLLING_LANE_C_ENABLED and DEFAULT TRUE: unset
-	// or truthy leaves Lane C running exactly as today, only an explicit
-	// falsy value turns it off. The gate existed pre-ADR-0044 (tc-tuge8 /
-	// GH#971), was removed on the assumption the national query shape made
-	// Lane C safe to run unconditionally, and is re-added here (tc-56ahl /
-	// GH#1125) as a reversible mitigation for the Lane C livelock (tc-777e7):
-	// the frozen checkpoint makes every in-hours cycle issue ~135s of
-	// timed-out national queries against PlanIt for zero useful work.
-	// Disabled in prod pending the real fix (tc-777e7 Parts 2/3).
-	PollingLaneCEnabled bool
-
-	// PollingLaneCMaxPagesPerCycle bounds how many pages Lane C fetches per
-	// poll cycle (tc-hku56 / GH#1140), mirroring PollingLaneBMaxPages: with
-	// the id_match hydration fan-out removed, a page costs one PlanIt request
-	// instead of triggering a hydration burst that used to 429 the page loop
-	// shut on its own — uncapped, the handler budget would let Lane C fire
-	// far more requests in one cycle than the burst that caused the tc-vgbl7
-	// rollback. Loaded from POLLING_LANE_C_MAX_PAGES_PER_CYCLE, default 15
-	// (sized so a worst-case 138-page different=3 scan finishes inside the
-	// ~12-cycle daytime window).
-	PollingLaneCMaxPagesPerCycle int
-	// PollingLaneCNotifyRecencyDays feeds Lane C's own recency gate
-	// (recencyGatedDispatcher / recencyGatedEnqueuer, composed inside
-	// InverseMaskLaneHandler.WithFanOut, tc-hku56 / GH#1140), mirroring
-	// PollingLaneENotifyRecencyDays: an event older than this (by start_date
-	// for a new application, decided_date for a decision) produces no
-	// notification record at all. Loaded from
-	// POLLING_LANE_C_NOTIFY_RECENCY_DAYS, default 30. Lane C's band is
-	// start_date <= today-90d by construction, so this suppresses ALL
-	// NewApplication fan-out from Lane C — intended: an application filed
-	// 90+ days ago is not new to anybody. A genuine recent decision on an old
-	// application still dispatches.
-	PollingLaneCNotifyRecencyDays int
-
-	// PollingBackfill* configure Lane D, the paced historical backfill lane
-	// (GH#967, ADR 0042): a national, date-windowed backward sweep that
-	// enriches stale/NULL GH#935 fields and fills coverage gaps, but never
-	// notifies (its Ingester is always built with nil decision/enqueuer
-	// collaborators, and BackfillHandler has no method that could wire one).
-	// PollingBackfillEnabled gates whether the lane is constructed and wired
-	// into the poll cycle at all. Loaded from POLLING_BACKFILL_ENABLED and
-	// DEFAULT FALSE, mirroring the Lane C rollout precedent (tc-5lu8h): new
-	// polling code ships dark, gets soaked, flips on deliberately.
-	// PollingBackfillWindowWidthDays is the width of each backward-sliding
-	// date window (default 90, mirroring ADR 0041's mask width).
-	// PollingBackfillMaxPagesPerCycle bounds how many pages the lane fetches
-	// per poll cycle (default 2 — "creep a little bit each hour").
-	// PollingBackfillEmptyWindowsBeforeComplete is how many consecutive
-	// fully-drained, zero-record windows the lane tolerates before declaring
-	// itself done (default 12, ~3 years of national silence).
-	PollingBackfillEnabled                    bool
-	PollingBackfillWindowWidthDays            int
-	PollingBackfillMaxPagesPerCycle           int
-	PollingBackfillEmptyWindowsBeforeComplete int
-
-	// PollingLaneE* configure Lane E, the looping recent-window start_date
-	// sweep that backstops Lanes A/B (GH#1134, ADR 0047). Unlike Lane D it CAN
-	// notify — behind an event-specific recency gate composed inside
-	// RecentSweepHandler.WithFanOut. PollingLaneEEnabled gates whether the lane
-	// is constructed and wired at all; loaded from POLLING_LANE_E_ENABLED and
-	// DEFAULT FALSE — this lane can send a push, so the dark soak matters more
-	// than it did for Lane D. PollingLaneEDepthDays is how far back the sweep
-	// reaches; it defaults to POLLING_LANE_A_MASK_DAYS (not a literal) so
-	// Lanes A, E and C partition the national start_date axis with no gap or
-	// overlap and stay partitioned if the mask is retuned.
-	// PollingLaneEWindowWidthDays is the width of each backward-sliding window
-	// (default 15; RecentSweepHandler hard-caps it at
-	// maxRecentSweepWindowWidthDays). PollingLaneEMaxPagesPerCycle bounds pages
-	// fetched per poll cycle (default 6 — the pacing dial to turn down first if
-	// PlanIt shows strain). PollingLaneENotifyRecencyDays feeds both fan-out
-	// decorators: an event older than this (by start_date for a new
-	// application, decided_date for a decision) produces no notification record
-	// at all (default 30).
-	PollingLaneEEnabled           bool
-	PollingLaneEDepthDays         int
-	PollingLaneEWindowWidthDays   int
-	PollingLaneEMaxPagesPerCycle  int
-	PollingLaneENotifyRecencyDays int
-
 	// NotificationsRetentionDays is the number of days to keep Notifications rows
 	// when running the pg-purge job. Loaded from NOTIFICATIONS_RETENTION_DAYS;
 	// defaults to 90.
@@ -351,47 +200,36 @@ type Config struct {
 	// DEVICE_REGISTRATIONS_RETENTION_DAYS; defaults to 180.
 	DeviceRegistrationsRetentionDays int
 
-	// PostgresHost and PostgresSSLMode are the discrete connection parameters
-	// for the shared Azure Postgres Flexible Server (POSTGRES_HOST /
-	// POSTGRES_SSLMODE), the same env vars internal/platform/postgres's
-	// NewPoolFromEnv already reads directly for the process's primary pool.
-	// They are threaded through Config too because the dev-seed job
-	// (WORKER_MODE=dev-seed, epic tc-grvu, GH#808) opens a SECOND pool, bound
-	// to town_crier_prod under a distinct read-only role, on the same
-	// physical host — cmd/worker/main.go's buildDevSeeder needs the host/SSL
-	// mode to build that pool's ConnParams.
-	PostgresHost    string
-	PostgresSSLMode string
+	// PlanItBaseURL is PLANIT_BASE_URL and defaults to the live PlanIt service.
+	PlanItBaseURL string
 
-	// DevSeed* configure the hourly dev-seed job (WORKER_MODE=dev-seed, epic
-	// tc-grvu, GH#808), which mirrors a small slice of recently-changed prod
-	// planning applications into dev so a TestFlight build pointed at dev gets
-	// real push notifications to test against (dev otherwise runs no PlanIt
-	// poller, ADR 0024). DevSeedLimit caps how many prod applications are
-	// pulled per cycle (DEV_SEED_LIMIT, default 5). DevSeedProdPostgresDB is
-	// the prod database name the second pool connects to
-	// (DEV_SEED_PROD_POSTGRES_DB, default town_crier_prod).
-	// DevSeedProdPostgresUser is the dedicated least-privilege Postgres role
-	// (DEV_SEED_PROD_POSTGRES_USER, e.g. towncrier_dev_seed_reader, bootstrapped
-	// out-of-band by cmd/pgbootstrap -readonly). DevSeedProdAzureClientID pins
-	// the dedicated id-town-crier-dev-seed-reader managed identity
-	// (DEV_SEED_PROD_AZURE_CLIENT_ID, infra bead tc-grvu.1) used to mint that
-	// role's Entra token — a separate identity from AzureClientID, which stays
-	// scoped to the process's own (dev) pool. DevSeedProdPostgresUser and
-	// DevSeedProdAzureClientID have no default: both empty is the "job
-	// unconfigured" signal cmd/worker/main.go's buildDevSeeder checks so the
-	// mode refuses to run rather than nil-panicking on a job/environment (e.g.
-	// prod) that never wires this config — this mode is created dev-only,
-	// tc-grvu.6.
-	DevSeedLimit             int
-	DevSeedProdPostgresDB    string
-	DevSeedProdPostgresUser  string
-	DevSeedProdAzureClientID string
+	// PollingDailyCallCap is POLLING_DAILY_CALL_CAP, the PlanIt requests allowed
+	// per budget day (prod 240, dev 60). PollingMinRequestSpacingSeconds is the
+	// gap between requests. PollingDeltaSlots is the comma-separated HH:MM
+	// Europe/London delta slots. PollingDayAllowance is the budget kept back for
+	// the next day's deltas. PollingFullReadMaxAgeDays forces a full window read
+	// after that many days. PollingRunBudgetMinutes bounds one hourly run.
+	// PollingAreaID restricts every query to one PlanIt area (0 = all).
+	PollingDailyCallCap             int
+	PollingMinRequestSpacingSeconds int
+	PollingDeltaSlots               string
+	PollingDeltaMaxPages            int
+	PollingDayAllowance             int
+	PollingFullReadMaxAgeDays       int
+	PollingRunBudgetMinutes         int
+	PollingAreaID                   int
+	PollingOracleEnabled            bool
+	// PollingEnabledDefault is POLLING_ENABLED_DEFAULT, whether this
+	// environment polls PlanIt while no polling switch is stored (unset = off).
+	PollingEnabledDefault bool
+
+	// NotifyQuietStart and NotifyQuietEnd are the Europe/London HH:MM quiet
+	// hours; NotifyEventSurgeThreshold is the 24h event count above which the
+	// dispatcher treats pending events as a surge.
+	NotifyQuietStart          string
+	NotifyQuietEnd            string
+	NotifyEventSurgeThreshold int
 }
-
-// defaultDevSeedProdPostgresDB is the prod database name the dev-seed job's
-// second, read-only pool connects to.
-const defaultDevSeedProdPostgresDB = "town_crier_prod"
 
 // defaultPlanItBaseURL is the live PlanIt applications API.
 const defaultPlanItBaseURL = "https://www.planit.org.uk/"
@@ -420,10 +258,6 @@ func (c Config) Auth0M2MConfigured() bool {
 // LoadConfig reads configuration from the environment, applying defaults
 // where a variable is unset.
 func LoadConfig() (Config, error) {
-	// Lane A's mask width is read once up here so Lane E's depth can default to
-	// it (ADR 0047: the A/E/C partition stays gapless if the mask is retuned).
-	pollingLaneAMaskDays := getenvInt("POLLING_LANE_A_MASK_DAYS", 90)
-
 	cfg := Config{
 		Port:               getenv("PORT", "8080"),
 		LogLevel:           slog.LevelInfo,
@@ -435,9 +269,6 @@ func LoadConfig() (Config, error) {
 		AnonRateLimitRefillPerMinute: getenvInt("ANON_RATE_LIMIT_REFILL_PER_MINUTE", 60),
 
 		AzureClientID: os.Getenv("AZURE_CLIENT_ID"),
-
-		ServiceBusNamespace: os.Getenv("SERVICE_BUS_NAMESPACE"),
-		ServiceBusQueueName: os.Getenv("SERVICE_BUS_QUEUE_NAME"),
 
 		ShareCardsBlobURL: os.Getenv("SHARE_CARDS_BLOB_URL"),
 
@@ -474,50 +305,32 @@ func LoadConfig() (Config, error) {
 
 		ACSConnectionString: NewSecret(os.Getenv("ACS_CONNECTION_STRING")),
 
-		PlanItBaseURL:                 getenv("PLANIT_BASE_URL", defaultPlanItBaseURL),
-		PlanItThrottleDelaySeconds:    getenvFloat("PLANIT_THROTTLE_DELAY_SECONDS", 2),
-		PlanItMaxRetries:              getenvInt("PLANIT_RETRY_MAX_RETRIES", 3),
-		PlanItInitialBackoffSeconds:   getenvFloat("PLANIT_RETRY_INITIAL_BACKOFF_SECONDS", 1),
-		PlanItRateLimitBackoffSeconds: getenvFloat("PLANIT_RETRY_RATE_LIMIT_BACKOFF_SECONDS", 5),
-
-		PollingMaxPagesPerAuthorityPerCycle: getenvInt("POLLING_MAX_PAGES_PER_AUTHORITY_PER_CYCLE", 3),
-		PollingHandlerBudgetSeconds:         getenvInt("POLLING_HANDLER_BUDGET_SECONDS", 240),
-		PollReplicaTimeoutSeconds:           getenvInt("POLL_REPLICA_TIMEOUT_SECONDS", 600),
-		PollShutdownGraceSeconds:            getenvInt("POLL_SHUTDOWN_GRACE_SECONDS", 30),
-		PollingPlanItPageSize:               getenvInt("POLLING_PLANIT_PAGE_SIZE", 100),
-
-		PollingLaneAMaskDays:         pollingLaneAMaskDays,
-		PollingLaneBMaskDays:         getenvInt("POLLING_LANE_B_MASK_DAYS", 90),
-		PollingLaneBMaxPages:         getenvInt("POLLING_LANE_B_MAX_PAGES", 20),
-		PollingDayStart:              getenv("POLLING_DAY_START", "07:00"),
-		PollingDayEnd:                getenv("POLLING_DAY_END", "19:00"),
-		PollingLaneFreshnessInterval: getenvDuration("POLLING_LANE_FRESHNESS_INTERVAL", 15*time.Minute),
-
-		PollingLaneCEnabled:           getenvBoolDefault("POLLING_LANE_C_ENABLED", true),
-		PollingLaneCMaxPagesPerCycle:  getenvInt("POLLING_LANE_C_MAX_PAGES_PER_CYCLE", 15),
-		PollingLaneCNotifyRecencyDays: getenvInt("POLLING_LANE_C_NOTIFY_RECENCY_DAYS", 30),
-
-		PollingBackfillEnabled:                    getenvBool("POLLING_BACKFILL_ENABLED"),
-		PollingBackfillWindowWidthDays:            getenvInt("POLLING_BACKFILL_WINDOW_WIDTH_DAYS", 90),
-		PollingBackfillMaxPagesPerCycle:           getenvInt("POLLING_BACKFILL_MAX_PAGES_PER_CYCLE", 2),
-		PollingBackfillEmptyWindowsBeforeComplete: getenvInt("POLLING_BACKFILL_EMPTY_WINDOWS_BEFORE_COMPLETE", 12),
-
-		PollingLaneEEnabled:           getenvBool("POLLING_LANE_E_ENABLED"),
-		PollingLaneEDepthDays:         getenvInt("POLLING_LANE_E_DEPTH_DAYS", pollingLaneAMaskDays),
-		PollingLaneEWindowWidthDays:   getenvInt("POLLING_LANE_E_WINDOW_WIDTH_DAYS", 15),
-		PollingLaneEMaxPagesPerCycle:  getenvInt("POLLING_LANE_E_MAX_PAGES_PER_CYCLE", 6),
-		PollingLaneENotifyRecencyDays: getenvInt("POLLING_LANE_E_NOTIFY_RECENCY_DAYS", 30),
-
 		NotificationsRetentionDays:       getenvInt("NOTIFICATIONS_RETENTION_DAYS", 90),
 		DeviceRegistrationsRetentionDays: getenvInt("DEVICE_REGISTRATIONS_RETENTION_DAYS", 180),
 
-		PostgresHost:    os.Getenv("POSTGRES_HOST"),
-		PostgresSSLMode: os.Getenv("POSTGRES_SSLMODE"),
+		PlanItBaseURL: getenv("PLANIT_BASE_URL", defaultPlanItBaseURL),
 
-		DevSeedLimit:             getenvInt("DEV_SEED_LIMIT", 5),
-		DevSeedProdPostgresDB:    getenv("DEV_SEED_PROD_POSTGRES_DB", defaultDevSeedProdPostgresDB),
-		DevSeedProdPostgresUser:  os.Getenv("DEV_SEED_PROD_POSTGRES_USER"),
-		DevSeedProdAzureClientID: os.Getenv("DEV_SEED_PROD_AZURE_CLIENT_ID"),
+		PollingDailyCallCap:             getenvInt("POLLING_DAILY_CALL_CAP", 240),
+		PollingMinRequestSpacingSeconds: getenvInt("POLLING_MIN_REQUEST_SPACING_SECONDS", 60),
+		PollingDeltaSlots:               getenv("POLLING_DELTA_SLOTS", "09:00,12:00,15:00,17:00"),
+		PollingDeltaMaxPages:            getenvInt("POLLING_DELTA_MAX_PAGES", 20),
+		PollingDayAllowance:             getenvInt("POLLING_DAY_ALLOWANCE", 60),
+		PollingFullReadMaxAgeDays:       getenvInt("POLLING_FULL_READ_MAX_AGE_DAYS", 7),
+		PollingRunBudgetMinutes:         getenvInt("POLLING_RUN_BUDGET_MINUTES", 55),
+		PollingOracleEnabled:            getenvBool("POLLING_ORACLE_ENABLED"),
+		PollingEnabledDefault:           getenvBool("POLLING_ENABLED_DEFAULT"),
+
+		NotifyQuietStart:          getenv("NOTIFY_QUIET_START", "22:00"),
+		NotifyQuietEnd:            getenv("NOTIFY_QUIET_END", "07:00"),
+		NotifyEventSurgeThreshold: getenvInt("NOTIFY_EVENT_SURGE_THRESHOLD", 10000),
+	}
+
+	if raw := strings.TrimSpace(os.Getenv("POLLING_AREA_ID")); raw != "" {
+		areaID, err := strconv.Atoi(raw)
+		if err != nil || areaID < 0 {
+			return Config{}, fmt.Errorf("parse POLLING_AREA_ID %q: want a non-negative integer", raw)
+		}
+		cfg.PollingAreaID = areaID
 	}
 
 	if raw := os.Getenv("LOG_LEVEL"); raw != "" {
@@ -588,54 +401,10 @@ func getenvBool(key string) bool {
 	return v
 }
 
-// getenvBoolDefault is getenvBool with a caller-chosen fallback for the
-// unset case, distinguishing "unset" from "explicitly set" via
-// os.LookupEnv (an empty value counts as unset too, matching getenv's and
-// getenvInt's treatment of "" elsewhere in this file). A present,
-// non-empty, but unparseable value still fails safe to false, mirroring
-// getenvBool — only the unset branch honours fallback. Use this (rather
-// than getenvBool) for a flag whose safe default is true once the feature
-// it gates is no longer known-broken (e.g. PollingLaneCEnabled,
-// tc-tuge8/GH#971); every other boolean flag in this file has a safe
-// default of false and should keep using getenvBool.
-func getenvBoolDefault(key string, fallback bool) bool {
-	raw, ok := os.LookupEnv(key)
-	if !ok || strings.TrimSpace(raw) == "" {
-		return fallback
-	}
-	v, err := strconv.ParseBool(strings.TrimSpace(raw))
-	if err != nil {
-		return false
-	}
-	return v
-}
-
 // getenvInt returns the named env var parsed as an int, or fallback when unset,
 // empty, or unparseable — so a misconfigured value fails safe to the default.
 func getenvInt(key string, fallback int) int {
 	v, err := strconv.Atoi(strings.TrimSpace(os.Getenv(key)))
-	if err != nil {
-		return fallback
-	}
-	return v
-}
-
-// getenvFloat returns the named env var parsed as a float64, or fallback when
-// unset, empty, or unparseable.
-func getenvFloat(key string, fallback float64) float64 {
-	v, err := strconv.ParseFloat(strings.TrimSpace(os.Getenv(key)), 64)
-	if err != nil {
-		return fallback
-	}
-	return v
-}
-
-// getenvDuration returns the named env var parsed via time.ParseDuration
-// (e.g. "15m"), or fallback when unset, empty, or unparseable — so a
-// misconfigured value fails safe to the default (ADR 0044:
-// POLLING_LANE_FRESHNESS_INTERVAL).
-func getenvDuration(key string, fallback time.Duration) time.Duration {
-	v, err := time.ParseDuration(strings.TrimSpace(os.Getenv(key)))
 	if err != nil {
 		return fallback
 	}
