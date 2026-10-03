@@ -13,12 +13,6 @@ import (
 // tracerName labels the worker's OpenTelemetry spans.
 const tracerName = "github.com/AmyDe/town-crier/api-go/internal/worker"
 
-// bootstrapBudget is the soft self-cancel for a single bootstrap run. A single
-// Service Bus depth probe plus an optional scheduled publish is fast; 60s is
-// generous. The Container Apps replicaTimeout is the hard kill ceiling — this is
-// the soft ceiling that lets the process exit cleanly and flush telemetry.
-const bootstrapBudget = 60 * time.Second
-
 // digestBudget is the soft self-cancel for a single digest / hourly-digest run.
 // A digest cycle fans out across many users' Cosmos reads and email/push sends;
 // 10 minutes is generous while still bounded well under the Container Apps
@@ -44,15 +38,6 @@ const sweepBudget = 10 * time.Minute
 // generous while still bounded well under the Container Apps replicaTimeout so
 // the process exits cleanly and flushes telemetry.
 const purgeBudget = 10 * time.Minute
-
-// devSeedBudget is the soft self-cancel for a single dev-seed run. The cycle
-// reads dev's watched authorities, pulls at most DEV_SEED_LIMIT
-// recently-changed prod applications over a second, read-only pool, and feeds
-// each through the same upsert + decision-dispatch + zone-enqueue + push-flush
-// pipeline poll-sb uses; 5 minutes is generous for a handful of applications
-// while still bounded well under the Container Apps replicaTimeout so the
-// process exits cleanly and flushes telemetry.
-const devSeedBudget = 5 * time.Minute
 
 // reconcileBudget is the soft self-cancel for a single appstore-reconcile run.
 // The cycle is one paginated App Store Server API call plus, in apply mode, a
@@ -101,59 +86,12 @@ type PurgeRunner interface {
 	Run(ctx context.Context) (notifsPurged int, devicesPurged int, err error)
 }
 
-// PollRunResult is the dispatcher-facing summary of one poll-sb cycle. It mirrors
-// the orchestrator's run result plus the ingestion counts the dispatch span tags
-// and the exit-code logic need, decoupling the worker package from the polling
-// package's concrete result types. The cmd/worker adapter flattens
-// polling.OrchestratorRunResult into this shape.
-type PollRunResult struct {
-	MessageReceived   bool
-	PublishedNext     bool
-	LeaseUnavailable  bool
-	ApplicationCount  int
-	AuthoritiesPolled int
-	AuthorityErrors   int
-	// AuthorityErrorIsPlanIt mirrors polling.PollPlanItResult.AuthorityErrorIsPlanIt:
-	// true when the lane error counted in AuthorityErrors originated from a
-	// PlanIt fetch call -- self-healing, already covered by the ratio-based
-	// alert-planit-failure-rate-shared log alert -- rather than a genuine
-	// state-store/Postgres failure. Meaningless when AuthorityErrors == 0
-	// (tc-uitxr).
-	AuthorityErrorIsPlanIt bool
-	Termination            string
-	// OldestHWMAgeSeconds mirrors polling.PollPlanItResult.OldestHWMAgeSeconds:
-	// the staleness (seconds) of the least-recently-polled candidate
-	// authority's high-water mark at cycle start, nil when the cycle had no
-	// candidates.
-	OldestHWMAgeSeconds *float64
-	// OldestHWMNeverPolled mirrors polling.PollPlanItResult.OldestHWMNeverPolled.
-	// Meaningless when OldestHWMAgeSeconds is nil.
-	OldestHWMNeverPolled bool
-	// CycleType mirrors polling.PollPlanItResult.CycleType ("Watched" | "Seed"),
-	// stamped on the "Polling Cycle (SB)" span next to polling.termination
-	// (tc-nlvpz / GH#955 PR A). Empty when the cycle produced no PollResult
-	// (e.g. lease unavailable, empty trigger queue).
-	CycleType string
-}
-
-// PollOrchestrator is the consumer-side slice of the poll-sb orchestrator the
-// dispatcher invokes. The cmd/worker adapter over *polling.Orchestrator satisfies
-// it. It is exported so main() can hold a genuinely nil interface value when the
-// job has no Service Bus / Cosmos config — poll-sb then refuses to run rather
-// than nil-panicking.
-type PollOrchestrator interface {
-	RunOnce(ctx context.Context) (PollRunResult, error)
-}
-
-// DevSeedRunner is the consumer-side slice of the dev-seed job the dispatcher
-// invokes. *devseed.Seeder satisfies it; Run returns the number of applications
-// ingested so the dispatcher can record it as a telemetry tag. It is exported so
-// main() can hold a genuinely nil interface value when the job is missing its
-// dedicated prod-read config (DEV_SEED_PROD_AZURE_CLIENT_ID /
-// DEV_SEED_PROD_POSTGRES_USER) — passing a typed-nil *devseed.Seeder would
-// defeat the nil guard below.
-type DevSeedRunner interface {
-	Run(ctx context.Context) (int, error)
+// PollRunner is the consumer-side slice of the poll runner the dispatcher
+// invokes. Run takes the polling lease, works until its own run budget is spent
+// and returns an error only for failures the run cannot absorb (lease or state
+// store errors); PlanIt limits end a run normally.
+type PollRunner interface {
+	Run(ctx context.Context) error
 }
 
 // AppStoreReconcileRunner is the consumer-side slice of the appstore-reconcile
@@ -171,36 +109,16 @@ type AppStoreReconcileRunner interface {
 }
 
 // Run dispatches on WORKER_MODE and returns the process exit code. It is the
-// testable core of cmd/worker/main.go — main() only loads config, wires the
-// Service Bus client + bootstrapper, sets up telemetry, and propagates this
-// code.
-//
-// poll-bootstrap, digest, hourly-digest, dormant-cleanup, subscription-sweep,
-// pg-purge, and appstore-reconcile are implemented; poll-sb remains a loud
-// stub that exits 1 until its own bead (tc-yng2) lands. The Go worker image is
-// not deployed to any job until the final cutover bead, so a stub can never
-// run in production. An unset or unknown mode is a deployment accident and
-// also fails fast.
-//
-// bootstrapper may be nil when the job has no Service Bus config; poll-bootstrap
-// then refuses to run rather than nil-panicking. purger may be nil when no purge
-// runner is configured; pg-purge then logs and exits 0, so this is never an
-// error. devSeeder may be nil when the job is missing its dedicated prod-read
-// config; dev-seed then refuses to run rather than nil-panicking (it is a
-// dev-only job — tc-grvu.6 — so this never fires in prod). reconciler may be
-// nil when the job is missing its App Store Server API key material;
-// appstore-reconcile then logs and exits 0 rather than crash-looping — this
-// feature is genuinely optional during rollout.
-func Run(ctx context.Context, mode string, bootstrapper *Bootstrapper, digester DigestRunner, dormant DormantRunner, poller PollOrchestrator, sweeper SweepRunner, purger PurgeRunner, devSeeder DevSeedRunner, reconciler AppStoreReconcileRunner, logger *slog.Logger) int {
+// testable core of cmd/worker/main.go. An unset or unknown mode is a deployment
+// accident and fails fast. Optional runners (purger, reconciler) may be nil:
+// pg-purge and appstore-reconcile then log and exit 0; the others exit 1.
+func Run(ctx context.Context, mode string, digester DigestRunner, dormant DormantRunner, poller PollRunner, sweeper SweepRunner, purger PurgeRunner, reconciler AppStoreReconcileRunner, logger *slog.Logger) int {
 	switch mode {
 	case "":
 		// WORKER_MODE is always set by infra; an unset value is a deployment
 		// accident — fail fast rather than silently no-op.
 		logger.ErrorContext(ctx, "WORKER_MODE is unset; refusing to run")
 		return 1
-
-	case "poll-bootstrap":
-		return runPollBootstrap(ctx, bootstrapper, logger)
 
 	case "digest":
 		return runDigest(ctx, "Digest Cycle", digester, DigestRunner.RunWeekly, logger)
@@ -214,14 +132,11 @@ func Run(ctx context.Context, mode string, bootstrapper *Bootstrapper, digester 
 	case "subscription-sweep":
 		return runSweep(ctx, sweeper, logger)
 
-	case "poll-sb":
-		return runPollSB(ctx, poller, logger)
+	case "poll":
+		return runPoll(ctx, poller, logger)
 
 	case "pg-purge":
 		return runPurge(ctx, purger, logger)
-
-	case "dev-seed":
-		return runDevSeed(ctx, devSeeder, logger)
 
 	case "appstore-reconcile":
 		return runAppStoreReconcile(ctx, reconciler, logger)
@@ -232,73 +147,16 @@ func Run(ctx context.Context, mode string, bootstrapper *Bootstrapper, digester 
 	}
 }
 
-// runPollSB executes one Service-Bus-triggered adaptive poll cycle inside a
-// telemetry span named "Polling Cycle (SB)" (so existing App Insights queries
-// keep working). It tags the span with the canonical keys
-// (polling.sb.message_received / published_next / authorities_polled /
-// applications_ingested / termination / authority_errors) and applies the
-// exit-code rule: exit 1 only when the run did NO useful work, hit an
-// authority error, AND that error did NOT originate from a PlanIt fetch call
-// (res.AuthorityErrorIsPlanIt) -- an isolated PlanIt-origin error on an
-// otherwise-quiet cycle self-heals (the orchestrator still completes the
-// message and publishes the next trigger normally) and is already covered by
-// the ratio-based alert-planit-failure-rate-shared log alert, so it exits 0
-// rather than paging alert-job-failed-poll-prod (tc-uitxr). Any other error
-// type -- a watermark/state-store or Postgres failure -- still exits 1
-// immediately, exactly as before. A nil orchestrator (job missing Service Bus
-// / Cosmos config) is an exit-1 condition; an orchestrator error is recorded
-// on the span and also exits 1.
-func runPollSB(ctx context.Context, poller PollOrchestrator, logger *slog.Logger) int {
-	tracer := otel.Tracer(tracerName)
-	ctx, span := tracer.Start(ctx, "Polling Cycle (SB)")
-	defer span.End()
-
+// runPoll executes one hourly poll run. The runner opens its own "PlanIt poll
+// run" span and reports health on it, so a PlanIt limit exits 0. A nil runner
+// (unwired job) or a runner error exits 1.
+func runPoll(ctx context.Context, poller PollRunner, logger *slog.Logger) int {
 	if poller == nil {
-		logger.ErrorContext(ctx, "poll-sb requires Service Bus + Cosmos config (SERVICE_BUS_* / COSMOS_*); refusing to run")
+		logger.ErrorContext(ctx, "poll requires PlanIt and Postgres config; refusing to run")
 		return 1
 	}
-
-	res, err := poller.RunOnce(ctx)
-	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-		logger.ErrorContext(ctx, "poll-sb cycle failed", "error", err)
-		return 1
-	}
-
-	span.SetAttributes(
-		attribute.Bool("polling.sb.message_received", res.MessageReceived),
-		attribute.Bool("polling.sb.published_next", res.PublishedNext),
-		attribute.Int("polling.authorities_polled", res.AuthoritiesPolled),
-		attribute.Int("polling.applications_ingested", res.ApplicationCount),
-		attribute.Int("polling.authority_errors", res.AuthorityErrors),
-		attribute.Bool("polling.authority_error_is_planit", res.AuthorityErrorIsPlanIt),
-		attribute.String("polling.termination", res.Termination),
-		attribute.String("polling.cycle_type", res.CycleType),
-	)
-	// Absent (not zero) when the cycle had no candidate authorities to report —
-	// see PollRunResult.OldestHWMAgeSeconds.
-	if res.OldestHWMAgeSeconds != nil {
-		span.SetAttributes(
-			attribute.Float64("polling.oldest_hwm_age_seconds", *res.OldestHWMAgeSeconds),
-			attribute.Bool("polling.oldest_hwm_never_polled", res.OldestHWMNeverPolled),
-		)
-	}
-
-	logger.InfoContext(ctx, "poll-sb cycle completed",
-		"applicationsIngested", res.ApplicationCount,
-		"authoritiesPolled", res.AuthoritiesPolled,
-		"authorityErrors", res.AuthorityErrors,
-		"authorityErrorIsPlanIt", res.AuthorityErrorIsPlanIt,
-		"leaseUnavailable", res.LeaseUnavailable)
-
-	// Exit-code rule (tc-uitxr): only exit 1 when the run did no useful work,
-	// hit an authority error, AND that error is NOT PlanIt-origin. A quiet
-	// cycle (0 apps, 0 errors), a lease-unavailable exit, any cycle that
-	// ingested apps, and an isolated PlanIt-origin error on an otherwise-quiet
-	// cycle (self-healing -- covered by alert-planit-failure-rate-shared
-	// instead) all exit 0. A genuine state-store/Postgres error still exits 1.
-	if res.ApplicationCount == 0 && res.AuthorityErrors > 0 && !res.AuthorityErrorIsPlanIt {
+	if err := poller.Run(ctx); err != nil {
+		logger.ErrorContext(ctx, "poll run failed", "error", err)
 		return 1
 	}
 	return 0
@@ -425,39 +283,6 @@ func runPurge(ctx context.Context, runner PurgeRunner, logger *slog.Logger) int 
 	return 0
 }
 
-// runDevSeed executes one dev-seed cycle under a soft self-cancel budget,
-// inside a telemetry span named "Dev Seed Cycle". It records the number of
-// applications ingested as the dev_seed.ingested_count tag. A nil runner (job
-// missing its dedicated prod-read config, DEV_SEED_PROD_AZURE_CLIENT_ID /
-// DEV_SEED_PROD_POSTGRES_USER) is an exit-1 condition, mirroring
-// dormant-cleanup/subscription-sweep's posture for an unconfigured optional
-// job — dev-seed is created dev-only (tc-grvu.6), so this never fires in prod.
-// A cycle error is recorded on the span and also exits 1 so the job surfaces
-// the failure.
-func runDevSeed(ctx context.Context, runner DevSeedRunner, logger *slog.Logger) int {
-	tracer := otel.Tracer(tracerName)
-	ctx, span := tracer.Start(ctx, "Dev Seed Cycle")
-	defer span.End()
-
-	if runner == nil {
-		logger.ErrorContext(ctx, "dev-seed requires prod-read config (DEV_SEED_PROD_AZURE_CLIENT_ID / DEV_SEED_PROD_POSTGRES_USER); refusing to run")
-		return 1
-	}
-
-	cycleCtx, cancel := context.WithTimeout(ctx, devSeedBudget)
-	defer cancel()
-
-	ingested, err := runner.Run(cycleCtx)
-	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-		logger.ErrorContext(ctx, "dev-seed cycle failed", "error", err)
-		return 1
-	}
-	span.SetAttributes(attribute.Int("dev_seed.ingested_count", ingested))
-	return 0
-}
-
 // runAppStoreReconcile executes one appstore-reconcile cycle under a soft
 // self-cancel budget, inside a telemetry span named "App Store Reconcile
 // Cycle". It tags the span with the scanned/gap/applied counts. Unlike
@@ -494,40 +319,5 @@ func runAppStoreReconcile(ctx context.Context, runner AppStoreReconcileRunner, l
 	)
 	logger.InfoContext(ctx, "appstore-reconcile cycle completed",
 		"scanned", scanned, "gaps", gaps, "applied", applied)
-	return 0
-}
-
-// Failures that TryBootstrap absorbs still exit 0: the next cron tick retries.
-func runPollBootstrap(ctx context.Context, bootstrapper *Bootstrapper, logger *slog.Logger) int {
-	tracer := otel.Tracer(tracerName)
-	ctx, span := tracer.Start(ctx, "Polling Bootstrap")
-	defer span.End()
-
-	if bootstrapper == nil {
-		logger.ErrorContext(ctx, "poll-bootstrap requires Service Bus config (SERVICE_BUS_NAMESPACE / SERVICE_BUS_QUEUE_NAME); refusing to run")
-		return 1
-	}
-
-	cycleCtx, cancel := context.WithTimeout(ctx, bootstrapBudget)
-	defer cancel()
-
-	res, err := bootstrapper.TryBootstrap(cycleCtx)
-	if err != nil {
-		span.SetAttributes(attribute.Bool("polling.safety_net.bootstrap_probe_failed", true))
-		logger.ErrorContext(ctx, "poll-bootstrap cycle failed", "error", err)
-		return 1
-	}
-
-	// Do not rename these tags: App Insights queries and alerts depend on them.
-	span.SetAttributes(
-		attribute.Bool("polling.safety_net.bootstrap_published", res.Published),
-		attribute.Bool("polling.safety_net.bootstrap_probe_failed", res.ProbeFailed),
-		attribute.Bool("polling.safety_net.lease_unavailable", res.LeaseUnavailable),
-		attribute.Bool("polling.safety_net.reconciled", res.Reconciled),
-		attribute.Bool("polling.safety_net.parked_recovered", res.ParkedRecovered),
-		attribute.Int("polling.safety_net.scheduled_cancelled", res.ScheduledCancelled),
-		attribute.Int("polling.safety_net.active_discarded", res.ActiveDiscarded),
-		attribute.Int("polling.safety_net.dead_lettered", res.DeadLettered),
-	)
 	return 0
 }

@@ -462,7 +462,7 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 	}
 
 	// Action Group (tc-ttjor / GH #938 PR3) — single email receiver, reused by both alerts
-	// below and by the poll-queue-depth metric alert in the prod env stack (infra/environment.go).
+	// below.
 	// Deliberately created HERE rather than in the prod env stack (as the bead literally asked):
 	// the PlanIt failure-rate log alert below must live in this file (it queries the shared Log
 	// Analytics workspace), and wiring it to an action group owned by the prod stack would need a
@@ -564,220 +564,10 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		return err
 	}
 
-	// Scheduled query (log) alert — PlanIt poll lane running with zero forward progress
-	// (tc-hbbki / GH #1130 / tc-777e7).
-	//
-	// Why this exists: alert-planit-failure-rate-shared above is a fleet-wide non-429 failure
-	// *ratio*. A single chronically-broken lane (Lane C, livelocked ~7 weeks 2026-07-19 to
-	// 2026-09-06, tc-777e7) contributes only a handful of failing calls/day, which never move a
-	// ratio diluted by the hundreds of healthy Lane A/B calls sharing the same denominator. That
-	// 7-week failure was found by a manual SRE observatory run, not by an alert. Per-lane forward
-	// progress needs its own alert that is not a ratio.
-	//
-	// The signal: over a P1D window Lane C emitted >= 4 poll spans (so it actually ran), *every*
-	// one of those spans had poll.records_ingested == 0, and at least one had planit.total > 0
-	// (PlanIt had drift to reconcile). Lane C's job is reconciliation with an always-nonzero
-	// workload, so sustained zero-ingest-with-data is unambiguously stuck — unlike Lanes A/B,
-	// which legitimately have many zero-ingest cycles when nothing new landed.
-	//
-	// Why P1D / Sev2: matches the tc-x5xsx (2026-08-25) alert-noise posture for PlanIt-adjacent
-	// alerts. A data-quality backstop stalling is not a customer-facing outage, and 24h detection
-	// latency on a 7-week failure mode is fine.
-	//
-	// Inert while POLLING_LANE_C_ENABLED=false: no spans => `spans >= 4` is false => no fire. The
-	// gate is deliberately "spans present AND all zero-progress", never "no successful spans".
-	//
-	// Deliberately NOT gating on poll.last_clean_scan_at staleness (which issue #1130 floats as an
-	// alternative signal): on the imminent Lane C re-enable the poll_state watermark cold-starts
-	// from the frozen 2026-07-19 value, so a `freshestClean < ago(3d)` disjunct would false-fire
-	// for the first few days of a *correct* catch-up. The zero-ingest-with-data signal has no such
-	// interaction.
-	//
-	// Lane E is deliberately NOT added to this rule (GH #1134 / ADR 0047). `records_ingested == 0`
-	// with a large `planit.total` is Lane E's HEALTHY steady state, not a stall: Lane E is a
-	// backstop that continuously re-sweeps the recent start_date band, so while it re-reads data
-	// that is already correct it ingests nothing even though planit.total reports the whole window.
-	// Adding Lane E here would make this rule fire permanently and train everyone to ignore it.
-	// Lane E's forward-progress signal is its cursor instead — see the sibling rule
-	// alert-planit-lane-e-cursor-stalled-shared below.
-	//
-	// Location is pinned to uksouth (not left to the provider default) because Log Analytics-based
-	// scheduled query rules are regional and must be explicit, unlike the Global action group —
-	// same rationale as alert-planit-failure-rate-shared above.
-	const planitLaneStuckQuery = `AppDependencies
-| where Name == "PlanIt Lane C inverse-mask poll"
-| extend ingested = toint(Properties["poll.records_ingested"]),
-         total    = toint(Properties["planit.total"])
-| summarize spans = count(), maxIngested = max(ingested), maxTotal = max(total)
-| where spans >= 4
-| where maxIngested == 0 and maxTotal > 0`
-
-	_, err = monitor.NewScheduledQueryRule(ctx, "alert-planit-lane-stuck-shared", &monitor.ScheduledQueryRuleArgs{
-		RuleName:            pulumi.String("alert-planit-lane-stuck-shared"),
-		ResourceGroupName:   resourceGroup.Name,
-		Location:            pulumi.String("uksouth"),
-		Kind:                pulumi.String("LogAlert"),
-		DisplayName:         pulumi.String("PlanIt poll lane stuck (zero forward progress)"),
-		Description:         pulumi.String("Lane C poll ran but ingested nothing over 24h while PlanIt reported data to reconcile; a per-lane progress alert that the fleet-wide failure-rate ratio cannot see (GH #1130 / tc-777e7)."),
-		Severity:            pulumi.Float64(2), // Warning
-		Enabled:             pulumi.Bool(true),
-		EvaluationFrequency: pulumi.String("PT1H"),
-		WindowSize:          pulumi.String("P1D"),
-		Scopes:              pulumi.StringArray{logAnalytics.ID()},
-		Criteria: monitor.ScheduledQueryRuleCriteriaArgs{
-			AllOf: monitor.ConditionArray{
-				monitor.ConditionArgs{
-					Query:           pulumi.String(planitLaneStuckQuery),
-					TimeAggregation: pulumi.String("Count"),
-					Operator:        pulumi.String("GreaterThan"),
-					Threshold:       pulumi.Float64(0),
-				},
-			},
-		},
-		Actions: monitor.ActionsArgs{
-			ActionGroups: pulumi.StringArray{actionGroup.ID()},
-		},
-		Tags: tags,
-	})
-	if err != nil {
-		return err
-	}
-
-	// Scheduled query (log) alert — PlanIt poll lane query pathologically slow (tc-hbbki / GH
-	// #1130 / tc-777e7 Bug 1). Catches a national lane whose PlanIt query has gone pathological
-	// regardless of ingest outcome — Bug 1's signature was 30-200s hung requests every cycle. The
-	// threshold is >= 10 such spans in 24h, not "any single one": a healthy Lane A/B tops out at
-	// ~1 slow span/day from ordinary PlanIt slowness, so 10/day cannot trip on a healthy-but-slow
-	// lane while a wedged lane clears it many times over.
-	//
-	// Explicit three-name allow-list, not a startswith/endswith pattern (PR #1132 review finding):
-	//   - "PlanIt Lane C inverse-mask poll"   — Lane C's reconciliation query (lanec.go).
-	//   - "PlanIt national lane poll"          — Lanes A and B share this span name (nationallane.go).
-	//   - "PlanIt Lane E recent-window sweep"  — Lane E's recent-band start_date sweep (recentsweep.go,
-	//     GH #1134 / ADR 0047). It stamps poll.lane = "E", so the `by Name, lane` summarize below
-	//     names it correctly on a fire.
-	// Deliberately excluded:
-	//   - "PlanIt authority poll" — the legacy pre-ADR-0041/0044 per-authority path (pollAuthority
-	//     in api-go/internal/polling/handler.go), which #1130 lists as out of scope. It is kept
-	//     compiling-but-unwired for an architecture rollback; if re-wired it does ~186 req/cycle
-	//     with 429 storms and would plausibly clear 10 slow spans/day on ordinary behaviour,
-	//     flapping this alert exactly when noise is least wanted.
-	//   - "PlanIt backfill sweep" — Lane D. Excluded by lane, not by the "sweep" suffix: Lane E's
-	//     span name also ends in "sweep" and IS in scope (above). Lane D only ever queries a narrow
-	//     bounded window deep in history, years from the present, and never approaches the cliff;
-	//     Lane E's two-sided start_date window over the recent 90-day band can go pathological
-	//     toward PlanIt's ~45s cliff the same way a national poll can (ADR 0044 measured
-	//     different=7 at 43.1s), so it needs the same watch.
-	// The summarize is `by Name, lane` (poll.lane is always stamped "A"/"B"/"C"/"E"), so a fired
-	// alert names the specific slow lane — Lanes A and B are otherwise indistinguishable under the
-	// shared "PlanIt national lane poll" name — and splitting the count by lane keeps the per-lane
-	// A/B totals even further under the threshold.
-	//
-	// Same regional-Location and wide-window (P1D) rationale as the rule above.
-	const planitLaneSlowQuery = `AppDependencies
-| where Name in ("PlanIt Lane C inverse-mask poll", "PlanIt national lane poll", "PlanIt Lane E recent-window sweep")
-| where DurationMs > 90000
-| extend lane = tostring(Properties["poll.lane"])
-| summarize slowSpans = count() by Name, lane
-| where slowSpans >= 10`
-
-	_, err = monitor.NewScheduledQueryRule(ctx, "alert-planit-lane-slow-shared", &monitor.ScheduledQueryRuleArgs{
-		RuleName:            pulumi.String("alert-planit-lane-slow-shared"),
-		ResourceGroupName:   resourceGroup.Name,
-		Location:            pulumi.String("uksouth"),
-		Kind:                pulumi.String("LogAlert"),
-		DisplayName:         pulumi.String("PlanIt poll lane query pathologically slow"),
-		Description:         pulumi.String("A national poll lane (A/B, C or E) logged 10+ PlanIt query spans over 90s in 24h, the signature of a wedged inverse-mask/watermark/recent-window query (GH #1130 / tc-777e7 Bug 1)."),
-		Severity:            pulumi.Float64(2), // Warning
-		Enabled:             pulumi.Bool(true),
-		EvaluationFrequency: pulumi.String("PT1H"),
-		WindowSize:          pulumi.String("P1D"),
-		Scopes:              pulumi.StringArray{logAnalytics.ID()},
-		Criteria: monitor.ScheduledQueryRuleCriteriaArgs{
-			AllOf: monitor.ConditionArray{
-				monitor.ConditionArgs{
-					Query:           pulumi.String(planitLaneSlowQuery),
-					TimeAggregation: pulumi.String("Count"),
-					Operator:        pulumi.String("GreaterThan"),
-					Threshold:       pulumi.Float64(0),
-				},
-			},
-		},
-		Actions: monitor.ActionsArgs{
-			ActionGroups: pulumi.StringArray{actionGroup.ID()},
-		},
-		Tags: tags,
-	})
-	if err != nil {
-		return err
-	}
-
-	// Scheduled query (log) alert — PlanIt Lane E recent-window sweep wedged: its cursor has
-	// stopped advancing (tc-ht8i7 / GH #1134 / ADR 0047).
-	//
-	// Why this is a separate rule and not alert-planit-lane-stuck-shared above: Lane E's
-	// forward-progress signal is the CURSOR (lane_e.window_end, an RFC3339 date string), never the
-	// ingest count. Lane E is a backstop that continuously re-sweeps the recent 90-day start_date
-	// band; in its healthy steady state it re-reads data that is already correct and ingests
-	// nothing, while planit.total reports the whole window. That is exactly the
-	// `records_ingested == 0 and total > 0` shape the stuck rule fires on, so Lane E is
-	// deliberately excluded from it (see the comment there) and watched here on cursor movement
-	// instead.
-	//
-	// The signal: over a P2D window Lane E emitted >= 8 spans (so it actually ran) and every one
-	// of them carried the same lane_e.window_end (dcount <= 1). At ~72 pages/day against a ~15-day
-	// window of roughly 73 pages, window_end slides back about once a day, so two days of spans
-	// all sharing one window_end means the cursor is wedged — a window that will not drain, a
-	// slide that never happens, or a lap that will not re-anchor.
-	//
-	// Inert while POLLING_LANE_E_ENABLED=false: the lane emits no spans, so `spans >= 8` is false
-	// and the rule never fires. Same "spans present AND no progress" gate shape as
-	// alert-planit-lane-stuck-shared, never "no successful spans".
-	//
-	// Why PT6H / P2D / Sev2: window_end only moves ~once a day, so a sub-day window could not
-	// tell a stall from ordinary between-slide quiet; P2D needs two missed slides before it
-	// fires. A data-quality backstop wedging is not a customer-facing outage, so Sev2 and
-	// multi-hour detection latency are fine — same posture as the two rules above.
-	//
-	// Location is pinned to uksouth (not left to the provider default) because Log Analytics-based
-	// scheduled query rules are regional and must be explicit, unlike the Global action group —
-	// same rationale as the neighbouring rules.
-	const planitLaneECursorStalledQuery = `AppDependencies
-| where Name == "PlanIt Lane E recent-window sweep"
-| extend windowEnd = tostring(Properties["lane_e.window_end"])
-| summarize spans = count(), windows = dcount(windowEnd)
-| where spans >= 8
-| where windows <= 1`
-
-	_, err = monitor.NewScheduledQueryRule(ctx, "alert-planit-lane-e-cursor-stalled-shared", &monitor.ScheduledQueryRuleArgs{
-		RuleName:            pulumi.String("alert-planit-lane-e-cursor-stalled-shared"),
-		ResourceGroupName:   resourceGroup.Name,
-		Location:            pulumi.String("uksouth"),
-		Kind:                pulumi.String("LogAlert"),
-		DisplayName:         pulumi.String("PlanIt Lane E recent-window sweep wedged (cursor not advancing)"),
-		Description:         pulumi.String("Lane E logged 8+ recent-window sweep spans over 2 days with only one distinct lane_e.window_end, so the sweep cursor has not advanced and the lane is wedged (GH #1134 / ADR 0047)."),
-		Severity:            pulumi.Float64(2), // Warning
-		Enabled:             pulumi.Bool(true),
-		EvaluationFrequency: pulumi.String("PT6H"),
-		WindowSize:          pulumi.String("P2D"),
-		Scopes:              pulumi.StringArray{logAnalytics.ID()},
-		Criteria: monitor.ScheduledQueryRuleCriteriaArgs{
-			AllOf: monitor.ConditionArray{
-				monitor.ConditionArgs{
-					Query:           pulumi.String(planitLaneECursorStalledQuery),
-					TimeAggregation: pulumi.String("Count"),
-					Operator:        pulumi.String("GreaterThan"),
-					Threshold:       pulumi.Float64(0),
-				},
-			},
-		},
-		Actions: monitor.ActionsArgs{
-			ActionGroups: pulumi.StringArray{actionGroup.ID()},
-		},
-		Tags: tags,
-	})
-	if err != nil {
-		return err
+	for _, spec := range planitPollAlertSpecs() {
+		if err = createLogAlert(ctx, resourceGroup, logAnalytics.ID(), actionGroup, tags, spec); err != nil {
+			return err
+		}
 	}
 
 	// Azure Communication Services (Email) — UK data location.
@@ -1306,20 +1096,6 @@ expected
 	// api-go release ships.
 	appInsightsID := appInsights.ID().ToStringOutput()
 
-	// Poll Service Bus namespace lives in the prod env stack (infra/environment.go,
-	// createServiceBusPollingInfra), not this shared one, so its ARM ID is constructed from the
-	// documented literal names rather than a cross-stack reference — same approach as the
-	// Container Apps job IDs in the prodFailedExecutionJobs loop above (shared.go:697). Mirrors
-	// alert-poll-queue-depth-prod (environment.go:856), which alerts on this same
-	// Messages/EntityName=poll metric; here it feeds a dashboard chart instead of an alert
-	// threshold. Unlike the alert, the dashboard tile below reads the Messages metric at
-	// namespace level with no EntityName=poll dimension filter: MonitorChartPart's dimension
-	// filter shape is undocumented/unverifiable without a live pulumi up (which this worker does
-	// not run), and poll is the only queue in this namespace, so namespace-level Messages is
-	// equivalent — the bead explicitly allows this fallback.
-	prodPollServiceBusNamespaceID := pulumi.String(fmt.Sprintf(
-		"/subscriptions/%s/resourceGroups/rg-town-crier-prod/providers/Microsoft.ServiceBus/namespaces/sb-town-crier-prod",
-		armSubscriptionID)).ToStringOutput()
 	postgresServerID := postgresServer.ID().ToStringOutput()
 
 	const dashboardAPIRequestsByStatusQuery = `requests | where customDimensions['deployment.environment'] == 'prod' | where isnotempty(customDimensions['http.response.status_code']) | extend class = strcat(substring(tostring(customDimensions['http.response.status_code']), 0, 1), 'xx') | summarize Value=toreal(count()) by timestamp=bin(timestamp, 1h), class | render timechart`
@@ -1440,11 +1216,10 @@ expected
 						dashboardPart(0, 16, 6, 4, kqlTile(appInsightsID, dashboardEmailsByKindQuery, "Emails by Kind", "series")),
 						dashboardPart(6, 16, 6, 4, kqlTile(appInsightsID, dashboardAPNsPushesQuery, "APNs Pushes", "outcome")),
 						// Row 6 (y=20): Postgres platform metrics.
-						dashboardPart(0, 20, 4, 4, monitorChartTile(postgresServerID, "storage_percent", "Microsoft.DBforPostgreSQL/flexibleServers", monitorAggregationAverage, "Postgres Storage %")),
-						dashboardPart(4, 20, 4, 4, monitorChartTile(postgresServerID, "cpu_credits_remaining", "Microsoft.DBforPostgreSQL/flexibleServers", monitorAggregationAverage, "Postgres CPU Credits")),
-						dashboardPart(8, 20, 4, 4, monitorChartTile(postgresServerID, "active_connections", "Microsoft.DBforPostgreSQL/flexibleServers", monitorAggregationAverage, "Postgres Connections")),
-						// Row 7 (y=24): poll queue depth, other job cycles, PlanIt latency.
-						dashboardPart(0, 24, 4, 4, monitorChartTile(prodPollServiceBusNamespaceID, "Messages", "Microsoft.ServiceBus/namespaces", monitorAggregationMaximum, "Poll Queue Depth")),
+						dashboardPart(0, 20, 4, 4, monitorChartTile(postgresServerID, "storage_percent", "Microsoft.DBforPostgreSQL/flexibleServers", "Postgres Storage %")),
+						dashboardPart(4, 20, 4, 4, monitorChartTile(postgresServerID, "cpu_credits_remaining", "Microsoft.DBforPostgreSQL/flexibleServers", "Postgres CPU Credits")),
+						dashboardPart(8, 20, 4, 4, monitorChartTile(postgresServerID, "active_connections", "Microsoft.DBforPostgreSQL/flexibleServers", "Postgres Connections")),
+						// Row 7 (y=24): other job cycles, PlanIt latency.
 						dashboardPart(4, 24, 4, 4, kqlTile(appInsightsID, dashboardJobCyclesByOutcomeQuery, "Job Cycles by Outcome", "series")),
 						dashboardPart(8, 24, 4, 4, kqlTile(appInsightsID, dashboardPlanItLatencyP95Query, "PlanIt Latency p95 (ms)", "")),
 						// Row 8 (y=28): Poll HWM by Authority, then Daily Active Users, then App
@@ -1470,8 +1245,8 @@ expected
 	ctx.Export("acrPullIdentityId", acrPullIdentity.ID())
 	ctx.Export("cosmosDataIdentityId", cosmosDataIdentity.ID())
 	ctx.Export("cosmosDataIdentityClientId", cosmosDataIdentity.ClientId)
-	// PrincipalId is required by env-stack role assignments (Service Bus Data Owner on the
-	// polling namespace) because RBAC grants are keyed to the principal (object) ID.
+	// PrincipalId is required by env-stack role assignments, which are keyed to the principal
+	// (object) ID.
 	ctx.Export("cosmosDataIdentityPrincipalId", cosmosDataIdentity.PrincipalId)
 	ctx.Export("devSeedReaderIdentityId", devSeedReaderIdentity.ID())
 	ctx.Export("devSeedReaderIdentityClientId", devSeedReaderIdentity.ClientId)
@@ -1513,21 +1288,18 @@ func dashboardPart(x, y, colSpan, rowSpan int, metadata portal.DashboardPartMeta
 	}
 }
 
-// Azure Portal MonitorChartPart aggregationType codes (undocumented ARM enum reverse-engineered
-// from the dashboard JSON — order is None=0, Total=1, Minimum=2, Maximum=3, Average=4, Count=5).
-// The Average value here was verified against the live availabilityPercentage tile on
-// 2026-07-13; Maximum is inferred from the same ordering for the tc-gha6l poll-queue-depth tile.
+// monitorAggregationAverage is the MonitorChartPart aggregationType code for Average (an
+// undocumented ARM enum, verified against the live availabilityPercentage tile on 2026-07-13).
 const (
-	monitorAggregationMaximum = 3
 	monitorAggregationAverage = 4
 )
 
 // monitorChartTile renders an arbitrary Azure Monitor platform metric — Application Insights
-// availabilityResults, Postgres Flexible Server metrics, Service Bus namespace metrics, or any
+// availabilityResults, Postgres Flexible Server metrics, or any
 // other metric under a namespace Go itself emits nothing for (Go wires no Azure Monitor metrics
 // exporter; see the Operational Dashboard comment above) — as a MonitorChartPart bound to
-// resourceID. aggregationType is one of the monitorAggregation* constants above.
-func monitorChartTile(resourceID pulumi.StringOutput, metricName, metricNamespace string, aggregationType int, title string) portal.DashboardPartMetadataArgs {
+// resourceID.
+func monitorChartTile(resourceID pulumi.StringOutput, metricName, metricNamespace string, title string) portal.DashboardPartMetadataArgs {
 	return portal.DashboardPartMetadataArgs{
 		Type: pulumi.String("Extension/HubsExtension/PartType/MonitorChartPart"),
 		Settings: pulumi.Map{
@@ -1538,7 +1310,7 @@ func monitorChartTile(resourceID pulumi.StringOutput, metricName, metricNamespac
 							pulumi.Map{
 								"resourceMetadata":    pulumi.Map{"id": resourceID},
 								"name":                pulumi.String(metricName),
-								"aggregationType":     pulumi.Int(aggregationType),
+								"aggregationType":     pulumi.Int(monitorAggregationAverage),
 								"namespace":           pulumi.String(metricNamespace),
 								"metricVisualization": pulumi.Map{"displayName": pulumi.String(title)},
 							},
@@ -1561,7 +1333,7 @@ func monitorChartTile(resourceID pulumi.StringOutput, metricName, metricNamespac
 // customMetrics/AppMetrics series — as a MonitorChartPart. Thin wrapper over monitorChartTile
 // kept for its existing call site and the metric-name discovery documented above.
 func availabilityMetricTile(appInsightsID pulumi.StringOutput, title string) portal.DashboardPartMetadataArgs {
-	return monitorChartTile(appInsightsID, "availabilityResults/availabilityPercentage", "microsoft.insights/components", monitorAggregationAverage, title)
+	return monitorChartTile(appInsightsID, "availabilityResults/availabilityPercentage", "microsoft.insights/components", title)
 }
 
 // kqlTile renders an Analytics (KQL query) dashboard part bound to the App Insights component.
@@ -1961,4 +1733,59 @@ func createSharePageAnalytics(ctx *pulumi.Context, resourceGroup *resources.Reso
 		Version:           pulumi.Float64(2),
 	}, pulumi.DependsOn([]pulumi.Resource{isLikelyBot}))
 	return err
+}
+
+const planitPollRunSpanFilter = `AppDependencies
+| where Name == "PlanIt poll run"`
+
+// planitPollAlertSpecs returns the PlanIt poll run alerts: critical, degraded and heartbeat
+// for prod (Sev 1, 2, 2) and the same three for dev at Sev 3. The run span carries
+// deployment.environment and poll.health, computed in Go by the poll job. The query decides
+// whether to fire; the alert fires on any returned row.
+func planitPollAlertSpecs() []logAlertSpec {
+	type envSeverity struct {
+		env, suffix, label       string
+		critical, degraded, beat float64
+	}
+	envs := []envSeverity{
+		{env: "prod", suffix: "", label: "prod", critical: 1, degraded: 2, beat: 2},
+		{env: "dev", suffix: "-dev", label: "dev", critical: 3, degraded: 3, beat: 3},
+	}
+	specs := make([]logAlertSpec, 0, 3*len(envs))
+	for _, e := range envs {
+		envFilter := fmt.Sprintf(`| where tostring(Properties["deployment.environment"]) == %q`, e.env)
+		specs = append(specs,
+			logAlertSpec{
+				name:        fmt.Sprintf("alert-planit-poll-critical%s-shared", e.suffix),
+				displayName: fmt.Sprintf("PlanIt poll health critical (%s)", e.label),
+				description: fmt.Sprintf("A %s PlanIt poll run reported poll.health == critical in the last hour (a 403 or an event surge). A person must act.", e.label),
+				severity:    e.critical,
+				window:      "PT1H",
+				freq:        "PT5M",
+				query:       planitPollRunSpanFilter + "\n" + envFilter + "\n" + `| where tostring(Properties["poll.health"]) == "critical"`,
+				threshold:   0,
+			},
+			logAlertSpec{
+				name:        fmt.Sprintf("alert-planit-poll-degraded%s-shared", e.suffix),
+				displayName: fmt.Sprintf("PlanIt poll health degraded (%s)", e.label),
+				description: fmt.Sprintf("A %s PlanIt poll run reported poll.health == degraded in the last 2 hours. See poll.health_reasons on the span.", e.label),
+				severity:    e.degraded,
+				window:      "PT2H",
+				freq:        "PT15M",
+				query:       planitPollRunSpanFilter + "\n" + envFilter + "\n" + `| where tostring(Properties["poll.health"]) == "degraded"`,
+				threshold:   0,
+			},
+			logAlertSpec{
+				name:        fmt.Sprintf("alert-planit-poll-heartbeat%s-shared", e.suffix),
+				displayName: fmt.Sprintf("PlanIt poll heartbeat missing (%s)", e.label),
+				description: fmt.Sprintf("No %s PlanIt poll run span in the last 2 hours; the hourly poll job is not running or not reporting.", e.label),
+				severity:    e.beat,
+				window:      "PT2H",
+				freq:        "PT15M",
+				query:       planitPollRunSpanFilter + "\n" + envFilter + "\n" + `| summarize runs = count()` + "\n" + `| where runs == 0`,
+				threshold:   0,
+			},
+		)
+	}
+	return specs
 }

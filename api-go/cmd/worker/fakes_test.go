@@ -49,8 +49,6 @@ func (s *spyZoneStore) Delete(_ context.Context, _, _ string) error { return nil
 
 func (s *spyZoneStore) DeleteAllByUserID(_ context.Context, _ string) error { return nil }
 
-func (s *spyZoneStore) All(_ context.Context) ([]watchzones.WatchZone, error) { return nil, nil }
-
 // fakeDescriptionMatcher is a hand-written double for notifydispatch's
 // consumer-side descriptionMatcher interface (GH#1090, epic tc-w825j,
 // tc-w825j.5): it proves the worker wiring builds an Enqueuer whose matcher

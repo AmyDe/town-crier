@@ -30,7 +30,7 @@ func TestEnqueuer_RecordsNotificationCreated(t *testing.T) {
 	enq.WithMetrics(rec)
 
 	app := testApplication(t, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
-	if err := enq.EnqueueForApplication(context.Background(), app); err != nil {
+	if err := enq.EnqueueForApplication(context.Background(), app, app.LastDifferent); err != nil {
 		t.Fatalf("EnqueueForApplication: %v", err)
 	}
 
@@ -51,12 +51,12 @@ func TestEnqueuer_DoesNotRecordOnDedup(t *testing.T) {
 	enq.WithMetrics(rec)
 
 	app := testApplication(t, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
-	if err := enq.EnqueueForApplication(context.Background(), app); err != nil {
+	if err := enq.EnqueueForApplication(context.Background(), app, app.LastDifferent); err != nil {
 		t.Fatalf("first EnqueueForApplication: %v", err)
 	}
 	// Second fan-out of the same application is a dedup no-op: no new record, no
 	// new metric.
-	if err := enq.EnqueueForApplication(context.Background(), app); err != nil {
+	if err := enq.EnqueueForApplication(context.Background(), app, app.LastDifferent); err != nil {
 		t.Fatalf("second EnqueueForApplication: %v", err)
 	}
 	if len(notifs.created) != 1 {

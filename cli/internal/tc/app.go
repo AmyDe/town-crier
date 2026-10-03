@@ -19,6 +19,8 @@ Commands:
   grant-subscription          Grant or change a user's subscription tier
   list-users                  List users with email, ID, and subscription tier
   stats                       Show aggregate user-base statistics
+  polling-status              Show whether dev and prod poll PlanIt
+  polling-switch              Move PlanIt polling to dev, to prod, or off
   help                        Show this help message
   version                     Print version
 
@@ -35,6 +37,14 @@ list-offer-codes options:
 list-users options:
   --search <term>      Filter by email substring (case-insensitive)
   --page-size <n>      Results per page (default: 20)
+
+polling-switch options:
+  --to <dev|prod|off>    Environment that polls afterwards (required)
+  --reason <text>        Reason stored with the switch
+  --allow-missing true   Continue when the other environment has no switch
+
+polling-status and polling-switch read "environments" (dev and prod, each
+with url and apiKey) from the config file and ignore --url and --api-key.
 
 Global options:
   --url <url>          API base URL (overrides config file)
@@ -55,6 +65,16 @@ func Run(ctx context.Context, env Env, rawArgs []string) int {
 	case "help":
 		fmt.Fprintln(env.Out, helpText)
 		return exitOK
+	case "polling-status", "polling-switch":
+		cfgs, err := LoadEnvironments(DefaultConfigPath())
+		if err != nil {
+			fmt.Fprintln(env.Err, err.Error())
+			return exitUsage
+		}
+		if args.Command == "polling-status" {
+			return runPollingStatus(ctx, cfgs, env)
+		}
+		return runPollingSwitch(ctx, cfgs, env, args, realPollingClock)
 	}
 
 	cfg, err := LoadConfig(DefaultConfigPath(), optionalPtr(args.GetOptional("url")), optionalPtr(args.GetOptional("api-key")))

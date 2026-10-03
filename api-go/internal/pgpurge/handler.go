@@ -1,6 +1,6 @@
 // Package pgpurge implements the pg-purge worker mode: a scheduled DELETE sweep
-// enforcing row retention for Notifications (90 days) and DeviceRegistrations
-// (180 days) on the Postgres backend. Postgres has no native time-to-live, so a
+// enforcing row retention for Notifications (90 days), DeviceRegistrations
+// (180 days) and the polling tables. Postgres has no native time-to-live, so a
 // periodic purge job runs in its place.
 package pgpurge
 
@@ -23,6 +23,12 @@ type devicePurger interface {
 	PurgeOlderThan(ctx context.Context, cutoff time.Time) (int64, error)
 }
 
+// pollPurger deletes stale polling rows relative to now and returns the count
+// deleted per table.
+type pollPurger interface {
+	Purge(ctx context.Context, now time.Time) (map[string]int64, error)
+}
+
 // Handler runs one pg-purge cycle: deletes notifications older than
 // notifRetention and device registrations older than deviceRetention. It
 // returns the count of rows deleted from each table so the caller can record
@@ -32,6 +38,7 @@ type Handler struct {
 	devices         devicePurger
 	notifRetention  time.Duration
 	deviceRetention time.Duration
+	poll            pollPurger
 	now             func() time.Time
 	logger          *slog.Logger
 }
@@ -58,10 +65,16 @@ func New(
 	}
 }
 
+// WithPollRetention makes Run also purge the polling tables through p.
+func (h *Handler) WithPollRetention(p pollPurger) *Handler {
+	h.poll = p
+	return h
+}
+
 // Run deletes rows older than their respective retention windows and returns
-// (notifsPurged, devicesPurged, error). Notifications are purged first; if
-// that fails the device purge is skipped so the caller can surface a single
-// actionable error.
+// (notifsPurged, devicesPurged, error). Notifications are purged first, then
+// devices, then poll data; a failure skips the rest so the caller can surface a
+// single actionable error.
 func (h *Handler) Run(ctx context.Context) (int, int, error) {
 	now := h.now()
 
@@ -79,7 +92,16 @@ func (h *Handler) Run(ctx context.Context) (int, int, error) {
 	}
 	devicesPurged := int(d)
 
+	var pollDeleted map[string]int64
+	if h.poll != nil {
+		pollDeleted, err = h.poll.Purge(ctx, now)
+		if err != nil {
+			return notifsPurged, devicesPurged, fmt.Errorf("purge poll data: %w", err)
+		}
+	}
+
 	h.logger.InfoContext(ctx, "pg-purge: rows deleted",
+		"pollRowsDeleted", pollDeleted,
 		"notificationsDeleted", notifsPurged,
 		"deviceRegistrationsDeleted", devicesPurged,
 		"notifCutoff", notifCutoff,

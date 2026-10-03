@@ -2,14 +2,13 @@ package main
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/pulumi/pulumi-azure-native-sdk/app/v3"
 	"github.com/pulumi/pulumi-azure-native-sdk/authorization/v3"
 	"github.com/pulumi/pulumi-azure-native-sdk/dbforpostgresql/v3"
-	"github.com/pulumi/pulumi-azure-native-sdk/monitor/v3"
 	"github.com/pulumi/pulumi-azure-native-sdk/resources/v3"
-	"github.com/pulumi/pulumi-azure-native-sdk/servicebus/v3"
 	"github.com/pulumi/pulumi-azure-native-sdk/storage/v3"
 	"github.com/pulumi/pulumi-azure-native-sdk/web/v3"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
@@ -36,6 +35,24 @@ const (
 	// apiOriginCertName is the Cloudflare Origin CA certificate uploaded to the shared
 	// Container Apps environment. Both api hosts share it, so it is not per-stack.
 	apiOriginCertName = "cert-api-origin-ca"
+	// planItBaseURL is the PlanIt origin the poll job reads from.
+	planItBaseURL = "https://www.planit.org.uk/"
+	// devPollingAreaID is the PlanIt area_id of Kingston upon Thames, the one authority the
+	// dev poll job reads. Changing it resets the dev data set. Taken from authorityId in
+	// web/src/data/towns.json, which is PlanIt's area_id.
+	devPollingAreaID = "314"
+	// devPollingFullReadMaxAgeDays is the dev poll job's POLLING_FULL_READ_MAX_AGE_DAYS during
+	// the dev trial (0 forces a full read every run). Reset to prodPollingFullReadMaxAgeDays
+	// when the trial ends.
+	devPollingFullReadMaxAgeDays = "0"
+	// prodPollingFullReadMaxAgeDays is the steady-state POLLING_FULL_READ_MAX_AGE_DAYS.
+	prodPollingFullReadMaxAgeDays = "7"
+	// PlanIt is one client across both envs, so the two daily caps must sum to at most 300.
+	prodPollingDailyCallCap = "240"
+	devPollingDailyCallCap  = "60"
+	// The day allowance must stay below the cap, or the night never reads the coverage band.
+	prodPollingDayAllowance = "60"
+	devPollingDayAllowance  = "15"
 )
 
 // cloudflareIPv4Ranges is Cloudflare's published list of IPv4 origin-pull ranges.
@@ -116,42 +133,26 @@ func apiHealthProbes() app.ContainerAppProbeArray {
 	}
 }
 
-// serviceBusPollingInfra captures the Service Bus resources used by the adaptive polling
-// trigger: namespace (short name + FQDN) and queue name.
-type serviceBusPollingInfra struct {
-	// namespaceID scopes the poll-queue-depth metric alert (tc-ttjor / GH #938 PR3).
-	namespaceID        pulumi.IDOutput
-	namespaceShortName pulumi.StringOutput
-	namespaceFqdn      pulumi.StringOutput
-	queueName          pulumi.StringOutput
-}
-
 // envContext holds the shared inputs every worker job and the container app need.
 type envContext struct {
-	env                        string
-	resourceGroupName          pulumi.StringOutput
-	environmentID              pulumi.StringOutput
-	acrLoginServer             pulumi.StringOutput
-	acrPullIdentityID          pulumi.StringOutput
-	cosmosDataIdentityID       pulumi.StringOutput
-	cosmosDataIdentityClientID pulumi.StringOutput
-	// devSeedReaderIdentityID/ClientID are the dedicated least-privilege identity for the
-	// dev-only dev-seed job's read-only pool against town_crier_prod (tc-grvu.1, ADR 0038).
-	// Attached ONLY to the dev-seed job (see createWorkerJob) — never to any other Container
-	// App or Job.
-	devSeedReaderIdentityID       pulumi.StringOutput
-	devSeedReaderIdentityClientID pulumi.StringOutput
-	postgresServerFqdn            pulumi.StringOutput
-	appInsightsConnectionString   pulumi.StringOutput
-	acsConnectionString           pulumi.StringOutput
-	apnsAuthKey                   pulumi.StringOutput
-	apnsUseSandbox                string
-	fcmProjectID                  string
-	fcmServiceAccountJSON         pulumi.StringOutput
-	auth0Domain                   string
-	auth0M2mClientID              pulumi.StringOutput
-	auth0M2mClientSecret          pulumi.StringOutput
-	tags                          pulumi.StringMap
+	env                         string
+	resourceGroupName           pulumi.StringOutput
+	environmentID               pulumi.StringOutput
+	acrLoginServer              pulumi.StringOutput
+	acrPullIdentityID           pulumi.StringOutput
+	cosmosDataIdentityID        pulumi.StringOutput
+	cosmosDataIdentityClientID  pulumi.StringOutput
+	postgresServerFqdn          pulumi.StringOutput
+	appInsightsConnectionString pulumi.StringOutput
+	acsConnectionString         pulumi.StringOutput
+	apnsAuthKey                 pulumi.StringOutput
+	apnsUseSandbox              string
+	fcmProjectID                string
+	fcmServiceAccountJSON       pulumi.StringOutput
+	auth0Domain                 string
+	auth0M2mClientID            pulumi.StringOutput
+	auth0M2mClientSecret        pulumi.StringOutput
+	tags                        pulumi.StringMap
 }
 
 func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, tags pulumi.StringMap) error {
@@ -202,8 +203,6 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 	containerAppsEnvironmentID := shared.GetStringOutput(pulumi.String("containerAppsEnvironmentId"))
 	cosmosDataIdentityID := shared.GetStringOutput(pulumi.String("cosmosDataIdentityId"))
 	cosmosDataIdentityClientID := shared.GetStringOutput(pulumi.String("cosmosDataIdentityClientId"))
-	devSeedReaderIdentityID := shared.GetStringOutput(pulumi.String("devSeedReaderIdentityId"))
-	devSeedReaderIdentityClientID := shared.GetStringOutput(pulumi.String("devSeedReaderIdentityClientId"))
 	appInsightsConnectionString := shared.GetStringOutput(pulumi.String("appInsightsConnectionString"))
 	acsConnectionString := shared.GetStringOutput(pulumi.String("acsConnectionString"))
 	sharedResourceGroupName := shared.GetStringOutput(pulumi.String("resourceGroupName"))
@@ -299,15 +298,13 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 	}
 
 	ec := envContext{
-		env:                           env,
-		resourceGroupName:             resourceGroup.Name,
-		environmentID:                 containerAppsEnvironmentID,
-		acrLoginServer:                acrLoginServer,
-		acrPullIdentityID:             acrPullIdentityID,
-		cosmosDataIdentityID:          cosmosDataIdentityID,
-		cosmosDataIdentityClientID:    cosmosDataIdentityClientID,
-		devSeedReaderIdentityID:       devSeedReaderIdentityID,
-		devSeedReaderIdentityClientID: devSeedReaderIdentityClientID,
+		env:                        env,
+		resourceGroupName:          resourceGroup.Name,
+		environmentID:              containerAppsEnvironmentID,
+		acrLoginServer:             acrLoginServer,
+		acrPullIdentityID:          acrPullIdentityID,
+		cosmosDataIdentityID:       cosmosDataIdentityID,
+		cosmosDataIdentityClientID: cosmosDataIdentityClientID,
 		// Postgres FQDN threaded through so the worker-job path (createWorkerJob /
 		// addGoWorkerEnv, which only receives ec) can build the prod Postgres connection
 		// env. The API container reaches `shared` directly, so it doesn't need this.
@@ -371,6 +368,7 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 		app.EnvironmentVarArgs{Name: pulumi.String("AUTH0_M2M_CLIENT_ID"), SecretRef: pulumi.String("auth0-m2m-client-id"), Value: pulumi.String("")},
 		app.EnvironmentVarArgs{Name: pulumi.String("AUTH0_M2M_CLIENT_SECRET"), SecretRef: pulumi.String("auth0-m2m-client-secret"), Value: pulumi.String("")},
 		app.EnvironmentVarArgs{Name: pulumi.String("ADMIN_API_KEY"), SecretRef: pulumi.String("admin-api-key"), Value: pulumi.String("")},
+		app.EnvironmentVarArgs{Name: pulumi.String("POLLING_ENABLED_DEFAULT"), Value: pulumi.String(pollingEnabledDefault(env))},
 		app.EnvironmentVarArgs{Name: pulumi.String("SITE_BUILD_KEY"), SecretRef: pulumi.String("site-build-key"), Value: pulumi.String("")},
 		// Blob endpoint for the share-cards container (#738 Slice 3): the share-page OG handler
 		// caches baked map cards here. Computed directly from env because the account name is
@@ -479,51 +477,25 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 		return err
 	}
 
-	// Service Bus — adaptive polling trigger (prod only). The worker identity gets Data
-	// Owner RBAC on the namespace so it can send and receive without SAS keys.
-	var pollingBus *serviceBusPollingInfra
-	if env == "prod" {
-		pollingBus, err = createServiceBusPollingInfra(ctx, env, resourceGroup.Name,
-			shared.GetStringOutput(pulumi.String("cosmosDataIdentityPrincipalId")), tags)
-		if err != nil {
-			return err
-		}
-
-		// Poll-queue-depth metric alert (tc-ttjor / GH #938 PR3). actionGroupId is exported
-		// by the shared stack (see shared.go) — this is the same shared -> env read direction
-		// every other cross-stack value in this function already uses.
-		if err = createPollQueueDepthAlert(ctx, env, resourceGroup.Name, pollingBus,
-			shared.GetStringOutput(pulumi.String("actionGroupId")), tags); err != nil {
-			return err
-		}
-	}
-
-	// Container Apps Jobs. In prod the "poll" job is event-triggered off the Service Bus
-	// queue; a parallel cron "poll-bootstrap" re-seeds the queue if it is empty. Dev has no
-	// poll job. See docs/adr/0024-service-bus-only-polling.md.
-	if pollingBus != nil {
-		if err = createWorkerJob(ctx, ec, "poll", "", 600, "poll-sb", pollingBus); err != nil {
-			return err
-		}
-		if err = createWorkerJob(ctx, ec, "poll-bootstrap", "*/30 * * * *", 120, "poll-bootstrap", pollingBus); err != nil {
-			return err
-		}
-	}
-
-	if err = createWorkerJob(ctx, ec, "digest", "0 7 * * *", 600, "digest", nil); err != nil {
+	// Hourly poll job: the run loop paces itself against the daily call budget (POLLING.md).
+	if err = createWorkerJob(ctx, ec, "poll", "0 * * * *", 3600, "poll"); err != nil {
 		return err
 	}
-	if err = createWorkerJob(ctx, ec, "digest-hourly", "0 * * * *", 300, "hourly-digest", nil); err != nil {
+
+	if err = createWorkerJob(ctx, ec, "digest", "0 7 * * *", 600, "digest"); err != nil {
+		return err
+	}
+	if err = createWorkerJob(ctx, ec, "digest-hourly", "0 * * * *", 300, "hourly-digest"); err != nil {
 		return err
 	}
 	// Dormant account cleanup — daily at 03:30 UTC. Cascades UK GDPR Art.5(1)(e) erasure.
-	if err = createWorkerJob(ctx, ec, "dormant-cleanup", "30 3 * * *", 600, "dormant-cleanup", nil); err != nil {
+	if err = createWorkerJob(ctx, ec, "dormant-cleanup", "30 3 * * *", 600, "dormant-cleanup"); err != nil {
 		return err
 	}
 	// Subscription sweep — daily at 04:30 UTC (offset an hour from dormant-cleanup so the two
 	// full-scan jobs don't contend). Reverts lapsed offer-code/App Store paid tiers to Free in
 	// Cosmos and syncs Auth0 metadata (ADR 0010 reconciliation; epic tc-rlja / GH #608).
-	if err = createWorkerJob(ctx, ec, "subscription-sweep", "30 4 * * *", 600, "subscription-sweep", nil); err != nil {
+	if err = createWorkerJob(ctx, ec, "subscription-sweep", "30 4 * * *", 600, "subscription-sweep"); err != nil {
 		return err
 	}
 	// pg-purge — daily at 02:00 UTC. Replaces the Cosmos per-document TTLs: runs
@@ -531,18 +503,8 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 	// (Notifications) and 180-day (DeviceRegistrations) retention defaults (memo 0010 / GH #669).
 	// Created for both envs: it enforces retention against town_crier_dev on dev, the same as
 	// prod against town_crier_prod (GH #681).
-	if err = createWorkerJob(ctx, ec, "pg-purge", "0 2 * * *", 600, "pg-purge", nil); err != nil {
+	if err = createWorkerJob(ctx, ec, "pg-purge", "0 2 * * *", 600, "pg-purge"); err != nil {
 		return err
-	}
-
-	// Dev-seed — hourly, dev-only (epic tc-grvu / GH #808). Mirrors a small slice of
-	// recently-changed prod applications into dev so a TestFlight build pointed at dev
-	// gets real push notifications to test against; dev otherwise runs no PlanIt poller
-	// (ADR 0024).
-	if env == "dev" {
-		if err = createWorkerJob(ctx, ec, "dev-seed", "0 * * * *", 300, "dev-seed", nil); err != nil {
-			return err
-		}
 	}
 
 	// Static Web App (Landing Page)
@@ -597,10 +559,8 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 	return nil
 }
 
-// createWorkerJob creates a Container Apps Job for a background worker. cronExpression == ""
-// + non-nil pollingBus produces an Event-triggered job; otherwise a Schedule-triggered cron
-// job.
-func createWorkerJob(ctx *pulumi.Context, ec envContext, nameSuffix, cronExpression string, replicaTimeout int, workerMode string, pollingBus *serviceBusPollingInfra) error {
+// createWorkerJob creates a Schedule-triggered Container Apps Job for a background worker.
+func createWorkerJob(ctx *pulumi.Context, ec envContext, nameSuffix, cronExpression string, replicaTimeout int, workerMode string) error {
 	// Base env shared by every worker job.
 	envVars := app.EnvironmentVarArray{
 		app.EnvironmentVarArgs{Name: pulumi.String("OTEL_SERVICE_NAME"), Value: pulumi.String(ImageRepoWorker)},
@@ -608,12 +568,7 @@ func createWorkerJob(ctx *pulumi.Context, ec envContext, nameSuffix, cronExpress
 		app.EnvironmentVarArgs{Name: pulumi.String("AZURE_CLIENT_ID"), Value: ec.cosmosDataIdentityClientID},
 		app.EnvironmentVarArgs{Name: pulumi.String("APPLICATIONINSIGHTS_CONNECTION_STRING"), Value: ec.appInsightsConnectionString},
 	}
-	envVars = addGoWorkerEnv(envVars, ec, workerMode, pollingBus)
-
-	useEventTrigger := cronExpression == ""
-	if useEventTrigger && pollingBus == nil {
-		return fmt.Errorf("event-triggered jobs require a serviceBusPollingInfra (queue + namespace)")
-	}
+	envVars = addGoWorkerEnv(envVars, ec, workerMode)
 
 	// The acs-connection-string, apns-auth-key and fcm-service-account secrets exist on every
 	// job; dormant-cleanup and subscription-sweep also need the Auth0 Management (M2M) credentials.
@@ -640,50 +595,16 @@ func createWorkerJob(ctx *pulumi.Context, ec envContext, nameSuffix, cronExpress
 		Secrets: secrets,
 	}
 
-	if useEventTrigger {
-		// KEDA azure-servicebus scaler — authenticates with the user-assigned managed
-		// identity (no SAS key). The worker also has RBAC on the namespace via pollingBus.
-		configuration.TriggerType = pulumi.String(string(app.TriggerTypeEvent))
-		configuration.EventTriggerConfig = &app.JobConfigurationEventTriggerConfigArgs{
-			Parallelism:            pulumi.Int(1),
-			ReplicaCompletionCount: pulumi.Int(1),
-			Scale: &app.JobScaleArgs{
-				MinExecutions:   pulumi.Int(0),
-				MaxExecutions:   pulumi.Int(1),
-				PollingInterval: pulumi.Int(30),
-				Rules: app.JobScaleRuleArray{
-					&app.JobScaleRuleArgs{
-						Name:     pulumi.String("servicebus-queue"),
-						Type:     pulumi.String("azure-servicebus"),
-						Identity: ec.cosmosDataIdentityID,
-						Metadata: pulumi.StringMap{
-							"namespace":    pollingBus.namespaceShortName,
-							"queueName":    pollingBus.queueName,
-							"messageCount": pulumi.String("1"),
-						},
-					},
-				},
-			},
-		}
-	} else {
-		configuration.TriggerType = pulumi.String(string(app.TriggerTypeSchedule))
-		configuration.ScheduleTriggerConfig = &app.JobConfigurationScheduleTriggerConfigArgs{
-			CronExpression:         pulumi.String(cronExpression),
-			Parallelism:            pulumi.Int(1),
-			ReplicaCompletionCount: pulumi.Int(1),
-		}
+	configuration.TriggerType = pulumi.String(string(app.TriggerTypeSchedule))
+	configuration.ScheduleTriggerConfig = &app.JobConfigurationScheduleTriggerConfigArgs{
+		CronExpression:         pulumi.String(cronExpression),
+		Parallelism:            pulumi.Int(1),
+		ReplicaCompletionCount: pulumi.Int(1),
 	}
 
-	// The dev-seed job additionally gets the dedicated devSeedReaderIdentity (tc-grvu.1,
-	// ADR 0038) for its read-only pool against town_crier_prod. This is the critical
-	// security property: that identity must be attached ONLY to this one job, never to any
-	// other Container App or Job.
 	jobIdentities := pulumi.StringArray{
 		ec.acrPullIdentityID,
 		ec.cosmosDataIdentityID,
-	}
-	if workerMode == "dev-seed" {
-		jobIdentities = append(jobIdentities, ec.devSeedReaderIdentityID)
 	}
 
 	_, err := app.NewJob(ctx, fmt.Sprintf("job-tc-%s-%s", nameSuffix, ec.env), &app.JobArgs{
@@ -715,7 +636,7 @@ func createWorkerJob(ctx *pulumi.Context, ec envContext, nameSuffix, cronExpress
 
 // addGoWorkerEnv appends the Go worker's env vars (SINGLE-underscore names). The consumer
 // is api-go/internal/platform/config.go.
-func addGoWorkerEnv(envVars app.EnvironmentVarArray, ec envContext, workerMode string, pollingBus *serviceBusPollingInfra) app.EnvironmentVarArray {
+func addGoWorkerEnv(envVars app.EnvironmentVarArray, ec envContext, workerMode string) app.EnvironmentVarArray {
 	// Both envs: every worker job runs on Postgres single-store (memo 0010 / GH #669 prod,
 	// GH #681 dev). POSTGRES_DB is per-env (town_crier_dev / town_crier_prod) — ec.env is
 	// exactly "dev"/"prod". AZURE_CLIENT_ID is already set on every worker job
@@ -728,40 +649,17 @@ func addGoWorkerEnv(envVars app.EnvironmentVarArray, ec envContext, workerMode s
 		app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_AUTH"), Value: pulumi.String("azure-managed-identity")},
 	)
 
-	// poll / poll-bootstrap: Service Bus namespace + queue.
-	if pollingBus != nil {
-		envVars = append(envVars,
-			app.EnvironmentVarArgs{Name: pulumi.String("SERVICE_BUS_NAMESPACE"), Value: pollingBus.namespaceFqdn},
-			app.EnvironmentVarArgs{Name: pulumi.String("SERVICE_BUS_QUEUE_NAME"), Value: pollingBus.queueName},
-		)
+	if workerMode == "poll" {
+		envVars = append(envVars, pollJobEnv(ec.env)...)
 	}
 
-	// poll only: PlanIt client + polling-cycle budgets (defaults made explicit).
-	if workerMode == "poll-sb" {
-		envVars = append(envVars,
-			app.EnvironmentVarArgs{Name: pulumi.String("PLANIT_BASE_URL"), Value: pulumi.String("https://www.planit.org.uk/")},
-			app.EnvironmentVarArgs{Name: pulumi.String("PLANIT_THROTTLE_DELAY_SECONDS"), Value: pulumi.String("2")},
-			app.EnvironmentVarArgs{Name: pulumi.String("PLANIT_RETRY_MAX_RETRIES"), Value: pulumi.String("3")},
-			app.EnvironmentVarArgs{Name: pulumi.String("PLANIT_RETRY_INITIAL_BACKOFF_SECONDS"), Value: pulumi.String("1")},
-			app.EnvironmentVarArgs{Name: pulumi.String("PLANIT_RETRY_RATE_LIMIT_BACKOFF_SECONDS"), Value: pulumi.String("5")},
-			app.EnvironmentVarArgs{Name: pulumi.String("POLLING_MAX_PAGES_PER_AUTHORITY_PER_CYCLE"), Value: pulumi.String("3")},
-			app.EnvironmentVarArgs{Name: pulumi.String("POLLING_HANDLER_BUDGET_SECONDS"), Value: pulumi.String("240")},
-			app.EnvironmentVarArgs{Name: pulumi.String("POLL_REPLICA_TIMEOUT_SECONDS"), Value: pulumi.String("600")},
-			app.EnvironmentVarArgs{Name: pulumi.String("POLL_SHUTDOWN_GRACE_SECONDS"), Value: pulumi.String("30")},
-			app.EnvironmentVarArgs{Name: pulumi.String("POLLING_BACKFILL_ENABLED"), Value: pulumi.String("true")},
-			// Lane C's rollback lever: set "false" and cut a tag. The Go default is true, so
-			// deleting this line does not turn Lane C off.
-			app.EnvironmentVarArgs{Name: pulumi.String("POLLING_LANE_C_ENABLED"), Value: pulumi.String("true")},
-		)
-	}
-
-	// APNs push: poll-sb sends the instant new-application / decision alerts
+	// APNs push: poll sends the instant new-application / decision alerts
 	// (notifydispatch fan-out, #456); digest / hourly-digest send the weekly
 	// digest push. The apns-auth-key secret is on every worker job (see the
 	// shared secrets above). Without these env vars buildPushSender falls back to
 	// the NoOp sender and silently drops every push — which is exactly why the
 	// poll worker delivered no instant pushes in prod (tc-wjbm).
-	if workerMode == "poll-sb" || workerMode == "digest" || workerMode == "hourly-digest" {
+	if workerMode == "poll" || workerMode == "digest" || workerMode == "hourly-digest" {
 		envVars = append(envVars,
 			app.EnvironmentVarArgs{Name: pulumi.String("APNS_ENABLED"), Value: pulumi.String("true")},
 			app.EnvironmentVarArgs{Name: pulumi.String("APNS_AUTH_KEY"), SecretRef: pulumi.String("apns-auth-key"), Value: pulumi.String("")},
@@ -776,7 +674,7 @@ func addGoWorkerEnv(envVars app.EnvironmentVarArray, ec envContext, workerMode s
 	// FCM_SERVICE_ACCOUNT_JSON is the service-account key JSON (secret, on every job like
 	// apns-auth-key); FCM_PROJECT_ID is plain per-stack config. Without these
 	// buildPlatformDispatcher falls back to the FCM NoOp sender (APNs delivery unaffected).
-	if workerMode == "poll-sb" || workerMode == "digest" || workerMode == "hourly-digest" {
+	if workerMode == "poll" || workerMode == "digest" || workerMode == "hourly-digest" {
 		envVars = append(envVars,
 			app.EnvironmentVarArgs{Name: pulumi.String("FCM_ENABLED"), Value: pulumi.String("true")},
 			app.EnvironmentVarArgs{Name: pulumi.String("FCM_PROJECT_ID"), Value: pulumi.String(ec.fcmProjectID)},
@@ -784,24 +682,10 @@ func addGoWorkerEnv(envVars app.EnvironmentVarArray, ec envContext, workerMode s
 		)
 	}
 
-	// digest / hourly-digest: ACS email transport (the poll worker sends no email).
+	// The poll worker sends no email.
 	if workerMode == "digest" || workerMode == "hourly-digest" {
 		envVars = append(envVars,
 			app.EnvironmentVarArgs{Name: pulumi.String("ACS_CONNECTION_STRING"), SecretRef: pulumi.String("acs-connection-string"), Value: pulumi.String("")},
-		)
-	}
-
-	// dev-seed: prod-read config for the second, read-only Postgres pool (tc-grvu.5
-	// consumes these in cmd/worker/main.go's buildDevSeeder). DEV_SEED_PROD_AZURE_CLIENT_ID
-	// pins the dedicated id-town-crier-dev-seed-reader identity (tc-grvu.1, ADR 0038) — a
-	// separate identity from AZURE_CLIENT_ID above, which stays scoped to this job's own
-	// (dev) Postgres pool.
-	if workerMode == "dev-seed" {
-		envVars = append(envVars,
-			app.EnvironmentVarArgs{Name: pulumi.String("DEV_SEED_LIMIT"), Value: pulumi.String("5")},
-			app.EnvironmentVarArgs{Name: pulumi.String("DEV_SEED_PROD_POSTGRES_DB"), Value: pulumi.String("town_crier_prod")},
-			app.EnvironmentVarArgs{Name: pulumi.String("DEV_SEED_PROD_POSTGRES_USER"), Value: pulumi.String("towncrier_dev_seed_reader")},
-			app.EnvironmentVarArgs{Name: pulumi.String("DEV_SEED_PROD_AZURE_CLIENT_ID"), Value: ec.devSeedReaderIdentityClientID},
 		)
 	}
 
@@ -818,145 +702,57 @@ func addGoWorkerEnv(envVars app.EnvironmentVarArray, ec envContext, workerMode s
 	return envVars
 }
 
-// createServiceBusPollingInfra provisions the Service Bus namespace + queue + RBAC used by
-// the adaptive polling trigger.
-func createServiceBusPollingInfra(ctx *pulumi.Context, env string, resourceGroupName pulumi.StringOutput, cosmosDataIdentityPrincipalID pulumi.StringOutput, tags pulumi.StringMap) (*serviceBusPollingInfra, error) {
-	// Basic tier supports queues and scheduled messages — all the adaptive polling loop
-	// needs. Location is pinned to uksouth (the RG metadata location is ukwest; see tc-ds1e).
-	namespaceResource, err := servicebus.NewNamespace(ctx, fmt.Sprintf("sb-town-crier-%s", env), &servicebus.NamespaceArgs{
-		NamespaceName:     pulumi.String(fmt.Sprintf("sb-town-crier-%s", env)),
-		ResourceGroupName: resourceGroupName,
-		Location:          pulumi.String("uksouth"),
-		Sku: &servicebus.SBSkuArgs{
-			Name: servicebus.SkuNameBasic,
-			Tier: servicebus.SkuTierBasic,
-		},
-		Tags: tags,
-	})
-	if err != nil {
-		return nil, err
+// pollSettings returns the poll job's PlanIt, pacing and notifier settings for env. Dev differs
+// from prod only by the single-authority filter, its share of the call budget, the oracle and
+// the full-read age used during the dev trial.
+func pollSettings(env string) map[string]string {
+	dailyCap, dayAllowance, fullReadMaxAge := prodPollingDailyCallCap, prodPollingDayAllowance, prodPollingFullReadMaxAgeDays
+	if env == "dev" {
+		dailyCap, dayAllowance, fullReadMaxAge = devPollingDailyCallCap, devPollingDayAllowance, devPollingFullReadMaxAgeDays
 	}
-
-	// Polling trigger queue. LockDuration is capped at 5min by Azure across all tiers.
-	// See ADR 0024 and the asb-lockduration-capped-at-5m memory.
-	queue, err := servicebus.NewQueue(ctx, fmt.Sprintf("sbq-poll-%s", env), &servicebus.QueueArgs{
-		QueueName:                        pulumi.String("poll"),
-		NamespaceName:                    namespaceResource.Name,
-		ResourceGroupName:                resourceGroupName,
-		DefaultMessageTimeToLive:         pulumi.String("PT1H"),
-		LockDuration:                     pulumi.String("PT5M"),
-		MaxDeliveryCount:                 pulumi.Int(10),
-		DeadLetteringOnMessageExpiration: pulumi.Bool(true),
-	})
-	if err != nil {
-		return nil, err
+	vars := map[string]string{
+		"PLANIT_BASE_URL":                     planItBaseURL,
+		"POLLING_ENABLED_DEFAULT":             pollingEnabledDefault(env),
+		"POLLING_DAILY_CALL_CAP":              dailyCap,
+		"POLLING_MIN_REQUEST_SPACING_SECONDS": "60",
+		"POLLING_DELTA_SLOTS":                 "09:00,12:00,15:00,17:00",
+		"POLLING_DELTA_MAX_PAGES":             "20",
+		"POLLING_DAY_ALLOWANCE":               dayAllowance,
+		"POLLING_FULL_READ_MAX_AGE_DAYS":      fullReadMaxAge,
+		"POLLING_RUN_BUDGET_MINUTES":          "55",
+		"NOTIFY_QUIET_START":                  "22:00",
+		"NOTIFY_QUIET_END":                    "07:00",
+		"NOTIFY_EVENT_SURGE_THRESHOLD":        "10000",
 	}
-
-	// Built-in role: Azure Service Bus Data Owner — data-plane send/receive. Scoped to the
-	// namespace.
-	const serviceBusDataOwnerRoleID = "090c5cfd-751d-490a-894a-3ce6f1109419"
-	subscriptionID := subscriptionFromID(namespaceResource.ID())
-	_, err = authorization.NewRoleAssignment(ctx, fmt.Sprintf("sb-poll-data-owner-%s", env), &authorization.RoleAssignmentArgs{
-		Scope: namespaceResource.ID(),
-		RoleDefinitionId: pulumi.Sprintf(
-			"/subscriptions/%s/providers/Microsoft.Authorization/roleDefinitions/%s", subscriptionID, serviceBusDataOwnerRoleID),
-		PrincipalId:   cosmosDataIdentityPrincipalID,
-		PrincipalType: pulumi.String(string(authorization.PrincipalTypeServicePrincipal)),
-	})
-	if err != nil {
-		return nil, err
+	if env == "dev" {
+		vars["POLLING_AREA_ID"] = devPollingAreaID
+		vars["POLLING_ORACLE_ENABLED"] = "true"
 	}
-
-	// Built-in role: Reader — management-plane GET so the bootstrap probe can read
-	// countDetails. Scoped to the queue itself. See ADR 0024 + tc-ujl1.
-	const readerRoleID = "acdd72a7-3385-48ef-bd42-f606fba81ae7"
-	_, err = authorization.NewRoleAssignment(ctx, fmt.Sprintf("sb-poll-queue-reader-%s", env), &authorization.RoleAssignmentArgs{
-		Scope: queue.ID(),
-		RoleDefinitionId: pulumi.Sprintf(
-			"/subscriptions/%s/providers/Microsoft.Authorization/roleDefinitions/%s", subscriptionID, readerRoleID),
-		PrincipalId:   cosmosDataIdentityPrincipalID,
-		PrincipalType: pulumi.String(string(authorization.PrincipalTypeServicePrincipal)),
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	fqdn := namespaceResource.Name.ApplyT(func(n string) string {
-		return fmt.Sprintf("%s.servicebus.windows.net", n)
-	}).(pulumi.StringOutput)
-
-	return &serviceBusPollingInfra{
-		namespaceID:        namespaceResource.ID(),
-		namespaceShortName: namespaceResource.Name,
-		namespaceFqdn:      fqdn,
-		queueName:          queue.Name,
-	}, nil
+	return vars
 }
 
-// createPollQueueDepthAlert creates the metric alert (prod only) that fires when the poll
-// queue's total Messages (active + scheduled + dead-lettered) averages above 1.5 over a
-// trailing 1-hour window. Steady state holds exactly one in-flight trigger, so this single
-// threshold catches both a forked trigger chain and dead-letter accumulation without needing
-// separate rules per sub-count (tc-ttjor / GH #938 PR3).
-//
-// TimeAggregation is Average (not Maximum) and WindowSize is PT1H (not PT15M), tuned by
-// alert-noise pass 2 (tc-vflm7) after this alert fired twice in 30 days (2026-07-16,
-// 2026-07-24) with no corresponding job failures, forked executions, or 429-storm signature —
-// i.e. not real incidents. Maximum aggregation over a short window means a single brief metric
-// sample above threshold stays visible in the trailing window well after the blip itself has
-// passed, so a one-off reads as a sustained breach purely from window/evaluation-frequency
-// mechanics. Average over a longer window requires the elevated depth to actually persist.
-// Threshold is raised from 1 to 1.5 because steady state (1) sits exactly on the old threshold,
-// so any excursion at all, however brief, already counted as a breach; 1.5 gives a brief blip
-// room to dilute below threshold while a genuinely stuck queue (depth 2) stays comfortably
-// above it. There's no historical per-minute Service Bus queue-depth metric to backtest these
-// exact numbers against (az monitor metrics list doesn't support Service Bus queues) — the
-// window is instead sized for headroom against the real incident class this alert guards
-// against, which ran 2.5+ hours. Wired to the action group created in the shared stack — see
-// the rationale comment on its creation in shared.go.
-func createPollQueueDepthAlert(ctx *pulumi.Context, env string, resourceGroupName pulumi.StringOutput, pollingBus *serviceBusPollingInfra, actionGroupID pulumi.StringOutput, tags pulumi.StringMap) error {
-	name := fmt.Sprintf("alert-poll-queue-depth-%s", env)
-	_, err := monitor.NewMetricAlert(ctx, name, &monitor.MetricAlertArgs{
-		RuleName:          pulumi.String(name),
-		ResourceGroupName: resourceGroupName,
-		// Platform-metric alert rules must be "global" — Azure rejects a regional
-		// location on anything but a custom metric ("A Regional alert rule can only
-		// be created on a custom metric", broke the v0.19.3 deploy). Without this
-		// the provider defaults to the resource group's region.
-		Location:            pulumi.String("global"),
-		Description:         pulumi.String("Poll Service Bus queue's total Messages (active + scheduled + dead-lettered) averaged above 1.5 over the last hour; steady state is exactly 1. Indicates a forked trigger chain or dead-letter accumulation. See GH #938."),
-		Severity:            pulumi.Int(2),
-		Enabled:             pulumi.Bool(true),
-		EvaluationFrequency: pulumi.String("PT5M"),
-		WindowSize:          pulumi.String("PT1H"),
-		Scopes:              pulumi.StringArray{pollingBus.namespaceID},
-		Criteria: monitor.MetricAlertSingleResourceMultipleMetricCriteriaArgs{
-			OdataType: pulumi.String("Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria"),
-			AllOf: monitor.MetricCriteriaArray{
-				monitor.MetricCriteriaArgs{
-					CriterionType:   pulumi.String("StaticThresholdCriterion"),
-					Name:            pulumi.String("PollQueueMessagesTotal"),
-					MetricName:      pulumi.String("Messages"),
-					MetricNamespace: pulumi.String("Microsoft.ServiceBus/namespaces"),
-					Dimensions: monitor.MetricDimensionArray{
-						monitor.MetricDimensionArgs{
-							Name:     pulumi.String("EntityName"),
-							Operator: pulumi.String("Include"),
-							Values:   pulumi.StringArray{pulumi.String("poll")},
-						},
-					},
-					Operator:        pulumi.String("GreaterThan"),
-					Threshold:       pulumi.Float64(1.5),
-					TimeAggregation: pulumi.String("Average"),
-				},
-			},
-		},
-		Actions: monitor.MetricAlertActionArray{
-			monitor.MetricAlertActionArgs{ActionGroupId: actionGroupID},
-		},
-		Tags: tags,
-	})
-	return err
+// pollingEnabledDefault is POLLING_ENABLED_DEFAULT, which applies until the
+// polling switch is first set through /v1/admin/polling. The API and the poll
+// job must agree, so both read it from here.
+func pollingEnabledDefault(env string) string {
+	if env == "prod" {
+		return "true"
+	}
+	return "false"
+}
+
+func pollJobEnv(env string) app.EnvironmentVarArray {
+	vars := pollSettings(env)
+	names := make([]string, 0, len(vars))
+	for name := range vars {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	out := make(app.EnvironmentVarArray, 0, len(names))
+	for _, name := range names {
+		out = append(out, app.EnvironmentVarArgs{Name: pulumi.String(name), Value: pulumi.String(vars[name])})
+	}
+	return out
 }
 
 // createSeoSnapshotStorage provisions the per-environment Storage Account + seo-snapshot blob

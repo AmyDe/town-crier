@@ -4,7 +4,7 @@ Date: 2026-07-14
 
 ## Status
 
-Accepted — supersedes the polling design in [0006](0006-planit-primary-data-provider.md) and [0021](0021-resumable-pagination-cursor-for-planit-polling.md); retires the watch-zone-density polling tiers introduced in [0012](0012-dynamic-polling-prioritisation.md)
+Superseded by [0049](0049-planit-day-window-polling-rebuild.md). Previously: Accepted — supersedes the polling design in [0006](0006-planit-primary-data-provider.md) and [0021](0021-resumable-pagination-cursor-for-planit-polling.md); retires the watch-zone-density polling tiers introduced in [0012](0012-dynamic-polling-prioritisation.md)
 
 > **Revision note.** The first version of this ADR, accepted and merged earlier on 2026-07-14 (PR #960), proposed polling on `start_date` and `decided_start` as the *primary* axes and retiring `last_different` entirely. A falsification pass against live PlanIt and prod Postgres later the same day showed that design re-fetches ~224,000 records/day (more rows than today) and still cannot deliver new applications within the hour, because `start_date` cannot express a delta. This version keeps that ADR's central diagnosis — which held up to the digit — and changes the remedy. The original numbers and the errors found in them are recorded under "What the first version got wrong".
 
