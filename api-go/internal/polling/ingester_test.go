@@ -5,231 +5,166 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/AmyDe/town-crier/api-go/internal/applications"
 )
 
-// --- tests: Ingester exercised directly, independent of PollPlanItHandler ---
+type fakeUnit struct {
+	existing   *applications.PlanningApplication
+	upserts    []applications.PlanningApplication
+	events     []ApplicationEvent
+	committed  bool
+	rolledBack bool
+	upsertErr  error
+	eventErr   error
+	commitErr  error
+}
 
-func TestIngester_UpsertsNewApplication(t *testing.T) {
-	t.Parallel()
-	apps := newFakeApps()
-	ing := NewIngester(apps, nil, nil)
-	ld := time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC)
-	app := testApp("24/0001", 99, ld)
-
-	if err := ing.Ingest(context.Background(), app); err != nil {
-		t.Fatalf("Ingest: %v", err)
+func (u *fakeUnit) GetByUID(_ context.Context, _, _ string) (applications.PlanningApplication, bool, error) {
+	if u.existing == nil {
+		return applications.PlanningApplication{}, false, nil
 	}
-	if len(apps.upserts) != 1 {
-		t.Errorf("upserts: got %d, want 1", len(apps.upserts))
+	return *u.existing, true, nil
+}
+
+func (u *fakeUnit) Upsert(_ context.Context, a applications.PlanningApplication) error {
+	u.upserts = append(u.upserts, a)
+	return u.upsertErr
+}
+
+func (u *fakeUnit) InsertEvent(_ context.Context, e ApplicationEvent) error {
+	u.events = append(u.events, e)
+	return u.eventErr
+}
+
+func (u *fakeUnit) Commit(context.Context) error   { u.committed = true; return u.commitErr }
+func (u *fakeUnit) Rollback(context.Context) error { u.rolledBack = true; return nil }
+
+type fakeOpener struct{ unit *fakeUnit }
+
+func (o fakeOpener) Begin(context.Context) (ingestUnit, error) { return o.unit, nil }
+
+func evApp(state string, start, decided *time.Time) applications.PlanningApplication {
+	a := testApp("24/1", 300, time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC))
+	a.AppState = &state
+	a.StartDate = start
+	a.DecidedDate = decided
+	return a
+}
+
+func day(d int) *time.Time {
+	t := time.Date(2026, 6, d, 0, 0, 0, 0, time.UTC)
+	return &t
+}
+
+func TestEventIngester_Ingest(t *testing.T) {
+	t.Parallel()
+	newApp := evApp("Undecided", day(1), nil)
+	decidedNew := evApp("Permitted", day(1), day(5))
+	oldUndecided := evApp("Undecided", day(1), nil)
+	oldPermitted := evApp("Permitted", day(1), day(5))
+	oldPermittedDesc := oldPermitted
+	oldPermittedDesc.Description = "changed"
+	toRejected := oldPermitted
+	rej := "Rejected"
+	toRejected.AppState = &rej
+	silentOnly := oldUndecided
+	ref := "ref-2"
+	silentOnly.Reference = &ref
+	descChange := oldUndecided
+	descChange.Description = "other"
+	toPermitted := evApp("Permitted", day(1), day(6))
+	noLocation := oldUndecided
+	noLocation.Latitude, noLocation.Longitude = nil, nil
+	lat, lng := 51.4, -0.3
+	located := oldUndecided
+	located.Latitude, located.Longitude = &lat, &lng
+	lat2 := 51.5
+	moved := located
+	moved.Latitude = &lat2
+	decidedNoLocation := oldPermitted
+	decidedNoLocation.Latitude, decidedNoLocation.Longitude = nil, nil
+	decidedLocated := oldPermitted
+	decidedLocated.Latitude, decidedLocated.Longitude = &lat, &lng
+
+	tests := []struct {
+		name       string
+		existing   *applications.PlanningApplication
+		app        applications.PlanningApplication
+		wantUpsert bool
+		wantEvents []ApplicationEvent
+	}{
+		{"new undecided", nil, newApp, true, []ApplicationEvent{{"24/1/FUL", "300", EventNewApplication, day(1)}}},
+		{"new decided", nil, decidedNew, true, []ApplicationEvent{
+			{"24/1/FUL", "300", EventNewApplication, day(1)},
+			{"24/1/FUL", "300", EventDecision, day(5)}}},
+		{"unchanged", &oldUndecided, oldUndecided, false, nil},
+		{"transition to decision", &oldUndecided, toPermitted, true, []ApplicationEvent{{"24/1/FUL", "300", EventDecision, day(6)}}},
+		{"silent only", &oldUndecided, silentOnly, true, nil},
+		{"non-decision field change", &oldUndecided, descChange, true, nil},
+		{"decision to decision", &oldPermitted, toRejected, true, nil},
+		{"decided field change", &oldPermitted, oldPermittedDesc, true, nil},
+		{"location appears", &noLocation, located, true, []ApplicationEvent{{"24/1/FUL", "300", EventNewApplication, day(1)}}},
+		{"location appears on decided", &decidedNoLocation, decidedLocated, true, []ApplicationEvent{{"24/1/FUL", "300", EventNewApplication, day(1)}}},
+		{"location moves", &located, moved, true, nil},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			u := &fakeUnit{existing: tc.existing}
+			ing := NewIngester(fakeOpener{u})
+			if err := ing.Ingest(context.Background(), tc.app); err != nil {
+				t.Fatal(err)
+			}
+			if (len(u.upserts) == 1) != tc.wantUpsert {
+				t.Fatalf("upserts = %d", len(u.upserts))
+			}
+			if len(u.events) != len(tc.wantEvents) {
+				t.Fatalf("events = %+v, want %+v", u.events, tc.wantEvents)
+			}
+			for i, w := range tc.wantEvents {
+				g := u.events[i]
+				if g.UID != w.UID || g.AuthorityCode != w.AuthorityCode || g.Kind != w.Kind || !g.EventDate.Equal(*w.EventDate) {
+					t.Errorf("event %d = %+v, want %+v", i, g, w)
+				}
+			}
+			if !u.committed && tc.wantUpsert {
+				t.Errorf("committed=%v", u.committed)
+			}
+		})
 	}
 }
 
-// TestIngester_NewApplication_UpsertsAndEnqueues is bucket-matrix case (a): a
-// first-time insert (existing absent) always counts as a notifiable change,
-// so it upserts and enqueues for zone fan-out — with real (non-nil) fan-out
-// collaborators, unlike TestIngester_UpsertsNewApplication above.
-func TestIngester_NewApplication_UpsertsAndEnqueues(t *testing.T) {
+func TestEventIngester_Ingest_ErrorRollsBackAndSkipsCommit(t *testing.T) {
 	t.Parallel()
-	apps := newFakeApps()
-	ld := time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC)
-	app := testApp("24/0001", 99, ld)
-	disp := &fakeDecisionDispatcher{}
-	enq := &fakeEnqueuer{}
-	ing := NewIngester(apps, disp, enq)
-
-	if err := ing.Ingest(context.Background(), app); err != nil {
-		t.Fatalf("Ingest: %v", err)
-	}
-	if len(apps.upserts) != 1 {
-		t.Errorf("upserts: got %d, want 1", len(apps.upserts))
-	}
-	if enq.count() != 1 {
-		t.Errorf("a first-time insert must be enqueued for zone fan-out, got %d, want 1", enq.count())
+	boom := errors.New("boom")
+	for name, u := range map[string]*fakeUnit{
+		"upsert": {upsertErr: boom},
+		"event":  {eventErr: boom},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			err := NewIngester(fakeOpener{u}).Ingest(context.Background(), evApp("Permitted", day(1), day(2)))
+			if !errors.Is(err, boom) {
+				t.Fatalf("err = %v", err)
+			}
+			if u.committed || !u.rolledBack {
+				t.Errorf("committed=%v rolledBack=%v", u.committed, u.rolledBack)
+			}
+		})
 	}
 }
 
-func TestIngester_SkipsUpsertWhenBusinessFieldsUnchanged(t *testing.T) {
-	t.Parallel()
-	apps := newFakeApps()
-	ld := time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC)
-	app := testApp("24/0001", 99, ld)
-	existing := app
-	existing.LastDifferent = ld.Add(-time.Hour)
-	apps.existing[app.UID] = existing
-	ing := NewIngester(apps, nil, nil)
-
-	if err := ing.Ingest(context.Background(), app); err != nil {
-		t.Fatalf("Ingest: %v", err)
-	}
-	if len(apps.upserts) != 0 {
-		t.Errorf("unchanged business fields must skip upsert, got %d upserts, want 0", len(apps.upserts))
-	}
-}
-
-func TestIngester_DispatchesDecisionOnTransitionAndEnqueues(t *testing.T) {
-	t.Parallel()
-	apps := newFakeApps()
-	ld := time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC)
-	apps.existing["24/0001/FUL"] = decisionApp("Undecided", ld.Add(-time.Hour))
-	disp := &fakeDecisionDispatcher{}
-	enq := &fakeEnqueuer{}
-	ing := NewIngester(apps, disp, enq)
-
-	if err := ing.Ingest(context.Background(), decisionApp("Permitted", ld)); err != nil {
-		t.Fatalf("Ingest: %v", err)
-	}
-	if disp.count() != 1 {
-		t.Errorf("decision dispatch count: got %d, want 1", disp.count())
-	}
-	if enq.count() != 1 {
-		t.Errorf("enqueue count: got %d, want 1", enq.count())
-	}
-}
-
-func TestIngester_NoDecisionDispatchWhenAlreadyDecided(t *testing.T) {
-	t.Parallel()
-	apps := newFakeApps()
-	ld := time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC)
-	apps.existing["24/0001/FUL"] = decisionApp("Permitted", ld.Add(-time.Hour))
-	disp := &fakeDecisionDispatcher{}
-	enq := &fakeEnqueuer{}
-	ing := NewIngester(apps, disp, enq)
-
-	if err := ing.Ingest(context.Background(), decisionApp("Conditions", ld)); err != nil {
-		t.Fatalf("Ingest: %v", err)
-	}
-	if disp.count() != 0 {
-		t.Errorf("decision->decision change is not a new transition, got %d dispatches, want 0", disp.count())
-	}
-	if enq.count() != 1 {
-		t.Errorf("the changed application should still be enqueued, got %d, want 1", enq.count())
-	}
-}
-
-func TestIngester_NilCollaboratorsSkipFanOutGracefully(t *testing.T) {
-	t.Parallel()
-	apps := newFakeApps()
-	ing := NewIngester(apps, nil, nil)
-	ld := time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC)
-
-	if err := ing.Ingest(context.Background(), decisionApp("Permitted", ld)); err != nil {
-		t.Fatalf("Ingest with nil fan-out collaborators must not error: %v", err)
-	}
-	if len(apps.upserts) != 1 {
-		t.Errorf("upsert must still happen with nil fan-out collaborators, got %d, want 1", len(apps.upserts))
-	}
-}
-
-func TestIngester_PropagatesGetByUIDError(t *testing.T) {
-	t.Parallel()
-	apps := newFakeApps()
-	wantErr := errors.New("store unavailable")
-	apps.getErr = wantErr
-	ing := NewIngester(apps, nil, nil)
-
-	err := ing.Ingest(context.Background(), testApp("24/0001", 99, time.Now()))
-	if !errors.Is(err, wantErr) {
-		t.Errorf("Ingest error: got %v, want %v", err, wantErr)
-	}
-}
-
-// --- tests: the three-bucket change classification (GH#935) ---
-
-func TestIngester_SilentOnlyChange_UpsertsWithoutFanOut(t *testing.T) {
-	t.Parallel()
-	apps := newFakeApps()
-	ld := time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC)
-	existing := testApp("24/0001", 99, ld)
-	existing.OtherFields = map[string]any{"comment_url": "https://old"}
-	apps.existing[existing.UID] = existing
-
-	incoming := existing
-	incoming.OtherFields = map[string]any{"comment_url": "https://new"}
-
-	disp := &fakeDecisionDispatcher{}
-	enq := &fakeEnqueuer{}
-	ing := NewIngester(apps, disp, enq)
-
-	if err := ing.Ingest(context.Background(), incoming); err != nil {
-		t.Fatalf("Ingest: %v", err)
-	}
-	if len(apps.upserts) != 1 {
-		t.Errorf("silent-only change must still upsert, got %d, want 1", len(apps.upserts))
-	}
-	if enq.count() != 0 {
-		t.Errorf("silent-only change must NOT enqueue, got %d, want 0", enq.count())
-	}
-	if disp.count() != 0 {
-		t.Errorf("silent-only change must NOT dispatch a decision, got %d, want 0", disp.count())
-	}
-}
-
-func TestIngester_BookkeepingOnlyChange_SkipsUpsertEntirely(t *testing.T) {
-	t.Parallel()
-	apps := newFakeApps()
-	ld := time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC)
-	existing := testApp("24/0001", 99, ld)
-	existing.LastChanged = timePtr(ld)
-	existing.LastScraped = timePtr(ld)
-	apps.existing[existing.UID] = existing
-
-	incoming := existing
-	incoming.LastDifferent = ld.Add(48 * time.Hour) // PlanIt re-index bump
-	incoming.LastChanged = timePtr(ld.Add(time.Hour))
-	incoming.LastScraped = timePtr(ld.Add(2 * time.Hour))
-
-	disp := &fakeDecisionDispatcher{}
-	enq := &fakeEnqueuer{}
-	ing := NewIngester(apps, disp, enq)
-
-	if err := ing.Ingest(context.Background(), incoming); err != nil {
-		t.Fatalf("Ingest: %v", err)
-	}
-	if len(apps.upserts) != 0 {
-		t.Errorf("bookkeeping-only change must skip the upsert entirely, got %d, want 0", len(apps.upserts))
-	}
-	if enq.count() != 0 || disp.count() != 0 {
-		t.Errorf("bookkeeping-only change must not fan out: enqueue=%d dispatch=%d", enq.count(), disp.count())
-	}
-}
-
-func TestIngester_SilentOnlyChangeOnAlreadyDecidedApp_DoesNotRedispatchDecision(t *testing.T) {
-	t.Parallel()
-	apps := newFakeApps()
-	ld := time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC)
-	existing := decisionApp("Permitted", ld)
-	existing.OtherFields = map[string]any{"comment_url": "https://old"}
-	apps.existing[existing.UID] = existing
-
-	incoming := existing
-	incoming.OtherFields = map[string]any{"comment_url": "https://new"}
-
-	disp := &fakeDecisionDispatcher{}
-	enq := &fakeEnqueuer{}
-	ing := NewIngester(apps, disp, enq)
-
-	if err := ing.Ingest(context.Background(), incoming); err != nil {
-		t.Fatalf("Ingest: %v", err)
-	}
-	if disp.count() != 0 {
-		t.Errorf("silent-only change on an already-decided app must not re-dispatch, got %d, want 0", disp.count())
-	}
-	if len(apps.upserts) != 1 {
-		t.Errorf("silent-only change must still upsert, got %d, want 1", len(apps.upserts))
-	}
-}
-
-func timePtr(t time.Time) *time.Time { return &t }
-
-func TestIngester_PropagatesUpsertError(t *testing.T) {
-	t.Parallel()
-	apps := newFakeApps()
-	wantErr := errors.New("upsert failed")
-	apps.upsertErr = wantErr
-	ing := NewIngester(apps, nil, nil)
-
-	err := ing.Ingest(context.Background(), testApp("24/0001", 99, time.Now()))
-	if !errors.Is(err, wantErr) {
-		t.Errorf("Ingest error: got %v, want %v", err, wantErr)
+func testApp(name string, areaID int, lastDifferent time.Time) applications.PlanningApplication {
+	state := "Undecided"
+	return applications.PlanningApplication{
+		Name:          name,
+		UID:           name + "/FUL",
+		AreaName:      "Area",
+		AreaID:        areaID,
+		Address:       "1 St",
+		Description:   "d",
+		AppState:      &state,
+		LastDifferent: lastDifferent,
 	}
 }

@@ -4,7 +4,7 @@ Date: 2026-04-22
 
 ## Status
 
-Accepted
+Superseded by [0049](0049-planit-day-window-polling-rebuild.md) (the polling trigger and the cron bootstrap chain only)
 
 Narrows [ADR 0019](0019-extract-polling-to-container-apps-job.md) — 0019 introduced the cron-triggered Container Apps Job model as the sole polling mechanism; this ADR keeps 0019's job model but removes the cron path as a polling trigger, leaving cron only to bootstrap the Service Bus chain when it goes silent.
 

@@ -26,6 +26,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/notificationstate"
 	"github.com/AmyDe/town-crier/api-go/internal/offercodes"
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
+	"github.com/AmyDe/town-crier/api-go/internal/polling"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 	"github.com/AmyDe/town-crier/api-go/internal/savedapplications"
 	"github.com/AmyDe/town-crier/api-go/internal/sharepage"
@@ -60,6 +61,8 @@ var anonymousPatterns = map[string]struct{}{
 	"GET /v1/admin/stats":         {},
 	"POST /v1/admin/offer-codes":  {},
 	"GET /v1/admin/offer-codes":   {},
+	"GET /v1/admin/polling":       {},
+	"PUT /v1/admin/polling":       {},
 	// The App Store Server Notifications webhook is Apple -> API, not user-facing,
 	// so it is anonymous to Auth0; the signed JWS is its authentication. (The
 	// sibling POST /v1/subscriptions/verify is authed and absent here.)
@@ -175,6 +178,13 @@ type offerStoreReader interface {
 	List(ctx context.Context, labelFilter *string, limit int) ([]offercodes.ListedOfferCode, error)
 }
 
+// pollingAdminDeps wires GET and PUT /v1/admin/polling; a zero value leaves
+// them unregistered.
+type pollingAdminDeps struct {
+	Switch *polling.Switch
+	Calls  *polling.PostgresPlanItCallStore
+}
+
 // adminUserStore is the admin profile store the router wires into admin.Routes:
 // the full AdminProfileStore plus the two stats aggregates (paid-tier candidates
 // and the whole-base UserStats). *profiles.PostgresAdminStore satisfies it.
@@ -247,6 +257,7 @@ func newRouter(
 	shareCardCache *blobstore.Store,
 	anonRateLimitBurst int,
 	anonRateLimitRefillPerMinute int,
+	pollingAdmin pollingAdminDeps,
 	logger *slog.Logger,
 ) http.Handler {
 	mux := http.NewServeMux()
@@ -422,6 +433,9 @@ func newRouter(
 		// list and feed the stats reach block; each may be nil on a store-less boot,
 		// and the handlers treat a nil reader as "metric absent".
 		admin.Routes(mux, adminKey, adminStore, notifStore, savedStore, deviceStore, offerStore, auth0, offerStore, offercodes.NewRandomGenerator(), time.Now, logger)
+	}
+	if pollingAdmin.Switch != nil && pollingAdmin.Calls != nil {
+		admin.PollingRoutes(mux, adminKey, pollingAdmin.Switch, pollingAdmin.Calls, time.Now, logger)
 	}
 	if store != nil && adminStore != nil && jwsVerifier != nil && appleNotifStore != nil {
 		// Subscriptions: verify (authed, by user id via the profile store) and the

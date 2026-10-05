@@ -1,39 +1,33 @@
 ---
-description: Verify Town Crier prod polling pipeline health (ADR 0041/0044 national-lane model)
+description: Verify Town Crier prod polling pipeline health (ADR 0049 day-window model)
 ---
 
-Verify the Town Crier prod polling pipeline is healthy. Report concisely (✅ / ⚠️ / ❌ per check, evidence inline). Do NOT make code changes. If anything is broken, point at the specific symptom and code location — don't guess at root cause.
+Verify the Town Crier prod polling pipeline is healthy. Report concisely (✅ / ⚠️ / ❌ per check, evidence inline). Do NOT make code changes. If anything is broken, point at the specific symptom and code location, and don't guess at root cause. Read `POLLING.md` first; it holds the goal, the PlanIt facts and the hard call limits.
 
-## Read this first — the model changed (ADR 0041 + 0044)
+## Read this first: the model (ADR 0049)
 
-Polling is no longer per-authority. There are **four national lanes**, driven by a planner/executor loop in one Service-Bus-triggered handler (`api-go/internal/polling/nationallane.go` → `NationalPollHandler.Handle`, planner in `planner.go`). There is **no per-authority state, no `never_polled` cohort, no `authorities_polled`, no `GetLeastRecentlyPolled`** — anything checking those is stale.
+Polling is one paced hourly job (`WORKER_MODE=poll`, cron `0 * * * *`, `api-go/internal/polling/runner.go`). There are no lanes, no Service Bus queue, no `poll_state` watermarks and no `dev-seed`. Anything checking those is stale.
 
-| Lane | Sentinel `poll_state.authority_id` | Purpose | Eligible | Notifies? |
-|---|---|---|---|---|
-| A | −1 | new applications (masked delta, descending) | 24/7 | yes |
-| B | −2 | decisions (masked delta, descending) | 24/7 | yes |
-| C | −3 | inverse-mask reconciliation (ascending epoch) | **07:00–19:00 Europe/London only** | yes (hydrations) |
-| D | `backfill_state` singleton | historical backward backfill | **19:00–07:00 Europe/London only** | **never** (nil fan-out, by design) |
+- **Day windows.** Each night the runner re-reads every `start_date` day and every `decided_date` day in the alert band (ages 0 to 14) from `poll_window`. A window whose PlanIt `total` did not change costs one request (a count probe), and every window gets a full read at least every 7 days. A coverage band (ages 15 to 90) is read when its `last_complete_at` is null or older than 7 days, and stores records without alerting.
+- **Day delta passes** run in the daytime at `POLLING_DELTA_SLOTS` for latency only.
+- **Pacing.** The `planit_call` table is the only pacer state: at least 60 s between requests, a cap of 240 calls a budget day in prod (60 in dev), where the budget day runs 18:00 to 18:00 Europe/London. Backoff comes from the latest call: 429 uses `Retry-After` (max 3h, or 15m if absent), 403 is 24h, timeout or 5xx is 30m.
+- **Events.** Ingest writes `application_event` rows (`new_application`, `decision`). The dispatcher inside the run applies the 14-day limit, quiet hours (22:00 to 07:00 Europe/London) and the surge check, then fans out. `poll_event` holds durable 24h health facts.
+- **Health** is computed in Go each run and set on the `PlanIt poll run` span as `poll.health` (`ok`, `degraded`, `critical`) with `poll.health_reasons` and `poll.stop_reason` (`no_work`, `run_budget`, `daily_cap`, `backoff`, `rate_limited`, `forbidden`, `timeout`, `error`).
+- **Dev** runs the same job on one authority (`POLLING_AREA_ID`) with an oracle that compares the day windows against a wide read and writes `poll_oracle_diff`.
 
-Europe/London is UTC+1 in summer (BST) → Lane C runs ~06:00–18:00 UTC, Lane D ~18:00–06:00 UTC; it's UTC in winter. **Compute the current London time first and judge each lane against its window.** A lane that is idle *outside* its window is healthy, not broken.
+Compute the current London time first. Daytime (06:00 to 18:00) runs only deltas, so a quiet daytime run with `stop_reason=no_work` is healthy. Windows are read at night (18:00 to 06:00).
 
-### The single most important rule: a quiet lane is usually healthy
+### The most important rule: judge by health and window state, not by call counts
 
-PlanIt's cost is **rows served**, and its feed is often genuinely quiet (nights, weekends, and outright upstream outages — one ran 2026-07-18→19 for ~35h). Under ADR 0044 the correct response to "nothing new upstream" is:
-
-- **Lane A/B `high_water_mark` stops advancing** and stays put. This is **not** a failure by itself.
-- The cycle ends `TerminationNatural` and reschedules **+1h**, so PlanIt request volume drops to **~2/hour**. Low request volume is **healthy**, not a stalled poller.
-
-Do **not** flag a frozen watermark, an hourly cadence, or ~2 req/hour as problems on their own. The job of this check is to distinguish these states:
+PlanIt is often slow or quiet, and 429s are normal self-limiting behaviour. Low call counts, a run that stops on `run_budget` or `daily_cap`, and a few 429s are not problems on their own. The job of this check is to tell these states apart:
 
 | State | Signature | Verdict |
 |---|---|---|
-| **Healthy-quiet** | watermark frozen AND PlanIt's masked head == our watermark (nothing newer exists) | ✅ |
-| **Healthy-active** | watermark advancing and/or backlog draining, notifications firing | ✅ |
-| **Upstream-frozen** | watermark frozen because PlanIt itself serves nothing new (its change axis stopped) | ⚠️ upstream — not our bug |
-| **Broken (silent skip)** | PlanIt's masked head is **newer** than our watermark but we ingest nothing | ❌ point at `nationallane.go RunOnePage` |
-
-The discriminator is the diagnostic log line **`"lane delta page fetched"`** (see Check 3).
+| **Healthy** | `poll.health=ok`, every alert-band window has `last_complete_at` since 18:00 of the last night | ✅ |
+| **Healthy-backed-off** | Recent 429 or timeout, backoff active, `poll.health` still `ok` and the band verified | ✅ |
+| **Degraded** | `poll.health=degraded`, with reasons such as `alert_band_unverified`, `window_short`, `window_violation`, `window_missed`, `events_low` | ⚠️ read the reason |
+| **Critical** | `forbidden` (a 403) or `surge` | ❌ a person must act |
+| **Not running** | No `PlanIt poll run` span for 2h | ❌ see Check 2 |
 
 ## Fixed environment
 
@@ -42,13 +36,13 @@ The discriminator is the diagnostic log line **`"lane delta page fetched"`** (se
   - **Historical (≥6h) and ALL deploy-anchored queries:** `az monitor log-analytics query --workspace 842645cf-1439-4a2b-80e8-54bd02e326f9 --analytics-query "..."` (workspace schema: `AppMetrics`, `AppTraces`, `AppDependencies`, `AppExceptions`). Column map: `timestamp`→`TimeGenerated`, `cloud_RoleName`→`AppRoleName`, `name`→`Name`, `value`→`Sum`, `customDimensions['k']`→`Properties['k']`, `message`→`Message`, `resultCode`→`ResultCode`, `success`→`Success`, `duration`→`DurationMs`.
   - ⚠️ Do NOT use `az monitor app-insights query` for windows > ~1h — it surfaces only a partial recent slice and looks like a gap that isn't there.
 - **⚠️ Worker role name is `cae-town-crier-shared.town-crier-worker-go`** — the environment prefix is part of the value. Filter with `AppRoleName has 'worker-go'`, never `AppRoleName == 'town-crier-worker-go'` (that matches nothing).
-- **⚠️ AppMetrics can be silently empty.** This has happened in prod (metrics pipeline gap) with the rest of telemetry flowing. **Run Check 0 first**; if AppMetrics is empty, every metric-based check below is BLIND — fall back to Postgres `poll_state` (ground truth) + `AppDependencies` + the `AppTraces` /search API, and say so in the report rather than reporting false-green.
+- **⚠️ AppMetrics can be silently empty.** This has happened in prod (metrics pipeline gap) with the rest of telemetry flowing. **Run Check 0 first**; if AppMetrics is empty, every metric-based check below is BLIND — fall back to Postgres (`planit_call`, `poll_window`) (ground truth) + `AppDependencies` + the `AppTraces` /search API, and say so in the report rather than reporting false-green.
 - **AppTraces & ContainerAppConsoleLogs are Basic Logs tier** — `az monitor log-analytics query` errors on them. Query via the synchronous `/search` endpoint:
   ```bash
   az rest --method post \
     --url "https://api.loganalytics.io/v1/workspaces/842645cf-1439-4a2b-80e8-54bd02e326f9/search" \
     --resource "https://api.loganalytics.io" --headers "Content-Type=application/json" \
-    --body '{"query":"AppTraces | where TimeGenerated > ago(2h) | where AppRoleName has '\''worker-go'\'' | where Message has '\''lane delta page fetched'\'' | project TimeGenerated, Message, Properties | take 20","timespan":"PT2H"}'
+    --body '{"query":"AppTraces | where TimeGenerated > ago(2h) | where AppRoleName has '\''worker-go'\'' | where Message has '\''poll.window_short'\'' | project TimeGenerated, Message, Properties | take 20","timespan":"PT2H"}'
   ```
 - **⚠️ PlanIt dependency `ResultCode` is the OTel status (0 = ok, 2 = error), NOT the HTTP status.** HTTP 429s live in `Properties['http.response.status_code']`. Any check doing `ResultCode == '429'` matches nothing.
 - **Postgres (ground truth, always available even when AppMetrics is down):** server `psql-town-crier-shared.postgres.database.azure.com`, db `town_crier_prod`, in `rg-town-crier-shared`. Read-only via Entra AD token — **you must be the server's Entra admin** (or a provisioned AD role):
@@ -64,23 +58,21 @@ The discriminator is the diagnostic log line **`"lane delta page fetched"`** (se
   az postgres flexible-server firewall-rule delete --server-name psql-town-crier-shared -g rg-town-crier-shared --name verify-polling-tmp --yes -o none
   ```
   The Entra AD token expires ~hourly — refetch `PGPASSWORD` if a session runs long.
-- **Service Bus:** namespace `sb-town-crier-prod` in `rg-town-crier-prod`, queue `poll`. Use `az servicebus queue show ... --query countDetails` (`az monitor metrics list` does NOT work for queues).
-- **Jobs:** `job-tc-poll-prod` (orchestrator, KEDA), `job-tc-poll-bootstrap-prod` (cron `*/30`), both in `rg-town-crier-prod`.
+- **Jobs:** `job-tc-poll-prod` (hourly cron, `WORKER_MODE=poll`) in `rg-town-crier-prod`, and the dev `poll` job for the dev trial.
 - **PlanIt cross-checks are a LAST resort and rate-limited.** PlanIt is a free single-operator service; hammering it is a red line, and a blocked laptop IP is unrecoverable. Prefer telemetry + Postgres. If you must confirm PlanIt's head directly: **≤5 calls total, never 2 within 60s, `pg_sz` ≤ 300, always a bounded (`different_start`/`start_date`) query, `select` mandatory.** State plainly in the report that a PlanIt call was made.
 
 ## Checks
 
-### 0. Telemetry pipeline is alive (gating — run first)
+### 0. Telemetry pipeline is alive (gating, run first)
 ```bash
 for t in AppMetrics AppDependencies AppExceptions; do
   c=$(az monitor log-analytics query --workspace 842645cf-1439-4a2b-80e8-54bd02e326f9 \
       --analytics-query "$t | where TimeGenerated > ago(2h) | where AppRoleName has 'worker-go' | summarize c=count()" \
       -o tsv --query "[0].c" 2>/dev/null); echo "$t: ${c:-0}"; done
 ```
-`AppDependencies` should be non-zero. **If `AppMetrics` is 0**, flag it (it's a real, separate defect) and treat Checks 4/5 and any metric total as UNKNOWN, leaning on Postgres + AppDependencies + AppTraces instead.
+`AppDependencies` should be non-zero. **If `AppMetrics` is 0**, flag it (a real, separate defect) and treat metric checks as UNKNOWN, leaning on Postgres, AppDependencies and AppTraces.
 
-### 0.5. Recent Azure Monitor alerts (orientation — run early)
-Azure Monitor already watches this stack (alert rules defined in `infra/shared.go` / `infra/environment.go` — job failures, PlanIt failure-rate, PlanIt request-budget, Postgres capacity, ACS/APNs/Auth0 delivery, API 5xx). Check its alert board before digging into raw telemetry by hand — a currently-Fired alert often explains what you're about to spend an hour re-discovering. There is **no `az monitor alert list` command**; `az monitor metrics alert list` / `az monitor scheduled-query list` only show rule *definitions*, not fired instances. Query the Alerts Management API directly:
+### 0.5. Recent Azure Monitor alerts (orientation, run early)
 ```bash
 SUB=$(az account show --query id -o tsv)
 for rg in rg-town-crier-prod rg-town-crier-shared; do
@@ -90,10 +82,10 @@ for rg in rg-town-crier-prod rg-town-crier-shared; do
     --query "value[].{name:name, sev:properties.essentials.severity, cond:properties.essentials.monitorCondition, resource:properties.essentials.targetResourceName, started:properties.essentials.startDateTime}" -o table
 done
 ```
-- `cond: Fired` is **currently open** — treat it as a lead, not a footnote. Chase it with the matching check below: `alert-job-failed-*` → Check 2; `alert-planit-failure-rate-shared` → Check 3/4; `alert-poll-queue-depth-*` → Check 6; `alert-pg-*` → Postgres capacity (orthogonal to polling, but worth a one-line mention); anything else → note it and use judgement.
-- `cond: Resolved` within the window is a closed incident — worth a one-line footnote in the report (what fired, when it cleared), not a ❌.
-- Empty output for both resource groups is the clean/expected case.
-- If the call 403s, the signed-in account isn't scoped for `Microsoft.AlertsManagement/alerts/read` — say so and mark this check UNKNOWN; don't report a clean alert board on the strength of an error.
+- The polling alerts are `alert-planit-poll-critical-shared` (Sev 1, `poll.health == "critical"` in 1h), `alert-planit-poll-degraded-shared` (Sev 2, `degraded` in 2h) and `alert-planit-poll-heartbeat-shared` (Sev 2, no `PlanIt poll run` span in 2h). The spans carry `deployment.environment`, and dev alerts are Sev 3.
+- `cond: Fired` is **currently open**: treat it as a lead. `alert-job-failed-*` goes to Check 2, `alert-planit-poll-*` to Checks 3 to 5, `alert-pg-*` to Postgres capacity.
+- `cond: Resolved` within the window is a closed incident: a one-line footnote, not a ❌.
+- If the call 403s, mark this check UNKNOWN. Don't report a clean board on the strength of an error.
 
 ### 1. Deployment is current
 ```bash
@@ -101,107 +93,113 @@ gh run list --workflow='CD Production' --limit 3
 ```
 Latest `CD Production` run `completed / success` and newer than the most recent merged polling PR.
 
-### 2. Worker is running and cycles succeed
+### 2. The job is running and runs finish
 ```bash
 az containerapp job execution list --name job-tc-poll-prod -g rg-town-crier-prod \
   --query "reverse(sort_by([].{start:properties.startTime,status:properties.status},&start))[:8]" -o table
-psql "$CONN" -c "select authority_id, last_poll_time, high_water_mark from poll_state where authority_id<=0 order by authority_id desc;"
 ```
-- Recent executions `Succeeded`, not `Failed`.
-- **`last_poll_time` for −1/−2 recent for the current state**: within ~65 min is fine when caught-up (hourly Natural rhythm); minutes apart when a backlog or Lane D is draining. Hours-stale on −1/−2 → worker not running or planner stuck.
+```kql
+AppDependencies
+| where TimeGenerated > ago(6h) and Name == "PlanIt poll run" and AppRoleName has "worker-go"
+| extend env = tostring(Properties['deployment.environment']),
+         health = tostring(Properties['poll.health']),
+         reasons = tostring(Properties['poll.health_reasons']),
+         stop = tostring(Properties['poll.stop_reason']),
+         pages = toint(Properties['poll.pages']),
+         calls_today = toint(Properties['poll.calls_today'])
+| project TimeGenerated, env, health, reasons, stop, pages, calls_today, DurationMs
+| order by TimeGenerated desc
+```
+- Executions `Succeeded`, about one per hour. Overlapping runs exit 0 on the lease, so a run with no span and a fast exit is fine occasionally.
+- No `PlanIt poll run` span for 2h in a row is ❌ (job disabled, lease stuck for its 65 min TTL, or a crash before the span).
+- `stop_reason` `forbidden` or `error` repeating is ❌. `no_work` at night means every window is complete, which is the good outcome.
 
-### 3. Lane A/B freshness — healthy-quiet vs broken (the core check)
-Read the diagnostic log (AppTraces, Basic → /search). Its fields (`watermarkBefore`, `firstLastDifferent`, `recordsSeen`, `planitTotal`) are nanosecond-epoch strings:
+### 3. Alert band verified (the core check)
+Every alert-band window (ages 0 to 14) should have completed a read since 18:00 Europe/London of the night that just ended. Read-only, against Postgres:
+```bash
+psql "$CONN" -c "select axis, day, last_complete_at, last_full_read_at, last_total from poll_window where day >= (now() at time zone 'Europe/London')::date - 14 order by day desc, axis;"
+psql "$CONN" -c "select count(*) filter (where last_complete_at is null or last_complete_at < date_trunc('day', now() at time zone 'Europe/London' - interval '6 hours') + interval '18 hours' - interval '1 day') as unverified, count(*) as windows from poll_window where day >= (now() at time zone 'Europe/London')::date - 14;"
+```
+- After 06:00 London, `unverified` should be 0 and there should be 30 windows (15 days, two axes). During the night some windows are still due, which is expected.
+- `unverified > 0` after 06:00 for a whole night is the `alert_band_unverified` reason (⚠️). Two nights running is ❌: look at Check 4 for why the runs stopped (cap, backoff, timeouts).
+- `last_full_read_at` should never be older than 7 days for an alert-band window.
+
+### 4. Pacing and budget (the call log)
+```bash
+psql "$CONN" -c "select work, count(*) calls, count(*) filter (where status=429) c429, count(*) filter (where status=403) c403, count(*) filter (where status is null) no_response from planit_call where at > now() - interval '24 hours' group by work order by calls desc;"
+psql "$CONN" -c "select at, work, window_day, page_index, status, total, retry_after from planit_call order by at desc limit 15;"
+psql "$CONN" -c "select at - lag(at) over (order by at) as gap from planit_call where at > now() - interval '3 hours' order by gap asc limit 3;"
+```
+- **Spacing:** the smallest gap between consecutive calls must be at least 60 s. Less is ❌ (point at `api-go/internal/polling/pacer.go`).
+- **Budget:** total calls in the current 18:00 to 18:00 Europe/London budget day must be at most 240 in prod. Expect 175 to 225. Over the cap is ❌. Hitting it before morning on several nights is ⚠️ (compare prod 240 plus dev 60 against 300).
+- **Daytime calls** should be deltas only (`delta_start`, `delta_decided`), at about 4 slots.
+- **403 in the last 24h is ❌ critical.** Check that the User-Agent is `TownCrier/<version> (+https://towncrierapp.uk; support@towncrierapp.uk)`.
+- **The first call after a 429** must be after its `retry_after` (backoff honoured). A call inside the backoff is ❌.
+- Dependency status split, if `planit_call` is not enough (`ResultCode` is the OTel status, HTTP is in `Properties`):
+```kql
+AppDependencies
+| where TimeGenerated > ago(24h) and Name == "PlanIt search" and AppRoleName has "worker-go"
+| extend work = tostring(Properties['planit.work']), hs = tostring(Properties['http.response.status_code'])
+| extend mode = iff(hs == "", "no-response", hs)
+| summarize calls = count(), p50 = percentile(DurationMs, 50) by work, mode
+| order by calls desc
+```
+`no-response` at about 30,000 ms is a client timeout. A rising share of those is the worrying trend, because backoff does not fix it.
+
+### 5. Window integrity and self-checks
+```kql
+AppDependencies
+| where TimeGenerated > ago(24h) and Name == "PlanIt poll run" and AppRoleName has "worker-go"
+| extend violations = toint(Properties['poll.window_violations']), missed = toint(Properties['poll.window_missed']),
+         reasons = tostring(Properties['poll.health_reasons'])
+| summarize violations = sum(violations), missed = sum(missed), degraded_runs = countif(reasons != "")
+```
+- `poll.window_violations` must be 0 (a record on a window page had its axis date outside the window, so PlanIt's date filters changed behaviour). Non-zero is ❌.
+- `poll.window_missed` must be 0 (a delta saw a record that a later full read of its window did not return). Non-zero is ❌ and means the window read is missing records.
+- Short reads, if any, are in AppTraces (Basic Logs, use `/search`):
 ```bash
 az rest --method post --url "https://api.loganalytics.io/v1/workspaces/842645cf-1439-4a2b-80e8-54bd02e326f9/search" \
   --resource "https://api.loganalytics.io" --headers "Content-Type=application/json" \
-  --body '{"query":"AppTraces | where TimeGenerated > ago(3h) | where AppRoleName has '\''worker-go'\'' | where Message has '\''lane delta page fetched'\'' | extend lane=tostring(Properties['\''lane'\'']), seen=toint(Properties['\''recordsSeen'\'']), wm=tostring(Properties['\''watermarkBefore'\'']), firstLD=tostring(Properties['\''firstLastDifferent'\'']), ptotal=tostring(Properties['\''planitTotal'\'']) | project TimeGenerated, lane, seen, ptotal, wm, firstLD | order by TimeGenerated desc | take 12","timespan":"PT3H"}'
+  --body '{"query":"AppTraces | where TimeGenerated > ago(24h) | where AppRoleName has '\''worker-go'\'' | where Message has '\''poll.window_short'\'' | project TimeGenerated, Message, Properties | take 20","timespan":"P1D"}'
 ```
-Interpret (convert ns → time with `date -r $((ns/1000000000))` or Python):
-- **`firstLastDifferent` ≤ `watermarkBefore`** → the newest masked record PlanIt has is already ingested. **Healthy-quiet ✅** — the watermark *should* be frozen.
-- **`firstLastDifferent` > `watermarkBefore` and records are being ingested** (walk advancing across pages, watermark moving) → **Healthy-active ✅** (draining a backlog — normal after a quiet spell or outage).
-- **`firstLastDifferent` > `watermarkBefore` but nothing ingested / watermark not moving over multiple cycles** → **Broken ❌**, silent skip. Point at `nationallane.go` `RunOnePage` boundary logic (`!app.LastDifferent.After(watermarkBefore)`).
-- **No `"lane delta page fetched"` lines at all in-window while jobs are running** → worker not reaching the fetch, or a deploy without the diag line. Check the image version.
+A window short twice in one budget day is the `window_short` reason (⚠️).
 
-**Backlog-drain progress (post-quiet recovery):** if a backlog is draining, the watermark should climb toward PlanIt's masked head (`firstLastDifferent` of the newest page) across cycles. If it advances only by the *boundary* page's span each cycle and re-walks the same range, suspect the per-page `maxIngested` scope in `nationallane.go` under-advancing the watermark on multi-page walks — flag it (it delays catch-up and re-serves rows; it does not double-notify).
-
-**Upstream-frozen confirmation (optional, sparing PlanIt call):** if the watermark has been frozen for hours and you need to know whether PlanIt itself is dead vs genuinely quiet, one bounded call settles it (mind the PlanIt budget above):
+### 6. Events and notifications reach users (the product outcome)
 ```bash
-curl -s --compressed "https://www.planit.org.uk/api/applics/json?different_start=$(date -u +%Y-%m-%d)&sort=-last_different&pg_sz=5&select=uid,last_different&compress=on"
-```
-`total: null` / empty ⇒ PlanIt's change axis is frozen ⇒ our freeze is **⚠️ upstream, expected**, not our bug.
-
-### 4. Retry-After / 429 honoured
-429s are the **normal** cycle terminator (the loop hammers PlanIt until one 429, then breaks and reschedules on `Retry-After`, capped 3h in `scheduler.go`). ADR 0044 deleted the old per-lane breaker — the single loop breaks on the first 429 from any lane. Do **not** flag 429 counts, `rate_limited`, or `PlanItRateLimitException` volume.
-- **The regression is a 429 as the *first* PlanIt response of a cycle** (previous `Retry-After` not honoured). Query dependencies with the correct HTTP-status field:
-```bash
-az monitor log-analytics query --workspace 842645cf-1439-4a2b-80e8-54bd02e326f9 \
-  --analytics-query "AppDependencies | where TimeGenerated > ago(2h) | where AppRoleName has 'worker-go' | where Name == 'PlanIt search' | extend http=tostring(Properties['http.response.status_code']) | summarize arg_min(TimeGenerated, http) by AppRoleInstance | summarize cycles=count(), first_429=countif(http=='429')"
-```
-`first_429` **MUST be 0**. Non-zero → point at `api-go/internal/planit/retryafter.go` + `scheduler.go`.
-- Retry-After distribution (AppMetrics; skip if Check 0 showed it empty): `towncrier.polling.retry_after_seconds`, tagged `lane`, `header_present`. `max_s < 10800` (under the 3h cap).
-
-### 5. One handler at a time (lease CAS) — ADR 0024
-```bash
-az monitor log-analytics query --workspace 842645cf-1439-4a2b-80e8-54bd02e326f9 \
-  --analytics-query "AppMetrics | where TimeGenerated > ago(6h) | where Name startswith 'towncrier.polling.lease' | summarize total=sum(Sum) by Name"
-```
-`towncrier.polling.lease.released_412` **MUST be 0** (non-zero = concurrent handlers stomping). `acquired` non-zero; `held_by_peer` ≥0 fine. If AppMetrics is empty, mark UNKNOWN.
-
-### 6. Queue depth ≤ 1 (+ bootstrap doesn't double-post) — sample 5× over ~40s
-```bash
-for i in 1 2 3 4 5; do
-  az servicebus queue show --namespace-name sb-town-crier-prod --resource-group rg-town-crier-prod --name poll \
-    --query "{a:countDetails.activeMessageCount,s:countDetails.scheduledMessageCount,dlq:countDetails.deadLetterMessageCount}" -o json | tr -d '\n '; echo; sleep 8
-done
-```
-Steady state: `active + scheduled ∈ {0,1}` (`{a:0,s:1}` healthy, next poll queued; `{a:1,s:0}` handler running). If `> 1` at any sample a duplicate publish-after-consume chain appeared — **escalate before touching anything** (per `bd memories poll-queue-max-one-message` a brute-force purge is pre-authorised, but confirm the symptom first). The `*/30` bootstrap should acquire-probe-publish-only-if-empty-release; the queue must not jump 1→2 at bootstrap ticks.
-
-### 7. Lane C (reconciliation) — judge against its window and its design
-Lane C is **daytime-only** and **forward-only**: it seeds a zero-width epoch on first run, then idles ~24h (`laneCIdleAnchorInterval`, `planner.go`) before its first real epoch, and it **only reconciles status changes PlanIt stamps after it started — it does NOT recover applications missed before it existed** (that's Lane D). **Finding 0 stragglers is normal.**
-```bash
-psql "$CONN" -c "select last_poll_time, high_water_mark epoch_upper, cursor_different_start epoch_lower, cursor_next_index from poll_state where authority_id=-3;"
-# daytime only: Lane C spans + hydration counts
-az monitor log-analytics query --workspace 842645cf-1439-4a2b-80e8-54bd02e326f9 \
-  --analytics-query "AppDependencies | where TimeGenerated > ago(8h) | where AppRoleName has 'worker-go' | where Name contains 'Lane C' | extend seen=toint(Properties['poll.records_seen']), hydrated=toint(Properties['poll.records_ingested']) | project TimeGenerated, seen, hydrated | order by TimeGenerated desc | take 10"
-```
-- **Outside 07:00–19:00 London: idle is expected ✅.** Don't flag.
-- Inside the window: expect it to run; `hydrated ≥ 0` (0 is fine). Only ❌ on errors, or a cursor that climbs for hours mid-epoch and never drains.
-
-### 8. Lane D (historical backfill) — progress, not freshness
-Lane D is **off-hours-only** and **never notifies** (nil fan-out, by design — don't expect notification metrics from it). Progress lives in `backfill_state`:
-```bash
-psql "$CONN" -c "select window_end, cursor_next_index, window_records_seen, consecutive_empty_windows, complete, last_run_time from backfill_state;"
-az monitor log-analytics query --workspace 842645cf-1439-4a2b-80e8-54bd02e326f9 \
-  --analytics-query "AppDependencies | where TimeGenerated > ago(3h) | where AppRoleName has 'worker-go' | where Name contains 'backfill' | summarize sweeps=count() by bin(TimeGenerated,15m) | order by TimeGenerated desc"
-```
-- **Daytime: idle is expected ✅.**
-- Off-hours: `last_run_time` recent, `cursor_next_index`/`window_records_seen` climbing within a window and/or `window_end` creeping backward across nights, `complete=false`, `consecutive_empty_windows` low. It's a deliberately slow (default 2 pages/cycle), multi-week+ job — slow ≠ broken. Confirm `POLLING_BACKFILL_ENABLED=true` on the job if you expect it running.
-
-### 9. Notifications actually delivered (the product outcome)
-The point of all of the above is telling residents about applications. Confirm the pipeline reaches users:
-```bash
+psql "$CONN" -c "select date_trunc('day', detected_at at time zone 'Europe/London') d, kind, status, count(*) from application_event where detected_at > now() - interval '7 days' group by 1,2,3 order by 1 desc, 2, 3;"
+psql "$CONN" -c "select count(*) pending, min(detected_at) oldest from application_event where status = 'pending';"
 psql "$CONN" -c "select date_trunc('day', created_at) d, count(*), count(*) filter (where push_sent) pushed, count(*) filter (where email_sent) emailed from notifications where created_at > now() - interval '7 days' group by 1 order by 1 desc;"
-psql "$CONN" -c "select max(created_at) as newest_notification from notifications;"
 ```
-- A zero-notification day lines up 1:1 with a PlanIt outage/quiet spell and is a **symptom, not a cause** — cross-reference Check 3. During a genuine quiet spell (weekend/outage) low or zero is expected.
-- After recovery, `newest_notification` should track the resumed ingestion; `push_sent`/`email_sent` should be non-zero for recent rows. If apps are ingesting (Check 3) but notifications are NOT being created, that's a real fan-out break — point at the Ingester fan-out wiring and lane `WithFanOut`.
+- A normal weekday is about 1,460 `new_application` events nationally and about 1,260 `decision` events. Weekday `new_application` events in the last 24h under 20% of the 14-day median is the `events_low` reason (⚠️). Weekends are low by nature.
+- `pending` events should be empty outside quiet hours (22:00 to 07:00 London), where they wait until 07:00. Events pending for many hours in the daytime mean the dispatcher is not running (point at `api-go/internal/appevents/dispatcher.go`).
+- `stale` events are those over 14 days old, or a surge. A `surge` health reason (more than 10,000 events in 24h) is ❌ critical: a PlanIt re-key or a bug. Its events were marked `stale` and nothing was sent.
+- If events are being written but no notifications appear for matching watch zones, that is a real fan-out break, not a poll problem.
+- `poll_event` holds the durable 24h health facts (for example a 403 or a short window). Use it to see why health was set when a run's span has rolled off.
 
-### 10. Exceptions
+### 7. Dev trial and oracle (dev only)
+Skip for prod. The dev poller runs on one authority with `POLLING_ORACLE_ENABLED=true`. Against the dev database (`town_crier_dev`):
+```bash
+psql "$DEVCONN" -c "select day, axis, reason, count(*) from poll_oracle_diff where found_at > now() - interval '7 days' group by 1,2,3 order by 1 desc;"
+```
+- A row with reason `miss` is ❌ and blocks the prod tag. It is the `oracle_miss` health reason.
+- `late`, `date_changed` and `planit_deleted` are explained, not failures. A row unclassified after two nights is ⚠️.
+- The gate for the prod tag is at least 3 nights with no `miss`, no integrity or completeness failures and `poll.window_missed` at 0. The owner posts the per-night counts on GH#1178.
+
+### 8. Exceptions
 ```bash
 az monitor log-analytics query --workspace 842645cf-1439-4a2b-80e8-54bd02e326f9 \
   --analytics-query "AppExceptions | where TimeGenerated > ago(6h) | where AppRoleName has 'worker-go' | summarize c=count() by ProblemId, tostring(OuterMessage) | top 10 by c"
 ```
-Empty or known-benign. `PlanItRateLimitException` is expected — not a concern in any volume.
+Empty or known-benign. A rate-limit error is expected and not a concern in any volume.
 
 ## Report format
 
-State the current **London time and which lanes are in-window** up front — every lane verdict depends on it.
+State the current **London time and whether it is inside the night window (18:00 to 06:00)** up front, because the alert-band check depends on it.
 
-1. **Lane status** — one row each for A, B, C, D: ✅ / ⚠️ / ❌ + eligibility-aware evidence. For A/B give the healthy-quiet / active / upstream-frozen / broken verdict with `watermark` vs `firstLastDifferent`. For C/D say "idle (out of window) — expected" when applicable, else progress.
-2. **Cross-cutting invariants** — Azure Monitor alerts (any Fired?), deploy current, worker running, lease `released_412`=0, queue ≤1, telemetry-pipeline (AppMetrics present?), notifications flowing, exceptions. One row each, ✅ / ⚠️ / ❌ + one line of evidence.
-3. **Recovery / backlog** (only if a backlog is draining) — watermark at start vs now, PlanIt masked head, rough catch-up trend.
+1. **Poller status.** One row each for: job running (Check 2), alert band verified (Check 3), pacing and budget (Check 4), integrity and self-checks (Check 5), events and notifications (Check 6). ✅ / ⚠️ / ❌ with one line of evidence. Include the latest `poll.health` and reasons.
+2. **Cross-cutting.** Azure Monitor alerts (any Fired?), deploy current, telemetry pipeline (AppMetrics present?), exceptions. One row each.
+3. **Dev oracle** (only when asked about the trial): counts per night and any `miss`.
 
-End with 1–3 watch items and one recommendation line. Keep prose under 200 words.
+End with 1 to 3 watch items and one recommendation line. Keep prose under 200 words.
 
-**Never flag as problems on their own:** a frozen A/B watermark, ~2 req/hour or hourly cadence, PlanIt 429 counts/cadence, `PlanItRateLimitException`, `rate_limited` totals, Lane C finding 0 stragglers, or Lane C/D idle outside their windows. Only escalate a 429 issue if `first_429 > 0`, and only call A/B "stalled" if PlanIt's masked head is provably newer than our watermark.
+**Never flag as problems on their own:** a few 429s, backoff, an hourly cadence, a run stopping on `run_budget` or `no_work`, a quiet daytime, quiet-hours `pending` events, or a `PlanIt` timeout share that is flat. Escalate a 429 only when the first request after a backoff came before its `Retry-After`. Never make a live PlanIt call as part of this check: the hard limits in `POLLING.md` apply, and the call log already holds the facts.

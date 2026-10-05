@@ -116,3 +116,56 @@ func TestHandler_Run_BothCallsReceiveContext(t *testing.T) {
 		t.Errorf("devices PurgeOlderThan calls = %d, want 1", devices.calls)
 	}
 }
+
+type fakePollPurger struct {
+	calls   int
+	lastNow time.Time
+	result  map[string]int64
+	err     error
+}
+
+func (f *fakePollPurger) Purge(_ context.Context, now time.Time) (map[string]int64, error) {
+	f.calls++
+	f.lastNow = now
+	return f.result, f.err
+}
+
+func TestHandler_Run_PurgesPollDataWithTheClock(t *testing.T) {
+	t.Parallel()
+
+	poll := &fakePollPurger{result: map[string]int64{"planit_call": 3}}
+	h := pgpurge.New(&fakePurger{}, &fakePurger{}, 90*24*time.Hour, 180*24*time.Hour, fixedClock(testNow), discardLogger()).
+		WithPollRetention(poll)
+
+	if _, _, err := h.Run(context.Background()); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if poll.calls != 1 || !poll.lastNow.Equal(testNow) {
+		t.Errorf("poll purge calls=%d now=%v, want 1 call at %v", poll.calls, poll.lastNow, testNow)
+	}
+}
+
+func TestHandler_Run_PollPurgeErrorIsReturned(t *testing.T) {
+	t.Parallel()
+
+	poll := &fakePollPurger{err: errors.New("postgres down")}
+	h := pgpurge.New(&fakePurger{rowsResult: 2}, &fakePurger{rowsResult: 1}, 90*24*time.Hour, 180*24*time.Hour, fixedClock(testNow), discardLogger()).
+		WithPollRetention(poll)
+
+	n, d, err := h.Run(context.Background())
+	if err == nil {
+		t.Fatal("Run: want error from poll purge")
+	}
+	if n != 2 || d != 1 {
+		t.Errorf("counts = %d, %d, want the notification and device counts kept", n, d)
+	}
+}
+
+func TestHandler_Run_WithoutPollRetentionStillWorks(t *testing.T) {
+	t.Parallel()
+
+	h := pgpurge.New(&fakePurger{}, &fakePurger{}, 90*24*time.Hour, 180*24*time.Hour, fixedClock(testNow), discardLogger())
+	if _, _, err := h.Run(context.Background()); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+}

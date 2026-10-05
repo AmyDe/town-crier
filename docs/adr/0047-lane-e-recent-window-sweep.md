@@ -4,7 +4,7 @@ Date: 2026-09-07
 
 ## Status
 
-Proposed
+Superseded by [0049](0049-planit-day-window-polling-rebuild.md)
 
 Amends [0044](0044-resumable-checkpointed-national-poll-flow.md): it keeps 0044's planner/executor loop, its per-page checkpointing and its tiered LRU selection unchanged, and adds a fifth lane to the model. It also depends on [0042](0042-historical-backward-backfill-lane.md)'s Lane D remaining exactly as it is, for reasons set out below.
 

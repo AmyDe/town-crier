@@ -16,7 +16,6 @@ require (
 	github.com/pulumi/pulumi-azure-native-sdk/operationalinsights/v3 v3.16.0
 	github.com/pulumi/pulumi-azure-native-sdk/portal/v3 v3.16.0
 	github.com/pulumi/pulumi-azure-native-sdk/resources/v3 v3.16.0
-	github.com/pulumi/pulumi-azure-native-sdk/servicebus/v3 v3.16.0
 	github.com/pulumi/pulumi-azure-native-sdk/storage/v3 v3.16.0
 	github.com/pulumi/pulumi-azure-native-sdk/web/v3 v3.16.0
 	github.com/pulumi/pulumi-random/sdk/v4 v4.21.0
