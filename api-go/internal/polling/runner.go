@@ -2,8 +2,10 @@ package polling
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -103,6 +105,7 @@ type RunResult struct {
 	Pages      int
 	CallsToday int
 	Stop       StopReason
+	RetryAfter *time.Duration
 	Health     Health
 	Counts     RunCounts
 }
@@ -230,6 +233,10 @@ func (r *Runner) loop(ctx context.Context) (RunResult, error) {
 				r.d.Log.WarnContext(ctx, "poll.read_stopped", slog.String("work", string(item.Work)), slog.String("stop", string(stop)), slog.Any("error", out.Err))
 			}
 			res.Stop = stop
+			var rl *planit.RateLimitError
+			if errors.As(out.Err, &rl) {
+				res.RetryAfter = rl.RetryAfter
+			}
 			return res, r.finish(ctx, &res, r.d.Now())
 		}
 		if item.DifferentStart == nil && !out.Complete {
@@ -358,6 +365,9 @@ func (r *Runner) setSpanAttrs(span trace.Span, res RunResult) {
 		attribute.Int("poll.window_violations", res.Counts.Violations),
 		attribute.Int("poll.window_missed", res.Counts.Missed),
 	)
+	if res.RetryAfter != nil {
+		span.SetAttributes(attribute.Int64("poll.retry_after_seconds", int64(res.RetryAfter.Seconds())))
+	}
 	if res.Health.Level == "" {
 		return
 	}
@@ -365,8 +375,9 @@ func (r *Runner) setSpanAttrs(span trace.Span, res RunResult) {
 	for i, reason := range res.Health.Reasons {
 		reasons[i] = string(reason)
 	}
+	// App Insights drops slice-valued span attributes, so the reasons are joined.
 	span.SetAttributes(
 		attribute.String("poll.health", string(res.Health.Level)),
-		attribute.StringSlice("poll.health_reasons", reasons),
+		attribute.String("poll.health_reasons", strings.Join(reasons, ",")),
 	)
 }
