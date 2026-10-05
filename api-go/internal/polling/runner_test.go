@@ -3,6 +3,7 @@ package polling
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"slices"
 	"testing"
@@ -558,7 +559,32 @@ func TestRunner_SpanCarriesRunAttributes(t *testing.T) {
 	if v, _ := attrValue(span, "poll.health"); v.AsString() != "critical" {
 		t.Fatalf("health = %q", v.AsString())
 	}
-	if v, _ := attrValue(span, "poll.health_reasons"); !slices.Equal(v.AsStringSlice(), []string{"window_violation", "surge"}) {
-		t.Fatalf("reasons = %v", v.AsStringSlice())
+	if v, _ := attrValue(span, "poll.health_reasons"); v.AsString() != "window_violation,surge" {
+		t.Fatalf("reasons = %q", v.AsString())
+	}
+	if _, ok := attrValue(span, "poll.retry_after_seconds"); ok {
+		t.Fatal("retry_after_seconds set on a run without a 429")
+	}
+}
+
+func TestRunner_SpanCarriesRetryAfterOnRateLimit(t *testing.T) {
+	r := newRunnerRig(t, londonAt(6, 10, 20, 0), nil)
+	retry := 47 * time.Minute
+	r.world.script = func(*runWorld, PlannedWork) WindowReadResult {
+		return WindowReadResult{Pages: 1, Stop: StopRateLimited, Err: fmt.Errorf("fetch: %w", &planit.RateLimitError{RetryAfter: &retry})}
+	}
+
+	spans := recordSpans(t, func() {
+		if _, err := r.runner.Run(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	span, ok := spanNamed(spans, "PlanIt poll run")
+	if !ok {
+		t.Fatal("no PlanIt poll run span")
+	}
+	if v, ok := attrValue(span, "poll.retry_after_seconds"); !ok || v.AsInt64() != 2820 {
+		t.Fatalf("retry_after_seconds = %v (present %v), want 2820", v, ok)
 	}
 }

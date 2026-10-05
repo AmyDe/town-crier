@@ -979,7 +979,7 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 	// two log alerts instead catch "never ran at all", which a metric alert can't express. The
 	// expected-vs-actual leftouter join guarantees a row (Runs == 0) even when AppDependencies
 	// has zero matching spans, which a plain `| where` filter on an empty result set cannot.
-	const jobAbsenceFrequentQuery = `let expected = datatable(JobSpan:string)["Polling Cycle (SB)", "Polling Bootstrap", "Hourly Digest Cycle"];
+	const jobAbsenceFrequentQuery = `let expected = datatable(JobSpan:string)["Hourly Digest Cycle"];
 expected
 | join kind=leftouter (
     AppDependencies
@@ -991,7 +991,7 @@ expected
 	if err = createLogAlert(ctx, resourceGroup, logAnalytics.ID(), actionGroup, tags, logAlertSpec{
 		name:        "alert-worker-absence-frequent-prod",
 		displayName: "Frequent worker cycle absent (prod)",
-		description: "A prod job expected to run at least hourly (poll, poll-bootstrap, or hourly-digest) produced no AppDependencies span in the last 3 hours. Dimensioned by JobSpan so the fired alert names the missing job.",
+		description: "The prod hourly-digest job produced no AppDependencies span in the last 3 hours. The poll job has its own heartbeat alert (alert-planit-poll-heartbeat-shared). Dimensioned by JobSpan so the fired alert names the missing job.",
 		severity:    2,
 		window:      "PT3H",
 		freq:        "PT30M",
