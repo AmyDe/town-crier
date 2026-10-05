@@ -64,7 +64,7 @@ Testing: go test (API, CLI, infra), Swift Testing (iOS), Vitest (web). CI/CD: Gi
 
 ### PR merge: no auto-merge, Claude-routine triage
 
-The **Auto-merge** workflow (`.github/workflows/auto-merge.yml`) is deliberately disabled (`disabled_manually`, confirmed 2026-07-29), not broken. Claude routines watch open PRs, triage CodeRabbit comments, and merge. A green PR Gate means **ready for triage**, not **ready to merge**. Do not re-enable Auto-merge.
+The **Auto-merge** workflow (`.github/workflows/auto-merge.yml`) is deliberately disabled (`disabled_manually`, confirmed 2026-07-29), not broken. Claude routines watch open PRs, triage review comments, and merge. A green PR Gate means **ready for triage**, not **ready to merge**. Do not re-enable Auto-merge.
 
 - **Automated or scheduled context** (cron routine, unattended `/loop`, any session not driven live by the user): never merge, even with all checks green. Stop at "PR Gate passed". Scheduled work can land when the user can't test it; that is exactly what this control is for.
 - **Interactive local session:** a human-directed merge is a judgment call. Ask first by default (live product, paying customers); the user may say go ahead for a small, well-tested change.

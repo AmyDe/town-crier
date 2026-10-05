@@ -1,6 +1,6 @@
 ---
 name: ship
-description: Automate the push-to-PR flow when you have local commits and/or unstaged changes on main, or when you're on a feature branch (e.g., from a worktree) ready to PR. Creates a feature branch (if on main), opens a PR via `gh`, and watches for the PR Gate CI check to pass. Stops there by default and reports status — the repo's Auto-merge workflow is intentionally disabled so Claude PR-triage routines can review comments (e.g. CodeRabbit) before merge, so this skill does not merge the PR itself unless the user explicitly asks for it in a live session. MUST use this skill whenever the user says "ship", "ship it", "push to main", "push my changes", "get this on main", "create a PR", or any variation of wanting to get local work through CI and up for review. Also trigger when the user has been working on main and wants to push but can't due to branch protection, or when work on a feature branch/worktree is ready to ship. Do NOT use for: merging a PR on request (see Step 7a) or for automated/scheduled contexts wanting a merge (never merge in those — see CLAUDE.md).
+description: Automate the push-to-PR flow when you have local commits and/or unstaged changes on main, or when you're on a feature branch (e.g., from a worktree) ready to PR. Creates a feature branch (if on main), opens a PR via `gh`, and watches for the PR Gate CI check to pass. Stops there by default and reports status — the repo's Auto-merge workflow is intentionally disabled so Claude PR-triage routines can review comments before merge, so this skill does not merge the PR itself unless the user explicitly asks for it in a live session. MUST use this skill whenever the user says "ship", "ship it", "push to main", "push my changes", "get this on main", "create a PR", or any variation of wanting to get local work through CI and up for review. Also trigger when the user has been working on main and wants to push but can't due to branch protection, or when work on a feature branch/worktree is ready to ship. Do NOT use for: merging a PR on request (see Step 7a) or for automated/scheduled contexts wanting a merge (never merge in those — see CLAUDE.md).
 ---
 
 # Ship to Main
@@ -12,7 +12,7 @@ Route local work on `main` through a PR, because direct pushes to main are block
 There are no reviewer approvals required by GitHub itself — CI is the sole required status check. But this repo does not auto-merge on green CI:
 
 1. **`pr-gate.yml`** — The CI pipeline. It detects which areas changed (API, iOS, web, infra) and runs only the relevant checks. A single **`gate`** job aggregates all results — this is the sole required status check for branch protection.
-2. **`auto-merge.yml` is intentionally disabled.** Claude PR-triage routines watch open PRs and handle merging themselves once they've reviewed CodeRabbit and other review comments — see CLAUDE.md, "PR merge — no auto-merge, Claude-routine triage". A green `gate` means **ready for triage**, not merged.
+2. **`auto-merge.yml` is intentionally disabled.** Claude PR-triage routines watch open PRs and handle merging themselves once they've reviewed the review comments — see CLAUDE.md, "PR merge — no auto-merge, Claude-routine triage". A green `gate` means **ready for triage**, not merged.
 3. This skill's default stopping point is therefore "PR Gate passed, PR open" — not "merged." Only merge yourself (Step 7a) when the user is live in the session and explicitly asks you to; never in an automated or scheduled context (cron routine, unattended `/loop`).
 
 ## Workflow
@@ -154,7 +154,7 @@ Once `gate` passes, **stop here by default.** Report:
 
 > PR Gate passed: <url>
 >
-> Ready for triage — not merged. This repo's Auto-merge is intentionally disabled so Claude PR-triage routines can review CodeRabbit and other comments before merge (CLAUDE.md, "PR merge — no auto-merge, Claude-routine triage"). Say so if you'd like me to merge it now.
+> Ready for triage — not merged. This repo's Auto-merge is intentionally disabled so Claude PR-triage routines can review comments before merge (CLAUDE.md, "PR merge — no auto-merge, Claude-routine triage"). Say so if you'd like me to merge it now.
 
 Do not run `gh pr merge`, do not clean up the worktree/branch, and do not touch beads sync here — none of that is appropriate until the PR is actually merged, and merging isn't this skill's default job anymore. The skill ends here unless Step 7a applies.
 
