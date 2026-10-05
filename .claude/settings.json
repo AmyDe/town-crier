@@ -40,7 +40,7 @@
       {
         "hooks": [
           {
-            "command": "[ \"$CLAUDE_CODE_REMOTE\" != true ] || [ \"${TC_CLOUD_ROLE:-}\" = monitor ] || bd prime",
+            "command": "[ \"$CLAUDE_CODE_REMOTE\" != true ] || bd prime",
             "type": "command"
           }
         ],
@@ -126,19 +126,7 @@
             "type": "command"
           },
           {
-            "command": "[ \"$CLAUDE_CODE_REMOTE\" != true ] || [ \"${TC_CLOUD_ROLE:-}\" = monitor ] || bd prime",
-            "type": "command"
-          }
-        ],
-        "matcher": ""
-      }
-    ],
-    "SessionEnd": [
-      {
-        "hooks": [
-          {
-            "command": "[ \"${TC_CLOUD_ROLE:-}\" != monitor ] || rm -rf \"$HOME/.azure-tc-monitor\"",
-            "timeout": 10,
+            "command": "[ \"$CLAUDE_CODE_REMOTE\" != true ] || bd prime",
             "type": "command"
           }
         ],
