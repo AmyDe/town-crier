@@ -36,6 +36,7 @@ func subscriptionFromID(id pulumi.IDOutput) pulumi.StringOutput {
 
 func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.StringMap) error {
 	ciServicePrincipalID := conf.Require("ciServicePrincipalId")
+	monitorServicePrincipalID := conf.Require("monitorServicePrincipalId")
 
 	// Resource Group
 	resourceGroup, err := resources.NewResourceGroup(ctx, "rg-town-crier-shared", &resources.ResourceGroupArgs{
@@ -114,6 +115,20 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 			DailyQuotaGb: pulumi.Float64(1.0),
 		},
 		Tags: tags,
+	})
+	if err != nil {
+		return err
+	}
+
+	// Log Analytics Reader for the Claude cloud-agent monitor principal. Its secret lives in a
+	// Claude cloud environment and must be assumed leakable, so the scope is this workspace only:
+	// Reader or Monitoring Reader would grant */read over Container App config as well.
+	_, err = authorization.NewRoleAssignment(ctx, "claude-monitor-log-reader-role", &authorization.RoleAssignmentArgs{
+		Scope: logAnalytics.ID(),
+		RoleDefinitionId: pulumi.Sprintf(
+			"/subscriptions/%s/providers/Microsoft.Authorization/roleDefinitions/73c42c96-874c-492b-b04d-ab87d138a893", subscriptionID),
+		PrincipalId:   pulumi.String(monitorServicePrincipalID),
+		PrincipalType: pulumi.String(string(authorization.PrincipalTypeServicePrincipal)),
 	})
 	if err != nil {
 		return err
