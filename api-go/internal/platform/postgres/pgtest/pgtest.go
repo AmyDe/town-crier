@@ -30,15 +30,13 @@ const serializeLockKey int64 = 0x70_67_74_65_73_74 // "pgtest"
 // unreachable the test is skipped with instructions to bring the stack up. The
 // pool is closed automatically via t.Cleanup.
 //
-// New also holds a session-level advisory lock for the test's whole duration, so
-// all tests that use this harness run one at a time — even across packages.
-// `go test ./...` runs each package's test binary in parallel, and they all share
-// this single database, so without that lock one package's TRUNCATE wipes another
-// package's freshly-seeded fixtures mid-test. Non-DB packages never call New, so
-// they stay parallel. A test that calls New must therefore NOT also call
-// t.Parallel: the lock is released in t.Cleanup, which for a parallel test runs
-// only after the whole parallel group finishes, so two parallel New callers would
-// deadlock.
+// New holds a session-level advisory lock from before migration until the test
+// ends, so tests using this harness run one at a time even across packages:
+// `go test ./...` runs package binaries in parallel against one database, and
+// without the lock they race in goose up on an empty database and TRUNCATE each
+// other's fixtures. A test that calls New must NOT call t.Parallel: the lock is
+// released in t.Cleanup, which for a parallel test runs only after the whole
+// parallel group finishes, so two parallel New callers would deadlock.
 func New(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 
@@ -57,15 +55,14 @@ func New(t *testing.T) *pgxpool.Pool {
 		t.Skipf("postgres not reachable at %s: %v; run `docker compose -f api-go/docker-compose.yml up -d`", dsn, err)
 	}
 
-	if err := postgres.Migrate(ctx, dsn); err != nil {
-		pool.Close()
-		t.Fatalf("migrate test database: %v", err)
-	}
-
 	// Registered before the lock cleanup so it runs LAST (cleanups are LIFO): the
 	// lock is released and its connection returned before the pool is closed.
 	t.Cleanup(pool.Close)
 	acquireSerializeLock(t, pool)
+
+	if err := postgres.Migrate(ctx, dsn); err != nil {
+		t.Fatalf("migrate test database: %v", err)
+	}
 
 	return pool
 }
