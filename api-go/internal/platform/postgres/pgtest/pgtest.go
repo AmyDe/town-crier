@@ -69,6 +69,11 @@ func New(t *testing.T) *pgxpool.Pool {
 
 // acquireSerializeLock takes the global advisory lock on a dedicated pooled
 // connection and registers a cleanup that releases it. See New for why.
+//
+// It polls pg_try_advisory_lock rather than blocking in pg_advisory_lock: a
+// blocked waiter keeps a statement open, and CREATE INDEX CONCURRENTLY in the
+// lock holder's migration waits for every open statement to finish, so a
+// blocking wait hangs the suite in a cycle Postgres cannot detect.
 func acquireSerializeLock(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
 
@@ -76,9 +81,16 @@ func acquireSerializeLock(t *testing.T, pool *pgxpool.Pool) {
 	if err != nil {
 		t.Fatalf("acquire advisory-lock connection: %v", err)
 	}
-	if _, err := conn.Exec(context.Background(), "SELECT pg_advisory_lock($1)", serializeLockKey); err != nil {
-		conn.Release()
-		t.Fatalf("acquire advisory lock: %v", err)
+	for {
+		var locked bool
+		if err := conn.QueryRow(context.Background(), "SELECT pg_try_advisory_lock($1)", serializeLockKey).Scan(&locked); err != nil {
+			conn.Release()
+			t.Fatalf("acquire advisory lock: %v", err)
+		}
+		if locked {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 	t.Cleanup(func() {
 		if _, err := conn.Exec(context.Background(), "SELECT pg_advisory_unlock($1)", serializeLockKey); err != nil {
