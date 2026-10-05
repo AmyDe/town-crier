@@ -35,30 +35,6 @@ set -euo pipefail
 
 repo_root="${CLAUDE_PROJECT_DIR:-/home/user/town-crier}"
 
-# Monitor environment (TC_CLOUD_ROLE=monitor): read-only Azure telemetry, no
-# DoltHub creds and no beads. The environment filesystem persists between
-# runs and az writes the SP secret to its config dir in plain text, so the
-# dir is wiped here and again by the SessionEnd hook.
-if [ "${TC_CLOUD_ROLE:-}" = "monitor" ]; then
-  for v in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_CLIENT_SECRET; do
-    if [ -z "${!v:-}" ]; then
-      echo "cloud-session-init FATAL: $v not set in this monitor session." >&2
-      exit 1
-    fi
-  done
-  export AZURE_CONFIG_DIR="$HOME/.azure-tc-monitor"
-  rm -rf "$AZURE_CONFIG_DIR"
-  (umask 077 && mkdir -p "$AZURE_CONFIG_DIR")
-  az login --service-principal --username "$AZURE_CLIENT_ID" \
-    --password "$AZURE_CLIENT_SECRET" --tenant "$AZURE_TENANT_ID" \
-    --allow-no-subscriptions --output none
-  if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
-    echo "export AZURE_CONFIG_DIR=\"$AZURE_CONFIG_DIR\"" >> "$CLAUDE_ENV_FILE"
-  fi
-  echo "cloud-session-init: monitor mode, az logged in read-only, beads skipped"
-  exit 0
-fi
-
 # 1. DoltHub credentials
 if [ -z "${DOLT_CLOUD_CREDS_ID:-}" ] || [ -z "${DOLT_CLOUD_CREDS_B64:-}" ]; then
   echo "cloud-session-init FATAL: DOLT_CLOUD_CREDS_ID/_B64 not set in this session." >&2
