@@ -182,13 +182,8 @@ func (r *WindowReader) ReadWindow(ctx context.Context, w PlannedWork, state Wind
 	}
 	seen := map[AppKey]struct{}{}
 	addSeen(seen, first)
-	total := len(first.Applications)
-	if first.Total != nil {
-		total = *first.Total
-	}
-
 	now := r.now()
-	if state.LastTotal != nil && *state.LastTotal == total && state.LastFullReadAt != nil &&
+	if first.Total != nil && state.LastTotal != nil && *state.LastTotal == *first.Total && state.LastFullReadAt != nil &&
 		now.Sub(*state.LastFullReadAt) < r.cfg.FullReadMaxAge {
 		if err := r.store.MarkProbeComplete(ctx, ref, now); err != nil {
 			return stopped(pages, err)
@@ -210,6 +205,12 @@ func (r *WindowReader) ReadWindow(ctx context.Context, w PlannedWork, state Wind
 		addSeen(seen, cur)
 	}
 
+	// Without PlanIt's total there is nothing to check completeness against,
+	// so the distinct count becomes the stored total rather than page 0's size.
+	total := len(seen)
+	if first.Total != nil {
+		total = *first.Total
+	}
 	if len(seen) < total {
 		r.recordShort(ref, now)
 		if r.hooks != nil {

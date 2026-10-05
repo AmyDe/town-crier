@@ -127,6 +127,30 @@ func TestWindowReader_ProbeWhenTotalUnchangedAndRecentFullRead(t *testing.T) {
 	}
 }
 
+func TestWindowReader_MissingTotalForcesFullReadAndStoresDistinctCount(t *testing.T) {
+	t.Parallel()
+	noTotal := func(from, n int, more bool) planit.FetchPageResult {
+		return planit.FetchPageResult{From: from, Applications: recs(from, n), HasMorePages: more}
+	}
+	r := newReaderRig(t, map[int]planit.FetchPageResult{
+		0:   noTotal(0, 300, true),
+		300: noTotal(300, 120, false),
+	})
+	state := WindowState{LastTotal: intPtr(300), LastFullReadAt: tp(r.now.AddDate(0, 0, -1))}
+
+	res := r.reader.ReadWindow(context.Background(), testWindow(), state)
+
+	if !res.Complete || res.Probe || res.Short || res.Pages != 2 || res.Stop != "" {
+		t.Fatalf("res = %+v", res)
+	}
+	if len(r.writer.probes) != 0 {
+		t.Fatalf("probes = %v, want none", r.writer.probes)
+	}
+	if len(r.writer.fulls) != 1 || r.writer.fulls[0].total != 420 {
+		t.Fatalf("fulls = %+v, want one with total 420", r.writer.fulls)
+	}
+}
+
 func TestWindowReader_FullReadWhenTotalChangedOrStale(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
