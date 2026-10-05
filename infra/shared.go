@@ -34,6 +34,10 @@ func subscriptionFromID(id pulumi.IDOutput) pulumi.StringOutput {
 	}).(pulumi.StringOutput)
 }
 
+const monitorTableCondition = "((!(ActionMatches{'Microsoft.OperationalInsights/workspaces/tables/data/read'})) OR " +
+	"(@Resource[Microsoft.OperationalInsights/workspaces/tables:name] ForAllOfAnyValues:StringEquals " +
+	"{'AppRequests', 'AppDependencies', 'AppExceptions', 'AppAvailabilityResults'}))"
+
 func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.StringMap) error {
 	ciServicePrincipalID := conf.Require("ciServicePrincipalId")
 	monitorServicePrincipalID := conf.Require("monitorServicePrincipalId")
@@ -120,15 +124,18 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		return err
 	}
 
-	// Log Analytics Reader for the Claude cloud-agent monitor principal. Its secret lives in a
-	// Claude cloud environment and must be assumed leakable, so the scope is this workspace only:
-	// Reader or Monitoring Reader would grant */read over Container App config as well.
-	_, err = authorization.NewRoleAssignment(ctx, "claude-monitor-log-reader-role", &authorization.RoleAssignmentArgs{
+	// Log Analytics Data Reader for the Claude cloud-agent monitor principal, whose secret lives
+	// in a Claude cloud environment and must be assumed leakable. The ABAC condition allowlists
+	// telemetry tables so it cannot read PII such as ACS RecipientId. It only works because this
+	// role has no */read: Log Analytics Reader or Reader would bypass the condition entirely.
+	_, err = authorization.NewRoleAssignment(ctx, "claude-monitor-data-reader-role", &authorization.RoleAssignmentArgs{
 		Scope: logAnalytics.ID(),
 		RoleDefinitionId: pulumi.Sprintf(
-			"/subscriptions/%s/providers/Microsoft.Authorization/roleDefinitions/73c42c96-874c-492b-b04d-ab87d138a893", subscriptionID),
-		PrincipalId:   pulumi.String(monitorServicePrincipalID),
-		PrincipalType: pulumi.String(string(authorization.PrincipalTypeServicePrincipal)),
+			"/subscriptions/%s/providers/Microsoft.Authorization/roleDefinitions/3b03c2da-16b3-4a49-8834-0f8130efdd3b", subscriptionID),
+		PrincipalId:      pulumi.String(monitorServicePrincipalID),
+		PrincipalType:    pulumi.String(string(authorization.PrincipalTypeServicePrincipal)),
+		Condition:        pulumi.String(monitorTableCondition),
+		ConditionVersion: pulumi.String("2.0"),
 	})
 	if err != nil {
 		return err
