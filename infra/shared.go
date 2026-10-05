@@ -34,8 +34,13 @@ func subscriptionFromID(id pulumi.IDOutput) pulumi.StringOutput {
 	}).(pulumi.StringOutput)
 }
 
+const monitorTableCondition = "((!(ActionMatches{'Microsoft.OperationalInsights/workspaces/tables/data/read'})) OR " +
+	"(@Resource[Microsoft.OperationalInsights/workspaces/tables:name] ForAllOfAnyValues:StringEquals " +
+	"{'AppRequests', 'AppDependencies', 'AppExceptions', 'AppAvailabilityResults'}))"
+
 func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.StringMap) error {
 	ciServicePrincipalID := conf.Require("ciServicePrincipalId")
+	monitorServicePrincipalID := conf.Require("monitorServicePrincipalId")
 
 	// Resource Group
 	resourceGroup, err := resources.NewResourceGroup(ctx, "rg-town-crier-shared", &resources.ResourceGroupArgs{
@@ -114,6 +119,23 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 			DailyQuotaGb: pulumi.Float64(1.0),
 		},
 		Tags: tags,
+	})
+	if err != nil {
+		return err
+	}
+
+	// Log Analytics Data Reader for the Claude cloud-agent monitor principal, whose secret lives
+	// in a Claude cloud environment and must be assumed leakable. The ABAC condition allowlists
+	// telemetry tables so it cannot read PII such as ACS RecipientId. It only works because this
+	// role has no */read: Log Analytics Reader or Reader would bypass the condition entirely.
+	_, err = authorization.NewRoleAssignment(ctx, "claude-monitor-data-reader-role", &authorization.RoleAssignmentArgs{
+		Scope: logAnalytics.ID(),
+		RoleDefinitionId: pulumi.Sprintf(
+			"/subscriptions/%s/providers/Microsoft.Authorization/roleDefinitions/3b03c2da-16b3-4a49-8834-0f8130efdd3b", subscriptionID),
+		PrincipalId:      pulumi.String(monitorServicePrincipalID),
+		PrincipalType:    pulumi.String(string(authorization.PrincipalTypeServicePrincipal)),
+		Condition:        pulumi.String(monitorTableCondition),
+		ConditionVersion: pulumi.String("2.0"),
 	})
 	if err != nil {
 		return err
