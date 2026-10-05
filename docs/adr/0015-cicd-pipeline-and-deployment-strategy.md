@@ -98,3 +98,6 @@ The React SPA is deployed to **Azure Static Web Apps** using the official `Azure
   - **`cli-build-test`** — `go build ./...` and `go test -race ./...`, scoped to `/cli`.
 - With the backend ([ADR 0028](0028-migrate-backend-from-dotnet-to-go.md)), infrastructure ([ADR 0029](0029-migrate-infrastructure-from-dotnet-to-go.md)), and now the CLI all on Go, **no `setup-dotnet` step remains in any workflow** — .NET is fully removed from the repository.
 - Unchanged: the `cli/` change-detection category and the two CLI slots in the aggregating `gate` check (the first is now `cli-lint`).
+
+### 2026-10-05
+- Removed: **CodeRabbit.** CodeRabbit's free tier now gates scans on repository stars, so it stopped reviewing PRs. `@coderabbitai` is dropped from CODEOWNERS (which no longer drives any required-review rule; `PR Gate` is the only required check) and the GitHub App is uninstalled. PR review is handled by the Claude review and triage routines.

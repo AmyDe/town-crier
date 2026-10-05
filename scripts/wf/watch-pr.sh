@@ -6,7 +6,7 @@
 #   Best run as a background Bash task; re-engage the model on the result.
 #
 # auto-merge.yml is intentionally disabled in this repo (Claude PR-triage
-# routines merge after reviewing CodeRabbit/other comments — see CLAUDE.md,
+# routines merge after reviewing review comments — see CLAUDE.md,
 # "PR merge — no auto-merge, Claude-routine triage"), so a green gate does not
 # imply an imminent merge. This script only watches the gate; it never polls
 # for or performs a merge itself.
