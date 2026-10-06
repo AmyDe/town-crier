@@ -218,6 +218,18 @@ func TestRunObserver_SurgeIsRecordedOnce(t *testing.T) {
 	}
 }
 
+func TestRunObserver_DispatchPendingWithoutAPageRecordsSurge(t *testing.T) {
+	t.Parallel()
+	r := newObserverRig(t, false)
+	r.disp.res = appevents.Result{Surge: true}
+
+	r.obs.DispatchPending(context.Background())
+
+	if r.disp.calls != 1 || !r.obs.Counts().Surge || len(r.evs.got) != 1 || r.evs.got[0].Kind != EventSurge {
+		t.Fatalf("dispatch calls = %d surge = %v events = %+v", r.disp.calls, r.obs.Counts().Surge, r.evs.got)
+	}
+}
+
 func TestRunObserver_FullReadCountsDeltaSeenRecordsTheWindowMissed(t *testing.T) {
 	t.Parallel()
 	r := newObserverRig(t, false)

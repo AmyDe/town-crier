@@ -113,6 +113,16 @@ func (f *fakeRunFlusher) Flush(context.Context) error {
 	return nil
 }
 
+type fakeRunDispatcher struct {
+	w     *runWorld
+	calls int
+}
+
+func (f *fakeRunDispatcher) DispatchPending(context.Context) {
+	f.calls++
+	f.w.events = append(f.w.events, "dispatch")
+}
+
 type fakeCounters struct{ c RunCounts }
 
 func (f *fakeCounters) Counts() RunCounts { return f.c }
@@ -160,6 +170,7 @@ type runnerRig struct {
 	world    *runWorld
 	lease    *fakeRunLease
 	flusher  *fakeRunFlusher
+	disp     *fakeRunDispatcher
 	counters *fakeCounters
 	health   *fakeHealthSource
 	sw       *fakeRunSwitch
@@ -173,6 +184,7 @@ func newRunnerRig(t *testing.T, now time.Time, oracle *fakeOracleRun) *runnerRig
 		world:    w,
 		lease:    &fakeRunLease{acquire: LeaseAcquireResult{Acquired: true}},
 		flusher:  &fakeRunFlusher{w: w},
+		disp:     &fakeRunDispatcher{w: w},
 		counters: &fakeCounters{},
 		health:   &fakeHealthSource{},
 		sw:       &fakeRunSwitch{onChecks: -1},
@@ -183,7 +195,7 @@ func newRunnerRig(t *testing.T, now time.Time, oracle *fakeOracleRun) *runnerRig
 	}
 	deps := RunnerDeps{
 		Lease: r.lease, State: w, Calls: w, Reader: w, Counters: r.counters,
-		Push: r.flusher, Flusher: r.flusher, Health: r.health, Switch: r.sw,
+		Push: r.flusher, Dispatch: r.disp, Flusher: r.flusher, Health: r.health, Switch: r.sw,
 		Now: w.clock, Log: slog.New(slog.DiscardHandler),
 	}
 	if oracle != nil {
@@ -204,7 +216,7 @@ func TestRunner_LeaseHeldExitsWithoutWork(t *testing.T) {
 	if err != nil || res.Acquired {
 		t.Fatalf("res = %+v err = %v", res, err)
 	}
-	if len(r.world.reads) != 0 || r.flusher.flush != 0 || r.flusher.resets != 0 || r.lease.released != 0 {
+	if len(r.world.reads) != 0 || r.disp.calls != 0 || r.flusher.flush != 0 || r.flusher.resets != 0 || r.lease.released != 0 {
 		t.Fatalf("held lease must do nothing: reads=%d flush=%d resets=%d released=%d", len(r.world.reads), r.flusher.flush, r.flusher.resets, r.lease.released)
 	}
 }
@@ -224,8 +236,8 @@ func TestRunner_SwitchedOffMakesNoPlanItCalls(t *testing.T) {
 	if res.Stop != StopDisabled || len(r.world.reads) != 0 || oracle.calls != 0 {
 		t.Fatalf("stop = %s reads = %d oracle = %d", res.Stop, len(r.world.reads), oracle.calls)
 	}
-	if r.flusher.flush != 1 {
-		t.Fatalf("flush = %d, want pending events still delivered", r.flusher.flush)
+	if r.disp.calls != 1 || r.flusher.flush != 1 {
+		t.Fatalf("dispatch = %d flush = %d, want pending events still delivered", r.disp.calls, r.flusher.flush)
 	}
 	if r.health.calls != 0 || res.Health.Level != "" {
 		t.Fatalf("health computed for a disabled run: %+v", res.Health)
@@ -269,7 +281,7 @@ func TestRunner_TransientLeaseErrorIsReturned(t *testing.T) {
 	}
 }
 
-func TestRunner_NoWorkStopsFlushesAndReleases(t *testing.T) {
+func TestRunner_NoWorkRunDispatchesPendingEvents(t *testing.T) {
 	t.Parallel()
 	r := newRunnerRig(t, londonAt(6, 10, 20, 0), nil)
 	r.world.allWindowsComplete()
@@ -285,7 +297,7 @@ func TestRunner_NoWorkStopsFlushesAndReleases(t *testing.T) {
 	if r.lease.ttl != 65*time.Minute || r.lease.released != 1 {
 		t.Fatalf("ttl = %s released = %d", r.lease.ttl, r.lease.released)
 	}
-	if !slices.Equal(r.world.events, []string{"reset", "flush"}) {
+	if !slices.Equal(r.world.events, []string{"reset", "dispatch", "flush"}) {
 		t.Fatalf("events = %v", r.world.events)
 	}
 }

@@ -117,6 +117,7 @@ func buildPoller(cfg platform.Config, pool *pgxpool.Pool, registry *metrics.Regi
 		Reader:   reader,
 		Counters: observer,
 		Push:     coalescer,
+		Dispatch: observer,
 		Flusher:  dispatcher,
 		Health:   polling.NewPostgresHealthStore(pool),
 		Now:      now,

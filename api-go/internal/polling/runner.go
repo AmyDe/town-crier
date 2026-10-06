@@ -62,6 +62,10 @@ type runFlusher interface {
 	Flush(ctx context.Context) error
 }
 
+type runDispatcher interface {
+	DispatchPending(ctx context.Context)
+}
+
 type healthSource interface {
 	Inputs(ctx context.Context, now time.Time) (HealthInputs, error)
 }
@@ -91,6 +95,7 @@ type RunnerDeps struct {
 	Reader   workReader
 	Counters runCounters
 	Push     pushResetter
+	Dispatch runDispatcher
 	Flusher  runFlusher
 	Health   healthSource
 	Oracle   oracleRunner
@@ -123,8 +128,10 @@ func NewRunner(cfg RunnerConfig, deps RunnerDeps) *Runner {
 
 // Run takes the "polling" lease and, until the run budget is spent or the
 // polling switch is off, plans and reads windows and deltas through the
-// WindowReader. It then flushes pushes, computes health (not for a switched-off
-// run) and releases the lease. A held lease returns without work.
+// WindowReader. It then dispatches pending events, flushes pushes, computes
+// health (not for a switched-off run) and releases the lease. Dispatch runs even
+// when no page was read, so events held over quiet hours go out at the first
+// run after quiet hours end. A held lease returns without work.
 // Limits such as backoff, the daily cap, 429, 403 and timeouts end the run
 // normally; only lease and state failures return an error.
 func (r *Runner) Run(ctx context.Context) (RunResult, error) {
@@ -152,6 +159,7 @@ func (r *Runner) Run(ctx context.Context) (RunResult, error) {
 	}
 
 	flushCtx := context.WithoutCancel(ctx)
+	r.d.Dispatch.DispatchPending(flushCtx)
 	if ferr := r.d.Flusher.Flush(flushCtx); ferr != nil {
 		r.d.Log.WarnContext(ctx, "poll.flush_failed", slog.Any("error", ferr))
 	}
