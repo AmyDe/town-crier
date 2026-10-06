@@ -345,7 +345,7 @@ func TestRunner_ReadsAlertWindowsNewestFirstUntilBackedOff(t *testing.T) {
 
 func TestRunner_StopReasonsFromReads(t *testing.T) {
 	t.Parallel()
-	for _, stop := range []StopReason{StopDailyCap, StopBackoff, StopRateLimited, StopForbidden, StopTimeout, StopError} {
+	for _, stop := range []StopReason{StopDailyCap, StopHourlyCap, StopBackoff, StopRateLimited, StopForbidden, StopTimeout, StopError} {
 		t.Run(string(stop), func(t *testing.T) {
 			t.Parallel()
 			r := newRunnerRig(t, londonAt(6, 10, 20, 0), nil)

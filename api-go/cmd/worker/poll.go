@@ -75,6 +75,7 @@ func buildPoller(cfg platform.Config, pool *pgxpool.Pool, registry *metrics.Regi
 		polling.NewPostgresPlanItCallStore(pool),
 		polling.PacerConfig{
 			DailyCap:   cfg.PollingDailyCallCap,
+			HourlyCap:  cfg.PollingHourlyCallCap,
 			MinSpacing: time.Duration(cfg.PollingMinRequestSpacingSeconds) * time.Second,
 		},
 		now, polling.SleepContext,

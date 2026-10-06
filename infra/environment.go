@@ -50,6 +50,9 @@ const (
 	// PlanIt is one client across both envs, so the two daily caps must sum to at most 300.
 	prodPollingDailyCallCap = "240"
 	devPollingDailyCallCap  = "60"
+	// PlanIt answered 429 after 18 to 22 calls in one hour in prod (2026-10-05), so both envs
+	// stay well below that in any rolling hour.
+	pollingHourlyCallCap = "15"
 	// The day allowance must stay below the cap, or the night never reads the coverage band.
 	prodPollingDayAllowance = "60"
 	devPollingDayAllowance  = "15"
@@ -714,6 +717,7 @@ func pollSettings(env string) map[string]string {
 		"PLANIT_BASE_URL":                     planItBaseURL,
 		"POLLING_ENABLED_DEFAULT":             pollingEnabledDefault(env),
 		"POLLING_DAILY_CALL_CAP":              dailyCap,
+		"POLLING_HOURLY_CALL_CAP":             pollingHourlyCallCap,
 		"POLLING_MIN_REQUEST_SPACING_SECONDS": "60",
 		"POLLING_DELTA_SLOTS":                 "09:00,12:00,15:00,17:00",
 		"POLLING_DELTA_MAX_PAGES":             "20",

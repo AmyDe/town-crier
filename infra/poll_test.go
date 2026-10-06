@@ -15,6 +15,7 @@ func TestPollJobEnv_ProdSettings(t *testing.T) {
 		"PLANIT_BASE_URL":                     "https://www.planit.org.uk/",
 		"POLLING_ENABLED_DEFAULT":             "true",
 		"POLLING_DAILY_CALL_CAP":              "240",
+		"POLLING_HOURLY_CALL_CAP":             "15",
 		"POLLING_MIN_REQUEST_SPACING_SECONDS": "60",
 		"POLLING_DELTA_SLOTS":                 "09:00,12:00,15:00,17:00",
 		"POLLING_DELTA_MAX_PAGES":             "20",

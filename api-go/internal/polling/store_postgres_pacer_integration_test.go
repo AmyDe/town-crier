@@ -162,3 +162,26 @@ func TestPacer_Postgres_ConcurrentCallersHoldSpacingAndCap(t *testing.T) {
 		t.Fatalf("rows = %d, want 4", n)
 	}
 }
+
+func TestPostgresPlanItCallStore_HourlyCapWaitsAnHourAfterTheOldestCall(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 6, 10, 20, 0, 0, 0, londonTZ)
+	pool := pgtest.New(t)
+	pgtest.Truncate(t, pool, "planit_call")
+	store := NewPostgresPlanItCallStore(pool)
+	clk := &fakeClock{now: now}
+	p := NewPacer(store, PacerConfig{DailyCap: 300, HourlyCap: 2, MinSpacing: 60 * time.Second}, clk.Now, clk.Sleep)
+
+	for i := range 3 {
+		if _, err := p.Do(ctx, planit.WorkWindowStart, time.Time{}, i, okWork(1)); err != nil {
+			t.Fatalf("Do %d: %v", i, err)
+		}
+	}
+	got, err := store.Latest(ctx)
+	if err != nil || got == nil {
+		t.Fatalf("Latest = %v, %v", got, err)
+	}
+	if want := now.Add(time.Hour); !got.At.Equal(want) {
+		t.Fatalf("3rd call at %s, want %s", got.At, want)
+	}
+}

@@ -18,6 +18,7 @@ var (
 	ErrBackedOff       = errors.New("polling: planit backoff active")
 	ErrBudgetExhausted = errors.New("polling: daily planit call budget exhausted")
 	ErrPollingDisabled = errors.New("polling: switched off for this environment")
+	ErrHourlyCap       = errors.New("polling: hourly planit call cap reached")
 )
 
 const (
@@ -78,6 +79,9 @@ type CallResult struct {
 type planItCallTx interface {
 	Latest(ctx context.Context) (*PlanItCall, error)
 	CountBetween(ctx context.Context, from, to time.Time) (int, error)
+	// NthLatestAt returns the at of the nth most recent call (1-based), or nil
+	// when there are fewer than n calls.
+	NthLatestAt(ctx context.Context, n int) (*time.Time, error)
 	Insert(ctx context.Context, c PlanItCall) (int64, error)
 	Finish(ctx context.Context, id int64, r CallResult) error
 	Commit(ctx context.Context) error
@@ -90,10 +94,12 @@ type planItCallLog interface {
 	CountBetween(ctx context.Context, from, to time.Time) (int, error)
 }
 
-// PacerConfig holds the pacing limits: DailyCap requests per budget day and
-// MinSpacing between consecutive requests.
+// PacerConfig holds the pacing limits: DailyCap requests per budget day,
+// HourlyCap requests in any rolling hour (0 for no hourly cap) and MinSpacing
+// between consecutive requests.
 type PacerConfig struct {
 	DailyCap   int
+	HourlyCap  int
 	MinSpacing time.Duration
 }
 
@@ -144,19 +150,38 @@ func SleepContext(ctx context.Context, d time.Duration) error {
 
 // Do makes exactly one PlanIt request under the pacing rules. It returns
 // ErrPollingDisabled, ErrBackedOff or ErrBudgetExhausted, having sent nothing
-// and written no row, when a limit applies. Otherwise it records a row before the request, waits
-// out the minimum spacing, runs fn, records the outcome and returns fn's
-// result and error unchanged. If ctx ends during the wait, nothing is sent and
-// no row is kept. If ctx ends during the request, the row is recorded as
-// aborted (status 0), which counts against the cap but starts no backoff.
-// windowDay may be zero for work with no window.
+// and written no row, when a limit applies. When the hourly cap is reached it
+// waits, without the pacing lock, for a slot to free, or returns ErrHourlyCap
+// if that slot is after ctx's deadline. Otherwise it records a row before the
+// request, waits out the minimum spacing, runs fn, records the outcome and
+// returns fn's result and error unchanged. If ctx ends during a wait, nothing
+// is sent and no row is kept. If ctx ends during the request, the row is
+// recorded as aborted (status 0), which counts against the caps but starts no
+// backoff. windowDay may be zero for work with no window.
 //
 // The advisory lock is held until the outcome is recorded so concurrent callers
 // see a settled latest row. A crash mid-request rolls the row back.
 func (p *Pacer) Do(ctx context.Context, work planit.Work, windowDay time.Time, pageIndex int, fn func(ctx context.Context) (planit.FetchPageResult, error)) (planit.FetchPageResult, error) {
+	for {
+		res, slotAt, err := p.try(ctx, work, windowDay, pageIndex, fn)
+		if slotAt.IsZero() {
+			return res, err
+		}
+		if deadline, ok := ctx.Deadline(); ok && slotAt.After(deadline) {
+			return planit.FetchPageResult{}, fmt.Errorf("%w until %s", ErrHourlyCap, slotAt.Format(time.RFC3339))
+		}
+		if err := p.sleep(ctx, slotAt.Sub(p.now())); err != nil {
+			return planit.FetchPageResult{}, err
+		}
+	}
+}
+
+// try is one pass of Do. A non-zero slotAt means the hourly cap applied: nothing
+// was sent, no row was kept, and a slot frees at slotAt.
+func (p *Pacer) try(ctx context.Context, work planit.Work, windowDay time.Time, pageIndex int, fn func(ctx context.Context) (planit.FetchPageResult, error)) (planit.FetchPageResult, time.Time, error) {
 	tx, err := p.log.Begin(ctx)
 	if err != nil {
-		return planit.FetchPageResult{}, fmt.Errorf("begin pacing tx: %w", err)
+		return planit.FetchPageResult{}, time.Time{}, fmt.Errorf("begin pacing tx: %w", err)
 	}
 	settled := false
 	defer func() {
@@ -168,20 +193,20 @@ func (p *Pacer) Do(ctx context.Context, work planit.Work, windowDay time.Time, p
 	if p.sw != nil {
 		on, err := p.sw.Enabled(ctx)
 		if err != nil {
-			return planit.FetchPageResult{}, fmt.Errorf("read polling switch: %w", err)
+			return planit.FetchPageResult{}, time.Time{}, fmt.Errorf("read polling switch: %w", err)
 		}
 		if !on {
-			return planit.FetchPageResult{}, ErrPollingDisabled
+			return planit.FetchPageResult{}, time.Time{}, ErrPollingDisabled
 		}
 	}
 
 	now := p.now()
 	latest, err := tx.Latest(ctx)
 	if err != nil {
-		return planit.FetchPageResult{}, fmt.Errorf("read latest planit call: %w", err)
+		return planit.FetchPageResult{}, time.Time{}, fmt.Errorf("read latest planit call: %w", err)
 	}
 	if st := backoffFor(latest, now); st.Active {
-		return planit.FetchPageResult{}, fmt.Errorf("%w until %s (%s)", ErrBackedOff, st.Until.Format(time.RFC3339), st.Reason)
+		return planit.FetchPageResult{}, time.Time{}, fmt.Errorf("%w until %s (%s)", ErrBackedOff, st.Until.Format(time.RFC3339), st.Reason)
 	}
 
 	// The row's At is the scheduled send time, so concurrent callers queue
@@ -195,10 +220,21 @@ func (p *Pacer) Do(ctx context.Context, work planit.Work, windowDay time.Time, p
 	from, to := BudgetDay(at)
 	used, err := tx.CountBetween(ctx, from, to)
 	if err != nil {
-		return planit.FetchPageResult{}, fmt.Errorf("count planit calls: %w", err)
+		return planit.FetchPageResult{}, time.Time{}, fmt.Errorf("count planit calls: %w", err)
 	}
 	if used >= p.cfg.DailyCap {
-		return planit.FetchPageResult{}, fmt.Errorf("%w (%d of %d)", ErrBudgetExhausted, used, p.cfg.DailyCap)
+		return planit.FetchPageResult{}, time.Time{}, fmt.Errorf("%w (%d of %d)", ErrBudgetExhausted, used, p.cfg.DailyCap)
+	}
+	if p.cfg.HourlyCap > 0 {
+		oldest, err := tx.NthLatestAt(ctx, p.cfg.HourlyCap)
+		if err != nil {
+			return planit.FetchPageResult{}, time.Time{}, fmt.Errorf("read planit call %d back: %w", p.cfg.HourlyCap, err)
+		}
+		if oldest != nil {
+			if slot := oldest.Add(time.Hour); slot.After(at) {
+				return planit.FetchPageResult{}, slot, nil
+			}
+		}
 	}
 
 	row := PlanItCall{At: at, Work: string(work), PageIndex: pageIndex}
@@ -208,11 +244,11 @@ func (p *Pacer) Do(ctx context.Context, work planit.Work, windowDay time.Time, p
 	}
 	id, err := tx.Insert(ctx, row)
 	if err != nil {
-		return planit.FetchPageResult{}, fmt.Errorf("insert planit call: %w", err)
+		return planit.FetchPageResult{}, time.Time{}, fmt.Errorf("insert planit call: %w", err)
 	}
 
 	if err := p.sleep(ctx, at.Sub(now)); err != nil {
-		return planit.FetchPageResult{}, err
+		return planit.FetchPageResult{}, time.Time{}, err
 	}
 	res, workErr := fn(ctx)
 	result := resultFor(res, workErr)
@@ -223,13 +259,13 @@ func (p *Pacer) Do(ctx context.Context, work planit.Work, windowDay time.Time, p
 	settleCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), settleTimeout)
 	defer cancel()
 	if err := tx.Finish(settleCtx, id, result); err != nil {
-		return res, errors.Join(workErr, fmt.Errorf("record planit call result: %w", err))
+		return res, time.Time{}, errors.Join(workErr, fmt.Errorf("record planit call result: %w", err))
 	}
 	settled = true
 	if err := tx.Commit(settleCtx); err != nil {
-		return res, errors.Join(workErr, fmt.Errorf("commit planit call: %w", err))
+		return res, time.Time{}, errors.Join(workErr, fmt.Errorf("commit planit call: %w", err))
 	}
-	return res, workErr
+	return res, time.Time{}, workErr
 }
 
 // CallsToday counts the calls in the budget day containing now.

@@ -204,13 +204,15 @@ type Config struct {
 	PlanItBaseURL string
 
 	// PollingDailyCallCap is POLLING_DAILY_CALL_CAP, the PlanIt requests allowed
-	// per budget day (prod 240, dev 60). PollingMinRequestSpacingSeconds is the
-	// gap between requests. PollingDeltaSlots is the comma-separated HH:MM
+	// per budget day (prod 240, dev 60). PollingHourlyCallCap is
+	// POLLING_HOURLY_CALL_CAP, the PlanIt requests allowed in any rolling hour.
+	// PollingMinRequestSpacingSeconds is the gap between requests. PollingDeltaSlots is the comma-separated HH:MM
 	// Europe/London delta slots. PollingDayAllowance is the budget kept back for
 	// the next day's deltas. PollingFullReadMaxAgeDays forces a full window read
 	// after that many days. PollingRunBudgetMinutes bounds one hourly run.
 	// PollingAreaID restricts every query to one PlanIt area (0 = all).
 	PollingDailyCallCap             int
+	PollingHourlyCallCap            int
 	PollingMinRequestSpacingSeconds int
 	PollingDeltaSlots               string
 	PollingDeltaMaxPages            int
@@ -311,6 +313,7 @@ func LoadConfig() (Config, error) {
 		PlanItBaseURL: getenv("PLANIT_BASE_URL", defaultPlanItBaseURL),
 
 		PollingDailyCallCap:             getenvInt("POLLING_DAILY_CALL_CAP", 240),
+		PollingHourlyCallCap:            getenvInt("POLLING_HOURLY_CALL_CAP", 15),
 		PollingMinRequestSpacingSeconds: getenvInt("POLLING_MIN_REQUEST_SPACING_SECONDS", 60),
 		PollingDeltaSlots:               getenv("POLLING_DELTA_SLOTS", "09:00,12:00,15:00,17:00"),
 		PollingDeltaMaxPages:            getenvInt("POLLING_DELTA_MAX_PAGES", 20),

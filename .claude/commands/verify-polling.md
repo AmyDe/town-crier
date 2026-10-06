@@ -12,14 +12,14 @@ Polling is one paced hourly job (`WORKER_MODE=poll`, cron `0 * * * *`, `api-go/i
 - **Day delta passes** run in the daytime at `POLLING_DELTA_SLOTS` for latency only.
 - **Pacing.** The `planit_call` table is the only pacer state: at least 60 s between requests, a cap of 240 calls a budget day in prod (60 in dev), where the budget day runs 18:00 to 18:00 Europe/London. Backoff comes from the latest call: 429 uses `Retry-After` (max 3h, or 15m if absent), 403 is 24h, timeout or 5xx is 30m.
 - **Events.** Ingest writes `application_event` rows (`new_application`, `decision`). The dispatcher inside the run applies the 14-day limit, quiet hours (22:00 to 07:00 Europe/London) and the surge check, then fans out. `poll_event` holds durable 24h health facts.
-- **Health** is computed in Go each run and set on the `PlanIt poll run` span as `poll.health` (`ok`, `degraded`, `critical`) with `poll.health_reasons` (comma-joined) and `poll.stop_reason` (`no_work`, `run_budget`, `daily_cap`, `backoff`, `rate_limited`, `forbidden`, `timeout`, `error`). A run that stops on a 429 also sets `poll.retry_after_seconds` when PlanIt sent `Retry-After`.
+- **Health** is computed in Go each run and set on the `PlanIt poll run` span as `poll.health` (`ok`, `degraded`, `critical`) with `poll.health_reasons` (comma-joined) and `poll.stop_reason` (`no_work`, `run_budget`, `daily_cap`, `hourly_cap`, `backoff`, `rate_limited`, `forbidden`, `timeout`, `error`). A run that stops on a 429 also sets `poll.retry_after_seconds` when PlanIt sent `Retry-After`.
 - **Dev** runs the same job on one authority (`POLLING_AREA_ID`) with an oracle that compares the day windows against a wide read and writes `poll_oracle_diff`.
 
 Compute the current London time first. Daytime (06:00 to 18:00) runs only deltas, so a quiet daytime run with `stop_reason=no_work` is healthy. Windows are read at night (18:00 to 06:00).
 
 ### The most important rule: judge by health and window state, not by call counts
 
-PlanIt is often slow or quiet, and 429s are normal self-limiting behaviour. Low call counts, a run that stops on `run_budget` or `daily_cap`, and a few 429s are not problems on their own. The job of this check is to tell these states apart:
+PlanIt is often slow or quiet, and 429s are normal self-limiting behaviour. Low call counts, a run that stops on `run_budget`, `daily_cap` or `hourly_cap`, and a few 429s are not problems on their own. The job of this check is to tell these states apart:
 
 | State | Signature | Verdict |
 |---|---|---|
