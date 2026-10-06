@@ -141,6 +141,19 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		return err
 	}
 
+	// Cost Management Reader for the daily cost-forecast routine. Deliberately not Reader: the
+	// monitor principal may read billing data but not resource configuration.
+	_, err = authorization.NewRoleAssignment(ctx, "claude-monitor-cost-reader-role", &authorization.RoleAssignmentArgs{
+		Scope: pulumi.Sprintf("/subscriptions/%s", subscriptionID),
+		RoleDefinitionId: pulumi.Sprintf(
+			"/subscriptions/%s/providers/Microsoft.Authorization/roleDefinitions/72fafb9e-0641-4937-9268-a91bfd8191a3", subscriptionID),
+		PrincipalId:   pulumi.String(monitorServicePrincipalID),
+		PrincipalType: pulumi.String(string(authorization.PrincipalTypeServicePrincipal)),
+	})
+	if err != nil {
+		return err
+	}
+
 	// Application Insights (shared, backed by Log Analytics)
 	appInsights, err := appinsights.NewComponent(ctx, "appi-town-crier-shared", &appinsights.ComponentArgs{
 		ResourceName:        pulumi.String("appi-town-crier-shared"),
