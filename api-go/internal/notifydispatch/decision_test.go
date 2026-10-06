@@ -210,6 +210,27 @@ func TestDecisionDispatcher_Dispatch_MatchesZoneRegardlessOfAuthority(t *testing
 	}
 }
 
+func TestDecisionDispatcher_ZoneMatch_NoStoredZonePrefs_QueuesPush(t *testing.T) {
+	t.Parallel()
+	zone := testZoneAt(t, "zone-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+	zones := &fakeZones{zones: []watchzones.WatchZone{zone}}
+	profs := &fakeProfiles{byID: map[string]*profiles.UserProfile{
+		"auth0|alice": profileWithTier(t, "auth0|alice", profiles.TierPro),
+	}}
+	d, notifs, queue := newDecisionHarness(t, zones, &fakeSaved{}, profs)
+	app := decisionApp(t, "Permitted", coord(51.5), coord(-0.1))
+
+	if err := d.Dispatch(context.Background(), app); err != nil {
+		t.Fatalf("Dispatch: %v", err)
+	}
+	if len(notifs.created) != 1 || !notifs.created[0].PushSent {
+		t.Fatalf("expected 1 record with PushSent, got %+v", notifs.created)
+	}
+	if len(queue.queued) != 1 {
+		t.Errorf("a zone with no stored preferences defaults to decision push on, got %d queued", len(queue.queued))
+	}
+}
+
 func TestDecisionDispatcher_ZoneMatch_DecisionPushOptedOut_RecordButNoPush(t *testing.T) {
 	t.Parallel()
 	zone := testZoneAt(t, "zone-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
