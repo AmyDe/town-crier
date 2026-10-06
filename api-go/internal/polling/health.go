@@ -44,7 +44,8 @@ type Health struct {
 // HealthFacts are the pipeline counts behind a health check, exported on the
 // run span for monitors that cannot read Postgres. AlertBandUnverified counts
 // alert-band windows not completed since the current budget day began.
-// OldestPending is zero when nothing is pending.
+// OldestPending is zero when nothing is pending. Surges24h is informational
+// and never drives a reason.
 type HealthFacts struct {
 	AlertBandUnverified int
 	NewApplications24h  int
@@ -53,6 +54,7 @@ type HealthFacts struct {
 	PendingEvents       int
 	OldestPending       time.Duration
 	Notifications24h    int
+	Surges24h           int
 }
 
 // HealthInputs is everything ComputeHealth reads. Windows holds the poll_window
@@ -60,6 +62,7 @@ type HealthFacts struct {
 // ShortWindows (windows short at least twice in the current budget day),
 // NewAppDaily14 (the 14 rolling 24h buckets of new_application events before
 // the last 24h), OracleMisses7d and the pending counts, which are current.
+// SurgeThisRun is true only for the run that detected an event surge.
 type HealthInputs struct {
 	Windows          []WindowState
 	ShortWindows     int
@@ -67,6 +70,7 @@ type HealthInputs struct {
 	Missed24h        int
 	Forbidden24h     int
 	Surge24h         int
+	SurgeThisRun     bool
 	NewAppEvents24h  int
 	NewAppDaily14    []int
 	OracleEnabled    bool
@@ -93,13 +97,13 @@ func ComputeHealth(in HealthInputs, now time.Time) Health {
 	add(eventsLow(in, now), ReasonEventsLow)
 	add(in.OracleEnabled && in.OracleMisses7d > 0, ReasonOracleMiss)
 	add(in.Forbidden24h > 0, ReasonForbidden)
-	add(in.Surge24h > 0, ReasonSurge)
+	add(in.SurgeThisRun, ReasonSurge)
 
 	level := HealthOK
 	if len(reasons) > 0 {
 		level = HealthDegraded
 	}
-	if in.Forbidden24h > 0 || in.Surge24h > 0 {
+	if in.Forbidden24h > 0 || in.SurgeThisRun {
 		level = HealthCritical
 	}
 	facts := HealthFacts{
@@ -109,6 +113,7 @@ func ComputeHealth(in HealthInputs, now time.Time) Health {
 		StaleEvents24h:      in.StaleEvents24h,
 		PendingEvents:       in.PendingEvents,
 		Notifications24h:    in.Notifications24h,
+		Surges24h:           in.Surge24h,
 	}
 	if in.OldestPendingAt != nil {
 		facts.OldestPending = now.Sub(*in.OldestPendingAt)
