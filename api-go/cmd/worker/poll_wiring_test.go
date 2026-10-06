@@ -13,6 +13,7 @@ func pollTestConfig() platform.Config {
 	return platform.Config{
 		PlanItBaseURL:                   "https://stub.planit.test/",
 		PollingDailyCallCap:             240,
+		PollingHourlyCallCap:            15,
 		PollingMinRequestSpacingSeconds: 60,
 		PollingDeltaSlots:               "09:00,12:00,15:00,17:00",
 		PollingDeltaMaxPages:            20,

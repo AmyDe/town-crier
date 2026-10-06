@@ -124,17 +124,24 @@ func (o *RunObserver) PageFetched(ctx context.Context, q planit.WindowQuery, p p
 }
 
 // PageIngested records delta_seen rows for a delta page and then dispatches
-// pending events. A dispatch failure is logged: the events stay pending.
+// pending events.
 func (o *RunObserver) PageIngested(ctx context.Context, q planit.WindowQuery, p planit.FetchPageResult) error {
 	if q.DifferentStart != nil {
 		if err := o.writeDeltaSeen(ctx, q, p); err != nil {
 			return err
 		}
 	}
+	o.DispatchPending(ctx)
+	return nil
+}
+
+// DispatchPending drains pending application events, honouring quiet hours,
+// and records a surge. A dispatch failure is logged: the events stay pending.
+func (o *RunObserver) DispatchPending(ctx context.Context) {
 	res, err := o.disp.Dispatch(ctx)
 	if err != nil {
 		o.log.WarnContext(ctx, "poll.dispatch_failed", slog.Any("error", err))
-		return nil
+		return
 	}
 	if res.Surge {
 		o.mu.Lock()
@@ -142,7 +149,6 @@ func (o *RunObserver) PageIngested(ctx context.Context, q planit.WindowQuery, p 
 		o.mu.Unlock()
 		o.record(ctx, PollEvent{Kind: EventSurge})
 	}
-	return nil
 }
 
 // WindowShort records a failed completeness check.

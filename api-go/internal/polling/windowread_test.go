@@ -281,6 +281,7 @@ func TestWindowReader_StopReasons(t *testing.T) {
 	}{
 		{"backed off", fmt.Errorf("x: %w", ErrBackedOff), StopBackoff},
 		{"budget", fmt.Errorf("x: %w", ErrBudgetExhausted), StopDailyCap},
+		{"hourly", fmt.Errorf("x: %w", ErrHourlyCap), StopHourlyCap},
 		{"429", &planit.RateLimitError{}, StopRateLimited},
 		{"403", &planit.ForbiddenError{}, StopForbidden},
 		{"timeout", fmt.Errorf("x: %w", planit.ErrTimeout), StopTimeout},

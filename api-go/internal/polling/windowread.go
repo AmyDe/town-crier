@@ -23,6 +23,7 @@ const (
 	StopRunBudget   StopReason = "run_budget"
 	StopDisabled    StopReason = "disabled"
 	StopDailyCap    StopReason = "daily_cap"
+	StopHourlyCap   StopReason = "hourly_cap"
 	StopBackoff     StopReason = "backoff"
 	StopRateLimited StopReason = "rate_limited"
 	StopForbidden   StopReason = "forbidden"
@@ -41,6 +42,8 @@ func stopReasonFor(err error) StopReason {
 		return StopBackoff
 	case errors.Is(err, ErrBudgetExhausted):
 		return StopDailyCap
+	case errors.Is(err, ErrHourlyCap):
+		return StopHourlyCap
 	case errors.As(err, &rl):
 		return StopRateLimited
 	case errors.As(err, &forbidden):

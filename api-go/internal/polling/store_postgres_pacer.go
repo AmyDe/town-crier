@@ -95,6 +95,18 @@ func (t *postgresPlanItCallTx) CountBetween(ctx context.Context, from, to time.T
 	return countPlanItCalls(ctx, t.tx, from, to)
 }
 
+func (t *postgresPlanItCallTx) NthLatestAt(ctx context.Context, n int) (*time.Time, error) {
+	var at time.Time
+	err := t.tx.QueryRow(ctx, "SELECT at FROM planit_call ORDER BY at DESC, id DESC OFFSET $1 LIMIT 1", n-1).Scan(&at)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil //nolint:nilnil // fewer than n calls is a valid state, not an error
+	}
+	if err != nil {
+		return nil, fmt.Errorf("select planit_call %d back: %w", n, err)
+	}
+	return &at, nil
+}
+
 func (t *postgresPlanItCallTx) Insert(ctx context.Context, c PlanItCall) (int64, error) {
 	var id int64
 	err := t.tx.QueryRow(ctx,

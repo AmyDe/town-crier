@@ -99,6 +99,20 @@ func (t *fakePlanItCallTx) CountBetween(ctx context.Context, from, to time.Time)
 	return t.log.count(from, to), nil
 }
 
+func (t *fakePlanItCallTx) NthLatestAt(_ context.Context, n int) (*time.Time, error) {
+	t.log.mu.Lock()
+	defer t.log.mu.Unlock()
+	ats := make([]time.Time, 0, len(t.log.rows))
+	for _, r := range t.log.rows {
+		ats = append(ats, r.At)
+	}
+	slices.SortFunc(ats, func(a, b time.Time) int { return b.Compare(a) })
+	if n < 1 || n > len(ats) {
+		return nil, nil
+	}
+	return &ats[n-1], nil
+}
+
 func (t *fakePlanItCallTx) Insert(_ context.Context, c PlanItCall) (int64, error) {
 	t.log.mu.Lock()
 	defer t.log.mu.Unlock()
@@ -242,6 +256,54 @@ func TestPacer_Do_SpacesCallsAtLeastMinSpacing(t *testing.T) {
 		if gap := log.rows[i].At.Sub(log.rows[i-1].At); gap < 60*time.Second {
 			t.Fatalf("gap %d = %s, want >= 60s", i, gap)
 		}
+	}
+}
+
+func hourlyCappedPacer(t *testing.T, now time.Time, hourlyCap int) (*Pacer, *fakePlanItCallLog) {
+	t.Helper()
+	log := &fakePlanItCallLog{}
+	clk := &fakeClock{now: now}
+	return NewPacer(log, PacerConfig{DailyCap: 300, HourlyCap: hourlyCap, MinSpacing: 60 * time.Second}, clk.Now, clk.Sleep), log
+}
+
+func TestPacer_Do_HourlyCapWaitsForTheOldestCallToAgeOut(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 6, 10, 20, 0, 0, 0, londonTZ)
+	p, log := hourlyCappedPacer(t, now, 3)
+	for i := range 4 {
+		if _, err := p.Do(context.Background(), planit.WorkWindowStart, time.Time{}, i, okWork(1)); err != nil {
+			t.Fatalf("Do %d: %v", i, err)
+		}
+	}
+	if len(log.rows) != 4 {
+		t.Fatalf("rows = %d, want 4", len(log.rows))
+	}
+	if got, want := log.rows[3].At, log.rows[0].At.Add(time.Hour); !got.Equal(want) {
+		t.Fatalf("4th call at %s, want %s (one hour after the 1st)", got, want)
+	}
+}
+
+func TestPacer_Do_HourlyCapAfterDeadline_NoRequestNoRow(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 6, 10, 20, 0, 0, 0, londonTZ)
+	p, log := hourlyCappedPacer(t, now, 3)
+	for i := range 3 {
+		if _, err := p.Do(context.Background(), planit.WorkWindowStart, time.Time{}, i, okWork(1)); err != nil {
+			t.Fatalf("Do %d: %v", i, err)
+		}
+	}
+	ctx, cancel := context.WithDeadline(context.Background(), now.Add(30*time.Minute))
+	defer cancel()
+	calls := 0
+	_, err := p.Do(ctx, planit.WorkWindowStart, time.Time{}, 3, func(context.Context) (planit.FetchPageResult, error) {
+		calls++
+		return planit.FetchPageResult{}, nil
+	})
+	if !errors.Is(err, ErrHourlyCap) || stopReasonFor(err) != StopHourlyCap {
+		t.Fatalf("err = %v, want ErrHourlyCap", err)
+	}
+	if calls != 0 || len(log.rows) != 3 {
+		t.Fatalf("calls=%d rows=%d, want 0 calls and 3 rows", calls, len(log.rows))
 	}
 }
 
