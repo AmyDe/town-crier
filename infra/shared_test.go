@@ -7,6 +7,20 @@ import (
 	"testing"
 )
 
+func TestMonitorTableCondition_AllowlistsOnlyPersonalDataFreeTables(t *testing.T) {
+	t.Parallel()
+	for _, table := range []string{"AppRequests", "AppDependencies", "AppExceptions", "AppAvailabilityResults", "ContainerAppSystemLogs"} {
+		if !strings.Contains(monitorTableCondition, "'"+table+"'") {
+			t.Errorf("%s missing from the monitor allowlist", table)
+		}
+	}
+	for _, table := range []string{"ContainerAppHTTPLogs", "AppTraces", "ContainerAppConsoleLogs", "ACSEmailStatusUpdateOperational"} {
+		if strings.Contains(monitorTableCondition, "'"+table+"'") {
+			t.Errorf("%s holds personal data and must not be allowlisted", table)
+		}
+	}
+}
+
 // TestBuildAuthorityNamesDatatable_RendersKQLPrefix asserts buildAuthorityNamesDatatable renders
 // the real authority dataset (api-go/internal/authorities/resources/authorities.json) into a
 // well-formed KQL `let names = datatable(...)[...];` prefix — the per-authority Poll HWM

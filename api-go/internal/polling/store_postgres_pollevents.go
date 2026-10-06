@@ -57,7 +57,7 @@ func (s *PostgresPollEventStore) DoneSince(ctx context.Context, axis planit.Axis
 }
 
 // PostgresHealthStore gathers HealthInputs from poll_event, planit_call,
-// application_event and poll_oracle_diff.
+// application_event, poll_oracle_diff and notifications.
 type PostgresHealthStore struct {
 	pool *pgxpool.Pool
 }
@@ -98,11 +98,19 @@ func (s *PostgresHealthStore) Inputs(ctx context.Context, now time.Time) (Health
 		{&in.Forbidden24h, "SELECT count(*) FROM planit_call WHERE status = 403 AND at > $1", []any{dayAgo}, "forbidden calls"},
 		{&in.NewAppEvents24h, "SELECT count(*) FROM application_event WHERE kind = 'new_application' AND detected_at > $1", []any{dayAgo}, "new_application events"},
 		{&in.OracleMisses7d, "SELECT count(*) FROM poll_oracle_diff WHERE reason = 'miss' AND found_at > $1", []any{weekAgo}, "oracle misses"},
+		{&in.Decisions24h, "SELECT count(*) FROM application_event WHERE kind = 'decision' AND detected_at > $1", []any{dayAgo}, "decision events"},
+		{&in.StaleEvents24h, "SELECT count(*) FROM application_event WHERE status = 'stale' AND detected_at > $1", []any{dayAgo}, "stale events"},
+		{&in.Notifications24h, "SELECT count(*) FROM notifications WHERE created_at > $1", []any{dayAgo}, "notifications"},
 	}
 	for _, c := range counts {
 		if err := s.pool.QueryRow(ctx, c.sql, c.args...).Scan(c.dst); err != nil {
 			return HealthInputs{}, fmt.Errorf("count %s: %w", c.label, err)
 		}
+	}
+	err := s.pool.QueryRow(ctx, "SELECT count(*), min(detected_at) FROM application_event WHERE status = 'pending'").
+		Scan(&in.PendingEvents, &in.OldestPendingAt)
+	if err != nil {
+		return HealthInputs{}, fmt.Errorf("count pending events: %w", err)
 	}
 
 	rows, err := s.pool.Query(ctx, dailyBucketsQuery, now)

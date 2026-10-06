@@ -36,7 +36,13 @@ func subscriptionFromID(id pulumi.IDOutput) pulumi.StringOutput {
 
 const monitorTableCondition = "((!(ActionMatches{'Microsoft.OperationalInsights/workspaces/tables/data/read'})) OR " +
 	"(@Resource[Microsoft.OperationalInsights/workspaces/tables:name] ForAllOfAnyValues:StringEquals " +
-	"{'AppRequests', 'AppDependencies', 'AppExceptions', 'AppAvailabilityResults'}))"
+	"{'AppRequests', 'AppDependencies', 'AppExceptions', 'AppAvailabilityResults', 'ContainerAppSystemLogs'}))"
+
+// monitorReaderRoleID is the custom "Town Crier Monitor Reader" role. It is
+// defined by hand because CI cannot write role definitions. It must never gain
+// */read or any Microsoft.OperationalInsights query action: either would
+// bypass monitorTableCondition.
+const monitorReaderRoleID = "29f59eec-11d7-4db3-af19-7de563f6ff51"
 
 func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.StringMap) error {
 	ciServicePrincipalID := conf.Require("ciServicePrincipalId")
@@ -147,6 +153,17 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		Scope: pulumi.Sprintf("/subscriptions/%s", subscriptionID),
 		RoleDefinitionId: pulumi.Sprintf(
 			"/subscriptions/%s/providers/Microsoft.Authorization/roleDefinitions/72fafb9e-0641-4937-9268-a91bfd8191a3", subscriptionID),
+		PrincipalId:   pulumi.String(monitorServicePrincipalID),
+		PrincipalType: pulumi.String(string(authorization.PrincipalTypeServicePrincipal)),
+	})
+	if err != nil {
+		return err
+	}
+
+	_, err = authorization.NewRoleAssignment(ctx, "claude-monitor-reader-role", &authorization.RoleAssignmentArgs{
+		Scope: pulumi.Sprintf("/subscriptions/%s", subscriptionID),
+		RoleDefinitionId: pulumi.Sprintf(
+			"/subscriptions/%s/providers/Microsoft.Authorization/roleDefinitions/%s", subscriptionID, monitorReaderRoleID),
 		PrincipalId:   pulumi.String(monitorServicePrincipalID),
 		PrincipalType: pulumi.String(string(authorization.PrincipalTypeServicePrincipal)),
 	})

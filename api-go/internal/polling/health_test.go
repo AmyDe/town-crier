@@ -76,3 +76,40 @@ func TestComputeHealth_Matrix(t *testing.T) {
 		})
 	}
 }
+
+func TestComputeHealth_Facts(t *testing.T) {
+	t.Parallel()
+	wed := londonAt(6, 10, 9, 0)
+	night := londonAt(6, 10, 2, 0)
+	pendingSince := wed.Add(-90 * time.Minute)
+	tests := []struct {
+		name   string
+		now    time.Time
+		mutate func(in *HealthInputs)
+		want   HealthFacts
+	}{
+		{"steady state", wed, func(*HealthInputs) {}, HealthFacts{NewApplications24h: 1000}},
+		{"windows never read are unverified", wed, func(in *HealthInputs) { in.Windows = in.Windows[2:] }, HealthFacts{AlertBandUnverified: 2, NewApplications24h: 1000}},
+		{"windows still due are counted during the night", night, func(in *HealthInputs) {
+			old := londonAt(6, 9, 17, 59)
+			in.Windows[0].LastCompleteAt = &old
+		}, HealthFacts{AlertBandUnverified: 1, NewApplications24h: 1000}},
+		{"event and notification counts pass through", wed, func(in *HealthInputs) {
+			in.Decisions24h = 12
+			in.StaleEvents24h = 3
+			in.PendingEvents = 4
+			in.OldestPendingAt = &pendingSince
+			in.Notifications24h = 9
+		}, HealthFacts{NewApplications24h: 1000, Decisions24h: 12, StaleEvents24h: 3, PendingEvents: 4, OldestPending: 90 * time.Minute, Notifications24h: 9}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			in := steadyInputs(tt.now)
+			tt.mutate(&in)
+			if got := ComputeHealth(in, tt.now).Facts; got != tt.want {
+				t.Fatalf("facts = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}

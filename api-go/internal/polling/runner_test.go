@@ -535,7 +535,11 @@ func TestRunner_SpanCarriesRunAttributes(t *testing.T) {
 	r.world.allWindowsComplete()
 	r.world.calls = 7
 	r.counters.c = RunCounts{Violations: 2, Missed: 1}
-	r.health.in = HealthInputs{Surge24h: 1, Violations24h: 1}
+	pendingSince := londonAt(6, 10, 18, 30)
+	r.health.in = HealthInputs{
+		Surge24h: 1, Violations24h: 1, NewAppEvents24h: 1400, Decisions24h: 1200,
+		StaleEvents24h: 5, PendingEvents: 2, OldestPendingAt: &pendingSince, Notifications24h: 30,
+	}
 
 	spans := recordSpans(t, func() {
 		if _, err := r.runner.Run(context.Background()); err != nil {
@@ -547,7 +551,12 @@ func TestRunner_SpanCarriesRunAttributes(t *testing.T) {
 	if !ok {
 		t.Fatal("no PlanIt poll run span")
 	}
-	wantInt := map[string]int64{"poll.pages": 0, "poll.calls_today": 7, "poll.window_violations": 2, "poll.window_missed": 1}
+	wantInt := map[string]int64{
+		"poll.pages": 0, "poll.calls_today": 7, "poll.window_violations": 2, "poll.window_missed": 1,
+		"poll.alert_band_unverified": 0, "poll.events.new_application_24h": 1400, "poll.events.decision_24h": 1200,
+		"poll.events.stale_24h": 5, "poll.events.pending": 2, "poll.events.oldest_pending_minutes": 90,
+		"poll.notifications_24h": 30,
+	}
 	for k, want := range wantInt {
 		if v, ok := attrValue(span, k); !ok || v.AsInt64() != want {
 			t.Fatalf("%s = %v (present %v), want %d", k, v, ok, want)
