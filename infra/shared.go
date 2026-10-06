@@ -1810,9 +1810,9 @@ func planitPollAlertSpecs() []logAlertSpec {
 			logAlertSpec{
 				name:        fmt.Sprintf("alert-planit-poll-critical%s-shared", e.suffix),
 				displayName: fmt.Sprintf("PlanIt poll health critical (%s)", e.label),
-				description: fmt.Sprintf("A %s PlanIt poll run reported poll.health == critical in the last hour (a 403 or an event surge). A person must act.", e.label),
+				description: fmt.Sprintf("A %s PlanIt poll run reported poll.health == critical in the last 2 hours (a 403 or an event surge). A person must act.", e.label),
 				severity:    e.critical,
-				window:      "PT1H",
+				window:      "PT2H",
 				freq:        "PT5M",
 				query:       planitPollRunSpanFilter + "\n" + envFilter + "\n" + `| where tostring(Properties["poll.health"]) == "critical"`,
 				threshold:   0,
