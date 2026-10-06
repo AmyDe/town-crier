@@ -7,3 +7,4 @@ config:
   town-crier:azureTenantId: 947ab4d8-734a-4d97-8bd7-b5ddf3caa5ab
   town-crier:postgresAadAdminObjectId: 397680e0-c5f9-40a9-b667-0659f64cad00
   town-crier:postgresAadAdminPrincipalName: amy_salter.uk#EXT#@amysalter.onmicrosoft.com
+  town-crier:routineFireUrl: https://api.anthropic.com/v1/claude_code/routines/trig_017n6Fb8eToXTmnZ23NeoAp4/fire
