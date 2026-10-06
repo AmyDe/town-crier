@@ -164,7 +164,7 @@ func (r *Runner) Run(ctx context.Context) (RunResult, error) {
 		r.d.Log.WarnContext(ctx, "poll.flush_failed", slog.Any("error", ferr))
 	}
 	if res.Stop != StopDisabled {
-		res.Health = r.health(flushCtx)
+		res.Health = r.health(flushCtx, res.Counts)
 	}
 	r.setSpanAttrs(span, res)
 	return res, err
@@ -346,7 +346,7 @@ func alertBandComplete(state WindowPlanState, now time.Time) bool {
 	return true
 }
 
-func (r *Runner) health(ctx context.Context) Health {
+func (r *Runner) health(ctx context.Context, counts RunCounts) Health {
 	now := r.d.Now()
 	in, err := r.d.Health.Inputs(ctx, now)
 	if err != nil {
@@ -361,6 +361,7 @@ func (r *Runner) health(ctx context.Context) Health {
 		return Health{}
 	}
 	in.OracleEnabled = r.cfg.OracleEnabled
+	in.SurgeThisRun = counts.Surge
 	return ComputeHealth(in, now)
 }
 
@@ -384,8 +385,17 @@ func (r *Runner) setSpanAttrs(span trace.Span, res RunResult) {
 		reasons[i] = string(reason)
 	}
 	// App Insights drops slice-valued span attributes, so the reasons are joined.
+	facts := res.Health.Facts
 	span.SetAttributes(
 		attribute.String("poll.health", string(res.Health.Level)),
 		attribute.String("poll.health_reasons", strings.Join(reasons, ",")),
+		attribute.Int("poll.alert_band_unverified", facts.AlertBandUnverified),
+		attribute.Int("poll.events.new_application_24h", facts.NewApplications24h),
+		attribute.Int("poll.events.decision_24h", facts.Decisions24h),
+		attribute.Int("poll.events.stale_24h", facts.StaleEvents24h),
+		attribute.Int("poll.events.pending", facts.PendingEvents),
+		attribute.Int64("poll.events.oldest_pending_minutes", int64(facts.OldestPending.Minutes())),
+		attribute.Int("poll.notifications_24h", facts.Notifications24h),
+		attribute.Int("poll.events.surge_24h", facts.Surges24h),
 	)
 }

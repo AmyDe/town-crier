@@ -38,24 +38,48 @@ const eventsLowFraction = 0.2
 type Health struct {
 	Level   HealthLevel
 	Reasons []HealthReason
+	Facts   HealthFacts
+}
+
+// HealthFacts are the pipeline counts behind a health check, exported on the
+// run span for monitors that cannot read Postgres. AlertBandUnverified counts
+// alert-band windows not completed since the current budget day began.
+// OldestPending is zero when nothing is pending. Surges24h is informational
+// and never drives a reason.
+type HealthFacts struct {
+	AlertBandUnverified int
+	NewApplications24h  int
+	Decisions24h        int
+	StaleEvents24h      int
+	PendingEvents       int
+	OldestPending       time.Duration
+	Notifications24h    int
+	Surges24h           int
 }
 
 // HealthInputs is everything ComputeHealth reads. Windows holds the poll_window
 // rows for the alert band. The counters cover the last 24h, except
 // ShortWindows (windows short at least twice in the current budget day),
 // NewAppDaily14 (the 14 rolling 24h buckets of new_application events before
-// the last 24h) and OracleMisses7d.
+// the last 24h), OracleMisses7d and the pending counts, which are current.
+// SurgeThisRun is true only for the run that detected an event surge.
 type HealthInputs struct {
-	Windows         []WindowState
-	ShortWindows    int
-	Violations24h   int
-	Missed24h       int
-	Forbidden24h    int
-	Surge24h        int
-	NewAppEvents24h int
-	NewAppDaily14   []int
-	OracleEnabled   bool
-	OracleMisses7d  int
+	Windows          []WindowState
+	ShortWindows     int
+	Violations24h    int
+	Missed24h        int
+	Forbidden24h     int
+	Surge24h         int
+	SurgeThisRun     bool
+	NewAppEvents24h  int
+	NewAppDaily14    []int
+	OracleEnabled    bool
+	OracleMisses7d   int
+	Decisions24h     int
+	StaleEvents24h   int
+	PendingEvents    int
+	OldestPendingAt  *time.Time
+	Notifications24h int
 }
 
 // ComputeHealth applies the section 8 rules. It is pure.
@@ -73,16 +97,28 @@ func ComputeHealth(in HealthInputs, now time.Time) Health {
 	add(eventsLow(in, now), ReasonEventsLow)
 	add(in.OracleEnabled && in.OracleMisses7d > 0, ReasonOracleMiss)
 	add(in.Forbidden24h > 0, ReasonForbidden)
-	add(in.Surge24h > 0, ReasonSurge)
+	add(in.SurgeThisRun, ReasonSurge)
 
 	level := HealthOK
 	if len(reasons) > 0 {
 		level = HealthDegraded
 	}
-	if in.Forbidden24h > 0 || in.Surge24h > 0 {
+	if in.Forbidden24h > 0 || in.SurgeThisRun {
 		level = HealthCritical
 	}
-	return Health{Level: level, Reasons: reasons}
+	facts := HealthFacts{
+		AlertBandUnverified: unverifiedWindows(in.Windows, now),
+		NewApplications24h:  in.NewAppEvents24h,
+		Decisions24h:        in.Decisions24h,
+		StaleEvents24h:      in.StaleEvents24h,
+		PendingEvents:       in.PendingEvents,
+		Notifications24h:    in.Notifications24h,
+		Surges24h:           in.Surge24h,
+	}
+	if in.OldestPendingAt != nil {
+		facts.OldestPending = now.Sub(*in.OldestPendingAt)
+	}
+	return Health{Level: level, Reasons: reasons, Facts: facts}
 }
 
 // alertBandUnverified judges only between 06:00 and 18:00, when the night that
@@ -92,21 +128,27 @@ func alertBandUnverified(windows []WindowState, now time.Time) bool {
 	if local.Hour() < dayStartHour || local.Hour() >= dayEndHour {
 		return false
 	}
-	nightStart := time.Date(local.Year(), local.Month(), local.Day()-1, dayEndHour, 0, 0, 0, budgetLocation)
+	return unverifiedWindows(windows, now) > 0
+}
+
+func unverifiedWindows(windows []WindowState, now time.Time) int {
+	nightStart, _ := BudgetDay(now)
+	local := now.In(budgetLocation)
 	today := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, time.UTC)
 	byRef := make(map[WindowRef]WindowState, len(windows))
 	for _, w := range windows {
 		byRef[WindowRef{Axis: w.Axis, Day: w.Day}] = w
 	}
+	n := 0
 	for age := 0; age <= alertBandMaxAge; age++ {
 		for _, axis := range [...]planit.Axis{planit.AxisStart, planit.AxisDecided} {
 			w := byRef[WindowRef{Axis: axis, Day: today.AddDate(0, 0, -age)}]
 			if w.LastCompleteAt == nil || w.LastCompleteAt.Before(nightStart) {
-				return true
+				n++
 			}
 		}
 	}
-	return false
+	return n
 }
 
 func eventsLow(in HealthInputs, now time.Time) bool {

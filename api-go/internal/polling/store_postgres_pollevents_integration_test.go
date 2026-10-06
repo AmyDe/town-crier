@@ -16,7 +16,7 @@ import (
 func newPollEventPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	pool := pgtest.New(t)
-	pgtest.Truncate(t, pool, "poll_event", "planit_call", "application_event", "poll_oracle_diff", "delta_seen", "poll_window_member")
+	pgtest.Truncate(t, pool, "poll_event", "planit_call", "application_event", "poll_oracle_diff", "delta_seen", "poll_window_member", "notifications")
 	return pool
 }
 
@@ -90,6 +90,12 @@ func TestPostgresHealthStore_Inputs(t *testing.T) {
 		exec(`INSERT INTO application_event (uid, authority_code, kind, detected_at) VALUES ('n', '1', 'new_application', $1)`, now.Add(-ago))
 	}
 	exec(`INSERT INTO application_event (uid, authority_code, kind, detected_at) VALUES ('d', '1', 'decision', $1)`, now.Add(-time.Hour))
+	exec(`INSERT INTO application_event (uid, authority_code, kind, detected_at, status) VALUES
+		('s1', '1', 'decision', $1, 'sent'), ('s2', '1', 'decision', $2, 'sent'), ('x', '1', 'decision', $1, 'stale')`,
+		now.Add(-2*time.Hour), now.Add(-30*time.Hour))
+	exec(`INSERT INTO notifications (id, user_id, application_uid, authority_id, event_type, created_at) VALUES
+		('a', 'u1', 'app1', 1, 'new_application', $1), ('b', 'u2', 'app1', 1, 'new_application', $2)`,
+		now.Add(-time.Hour), now.Add(-25*time.Hour))
 	for _, ago := range []time.Duration{25 * time.Hour, 26 * time.Hour, 49 * time.Hour, 14*24*time.Hour + 5*time.Hour} {
 		exec(`INSERT INTO application_event (uid, authority_code, kind, detected_at) VALUES ('h', '1', 'new_application', $1)`, now.Add(-ago))
 	}
@@ -119,6 +125,26 @@ func TestPostgresHealthStore_Inputs(t *testing.T) {
 	}
 	if in.OracleMisses7d != 1 {
 		t.Errorf("OracleMisses7d = %d, want 1", in.OracleMisses7d)
+	}
+	if in.Decisions24h != 3 || in.StaleEvents24h != 1 || in.Notifications24h != 1 {
+		t.Errorf("decisions=%d stale=%d notifications=%d, want 3, 1, 1", in.Decisions24h, in.StaleEvents24h, in.Notifications24h)
+	}
+	oldestPending := now.Add(-14*24*time.Hour - 5*time.Hour)
+	if in.PendingEvents != 8 || in.OldestPendingAt == nil || !in.OldestPendingAt.Equal(oldestPending) {
+		t.Errorf("pending=%d oldest=%v, want 8 at %v", in.PendingEvents, in.OldestPendingAt, oldestPending)
+	}
+}
+
+func TestPostgresHealthStore_InputsWithNothingPending(t *testing.T) {
+	health := NewPostgresHealthStore(newPollEventPool(t))
+
+	in, err := health.Inputs(context.Background(), londonAt(6, 10, 9, 0))
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if in.PendingEvents != 0 || in.OldestPendingAt != nil {
+		t.Errorf("pending=%d oldest=%v, want 0 and nil", in.PendingEvents, in.OldestPendingAt)
 	}
 }
 

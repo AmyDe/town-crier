@@ -58,9 +58,10 @@ func TestComputeHealth_Matrix(t *testing.T) {
 		{"oracle miss in dev", wed, func(in *HealthInputs) { in.OracleEnabled = true; in.OracleMisses7d = 1 }, HealthDegraded, []HealthReason{ReasonOracleMiss}},
 		{"oracle miss ignored when oracle is off", wed, func(in *HealthInputs) { in.OracleMisses7d = 1 }, HealthOK, nil},
 		{"forbidden is critical", wed, func(in *HealthInputs) { in.Forbidden24h = 1 }, HealthCritical, []HealthReason{ReasonForbidden}},
-		{"surge is critical", wed, func(in *HealthInputs) { in.Surge24h = 1 }, HealthCritical, []HealthReason{ReasonSurge}},
+		{"surge this run is critical", wed, func(in *HealthInputs) { in.SurgeThisRun = true }, HealthCritical, []HealthReason{ReasonSurge}},
+		{"surge in the last 24h without one this run is ok", wed, func(in *HealthInputs) { in.Surge24h = 1 }, HealthOK, nil},
 		{"critical outranks degraded and every reason is listed", wed, func(in *HealthInputs) {
-			in.Surge24h = 1
+			in.SurgeThisRun = true
 			in.Violations24h = 3
 		}, HealthCritical, []HealthReason{ReasonWindowViolation, ReasonSurge}},
 	}
@@ -72,6 +73,44 @@ func TestComputeHealth_Matrix(t *testing.T) {
 			got := ComputeHealth(in, tt.now)
 			if got.Level != tt.level || !slices.Equal(got.Reasons, tt.want) {
 				t.Fatalf("got %+v, want level %s reasons %v", got, tt.level, tt.want)
+			}
+		})
+	}
+}
+
+func TestComputeHealth_Facts(t *testing.T) {
+	t.Parallel()
+	wed := londonAt(6, 10, 9, 0)
+	night := londonAt(6, 10, 2, 0)
+	pendingSince := wed.Add(-90 * time.Minute)
+	tests := []struct {
+		name   string
+		now    time.Time
+		mutate func(in *HealthInputs)
+		want   HealthFacts
+	}{
+		{"steady state", wed, func(*HealthInputs) {}, HealthFacts{NewApplications24h: 1000}},
+		{"windows never read are unverified", wed, func(in *HealthInputs) { in.Windows = in.Windows[2:] }, HealthFacts{AlertBandUnverified: 2, NewApplications24h: 1000}},
+		{"windows still due are counted during the night", night, func(in *HealthInputs) {
+			old := londonAt(6, 9, 17, 59)
+			in.Windows[0].LastCompleteAt = &old
+		}, HealthFacts{AlertBandUnverified: 1, NewApplications24h: 1000}},
+		{"surge count passes through", wed, func(in *HealthInputs) { in.Surge24h = 2 }, HealthFacts{NewApplications24h: 1000, Surges24h: 2}},
+		{"event and notification counts pass through", wed, func(in *HealthInputs) {
+			in.Decisions24h = 12
+			in.StaleEvents24h = 3
+			in.PendingEvents = 4
+			in.OldestPendingAt = &pendingSince
+			in.Notifications24h = 9
+		}, HealthFacts{NewApplications24h: 1000, Decisions24h: 12, StaleEvents24h: 3, PendingEvents: 4, OldestPending: 90 * time.Minute, Notifications24h: 9}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			in := steadyInputs(tt.now)
+			tt.mutate(&in)
+			if got := ComputeHealth(in, tt.now).Facts; got != tt.want {
+				t.Fatalf("facts = %+v, want %+v", got, tt.want)
 			}
 		})
 	}

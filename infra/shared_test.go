@@ -5,6 +5,20 @@ import (
 	"testing"
 )
 
+func TestMonitorTableCondition_AllowlistsOnlyPersonalDataFreeTables(t *testing.T) {
+	t.Parallel()
+	for _, table := range []string{"AppRequests", "AppDependencies", "AppExceptions", "AppAvailabilityResults", "ContainerAppSystemLogs"} {
+		if !strings.Contains(monitorTableCondition, "'"+table+"'") {
+			t.Errorf("%s missing from the monitor allowlist", table)
+		}
+	}
+	for _, table := range []string{"ContainerAppHTTPLogs", "AppTraces", "ContainerAppConsoleLogs", "ACSEmailStatusUpdateOperational"} {
+		if strings.Contains(monitorTableCondition, "'"+table+"'") {
+			t.Errorf("%s holds personal data and must not be allowlisted", table)
+		}
+	}
+}
+
 // TestSharePageAnalyticsQueries_RetainInvariants pins the substrings in isLikelyBotQuery and
 // sharePageHumanTrafficQuery (tc-kg77x / GH #1020) that the compiler cannot check but a future
 // edit could easily break silently: the prod-only filter (dev and prod share one App Insights

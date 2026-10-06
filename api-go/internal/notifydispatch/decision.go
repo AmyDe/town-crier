@@ -191,7 +191,7 @@ func (d *DecisionDispatcher) canPush(profile *profiles.UserProfile, m *userMatch
 	if !profile.EffectiveTier(d.now()).IsPaid() || !profile.Preferences.PushEnabled {
 		return false
 	}
-	zonePushOptIn := m.zone && m.watchZoneID != nil && profile.ZonePreferences[*m.watchZoneID].DecisionPush
+	zonePushOptIn := m.zone && m.watchZoneID != nil && profile.GetZonePreferences(*m.watchZoneID).DecisionPush
 	savedPushOptIn := m.saved && profile.Preferences.SavedDecisionPush
 	return zonePushOptIn || savedPushOptIn
 }

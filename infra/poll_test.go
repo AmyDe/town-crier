@@ -84,6 +84,16 @@ func TestAddGoWorkerEnv_ACSSecretOnlyOnDigestJobs(t *testing.T) {
 	}
 }
 
+func TestPlanitPollAlertSpecs_AllWindowsAreTwoHours(t *testing.T) {
+	t.Parallel()
+
+	for _, s := range planitPollAlertSpecs() {
+		if s.window != "PT2H" {
+			t.Errorf("%s window = %q, want PT2H", s.name, s.window)
+		}
+	}
+}
+
 func TestPlanitPollAlertSpecs_SeveritiesAndScope(t *testing.T) {
 	t.Parallel()
 
