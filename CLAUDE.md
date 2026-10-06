@@ -220,7 +220,6 @@ Keep the working set (open + in-progress) under ~200.
 ## Shell & Tooling
 
 - **Non-interactive flags always.** `cp`/`mv`/`rm` may be aliased to `-i`: use `cp -f`, `mv -f`, `rm -f`, `rm -rf`. Pass `--yes` or equivalent to fix/format CLIs.
-- **RTK rewrites `rg`/`grep`** via a shell hook and can mangle output, making Grep come back empty. If a result looks wrong, use plain `grep`/`rg` in Bash or `rtk proxy <cmd>`.
 - **Bash CWD persists between calls.** A stale `cd` makes a later reset/create hit the wrong tree; anchor with `git -C <repo-root> …` or absolute paths.
 - **Single-quote bead notes.** A backtick in `bd update --notes "…"` triggers command substitution.
 
