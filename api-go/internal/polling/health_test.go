@@ -58,9 +58,10 @@ func TestComputeHealth_Matrix(t *testing.T) {
 		{"oracle miss in dev", wed, func(in *HealthInputs) { in.OracleEnabled = true; in.OracleMisses7d = 1 }, HealthDegraded, []HealthReason{ReasonOracleMiss}},
 		{"oracle miss ignored when oracle is off", wed, func(in *HealthInputs) { in.OracleMisses7d = 1 }, HealthOK, nil},
 		{"forbidden is critical", wed, func(in *HealthInputs) { in.Forbidden24h = 1 }, HealthCritical, []HealthReason{ReasonForbidden}},
-		{"surge is critical", wed, func(in *HealthInputs) { in.Surge24h = 1 }, HealthCritical, []HealthReason{ReasonSurge}},
+		{"surge this run is critical", wed, func(in *HealthInputs) { in.SurgeThisRun = true }, HealthCritical, []HealthReason{ReasonSurge}},
+		{"surge in the last 24h without one this run is ok", wed, func(in *HealthInputs) { in.Surge24h = 1 }, HealthOK, nil},
 		{"critical outranks degraded and every reason is listed", wed, func(in *HealthInputs) {
-			in.Surge24h = 1
+			in.SurgeThisRun = true
 			in.Violations24h = 3
 		}, HealthCritical, []HealthReason{ReasonWindowViolation, ReasonSurge}},
 	}
@@ -94,6 +95,7 @@ func TestComputeHealth_Facts(t *testing.T) {
 			old := londonAt(6, 9, 17, 59)
 			in.Windows[0].LastCompleteAt = &old
 		}, HealthFacts{AlertBandUnverified: 1, NewApplications24h: 1000}},
+		{"surge count passes through", wed, func(in *HealthInputs) { in.Surge24h = 2 }, HealthFacts{NewApplications24h: 1000, Surges24h: 2}},
 		{"event and notification counts pass through", wed, func(in *HealthInputs) {
 			in.Decisions24h = 12
 			in.StaleEvents24h = 3

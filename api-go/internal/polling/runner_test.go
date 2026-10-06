@@ -534,10 +534,10 @@ func TestRunner_SpanCarriesRunAttributes(t *testing.T) {
 	r := newRunnerRig(t, londonAt(6, 10, 20, 0), nil)
 	r.world.allWindowsComplete()
 	r.world.calls = 7
-	r.counters.c = RunCounts{Violations: 2, Missed: 1}
+	r.counters.c = RunCounts{Violations: 2, Missed: 1, Surge: true}
 	pendingSince := londonAt(6, 10, 18, 30)
 	r.health.in = HealthInputs{
-		Surge24h: 1, Violations24h: 1, NewAppEvents24h: 1400, Decisions24h: 1200,
+		Surge24h: 3, Violations24h: 1, NewAppEvents24h: 1400, Decisions24h: 1200,
 		StaleEvents24h: 5, PendingEvents: 2, OldestPendingAt: &pendingSince, Notifications24h: 30,
 	}
 
@@ -555,7 +555,7 @@ func TestRunner_SpanCarriesRunAttributes(t *testing.T) {
 		"poll.pages": 0, "poll.calls_today": 7, "poll.window_violations": 2, "poll.window_missed": 1,
 		"poll.alert_band_unverified": 0, "poll.events.new_application_24h": 1400, "poll.events.decision_24h": 1200,
 		"poll.events.stale_24h": 5, "poll.events.pending": 2, "poll.events.oldest_pending_minutes": 90,
-		"poll.notifications_24h": 30,
+		"poll.notifications_24h": 30, "poll.events.surge_24h": 3,
 	}
 	for k, want := range wantInt {
 		if v, ok := attrValue(span, k); !ok || v.AsInt64() != want {
@@ -573,6 +573,46 @@ func TestRunner_SpanCarriesRunAttributes(t *testing.T) {
 	}
 	if _, ok := attrValue(span, "poll.retry_after_seconds"); ok {
 		t.Fatal("retry_after_seconds set on a run without a 429")
+	}
+}
+
+func TestRunner_SurgeIsCriticalOnlyOnTheDetectingRun(t *testing.T) {
+	tests := []struct {
+		name        string
+		counts      RunCounts
+		wantHealth  string
+		wantReasons string
+	}{
+		{"detecting run", RunCounts{Surge: true}, "critical", "surge"},
+		{"later run with a surge in the last 24h", RunCounts{}, "ok", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := newRunnerRig(t, londonAt(6, 10, 20, 0), nil)
+			r.world.allWindowsComplete()
+			r.counters.c = tt.counts
+			r.health.in = HealthInputs{Surge24h: 1, NewAppEvents24h: 1000, NewAppDaily14: []int{1000}}
+
+			spans := recordSpans(t, func() {
+				if _, err := r.runner.Run(context.Background()); err != nil {
+					t.Fatal(err)
+				}
+			})
+
+			span, ok := spanNamed(spans, "PlanIt poll run")
+			if !ok {
+				t.Fatal("no PlanIt poll run span")
+			}
+			if v, _ := attrValue(span, "poll.health"); v.AsString() != tt.wantHealth {
+				t.Fatalf("health = %q, want %q", v.AsString(), tt.wantHealth)
+			}
+			if v, _ := attrValue(span, "poll.health_reasons"); v.AsString() != tt.wantReasons {
+				t.Fatalf("reasons = %q, want %q", v.AsString(), tt.wantReasons)
+			}
+			if v, ok := attrValue(span, "poll.events.surge_24h"); !ok || v.AsInt64() != 1 {
+				t.Fatalf("surge_24h = %v (present %v), want 1", v, ok)
+			}
+		})
 	}
 }
 
