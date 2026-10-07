@@ -1,10 +1,5 @@
 import L from 'leaflet';
 
-/**
- * Maps a PlanIt `app_state` to the design-system status colour token used to
- * tint a single-member pin. Mirrors the ApplicationCard status treatment so the
- * map and list agree. Unknown states fall back to the neutral withdrawn token.
- */
 const STATUS_TOKEN: Record<string, string> = {
   Undecided: '--tc-status-pending',
   Permitted: '--tc-status-permitted',
@@ -21,20 +16,12 @@ function statusToken(appState: string): string {
   return STATUS_TOKEN[appState] ?? '--tc-status-withdrawn';
 }
 
-/**
- * HTML for an amber aggregate count bubble (`count > 1` cell). Styling lives in
- * `leaflet-overrides.css` (`.tc-cluster-bubble`); the amber token is referenced
- * inline because Leaflet divIcons inject raw HTML outside the CSS-module scope.
- */
+/** The amber token is inline because Leaflet divIcons inject raw HTML outside CSS-module scope. */
 export function countBubbleHtml(count: number): string {
   return `<div class="tc-cluster-bubble" style="background: var(--tc-amber)">${count}</div>`;
 }
 
-/**
- * HTML for a status-coloured map pin (`count == 1` cell). The per-status colour
- * is passed as the `--tc-pin-color` custom property so `.tc-status-pin` in
- * `leaflet-overrides.css` can theme the SVG fill from a design token.
- */
+/** The status colour is passed as `--tc-pin-color` so `.tc-status-pin` can theme the SVG fill. */
 export function statusPinHtml(appState: string): string {
   const token = statusToken(appState);
   return `<div class="tc-status-pin" style="--tc-pin-color: var(${token})">

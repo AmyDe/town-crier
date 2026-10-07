@@ -15,10 +15,7 @@ const UK_CENTER: [number, number] = [54.5, -2.5];
 const ZONE_ZOOM = 13;
 const MAX_ZOOM = 18;
 
-// Leaflet SVG layers accept raw colour values, not CSS custom properties —
-// this hex MUST be kept in sync BY HAND with --tc-amber in tokens.css (dark
-// theme value, #E9A620 / rgb(233, 166, 32)) whenever the palette changes.
-// Mirrors ConfirmMap's/BoundaryMap's read-only boundary convention.
+// Leaflet SVG layers need raw colours, not CSS custom properties: keep in sync by hand with --tc-amber (dark theme) in tokens.css.
 const ZONE_BOUNDARY_OPTIONS = {
   color: 'rgba(233, 166, 32, 0.8)',
   fillColor: 'rgb(233, 166, 32)',
@@ -31,12 +28,7 @@ interface ZoneBoundaryLayerProps {
   readonly zone: WatchZoneSummary;
 }
 
-/**
- * Read-only boundary overlay for the currently selected zone — a `<Circle>`
- * for a plain zone, a `<Polygon>` (outer ring only) for a custom shape.
- * GeoJSON vertex tuples are `[longitude, latitude]`; Leaflet positions are
- * `[latitude, longitude]` — this is the one place that conversion happens.
- */
+/** GeoJSON vertices are `[longitude, latitude]`; Leaflet positions are `[latitude, longitude]`. */
 function ZoneBoundaryLayer({ zone }: ZoneBoundaryLayerProps) {
   if (zone.boundary) {
     const outerRing = zone.boundary.coordinates[0] ?? [];
@@ -80,13 +72,6 @@ interface ClusterLayerProps {
   readonly onSelectMember: (member: ClusterMember) => void;
 }
 
-/**
- * Renders the cluster aggregates as Leaflet markers and reports the viewport.
- * Lives inside `MapContainer` so it can read the map via `useMap`: it reports
- * the visible rect on mount and on every `moveend`/`zoomend` (the hook debounces
- * the resulting refetch), zooms in on a count-bubble tap, and routes a single
- * pin tap to a point-read.
- */
 function ClusterLayer({ clusters, onRegionChange, onSelectMember }: ClusterLayerProps) {
   const map = useMap();
 

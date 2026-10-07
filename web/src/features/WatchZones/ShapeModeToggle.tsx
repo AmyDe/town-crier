@@ -1,9 +1,6 @@
 import styles from './ShapeModeToggle.module.css';
 
-/**
- * Whether a zone being created/edited is a plain circle (centre + radius) or
- * a hand-drawn custom shape. Personal/Pro only — see GH#1031.
- */
+/** Whether a zone is a plain circle (centre + radius) or a hand-drawn custom shape (Personal/Pro only). */
 export type ShapeMode = 'circle' | 'custom';
 
 interface Props {

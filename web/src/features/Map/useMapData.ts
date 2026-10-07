@@ -19,12 +19,8 @@ interface MapRegion {
 }
 
 /**
- * ViewModel for the watch-zone map. Drives server-computed cluster aggregates
- * (GH#698) for the active zone's current viewport instead of eager-draining
- * every application across every zone. Panning/zooming refetches the visible
- * clusters (debounced); the status chip refetches with `status=` server-side
- * rather than filtering a held set; a single-member pin tap point-reads the
- * full application by its `{authority, name}` identity.
+ * ViewModel for the watch-zone map: refetches server-side clusters for the
+ * active zone's viewport (debounced) and point-reads a single-member pin.
  */
 export function useMapData(port: MapPort) {
   const [zones, setZones] = useState<readonly WatchZoneSummary[]>([]);
@@ -48,8 +44,6 @@ export function useMapData(port: MapPort) {
     [zones, selectedZoneId],
   );
 
-  // Load the user's zones once and auto-select the first (mirrors the list's
-  // auto-select). The map then drives clusters from the active zone's viewport.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -90,8 +84,6 @@ export function useMapData(port: MapPort) {
     [port],
   );
 
-  // Called by the map on (debounced) move/zoom. Stable identity so Leaflet's
-  // listeners stay attached; reads the active zone/filter via refs.
   const onRegionChange = useCallback(
     (bounds: MapBounds, zoom: number) => {
       regionRef.current = { bounds, zoom };
@@ -107,7 +99,6 @@ export function useMapData(port: MapPort) {
     [fetchClusters],
   );
 
-  // Status chip → immediate server-side refetch for the current viewport.
   const setStatusFilter = useCallback(
     (status: ApplicationStatus | null) => {
       setSelectedStatusFilter(status);
@@ -120,8 +111,6 @@ export function useMapData(port: MapPort) {
     [fetchClusters],
   );
 
-  // Switch the active zone: reset the filter and requery the current viewport
-  // for the new zone (the map will recentre and refine via onRegionChange).
   const selectZone = useCallback(
     (zone: WatchZoneSummary) => {
       setSelectedZoneId(zone.id);
@@ -136,8 +125,6 @@ export function useMapData(port: MapPort) {
     [fetchClusters],
   );
 
-  // Point-read the full application for a single-member cell. Returns null on a
-  // transient failure so the caller can leave the map untouched.
   const resolveMember = useCallback(
     async (member: ClusterMember): Promise<PlanningApplication | null> => {
       try {

@@ -16,13 +16,7 @@ import styles from './WatchZoneEditPage.module.css';
 interface Props {
   repository: WatchZoneRepository;
   zone: WatchZoneSummary;
-  /**
-   * The current user's subscription tier. Per-zone push and instant-email
-   * toggles are only rendered for Personal/Pro tiers — Free users see no
-   * notification controls (they fall back to the account-level weekly digest).
-   * Optional so legacy call sites keep compiling; defaults to Free, which
-   * hides the toggles.
-   */
+  /** Per-zone push and instant-email toggles render only for Personal/Pro. Defaults to Free. */
   tier?: SubscriptionTier;
 }
 
@@ -36,14 +30,10 @@ export function WatchZoneEditPage({ repository, zone, tier = 'Free' }: Props) {
   const zoneEdit = useZoneEdit(repository, zone, drawing.boundary);
   const showZoneNotificationToggles = tier !== 'Free';
   const canDrawCustomShape = tier !== 'Free';
-  // Whether this zone's *saved* shape is a custom polygon, independent of
-  // whether the current tier can still edit it — a zone drawn while paid
-  // keeps its shape after a downgrade (GH#1031: paused, never converted).
+  // A zone drawn while paid keeps its custom shape after a downgrade (paused, never converted).
   const zoneHasCustomShape = zoneEdit.shapeMode === 'custom';
   const isCustomShape = canDrawCustomShape && zoneHasCustomShape;
-  // A downgraded user holding a custom-shape zone: the radius picker would
-  // silently misrepresent the zone's actual coverage, so this case gets its
-  // own locked notice instead of falling through to the circle controls.
+  // The radius picker would misrepresent a downgraded user's custom-shape zone, so it gets a locked notice instead.
   const shapeLockedByTier = zoneHasCustomShape && !canDrawCustomShape;
 
   type PreferenceField =

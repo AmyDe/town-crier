@@ -11,10 +11,7 @@ function shapeModeOf(boundary: WatchZoneBoundary | null): ShapeMode {
   return boundary ? 'custom' : 'circle';
 }
 
-/** Structural equality for a GeoJSON boundary — good enough here since
- * both sides always come from the same wire shape (no extra keys, no
- * `NaN`s), and a byte-for-byte compare is exactly what "has this shape
- * been redrawn" means. */
+/** JSON.stringify comparison is sound because both sides come from the same wire shape. */
 function boundariesEqual(a: WatchZoneBoundary | null, b: WatchZoneBoundary | null): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
@@ -48,10 +45,6 @@ export function useZoneEdit(
     return null;
   }, [name]);
 
-  // The boundary actually in play right now: `null` in circle mode
-  // regardless of what's being drawn, otherwise whatever the caller passed
-  // (the live value from `useBoundaryDrawing`, or `null`/undefined while
-  // nothing has been drawn yet).
   const effectiveBoundary = shapeMode === 'custom' ? (currentBoundary ?? null) : null;
 
   const boundaryError = useMemo(() => {
@@ -93,8 +86,7 @@ export function useZoneEdit(
       mutableData['emailInstantEnabled'] = emailInstantEnabled;
     }
     if (boundaryDirty) {
-      // Tri-state: omitted entirely above when unchanged, explicit `null`
-      // to revert to a circle, or the new/redrawn shape.
+      // Omitted when unchanged; explicit null reverts to a circle.
       mutableData['boundary'] = effectiveBoundary;
     }
 

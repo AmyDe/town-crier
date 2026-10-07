@@ -18,12 +18,7 @@ interface Props {
   repository: WatchZoneRepository;
   geocodingPort: GeocodingPort;
   navigate: (path: string) => void;
-  /**
-   * The current user's subscription tier. Only Personal/Pro can draw a
-   * custom shape (GH#1031) — Free sees the radius picker plus an upsell,
-   * with no drawing affordance. Optional so legacy call sites keep
-   * compiling; defaults to Free.
-   */
+  /** Only Personal/Pro can draw a custom shape; Free sees the radius picker plus an upsell. Defaults to Free. */
   tier?: SubscriptionTier;
 }
 
