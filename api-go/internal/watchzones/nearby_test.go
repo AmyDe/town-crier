@@ -250,8 +250,7 @@ func mustBoundary(t *testing.T, vertices []Coordinate) Boundary {
 
 // squareVertices returns a closed square ring centred at (centreLat,
 // centreLon) whose half-extent along each axis is approximately
-// halfExtentMetres, using the same lat/lon-degree scaling as zone.go's
-// boundingBox. It is a test-only shape generator for building a boundary with
+// halfExtentMetres. It is a test-only shape generator for building a boundary with
 // a roughly-known EnclosingRadiusMetres (the corner-to-centre distance, a
 // factor of sqrt(2) above halfExtentMetres for a square) -- callers needing an
 // exact figure should read it back off the constructed Boundary rather than

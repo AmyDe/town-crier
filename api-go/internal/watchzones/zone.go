@@ -55,7 +55,7 @@ var ErrUnknownFilterKey = errors.New("unknown watch-zone filter key")
 // a custom-shape polygon. A custom-shape zone still carries Latitude,
 // Longitude and RadiusMetres — they hold the polygon's derived centroid and
 // enclosing radius (see WithBoundary) so every existing circle-shaped read
-// path (map centring, list rows, boundingBox, GDPR export) keeps working
+// path (map centring, list rows, GDPR export) keeps working
 // unchanged; a zero-length Boundary (nil or empty) is the sole "this is a
 // circle" discriminator — see IsCustomShape. Exported fields keep it a plain
 // Go value; the constructor enforces all invariants.
@@ -113,25 +113,6 @@ func NewWatchZone(id, userID, name string, latitude, longitude, radiusMetres flo
 		PushEnabled:         pushEnabled,
 		EmailInstantEnabled: emailInstantEnabled,
 	}, nil
-}
-
-// metresPerDegreeLat is the approximate number of metres in one degree of
-// latitude. It is treated as a constant: the meridional variation is sub-1% and
-// irrelevant to a coarse bounding-box prune. One degree of longitude shrinks by
-// cos(latitude), so the east-west offset is scaled by it.
-const metresPerDegreeLat = 111320
-
-// boundingBox returns the axis-aligned latitude/longitude box that circumscribes
-// the zone's circle, derived from the centre and radius. It is the index-served
-// prune for the notify-path containment query (store_cosmos.go): a candidate
-// point outside the box cannot be inside the circle, and the exact ST_DISTANCE
-// residual rejects the box corners that fall outside the circle. UK-only — no
-// antimeridian or pole wrap is needed.
-func (z WatchZone) boundingBox() (minLat, maxLat, minLon, maxLon float64) {
-	dLat := z.RadiusMetres / metresPerDegreeLat
-	latRadians := z.Latitude * math.Pi / 180
-	dLon := z.RadiusMetres / (metresPerDegreeLat * math.Cos(latRadians))
-	return z.Latitude - dLat, z.Latitude + dLat, z.Longitude - dLon, z.Longitude + dLon
 }
 
 // IsCustomShape reports whether z is a custom-shape (polygon) zone rather
