@@ -1,5 +1,7 @@
 package watchzones
 
+import "slices"
+
 // FilterKey identifies one of the seven pre-canned, Pro-tier watch-zone
 // filters (GH#1090, epic tc-w825j). The zero value ("") means "unfiltered" —
 // it deliberately is not a member of filterCatalog; callers gate on a
@@ -157,10 +159,5 @@ func FilterDefinitionFor(key FilterKey) (FilterDefinition, bool) {
 // notifydispatch enqueuer checks this in-memory gate before ever calling
 // into a DB-backed keyword matcher.
 func IsExcludedAppType(appType string) bool {
-	for _, t := range filterExcludedAppTypes {
-		if t == appType {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(filterExcludedAppTypes, appType)
 }

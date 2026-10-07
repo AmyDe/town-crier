@@ -227,12 +227,8 @@ func NewBoundary(vertices []Coordinate) (Boundary, error) {
 			return nil, ErrBoundaryOutOfBounds
 		}
 	}
-	if ring.signedArea() == 0 {
-		// A collinear ring has no interior, so no point can ever be covered
-		// by it; treat it as a degenerate (self-touching) shape.
-		return nil, ErrBoundarySelfIntersecting
-	}
-	if ring.selfIntersects() {
+	// A collinear ring has no interior, so it is treated as self-touching.
+	if ring.signedArea() == 0 || ring.selfIntersects() {
 		return nil, ErrBoundarySelfIntersecting
 	}
 	return ring, nil

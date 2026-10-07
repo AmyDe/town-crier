@@ -15,7 +15,7 @@ var ukPostcodeRegex = regexp.MustCompile(`^[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}$`)
 // yields a 400 at the HTTP boundary.
 func normalisePostcode(raw string) (string, bool) {
 	normalised := strings.ToUpper(strings.TrimSpace(raw))
-	if normalised == "" || !ukPostcodeRegex.MatchString(normalised) {
+	if !ukPostcodeRegex.MatchString(normalised) {
 		return "", false
 	}
 	return normalised, true

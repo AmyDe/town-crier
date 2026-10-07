@@ -231,19 +231,8 @@ func summaryOf(z WatchZone, paused bool) watchZoneSummary {
 		EmailInstantEnabled: z.EmailInstantEnabled,
 		Paused:              paused,
 		Boundary:            boundaryToGeoJSON(z.Boundary),
-		FilterKey:           filterKeyToWire(z.FilterKey),
+		FilterKey:           encodeFilterKey(z.FilterKey),
 	}
-}
-
-// filterKeyToWire renders a domain FilterKey as its nullable wire form: nil
-// for the unfiltered zero value, a pointer to the string form otherwise --
-// the same presence convention boundaryToGeoJSON uses for Boundary.
-func filterKeyToWire(k FilterKey) *string {
-	if k == "" {
-		return nil
-	}
-	s := string(k)
-	return &s
 }
 
 // listResult is the GET /v1/me/watch-zones response: { zones: [...] }.
@@ -699,31 +688,19 @@ func (h *handler) writeJSON(w http.ResponseWriter, r *http.Request, status int, 
 	}
 }
 
-// writeError emits the error envelope at the given status with
-// application/json; charset=utf-8 content type.
+// writeError emits the error envelope with prose in "error" and a null "message".
 func (h *handler) writeError(w http.ResponseWriter, r *http.Request, status int, message string) {
-	body, err := httputil.EncodeJSON(apiErrorResponse{Error: message})
-	if err != nil {
-		h.serverError(w, r, "encode error", err)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(status)
-	if _, err := w.Write(body); err != nil {
-		h.logger.ErrorContext(r.Context(), "write error body", "error", err)
-	}
+	h.writeEnvelope(w, r, status, apiErrorResponse{Error: message})
 }
 
-// writeErrorCode emits the error envelope with a stable, machine-readable code
-// in the "error" field and a human message in "message" -- the same shape
-// internal/offercodes and internal/subscriptions use. writeError (above) stays
-// exactly as-is for its pre-existing call sites, whose "error" field carries
-// prose text with "message" always null; this is for new call sites (the
-// boundary_* errors, tc-6he3x.4) that need a stable discriminator a client can
-// branch on.
+// writeErrorCode emits the error envelope with a stable machine-readable code in
+// "error" and a human message in "message", for clients that branch on the code.
 func (h *handler) writeErrorCode(w http.ResponseWriter, r *http.Request, status int, code, message string) {
-	msg := message
-	body, err := httputil.EncodeJSON(apiErrorResponse{Error: code, Message: &msg})
+	h.writeEnvelope(w, r, status, apiErrorResponse{Error: code, Message: &message})
+}
+
+func (h *handler) writeEnvelope(w http.ResponseWriter, r *http.Request, status int, env apiErrorResponse) {
+	body, err := httputil.EncodeJSON(env)
 	if err != nil {
 		h.serverError(w, r, "encode error", err)
 		return

@@ -249,12 +249,8 @@ ON CONFLICT (id) DO UPDATE SET
 	boundary = EXCLUDED.boundary,
 	filter_key = EXCLUDED.filter_key`
 
-// encodeFilterKey renders z's filter key as the nullable string bind value
-// Save passes for the filter_key column: nil for the unfiltered zero value
-// (writing SQL NULL, mirroring encodeBoundaryGeoJSON's nil-for-absent
-// convention), a pointer to the string form otherwise. No validation happens
-// here -- by the time a zone reaches Save its FilterKey has already been
-// validated (WithUpdates / IsValidFilterKey at the HTTP layer).
+// encodeFilterKey renders a FilterKey in its nullable form for the filter_key
+// column and the wire: nil when unfiltered.
 func encodeFilterKey(k FilterKey) *string {
 	if k == "" {
 		return nil

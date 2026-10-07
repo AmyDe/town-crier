@@ -376,7 +376,7 @@ func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 		RadiusMetres:       zone.RadiusMetres,
 		Boundary:           boundaryToGeoJSON(zone.Boundary),
 		NearbyApplications: results,
-		FilterKey:          filterKeyToWire(zone.FilterKey),
+		FilterKey:          encodeFilterKey(zone.FilterKey),
 	})
 }
 
@@ -781,9 +781,8 @@ func (h *handler) atomicQuotaIncrement(ctx context.Context, userID string, limit
 			return true, nil
 		}
 
-		// Lazy-init: legacy profile has no counter yet. Initialise from the
-		// live zone count (once). Subsequent requests will trust the counter.
-		currentCount := 0
+		// A legacy profile has no counter yet, so seed it from the live zone count.
+		var currentCount int
 		if profile.WatchZoneCount == nil {
 			existing, lerr := h.store.GetByUserID(ctx, userID)
 			if lerr != nil {
