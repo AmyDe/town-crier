@@ -1,0 +1,108 @@
+# Judged false positives, one per line: <fingerprint>  # <path>:<line> <rule>: <reason>
+# A fingerprint hashes path + rule + value: moving a line keeps it suppressed, editing the value re-surfaces it.
+
+756a3dace660a292  # .claude/skills/handover/SKILL.md:51 url-credentials: local and CI test Postgres credentials
+ba809a4a1761b039  # .claude/skills/handover/SKILL.md:52 high-entropy-string: not a secret (identifier, path, env or secret-ref name)
+f4bdc494d2813c55  # .github/workflows/cd-ios-testflight.yml:223 secret-assignment: test fixture
+40d3c2c024f6e412  # .github/workflows/ios-capability-ops.yml:98 secret-assignment: not a secret (identifier, path, env or secret-ref name)
+c04e36082d760f4e  # .github/workflows/pr-gate.yml:138 secret-assignment: local and CI test Postgres credentials
+f3b684c30ac32e41  # .github/workflows/pr-gate.yml:162 url-credentials: local and CI test Postgres credentials
+77237775192efc8e  # .github/workflows/pr-gate.yml:499 high-entropy-token: not a secret (identifier, path, env or secret-ref name)
+cc45fe3b6ab83ffe  # .github/workflows/seo-refresh.yml:318 high-entropy-token: IndexNow key, public by design
+3f8f358c88563854  # CLAUDE.md:84 high-entropy-string: not a secret (identifier, path, env or secret-ref name)
+fef971238c216f03  # api-go/Makefile:5 url-credentials: local and CI test Postgres credentials
+1ed0b169407cdb63  # api-go/cmd/pgmigrate/main.go:55 secret-assignment: not a secret (identifier, path, env or secret-ref name)
+08e86ce3435ff4c1  # api-go/cmd/pgmigrate/main_test.go:18 secret-assignment: test fixture
+c2941cdf448e6212  # api-go/cmd/worker/appstorereconcile_wiring_test.go:12 private-key-block: test fixture
+76702c1db35e51de  # api-go/cmd/worker/appstorereconcile_wiring_test.go:13 high-entropy-token: test fixture
+b6749c6687c1d8ab  # api-go/cmd/worker/appstorereconcile_wiring_test.go:14 high-entropy-token: test fixture
+1b159a794848f8ef  # api-go/cmd/worker/appstorereconcile_wiring_test.go:41 secret-assignment: test fixture
+ed0a0c57ea351796  # api-go/docker-compose.yml:8 url-credentials: local and CI test Postgres credentials
+afed4894efd6f49d  # api-go/docker-compose.yml:16 secret-assignment: local and CI test Postgres credentials
+7236ba04d7575ebd  # api-go/internal/acsemail/client_test.go:26 secret-assignment: test fixture
+a8d5e4b6809ca42b  # api-go/internal/acsemail/signing_test.go:23 high-entropy-string: test fixture
+0f13b8695908c07a  # api-go/internal/acsemail/signing_test.go:75 secret-assignment: test fixture
+81e21563af9a1ff2  # api-go/internal/acsemail/signing_test.go:141 secret-assignment: test fixture
+522df6c55f755dd5  # api-go/internal/admin/users.go:54 secret-assignment: not a secret (identifier, path, env or secret-ref name)
+df325342b3063601  # api-go/internal/apns/span_test.go:129 secret-assignment: test fixture
+2ecafec97d32fc47  # api-go/internal/digest/fcm_handler_test.go:139 secret-assignment: test fixture
+28533e30464fb3cb  # api-go/internal/digest/handler_test.go:308 secret-assignment: test fixture
+499e7ac2135f18be  # api-go/internal/digest/handler_test.go:309 secret-assignment: test fixture
+177ce5adf4bfe495  # api-go/internal/fcm/client_test.go:30 secret-assignment: test fixture
+60e101c296341e18  # api-go/internal/fcm/client_test.go:95 secret-assignment: test fixture
+b8d17982146fba2e  # api-go/internal/fcm/span_test.go:137 secret-assignment: test fixture
+e1dfe16c7b8cccd1  # api-go/internal/fcm/token.go:27 secret-assignment: not a secret (identifier, path, env or secret-ref name)
+6ebc4e5246c20414  # api-go/internal/fcm/token_test.go:137 secret-assignment: test fixture
+7f76b6a66a33a7f0  # api-go/internal/platform/config.go:283 secret-assignment: not a secret (identifier, path, env or secret-ref name)
+bfe3981cdb831beb  # api-go/internal/platform/config.go:291 secret-assignment: not a secret (identifier, path, env or secret-ref name)
+38d957b16f6b2d61  # api-go/internal/platform/config_test.go:145 private-key-block: test fixture
+9b69869bcc187b85  # api-go/internal/platform/postgres/pool.go:43 secret-assignment: not a secret (identifier, path, env or secret-ref name)
+f3fdb17ec044d6ee  # api-go/internal/platform/postgres/pool.go:52 url-credentials: local and CI test Postgres credentials
+c2af1ec7319c258c  # api-go/internal/platform/postgres/pool_test.go:51 secret-assignment: test fixture
+6462101bdf196633  # api-go/internal/platform/postgres/pool_test.go:95 url-credentials: local and CI test Postgres credentials
+92f0bf77cac63bb3  # api-go/internal/sharepage/view.go:28 secret-assignment: public App Store campaign provider token
+aaed38859c28b197  # api-go/internal/sharepage/view.go:29 secret-assignment: not a secret (identifier, path, env or secret-ref name)
+be77d650b5fcf37a  # api-go/internal/subscriptions/jws_test.go:79 high-entropy-string: test fixture
+fe5379159ecc01f9  # cli/internal/tc/client.go:15 secret-assignment: not a secret (identifier, path, env or secret-ref name)
+372d569061ced8d0  # cli/internal/tc/listusers_test.go:22 high-entropy-token: test fixture
+056adb86f3d6a87b  # docs/adr/0044-resumable-checkpointed-national-poll-flow.md:23 high-entropy-string: not a secret (identifier, path, env or secret-ref name)
+0427c6a5f04794d6  # docs/memo/0014-monorepo-ci-cd-infrastructure-tooling.md:40 high-entropy-token: not a secret (identifier, path, env or secret-ref name)
+24514164d0aa36b8  # infra/environment.go:178 secret-assignment: not a secret (identifier, path, env or secret-ref name)
+3657dc136351ff09  # infra/environment.go:182 secret-assignment: not a secret (identifier, path, env or secret-ref name)
+3942d28c16d73299  # infra/environment.go:186 secret-assignment: not a secret (identifier, path, env or secret-ref name)
+c855bd8ef7bf7328  # infra/environment.go:371 secret-assignment: not a secret (identifier, path, env or secret-ref name)
+4f987ab9ed21ea62  # infra/environment.go:372 secret-assignment: not a secret (identifier, path, env or secret-ref name)
+809f5492b024df7d  # infra/environment.go:373 secret-assignment: not a secret (identifier, path, env or secret-ref name)
+bfbedb2300ec7492  # infra/environment.go:375 secret-assignment: not a secret (identifier, path, env or secret-ref name)
+0b8cd473fb7359f1  # infra/environment.go:668 secret-assignment: not a secret (identifier, path, env or secret-ref name)
+ac24ed94e7e35e86  # infra/environment.go:684 secret-assignment: not a secret (identifier, path, env or secret-ref name)
+732e7c7ecc6833c9  # infra/environment.go:691 secret-assignment: not a secret (identifier, path, env or secret-ref name)
+804bb60aa906ea56  # infra/routinefire.go:56 high-entropy-string: not a secret (identifier, path, env or secret-ref name)
+54c2cf092a73f956  # infra/routinefire_test.go:79 high-entropy-string: test fixture
+3dc8523ba1d4f74b  # mobile/android/app/src/main/kotlin/uk/towncrierapp/app/TownCrierApplication.kt:22 high-entropy-string: public Auth0 native client ID
+5c4e5dc503222cd3  # mobile/android/data/src/test/kotlin/uk/towncrierapp/data/api/ApiClientTest.kt:34 secret-assignment: test fixture
+380c520cc95e043b  # mobile/android/data/src/test/kotlin/uk/towncrierapp/data/api/ApiClientTokenRefreshTest.kt:29 secret-assignment: test fixture
+82c670ad621d3060  # mobile/android/data/src/test/kotlin/uk/towncrierapp/data/api/ApiClientTokenRefreshTest.kt:31 secret-assignment: test fixture
+771746fdc8756cbb  # mobile/android/data/src/test/kotlin/uk/towncrierapp/data/auth/SessionCacheTest.kt:79 secret-assignment: test fixture
+ded3f6f1c371fd3c  # mobile/android/domain/src/test/kotlin/uk/towncrierapp/domain/auth/AuthSessionTest.kt:20 secret-assignment: test fixture
+219f231ec66b4fd6  # mobile/android/domain/src/test/kotlin/uk/towncrierapp/domain/auth/AuthSessionTest.kt:21 secret-assignment: test fixture
+6b6a204d0e7d7158  # mobile/ios/fastlane/Fastfile:6 secret-assignment: not a secret (identifier, path, env or secret-ref name)
+355714c762cbd970  # mobile/ios/fastlane/Fastfile:16 secret-assignment: not a secret (identifier, path, env or secret-ref name)
+b5235ca86e5a96d3  # mobile/ios/town-crier-app/Sources/TownCrierApp.swift:31 high-entropy-string: public Auth0 native client ID
+a6809a2db9bb4fe0  # mobile/ios/town-crier-tests/Sources/Features/Auth0AudienceMatchTests.swift:15 high-entropy-string: test fixture
+0ffd53604d8cbea9  # mobile/ios/town-crier-tests/Sources/Features/Auth0AudienceMatchTests.swift:29 high-entropy-string: test fixture
+fdfe1839d937338a  # mobile/ios/town-crier-tests/Sources/Features/Auth0AudienceMatchTests.swift:42 high-entropy-string: test fixture
+c53a5e971d997ad5  # mobile/ios/town-crier-tests/Sources/Features/Auth0AudienceMatchTests.swift:60 high-entropy-string: test fixture
+0205749574a483aa  # mobile/ios/town-crier-tests/Sources/Features/Auth0AudienceMatchTests.swift:61 high-entropy-string: test fixture
+59f2696d8506552a  # mobile/ios/town-crier-tests/Sources/Features/Auth0AudienceMatchTests.swift:77 high-entropy-string: test fixture
+914450a7092f3810  # mobile/ios/town-crier-tests/Sources/Features/Auth0AudienceMatchTests.swift:78 high-entropy-string: test fixture
+18548b14334433d7  # mobile/ios/town-crier-tests/Sources/Features/Auth0AudienceMatchTests.swift:93 secret-assignment: test fixture
+50521d9c0d7cef50  # mobile/ios/town-crier-tests/Sources/Features/Auth0AudienceMatchTests.swift:100 high-entropy-string: test fixture
+5ca4ff814ebc6968  # mobile/ios/town-crier-tests/Sources/Features/JWTSubscriptionTierExtractorTests.swift:11 high-entropy-string: test fixture
+37d7eb4acd1a8d11  # mobile/ios/town-crier-tests/Sources/Features/JWTSubscriptionTierExtractorTests.swift:19 high-entropy-string: test fixture
+b7b2d20c13681842  # mobile/ios/town-crier-tests/Sources/Features/JWTSubscriptionTierExtractorTests.swift:31 high-entropy-string: test fixture
+db99ff82b657376f  # mobile/ios/town-crier-tests/Sources/Features/JWTSubscriptionTierExtractorTests.swift:45 high-entropy-string: test fixture
+11f9033c06ae3224  # mobile/ios/town-crier-tests/Sources/Features/JWTSubscriptionTierExtractorTests.swift:57 high-entropy-string: test fixture
+56cec800126df863  # mobile/ios/town-crier-tests/Sources/Features/JWTSubscriptionTierExtractorTests.swift:69 high-entropy-string: test fixture
+ce57acf332003083  # mobile/ios/town-crier-tests/Sources/Features/JWTSubscriptionTierExtractorTests.swift:83 high-entropy-string: test fixture
+8ed11711abbcf7f6  # mobile/ios/town-crier-tests/Sources/Features/JWTSubscriptionTierExtractorTests.swift:95 high-entropy-string: test fixture
+ba0dc1aaed992f66  # mobile/ios/town-crier-tests/Sources/Features/JWTSubscriptionTierExtractorTests.swift:107 high-entropy-string: test fixture
+727e83abf9370a8b  # mobile/ios/town-crier-tests/Sources/Features/JWTSubscriptionTierExtractorTests.swift:121 high-entropy-string: test fixture
+c2ee2e76337deb6e  # mobile/ios/town-crier-tests/Sources/Features/JWTSubscriptionTierExtractorTests.swift:133 high-entropy-string: test fixture
+395002f476b192e7  # mobile/ios/town-crier-tests/Sources/Features/JWTSubscriptionTierExtractorTests.swift:164 high-entropy-string: test fixture
+32ba11fa03f5c03d  # mobile/ios/town-crier-tests/Sources/Features/JWTSubscriptionTierExtractorTests.swift:176 high-entropy-string: test fixture
+d2df249d0be37be9  # mobile/ios/town-crier-tests/Sources/Features/JWTSubscriptionTierExtractorTests.swift:188 high-entropy-string: test fixture
+9656ea8649df433e  # mobile/ios/town-crier-tests/Sources/Features/JWTSubscriptionTierExtractorTests.swift:200 high-entropy-string: test fixture
+f43afbe377b17041  # mobile/ios/town-crier-tests/Sources/Features/JWTSubscriptionTierExtractorTests.swift:241 high-entropy-string: test fixture
+56a2a7d805993f64  # mobile/ios/town-crier-tests/Sources/Features/SubscriptionTierResolverTests.swift:25 secret-assignment: test fixture
+a04f7aad6275b9a3  # mobile/ios/town-crier-tests/Sources/Fixtures/AuthSession+Fixtures.swift:14 secret-assignment: test fixture
+421cee4e934bba72  # mobile/ios/town-crier-tests/Sources/Fixtures/AuthSession+Fixtures.swift:15 secret-assignment: test fixture
+71d3e63e3e4b04b5  # mobile/ios/town-crier-tests/Sources/Fixtures/AuthSession+Fixtures.swift:22 secret-assignment: test fixture
+05dfbc09b6c1252d  # mobile/ios/town-crier-tests/Sources/Fixtures/AuthSession+Fixtures.swift:23 secret-assignment: test fixture
+916acb034a905491  # mobile/ios/town-crier-tests/Sources/Fixtures/AuthSession+Fixtures.swift:30 secret-assignment: test fixture
+303933d2c588151f  # mobile/ios/town-crier-tests/Sources/Fixtures/AuthSession+Fixtures.swift:31 secret-assignment: test fixture
+378d39976cf4361b  # mobile/ios/town-crier-tests/Sources/Fixtures/AuthSession+Fixtures.swift:38 secret-assignment: test fixture
+5005d7d9a3aebfd1  # mobile/ios/town-crier-tests/Sources/Fixtures/AuthSession+Fixtures.swift:39 secret-assignment: test fixture
+140c8a04a1932b72  # web/public/1cb201daee1a485fb8cce2a68e8ee465.txt:1 high-entropy-token: IndexNow key, public by design
+596b3d31fdd896b5  # web/scripts/lib/constants.mjs:70 secret-assignment: public App Store campaign provider token
+4eba268230d22411  # web/src/config/links.ts:27 secret-assignment: public App Store campaign provider token
