@@ -1,7 +1,7 @@
 {
   "documentType": "terms",
   "title": "Terms of Service",
-  "lastUpdated": "2026-10-05",
+  "lastUpdated": "2026-10-07",
   "sections": [
     {
       "heading": "Acceptance of Terms",
@@ -13,7 +13,7 @@
     },
     {
       "heading": "Subscriptions",
-      "body": "Town Crier offers both free and premium subscription tiers. Premium subscriptions are billed through the Apple App Store. You can manage or cancel your subscription at any time through your App Store account settings. Refunds are handled by Apple in accordance with their refund policy. Pro is also available as a one-off lifetime purchase. It is not a subscription and does not renew. It gives you Pro for as long as Town Crier runs. If we ever close Town Crier, lifetime access ends with it."
+      "body": "Town Crier offers both free and premium subscription tiers. Premium subscriptions are billed through the Apple App Store and renew automatically each month, or each year for Pro annual, until you cancel. Personal monthly starts with a 7-day free trial if you haven't had one, and it becomes paid unless you cancel at least 24 hours before the trial ends. The same 24 hours applies to every renewal. You can manage or cancel your subscription at any time through your App Store account settings, and you keep your plan until the end of the period you've paid for. Refunds are handled by Apple in accordance with their refund policy. Pro is also available as a one-off lifetime purchase. It is not a subscription and does not renew. It gives you Pro for as long as Town Crier runs. If we ever close Town Crier, lifetime access ends with it. Buying it doesn't cancel a subscription you already have, so cancel that yourself."
     },
     {
       "heading": "Acceptable Use",
@@ -21,11 +21,11 @@
     },
     {
       "heading": "Limitation of Liability",
-      "body": "Town Crier is provided as-is. We are not liable for decisions made based on planning data shown in the app. Always verify critical planning information directly with your local authority. Our total liability is limited to the amount you have paid for the service in the preceding 12 months."
+      "body": "Planning data comes from councils and PlanIt and can be late, incomplete, or wrong. We are not liable for decisions made based on planning data shown in the app. Always verify critical planning information directly with your local authority. Otherwise, our total liability is limited to the amount you have paid for the service in the preceding 12 months. None of this limits our liability for death or personal injury caused by our negligence, for fraud, or for anything else the law doesn't let us limit, and it doesn't affect your rights under the Consumer Rights Act 2015."
     },
     {
       "heading": "Governing Law",
-      "body": "These terms are governed by the laws of England and Wales. Any disputes will be subject to the exclusive jurisdiction of the courts of England and Wales."
+      "body": "These terms are governed by the laws of England and Wales. Any disputes will be subject to the courts of England and Wales, but if you live in Scotland or Northern Ireland you can use your local courts and rely on your local consumer law."
     }
   ]
 }
