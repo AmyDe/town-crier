@@ -1,13 +1,5 @@
 // Package watchzones owns the watch-zone feature: the domain model, the Postgres
-// store over the watch_zones table, and the /v1/me/watch-zones HTTP handlers
-// (GH#418 iteration 5). It follows idiomatic Go — a plain struct validated at
-// construction, a consumer-side store interface, and hand-written test fakes.
-//
-// Scope note: POST create (whose response body carries nearby applications) and
-// GET /{zoneId}/applications are deferred to bead tc-5847 — they hard-depend on
-// the geo/application stores that land in later iterations. This package ships
-// list, update (PATCH), and delete; per-zone notification preferences live on
-// the user profile and are served by the profiles package.
+// store over the watch_zones table, and the /v1/me/watch-zones HTTP handlers.
 package watchzones
 
 import (
@@ -23,9 +15,7 @@ import (
 var ErrNotFound = errors.New("watch zone not found")
 
 // ErrDuplicateName signals that the user already owns a watch zone with this
-// name: watch_zones has UNIQUE (user_id, name) (0001_init_postgis.sql), a
-// constraint the store's Save upsert (ON CONFLICT (id)) cannot itself dedupe
-// against, since create always mints a fresh id (GH#1083, tc-h4y98).
+// name (watch_zones has UNIQUE (user_id, name)).
 var ErrDuplicateName = errors.New("a watch zone with this name already exists")
 
 // Boundary validation errors. All are returned by NewBoundary (and therefore
@@ -55,7 +45,7 @@ var ErrUnknownFilterKey = errors.New("unknown watch-zone filter key")
 // a custom-shape polygon. A custom-shape zone still carries Latitude,
 // Longitude and RadiusMetres — they hold the polygon's derived centroid and
 // enclosing radius (see WithBoundary) so every existing circle-shaped read
-// path (map centring, list rows, boundingBox, GDPR export) keeps working
+// path (map centring, list rows, GDPR export) keeps working
 // unchanged; a zero-length Boundary (nil or empty) is the sole "this is a
 // circle" discriminator — see IsCustomShape. Exported fields keep it a plain
 // Go value; the constructor enforces all invariants.
@@ -113,25 +103,6 @@ func NewWatchZone(id, userID, name string, latitude, longitude, radiusMetres flo
 		PushEnabled:         pushEnabled,
 		EmailInstantEnabled: emailInstantEnabled,
 	}, nil
-}
-
-// metresPerDegreeLat is the approximate number of metres in one degree of
-// latitude. It is treated as a constant: the meridional variation is sub-1% and
-// irrelevant to a coarse bounding-box prune. One degree of longitude shrinks by
-// cos(latitude), so the east-west offset is scaled by it.
-const metresPerDegreeLat = 111320
-
-// boundingBox returns the axis-aligned latitude/longitude box that circumscribes
-// the zone's circle, derived from the centre and radius. It is the index-served
-// prune for the notify-path containment query (store_cosmos.go): a candidate
-// point outside the box cannot be inside the circle, and the exact ST_DISTANCE
-// residual rejects the box corners that fall outside the circle. UK-only — no
-// antimeridian or pole wrap is needed.
-func (z WatchZone) boundingBox() (minLat, maxLat, minLon, maxLon float64) {
-	dLat := z.RadiusMetres / metresPerDegreeLat
-	latRadians := z.Latitude * math.Pi / 180
-	dLon := z.RadiusMetres / (metresPerDegreeLat * math.Cos(latRadians))
-	return z.Latitude - dLat, z.Latitude + dLat, z.Longitude - dLon, z.Longitude + dLon
 }
 
 // IsCustomShape reports whether z is a custom-shape (polygon) zone rather
@@ -246,12 +217,8 @@ func NewBoundary(vertices []Coordinate) (Boundary, error) {
 			return nil, ErrBoundaryOutOfBounds
 		}
 	}
-	if ring.signedArea() == 0 {
-		// A collinear ring has no interior, so no point can ever be covered
-		// by it; treat it as a degenerate (self-touching) shape.
-		return nil, ErrBoundarySelfIntersecting
-	}
-	if ring.selfIntersects() {
+	// A collinear ring has no interior, so it is treated as self-touching.
+	if ring.signedArea() == 0 || ring.selfIntersects() {
 		return nil, ErrBoundarySelfIntersecting
 	}
 	return ring, nil

@@ -13,7 +13,7 @@ import (
 
 // pgUniqueViolationCode is the Postgres SQLSTATE for a unique-constraint
 // violation. Save uses it to detect a name collision against the
-// watch_zones_user_id_name_key constraint (GH#1083, tc-h4y98), mirroring
+// watch_zones_user_id_name_key constraint, mirroring
 // internal/offercodes/store_postgres.go's identical helper.
 const pgUniqueViolationCode = "23505"
 
@@ -36,10 +36,7 @@ type querier interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
-// Store is the full watch-zone store method set its consumers rely on. It is the
-// exported consumer-side interface cmd/api's newRouter accepts for the watch-zone
-// routes. The narrower per-handler interfaces (zoneStore, zoneAuthorityLister,
-// demoaccount.zoneStore) are all subsets of this set.
+// Store is the full watch-zone store method set, accepted by cmd/api's wiring.
 type Store interface {
 	GetByUserID(ctx context.Context, userID string) ([]WatchZone, error)
 	Get(ctx context.Context, userID, zoneID string) (WatchZone, error)
@@ -52,13 +49,7 @@ type Store interface {
 // Compile-time check: the store satisfies the consumer-side Store interface.
 var _ Store = (*PostgresStore)(nil)
 
-// PostgresStore reads and writes watch zones in the Postgres `watch_zones` table
-// (Cosmos -> Postgres + PostGIS migration; memo 0010, epic #645). It is a parallel
-// implementation: Cosmos remains wired, so nothing here is on a live path yet.
-//
-// The notify hot path, FindZonesContaining, becomes a single ST_DWithin against
-// one GiST index across every user's zones — authority-agnostic by construction,
-// with no bounding-box prune or cross-partition fan-out.
+// PostgresStore reads and writes watch zones in the Postgres `watch_zones` table.
 type PostgresStore struct {
 	db querier
 }
@@ -71,7 +62,7 @@ func NewPostgresStore(db querier) *PostgresStore {
 // pgZoneColumns is the read projection. id is rendered as text; ST_Y is the
 // latitude and ST_X the longitude of the (NOT NULL) geography point;
 // ST_AsGeoJSON(boundary) is NULL for a circle zone and a GeoJSON Polygon for a
-// custom-shape one; filter_key (GH#1090, epic tc-w825j) is NULL for an
+// custom-shape one; filter_key is NULL for an
 // unfiltered zone. The order MUST match scanZone.
 const pgZoneColumns = "id::text, user_id, name, ST_Y(location::geometry), " +
 	"ST_X(location::geometry), radius_metres, created_at, " +
@@ -249,12 +240,8 @@ ON CONFLICT (id) DO UPDATE SET
 	boundary = EXCLUDED.boundary,
 	filter_key = EXCLUDED.filter_key`
 
-// encodeFilterKey renders z's filter key as the nullable string bind value
-// Save passes for the filter_key column: nil for the unfiltered zero value
-// (writing SQL NULL, mirroring encodeBoundaryGeoJSON's nil-for-absent
-// convention), a pointer to the string form otherwise. No validation happens
-// here -- by the time a zone reaches Save its FilterKey has already been
-// validated (WithUpdates / IsValidFilterKey at the HTTP layer).
+// encodeFilterKey renders a FilterKey in its nullable form for the filter_key
+// column and the wire: nil when unfiltered.
 func encodeFilterKey(k FilterKey) *string {
 	if k == "" {
 		return nil
@@ -275,7 +262,7 @@ func encodeFilterKey(k FilterKey) *string {
 // user (watch_zones also has UNIQUE (user_id, name)). create always mints a
 // fresh id, so that case reaches Postgres as a raw unique-violation on
 // watch_zones_user_id_name_key; isUniqueViolation translates it into the
-// domain sentinel ErrDuplicateName instead (GH#1083, tc-h4y98).
+// domain sentinel ErrDuplicateName instead.
 func (s *PostgresStore) Save(ctx context.Context, z WatchZone) error {
 	boundaryGeoJSON, err := encodeBoundaryGeoJSON(z.Boundary)
 	if err != nil {

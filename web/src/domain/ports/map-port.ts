@@ -16,10 +16,8 @@ export interface MapBounds {
 }
 
 /**
- * Drives the watch-zone map with server-computed cluster aggregates (GH#698).
- * Instead of eager-draining every application across every zone, the map fetches
- * only the clusters inside the current viewport of the active zone and refetches
- * (debounced) on pan/zoom. A single-member cell resolves to a full application
+ * Drives the watch-zone map with server-computed cluster aggregates for the
+ * active zone's viewport. A single-member cell resolves to a full application
  * via a one-row point read.
  */
 export interface MapPort {

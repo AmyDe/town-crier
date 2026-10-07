@@ -1,10 +1,4 @@
-/* ==========================================================================
-   Leaflet Popup Overrides
-   Leaflet ships popup styles with a hardcoded white background. In dark
-   mode the app's text tokens resolve to light colours, making popup text
-   invisible. These overrides replace hardcoded values with design tokens
-   so popups match the active theme in light, dark, and OLED dark modes.
-   ========================================================================== */
+/* Leaflet popups ship a hardcoded white background, which hides light text in dark mode; use design tokens instead. */
 
 .leaflet-popup-content-wrapper {
   background: var(--tc-surface);
@@ -21,7 +15,6 @@
   color: var(--tc-amber);
 }
 
-/* Override the default close button to match the theme */
 .leaflet-popup-close-button {
   color: var(--tc-text-secondary);
 }
@@ -31,13 +24,7 @@
   color: var(--tc-text-primary);
 }
 
-/* ==========================================================================
-   Cluster markers (GH#698)
-   An amber count bubble for multi-member cells; a status-coloured pin for
-   single-member cells. Colours come from design tokens (the bubble's amber
-   inline, the pin's status colour via the --tc-pin-color custom property set
-   inline by markerIcons.ts), so both follow the active theme.
-   ========================================================================== */
+/* Cluster markers: the bubble's amber is set inline and the pin's colour via --tc-pin-color, both by markerIcons.ts. */
 
 .tc-cluster-bubble {
   display: flex;
