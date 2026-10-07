@@ -116,3 +116,7 @@ email-notifications/
 .claude/worktrees/
 cf-client-ip/
 android-hlbx/
+
+# Python bytecode (scripts/secret-scan tests)
+__pycache__/
+*.pyc
