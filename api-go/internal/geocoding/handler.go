@@ -8,9 +8,8 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/httputil"
 )
 
-// geocoder is the consumer-side view the handler needs: resolve a normalised
-// postcode to coordinates. The concrete *Client satisfies it structurally; the
-// handler test substitutes a hand fake.
+// geocoder resolves a normalised postcode to coordinates; the handler test
+// substitutes a hand fake.
 type geocoder interface {
 	Geocode(ctx context.Context, postcode string) (Coordinates, bool, error)
 }
@@ -20,8 +19,7 @@ type handler struct {
 	logger   *slog.Logger
 }
 
-// Routes registers the geocode endpoint on mux. The endpoint requires
-// authentication and has no Cosmos dependency, so it is always wired.
+// Routes registers GET /v1/geocode/{postcode} on mux.
 func Routes(mux *http.ServeMux, g geocoder, logger *slog.Logger) {
 	h := handler{geocoder: g, logger: logger}
 	mux.HandleFunc("GET /v1/geocode/{postcode}", h.geocode)

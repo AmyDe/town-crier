@@ -26,7 +26,7 @@ type filterCatalogResult struct {
 // CatalogRoutes registers the read-only, anonymous watch-zone filter catalog
 // endpoint on mux. It needs no store: the catalog is Go-literal static
 // content (see filter.go), so this is wired unconditionally regardless of
-// whether a watch-zone store is configured (GH#1104, tc-m8j90.1).
+// whether a watch-zone store is configured.
 func CatalogRoutes(mux *http.ServeMux, logger *slog.Logger) {
 	h := catalogHandler{logger: logger}
 	mux.HandleFunc("GET /v1/watch-zones/filter-catalog", h.catalog)

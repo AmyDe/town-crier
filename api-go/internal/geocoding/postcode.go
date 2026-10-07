@@ -1,5 +1,5 @@
 // Package geocoding owns the postcode-geocoding feature: UK postcode validation,
-// the postcodes.io outbound client, and GET /v1/geocode/{postcode} (GH#418).
+// the postcodes.io outbound client, and GET /v1/geocode/{postcode}.
 package geocoding
 
 import (

@@ -23,7 +23,7 @@ import (
 )
 
 // quotaExceededMessage is the error text for a watch-zone quota breach (403).
-// The iOS client (tc-gpjk) treats any 403 on create as a quota breach and routes
+// The iOS client treats any 403 on create as a quota breach and routes
 // to the paywall, so this prose body produces the same Upgrade-Required UX as a
 // structured one.
 const quotaExceededMessage = "Watch zone quota exceeded. Upgrade your subscription for more zones."
@@ -40,31 +40,11 @@ type profileReader interface {
 	Get(ctx context.Context, userID string) (*profiles.UserProfile, error)
 }
 
-// appFinder runs the spatial lookup that backs both the create response's nearby
-// applications and the per-zone applications list. It is authority-agnostic and
-// cross-partition, so a border-spanning zone surfaces neighbour-authority apps
-// (tc-zldl). The fetch is bounded: it returns at most `limit` rows for the given
-// cursor plus an opaque continuation token for the next page (tc-fm8f).
-//
-// FindNearbyPage is the legacy default-distance path (byte-identical param-less
-// contract). FindInZonePage adds the server-side ?sort= surface (epic #682 slices
-// 1-3: distance/newest/oldest/status/recent-activity) with a sort-aware keyset
-// cursor; userID scopes the per-user notification join the recent-activity sort
-// needs. *applications.PostgresStore satisfies both.
-//
-// FindClustersInZone (issue #698) backs the server-side map clustering endpoint:
-// it returns PostGIS grid-aggregated cluster bubbles (centroid + count + status
-// breakdown) for a viewport, so the map renders a handful of aggregates instead
-// of eager-draining every application. *applications.PostgresStore satisfies all
-// three.
-// FindInBoundaryPage and FindClustersInBoundary (GH#1031, tc-6he3x.5) are the
-// custom-shape counterparts to FindNearbyPage and FindClustersInZone: the
-// containment test is ST_Covers against the zone's polygon rather than
-// ST_DWithin against its circle. FindInBoundaryZonePage (GH#1031, tc-acbsh) is
-// the custom-shape counterpart to FindInZonePage: the same {distance, newest,
-// oldest, status, recent-activity} sorts and status/unread filters, ST_Covers-
-// scoped. See findZonePage and clusters for the zone.IsCustomShape() branches
-// that route to them.
+// appFinder runs the spatial lookups behind create's nearby applications, the
+// per-zone applications list and the map clusters. Lookups are authority-agnostic,
+// so a border-spanning zone surfaces neighbour-authority apps. Circle zones use
+// FindNearbyPage, FindInZonePage and FindClustersInZone (ST_DWithin); custom-shape
+// zones use the *Boundary* counterparts (ST_Covers against the polygon).
 type appFinder interface {
 	FindNearbyPage(ctx context.Context, latitude, longitude, radiusMetres float64, limit int, cursor string) ([]applications.PlanningApplication, string, error)
 	FindInZonePage(ctx context.Context, q applications.InZoneQuery) ([]applications.PlanningApplication, string, error)
@@ -112,7 +92,7 @@ func NearbyRoutes(
 }
 
 // createRequest is the POST body. The optional flags default to true.
-// Boundary is an optional GeoJSON polygon (tc-6he3x.4): when present,
+// Boundary is an optional GeoJSON polygon: when present,
 // Latitude/Longitude/RadiusMetres are ignored and derived server-side from
 // the boundary's centroid and enclosing radius instead (see create and
 // (createRequest).valid).
@@ -140,11 +120,11 @@ const maxRadiusMetres = 10_000
 // defaultNearbyLimit, defaultSortedLimit and maxNearbyLimit bound the per-request
 // page of nearby applications. The browse path fetches a SINGLE bounded page so a
 // dense urban zone can no longer drain tens of thousands of documents and blow the
-// server write timeout (tc-fm8f).
+// server write timeout.
 //
 // The legacy param-less path keeps the 500 default (byte-identical backward-compat
 // contract, #541). The sort-aware path (?sort=) uses a smaller 150 default for a
-// snappier first paint and infinite-scroll increment (epic #682). maxNearbyLimit
+// snappier first paint and infinite-scroll increment. maxNearbyLimit
 // is the shared clamp ceiling for both. The create + demo paths fetch page one only.
 const (
 	defaultNearbyLimit = 500
@@ -221,7 +201,7 @@ func (req createRequest) valid() bool {
 
 // createResult is the POST /v1/me/watch-zones response. Latitude, Longitude,
 // RadiusMetres and Boundary always reflect the persisted zone regardless of
-// which create path was used (tc-6he3x.4): for a plain circle request they
+// which create path was used: for a plain circle request they
 // echo back exactly what the caller sent, and for a boundary-carrying request
 // they carry the server-derived centroid/enclosing-radius/shape -- so an
 // existing client that only reads lat/lon/radius keeps working unchanged, and
@@ -233,7 +213,7 @@ type createResult struct {
 	RadiusMetres       float64                     `json:"radiusMetres"`
 	Boundary           *boundaryGeoJSON            `json:"boundary"`
 	NearbyApplications []applications.NearbyResult `json:"nearbyApplications"`
-	// FilterKey round-trips the persisted filter (GH#1090, epic tc-w825j): nil
+	// FilterKey round-trips the persisted filter: nil
 	// for an unfiltered zone, the catalog key string otherwise.
 	FilterKey *string `json:"filterKey"`
 }
@@ -514,7 +494,7 @@ func (h *handler) applications(w http.ResponseWriter, r *http.Request) {
 // restricts on. rawLimit is the unparsed ?limit= value; cursor is the
 // transport-unwrapped continuation token.
 //
-// Custom-shape zones (GH#1031, tc-6he3x.5 / tc-acbsh) mirror the circle-zone
+// Custom-shape zones mirror the circle-zone
 // branching below exactly, one level up: the plain boundary-scoped page
 // (FindInBoundaryPage) for a truly param-less request, and the sort-and-
 // filter-aware boundary page (FindInBoundaryZonePage) as soon as a sort or a
@@ -558,19 +538,13 @@ func (h *handler) findZonePage(ctx context.Context, userID string, zone WatchZon
 	})
 }
 
-// clusters implements GET /v1/me/watch-zones/{zoneId}/applications/clusters
-// (issue #698): load the zone (404 if not owned, like the sibling applications
+// clusters implements GET /v1/me/watch-zones/{zoneId}/applications/clusters:
+// load the zone (404 if not owned, like the sibling applications
 // route), parse the viewport (?bbox=) and zoom (?zoom=) and optional ?status=
 // filter (each malformed value is a clean 400 before any query), translate the
 // zoom into a PostGIS grid cell size, and return the grid-aggregated clusters for
 // the visible rect as a JSON array. The store stays a pure spatial primitive: the
 // zoom -> grid-size policy lives here so density can be tuned without a store change.
-//
-// INTERIM (tc-6he3x.4): like findZonePage, the cluster query below is not
-// boundary-aware yet -- it threads zone.Latitude/Longitude/RadiusMetres (the
-// polygon's derived centroid/ENCLOSING radius for a custom-shape zone), a
-// superset of the true shape. tc-6he3x.5 replaces this with a
-// boundary-scoped store method.
 func (h *handler) clusters(w http.ResponseWriter, r *http.Request) {
 	userID := auth.Subject(r.Context())
 	zoneID := r.PathValue("zoneId")
@@ -605,7 +579,7 @@ func (h *handler) clusters(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Custom-shape zones (GH#1031, tc-6he3x.5) branch to the boundary-scoped
+	// Custom-shape zones branch to the boundary-scoped
 	// cluster query: ST_Covers against the polygon rather than ST_DWithin
 	// against the circle. Every other param (viewport, status, coalesce
 	// threshold) carries the same meaning as the circle path unchanged.
@@ -638,7 +612,7 @@ func (h *handler) clusters(w http.ResponseWriter, r *http.Request) {
 			// request's own grid: a multi-member cell whose member points already span
 			// less than this can never be split by zooming, so the store attaches an
 			// applicationIds member list. applications.FinestGridDegrees() keeps it
-			// tracking the shared zoom -> grid policy (GH#924) with no separate constant.
+			// tracking the shared zoom -> grid policy with no separate constant.
 			CoalesceThresholdDegrees: applications.FinestGridDegrees(),
 		})
 	}

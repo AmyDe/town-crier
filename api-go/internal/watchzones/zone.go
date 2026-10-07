@@ -1,13 +1,5 @@
 // Package watchzones owns the watch-zone feature: the domain model, the Postgres
-// store over the watch_zones table, and the /v1/me/watch-zones HTTP handlers
-// (GH#418 iteration 5). It follows idiomatic Go — a plain struct validated at
-// construction, a consumer-side store interface, and hand-written test fakes.
-//
-// Scope note: POST create (whose response body carries nearby applications) and
-// GET /{zoneId}/applications are deferred to bead tc-5847 — they hard-depend on
-// the geo/application stores that land in later iterations. This package ships
-// list, update (PATCH), and delete; per-zone notification preferences live on
-// the user profile and are served by the profiles package.
+// store over the watch_zones table, and the /v1/me/watch-zones HTTP handlers.
 package watchzones
 
 import (
@@ -23,9 +15,7 @@ import (
 var ErrNotFound = errors.New("watch zone not found")
 
 // ErrDuplicateName signals that the user already owns a watch zone with this
-// name: watch_zones has UNIQUE (user_id, name) (0001_init_postgis.sql), a
-// constraint the store's Save upsert (ON CONFLICT (id)) cannot itself dedupe
-// against, since create always mints a fresh id (GH#1083, tc-h4y98).
+// name (watch_zones has UNIQUE (user_id, name)).
 var ErrDuplicateName = errors.New("a watch zone with this name already exists")
 
 // Boundary validation errors. All are returned by NewBoundary (and therefore

@@ -3,7 +3,7 @@ package watchzones
 import "slices"
 
 // FilterKey identifies one of the seven pre-canned, Pro-tier watch-zone
-// filters (GH#1090, epic tc-w825j). The zero value ("") means "unfiltered" —
+// filters. The zero value ("") means "unfiltered" —
 // it deliberately is not a member of filterCatalog; callers gate on a
 // non-empty value before consulting the catalog (see IsValidFilterKey).
 type FilterKey string
@@ -46,7 +46,7 @@ type FilterDefinition struct {
 var filterExcludedAppTypes = []string{"Trees", "Conditions", "Amendment", "Advertising", "Telecoms"}
 
 // filterCatalog is the seven pre-canned watch-zone filters, validated
-// against 1.4M rows of real town_crier_prod data (GH#1090). It is
+// against 1.4M rows of real town_crier_prod data. It is
 // deliberately Go code, not a DB table: the catalog is meant to be revisable
 // (adding/removing/retuning a filter) without a migration — see migration
 // 0026_watch_zone_filter_key.sql, which adds an unconstrained filter_key
@@ -146,7 +146,7 @@ func IsValidFilterKey(key string) bool {
 // FilterDefinitionFor returns the catalog entry for key and whether key is a
 // member of the catalog. It is the read-only cross-package entry point the
 // notifydispatch enqueuer uses to evaluate a loaded zone's pre-canned filter
-// (GH#1090, epic tc-w825j, bead tc-w825j.5) without duplicating the catalog
+// without duplicating the catalog
 // data outside this package.
 func FilterDefinitionFor(key FilterKey) (FilterDefinition, bool) {
 	def, ok := filterCatalog[key]

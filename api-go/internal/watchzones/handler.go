@@ -26,7 +26,7 @@ const maxBodyBytes = 1 << 20
 // (Create/Update endpoints).
 const invalidPayloadMessage = "Invalid watch zone payload."
 
-// Custom-shape boundary error codes and messages (tc-6he3x.4). Unlike
+// Custom-shape boundary error codes and messages. Unlike
 // invalidPayloadMessage above (whose text IS the apiErrorResponse "error"
 // field, an established watchzones convention this bead does not touch),
 // these carry a stable machine-readable code separately from the human
@@ -54,7 +54,7 @@ const (
 	// the caller already owns a watch zone with this name (watch_zones' UNIQUE
 	// (user_id, name) constraint). A resource conflict, not a validation
 	// failure, so it sits apart from the 400 boundary_* codes above but uses
-	// the same stable-code convention (GH#1083, tc-h4y98).
+	// the same stable-code convention.
 	zoneNameTakenCode    = "zone_name_taken"
 	zoneNameTakenMessage = "You already have a watch zone with this name."
 )
@@ -97,8 +97,8 @@ func isBoundaryValidationError(err error) bool {
 		errors.Is(err, ErrBoundaryOutOfBounds)
 }
 
-// zoneStore is the consumer-side store the handlers use. *CosmosStore satisfies
-// it; tests substitute a hand-written fake.
+// zoneStore is the consumer-side store the handlers use; tests substitute a
+// hand-written fake.
 type zoneStore interface {
 	GetByUserID(ctx context.Context, userID string) ([]WatchZone, error)
 	Get(ctx context.Context, userID, zoneID string) (WatchZone, error)
@@ -107,9 +107,7 @@ type zoneStore interface {
 }
 
 // profileCAS is the consumer-side interface for atomically updating the
-// watch-zone quota counter on the user's profile document. It is satisfied by
-// *profiles.CosmosStore when wired with a CAS-capable container. A nil value
-// disables atomic quota enforcement (development / legacy path).
+// watch-zone quota counter on the user's profile.
 type profileCAS interface {
 	// GetWithETag reads the profile and its current etag for a CAS operation.
 	// Returns (nil, "", nil) when the profile is absent.
@@ -130,9 +128,7 @@ type MetricsRecorder interface {
 	WatchZoneDeleted(ctx context.Context)
 }
 
-// Option configures the watch-zone routes. WithMetricsRecorder and
-// WithProfileCAS are the options today; variadic so existing call sites and
-// tests compile unchanged.
+// Option configures the watch-zone routes.
 type Option func(*handler)
 
 // WithMetricsRecorder wires the metrics recorder the handlers record the
@@ -149,7 +145,7 @@ func WithProfileCAS(cas profileCAS) Option {
 }
 
 // WithProfileReader wires the profile reader the list/patch handlers use to
-// compute each zone's derived "paused" field (GH#889): a zone whose
+// compute each zone's derived "paused" field: a zone whose
 // oldest-first rank among the caller's own zones — by (CreatedAt, ID) —
 // exceeds their current effective-tier watch-zone limit. Mirrors nearby.go's
 // create-path profile read. Not wiring this option leaves h.profiles nil, so
@@ -190,9 +186,9 @@ func Routes(mux *http.ServeMux, store zoneStore, logger *slog.Logger, opts ...Op
 }
 
 // watchZoneSummary is the per-zone wire shape returned by list and update.
-// createdAt is deliberately absent from the summary. Paused is additive
-// (GH#889): a derived, never-stored flag — see pausedIDs. AuthorityID is a
-// wire-format-only back-compat shim (tc-9nbs4.6): the domain no longer has
+// createdAt is deliberately absent from the summary. Paused is additive:
+// a derived, never-stored flag — see pausedIDs. AuthorityID is a
+// wire-format-only back-compat shim: the domain no longer has
 // an authority id, but the field must stay present for older clients.
 type watchZoneSummary struct {
 	ID                  string  `json:"id"`
@@ -205,12 +201,12 @@ type watchZoneSummary struct {
 	EmailInstantEnabled bool    `json:"emailInstantEnabled"`
 	Paused              bool    `json:"paused"`
 	// Boundary is null for a circle zone and a GeoJSON Polygon for a
-	// custom-shape one (tc-6he3x.4); Latitude/Longitude/RadiusMetres remain
+	// custom-shape one; Latitude/Longitude/RadiusMetres remain
 	// the polygon's derived centroid/enclosing radius either way, so every
 	// pre-existing circle-shaped consumer keeps working unchanged.
 	Boundary *boundaryGeoJSON `json:"boundary"`
 	// FilterKey is null for an unfiltered zone and the catalog key string
-	// otherwise (GH#1090, epic tc-w825j), mirroring Boundary's presence
+	// otherwise, mirroring Boundary's presence
 	// convention.
 	FilterKey *string `json:"filterKey"`
 }
@@ -267,7 +263,7 @@ func (h *handler) list(w http.ResponseWriter, r *http.Request) {
 }
 
 // pausedZoneIDs resolves which of zones (the caller's full zone set) are
-// paused (GH#889): ranked oldest-first by (CreatedAt, ID), a zone is paused
+// paused: ranked oldest-first by (CreatedAt, ID), a zone is paused
 // once its rank exceeds the caller's current effective-tier watch-zone limit.
 // Returns a nil map — every zone unpaused — when no profile reader is wired,
 // the profile is missing, or the tier is unlimited (Pro): the same "fail
@@ -290,7 +286,7 @@ func (h *handler) pausedZoneIDs(ctx context.Context, userID string, zones []Watc
 	return pausedIDs(zones, limit), nil
 }
 
-// pausedIDs partitions zones into the paused set (GH#889): ranked
+// pausedIDs partitions zones into the paused set: ranked
 // oldest-first by (CreatedAt, ID), a zone whose rank exceeds limit is paused.
 // Purely derived — no schema change, no stored flag — so a re-upgrade or a
 // delete of an older zone revives the next zone in rank with zero extra work.
@@ -330,7 +326,7 @@ type patchRequest struct {
 	PushEnabled         *bool           `json:"pushEnabled"`
 	EmailInstantEnabled *bool           `json:"emailInstantEnabled"`
 	Boundary            json.RawMessage `json:"boundary"`
-	// FilterKey is tri-state (GH#1090, epic tc-w825j), mirroring Boundary
+	// FilterKey is tri-state, mirroring Boundary
 	// exactly and for the same reason: a plain *string cannot distinguish an
 	// absent key from an explicit "filterKey": null. See
 	// decodeFilterKeyUpdate.
@@ -482,7 +478,7 @@ func (h *handler) patch(w http.ResponseWriter, r *http.Request) {
 	// for the identical filter-gate fix), and settingFilter/settingBoundary
 	// each need the zone's currently-stored FilterKey/Boundary to tell
 	// "setting a NEW value" apart from "resending the zone's own unchanged
-	// value" (tc-k3ncu, tc-h3aov) -- e.g. a client that always sends full
+	// value" -- e.g. a client that always sends full
 	// state on every PATCH, including an unrelated field like name or
 	// radius. Loaded once here and reused for WithUpdates below; do not
 	// fetch it a second time.
@@ -498,8 +494,7 @@ func (h *handler) patch(w http.ResponseWriter, r *http.Request) {
 
 	// "Setting" a filter (as opposed to leaving it alone, explicitly nulling
 	// it back to unfiltered, or resending the zone's own already-stored
-	// filterKey unchanged) is the only case the Pro-tier gate applies to
-	// (GH#1090, epic tc-w825j; unchanged-resend exemption tc-k3ncu). A
+	// filterKey unchanged) is the only case the Pro-tier gate applies to. A
 	// downgraded caller who retained a pre-existing filter and PATCHes an
 	// unrelated field must not be gated on a filterKey they didn't touch.
 	settingFilter := filterKeyUpdate != nil && *filterKeyUpdate != "" && *filterKeyUpdate != string(zone.FilterKey)
@@ -572,7 +567,7 @@ func (h *handler) patch(w http.ResponseWriter, r *http.Request) {
 		h.metrics.WatchZoneUpdated(r.Context())
 	}
 
-	// The paused computation (GH#889) needs the caller's full zone set to rank
+	// The paused computation needs the caller's full zone set to rank
 	// the edited zone, unlike list (which already has it); skip the extra
 	// store round trip entirely when no profile reader is wired.
 	var paused bool
@@ -718,7 +713,7 @@ func (h *handler) writeEnvelope(w http.ResponseWriter, r *http.Request, status i
 // ready (e.g. a rapid map pan cancelling an in-flight fetch) rather than a
 // genuine server fault — that case is deliberately not logged at error level
 // and not given a 500: the caller is already gone, so nothing meaningfully
-// needs to be written back (tc-ftccw).
+// needs to be written back.
 func (h *handler) serverError(w http.ResponseWriter, r *http.Request, op string, err error) {
 	if errors.Is(err, context.Canceled) {
 		return
