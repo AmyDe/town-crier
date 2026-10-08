@@ -1,0 +1,53 @@
+{{define "authority"}}{{template "head" .Layout}}      <main>
+        <h1>Planning applications in {{.Area}}</h1>
+        {{if .DataUpdated}}<p class="dataUpdated">{{.DataUpdated}}</p>{{end}}
+        <p class="lead">{{.Lead}}</p>
+{{template "inlineCta" .}}
+        <p class="crossLinks">
+          <a class="crossLinks__link" href="/planning/towns">See planning applications by town →</a>
+        </p>
+
+{{template "summary" .}}
+
+{{template "ledger" .}}
+{{- if .Towns}}
+        <section class="townLinks">
+          <h2>Planning applications by town in {{.Area}}</h2>
+          <p>Browse recent applications for individual towns and villages in {{.Area}}.</p>
+          <ul class="townLinks__list">
+            {{- range .Towns}}
+            <li><a href="{{.Href}}">{{.Text}}</a></li>
+            {{- end}}
+          </ul>
+        </section>
+{{- end}}
+        <section class="explainer">
+          <h2>How to comment on a planning application in {{.Area}}</h2>
+          <p>
+            Anyone can have their say on a planning application in {{.Area}}. Find the
+            application on the {{.Area}} planning authority's public-access portal using
+            the reference number above, then submit a comment before the consultation
+            deadline. Comments are usually limited to planning matters such as overlooking,
+            loss of light, traffic, noise and the character of the area.
+          </p>
+          <p>
+            {{.Area}} is the local planning authority responsible for deciding these
+            applications. Town Crier mirrors the public record so you can keep track of
+            what is happening near you, but the council remains the authoritative source
+            and the place to submit formal comments.
+          </p>
+        </section>
+{{- if .Neighbours}}
+        <section class="neighbouringCouncils">
+          <h2>Neighbouring councils</h2>
+          <p>Planning applications in the councils nearest here.</p>
+          <ul class="neighbouringCouncils__list">
+            {{- range .Neighbours}}
+            <li><a href="{{.Href}}">{{.Text}}</a></li>
+            {{- end}}
+          </ul>
+        </section>
+{{- end}}
+{{template "bottomCta" .}}
+      </main>
+{{template "foot" .Layout}}{{end}}

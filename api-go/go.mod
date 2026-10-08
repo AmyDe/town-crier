@@ -25,6 +25,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.45.0
 	golang.org/x/image v0.43.0
 	golang.org/x/net v0.58.0
+	rsc.io/qr v0.2.0
 )
 
 require (
