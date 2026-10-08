@@ -4,7 +4,7 @@ Date: 2026-07-13
 
 ## Status
 
-Open
+Superseded by [ADR 0050](../adr/0050-serve-seo-pages-live-from-go-via-cloudflare-worker.md)
 
 ## Question
 
