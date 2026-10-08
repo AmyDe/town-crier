@@ -101,6 +101,9 @@ outputs:
   go:
     description: "true if api-go/ changed"
     value: ${{ steps.detect.outputs.go }}
+  worker:
+    description: "true if cloudflare/apex-worker/ changed"
+    value: ${{ steps.detect.outputs.worker }}
   gha:
     description: "true if .github/ changed (workflows or composite actions) — drives the actionlint/zizmor lint lane (issue #835 slice 4)"
     value: ${{ steps.detect.outputs.gha }}

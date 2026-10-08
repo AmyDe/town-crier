@@ -45,6 +45,7 @@ jobs:
       infra: ${{ steps.detect.outputs.infra }}
       go: ${{ steps.detect.outputs.go }}
       gha: ${{ steps.detect.outputs.gha }}
+      worker: ${{ steps.detect.outputs.worker }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
@@ -59,9 +60,9 @@ jobs:
           # `gha` (issue #835 slice 4) drives the github-actions-lint job
           # below — see detect-changes/action.yml's header for why it's
           # computed independently rather than as a mapped CATEGORY_PREFIX.
-          categories: cli,ios,android,web,infra,go,gha
+          categories: cli,ios,android,web,infra,go,gha,worker
           trigger-files: |
-            .github/workflows/pr-gate.yml:cli,ios,android,web,infra,go
+            .github/workflows/pr-gate.yml:cli,ios,android,web,infra,go,worker
             .github/workflows/cd-dev.yml:web,infra,go
             .github/workflows/cd-prod.yml:infra
             .github/workflows/cd-ios-testflight.yml:ios
@@ -386,6 +387,30 @@ jobs:
       - run: npm run build
         working-directory: web
 
+  # ── Cloudflare apex Worker ───────────────────────────
+
+  worker-test:
+    name: "Worker: Type-check & test"
+    needs: changes
+    if: needs.changes.outputs.worker == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: cloudflare/apex-worker/package-lock.json
+      - run: npm ci
+        working-directory: cloudflare/apex-worker
+      - run: npx tsc --noEmit
+        working-directory: cloudflare/apex-worker
+      - run: npx vitest run
+        working-directory: cloudflare/apex-worker
+
   # ── Infrastructure ───────────────────────────────────
 
   infra-preview:
@@ -538,7 +563,7 @@ jobs:
     # so without `changes` in this needs array a failing coverage assertion
     # would be silently swallowed and `gate` would report success (issue
     # #835 slice 2 — found during implementation, not in the original scope).
-    needs: [changes, go-lint, go-test, go-integration, cli-lint, cli-build-test, ios-lint, ios-build-test, ios-release-note-guard, android-lint, android-build-test, android-release-note-guard, web-lint, web-build-test, infra-preview, github-actions-lint]
+    needs: [changes, go-lint, go-test, go-integration, cli-lint, cli-build-test, ios-lint, ios-build-test, ios-release-note-guard, android-lint, android-build-test, android-release-note-guard, web-lint, web-build-test, infra-preview, worker-test, github-actions-lint]
     if: always() && (github.event_name != 'pull_request' || github.event.action != 'closed')
     runs-on: ubuntu-latest
     timeout-minutes: 2
@@ -561,6 +586,7 @@ jobs:
             "${{ needs.web-lint.result }}"
             "${{ needs.web-build-test.result }}"
             "${{ needs.infra-preview.result }}"
+            "${{ needs.worker-test.result }}"
             "${{ needs.github-actions-lint.result }}"
           )
           for r in "${results[@]}"; do
