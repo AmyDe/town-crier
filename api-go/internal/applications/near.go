@@ -58,7 +58,7 @@ type nearHandler struct {
 // endpoint that feeds town-level SEO pages. The route is anonymous to Auth0 (kept
 // out of the fallback-deny set in wiring) and authenticated solely by the
 // X-Build-Key gate, mirroring the sibling authority endpoint. It reads only public
-// planning data from Postgres (GH#395 Invariant 1 — never PlanIt).
+// planning data from Postgres, never PlanIt.
 func NearRoutes(mux *http.ServeMux, store nearStore, buildKey string, logger *slog.Logger) {
 	h := &nearHandler{store: store, logger: logger}
 	mux.HandleFunc("GET /v1/applications/near", requireBuildKey(buildKey, h.recentNearby))
@@ -142,10 +142,7 @@ func (h *nearHandler) recentNearby(w http.ResponseWriter, r *http.Request) {
 		total += sc.Count
 	}
 
-	render := len(apps)
-	if render > limit {
-		render = limit
-	}
+	render := min(len(apps), limit)
 	results := make([]RecentApplication, 0, render)
 	for i := range render {
 		results = append(results, RecentApplicationOf(apps[i]))

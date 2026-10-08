@@ -47,8 +47,6 @@ type Store interface {
 	Search(ctx context.Context, query, authorityCode string, lat, lon float64, limit int) ([]PlanningApplication, bool, error)
 }
 
-// Compile-time check: the Postgres store satisfies the per-handler consumer-side
-// interfaces and the full Store surface.
 var (
 	_ appStore    = (*PostgresStore)(nil)
 	_ recentStore = (*PostgresStore)(nil)
@@ -58,17 +56,13 @@ var (
 )
 
 // PostgresStore reads and writes planning applications in the Postgres
-// `applications` table (Cosmos -> Postgres + PostGIS migration; memo 0010, epic
-// #645). It is a parallel implementation: Cosmos remains the wired datastore, so
-// nothing here is on a live path yet.
+// `applications` table.
 //
-// Key design vs the Cosmos store:
 //   - The natural key is the COMPOSITE (authority_code, planit_name) — a PlanIt
 //     case reference is only unique within an authority — so Upsert is
 //     INSERT ... ON CONFLICT (authority_code, planit_name) DO UPDATE.
 //   - location is a geography(Point,4326) served by one GiST index, so the radius
-//     reads use ST_DWithin and the nearest-first read uses the KNN <-> operator —
-//     the true nearest-N ordering the Cosmos Gateway refuses cross-partition.
+//     reads use ST_DWithin and the nearest-first read uses the KNN <-> operator.
 type PostgresStore struct {
 	db querier
 }
@@ -113,7 +107,7 @@ func scanAppRow(row pgx.CollectableRow) (PlanningApplication, error) {
 // upsertQuery writes the application keyed on the composite (authority_code,
 // planit_name). location is built from longitude ($15) and latitude ($16): when
 // either is NULL, ST_MakePoint yields NULL, so a coordinate-less application stores
-// a NULL location — matching the Cosmos newGeoPoint both-or-nothing rule.
+// a NULL location.
 // $20-$26 are the PlanIt full-field widening's seven silent columns (GH#935):
 // other_fields ($26) binds a map[string]any natively as jsonb via pgx; a nil
 // map binds as SQL NULL. altid/associated_id ($21/$22) bind raw JSON bytes the
@@ -156,7 +150,7 @@ ON CONFLICT (authority_code, planit_name) DO UPDATE SET
 	other_fields = EXCLUDED.other_fields`
 
 // Upsert inserts or updates the application. authority_code is the stringified
-// AreaID, matching the Cosmos partition key.
+// AreaID.
 func (s *PostgresStore) Upsert(ctx context.Context, a PlanningApplication) error {
 	_, err := s.db.Exec(ctx, upsertQuery,
 		a.Name, strconv.Itoa(a.AreaID), a.UID, a.AreaName, a.AreaID, a.Address,
@@ -355,9 +349,8 @@ func scanNearbyRow(row pgx.CollectableRow) (nearbyRow, error) {
 
 // FindNearbyPage returns one nearest-first page of up to limit applications within
 // radiusMetres of (latitude, longitude), plus an opaque cursor for the next page
-// (empty when exhausted). This is the new, correct nearest-first behaviour memo
-// 0010 calls for — true KNN ordering with stable keyset pagination, which the
-// Cosmos Gateway cannot serve cross-partition. It is authority-agnostic.
+// (empty when exhausted), using KNN ordering with keyset pagination. It is
+// authority-agnostic.
 func (s *PostgresStore) FindNearbyPage(ctx context.Context, latitude, longitude, radiusMetres float64, limit int, cursor string) ([]PlanningApplication, string, error) {
 	var (
 		rows pgx.Rows

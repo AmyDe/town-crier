@@ -4,6 +4,7 @@
 package authorities
 
 import (
+	"cmp"
 	"embed"
 	"encoding/json"
 	"fmt"
@@ -101,20 +102,10 @@ func compareOrdinalIgnoreCase(a, b string) int {
 	for i := range n {
 		ca, cb := asciiUpper(a[i]), asciiUpper(b[i])
 		if ca != cb {
-			if ca < cb {
-				return -1
-			}
-			return 1
+			return cmp.Compare(ca, cb)
 		}
 	}
-	switch {
-	case len(a) < len(b):
-		return -1
-	case len(a) > len(b):
-		return 1
-	default:
-		return 0
-	}
+	return cmp.Compare(len(a), len(b))
 }
 
 func asciiUpper(c byte) byte {

@@ -9,14 +9,8 @@ import (
 // maxZoom is the inclusive upper bound on the standard slippy-map zoom range a
 // client may request; baseGridDegrees is the grid cell size (in degrees) at
 // zoom 0. Each cell is 1/8 of a zoom tile (a tile is 360/2^z degrees wide), so
-// a screenful of a few tiles yields a bounded handful of cluster cells.
-//
-// This table (and the exported GridDegreesForZoom/FinestGridDegrees below)
-// moved here from watchzones/nearby.go (GH#924): the zoom -> grid policy is a
-// client-visible density contract shared by both the authed watch-zone map and
-// the anonymous map (anonclusters.go) — duplicating it invites drift where the
-// two maps cluster differently at the same zoom. watchzones already imports
-// this package, so the dependency direction was already established.
+// a screenful of a few tiles yields a bounded handful of cluster cells. The
+// authed and anonymous maps share it so they cluster identically at each zoom.
 const (
 	maxZoom         = 20
 	baseGridDegrees = 45.0 // 360 / 2^3 (eight cells per tile at zoom 0)
@@ -67,8 +61,7 @@ type BBox struct {
 // (ok == false) anything that is not exactly four finite decimal degrees, with
 // coordinates in range (lng [-180,180], lat [-90,90]) and strictly ordered
 // (west < east, south < north), so a malformed viewport is a clean 400 rather
-// than a degenerate or world-spanning query. Moved from watchzones/nearby.go's
-// unexported parseBBox (GH#924) — byte-identical semantics, now shared.
+// than a degenerate or world-spanning query.
 func ParseBBox(raw string) (BBox, bool) {
 	if raw == "" {
 		return BBox{}, false

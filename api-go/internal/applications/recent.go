@@ -26,8 +26,7 @@ const (
 
 // recentStore is the consumer-side store the SEO read handler needs: a bounded,
 // single-partition top-N read by authority plus a whole-partition per-appState
-// breakdown (whose buckets sum to the exact partition total). The concrete
-// *CosmosStore satisfies it structurally.
+// breakdown (whose buckets sum to the exact partition total).
 type recentStore interface {
 	RecentByAuthority(ctx context.Context, authorityCode string, cap int) ([]PlanningApplication, error)
 	BreakdownByAuthority(ctx context.Context, authorityCode string) ([]StateCount, error)
@@ -43,7 +42,7 @@ type recentHandler struct {
 // endpoint. The route is anonymous to Auth0 (kept out of the fallback-deny set in
 // wiring) and authenticated solely by the X-Build-Key gate, mirroring the admin
 // surface. It exists for the static SEO prerender, which reads only public
-// planning data from Cosmos.
+// planning data.
 func RecentRoutes(mux *http.ServeMux, store recentStore, buildKey string, logger *slog.Logger) {
 	h := &recentHandler{store: store, logger: logger}
 	mux.HandleFunc("GET /v1/authorities/{id}/applications", requireBuildKey(buildKey, h.recentByAuthority))
@@ -51,7 +50,7 @@ func RecentRoutes(mux *http.ServeMux, store recentStore, buildKey string, logger
 
 // recentByAuthority returns up to limit most-recently-active applications for the
 // numeric authority id, drawn from one bounded single-partition read of at most
-// recentReadCap documents. There is no PlanIt fallback (GH#395 Invariant 1).
+// recentReadCap documents. There is no PlanIt fallback.
 func (h *recentHandler) recentByAuthority(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(r.PathValue("id"))
 	if err != nil {
@@ -92,10 +91,7 @@ func (h *recentHandler) recentByAuthority(w http.ResponseWriter, r *http.Request
 		total += sc.Count
 	}
 
-	render := len(apps)
-	if render > limit {
-		render = limit
-	}
+	render := min(len(apps), limit)
 	results := make([]RecentApplication, 0, render)
 	for i := range render {
 		results = append(results, RecentApplicationOf(apps[i]))

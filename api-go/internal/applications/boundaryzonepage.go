@@ -30,22 +30,10 @@ type InBoundaryQuery struct {
 	Cursor    string
 }
 
-// boundaryZonePolygonNoPoint is boundaryZonePolygon's (boundarypage.go)
-// counterpart for the non-distance sorts below: ST_Covers containment against
-// the polygon needs no centroid, so -- unlike the KNN/distance queries in
-// boundarypage.go, which keep the circle-mirroring $1/$2 (longitude,
-// latitude) positions because they order by distance from that point -- these
-// queries have no use for a centroid at all. Consequently they do NOT reuse
-// zonepage.go's shared dateFromWhere/statusFirstQuery/activityFromWhere/
-// activityUnreadSubquery/*OrderBy constants: those hardcode $1/$2 as the
-// circle's centroid (referenced inside their ST_DWithin predicate) and $4/$5
-// as the following slots. Reusing them here would carry $1/$2 positions that
-// nothing in an ST_Covers predicate ever references -- Postgres cannot infer
-// an unreferenced placeholder's type ("could not determine data type of
-// parameter $1"), a real prepare-time failure, not a style choice. So this
-// file defines its own ORDER BY/LIMIT and join-subquery constants with
-// positions that start at $1 for what these queries actually use: the
-// boundary GeoJSON, then the limit, then (for recent-activity) the userID.
+// boundaryZonePolygonNoPoint is the zone polygon at $1, for queries that take
+// no centroid. They cannot reuse zonepage.go's $1/$2-centroid constants because
+// Postgres fails to prepare an unreferenced placeholder ("could not determine
+// data type of parameter $1").
 const boundaryZonePolygonNoPoint = "ST_GeomFromGeoJSON($1)::geography"
 
 // boundaryDateFromWhere mirrors dateFromWhere's shape (projection, ST_Covers

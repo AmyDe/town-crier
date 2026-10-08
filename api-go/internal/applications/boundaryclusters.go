@@ -23,12 +23,6 @@ type BoundaryClusterQuery struct {
 	CoalesceThresholdDegrees float64
 }
 
-// boundaryClusterPolygon is the custom-shape zone's polygon, built from $1 --
-// the GeoJSON-encoded ring. It is the boundary-scoped counterpart to
-// clusterPoint's circle, at a different parameter position (this query has no
-// centre/radius, so the polygon takes the leading placeholder).
-const boundaryClusterPolygon = "ST_GeomFromGeoJSON($1)::geography"
-
 // boundaryClusterQueryHead mirrors clusterQueryHead: identical grid-cell
 // tagging and viewport predicate, with ST_Covers against the polygon replacing
 // ST_DWithin against the circle. $2 is the grid size, $3..$6 the viewport.
@@ -40,13 +34,13 @@ const boundaryClusterQueryHead = `WITH filtered AS (
 		planit_name AS name,
 		location::geometry AS geom
 	FROM applications
-	WHERE ST_Covers(` + boundaryClusterPolygon + `, location)
+	WHERE ST_Covers(` + boundaryZonePolygonNoPoint + `, location)
 		AND location::geometry && ST_MakeEnvelope($3, $4, $5, $6, 4326)`
 
 // boundaryClusterQueryTail mirrors clusterQueryTail exactly, renumbered for
-// this query's parameter positions: $7 is the coalesce threshold (clusterTail's
+// this query's parameter positions: $7 is the coalesce threshold (clusterQueryTail's
 // $9) and, for boundaryClusterQueryByStatus only, $8 is the status filter
-// (clusterTail's $10). See clusterQueryTail for the full per-cell aggregation
+// (clusterQueryTail's $10). See clusterQueryTail for the full per-cell aggregation
 // rationale, which applies unchanged here.
 const boundaryClusterQueryTail = `
 ),

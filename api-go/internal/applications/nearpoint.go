@@ -15,12 +15,8 @@ import (
 // nearPointMaxRadiusMetres bound the optional ?radius= query parameter: a
 // present-but-out-of-range numeric value is CLAMPED into [min, max] rather than
 // rejected (an omitted or genuinely unparseable value falls back to the
-// default) — see parseNearPointRadius. This is a public, unauthenticated
-// endpoint and, unlike the text search, a point+radius read is a whole-table
-// scraping target (tile the UK with radius queries and dump the whole table):
-// the radius/limit clamps here are a second, complementary layer of defense on
-// top of the per-IP anonymous rate limiter (GH#868 Phase 1), not a substitute
-// for it (GH#868 Phase 2).
+// default). A public point+radius read is a whole-table scraping target, so
+// these clamps are a second layer of defence behind the per-IP rate limiter.
 const (
 	nearPointDefaultRadiusMetres = 2000
 	nearPointMinRadiusMetres     = 100
@@ -36,35 +32,26 @@ const (
 	nearPointMaxLimit     = 200
 )
 
-// nearPointSortDistance and nearPointSortRecent are the two ?sort= values GH#912
-// Phase 2 accepts. nearPointSortDistance is the default and preserves the
-// legacy nearest-first KNN behaviour byte-for-byte, including keyset pagination
-// via ?cursor=/X-Next-Cursor. nearPointSortRecent orders by recentRealDateOrder
-// (store_postgres.go) — most-recently-decided, falling back to
-// most-recently-submitted, NULLS LAST — the same real-lifecycle-date ordering
-// #819 introduced for the SEO authority reads, applied here to an
-// authority-agnostic radius read. It does NOT paginate (see RecentNearPoint's
-// doc comment for why): a full page never sets X-Next-Cursor.
+// nearPointSortDistance and nearPointSortRecent are the accepted ?sort= values.
+// nearPointSortDistance is the default nearest-first KNN order with keyset
+// pagination via ?cursor=/X-Next-Cursor. nearPointSortRecent orders by
+// recentRealDateOrder (store_postgres.go) and does NOT paginate: a full page
+// never sets X-Next-Cursor.
 const (
 	nearPointSortDistance = "distance"
 	nearPointSortRecent   = "recent"
 )
 
 // nearPointTimeout bounds a single near-point call end-to-end, matching
-// search.go's searchTimeout: this is a public, unauthenticated endpoint
-// sharing a Postgres pool with prod's core watch-zone/notification reads
-// (psql-town-crier-shared) — a pathological query must fail fast with a 500
-// rather than hold a pool connection open for tens of seconds (tc-z5i5j
-// incident precedent). It is defense-in-depth alongside the radius/limit
-// clamps above, not a substitute for them.
+// searchTimeout: a pathological query on this public endpoint must fail fast
+// rather than hold a shared pool connection.
 const nearPointTimeout = 8 * time.Second
 
 // nearPointStore is the consumer-side store the near-point handler needs:
 // FindNearbyPage is the generic KNN + ST_DWithin keyset page already used by
 // the authed watch-zone nearby endpoints and the anonymous demo account
 // (?sort=distance, the default); RecentNearPoint is the real-lifecycle-date
-// ordered, ST_DWithin-filtered single page (?sort=recent, GH#912 Phase 2).
-// *PostgresStore satisfies it structurally.
+// ordered, ST_DWithin-filtered single page (?sort=recent).
 type nearPointStore interface {
 	FindNearbyPage(ctx context.Context, latitude, longitude, radiusMetres float64, limit int, cursor string) ([]PlanningApplication, string, error)
 	RecentNearPoint(ctx context.Context, latitude, longitude, radiusMetres float64, limit int) ([]PlanningApplication, error)
@@ -78,11 +65,11 @@ type nearPointHandler struct {
 }
 
 // NearPointRoutes registers the public GET /v1/applications/near-point
-// endpoint (GH#868 Phase 2). It is kept in cmd/api/wiring.go's
+// endpoint. It is kept in cmd/api/wiring.go's
 // anonymousPatterns — a DIFFERENT route from the build-key-gated
 // GET /v1/applications/near SEO route (applications.NearRoutes) — and reads
 // only public planning data from Postgres. The resolver populates each
-// result's AuthoritySlug (GH#879 Phase 1), mirroring SearchRoutes, so an
+// result's AuthoritySlug, mirroring SearchRoutes, so an
 // anonymously-loaded application can build a share URL or a by-slug detail
 // fetch.
 func NearPointRoutes(mux *http.ServeMux, store nearPointStore, resolver authoritySlugResolver, logger *slog.Logger) {
@@ -240,13 +227,9 @@ func parseNearPointLimit(raw string) int {
 }
 
 // parseNearPointSort validates the optional ?sort= query param. An empty value
-// or "distance" normalises to nearPointSortDistance (the default, byte-identical
-// to pre-GH#912-Phase-2 behaviour); "recent" normalises to nearPointSortRecent.
-// Any other value is rejected (ok == false) — unlike parseNearPointRadius/
-// parseNearPointLimit, which CLAMP an out-of-range value instead of rejecting
-// it, there is no sensible "nearest legal sort" to clamp an unrecognised value
-// to, so this mirrors parseNearPointCoordinates/decodeNearPointCursor's
-// reject-don't-guess convention instead.
+// or "distance" normalises to nearPointSortDistance; "recent" normalises to
+// nearPointSortRecent. Any other value is rejected (ok == false): unlike the
+// radius and limit, there is no sensible value to clamp to.
 func parseNearPointSort(raw string) (string, bool) {
 	switch raw {
 	case "", nearPointSortDistance:

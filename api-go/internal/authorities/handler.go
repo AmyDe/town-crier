@@ -1,14 +1,13 @@
 package authorities
 
 import (
-	"bytes"
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
+	"github.com/AmyDe/town-crier/api-go/internal/httputil"
 )
 
 // authorityStore is the consumer-side view the handler needs. The concrete
@@ -100,18 +99,14 @@ func (h handler) byID(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h handler) writeJSON(r *http.Request, w http.ResponseWriter, v any) {
-	// Encode through a buffer with HTML escaping off and trim the trailing
-	// newline json.Encoder appends, so the wire bytes are compact.
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(v); err != nil {
+	body, err := httputil.EncodeJSON(v)
+	if err != nil {
 		h.logger.ErrorContext(r.Context(), "encode authorities response", "path", r.URL.Path, "error", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	if _, err := w.Write(bytes.TrimRight(buf.Bytes(), "\n")); err != nil {
+	if _, err := w.Write(body); err != nil {
 		h.logger.ErrorContext(r.Context(), "write authorities response", "path", r.URL.Path, "error", err)
 	}
 }

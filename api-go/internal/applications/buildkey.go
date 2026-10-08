@@ -15,13 +15,9 @@ const buildKeyHeader = "X-Build-Key"
 // deployment (SITE_BUILD_KEY unset) would treat a keyless caller as a match
 // instead of rejecting every request.
 //
-// Exported so a caller outside this package can recognise build-key-
-// authenticated traffic without duplicating the header name or the
-// constant-time compare — specifically the anonymous-rate-limit exemption
-// predicate wired in cmd/api/wiring.go (GH#872 collateral, tc-zod82): the
+// Exported for the anonymous-rate-limit exemption in cmd/api/wiring.go: the
 // build-key SEO endpoints authenticate inside the handler rather than via
-// Auth0, so without this exemption their traffic is wrongly metered as
-// anonymous.
+// Auth0, so without it their traffic is metered as anonymous.
 func BuildKeyMatches(r *http.Request, expectedKey string) bool {
 	if expectedKey == "" {
 		return false
