@@ -4,7 +4,7 @@ Date: 2026-06-22
 
 ## Status
 
-Accepted
+Superseded by [ADR 0050](0050-serve-seo-pages-live-from-go-via-cloudflare-worker.md)
 
 Supersedes the follow-up `tc-75qo` (web-deploy job approaching its timeout) and the
 original Cloudflare-path-routing / dedicated-Static-Web-App approach to the SEO
