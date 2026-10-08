@@ -39,7 +39,7 @@ const (
 	planItBaseURL = "https://www.planit.org.uk/"
 	// devPollingAreaID is the PlanIt area_id of Kingston upon Thames, the one authority the
 	// dev poll job reads. Changing it resets the dev data set. Taken from authorityId in
-	// web/src/data/towns.json, which is PlanIt's area_id.
+	// api-go/internal/seocatalog/resources/towns.json, which is PlanIt's area_id.
 	devPollingAreaID = "314"
 	// devPollingFullReadMaxAgeDays is the dev poll job's POLLING_FULL_READ_MAX_AGE_DAYS during
 	// the dev trial (0 forces a full read every run). Reset to prodPollingFullReadMaxAgeDays
@@ -507,6 +507,12 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 	// Created for both envs: it enforces retention against town_crier_dev on dev, the same as
 	// prod against town_crier_prod (GH #681).
 	if err = createWorkerJob(ctx, ec, "pg-purge", "0 2 * * *", 600, "pg-purge"); err != nil {
+		return err
+	}
+	if err = createWorkerJob(ctx, ec, "seo-assign", "20 * * * *", 1800, "seo-assign"); err != nil {
+		return err
+	}
+	if err = createWorkerJob(ctx, ec, "seo-catalog", "10 10 * * *", 1800, "seo-catalog"); err != nil {
 		return err
 	}
 
