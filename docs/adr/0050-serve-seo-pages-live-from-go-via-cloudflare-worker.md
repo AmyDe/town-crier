@@ -31,8 +31,9 @@ Traffic is small. Prod SWA `SiteHits` across all paths peaked at 8,978/day over 
 2. **A precomputed catalog decides the page set.** A worker mode recomputes, daily, which authorities and towns publish (coverage gate, population floor, same-name 301s, duplicate slugs), their status breakdowns, neighbour links and sitemap `lastmod`. Each town's applications are assigned to it once and stored, by an hourly incremental worker mode, so a town page is an indexed read. Request-time work is one catalog lookup plus one bounded application read.
 3. **One Worker fronts the whole apex.** It routes `towncrierapp.uk/*`: `/planning`, `/planning/*` and `/sitemap.xml` go to the Go API with the build key as a Worker secret; every other path goes to the SWA's default `*.azurestaticapps.net` hostname. The apex is orange-clouded. No origin depends on an Azure managed certificate behind the proxy.
 4. **Workers Free plan only.** No paid Cloudflare product. A free rate-limiting rule on `/planning*` (verified bots excluded) protects the daily quota from a single abusive client.
-5. **Fail closed, no permanent static fallback.** The route fails closed; a soft-404 SPA shell is worse for SEO than a short error. Resilience comes from the Worker's edge cache with stale-if-error. The static pages stay deployed for one week after cutover as the rollback path, then the snapshot pipeline is deleted.
-6. **Cloudflare config ships through CI.** The Worker source and routes live in the repo and deploy through GitHub Actions with a scoped Cloudflare API token, never by hand. DNS proxy status stays outside Pulumi, as for the other hosts.
+5. **Fail closed, no permanent static fallback.** The route fails closed; a soft-404 SPA shell is worse for SEO than a short error. Resilience comes from the Worker's edge cache with stale-if-error.
+6. **Build and prove side by side, then cut over in one step.** The complete stack (Worker, catalog, renderer) first serves only preview hostnames (`preview.towncrierapp.uk`, `preview-dev.towncrierapp.uk`) marked `noindex`, and a parity script compares every live URL with its preview twin. Cutover adds the real-host Worker routes and orange-clouds the apex; the Worker carries no feature flag. Rollback for one week is grey-clouding the apex, which returns the still-deployed static pages; after that the snapshot pipeline is deleted.
+7. **Cloudflare config ships through CI.** The Worker source and routes live in the repo and deploy through GitHub Actions with a scoped Cloudflare API token, never by hand. DNS proxy status stays outside Pulumi, as for the other hosts.
 
 ## Consequences
 
@@ -40,6 +41,7 @@ Traffic is small. Prod SWA `SiteHits` across all paths peaked at 8,978/day over 
 - The snapshot pipeline goes away: `seo-refresh.yml`, the `seo-snapshot` blob containers, the `render-mode` plumbing in `build-web`, `prerender-planning.mjs` and its render libraries, and the two build-key JSON endpoints.
 - Page rendering moves from JavaScript to Go. Templates, design tokens and the QR block must be ported once, with a parity check before cutover.
 - The whole website now depends on the Worker. A Worker fault or quota exhaustion takes down every apex path, not only the SEO pages. The free quota has more than ten times headroom today; the rate rule and Cloudflare usage analytics guard it.
-- The dev site 526 is fixed by the same Worker on `dev.towncrierapp.uk`.
+- The dev site 526 is fixed by the same Worker on `dev.towncrierapp.uk` at cutover; dev stays down until then.
+- The prod pages keep coming from the failing snapshot job until cutover.
 - Unknown `/planning/*` paths return a real 404 instead of today's 200 SPA shell.
 - Per-application SEO pages become possible later without new infrastructure.
