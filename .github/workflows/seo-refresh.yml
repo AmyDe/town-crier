@@ -18,7 +18,7 @@
 #      This is the ONLY Go API call in the whole pipeline.
 #   3. Azure OIDC login — deliberately AFTER fetch, not before (tc-xukdb). The
 #      federated client assertion GitHub hands to Azure AD is only valid ~5
-#      minutes; fetch alone runs ~25-30 minutes (418 authorities + 1550 towns,
+#      minutes; fetch alone runs 40+ minutes on prod (418 authorities + 1550 towns,
 #      serial — see the concurrency note on the fetch step), so logging in
 #      beforehand left the assertion stale by the time the upload step below
 #      needed a storage-scoped token, failing with AADSTS700024. Login right
@@ -103,15 +103,10 @@ jobs:
     # Schedule always runs; manual runs honour the `environment` selector.
     if: github.event_name == 'schedule' || inputs.environment == 'dev' || inputs.environment == 'both'
     runs-on: ubuntu-latest
-    # 45 min: --fetch gathers the complete authority + town set (~418 authorities
-    # + ~1,550 towns, one bounded Postgres read each). Serial by design
-    # (PRERENDER_FETCH_CONCURRENCY=1 on the fetch step below): the prod API is a
-    # single 0.25 vCPU replica with no autoscale, and concurrency > 1 saturated
-    # it into a retry storm — request volume ~2x, prod step ~22 min, every
-    # endpoint's tail ballooned (tc-5nr3t). Serial + per-request timeout/retry
-    # (tc-a6mrb) keeps it the long pole at ~25-30 min, inside the ceiling. The
-    # offline --render is fast.
-    timeout-minutes: 45
+    # The serial --fetch (~1,968 API calls) is the long pole, and on prod it
+    # grows with the applications table: ~44 min by 2026-10. Keep the ceiling
+    # well above the observed fetch time or the deploy never runs.
+    timeout-minutes: 90
     environment: development
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -201,8 +196,8 @@ jobs:
     # Schedule always runs; manual runs honour the `environment` selector.
     if: github.event_name == 'schedule' || inputs.environment == 'prod' || inputs.environment == 'both'
     runs-on: ubuntu-latest
-    # 45 min: full authority + town --fetch (see web-dev for the rationale).
-    timeout-minutes: 45
+    # See web-dev for the fetch-time rationale.
+    timeout-minutes: 90
     environment: production
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
