@@ -25,6 +25,7 @@ declare -A CATEGORY_PREFIXES=(
   [android]="mobile/android"
   [web]="web"
   [infra]="infra"
+  [worker]="cloudflare/apex-worker"
 )
 
 # IGNORE_ALLOWLIST_*: top-level paths that legitimately need no pr-gate lane
