@@ -83,8 +83,7 @@ jobs:
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: cloudflare/apex-worker/package-lock.json
+          package-manager-cache: false
       - run: npm ci
         working-directory: cloudflare/apex-worker
       - run: npx tsc --noEmit
