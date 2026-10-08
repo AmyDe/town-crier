@@ -1,0 +1,40 @@
+{{define "hub"}}{{template "head" .Layout}}      <main>
+        <h1>Planning applications by council</h1>
+        <p class="lead">Browse recent planning applications for {{.Count}} {{.Noun}} across the UK.</p>
+        <p class="ctaInline">
+          <a class="ctaInline__button" href="{{.StoreHref}}" rel="noopener" target="_blank">Get push alerts for your council →</a>
+        </p>
+        <p class="crossLinks">
+          <a class="crossLinks__link" href="/planning/towns">See planning applications by town →</a>
+        </p>
+{{- if .Groups}}
+        <nav class="azNav" aria-label="Jump to letter">
+          {{- range .Groups}}
+          <a href="#letter-{{.Letter}}">{{.Letter}}</a>
+          {{- end}}
+        </nav>
+{{- end}}
+{{- range .Groups}}
+        <section class="hubGroup" id="letter-{{.Letter}}" aria-labelledby="letter-{{.Letter}}-heading">
+          <h2 id="letter-{{.Letter}}-heading">{{.Letter}}</h2>
+          <ul class="hubList">
+            {{- range .Entries}}
+            <li class="hubList__item">
+              <a class="hubList__link" href="{{.Href}}">{{.Name}}</a>
+              <span class="hubList__meta">{{.Meta}}</span>
+            </li>
+            {{- end}}
+          </ul>
+        </section>
+{{- end}}
+
+        <section class="cta">
+          <h2 class="cta__heading">Get push alerts for your area</h2>
+          <p>
+            Draw a circle on the map and Town Crier will notify you the moment a new
+            planning application is submitted or decided inside it.
+          </p>
+          <a class="cta__button" href="{{.StoreHref}}" rel="noopener" target="_blank">Download on the App Store</a>
+        </section>
+      </main>
+{{template "foot" .Layout}}{{end}}

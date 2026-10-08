@@ -12,12 +12,13 @@
 #   - web/scripts/lib/tokens.generated.mjs                     (SEO/share-page token block)
 #   - api-go/internal/designtokens/tokens_gen.go               (Go palette projection)
 #   - api-go/internal/sharepage/templates/tokens.gohtml        (share-page CSS token block)
+#   - api-go/internal/seopage/templates/tokens.gohtml          (live SEO-page CSS token block)
 #   - mobile/ios/.../DesignSystem/Colors/Color+TownCrier.swift (iOS colours)
 #   - mobile/android/.../designsystem/Color.kt                 (Android colours)
 #   - .claude/skills/design-language/references/tokens.md      (skill value tables)
 #
 # The generator's --check mode diffs every output registered in buildOutputs(),
-# so this script covers all seven with no per-file logic here. Mobile generation
+# so this script covers all eight with no per-file logic here. Mobile generation
 # is colours only; the skill doc regenerates only the value tables between its
 # <!-- tokens:generated --> markers (ADR 0040).
 #
