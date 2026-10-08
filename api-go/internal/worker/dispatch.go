@@ -46,6 +46,11 @@ const purgeBudget = 10 * time.Minute
 // replicaTimeout so the process exits cleanly and flushes telemetry.
 const reconcileBudget = 10 * time.Minute
 
+// seoBudget is the soft self-cancel for a seo-assign or seo-catalog run, kept
+// under the jobs' 1,800 s replicaTimeout so the process exits cleanly and
+// flushes telemetry.
+const seoBudget = 28 * time.Minute
+
 // DigestRunner is the consumer-side slice of the digest handler the dispatcher
 // invokes. *digest.Handler satisfies it; the worker depends only on these two
 // methods so it need not know the handler's internals. It is exported so main()
@@ -108,11 +113,24 @@ type AppStoreReconcileRunner interface {
 	Run(ctx context.Context) (scanned, gaps, applied int, err error)
 }
 
+// SEOAssignRunner is the consumer-side slice of the SEO town-assignment job. Run
+// returns the number of applications it covered. A nil runner is a deployment
+// accident (the store is always built), so dispatch exits 1.
+type SEOAssignRunner interface {
+	Run(ctx context.Context) (processed int, err error)
+}
+
+// SEOCatalogRunner is the consumer-side slice of the SEO catalog rebuild job.
+// Run returns the number of authority and town pages published.
+type SEOCatalogRunner interface {
+	Run(ctx context.Context) (authorityPages, townPages int, err error)
+}
+
 // Run dispatches on WORKER_MODE and returns the process exit code. It is the
 // testable core of cmd/worker/main.go. An unset or unknown mode is a deployment
 // accident and fails fast. Optional runners (purger, reconciler) may be nil:
 // pg-purge and appstore-reconcile then log and exit 0; the others exit 1.
-func Run(ctx context.Context, mode string, digester DigestRunner, dormant DormantRunner, poller PollRunner, sweeper SweepRunner, purger PurgeRunner, reconciler AppStoreReconcileRunner, logger *slog.Logger) int {
+func Run(ctx context.Context, mode string, digester DigestRunner, dormant DormantRunner, poller PollRunner, sweeper SweepRunner, purger PurgeRunner, reconciler AppStoreReconcileRunner, seoAssigner SEOAssignRunner, seoCataloger SEOCatalogRunner, logger *slog.Logger) int {
 	switch mode {
 	case "":
 		// WORKER_MODE is always set by infra; an unset value is a deployment
@@ -140,6 +158,12 @@ func Run(ctx context.Context, mode string, digester DigestRunner, dormant Dorman
 
 	case "appstore-reconcile":
 		return runAppStoreReconcile(ctx, reconciler, logger)
+
+	case "seo-assign":
+		return runSEOAssign(ctx, seoAssigner, logger)
+
+	case "seo-catalog":
+		return runSEOCatalog(ctx, seoCataloger, logger)
 
 	default:
 		logger.ErrorContext(ctx, "unknown WORKER_MODE; refusing to run", "mode", mode)
@@ -319,5 +343,62 @@ func runAppStoreReconcile(ctx context.Context, runner AppStoreReconcileRunner, l
 	)
 	logger.InfoContext(ctx, "appstore-reconcile cycle completed",
 		"scanned", scanned, "gaps", gaps, "applied", applied)
+	return 0
+}
+
+// runSEOAssign executes one seo-assign run under a soft self-cancel budget,
+// inside a telemetry span named "SEO Town Assignment". A nil runner or a run
+// error exits 1.
+func runSEOAssign(ctx context.Context, runner SEOAssignRunner, logger *slog.Logger) int {
+	tracer := otel.Tracer(tracerName)
+	ctx, span := tracer.Start(ctx, "SEO Town Assignment")
+	defer span.End()
+
+	if runner == nil {
+		logger.ErrorContext(ctx, "seo-assign has no runner wired; refusing to run")
+		return 1
+	}
+
+	runCtx, cancel := context.WithTimeout(ctx, seoBudget)
+	defer cancel()
+
+	processed, err := runner.Run(runCtx)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		logger.ErrorContext(ctx, "seo-assign run failed", "error", err)
+		return 1
+	}
+	span.SetAttributes(attribute.Int("seo_assign.processed_count", processed))
+	return 0
+}
+
+// runSEOCatalog executes one seo-catalog run under a soft self-cancel budget,
+// inside a telemetry span named "SEO Catalog Rebuild". A nil runner or a run
+// error exits 1.
+func runSEOCatalog(ctx context.Context, runner SEOCatalogRunner, logger *slog.Logger) int {
+	tracer := otel.Tracer(tracerName)
+	ctx, span := tracer.Start(ctx, "SEO Catalog Rebuild")
+	defer span.End()
+
+	if runner == nil {
+		logger.ErrorContext(ctx, "seo-catalog has no runner wired; refusing to run")
+		return 1
+	}
+
+	runCtx, cancel := context.WithTimeout(ctx, seoBudget)
+	defer cancel()
+
+	authorityPages, townPages, err := runner.Run(runCtx)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		logger.ErrorContext(ctx, "seo-catalog run failed", "error", err)
+		return 1
+	}
+	span.SetAttributes(
+		attribute.Int("seo_catalog.authority_pages", authorityPages),
+		attribute.Int("seo_catalog.town_pages", townPages),
+	)
 	return 0
 }
