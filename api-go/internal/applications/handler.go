@@ -54,7 +54,7 @@ func Routes(mux *http.ServeMux, store appStore, refresher snapshotRefresher, res
 
 // getByAuthorityAndName point-reads an application by (authorityCode, name) and
 // returns it, or a bodyless 404 when it is not in the store — there is no PlanIt
-// fallback (GH#395 Invariant 1). This route is authed.
+// fallback. This route is authed.
 func (h *handler) getByAuthorityAndName(w http.ResponseWriter, r *http.Request) {
 	authorityCode := r.PathValue("authorityCode")
 	name := r.PathValue("name")

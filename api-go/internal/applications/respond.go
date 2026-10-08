@@ -28,11 +28,8 @@ func writeJSON(w http.ResponseWriter, r *http.Request, logger *slog.Logger, v an
 }
 
 // serverError logs and emits a bodyless 500; the error envelope is backfilled by
-// middleware.ErrorBody. A context.Canceled error means the caller disconnected
-// before the response was ready (e.g. a rapid map pan cancelling an in-flight
-// fetch) rather than a genuine server fault — that case is deliberately not
-// logged at error level and not given a 500: the caller is already gone, so
-// nothing meaningfully needs to be written back (tc-ftccw).
+// middleware.ErrorBody. A context.Canceled error means the caller disconnected,
+// so it is deliberately neither logged nor given a 500.
 func serverError(w http.ResponseWriter, r *http.Request, logger *slog.Logger, op string, err error) {
 	if errors.Is(err, context.Canceled) {
 		return

@@ -1,12 +1,12 @@
 package designations
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"strconv"
+
+	"github.com/AmyDe/town-crier/api-go/internal/httputil"
 )
 
 // provider is the consumer-side view the handler needs: resolve the designation
@@ -22,7 +22,7 @@ type handler struct {
 }
 
 // Routes registers the designations endpoint on mux. The endpoint requires
-// authentication and has no Cosmos dependency, so it is always wired.
+// authentication.
 func Routes(mux *http.ServeMux, p provider, logger *slog.Logger) {
 	h := handler{provider: p, logger: logger}
 	mux.HandleFunc("GET /v1/designations", h.designations)
@@ -56,23 +56,18 @@ func (h handler) designations(w http.ResponseWriter, r *http.Request) {
 		designation = Context{}
 	}
 
-	// designationsResult mirrors Context field-for-field, differing only in JSON
-	// tags (ignored in a struct conversion), so the result is just the context in
-	// wire dress.
 	h.writeJSON(r, w, designationsResult(designation))
 }
 
 func (h handler) writeJSON(r *http.Request, w http.ResponseWriter, v any) {
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(v); err != nil {
+	body, err := httputil.EncodeJSON(v)
+	if err != nil {
 		h.logger.ErrorContext(r.Context(), "encode designations response", "error", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	if _, err := w.Write(bytes.TrimRight(buf.Bytes(), "\n")); err != nil {
+	if _, err := w.Write(body); err != nil {
 		h.logger.ErrorContext(r.Context(), "write designations response", "error", err)
 	}
 }

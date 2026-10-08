@@ -8,12 +8,8 @@ import (
 	"time"
 )
 
-// clustersTimeout bounds a single anonymous clusters call end-to-end, mirroring
-// nearPointTimeout (same rationale: a public, unauthenticated endpoint sharing
-// a Postgres pool with prod's core watch-zone/notification reads must fail
-// fast with a 500 rather than hold a pool connection open indefinitely —
-// tc-z5i5j precedent; also relevant given tc-ai55's bimodal clusters latency).
-// It is defense-in-depth alongside the radius clamp, not a substitute for it.
+// clustersTimeout bounds a single anonymous clusters call end-to-end, for the
+// same reason as nearPointTimeout.
 const clustersTimeout = 8 * time.Second
 
 // clustersStore is the consumer-side store the anonymous clusters handler
@@ -31,12 +27,9 @@ type clustersHandler struct {
 	logger   *slog.Logger
 }
 
-// ClustersRoutes registers the public GET /v1/applications/clusters endpoint
-// (GH#924 Phase 1). It backs the iOS anonymous browse map with the same
-// PostGIS grid-aggregated clusters the authed watch-zone map renders
-// (FindClustersInZone, issue #698), so an anonymous visitor sees the fully
-// clustered set across their radius circle instead of a client-side cluster
-// over a truncated near-point page. It is kept in cmd/api/wiring.go's
+// ClustersRoutes registers the public GET /v1/applications/clusters endpoint,
+// serving the same grid-aggregated clusters as the authed watch-zone map
+// (FindClustersInZone). It is kept in cmd/api/wiring.go's
 // anonymousPatterns, mirroring NearPointRoutes.
 func ClustersRoutes(mux *http.ServeMux, store clustersStore, resolver authoritySlugResolver, logger *slog.Logger) {
 	h := &clustersHandler{store: store, resolver: resolver, logger: logger}
@@ -129,9 +122,7 @@ func parseClustersZoom(raw string) (float64, bool) {
 
 // parseClustersStatus resolves the optional ?status= to an app_state filter,
 // mirroring watchzones' parseStatus (same vocabulary; "All"/absent both mean
-// no filter). The anonymous map does not send this param today (GH#924 keeps
-// its reduced feature set — no filter chips) but the endpoint supports it for
-// symmetry with the authed clusters endpoint.
+// no filter).
 func parseClustersStatus(raw string) (string, bool) {
 	if raw == "" || raw == "All" {
 		return "", true

@@ -30,12 +30,8 @@ function mapToDomain(dto: SearchResultDto): SearchResult {
 }
 
 /**
- * Anonymous adapter for `GET /v1/applications/search` (#821 Phase 4). Unlike
- * the authenticated `ApiClient` (`src/api/client.ts`), this never attaches an
- * `Authorization` header — the endpoint is public and must work for a fully
- * logged-out visitor, so it talks to `fetch` directly rather than going
- * through the token-bearing client (mirrors `ApiLegalDocumentPort`, the other
- * anonymous-page adapter in this codebase).
+ * Anonymous adapter for `GET /v1/applications/search`: uses `fetch` directly
+ * rather than the token-bearing `ApiClient`, so it works for a logged-out visitor.
  */
 export class ApiSearchPort implements SearchPort {
   private readonly baseUrl: string;

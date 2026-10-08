@@ -74,10 +74,6 @@ type ClusterQuery struct {
 	CoalesceThresholdDegrees float64
 }
 
-// clusterPoint is the zone-centre query point, built from $1 (longitude) and $2
-// (latitude), matching the nearbyPoint convention used elsewhere in the store.
-const clusterPoint = "ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography"
-
 // The cluster query is a single PostGIS grid aggregation, mirroring the SEO
 // "GROUP BY app_state" rollup (store_postgres.go) plus ST_SnapToGrid to bucket by
 // cell. It runs as a chain of CTEs within one statement:
@@ -120,7 +116,7 @@ const clusterQueryHead = `WITH filtered AS (
 		planit_name AS name,
 		location::geometry AS geom
 	FROM applications
-	WHERE ST_DWithin(location, ` + clusterPoint + `, $3)
+	WHERE ST_DWithin(location, ` + nearbyPoint + `, $3)
 		AND location::geometry && ST_MakeEnvelope($5, $6, $7, $8, 4326)`
 
 const clusterQueryTail = `

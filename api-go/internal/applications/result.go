@@ -184,23 +184,19 @@ type StateCount struct {
 }
 
 // sortStateCounts orders a breakdown deterministically in place: count DESC, then
-// raw appState ASC, with the nil-appState bucket sorting last on a count tie. It
-// is the single comparator shared by CosmosStore.BreakdownByAuthority (over a
-// whole-partition GROUP BY) and CosmosStore.BreakdownNearby (over a whole-in-radius
-// spatial GROUP BY).
+// raw appState ASC, with the nil-appState bucket sorting last on a count tie.
 func sortStateCounts(out []StateCount) {
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Count != out[j].Count {
-			return out[i].Count > out[j].Count // count DESC
+			return out[i].Count > out[j].Count
 		}
-		// nil sorts last on a count tie.
 		if out[i].AppState == nil {
 			return false
 		}
 		if out[j].AppState == nil {
 			return true
 		}
-		return *out[i].AppState < *out[j].AppState // appState ASC
+		return *out[i].AppState < *out[j].AppState
 	})
 }
 

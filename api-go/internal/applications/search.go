@@ -35,20 +35,14 @@ const (
 	searchMaxLimit     = 20
 )
 
-// searchTimeout bounds a single Search call end-to-end. This is a public,
-// unauthenticated endpoint (SearchRoutes) sharing a Postgres pool with prod's
-// core watch-zone/notification reads (psql-town-crier-shared) — a
-// pathological query must fail fast with a 500 rather than hold a pool
-// connection open for tens of seconds (tc-z5i5j incident: ?q=extension took
-// 15-53s before searchQuery's per-tier LIMIT fix). It is defense-in-depth on
-// top of that fix, not a substitute for it, and is well under the ~100s
-// Cloudflare/ingress timeout so callers see a clean failure rather than a
-// gateway timeout.
+// searchTimeout bounds a single Search call end-to-end. This public endpoint
+// shares the Postgres pool with core reads, so a pathological query must fail
+// fast rather than hold a connection; it stays well under the ~100s ingress
+// timeout so callers see a clean failure rather than a gateway timeout.
 const searchTimeout = 8 * time.Second
 
 // searchStore is the consumer-side store the search handler needs: a
-// nearest-first, capped read across the three match tiers (GH#863 API
-// section) — reference exact/prefix match on uid, address fuzzy match
+// nearest-first, capped read across the three match tiers — reference exact/prefix match on uid, address fuzzy match
 // (pg_trgm), description full-text match (tsvector) — merged, deduplicated by
 // identity, and ordered by distance from (lat, lon) ascending. authorityCode
 // "" means no authority filter (a bare reference legitimately matches across
@@ -69,7 +63,7 @@ type searchHandler struct {
 // SearchRoutes registers the anonymous application search endpoint. It is kept
 // out of auth's fallback-deny set in cmd/api/wiring.go's anonymousPatterns (like
 // the by-slug application read) and reads only public planning data from
-// Postgres — PlanIt is never touched by this endpoint (GH#395 Invariant 1).
+// Postgres — PlanIt is never touched by this endpoint.
 func SearchRoutes(mux *http.ServeMux, store searchStore, resolver authoritySlugResolver, logger *slog.Logger) {
 	h := &searchHandler{store: store, resolver: resolver, logger: logger}
 	mux.HandleFunc("GET /v1/applications/search", h.search)
@@ -79,8 +73,7 @@ func SearchRoutes(mux *http.ServeMux, store searchStore, resolver authoritySlugR
 // authority filter + limit, then returns the nearest-first match set: the
 // union of the three match tiers (reference exact/prefix on uid, address
 // fuzzy match, description full-text match), deduplicated by identity and
-// ordered by distance from (lat, lon) ascending (GH#863 API section — KNN
-// nearest-first, mandatory location). A missing/too-short q (unless it looks
+// ordered by distance from (lat, lon) ascending. A missing/too-short q (unless it looks
 // like a reference), a missing/unparseable lat or lon, or an unresolvable
 // authority slug is a bodyless 400; a store failure is a bodyless 500 (both
 // envelopes backfilled by middleware.ErrorBody).
@@ -159,7 +152,7 @@ func validSearchQuery(q string) bool {
 
 // looksLikeReference reports whether q contains at least one digit — the cheap
 // heuristic for "this short query is probably a planning reference, not an
-// address/description fragment" (tc-geq7h.3 decision 2026-07-05). Real
+// address/description fragment". Real
 // references vary too widely in shape (24/0001/FUL, 9/P/2026/0044/HH,
 // 24/SAME/FUL) to anchor a stricter pattern; over-admitting costs nothing since
 // the reference tier is an indexed exact/prefix lookup on uid that simply
@@ -184,10 +177,8 @@ func parseSearchLimit(raw string) int {
 
 // parseRequiredCoord parses a mandatory lat/lon query parameter as a float64,
 // reporting false for a missing, empty, or unparseable value (-> bodyless 400
-// via search's callers). lat/lon are mandatory as of GH#863 — the KNN
-// nearest-first redesign has no meaning without a query point — unlike
-// validSearchQuery's q or resolveAuthorityParam's optional authority filter,
-// so this has no "absent means default" branch.
+// via search's callers). lat/lon are mandatory: nearest-first search has no
+// meaning without a query point.
 func parseRequiredCoord(raw string) (float64, bool) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -261,68 +252,36 @@ type SearchResponse struct {
 	RefineQuery bool           `json:"refineQuery"`
 }
 
-// searchPoint is the KNN query point for the three search tiers, built from
-// $1 (longitude) and $2 (latitude) — matching nearbyPoint's (store_postgres.go)
-// $-numbering convention for every other authority-agnostic spatial read.
-const searchPoint = "ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography"
-
 // searchTier1Query, searchTier2Query, searchTier3Query each answer one match
-// tier of GET /v1/applications/search (GH#863 API section — mandatory
-// lat/lon, KNN nearest-first): reference exact/prefix match on uid, address
-// pg_trgm fuzzy match, description tsvector full-text match. Each is shaped
-// exactly like findNearbyFirstPageQuery (store_postgres.go) — appColumns plus
-// a computed "location <-> point AS distance", ordered by that KNN distance
-// then planit_name, capped at $6 — but with the tier's own text-match WHERE
-// predicate in place of findNearbyFirstPageQuery's ST_DWithin, and NO radius
-// bound: a nearest-first search has no reason to exclude a genuine match just
-// because it is far away, unlike the radius-bounded browse endpoints.
+// tier of GET /v1/applications/search: reference exact/prefix match on uid,
+// address pg_trgm fuzzy match, description tsvector full-text match. Each is
+// ordered by KNN distance then planit_name with no radius bound, and Search
+// merges them in Go.
 //
-// Search runs the three queries separately (not unioned) and merges their
-// results in Go, deduplicating by identity and re-sorting by distance — a
-// deliberate departure from the pre-GH#863 shape, which unioned all three
-// tiers into one statement and ranked by a fixed tier priority (reference >
-// address > description, tc-z5i5j) rather than distance.
+// Each tier asks for limit+1 rows. Every tier's rows are a subset of the global
+// distance-ordered match set, so an application among the globally nearest
+// limit+1 is always within the top limit+1 of each tier it matches; the extra
+// row lets Search detect that more matches exist (RefineQuery).
 //
-// Each query independently asks for the caller's requested limit+1 rows
-// (nearest-first, planit_name tie-break) via $6. This mirrors the old
-// per-branch cap's correctness argument, re-derived for distance instead of
-// tier/score: every tier's row set is a subset of the true global
-// distance-ordered candidate set S (an application matching tier T is, by
-// definition, a member of S), so an application's RANK within tier T's own
-// distance ordering can never exceed its rank within the global order of S.
-// Concretely: if application A is among the globally-nearest limit+1
-// distinct matches, then within ANY tier T it matches, at most limit other
-// tier-T matches can be nearer than A (each of those would also need to be
-// globally nearer than A, and A is already at global rank <= limit+1) — so A
-// is guaranteed to be within tier T's own top limit+1 by distance, and this
-// per-tier cap captures it. Capping at limit+1, not limit, is what lets
-// Search still detect "more matches exist" after the merge/dedup (the
-// RefineQuery signal) exactly as searchQuery's old limit+1 did.
-//
-// "AND location IS NOT NULL" in every tier's WHERE is required, not
-// optional: "nearest" is undefined for an application PlanIt never geocoded,
-// mirroring how findNearbyFirstPageQuery's ST_DWithin already implicitly
-// excludes a NULL location (ST_DWithin against NULL evaluates to NULL, which
-// WHERE treats as false). Without it, a NULL location's computed "location <->
-// point" is SQL NULL, which nearbyRow.dist (a non-pointer float64, scanned via
-// scanNearbyRow) cannot scan.
-const searchTier1Query = "SELECT " + appColumns + ", location <-> " + searchPoint + " AS distance " +
+// "location IS NOT NULL" is required: the computed distance would be NULL,
+// which nearbyRow.dist (a non-pointer float64) cannot scan.
+const searchTier1Query = "SELECT " + appColumns + ", location <-> " + nearbyPoint + " AS distance " +
 	"FROM applications WHERE location IS NOT NULL " +
 	"AND (lower(uid) = lower($3) OR lower(uid) LIKE $4 ESCAPE '\\') " +
 	"AND ($5::text IS NULL OR authority_code = $5) " +
-	"ORDER BY location <-> " + searchPoint + ", planit_name LIMIT $6"
+	"ORDER BY location <-> " + nearbyPoint + ", planit_name LIMIT $6"
 
-const searchTier2Query = "SELECT " + appColumns + ", location <-> " + searchPoint + " AS distance " +
+const searchTier2Query = "SELECT " + appColumns + ", location <-> " + nearbyPoint + " AS distance " +
 	"FROM applications WHERE location IS NOT NULL " +
 	"AND lower($3) <% lower(address) " +
 	"AND ($4::text IS NULL OR authority_code = $4) " +
-	"ORDER BY location <-> " + searchPoint + ", planit_name LIMIT $5"
+	"ORDER BY location <-> " + nearbyPoint + ", planit_name LIMIT $5"
 
-const searchTier3Query = "SELECT " + appColumns + ", location <-> " + searchPoint + " AS distance " +
+const searchTier3Query = "SELECT " + appColumns + ", location <-> " + nearbyPoint + " AS distance " +
 	"FROM applications WHERE location IS NOT NULL " +
 	"AND to_tsvector('english', description) @@ plainto_tsquery('english', $3) " +
 	"AND ($4::text IS NULL OR authority_code = $4) " +
-	"ORDER BY location <-> " + searchPoint + ", planit_name LIMIT $5"
+	"ORDER BY location <-> " + nearbyPoint + ", planit_name LIMIT $5"
 
 // escapeLikeWildcards backslash-escapes the LIKE metacharacters (\, %, _) in a
 // user-supplied query before it is used to build a prefix pattern, so a query
@@ -336,17 +295,14 @@ func escapeLikeWildcards(s string) string {
 // appIdentity is the natural-key dedup key for merging the three tiers'
 // results: an application matching more than one tier (e.g. its address AND
 // its description both mention the query) must surface exactly once, keeping
-// whichever tier's copy is found first — the identity is what matters, not
-// which tier matched, since GH#863 dropped tier-priority ranking in favour of
-// pure distance ordering.
+// whichever tier's copy is found first.
 type appIdentity struct {
 	areaID int
 	name   string
 }
 
 // Search runs the three match tiers' KNN queries (searchTier1Query,
-// searchTier2Query, searchTier3Query — sequentially, not concurrently, a
-// deliberate GH#863 scope decision) against the mandatory (lat, lon) query
+// searchTier2Query, searchTier3Query — sequentially, not concurrently) against the mandatory (lat, lon) query
 // point, merges their rows deduplicated by (area_id, planit_name), sorts the
 // deduplicated set by distance ascending then planit_name ascending, and
 // reports whether more matches exist beyond limit: each tier query already

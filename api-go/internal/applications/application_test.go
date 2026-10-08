@@ -61,10 +61,10 @@ func TestPlanningApplication_CanonicalUID_PreservesNameWithSlashes(t *testing.T)
 func TestPlanningApplication_HasSameSilentFieldsAs(t *testing.T) {
 	t.Parallel()
 	base := testApplication(t)
-	base.Reference = ptr("REF-1")
+	base.Reference = strPtr("REF-1")
 	base.Altid = []byte(`["A","B"]`)
 	base.AssociatedID = []byte(`"single"`)
-	base.ScraperName = ptr("scraper-1")
+	base.ScraperName = strPtr("scraper-1")
 	base.OtherFields = map[string]any{"comment_url": "https://example.test/comment", "n_comments": float64(3)}
 	base.LastChanged = timePtr(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
 	base.LastScraped = timePtr(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
@@ -107,7 +107,7 @@ func TestPlanningApplication_HasSameSilentFieldsAs(t *testing.T) {
 	t.Run("differing reference compares not-equal", func(t *testing.T) {
 		t.Parallel()
 		other := base
-		other.Reference = ptr("REF-2")
+		other.Reference = strPtr("REF-2")
 		if base.HasSameSilentFieldsAs(other) {
 			t.Error("a changed reference must compare not-equal")
 		}
@@ -134,7 +134,7 @@ func TestPlanningApplication_HasSameSilentFieldsAs(t *testing.T) {
 	t.Run("differing scraper_name compares not-equal", func(t *testing.T) {
 		t.Parallel()
 		other := base
-		other.ScraperName = ptr("scraper-2")
+		other.ScraperName = strPtr("scraper-2")
 		if base.HasSameSilentFieldsAs(other) {
 			t.Error("a changed scraper_name must compare not-equal")
 		}
@@ -225,8 +225,6 @@ func TestEqRawJSON_SemanticComparison(t *testing.T) {
 		})
 	}
 }
-
-func ptr(s string) *string { return &s }
 
 func timePtr(t time.Time) *time.Time { return &t }
 

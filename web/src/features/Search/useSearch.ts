@@ -24,18 +24,9 @@ const IDLE_STATE: SearchState = {
 };
 
 /**
- * ViewModel for the public `/search` page (#821 Phase 4; mandatory location
- * gate GH#863 / tc-rrv7i). Debounces the query box (and authority filter)
- * before calling the anonymous `SearchPort`, and guards against out-of-order
- * responses — a slow response for a query the user has since changed or
- * cleared must never clobber newer state.
- *
- * A location must be resolved (postcode, "use my location", or a map tap —
- * `confirmLocation`) before the debounced effect is ever allowed to fire,
- * regardless of query text: the API 400s without `lat`/`lon`, and results are
- * ranked nearest-first from this point. `changeLocation` opens (or reopens)
- * the inline picker without clearing the previously confirmed location, so
- * `SearchPage` can prefill it for a "Change" flow.
+ * ViewModel for the public `/search` page. A location must be confirmed before
+ * any search fires, because the API 400s without `lat`/`lon`; a stale response
+ * never overwrites newer state.
  */
 export function useSearch(port: SearchPort) {
   const [query, setQueryState] = useState('');
@@ -45,9 +36,6 @@ export function useSearch(port: SearchPort) {
   const [locationLabel, setLocationLabel] = useState<string | null>(null);
   const [isLocationPickerOpen, setIsLocationPickerOpen] = useState(false);
 
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Incremented on every new search attempt (including a reset-to-idle);
-  // a response is applied only if it is still the most recent attempt.
   const requestIdRef = useRef(0);
 
   const runSearch = useCallback(
@@ -78,10 +66,8 @@ export function useSearch(port: SearchPort) {
     [port],
   );
 
-  // setQuery resets to idle immediately (synchronously, as part of handling the
-  // user's own input event) whenever the box becomes blank — never via an
-  // effect, so clearing the box doesn't wait on the debounce window and never
-  // triggers a setState-in-effect cascading render.
+  // Resets to idle synchronously rather than via an effect, so clearing the box
+  // skips the debounce window and avoids a setState-in-effect cascading render.
   const setQuery = useCallback((value: string) => {
     setQueryState(value);
     if (value.trim() === '') {
@@ -94,9 +80,7 @@ export function useSearch(port: SearchPort) {
     setIsLocationPickerOpen(true);
   }, []);
 
-  // Abandons a reopened picker (the "Change" flow) without touching the
-  // already-confirmed location. Only ever exposed once a location exists —
-  // there is no way to back out of the mandatory first-time gate.
+  // Only exposed once a location exists; the first-time gate can't be dismissed.
   const closeLocationPicker = useCallback(() => {
     setIsLocationPickerOpen(false);
   }, []);
@@ -108,21 +92,17 @@ export function useSearch(port: SearchPort) {
   }, []);
 
   useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-
     const trimmedQuery = query.trim();
     if (trimmedQuery === '' || location === null) {
       return;
     }
 
     const trimmedAuthority = authority.trim();
-    debounceRef.current = setTimeout(() => {
+    const timer = setTimeout(() => {
       void runSearch(trimmedQuery, trimmedAuthority === '' ? null : trimmedAuthority, location);
     }, SEARCH_DEBOUNCE_MS);
 
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
+    return () => clearTimeout(timer);
   }, [query, authority, location, runSearch]);
 
   return {

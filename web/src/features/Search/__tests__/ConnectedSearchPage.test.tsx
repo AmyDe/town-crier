@@ -6,7 +6,7 @@ describe('ConnectedSearchPage', () => {
   it('renders the public search page without any authentication context', () => {
     // Deliberately rendered with NO Auth0Provider/AuthGuard/router context beyond
     // what the page itself needs — proves the anonymous /search route never
-    // depends on being signed in (#821 Phase 4 acceptance criterion).
+    // depends on being signed in.
     render(<ConnectedSearchPage />);
 
     expect(

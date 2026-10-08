@@ -1,7 +1,5 @@
-// Package applications owns the master planning-application feature: the domain
-// snapshot, the Cosmos store over the Applications container (point read by
-// authority + name), and the read endpoints (GET /v1/applications/{authorityCode}/{name}
-// and GET /v1/me/application-authorities).
+// Package applications owns the planning-application snapshot, its Postgres
+// store, and the application read endpoints.
 //
 // A PlanningApplication is a snapshot of a PlanIt case: a plain data carrier
 // (the values come from an external provider, validated at the HTTP boundary),

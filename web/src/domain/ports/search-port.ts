@@ -12,7 +12,7 @@ export interface SearchOutcome {
 
 /**
  * A resolved query point — the browser-supplied `lat`/`lon` the API's KNN
- * nearest-first search ranks results from (GH#863, tc-rrv7i). Field names
+ * nearest-first search ranks results from. Field names
  * match the API's query-string parameters exactly.
  */
 export interface SearchLocation {
@@ -21,8 +21,7 @@ export interface SearchLocation {
 }
 
 /**
- * Anonymous application search (#821 Phase 3/4, mandatory location as of
- * GH#863) — `GET /v1/applications/search`. Public and unauthenticated: no
+ * Anonymous application search, `GET /v1/applications/search`. Public and unauthenticated: no
  * auth token is ever attached to this call, so it must keep working for a
  * fully logged-out visitor.
  */
