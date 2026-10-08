@@ -16,17 +16,8 @@ const PAGE_DESCRIPTION =
   'Search UK council planning applications by reference, address, or description, and copy a shareable link to any result.';
 
 /**
- * Public, anonymous `/search` page (#821 Phase 4) — outside `AuthGuard`, works
- * fully logged out. Sets its own `<title>`/meta description on mount so the
- * page is indexable in its own right, distinct from the landing page; results
- * are client-rendered and deliberately never added to `sitemap.xml`.
- *
- * A location is mandatory before a search can run (GH#863, tc-rrv7i.2): the
- * search input carries a real `disabled` attribute until one is confirmed.
- * This is the "disabled bar + inline gate" pattern — a prompt expands an
- * inline `LocationPicker` in place, never a full-page picker or a blocking
- * modal. Once confirmed, the prompt becomes a location chip with a "Change"
- * action that reopens the picker, prefilled with the current selection.
+ * Public `/search` page, outside `AuthGuard`. Results are client-rendered and
+ * deliberately never added to `sitemap.xml`.
  */
 export function SearchPage({ port, postcodePort }: Props) {
   const {

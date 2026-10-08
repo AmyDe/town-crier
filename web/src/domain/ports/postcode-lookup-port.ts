@@ -1,12 +1,8 @@
 import type { SearchLocation } from './search-port';
 
 /**
- * Client-side postcode -> lat/lon resolution for the `/search` location
- * picker (GH#863, tc-rrv7i.2). Deliberately never routed through our own
- * `ApiClient`/base URL — the concrete adapter must call postcodes.io
- * directly from the browser (see `PostcodesIoLookupPort`), so a spike in
- * lookups is spread across every visitor's own IP rather than funnelled
- * through our single server IP.
+ * Client-side postcode -> lat/lon resolution for the `/search` location picker.
+ * Implementations must call postcodes.io from the browser, never through our own API.
  */
 export interface PostcodeLookupPort {
   /**

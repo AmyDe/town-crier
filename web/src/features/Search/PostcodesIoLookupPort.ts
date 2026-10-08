@@ -14,13 +14,8 @@ interface PostcodesIoResponse {
 }
 
 /**
- * Client-side adapter for postcodes.io (GH#863, tc-rrv7i.2). Calls
- * `https://api.postcodes.io` directly from the browser using its own
- * `fetch` — this is a hard constraint, not a style choice: postcodes.io is a
- * free public service, and proxying every user's lookup through our own
- * server would put all of them behind one server IP, risking
- * rate-limiting/blacklisting for every user at once. Never wire this through
- * the app's own `ApiClient`/base URL.
+ * Calls postcodes.io directly from the browser, never through our own API:
+ * proxying every lookup through one server IP risks rate-limiting all users at once.
  */
 export class PostcodesIoLookupPort implements PostcodeLookupPort {
   private readonly fetchFn: typeof globalThis.fetch;
@@ -38,8 +33,7 @@ export class PostcodesIoLookupPort implements PostcodeLookupPort {
         `${POSTCODES_IO_BASE_URL}/postcodes/${encodeURIComponent(normalised)}`,
       );
     } catch {
-      // fetch() itself rejecting (offline, DNS failure, CORS, etc.) throws an
-      // engine-specific, unfriendly message — never surface that verbatim.
+      // A fetch() rejection carries engine-specific text, so surface a friendly message.
       throw new Error('Could not look up that postcode. Check your connection and try again.');
     }
 

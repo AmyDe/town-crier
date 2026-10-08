@@ -1,8 +1,8 @@
 import { useNavigate } from 'react-router';
-import type { WatchZoneSummary, ApplicationStatus } from '../../domain/types';
+import type { WatchZoneSummary, ApplicationStatus, ApplicationsSort } from '../../domain/types';
 import type { ApplicationsBrowsePort } from '../../domain/ports/applications-browse-port';
 import type { NotificationStateRepository } from '../../domain/ports/notification-state-repository';
-import { useApplications, type ApplicationsSort } from './useApplications';
+import { useApplications } from './useApplications';
 import { ApplicationCard } from '../../components/ApplicationCard/ApplicationCard';
 import { EmptyState } from '../../components/EmptyState/EmptyState';
 import { useFetchData } from '../../hooks/useFetchData';
@@ -89,10 +89,6 @@ export function ApplicationsPage({
     }
   }
 
-  function handleStatusClick(status: ApplicationStatus | null) {
-    setStatusFilter(status);
-  }
-
   function handleUnreadClick() {
     setUnreadOnly(!unreadOnly);
   }
@@ -102,12 +98,6 @@ export function ApplicationsPage({
       setSort(value);
     }
   }
-
-  async function handleMarkAllRead() {
-    await markAllRead();
-  }
-
-  const zoneSelectorValue = selectedZone?.id ?? '';
 
   return (
     <div className={styles.container}>
@@ -139,7 +129,7 @@ export function ApplicationsPage({
               <select
                 className={styles.zoneSelector}
                 aria-label="Zone"
-                value={zoneSelectorValue}
+                value={selectedZone?.id ?? ''}
                 onChange={(e) => handleZoneChange(e.target.value)}
               >
                 {(zones ?? []).map((zone) => (
@@ -170,7 +160,7 @@ export function ApplicationsPage({
                     type="button"
                     className={`${styles.chip} ${isPressed ? styles.chipPressed : ''}`}
                     aria-pressed={isPressed}
-                    onClick={() => handleStatusClick(chip.status)}
+                    onClick={() => setStatusFilter(chip.status)}
                   >
                     {chip.label}
                   </button>
@@ -198,7 +188,7 @@ export function ApplicationsPage({
               <button
                 type="button"
                 className={styles.markAllReadButton}
-                onClick={handleMarkAllRead}
+                onClick={markAllRead}
               >
                 Mark all read
               </button>
@@ -239,7 +229,7 @@ export function ApplicationsPage({
                 <button
                   type="button"
                   className={styles.loadMoreButton}
-                  onClick={() => loadMore()}
+                  onClick={loadMore}
                   disabled={isLoadingMore}
                 >
                   {isLoadingMore ? 'Loading…' : 'Load more'}

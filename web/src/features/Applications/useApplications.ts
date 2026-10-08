@@ -7,13 +7,7 @@ import type {
 } from '../../domain/types';
 import type { ApplicationsBrowsePort } from '../../domain/ports/applications-browse-port';
 import type { NotificationStateRepository } from '../../domain/ports/notification-state-repository';
-
-/**
- * Re-exported from the domain so existing consumers (`ApplicationsPage`) keep
- * importing the sort type from this hook. The vocabulary itself, and its
- * mapping onto the server's `?sort=` param, lives in `domain/types`.
- */
-export type { ApplicationsSort };
+import { extractErrorMessage } from '../../utils/extractErrorMessage';
 
 const APPLICATIONS_SORT_VALUES: readonly ApplicationsSort[] = [
   'recent-activity',
@@ -54,31 +48,18 @@ export interface UseApplicationsOptions {
 
 interface State {
   readonly selectedZone: WatchZoneSummary | null;
-  /** Accumulated rows across every page fetched so far for the current query. */
   readonly applications: readonly PlanningApplicationSummary[];
-  /** True while the first page of a (re)query is in flight. */
   readonly isLoading: boolean;
-  /** True while a subsequent page (load-more) is in flight. */
   readonly isLoadingMore: boolean;
   readonly error: string | null;
   readonly selectedStatusFilter: ApplicationStatus | null;
   readonly unreadOnly: boolean;
   readonly sort: ApplicationsSort;
-  /** Cursor for the next page; `null` once the last page has been reached. */
   readonly nextCursor: string | null;
   /** Bumped to force a page-1 refetch without changing the query inputs (retry). */
   readonly reloadNonce: number;
-  /**
-   * Whole-zone unread total for the "Unread (N)" chip (GH#716, Problem 2).
-   * Sourced from `browsePort.countUnread(zone.id)` — independent of how many
-   * main-list pages are loaded — not derived from the rows fetched so far.
-   */
+  /** Whole-zone unread total from `browsePort.countUnread`, not derived from the loaded rows. */
   readonly unreadCount: number;
-}
-
-function extractError(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  return 'Unknown error';
 }
 
 export function useApplications(options: UseApplicationsOptions) {
@@ -98,23 +79,15 @@ export function useApplications(options: UseApplicationsOptions) {
   }));
   const hasAutoSelectedRef = useRef(false);
 
-  // Monotonic generation counter. Each page-1 (re)query and each markAllRead
-  // refetch bumps it; an in-flight load-more captures the current value and
-  // discards its result if a newer query has since superseded it (e.g. the
-  // user changed sort/filter mid-load). This is what makes "reset to page 1
-  // on sort/filter change" race-safe.
+  // Bumped by every page-1 query and markAllRead; a load-more that started
+  // under an older value drops its result.
   const requestIdRef = useRef(0);
 
-  // Separate generation counter for the whole-zone unread count. Kept distinct
-  // from `requestIdRef` so a count refresh never supersedes an in-flight list
-  // page (and vice versa); it only guards the count's own zone-change/markAllRead
-  // refetches against stale responses overwriting a newer zone's total.
+  // Separate from requestIdRef so a count refresh never supersedes an in-flight list page.
   const countUnreadRequestIdRef = useRef(0);
 
-  // Latest query inputs + pagination flags, mirrored into a ref so the
-  // event-driven `loadMore`/`markAllRead` callbacks read fresh values without
-  // re-subscribing. We build a fresh object (never the useState value) to stay
-  // clear of the react-hooks immutability rule.
+  // A fresh object rather than the useState value, to stay clear of the
+  // react-hooks immutability rule.
   const latestRef = useRef({
     zone: null as WatchZoneSummary | null,
     sort: state.sort,
@@ -136,8 +109,6 @@ export function useApplications(options: UseApplicationsOptions) {
     };
   });
 
-  // Auto-select the first zone the first time zones become non-empty. The query
-  // effect below reacts to the resulting `selectedZone` change and fetches.
   useEffect(() => {
     if (hasAutoSelectedRef.current) return;
     if (zones.length === 0) return;
@@ -147,9 +118,6 @@ export function useApplications(options: UseApplicationsOptions) {
     setState((prev) => ({ ...prev, selectedZone: firstZone }));
   }, [zones]);
 
-  // Page-1 query. Reacts to any change of the query inputs (zone, sort,
-  // status, unread) or an explicit reload, always resetting pagination to the
-  // first page (cursor null, accumulated rows discarded).
   useEffect(() => {
     if (state.selectedZone === null) return;
     const zone = state.selectedZone;
@@ -179,7 +147,7 @@ export function useApplications(options: UseApplicationsOptions) {
           applications: [],
           nextCursor: null,
           isLoading: false,
-          error: extractError(err),
+          error: extractErrorMessage(err, 'Unknown error'),
         }));
       });
   }, [
@@ -191,10 +159,8 @@ export function useApplications(options: UseApplicationsOptions) {
     browsePort,
   ]);
 
-  // Whole-zone unread total for the chip. Re-fetched only when the selected zone
-  // changes — deliberately independent of sort/status/unread/pagination, so
-  // loading more list pages (or toggling filters) never moves the chip's number.
-  // markAllRead refreshes it explicitly.
+  // Refetched only on zone change so filters and paging never move the chip's
+  // number; markAllRead refreshes it explicitly.
   useEffect(() => {
     if (state.selectedZone === null) return;
     const zoneId = state.selectedZone.id;
@@ -212,8 +178,6 @@ export function useApplications(options: UseApplicationsOptions) {
   }, [state.selectedZone, browsePort]);
 
   const selectZone = useCallback((zone: WatchZoneSummary) => {
-    // Selecting a zone resets the status/unread filters (and, via the query
-    // effect, pagination) to a clean first page.
     setState((prev) => ({
       ...prev,
       selectedZone: zone,
@@ -223,8 +187,7 @@ export function useApplications(options: UseApplicationsOptions) {
   }, []);
 
   const setStatusFilter = useCallback((status: ApplicationStatus | null) => {
-    // Status and Unread chips share a single-select group; selecting a status
-    // clears unread-only so the two are never sent to the server together.
+    // The server rejects status and unread sent together.
     setState((prev) => ({ ...prev, selectedStatusFilter: status, unreadOnly: false }));
   }, []);
 
@@ -245,9 +208,6 @@ export function useApplications(options: UseApplicationsOptions) {
     setState((prev) => ({ ...prev, reloadNonce: prev.reloadNonce + 1 }));
   }, []);
 
-  // Fetch the next page and append it. Guards against double-firing and against
-  // running once the cursor is exhausted. A query that started before a newer
-  // page-1 (re)query is dropped via the requestId check.
   const loadMore = useCallback(() => {
     const snap = latestRef.current;
     if (
@@ -275,15 +235,11 @@ export function useApplications(options: UseApplicationsOptions) {
       })
       .catch((err: unknown) => {
         if (requestId !== requestIdRef.current) return;
-        setState((prev) => ({ ...prev, isLoadingMore: false, error: extractError(err) }));
+        setState((prev) => ({ ...prev, isLoadingMore: false, error: extractErrorMessage(err, 'Unknown error') }));
       });
   }, [browsePort]);
 
   const markAllRead = useCallback(async () => {
-    // Server-side mark-all-read is idempotent. We then refresh two things in
-    // parallel: page 1 (its rows now carry `latestUnreadEvent: null`, so the
-    // cards render as read) and the whole-zone unread count (the server
-    // watermark advanced, so it should drop — typically to zero).
     try {
       await notificationStateRepository.markAllRead();
     } catch {
@@ -322,26 +278,17 @@ export function useApplications(options: UseApplicationsOptions) {
     ]);
   }, [browsePort, notificationStateRepository]);
 
-  // Tap-to-read: opening an application marks its notifications read server-side
-  // (ADR 0035). Fired from the card's onClick; navigation proceeds regardless.
   const onOpenApplication = useCallback(
     (application: PlanningApplicationSummary) => {
-      // Guardrail: only round-trip for a genuinely-unread card — an already-read
-      // application (no unread event) needs no mark-read call.
       if (application.latestUnreadEvent === null) return;
-      // Fire-and-forget: a later list/count fetch reconciles read state, so a
-      // failure here is swallowed rather than surfaced on a navigation. The
-      // wire field `applicationUid` carries the app's NAME (PlanIt case
-      // reference), NOT its uid; `areaId` disambiguates same-name refs across
-      // councils — see the notification-state API contract note.
+      // The wire field `applicationUid` carries the application's name, not its
+      // uid; `areaId` disambiguates same-name refs across councils.
       void notificationStateRepository
         .markApplicationRead(application.name, application.areaId)
         .catch(() => {
           // Intentionally ignored — the next fetch is the source of truth.
         });
-      // Optimistically drop the whole-zone "Unread (N)" chip so it updates
-      // immediately without a full count refetch (mirrors markAllRead's count
-      // refresh). Clamp at zero so repeat opens can't drive it negative.
+      // Clamped so repeat opens can't drive the count negative.
       setState((prev) => ({
         ...prev,
         unreadCount: Math.max(0, prev.unreadCount - 1),
@@ -350,13 +297,7 @@ export function useApplications(options: UseApplicationsOptions) {
     [notificationStateRepository],
   );
 
-  // Whole-zone unread total for the chip, sourced from `browsePort.countUnread`
-  // (see the count-fetch effect above) rather than the loaded rows — so it
-  // reflects the zone, not how far the user has paged (GH#716, Problem 2).
-  const unreadCount = state.unreadCount;
-
-  // Sort modes the picker should expose. `distance` is only meaningful relative
-  // to a chosen zone, so it's hidden when no zone is active.
+  // `distance` is only meaningful relative to a chosen zone.
   const availableSortOptions = useMemo<readonly ApplicationsSort[]>(
     () =>
       APPLICATIONS_SORT_VALUES.filter(
@@ -374,7 +315,7 @@ export function useApplications(options: UseApplicationsOptions) {
     error: state.error,
     selectedStatusFilter: state.selectedStatusFilter,
     unreadOnly: state.unreadOnly,
-    unreadCount,
+    unreadCount: state.unreadCount,
     sort: state.sort,
     availableSortOptions,
     selectZone,

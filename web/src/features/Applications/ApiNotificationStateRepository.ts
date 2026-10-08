@@ -3,13 +3,7 @@ import type { NotificationStateSnapshot } from '../../domain/types';
 import type { NotificationStateRepository } from '../../domain/ports/notification-state-repository';
 import { notificationStateApi } from '../../api/notification-state';
 
-/**
- * Concrete adapter for {@link NotificationStateRepository} backed by the
- * notification read-state endpoints (per-application `read_at`, ADR 0035).
- * The repository is a thin pass-through over {@link notificationStateApi} so
- * the wire shape can be reused by other callers (e.g. the unread-badge polling
- * that lives outside the Applications screen) without going through this class.
- */
+/** {@link NotificationStateRepository} over {@link notificationStateApi}. */
 export class ApiNotificationStateRepository
   implements NotificationStateRepository
 {

@@ -7,7 +7,7 @@ import type {
   PlanningApplicationSummary,
 } from '../domain/types';
 
-/** Wire shape for one cell of the map clusters endpoint (GH#698). */
+/** Wire shape for one cell of the map clusters endpoint. */
 interface MapClusterDto {
   readonly latitude: number;
   readonly longitude: number;
@@ -17,8 +17,8 @@ interface MapClusterDto {
 }
 
 /**
- * Query for one page of the server-driven watch-zone applications list (GH#711,
- * Slice B). The server owns sort and status/unread filtering; the client follows
+ * Query for one page of the server-driven watch-zone applications list.
+ * The server owns sort and status/unread filtering; the client follows
  * the opaque `X-Next-Cursor` header to exhaustion. `status` and `unread` are
  * mutually exclusive — sending both is a 400, so `unread` wins here defensively
  * (the calling hook already enforces single-select).
@@ -63,11 +63,8 @@ export function applicationsApi(client: ApiClient) {
     getByZone: (zoneId: string) =>
       client.get<readonly PlanningApplication[]>(`/v1/me/watch-zones/${zoneId}/applications`),
     /**
-     * Server-driven, keyset-paginated page of a zone's applications (GH#711).
-     * Drives `?sort/status/unread/cursor/limit` server-side and reads the next
-     * cursor from the `X-Next-Cursor` response header (exposed cross-origin by
-     * Slice A's CORS change). The body stays a bare array. The param-less
-     * `getByZone` above is left untouched for backward-compatible callers.
+     * Server-driven, keyset-paginated page of a zone's applications. Reads the
+     * next cursor from the `X-Next-Cursor` response header; the body is a bare array.
      */
     getByZonePaged: (
       zoneId: string,
@@ -97,7 +94,7 @@ export function applicationsApi(client: ApiClient) {
     },
     /**
      * Fetches the server-computed cluster aggregates for the visible viewport of
-     * a single watch zone (GH#698). The map renders these instead of draining
+     * a single watch zone. The map renders these instead of draining
      * every application, refetching on debounced pan/zoom.
      */
     getClusters: (zoneId: string, options: GetClustersOptions) => {
@@ -117,7 +114,7 @@ export function applicationsApi(client: ApiClient) {
     },
     /**
      * Composite-key point-read of a single application via its `{authority, name}`
-     * identity (mirrors iOS PR #700). `name` is a path-wildcard segment that may
+     * identity. `name` is a path-wildcard segment that may
      * contain slashes (e.g. "22/1234/FUL"), so it is interpolated raw to match
      * the server's greedy `{name...}` route. The returned record carries `uid`
      * for navigating to the existing `/applications/{uid}` detail route.

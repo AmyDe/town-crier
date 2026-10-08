@@ -11,11 +11,6 @@ interface Props {
 
 type CopyState = 'idle' | 'copied' | 'error';
 
-/**
- * One row of `/search` results: an application summary, a link to its public
- * share page, and the copy-to-clipboard button that is this bead's core
- * acceptance criterion (#821 Phase 4).
- */
 export function SearchResultCard({ result }: Props) {
   const [copyState, setCopyState] = useState<CopyState>('idle');
   const shareUrl = buildShareUrl(result.authoritySlug, result.reference);

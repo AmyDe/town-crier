@@ -13,13 +13,8 @@ const GEOLOCATION_DENIED_MESSAGE =
   'Could not get your location. Check your browser permissions and try again.';
 
 /**
- * ViewModel for the inline location picker (GH#863, tc-rrv7i.2). Owns the
- * three resolution paths — a debounced client-side postcode lookup (never
- * routed through our own API, see `PostcodeLookupPort`), "use my location"
- * via `navigator.geolocation`, and a direct map tap — and calls `onConfirm`
- * the moment any of them resolves a location. There is no separate "confirm"
- * step: picking a postcode, tapping the map, or a successful geolocation
- * request each immediately confirm.
+ * ViewModel for the inline location picker: a debounced postcode lookup, "use
+ * my location" and a map tap each call `onConfirm` as soon as they resolve.
  */
 export function useLocationPicker(
   port: PostcodeLookupPort,
@@ -31,7 +26,6 @@ export function useLocationPicker(
   const [geolocationError, setGeolocationError] = useState<string | null>(null);
   const [isLocating, setIsLocating] = useState(false);
 
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestIdRef = useRef(0);
 
   const setPostcode = useCallback((value: string) => {
@@ -40,14 +34,12 @@ export function useLocationPicker(
   }, []);
 
   useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-
     const trimmed = postcode.trim();
     if (trimmed.length < MIN_POSTCODE_LENGTH) {
       return;
     }
 
-    debounceRef.current = setTimeout(() => {
+    const timer = setTimeout(() => {
       const requestId = ++requestIdRef.current;
       setIsLookingUp(true);
       setPostcodeError(null);
@@ -65,9 +57,7 @@ export function useLocationPicker(
         });
     }, POSTCODE_DEBOUNCE_MS);
 
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
+    return () => clearTimeout(timer);
   }, [postcode, port, onConfirm]);
 
   const useMyLocation = useCallback(() => {

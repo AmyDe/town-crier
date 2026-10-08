@@ -33,15 +33,6 @@ interface Props {
   readonly onConfirm: (location: SearchLocation, label: string) => void;
 }
 
-/**
- * Inline location picker for the mandatory `/search` location gate (GH#863,
- * tc-rrv7i.2) — the "disabled bar + inline gate" pattern, never a full-page
- * picker or a blocking modal. Offers three equally-valid ways to resolve a
- * location, each confirming immediately on success: a debounced client-side
- * postcode lookup (`useLocationPicker` — never routed through our own API),
- * "use my location" via `navigator.geolocation`, and a tap anywhere on the
- * map. No radius UI: this component only ever resolves a point.
- */
 export function LocationPicker({ postcodePort, initialLocation, onConfirm }: Props) {
   const {
     postcode,
