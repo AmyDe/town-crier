@@ -423,61 +423,25 @@ func (s *PostgresStore) RecentNearPoint(ctx context.Context, latitude, longitude
 // built from $2 (longitude) and $3 (latitude); $1 is the authority_code.
 const seoNearbyPoint = "ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography"
 
-// pgRecentNearestTownQuery is the town-level Voronoi partition read (#819
-// decisions 2-3). The `towns` CTE puts the target town's own point/radius at
-// idx 0 ($2 lng, $3 lat, $4 radius) and zips the sibling arrays ($5 lngs, $6
-// lats, $7 radii) via one WITH-ORDINALITY unnest into idx 1..N — so the query
-// text never changes shape however many siblings are passed; zero siblings
-// means unnest yields zero rows and the read degrades to a plain, non-
-// partitioned radius read for the target town alone.
-//
-// `candidates` joins every authority-scoped application against every town it
-// is within THAT TOWN'S OWN radius of (ST_DWithin(a.location, t.pt, t.radius))
-// — this is the in-range-nearest rule already taking effect: a town whose
-// radius can't reach an application never produces a candidate row for it, so
-// that application is invisible to it regardless of how much nearer its centroid
-// is. `nearest` then keeps exactly one row per planit_name — the covering town
-// with the smallest KNN distance (DISTINCT ON, ties broken toward the lowest
-// idx for determinism) — which is precisely "closest-wins among the towns that
-// can reach it" and guarantees single-assignment: no application can ever
-// satisfy `idx = 0` for two different requests (this town's and a sibling's).
-//
-// The final SELECT keeps only rows assigned to the target town (idx = 0) and
-// re-applies recentRealDateOrder (decision 1) so a town's own list is ordered
-// exactly like the authority list.
+// pgRecentNearestTownQuery starts from this town's own in-radius set (index-
+// served) and drops any row a covering sibling is strictly nearer to, so the
+// cost tracks the town's radius rather than the whole authority times its
+// sibling count. On an exact distance tie the row stays with this town.
 const pgRecentNearestTownQuery = `
-WITH towns AS (
-	SELECT 0 AS idx,
-	       ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography AS pt,
-	       $4::double precision AS radius
-	UNION ALL
-	SELECT ord::int,
-	       ST_SetSRID(ST_MakePoint(lng, lat), 4326)::geography,
-	       radius
+WITH siblings AS (
+	SELECT ST_SetSRID(ST_MakePoint(lng, lat), 4326)::geography AS pt, radius
 	FROM unnest($5::double precision[], $6::double precision[], $7::double precision[])
-	     WITH ORDINALITY AS sib(lng, lat, radius, ord)
-),
-candidates AS (
-	SELECT
-		a.planit_name, a.uid, a.area_name, a.area_id, a.address, a.postcode,
-		a.description, a.app_type, a.app_state, a.app_size, a.start_date,
-		a.decided_date, a.consulted_date, a.location, a.url, a.link, a.last_different,
-		t.idx, a.location <-> t.pt AS dist
-	FROM applications a
-	JOIN towns t ON ST_DWithin(a.location, t.pt, t.radius)
-	WHERE a.authority_code = $1
-),
-nearest AS (
-	SELECT DISTINCT ON (planit_name) *
-	FROM candidates
-	ORDER BY planit_name, dist ASC, idx ASC
+	     AS sib(lng, lat, radius)
 )
-SELECT
-	planit_name, uid, area_name, area_id, address, postcode, description,
-	app_type, app_state, app_size, start_date, decided_date, consulted_date,
-	ST_Y(location::geometry), ST_X(location::geometry), url, link, last_different
-FROM nearest
-WHERE idx = 0
+SELECT ` + appColumns + `
+FROM applications a
+WHERE a.authority_code = $1
+  AND ST_DWithin(a.location, ` + seoNearbyPoint + `, $4)
+  AND NOT EXISTS (
+	SELECT 1 FROM siblings s
+	WHERE ST_DWithin(a.location, s.pt, s.radius)
+	  AND (a.location <-> s.pt) < (a.location <-> ` + seoNearbyPoint + `)
+  )
 ORDER BY ` + recentRealDateOrder + `
 LIMIT $8`
 
