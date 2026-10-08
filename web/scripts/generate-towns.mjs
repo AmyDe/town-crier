@@ -1,6 +1,6 @@
 /**
  * generate-towns.mjs — one-time / occasional generator for the committed town
- * gazetteer `web/src/data/towns.json`
+ * gazetteer `api-go/internal/seocatalog/resources/towns.json`
  * (`[{ slug, name, lat, lng, authorityId, population }]`).
  *
  * THIS SCRIPT IS NOT PART OF THE BUILD AND NEVER RUNS IN CI. It is run by a
@@ -106,7 +106,7 @@
  *      council name -> authorityId against authority-mapping.json, skips+logs
  *      any settlement with no centroid or no resolvable authority, then
  *      de-duplicates the COMBINED set by authorityId/slug, sorts, and overwrites
- *      web/src/data/towns.json.
+ *      api-go/internal/seocatalog/resources/towns.json.
  *   3. Scotland (tc-2avw.8): build the NRS population CSV from the "Population
  *      estimates for settlements and localities in Scotland, mid-2020" workbook
  *      (Table 2.1 settlement All-ages population, joined to Table 1.1 for the
@@ -134,7 +134,7 @@ import { slugify } from './lib/slug.mjs';
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 
 /** Output gazetteer path (the file the build reads). */
-const TOWNS_OUT = join(SCRIPT_DIR, '..', 'src', 'data', 'towns.json');
+const TOWNS_OUT = join(SCRIPT_DIR, '..', '..', 'api-go', 'internal', 'seocatalog', 'resources', 'towns.json');
 
 /** District-name → authority-id map, the same one the Go geocoder uses. */
 const AUTHORITY_MAPPING_FILE = join(

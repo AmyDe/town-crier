@@ -467,10 +467,27 @@ function seoThemedVars(tokens, theme, indent, withComments) {
  * @returns {string}
  */
 export function emitSeoTokensMjs(tokens) {
+  const css = seoTokenCss(tokens);
+
+  return `// GENERATED FILE — edit design/tokens.json and run scripts/design-tokens/generate.mjs
+// Consumed by web/scripts/lib/render-shared.mjs pageStyles(). See ADR 0040.
+
+export const SEO_TOKEN_CSS = \`${css}\`;
+`;
+}
+
+/**
+ * The SEO-page custom-property stylesheet (light `:root` + dark `@media`),
+ * shared by the web prerender block and the Go SEO templates.
+ *
+ * @param {any} tokens
+ * @returns {string}
+ */
+function seoTokenCss(tokens) {
   const light = seoThemedVars(tokens, 'light', 4, true);
   const dark = seoThemedVars(tokens, 'dark', 6, false);
 
-  const css = `    /* GENERATED — design tokens from design/tokens.json; run scripts/design-tokens/generate.mjs */
+  return `    /* GENERATED — design tokens from design/tokens.json; run scripts/design-tokens/generate.mjs */
     :root {
 ${light}
     }
@@ -479,11 +496,19 @@ ${light}
 ${dark}
       }
     }`;
+}
 
-  return `// GENERATED FILE — edit design/tokens.json and run scripts/design-tokens/generate.mjs
-// Consumed by web/scripts/lib/render-shared.mjs pageStyles(). See ADR 0040.
-
-export const SEO_TOKEN_CSS = \`${css}\`;
+/**
+ * Emit `api-go/internal/seopage/templates/tokens.gohtml`: a `{{define
+ * "tokenVars"}}` block holding the SEO-page token stylesheet, byte-equal to the
+ * block `SEO_TOKEN_CSS` carries into the prerendered pages.
+ *
+ * @param {any} tokens
+ * @returns {string}
+ */
+export function emitSeopageTokensGohtml(tokens) {
+  return `{{/* GENERATED FILE — edit design/tokens.json and run scripts/design-tokens/generate.mjs. See ADR 0040. */}}
+{{define "tokenVars"}}${seoTokenCss(tokens)}{{end}}
 `;
 }
 
@@ -1122,6 +1147,10 @@ export function buildOutputs(tokens) {
     {
       path: join(REPO_ROOT, 'api-go', 'internal', 'sharepage', 'templates', 'tokens.gohtml'),
       content: emitSharepageTokensGohtml(tokens),
+    },
+    {
+      path: join(REPO_ROOT, 'api-go', 'internal', 'seopage', 'templates', 'tokens.gohtml'),
+      content: emitSeopageTokensGohtml(tokens),
     },
     { path: IOS_COLORS_PATH, content: emitIosColors(tokens) },
     { path: ANDROID_COLORS_PATH, content: emitAndroidColors(tokens) },

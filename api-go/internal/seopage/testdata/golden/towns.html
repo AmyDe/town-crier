@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="apple-itunes-app" content="app-id=6764095657" />
+    <title>Planning applications by town | Town Crier</title>
+    <meta name="description" content="Browse recent planning applications by town across England, Wales and Scotland. Pick a town to see what is being built nearby, or get push alerts the moment something changes." />
+    <meta name="robots" content="index,follow" />
+    <link rel="canonical" href="https://towncrierapp.uk/planning/towns" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <meta property="og:title" content="Planning applications by town" />
+    <meta property="og:description" content="Browse recent planning applications by town across England, Wales and Scotland. Pick a town to see what is being built nearby, or get push alerts the moment something changes." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://towncrierapp.uk/planning/towns" />
+    <meta property="og:site_name" content="Town Crier" />
+    <script type="application/ld+json">[{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Town Crier","item":"https://towncrierapp.uk/"},{"@type":"ListItem","position":2,"name":"Towns","item":"https://towncrierapp.uk/planning/towns"}]}]</script>
+    <style>
+    /* GENERATED — design tokens from design/tokens.json; run scripts/design-tokens/generate.mjs */
+    :root {
+      /* Background scale converged with the share-page family (see
+         api-go/internal/sharepage/templates/styles.gohtml): a warm paper field
+         (--tc-background) behind a warmer off-white card (--tc-surface) in light
+         mode, so SEO pages and share pages read as one product rather than two
+         differently-themed properties. */
+      --tc-amber: #9E6709;
+      --tc-amber-hover: #8A5F06;
+      --tc-background: #F5F0E6;
+      --tc-surface: #FFFDF6;
+      --tc-text-primary: #24201A;
+      --tc-text-secondary: #6D665C;
+      --tc-text-on-accent: #FFFDF8;
+      /* Shared status chip vocabulary (decision 4, punch-list #794): three
+         canonical buckets — granted (green), refused (red), neutral (the
+         undecided/long-tail catch-all) — converged with the design-language
+         tcStatusApproved/tcStatusRefused/tcTextSecondary tokens, replacing the
+         previous five-way ad-hoc per-appState palette. The *-bg tokens are the
+         foreground colour at 15% opacity, for the filled badge style. */
+      --tc-status-granted: #1A7D37;
+      --tc-status-granted-bg: #1A7D3726;
+      --tc-status-refused: #C42B2B;
+      --tc-status-refused-bg: #C42B2B26;
+      --tc-status-neutral: #6D665C;
+      --tc-status-neutral-bg: #6D665C26;
+      --tc-border: #DAD2C2;
+      --tc-radius-md: 6px;
+      --tc-radius-full: 9999px;
+      --tc-space-sm: 8px;
+      --tc-space-md: 16px;
+      --tc-space-lg: 24px;
+      --tc-space-xl: 32px;
+      --tc-space-xxl: 48px;
+      --tc-font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      --tc-font-display: 'Inter', system-ui, -apple-system, sans-serif;
+      --tc-font-mono: ui-monospace, 'SF Mono', Menlo, 'Roboto Mono', monospace;
+      --tc-content-max-width: 760px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --tc-amber: #E9A620;
+        --tc-amber-hover: #F0B83A;
+        --tc-background: #191713;
+        --tc-surface: #23201A;
+        --tc-text-primary: #EFE9DC;
+        --tc-text-secondary: #A69E8F;
+        --tc-text-on-accent: #1C1917;
+        --tc-status-granted: #34C759;
+        --tc-status-granted-bg: #34C75926;
+        --tc-status-refused: #FF453A;
+        --tc-status-refused-bg: #FF453A26;
+        --tc-status-neutral: #A69E8F;
+        --tc-status-neutral-bg: #A69E8F26;
+        --tc-border: #3A352B;
+      }
+    }
+    /* ---------- Self-hosted Inter (Public Notice sans, all roles) ----------
+       Same self-hosting rationale as the SPA (web/src/styles/global.css):
+       served from /public/fonts (committed by #853), so the page makes zero
+       third-party font requests. Sans standardisation (tc-b3nki.7, GH #912,
+       2026-07-10) dropped the separate self-hosted display face — every role,
+       including H1/ledger addresses/CTA headlines via --tc-font-display, now
+       renders in this same Inter face. font-display: swap means a slow font
+       fetch never blocks text from painting. */
+    @font-face {
+      font-family: 'Inter';
+      font-style: normal;
+      font-weight: 400 700;
+      font-display: swap;
+      src: url('/fonts/inter-latin.woff2') format('woff2');
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--tc-font-family);
+      background: var(--tc-background);
+      color: var(--tc-text-primary);
+      line-height: 1.4;
+      -webkit-font-smoothing: antialiased;
+    }
+    .wrap {
+      max-width: var(--tc-content-max-width);
+      margin: 0 auto;
+      padding: var(--tc-space-md);
+    }
+    /* ---------- Masthead: small-caps wordmark, brass text CTA, double rule
+       (Public Notice component language, mirrors the SPA Navbar). ---------- */
+    .siteHeader { padding-top: var(--tc-space-md); }
+    .siteHeader__inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: var(--tc-space-sm);
+      padding-bottom: var(--tc-space-md);
+    }
+    .siteHeader a { text-decoration: none; }
+    .siteHeader__wordmark {
+      color: var(--tc-text-primary);
+      font-weight: 700;
+      font-variant: small-caps;
+      letter-spacing: 0.08em;
+    }
+    /* "Get the app" is a plain brass text link, not a filled pill — the
+       header keeps the click-through, only the shape changes. */
+    a.siteHeader__cta { color: var(--tc-amber); font-weight: 700; }
+    a.siteHeader__cta:hover { color: var(--tc-amber-hover); text-decoration: underline; }
+    /* Double rule beneath the masthead: a 2.5px heavy rule over a 1px
+       hairline, 3px gap. */
+    .siteHeader__ruleHeavy { height: 2.5px; background: var(--tc-text-primary); }
+    .siteHeader__ruleHairline { height: 1px; background: var(--tc-border); margin-top: 3px; }
+    /* ---------- Breadcrumb -> mono small-caps dateline ---------- */
+    .breadcrumb {
+      margin: var(--tc-space-md) 0 0;
+      font-family: var(--tc-font-mono);
+      font-size: 0.75rem;
+      color: var(--tc-text-secondary);
+      font-variant: small-caps;
+      letter-spacing: 0.04em;
+    }
+    .breadcrumb ol { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--tc-space-sm); }
+    .breadcrumb li::after { content: '›'; margin-left: var(--tc-space-sm); color: var(--tc-text-secondary); }
+    .breadcrumb li:last-child::after { content: ''; margin: 0; }
+    .breadcrumb a { color: var(--tc-text-secondary); text-decoration: none; }
+    .breadcrumb a:hover { color: var(--tc-amber); text-decoration: underline; }
+    /* H1 uses the display font token (sans stack — see tc-b3nki.7). */
+    h1 { font-family: var(--tc-font-display); font-weight: 600; font-size: 2rem; line-height: 1.2; margin: var(--tc-space-xl) 0 var(--tc-space-sm); }
+    h2 { font-size: 1.5rem; margin: var(--tc-space-xl) 0 var(--tc-space-md); }
+    h3 { font-size: 1.125rem; margin: 0; }
+    /* Single freshness line (tc-r4n9.3), placed near the H1. */
+    .dataUpdated { margin: 0 0 var(--tc-space-sm); font-size: 0.875rem; color: var(--tc-text-secondary); }
+    .lead { font-size: 1.125rem; color: var(--tc-text-secondary); margin: 0 0 var(--tc-space-lg); }
+    /* ---------- Ledger: a flat, full-width list of hairline-ruled rows
+       instead of boxed cards — reads better over a long crawlable page. Opens
+       with a small-caps brass label over a heavy 2px rule. ---------- */
+    .ledger__heading {
+      font-variant: small-caps;
+      letter-spacing: 0.08em;
+      font-weight: 700;
+      font-size: 0.9375rem;
+      color: var(--tc-amber);
+      margin: var(--tc-space-xl) 0 0;
+      padding-top: var(--tc-space-md);
+      border-top: 2px solid var(--tc-text-primary);
+    }
+    .ledger { list-style: none; margin: var(--tc-space-sm) 0 0; padding: 0; }
+    .ledgerRow { border-bottom: 1px solid var(--tc-border); }
+    .ledgerRow__link {
+      display: flex;
+      flex-direction: column;
+      gap: var(--tc-space-xs, 4px);
+      padding: var(--tc-space-md) 0;
+      color: inherit;
+      text-decoration: none;
+    }
+    .ledgerRow__link:focus-visible {
+      outline: 2px solid var(--tc-amber);
+      outline-offset: 2px;
+    }
+    .ledgerRow__link:hover .ledgerRow__address { color: var(--tc-amber); }
+    .ledgerRow__link:hover .ledgerRow__cta { color: var(--tc-amber-hover); text-decoration: underline; }
+    /* Fixed-width mono ref+date column, set alongside the body from tablet up. */
+    .ledgerRow__meta {
+      font-family: var(--tc-font-mono);
+      font-size: 0.75rem;
+      color: var(--tc-text-secondary);
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .ledgerRow__ref, .ledgerRow__date { margin: 0; }
+    .ledgerRow__body { min-width: 0; }
+    .ledgerRow__head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--tc-space-sm); }
+    /* Address is the human hook (decision 5): the display font token at
+       weight 600, the row's one display-face element. */
+    .ledgerRow__address { font-family: var(--tc-font-display); font-weight: 600; margin: 0; overflow-wrap: anywhere; }
+    .ledgerRow__desc { margin: var(--tc-space-xs, 4px) 0 0; color: var(--tc-text-secondary); }
+    /* Visible share-page affordance (decision 6) — a real anchor, not a
+       JS-only click handler; this is the text cue, the href is the whole row. */
+    .ledgerRow__cta { display: inline-block; margin-top: var(--tc-space-xs, 4px); color: var(--tc-amber); font-weight: 600; }
+    @media (min-width: 640px) {
+      .ledgerRow__link { flex-direction: row; align-items: flex-start; gap: var(--tc-space-md); }
+      .ledgerRow__meta { flex: 0 0 108px; }
+      .ledgerRow__body { flex: 1 1 auto; }
+    }
+    /* ---------- Status stamp: outlined, uppercase, letterspaced, icon +
+       label always (accessibility invariant — colour is never the sole
+       indicator). Same three-bucket vocabulary/colours as before (decision
+       4), no longer filled. ---------- */
+    .stamp {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px var(--tc-space-sm);
+      border: 1.5px solid currentColor;
+      border-radius: 3px;
+      background: transparent;
+      font-size: 0.6875rem;
+      font-weight: 700;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .stamp__label { text-transform: uppercase; letter-spacing: 0.12em; }
+    .stamp__icon { flex-shrink: 0; }
+    .stamp--granted { color: var(--tc-status-granted); }
+    .stamp--refused { color: var(--tc-status-refused); }
+    .stamp--neutral { color: var(--tc-status-neutral); }
+    /* Compact "Status breakdown" strip (tc-r4n9.3): one row of the same
+       .stamp--granted/refused/neutral vocabulary and colours above, plus the
+       total, with any long tail folded behind the .statusSummary__other
+       <details> instead of a one-row-per-state list. */
+    .statusSummary__strip { display: flex; flex-wrap: wrap; align-items: center; gap: var(--tc-space-sm); }
+    .statusSummary__total { color: var(--tc-text-secondary); font-size: 0.875rem; }
+    .statusSummary__other { margin-top: var(--tc-space-sm); color: var(--tc-text-secondary); font-size: 0.875rem; }
+    .statusSummary__other summary { cursor: pointer; color: var(--tc-amber); font-weight: 600; }
+    .statusSummary__otherList { list-style: none; margin: var(--tc-space-sm) 0 0; padding: 0; display: grid; gap: var(--tc-space-sm); }
+    .statusSummary__otherList li { display: flex; justify-content: space-between; gap: var(--tc-space-md); }
+    .statusSummary__otherCount { font-weight: 700; }
+    /* Nearby-area / neighbouring-council links (tc-gyw1q, GH #990 slices 3+4)
+       share the exact same pill vocabulary as the town-links list above — one
+       grouped rule rather than a near-duplicate per section. */
+    .townLinks__list, .nearbyAreas__list, .neighbouringCouncils__list {
+      list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--tc-space-sm);
+    }
+    .townLinks__list a, .nearbyAreas__list a, .neighbouringCouncils__list a {
+      display: inline-block;
+      padding: var(--tc-space-sm) var(--tc-space-md);
+      background: var(--tc-surface);
+      border: 1px solid var(--tc-border);
+      border-radius: var(--tc-radius-full);
+      color: var(--tc-amber);
+      text-decoration: none;
+      font-weight: 600;
+    }
+    .townLinks__list a:hover, .nearbyAreas__list a:hover, .neighbouringCouncils__list a:hover {
+      color: var(--tc-amber-hover); border-color: var(--tc-amber);
+    }
+    /* /planning/ authority hub (tc-geq7h.1): an A-Z jump nav plus one
+       <section> per letter, each holding a flat list of authority links with
+       a small mono metadata line (application/town counts) — the same
+       hairline-ruled ledger rhythm as the applications list. */
+    .azNav { display: flex; flex-wrap: wrap; gap: var(--tc-space-sm); margin: 0 0 var(--tc-space-lg); font-weight: 600; }
+    .azNav a { color: var(--tc-amber); text-decoration: none; }
+    .azNav a:hover { color: var(--tc-amber-hover); text-decoration: underline; }
+    .hubGroup { scroll-margin-top: var(--tc-space-md); }
+    .hubGroup h2 { border-bottom: 1px solid var(--tc-border); padding-bottom: var(--tc-space-sm); }
+    .hubList { list-style: none; margin: 0 0 var(--tc-space-lg); padding: 0; display: grid; gap: var(--tc-space-sm); }
+    .hubList__item {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: var(--tc-space-sm);
+      padding: var(--tc-space-sm) 0;
+      border-bottom: 1px solid var(--tc-border);
+    }
+    .hubList__link { color: var(--tc-text-primary); font-weight: 600; text-decoration: none; }
+    .hubList__link:hover { color: var(--tc-amber); text-decoration: underline; }
+    .hubList__meta { font-family: var(--tc-font-mono); color: var(--tc-text-secondary); font-size: 0.8125rem; white-space: nowrap; }
+    .explainer p { color: var(--tc-text-secondary); }
+    /* Inline alerts CTA pulled above the list (tc-r4n9.3): a lighter pill,
+       visually distinct from the rectangular bottom banner button below. */
+    .ctaInline { margin: 0 0 var(--tc-space-lg); }
+    .ctaInline__button {
+      display: inline-block;
+      padding: var(--tc-space-sm) var(--tc-space-lg);
+      background: var(--tc-amber);
+      color: var(--tc-text-on-accent);
+      border-radius: var(--tc-radius-full);
+      text-decoration: none;
+      font-weight: 700;
+    }
+    .ctaInline__button:hover { background: var(--tc-amber-hover); }
+    /* Towns-index cross-link (tc-3ht16): a lightweight text link, not a
+       filled pill — secondary to the inline alerts CTA above it. */
+    .crossLinks { margin: 0 0 var(--tc-space-lg); }
+    .crossLinks__link { color: var(--tc-amber); font-weight: 600; text-decoration: none; }
+    .crossLinks__link:hover { color: var(--tc-amber-hover); text-decoration: underline; }
+    /* ---------- CTA bands: filed-notice card shape, 2px brass top rule,
+       display-font heading, one brass button — mid-list pitch (tc-fgoyj) and
+       bottom banner both use this treatment. ---------- */
+    .ledgerCta {
+      list-style: none;
+      margin-top: var(--tc-space-md);
+      padding: var(--tc-space-lg);
+      background: var(--tc-surface);
+      border: 1px solid var(--tc-border);
+      border-top: 2px solid var(--tc-amber);
+      border-radius: var(--tc-radius-md);
+      text-align: center;
+    }
+    .ledgerCta__heading { font-family: var(--tc-font-display); font-weight: 600; margin: 0 0 var(--tc-space-sm); }
+    .ledgerCta__body { margin: 0 0 var(--tc-space-md); color: var(--tc-text-secondary); }
+    .ledgerCta__button {
+      display: inline-block;
+      padding: var(--tc-space-sm) var(--tc-space-lg);
+      background: var(--tc-amber);
+      color: var(--tc-text-on-accent);
+      border-radius: var(--tc-radius-full);
+      text-decoration: none;
+      font-weight: 700;
+    }
+    .ledgerCta__button:hover { background: var(--tc-amber-hover); }
+    .cta {
+      margin: var(--tc-space-xl) 0;
+      padding: var(--tc-space-lg);
+      background: var(--tc-surface);
+      border: 1px solid var(--tc-border);
+      border-top: 2px solid var(--tc-amber);
+      border-radius: var(--tc-radius-md);
+      text-align: center;
+    }
+    .cta__heading { font-family: var(--tc-font-display); font-weight: 600; }
+    /* Desktop-only QR (tc-fgoyj): pointer/hover media queries approximate
+       "no App Store on this device" without any UA sniffing or JS. The SVG's
+       own colours stay dark-on-light in dark mode (see qr.mjs) — only the
+       frame is themed. */
+    .cta__qr { display: none; }
+    @media (hover: hover) and (pointer: fine) {
+      .cta__qr {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: var(--tc-space-sm);
+        margin-top: var(--tc-space-lg);
+      }
+      .cta__qr svg.qr {
+        width: 132px;
+        height: 132px;
+        border: 1px solid var(--tc-border);
+        border-radius: var(--tc-radius-md);
+      }
+      .cta__qrCaption { margin: 0; font-size: 0.875rem; color: var(--tc-text-secondary); }
+    }
+    .cta__button {
+      display: inline-block;
+      margin-top: var(--tc-space-md);
+      padding: var(--tc-space-sm) var(--tc-space-lg);
+      background: var(--tc-amber);
+      color: var(--tc-text-on-accent);
+      border-radius: var(--tc-radius-md);
+      text-decoration: none;
+      font-weight: 700;
+    }
+    .siteFooter { margin-top: var(--tc-space-xxl); padding: var(--tc-space-lg) 0; border-top: 1px solid var(--tc-border); color: var(--tc-text-secondary); font-size: 0.875rem; }
+    .attribution { list-style: none; margin: 0 0 var(--tc-space-md); padding: 0; display: grid; gap: var(--tc-space-sm); }
+    .siteFooter a { color: var(--tc-text-secondary); }
+
+    .townsIndex__jump { display: flex; flex-wrap: wrap; gap: var(--tc-space-sm); margin: 0 0 var(--tc-space-lg); font-weight: 600; }
+    .townsIndex__jump a { color: var(--tc-amber); text-decoration: none; }
+    .townsIndex__jump a:hover { text-decoration: underline; }
+    .townsIndex__section { margin: var(--tc-space-lg) 0; }
+    .townsIndex__section h2 { border-bottom: 1px solid var(--tc-border); padding-bottom: var(--tc-space-sm); }
+    .townsIndex__list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--tc-space-sm); }
+    .townsIndex__item a { color: var(--tc-text-primary); font-weight: 600; text-decoration: none; }
+    .townsIndex__item a:hover { color: var(--tc-amber); text-decoration: underline; }
+    .townsIndex__authority { font-family: var(--tc-font-mono); color: var(--tc-text-secondary); font-size: 0.875rem; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="siteHeader">
+        <div class="siteHeader__inner">
+          <a href="/" class="siteHeader__wordmark">Town Crier</a>
+          <a class="siteHeader__cta" href="https://apps.apple.com/gb/app/town-crier-planning-alerts/id6764095657?pt=128810278&ct=seo-towns-index&mt=8" rel="noopener" target="_blank">Get the app</a>
+        </div>
+        <div class="siteHeader__ruleHeavy"></div>
+        <div class="siteHeader__ruleHairline"></div>
+      </header>
+      <nav class="breadcrumb" aria-label="Breadcrumb">
+        <ol>
+          <li><a href="/">Town Crier</a></li>
+          <li>Towns</li>
+        </ol>
+      </nav>
+      <main>
+        <h1>Planning applications by town</h1>
+        <p class="lead">Browse 5 towns we track, A to Z. Pick yours to see what's being built nearby.</p>
+        <p class="ctaInline">
+          <a class="ctaInline__button" href="https://apps.apple.com/gb/app/town-crier-planning-alerts/id6764095657?pt=128810278&ct=seo-towns-index&mt=8" rel="noopener" target="_blank">Get push alerts for your town →</a>
+        </p>
+
+        <nav class="townsIndex__jump" aria-label="Jump to letter">
+          <a href="#letter-B">B</a>
+          <a href="#letter-F">F</a>
+          <a href="#letter-S">S</a>
+          <a href="#letter-T">T</a>
+        </nav>
+
+        <section class="townsIndex__section" id="letter-B" aria-labelledby="letter-B-heading">
+          <h2 id="letter-B-heading">B</h2>
+          <ul class="townsIndex__list">
+            <li class="townsIndex__item"><a href="/planning/basingstoke-and-deane/basingstoke">Basingstoke</a> <span class="townsIndex__authority">Basingstoke and Deane</span></li>
+          </ul>
+        </section>
+        <section class="townsIndex__section" id="letter-F" aria-labelledby="letter-F-heading">
+          <h2 id="letter-F-heading">F</h2>
+          <ul class="townsIndex__list">
+            <li class="townsIndex__item"><a href="/planning/cornwall/falmouth">Falmouth</a> <span class="townsIndex__authority">Cornwall</span></li>
+          </ul>
+        </section>
+        <section class="townsIndex__section" id="letter-S" aria-labelledby="letter-S-heading">
+          <h2 id="letter-S-heading">S</h2>
+          <ul class="townsIndex__list">
+            <li class="townsIndex__item"><a href="/planning/cornwall/st-austell">St Austell</a> <span class="townsIndex__authority">Cornwall</span></li>
+          </ul>
+        </section>
+        <section class="townsIndex__section" id="letter-T" aria-labelledby="letter-T-heading">
+          <h2 id="letter-T-heading">T</h2>
+          <ul class="townsIndex__list">
+            <li class="townsIndex__item"><a href="/planning/basingstoke-and-deane/tadley">Tadley</a> <span class="townsIndex__authority">Basingstoke and Deane</span></li>
+            <li class="townsIndex__item"><a href="/planning/cornwall/truro">Truro</a> <span class="townsIndex__authority">Cornwall</span></li>
+          </ul>
+        </section>
+
+        <section class="cta">
+          <h2 class="cta__heading">Get push alerts for your town</h2>
+          <p>
+            Draw a circle on the map and Town Crier will notify you the moment a new
+            planning application is submitted or decided inside it.
+          </p>
+          <a class="cta__button" href="https://apps.apple.com/gb/app/town-crier-planning-alerts/id6764095657?pt=128810278&ct=seo-towns-index&mt=8" rel="noopener" target="_blank">Download on the App Store</a>
+        </section>
+      </main>
+
+      <footer class="siteFooter">
+        <ul class="attribution">
+        <li>Planning data provided by PlanIt (planit.org.uk)</li>
+        <li>Contains public sector information licensed under the Open Government Licence. Crown Copyright.</li>
+        <li>Contains Ordnance Survey data © Crown Copyright and database right.</li>
+        <li>Map data © OpenStreetMap contributors.</li>
+        <li>Town locations contain Built-Up Areas (2022) data from the Office for National Statistics, licensed under the Open Government Licence. Crown Copyright.</li>
+        <li>Scottish town locations contain data from National Records of Scotland, licensed under the Open Government Licence. Crown Copyright.</li>
+        </ul>
+        <p>© 2026 Town Crier · Ivo and the Bea Ltd</p>
+        <p><a href="/legal/privacy">Privacy Policy</a> · <a href="/legal/terms">Terms of Service</a></p>
+      </footer>
+    </div>
+  </body>
+</html>

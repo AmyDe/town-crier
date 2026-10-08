@@ -29,6 +29,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/polling"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 	"github.com/AmyDe/town-crier/api-go/internal/savedapplications"
+	"github.com/AmyDe/town-crier/api-go/internal/seopage"
 	"github.com/AmyDe/town-crier/api-go/internal/sharepage"
 	"github.com/AmyDe/town-crier/api-go/internal/subscriptions"
 	"github.com/AmyDe/town-crier/api-go/internal/versionconfig"
@@ -51,6 +52,11 @@ var anonymousPatterns = map[string]struct{}{
 	// account, so it is anonymous to Auth0, mirroring the legal endpoint above
 	// (GH#1104, tc-m8j90.1).
 	"GET /v1/watch-zones/filter-catalog": {},
+	// The live SEO pages and sitemap are anonymous to Auth0; the dedicated
+	// X-Build-Key gate inside the handler is their authentication (ADR 0050).
+	"GET /planning":           {},
+	"GET /planning/{path...}": {},
+	"GET /sitemap.xml":        {},
 	// The demo-account endpoint is anonymous so Apple's App Store reviewer can
 	// reach a fully-provisioned Pro account without a token (no bearer required).
 	"GET /v1/demo-account": {},
@@ -258,6 +264,7 @@ func newRouter(
 	anonRateLimitBurst int,
 	anonRateLimitRefillPerMinute int,
 	pollingAdmin pollingAdminDeps,
+	seoStore seopage.Store,
 	logger *slog.Logger,
 ) http.Handler {
 	mux := http.NewServeMux()
@@ -396,6 +403,13 @@ func newRouter(
 		} else {
 			sharepage.ImageRoutes(mux, appStore, authorities.NewLookup(), sharepage.NewOSMTileClient(), nil, logger)
 		}
+	}
+	if seoStore != nil {
+		// The live SEO pages (ADR 0050): anonymous to Auth0 and gated by the site
+		// build key inside the handler (a missing or wrong key is a bodyless 404),
+		// so the apex Worker is the only caller that sees them. Build-key requests
+		// are already exempt from AnonRateLimit above.
+		seopage.Routes(mux, seoStore, siteBuildKey, time.Now, logger)
 	}
 	if store != nil && watchZoneStore != nil && appStore != nil && notifStore != nil {
 		// Watch-zone create (returns nearby applications) + the per-zone

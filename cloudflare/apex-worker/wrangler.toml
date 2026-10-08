@@ -1,0 +1,24 @@
+name = "town-crier-apex"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+workers_dev = false
+
+[env.dev]
+name = "town-crier-apex-dev"
+workers_dev = false
+routes = [{ pattern = "preview-dev.towncrierapp.uk", custom_domain = true }]
+
+[env.dev.vars]
+SWA_ORIGIN = "https://lemon-sand-07669da03.6.azurestaticapps.net"
+API_ORIGIN = "https://api-dev.towncrierapp.uk"
+INDEXABLE_HOSTS = ""
+
+[env.prod]
+name = "town-crier-apex-prod"
+workers_dev = false
+routes = [{ pattern = "preview.towncrierapp.uk", custom_domain = true }]
+
+[env.prod.vars]
+SWA_ORIGIN = "https://calm-river-03a6ccb03.1.azurestaticapps.net"
+API_ORIGIN = "https://api.towncrierapp.uk"
+INDEXABLE_HOSTS = "towncrierapp.uk"
