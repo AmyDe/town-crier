@@ -2,7 +2,6 @@ package uk.towncrierapp.domain.applications
 
 import uk.towncrierapp.domain.auth.DomainError
 
-/** Hand-written fake for [SavedApplicationRepository] — state-based, per testing.md conventions. */
 public class FakeSavedApplicationRepository(
     public var stored: MutableList<SavedApplication> = mutableListOf(),
 ) : SavedApplicationRepository {

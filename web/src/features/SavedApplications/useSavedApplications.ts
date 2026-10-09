@@ -4,6 +4,7 @@ import type {
   ApplicationStatus,
 } from '../../domain/types';
 import type { SavedApplicationRepository } from '../../domain/ports/saved-application-repository';
+import { extractErrorMessage } from '../../utils/extractErrorMessage';
 
 export interface UseSavedApplicationsOptions {
   readonly savedRepository: SavedApplicationRepository;
@@ -22,11 +23,6 @@ const INITIAL_STATE: State = {
   error: null,
   selectedStatusFilter: null,
 };
-
-function extractError(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  return 'Unknown error';
-}
 
 export function useSavedApplications(options: UseSavedApplicationsOptions) {
   const { savedRepository } = options;
@@ -54,7 +50,7 @@ export function useSavedApplications(options: UseSavedApplicationsOptions) {
           ...prev,
           applications: [],
           isLoading: false,
-          error: extractError(err),
+          error: extractErrorMessage(err, 'Unknown error'),
         }));
       });
     return () => {

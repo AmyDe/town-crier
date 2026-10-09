@@ -2,14 +2,10 @@ import Combine
 import Foundation
 import TownCrierDomain
 
-/// ViewModel for the dedicated Saved tab — a flat, cross-zone feed of the
-/// user's bookmarked planning applications, sorted by `savedAt` descending so
-/// the most recently bookmarked items appear first. The denormalised
-/// `SavedApplication.application` payload supplies row data without an N+1
-/// fetch; saves without a payload (legacy entries) are dropped.
-///
-/// The status filter is free for every subscription tier — paywall lives at
-/// the watch-zone level, not on personal bookmarks.
+/// ViewModel for the dedicated Saved tab: a flat, cross-zone feed of the
+/// user's bookmarked planning applications, sorted by `savedAt` descending.
+/// Saves without a denormalised `application` payload are dropped. The status
+/// filter is free for every subscription tier.
 @MainActor
 public final class SavedApplicationListViewModel: ObservableObject, ErrorHandlingViewModel {
   @Published private(set) var applications: [PlanningApplication] = []
@@ -21,10 +17,7 @@ public final class SavedApplicationListViewModel: ObservableObject, ErrorHandlin
 
   var onApplicationSelected: ((PlanningApplicationId) -> Void)?
 
-  /// Payload-bearing selection callback used by the Saved tab so the detail
-  /// sheet can be presented synchronously from the cached row data; the detail
-  /// view model then runs `refresh()` in the background to keep the saved-row
-  /// snapshot fresh on the server (bd tc-sslz, tc-udby).
+  /// Carries the full row payload so the detail sheet can be presented synchronously.
   var onApplicationSelectedWithPayload: ((PlanningApplication) -> Void)?
 
   public var filteredApplications: [PlanningApplication] {
@@ -32,10 +25,8 @@ public final class SavedApplicationListViewModel: ObservableObject, ErrorHandlin
     return applications.filter { $0.status == filter }
   }
 
-  /// True when the list has nothing to render right now and we are not in a
-  /// loading or error state — either no saves at all, or the active filter
-  /// excludes every save. The view picks copy by inspecting
-  /// `selectedStatusFilter`.
+  /// True when there is nothing to render and the list is neither loading nor
+  /// in error: no saves at all, or the active filter excludes every save.
   public var isEmpty: Bool {
     filteredApplications.isEmpty && error == nil && !isLoading
   }
@@ -64,9 +55,7 @@ public final class SavedApplicationListViewModel: ObservableObject, ErrorHandlin
     onApplicationSelected?(id)
   }
 
-  /// Payload-bearing selection used by the Saved tab — the row already has the
-  /// full `PlanningApplication` so the detail sheet opens instantly. The
-  /// detail view model fires the per-id refresh in the background.
+  /// Selects an application using the row's full payload.
   public func selectApplication(_ application: PlanningApplication) {
     onApplicationSelectedWithPayload?(application)
   }
