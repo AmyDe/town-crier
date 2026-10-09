@@ -19,16 +19,11 @@ import (
 
 const maxBodyBytes = 1 << 20
 
-// invalidBodyMessage is the error text when the save body lacks the fields
-// needed to build the canonical key and master record.
 const invalidBodyMessage = "Body must include a non-empty uid and name."
 
-// applicationNotFoundMessage is returned when the body's (areaId, name) does
-// not correspond to any master record in the Applications container. The save
-// path refuses to create master records — the poller is the source of truth.
+// The save path refuses to create master records; the poller is the source of truth.
 const applicationNotFoundMessage = "Application not found."
 
-// savedStore is the consumer-side saved-application store.
 type savedStore interface {
 	Save(ctx context.Context, sa SavedApplication) error
 	Exists(ctx context.Context, userID, applicationUID string) (bool, error)
@@ -36,10 +31,7 @@ type savedStore interface {
 	GetByUserID(ctx context.Context, userID string) ([]SavedApplication, error)
 }
 
-// appStore is the consumer-side planning-application store the saved handler
-// needs: a point-read by (authorityCode, name) to verify a master record exists
-// before writing a user's bookmark, and a partition-scoped uid lookup used by
-// the lazy snapshot backfill for legacy rows.
+// appStore is the planning-application lookups the saved handler needs.
 type appStore interface {
 	GetByAuthorityAndName(ctx context.Context, authorityCode, name string) (applications.PlanningApplication, bool, error)
 	GetByUID(ctx context.Context, uid, authorityCode string) (applications.PlanningApplication, bool, error)
@@ -52,9 +44,8 @@ type handler struct {
 	logger *slog.Logger
 }
 
-// Routes registers the saved-application endpoints. PUT/DELETE use a {**uid}
-// catch-all so a slash-bearing application uid is captured whole (matching the
-// {**applicationUid} path pattern).
+// Routes registers the saved-application endpoints. PUT/DELETE use a
+// {applicationUid...} wildcard so a slash-bearing application uid is captured whole.
 func Routes(mux *http.ServeMux, store savedStore, apps appStore, now func() time.Time, logger *slog.Logger) {
 	h := &handler{store: store, apps: apps, now: now, logger: logger}
 	mux.HandleFunc("PUT /v1/me/saved-applications/{applicationUid...}", h.save)
@@ -62,11 +53,9 @@ func Routes(mux *http.ServeMux, store savedStore, apps appStore, now func() time
 	mux.HandleFunc("GET /v1/me/saved-applications", h.list)
 }
 
-// saveRequest is the PUT body. Only Name, UID, and AreaID are used — they form
-// the key for the master-record look-up ((areaId, name) → canonical uid). The
-// remaining fields are decoded but not trusted as a source of truth; only the
-// data returned from the Applications container is written. The path uid is
-// ignored; identity is derived from the body's (areaId, name) pair.
+// saveRequest is the PUT body. Only Name, UID, and AreaID are used; the
+// remaining fields are decoded but never trusted. The path uid is ignored;
+// identity is derived from the body's (areaId, name) pair.
 type saveRequest struct {
 	Name          string              `json:"name"`
 	UID           string              `json:"uid"`
@@ -109,8 +98,6 @@ func (h *handler) save(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Look up the canonical master record — never trust the client body as a
-	// source of truth for the shared Applications container.
 	authorityCode := strconv.Itoa(req.AreaID)
 	app, found, err := h.apps.GetByAuthorityAndName(r.Context(), authorityCode, req.Name)
 	if err != nil {
@@ -158,12 +145,9 @@ type savedEntry struct {
 }
 
 // list implements GET /v1/me/saved-applications, returning a JSON array of the
-// user's saved applications rendered from their embedded snapshots. It runs a
-// lazy migration on every read, reachable only by pre-PR#398 legacy data:
-// (1) backfill the snapshot for rows
-// persisted before the snapshot column existed, (2) re-key legacy bare-ref uids
-// to the canonical {areaId}/{name} uid, (3) dedup a legacy+canonical pair for
-// the same application to a single row.
+// user's saved applications rendered from their embedded snapshots. Legacy rows
+// are lazily migrated on read: snapshot backfill, re-key to the canonical uid,
+// and dedup of a legacy+canonical pair.
 func (h *handler) list(w http.ResponseWriter, r *http.Request) {
 	userID := auth.Subject(r.Context())
 
@@ -173,8 +157,6 @@ func (h *handler) list(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Track the canonical uids already emitted this read so a legacy+canonical
-	// duplicate pair for the same app collapses to a single row.
 	emitted := make(map[string]struct{}, len(saved))
 	entries := make([]savedEntry, 0, len(saved))
 	for _, record := range saved {
@@ -217,12 +199,9 @@ func isLegacyKeyed(record SavedApplication) bool {
 	return record.Application != nil && record.ApplicationUID != record.Application.CanonicalUID()
 }
 
-// hydrate ensures the saved record carries an embedded snapshot. Rows persisted
-// before the snapshot column existed hold only the uid; they are backfilled once
-// via the partition-scoped planning lookup and rewritten in place so subsequent
-// reads are zero-hydration. The bool is false when the master planning
-// application is gone (the row is excluded). The row's existing ApplicationUID is
-// preserved — re-keying happens separately so the two steps stay independent.
+// hydrate backfills the embedded snapshot for rows persisted without one and
+// rewrites them in place. The bool is false when the master planning
+// application is gone. The row's existing ApplicationUID is preserved.
 func (h *handler) hydrate(ctx context.Context, record SavedApplication) (SavedApplication, bool, error) {
 	if record.Application != nil {
 		return record, true, nil
@@ -245,10 +224,8 @@ func (h *handler) hydrate(ctx context.Context, record SavedApplication) (SavedAp
 }
 
 // reKeyToCanonical re-keys a legacy-format saved row to the canonical
-// {areaId}/{name} uid. Cosmos doc ids are immutable, so a re-key is a write of
-// the canonical doc plus a delete of the legacy doc. When a canonical doc already
-// exists for the same user+app (the confirmed legacy+canonical duplicate case)
-// the canonical doc is kept untouched and only the legacy doc is deleted.
+// {areaId}/{name} uid: it writes the canonical row unless one already exists,
+// then deletes the legacy row.
 func (h *handler) reKeyToCanonical(ctx context.Context, legacy SavedApplication) (SavedApplication, error) {
 	canonical := NewSavedApplication(legacy.UserID, *legacy.Application, legacy.SavedAt)
 
@@ -264,7 +241,6 @@ func (h *handler) reKeyToCanonical(ctx context.Context, legacy SavedApplication)
 		}
 	}
 
-	// The canonical doc is the survivor — drop the legacy duplicate.
 	if err := h.store.Delete(ctx, legacy.UserID, legacy.ApplicationUID); err != nil {
 		return SavedApplication{}, err
 	}
