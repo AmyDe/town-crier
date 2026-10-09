@@ -14,7 +14,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** Port of iOS `SavedApplicationListViewModelTests` (GH#775). */
 @ExtendWith(MainDispatcherExtension::class)
 class SavedListViewModelTest {
     @Test

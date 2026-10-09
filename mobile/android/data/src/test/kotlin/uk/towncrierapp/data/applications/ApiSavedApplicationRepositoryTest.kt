@@ -10,14 +10,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/**
- * `GET/PUT/DELETE /v1/me/saved-applications` — the flat, cross-zone saved
- * list (client-sorted `savedAt` DESC by the ViewModel, not here), legacy
- * null-payload rows, and the save/unsave path segment built from
- * [PlanningApplicationId.value] with its slash(es) percent-encoded so the
- * whole id stays ONE path segment (GH#775). Port of the iOS
- * `APISavedApplicationRepositoryTests` suite.
- */
 class ApiSavedApplicationRepositoryTest {
     private fun makeSut(transport: FakeHttpTransport = FakeHttpTransport()): ApiSavedApplicationRepository {
         val apiClient = ApiClient("https://api-dev.towncrierapp.uk", transport, FakeAuthenticationService())

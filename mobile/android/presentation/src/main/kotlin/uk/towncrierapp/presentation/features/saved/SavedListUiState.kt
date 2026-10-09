@@ -5,12 +5,9 @@ import uk.towncrierapp.domain.applications.SavedApplication
 import uk.towncrierapp.domain.auth.DomainError
 
 /**
- * `SavedListScreen` state. [displayed] is the presentation-ready projection
- * of [savedApplications]: legacy rows with a `null` payload are dropped
- * entirely (never shown as an empty/placeholder row), [filter] (client-side
- * only — the endpoint itself is unfiltered) narrows by status when set, and
- * the result is always `savedAt` DESC. Port of iOS
- * `SavedApplicationListViewModel`'s published state (GH#775).
+ * `SavedListScreen` state. [displayed] drops legacy rows with a `null`
+ * payload, narrows by [filter] (client-side only) when set, and is always
+ * `savedAt` DESC.
  */
 public data class SavedListUiState(
     val savedApplications: List<SavedApplication> = emptyList(),
