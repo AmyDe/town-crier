@@ -33,10 +33,6 @@ export function SavedApplicationsPage({ savedRepository }: Props) {
     setStatusFilter,
   } = useSavedApplications({ savedRepository });
 
-  function handleStatusClick(status: ApplicationStatus | null) {
-    setStatusFilter(status);
-  }
-
   return (
     <div className={styles.container}>
       <h1 className={styles.heading}>Saved</h1>
@@ -51,7 +47,7 @@ export function SavedApplicationsPage({ savedRepository }: Props) {
                 type="button"
                 className={`${styles.chip} ${isPressed ? styles.chipPressed : ''}`}
                 aria-pressed={isPressed}
-                onClick={() => handleStatusClick(chip.status)}
+                onClick={() => setStatusFilter(chip.status)}
               >
                 {chip.label}
               </button>
