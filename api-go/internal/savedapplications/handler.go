@@ -31,7 +31,7 @@ type savedStore interface {
 	GetByUserID(ctx context.Context, userID string) ([]SavedApplication, error)
 }
 
-// appStore is the planning-application lookups the saved handler needs.
+// appStore holds the planning-application lookups the saved handler needs.
 type appStore interface {
 	GetByAuthorityAndName(ctx context.Context, authorityCode, name string) (applications.PlanningApplication, bool, error)
 	GetByUID(ctx context.Context, uid, authorityCode string) (applications.PlanningApplication, bool, error)
