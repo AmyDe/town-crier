@@ -25,14 +25,10 @@ const (
 
 // String returns the canonical wire/storage form of the platform.
 func (p DevicePlatform) String() string {
-	switch p {
-	case PlatformIos:
-		return "Ios"
-	case PlatformAndroid:
+	if p == PlatformAndroid {
 		return "Android"
-	default:
-		return "Ios"
 	}
+	return "Ios"
 }
 
 // ErrUnknownPlatform is returned by ParsePlatform for an unrecognised value.

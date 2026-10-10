@@ -1,12 +1,7 @@
-// Package digest holds the Town Crier digest-generation worker modes: the weekly
-// digest (WORKER_MODE=digest) and the hourly digest (WORKER_MODE=hourly-digest).
-// Each cycle reads dispatched notifications from Cosmos, applies tier and
-// per-user preference gating, groups the matching applications per watch zone,
-// renders an email HTML body and (weekly, Pro tier only) an APNs push payload,
-// hands them to the transport-only acsemail / apns senders, and records dedup
-// state (the hourly cycle flips emailSent; the weekly push prunes invalid device
-// tokens). It follows idiomatic Go: consumer-side interfaces, hand-written test
-// fakes, business logic in the package.
+// Package digest runs the weekly (WORKER_MODE=digest) and hourly
+// (WORKER_MODE=hourly-digest) digest cycles: it gates notifications by tier and
+// preference, groups them per watch zone, renders the email and weekly push
+// bodies, and records emailSent state.
 package digest
 
 import (
@@ -27,33 +22,25 @@ import (
 // digestWindow is the 7-day look-back the weekly digest gathers notifications over.
 const digestWindow = 7 * 24 * time.Hour
 
-// email.kind values stamped on the "Email send" wrapper span (tc-3jx8d),
-// distinguishing the two digest cycles that share sendDigestEmail.
+// email.kind values stamped on the "Email send" wrapper span, distinguishing the
+// two digest cycles that share sendDigestEmail.
 const (
 	emailKindWeekly = "digest-weekly"
 	emailKindHourly = "digest-hourly"
 )
 
-// emailSender is the consumer-side slice of the instrumented email transport
-// the digest handler needs: Send wraps exactly one "Email send" span (tagged
-// email.kind) around the underlying ACS transport, leaving the low-level "ACS
-// email send" HTTP client spans untouched. *acsemail.InstrumentedSender
-// satisfies it.
+// emailSender is the instrumented email transport (*acsemail.InstrumentedSender).
 type emailSender interface {
 	Send(ctx context.Context, kind string, msg acsemail.Message) error
 }
 
-// profileReader is the consumer-side slice of the profile stores the digest
-// worker needs: the weekly cycle selects by digest day (cross-partition) and the
-// hourly cycle point-reads each candidate user. profiles.AdminStore satisfies
-// ByDigestDay; profiles.CosmosStore satisfies Get.
+// profileReader selects users by digest day (weekly) and reads one user (hourly).
 type profileReader interface {
 	ByDigestDay(ctx context.Context, day time.Weekday) ([]*profiles.UserProfile, error)
 	Get(ctx context.Context, userID string) (*profiles.UserProfile, error)
 }
 
-// notificationReader is the consumer-side slice of the Notifications store the
-// digest worker reads and writes. notifications.DigestStore satisfies it.
+// notificationReader is the notifications store slice the digest worker uses.
 type notificationReader interface {
 	ByUserSince(ctx context.Context, userID string, since time.Time) ([]notifications.DigestNotification, error)
 	UnsentEmailsByUser(ctx context.Context, userID string) ([]notifications.DigestNotification, error)
@@ -62,29 +49,23 @@ type notificationReader interface {
 }
 
 // zoneReader returns a user's watch zones for grouping and per-zone gating.
-// watchzones.CosmosStore satisfies it.
 type zoneReader interface {
 	GetByUserID(ctx context.Context, userID string) ([]watchzones.WatchZone, error)
 }
 
-// stateReader supplies the unread-count badge for the weekly push: the total
-// unread tally (read_at IS NULL, ADR 0035). *notificationstate.PostgresStore
-// satisfies it.
+// stateReader supplies the unread-count badge for the weekly push.
 type stateReader interface {
 	UnreadCount(ctx context.Context, userID string) (int, error)
 }
 
-// deviceReader lists a user's device tokens for a push and prunes the ones APNs
-// reports permanently invalid. devicetokens.CosmosStore satisfies it.
+// deviceReader lists a user's device tokens and prunes permanently invalid ones.
 type deviceReader interface {
 	ListByUser(ctx context.Context, userID string) ([]devicetokens.DeviceRegistration, error)
 	Delete(ctx context.Context, userID, token string) error
 }
 
-// pushDispatcher is the consumer-side platform-aware push contract; the concrete
-// *notifydispatch.PlatformDispatcher satisfies it. It is declared locally (with
-// the platform token split expressed in the signature) so the handler test can
-// substitute a fake without importing notifydispatch.
+// pushDispatcher is the platform-aware push sender
+// (*notifydispatch.PlatformDispatcher).
 type pushDispatcher interface {
 	Send(ctx context.Context, iosTokens []string, iosPayload json.RawMessage, androidTokens []string, androidPayload json.RawMessage) ([]string, error)
 }
@@ -163,24 +144,14 @@ func (h *Handler) RunWeekly(ctx context.Context) error {
 		}
 
 		if wantsPush {
-			// Dedup before counting: a NewApplication+DecisionUpdate pair for the same
-			// application is ONE application, so the push body count must match the
-			// deduped email application count, not the raw record count (tc-txkm1).
+			// Dedup before counting so the push count matches the deduped email count.
 			h.sendWeeklyPush(ctx, profile, len(dedupByApplication(notifs)))
 		}
 		if wantsEmail {
-			// The weekly cycle does not track emailSent (it re-derives the digest from
-			// the look-back window each run), so a failed send is already logged inside
-			// sendDigestEmail; we just move on to the next user.
-			// The free-tier account-status line is Free-tier only (tc-m1pb5):
-			// IsPaid() covers every paid tier (Personal and Pro alike), not just
-			// Pro — a Personal subscriber must never see "You're on the free
-			// weekly digest." A lapsed paid tier reads as Free via EffectiveTier
-			// and correctly sees the line too.
+			// The weekly cycle does not track emailSent; sendDigestEmail logs a failed send.
+			// IsPaid, not IsPaidPro, so a Personal subscriber never sees the free-tier notice.
 			showFreeTierNotice := !profile.EffectiveTier(now).IsPaid()
-			if err := h.sendDigestEmail(ctx, emailKindWeekly, profile.UserID, *profile.Email, notifs, showFreeTierNotice); err != nil {
-				continue
-			}
+			_ = h.sendDigestEmail(ctx, emailKindWeekly, profile.UserID, *profile.Email, notifs, showFreeTierNotice)
 		}
 	}
 	return nil
@@ -300,13 +271,8 @@ func (h *Handler) RunHourly(ctx context.Context) error {
 			continue
 		}
 
-		// Only flip emailSent when the ACS send actually succeeded — one email
-		// batches every included notification for this user, so a failed send must
-		// leave the whole batch unmarked for the next cycle to retry. Marking on a
-		// swallowed send error is silent data loss (tc-qvds).
-		// The hourly digest never shows the free-tier notice: it is a paid-only
-		// entitlement (RunHourly already excludes Free tier above), and the line
-		// is scoped to the weekly cycle only (tc-m1pb5).
+		// Flip emailSent only after a successful send, so a failed send leaves the
+		// whole batch unsent for the next cycle to retry.
 		if err := h.sendDigestEmail(ctx, emailKindHourly, userID, *profile.Email, included, false); err != nil {
 			continue
 		}
@@ -349,25 +315,10 @@ func markSent(n notifications.DigestNotification) notifications.DigestNotificati
 	return n
 }
 
-// sendDigestEmail collapses duplicate per-application records (see
-// dedupByApplication — an application can legitimately have both a
-// NewApplication and a DecisionUpdate record for the in-app feed, but the
-// email must render each application once), groups the survivors by watch
-// zone (with a saved-only section for zone-less notifications), renders the
-// email body, and hands it to the transport-only email sender. Callers pass
-// the full pre-dedup slice (RunHourly's MarkEmailSent loop relies on that: it
-// walks its own pre-dedup `included` slice after this call returns, so the
-// duplicate this function suppresses from the render is still marked sent and
-// never resurfaces in a later cycle). It logs and returns any failure so the
-// caller can decide whether to proceed: the hourly cycle must NOT flip
-// emailSent when the send fails (otherwise the email is silently lost and
-// never retried — tc-qvds), while the weekly cycle simply moves on to the next
-// user. A failed email never aborts the rest of the cycle either way. kind is
-// the "Email send" span's email.kind tag (emailKindWeekly / emailKindHourly),
-// distinguishing the two cycles that share this method. showFreeTierNotice
-// controls the "You're on the free weekly digest." line (tc-m1pb5); the
-// hourly cycle always passes false (it is paid-only anyway), so only
-// RunWeekly ever shows it.
+// sendDigestEmail dedups notifs per application, groups them by watch zone,
+// renders the email and sends it. Callers pass the pre-dedup slice, so the
+// hourly cycle still marks a suppressed duplicate sent. It logs and returns any
+// failure so the hourly cycle can skip marking emailSent.
 func (h *Handler) sendDigestEmail(ctx context.Context, kind, userID, email string, notifs []notifications.DigestNotification, showFreeTierNotice bool) error {
 	zones, err := h.zones.GetByUserID(ctx, userID)
 	if err != nil {
