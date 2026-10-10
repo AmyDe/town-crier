@@ -151,7 +151,9 @@ func (h *Handler) RunWeekly(ctx context.Context) error {
 			// The weekly cycle does not track emailSent; sendDigestEmail logs a failed send.
 			// IsPaid, not IsPaidPro, so a Personal subscriber never sees the free-tier notice.
 			showFreeTierNotice := !profile.EffectiveTier(now).IsPaid()
-			_ = h.sendDigestEmail(ctx, emailKindWeekly, profile.UserID, *profile.Email, notifs, showFreeTierNotice)
+			if err := h.sendDigestEmail(ctx, emailKindWeekly, profile.UserID, *profile.Email, notifs, showFreeTierNotice); err != nil {
+				continue
+			}
 		}
 	}
 	return nil
