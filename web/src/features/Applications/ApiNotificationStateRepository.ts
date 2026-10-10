@@ -3,7 +3,6 @@ import type { NotificationStateSnapshot } from '../../domain/types';
 import type { NotificationStateRepository } from '../../domain/ports/notification-state-repository';
 import { notificationStateApi } from '../../api/notification-state';
 
-/** {@link NotificationStateRepository} over {@link notificationStateApi}. */
 export class ApiNotificationStateRepository
   implements NotificationStateRepository
 {
