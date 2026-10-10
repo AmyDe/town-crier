@@ -1,11 +1,6 @@
 import type { NotificationStateSnapshot } from '../../../../domain/types';
 import type { NotificationStateRepository } from '../../../../domain/ports/notification-state-repository';
 
-/**
- * Hand-written spy for the notification-state port. Lets tests assert that
- * `useApplications` (and any other consumer) hits the watermark API in the
- * expected order without reaching for `vi.fn()`/`vi.mock()`.
- */
 export class SpyNotificationStateRepository
   implements NotificationStateRepository
 {

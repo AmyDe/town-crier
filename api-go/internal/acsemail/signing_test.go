@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/AmyDe/town-crier/api-go/internal/platform"
 )
 
 func TestParseConnectionString_ExtractsEndpointAndKey(t *testing.T) {
@@ -82,7 +84,7 @@ func TestSignRequest_MatchesKnownVector(t *testing.T) {
 
 	creds := credentials{
 		endpoint:  "https://" + host,
-		accessKey: newSecret(accessKeyB64),
+		accessKey: platform.NewSecret(accessKeyB64),
 	}
 
 	contentHash := computeContentHash(body)
@@ -125,7 +127,7 @@ func TestSignRequest_RejectsNonBase64Key(t *testing.T) {
 
 	creds := credentials{
 		endpoint:  "https://acs.example.com",
-		accessKey: newSecret("!!! not base64 !!!"),
+		accessKey: platform.NewSecret("!!! not base64 !!!"),
 	}
 	_, err := signRequest(creds, http.MethodPost, "/emails:send", "acs.example.com", "date", "hash")
 	if err == nil {
@@ -138,7 +140,7 @@ func TestSignedHeaders_AreLowercaseAndOrdered(t *testing.T) {
 
 	creds := credentials{
 		endpoint:  "https://acs.example.com",
-		accessKey: newSecret("YWJjZA=="),
+		accessKey: platform.NewSecret("YWJjZA=="),
 	}
 	auth, err := signRequest(creds, http.MethodPost, "/p", "acs.example.com", "d", "h")
 	if err != nil {

@@ -4,10 +4,12 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"math/big"
 	"strings"
 	"testing"
 	"time"
@@ -116,9 +118,9 @@ func TestJWTProvider_SignatureVerifiesAgainstPublicKey(t *testing.T) {
 	signingInput := parts[0] + "." + parts[1]
 	sig := decodeSegment(t, parts[2])
 
-	digest := sha256Sum([]byte(signingInput))
-	r := bigIntFromBytes(sig[:32])
-	s := bigIntFromBytes(sig[32:])
+	digest := sha256.Sum256([]byte(signingInput))
+	r := new(big.Int).SetBytes(sig[:32])
+	s := new(big.Int).SetBytes(sig[32:])
 	if !ecdsa.Verify(pub, digest[:], r, s) {
 		t.Fatal("signature failed to verify against the public key")
 	}

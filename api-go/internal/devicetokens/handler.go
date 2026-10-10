@@ -11,7 +11,6 @@ import (
 )
 
 // registrationStore is the consumer-side slice of the store the handlers use.
-// *CosmosStore satisfies it; tests substitute a hand-written fake.
 type registrationStore interface {
 	GetByToken(ctx context.Context, userID, token string) (*DeviceRegistration, error)
 	Save(ctx context.Context, reg DeviceRegistration) error

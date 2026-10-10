@@ -59,7 +59,6 @@ type Client struct {
 	baseURL  string
 	bundleID string
 	logger   *slog.Logger
-	now      func() time.Time
 	metrics  pushMetricsRecorder
 }
 
@@ -138,7 +137,6 @@ func newClientWithBaseURL(opts Options, baseURL string, httpClient *http.Client,
 		baseURL:  baseURL,
 		bundleID: opts.BundleID,
 		logger:   logger,
-		now:      now,
 	}, nil
 }
 
@@ -267,7 +265,7 @@ func (c *Client) do(ctx context.Context, token string, payload json.RawMessage) 
 	reqCtx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
 
-	url := c.baseURL + "/3/device/" + token
+	url := c.baseURL + devicePathPrefix + token
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, url, bytes.NewReader(payload))
 	if err != nil {
 		return apnsResponse{}, fmt.Errorf("apns: build request: %w", err)

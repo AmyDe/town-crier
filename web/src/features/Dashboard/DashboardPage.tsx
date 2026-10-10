@@ -31,7 +31,6 @@ export function DashboardPage({ port }: Props) {
     <div className={styles.container}>
       <h1 className={styles.heading}>Dashboard</h1>
 
-      {/* Quick links */}
       <section className={styles.section}>
         <h2 className={styles.sectionHeading}>Quick Links</h2>
         <nav className={styles.quickLinks}>
@@ -41,7 +40,6 @@ export function DashboardPage({ port }: Props) {
         </nav>
       </section>
 
-      {/* Watch zones */}
       <section className={styles.section}>
         <h2 className={styles.sectionHeading}>Watch Zones</h2>
         {zones.length === 0 ? (
@@ -66,7 +64,6 @@ export function DashboardPage({ port }: Props) {
         )}
       </section>
 
-      {/* Recent applications */}
       {recentApplications.length > 0 && (
         <section className={styles.section}>
           <h2 className={styles.sectionHeading}>Recent Applications</h2>

@@ -82,7 +82,7 @@ func TestDevicePostgresStore_GetByToken_Missing(t *testing.T) {
 }
 
 // TestDevicePostgresStore_Save_UpsertResets re-saving updates registered_at and
-// platform (matching the Cosmos TTL-reset semantics on re-PUT).
+// platform.
 func TestDevicePostgresStore_Save_UpsertResets(t *testing.T) {
 	ctx := context.Background()
 	store := newDevicePGStore(t)
@@ -104,8 +104,7 @@ func TestDevicePostgresStore_Save_UpsertResets(t *testing.T) {
 	assertRegEqual(t, *got, refreshed)
 }
 
-// TestDevicePostgresStore_Delete removes a token; a second delete is idempotent
-// (no error, unlike the Cosmos variant which also tolerates a 404).
+// TestDevicePostgresStore_Delete removes a token; a second delete is idempotent.
 func TestDevicePostgresStore_Delete(t *testing.T) {
 	ctx := context.Background()
 	store := newDevicePGStore(t)

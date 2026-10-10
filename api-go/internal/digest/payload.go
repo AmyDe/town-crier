@@ -55,11 +55,9 @@ func buildDigestPayload(applicationCount, totalUnreadCount int) (json.RawMessage
 }
 
 // fcmDigestMessage is the FCM HTTP v1 "message" object for the weekly digest
-// push, minus the per-recipient token (fcm.Client injects it). It mirrors the
-// APNs digest shape: a system-rendered notification with the same title/body,
-// plus a data dictionary carrying kind=digest (the #777 routing discriminator).
-// A digest push opens the app, so it carries no deep-link keys; there is no
-// badge field (Android badges are channel-driven).
+// push, minus the per-recipient token (fcm.Client injects it). Its data carries
+// kind=digest and no deep-link keys; there is no badge field (Android badges are
+// channel-driven).
 type fcmDigestMessage struct {
 	Notification fcmDigestNotification `json:"notification"`
 	Android      fcmDigestAndroid      `json:"android"`

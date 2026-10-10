@@ -1,8 +1,5 @@
-// Package devicetokens owns the device-token feature: the DeviceRegistration
-// domain value, its Cosmos document shape, the Cosmos store, and the
-// PUT/DELETE /v1/me/device-token HTTP handlers (GH#418). A plain struct
-// validated at construction, a consumer-side store interface, and hand-written
-// test fakes.
+// Package devicetokens owns device push registrations: the DeviceRegistration
+// value, its Postgres store, and the PUT/DELETE /v1/me/device-token handlers.
 package devicetokens
 
 import (
@@ -12,8 +9,7 @@ import (
 )
 
 // DevicePlatform enumerates the push platforms. The string forms ("Ios",
-// "Android") are the exact values stored in Cosmos and sent over the wire,
-// so they are preserved here.
+// "Android") are the exact stored and wire values.
 type DevicePlatform int
 
 const (
@@ -25,14 +21,10 @@ const (
 
 // String returns the canonical wire/storage form of the platform.
 func (p DevicePlatform) String() string {
-	switch p {
-	case PlatformIos:
-		return "Ios"
-	case PlatformAndroid:
+	if p == PlatformAndroid {
 		return "Android"
-	default:
-		return "Ios"
 	}
+	return "Ios"
 }
 
 // ErrUnknownPlatform is returned by ParsePlatform for an unrecognised value.
@@ -78,9 +70,8 @@ func NewRegistration(userID, token string, platform DevicePlatform, now time.Tim
 	}, nil
 }
 
-// Refresh stamps RegisteredAt to now unconditionally: a re-PUT records the
-// client's instant even when it is earlier than the stored one (the client's
-// clock is authoritative, and the re-write resets the Cosmos TTL).
+// Refresh stamps RegisteredAt to now unconditionally, even when it is earlier
+// than the stored instant: the client's clock is authoritative.
 func (r *DeviceRegistration) Refresh(now time.Time) {
 	r.RegisteredAt = now
 }
