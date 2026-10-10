@@ -11,6 +11,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/AmyDe/town-crier/api-go/internal/platform"
 )
 
 func testLogger() *slog.Logger {
@@ -23,7 +25,7 @@ func newTestClient(t *testing.T, srv *httptest.Server) *Client {
 	t.Helper()
 	creds := credentials{
 		endpoint:  srv.URL,
-		accessKey: newSecret("dGVzdC1zaWduaW5nLWtleQ=="),
+		accessKey: platform.NewSecret("dGVzdC1zaWduaW5nLWtleQ=="),
 	}
 	client := newClientWithCreds(creds, srv.Client(), testLogger(), func() time.Time {
 		return time.Unix(1_700_000_000, 0).UTC()
