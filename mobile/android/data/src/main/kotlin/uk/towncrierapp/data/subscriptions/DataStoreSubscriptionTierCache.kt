@@ -14,10 +14,8 @@ import java.io.IOException
 private val CACHED_SUBSCRIPTION_TIER_KEY = stringPreferencesKey("cachedSubscriptionTier")
 
 /**
- * DataStore Preferences-backed [SubscriptionTierCache] — the
- * `cachedSubscriptionTier` device latch (epic #770, same key iOS uses in
- * `UserDefaults`). A one-shot suspend read/write, not a `Flow`: this is the
- * cold-start fast-path value, not something the UI observes live.
+ * DataStore Preferences-backed [SubscriptionTierCache] under the
+ * `cachedSubscriptionTier` key (the same key iOS uses in `UserDefaults`).
  */
 public class DataStoreSubscriptionTierCache(
     private val dataStore: DataStore<Preferences>,
@@ -29,17 +27,13 @@ public class DataStoreSubscriptionTierCache(
             }.first()
 
     @Suppress("SwallowedException")
-    // Best-effort fire-and-forget preference write (tc-l31ve, module-wide
-    // convention): a disk-IO failure here is rare and recoverable per
-    // DataStore's own edit() contract, and no caller handles a thrown
-    // exception from this method — so it's swallowed rather than propagated.
     override suspend fun write(tier: SubscriptionTier) {
         try {
             dataStore.edit { preferences -> preferences[CACHED_SUBSCRIPTION_TIER_KEY] = tier.wireValue }
         } catch (e: CancellationException) {
             throw e
         } catch (e: IOException) {
-            // Swallowed: see class-level rationale above.
+            // Best-effort write: no caller handles a disk-IO failure.
         }
     }
 }

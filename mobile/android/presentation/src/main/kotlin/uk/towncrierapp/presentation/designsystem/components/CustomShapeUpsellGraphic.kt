@@ -42,23 +42,9 @@ private val CIRCLE_DASH_ON = 18.dp
 private val CIRCLE_DASH_OFF = 12.dp
 
 /**
- * Decorative, Canvas-drawn onboarding graphic contrasting the default
- * **circle** watch zone with a **custom shape** (polygon) watch zone, to
- * visually explain the paid "draw a custom shape instead of a circle"
- * entitlement (GH#1072 Phase 4). Port of iOS `CustomShapeUpsellGraphic` /
- * web `CustomShapeUpsell.tsx`.
- *
- * Drawn entirely with Compose `Canvas`/`Path`, never a raster asset, so it
- * follows the light/dark/OLED theme like every other design-system token.
- * The muted, dashed circle ([TownCrierTheme.colors.textTertiary]) reads as
- * the existing, unremarkable default; the solid amber
- * ([MaterialTheme.colorScheme.primary]) polygon reads as the premium
- * capability, matching the app's convention that amber marks brand and
- * interactive emphasis. Purely presentational: no ViewModel, no external
- * state.
- *
- * Not yet wired into any screen — that's a separate bead (tc-v6fo0.5,
- * blocked on the Phase 3 editor shape-toggle UI landing first).
+ * Decorative graphic contrasting the default circle watch zone with a custom
+ * shape (polygon) watch zone, to explain the paid custom-shape entitlement.
+ * Mirrors iOS `CustomShapeUpsellGraphic` and web `CustomShapeUpsell.tsx`.
  */
 @Composable
 public fun CustomShapeUpsellGraphic(modifier: Modifier = Modifier) {
