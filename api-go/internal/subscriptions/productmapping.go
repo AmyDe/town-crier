@@ -1,9 +1,9 @@
 // Package subscriptions owns the Apple StoreKit subscription feature: the
 // canonical product-ID -> tier mapping, the hand-rolled JWS verifier (ES256,
 // x5c chain to the embedded Apple Root CA - G3), the transaction and
-// notification decoders, the Cosmos notification-idempotency store, and the
+// notification decoders, the notification-idempotency store, and the
 // POST /v1/subscriptions/verify (authed) + POST /v1/webhooks/appstore
-// (anonymous) handlers (GH#418 iteration 9).
+// (anonymous) handlers.
 package subscriptions
 
 import (
@@ -19,8 +19,7 @@ import (
 //
 // Legacy product IDs uk.co.towncrier.personal.monthly /
 // uk.co.towncrier.pro.monthly (an extra ".co.", wrong domain) were never correct
-// and never matched a real purchase. They are deliberately NOT added here
-// (tc-7g3i.12).
+// and never matched a real purchase. They are deliberately NOT added here.
 const (
 	// ProductPersonalMonthly is the Personal-tier monthly subscription.
 	ProductPersonalMonthly = "uk.towncrierapp.personal.monthly"

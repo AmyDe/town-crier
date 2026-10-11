@@ -2,10 +2,7 @@
 // worker mode (WORKER_MODE=appstore-reconcile): periodically polls Apple's
 // Get Notification History API for a lookback window and detects any
 // notificationUUID Apple sent that never reached our idempotency table —
-// evidence of a missed ASSN webhook delivery (GH #1011). It mirrors
-// internal/subscriptionsweep in spirit: consumer-side interfaces declared
-// here, concrete collaborators injected from main(), hand-written test
-// fakes, an injected now for a pinned clock, and per-item failure isolation
+// evidence of a missed ASSN webhook delivery. Failures are isolated per item
 // so one malformed history entry never aborts the cycle.
 //
 // Rollout is observe-only: a detected gap is always logged and counted, but

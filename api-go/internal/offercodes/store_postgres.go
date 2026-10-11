@@ -72,8 +72,7 @@ var _ Store = (*PostgresStore)(nil)
 // Crockford code) and the child offer_code_redemptions table (one row per
 // user who has redeemed a code).
 //
-// Multi-redemption model (GH#866): every code carries a MaxRedemptions cap
-// (1 for the single-use case) and a RedemptionCount tombstone counter that is
+// Every code carries a MaxRedemptions cap (1 for the single-use case) and a RedemptionCount tombstone counter that is
 // never decremented. A redemption inserts a row into offer_code_redemptions —
 // enforcing "one redemption per user per code" via a partial unique index on
 // (code, user_id) — and atomically increments the counter, guarded by
@@ -141,8 +140,6 @@ func scanCode(row pgx.Row) (OfferCode, error) {
 	}, nil
 }
 
-// ─── Get ────────────────────────────────────────────────────────────────────
-
 const pgGetCodeQuery = "SELECT " + pgCodeColumns +
 	" FROM offer_codes WHERE code = $1"
 
@@ -157,8 +154,6 @@ func (s *PostgresStore) Get(ctx context.Context, canonical string) (OfferCode, e
 	}
 	return c, nil
 }
-
-// ─── Save ───────────────────────────────────────────────────────────────────
 
 const pgSaveCodeQuery = `
 INSERT INTO offer_codes (code, tier, duration_days, created_at, label, max_redemptions)
@@ -184,8 +179,6 @@ func (s *PostgresStore) Save(ctx context.Context, c OfferCode) error {
 	}
 	return nil
 }
-
-// ─── RedeemWithCAS ──────────────────────────────────────────────────────────
 
 // pgInsertRedemptionQuery inserts the child redemption row. A unique
 // violation on (code, user_id) — the partial unique index — means userID has
@@ -306,8 +299,6 @@ func (s *PostgresStore) rollback(ctx context.Context, tx pgx.Tx) {
 	}
 }
 
-// ─── RedeemedByUserID / RedeemedByUsers ─────────────────────────────────────
-
 // pgRedeemedColumns is the join projection shared by RedeemedByUserID and
 // RedeemedByUsers. Its order MUST match the scan targets in
 // scanRedeemedOfferCode.
@@ -402,8 +393,6 @@ func (s *PostgresStore) RedeemedByUsers(ctx context.Context, userIDs []string) (
 	return byUser, nil
 }
 
-// ─── AnonymiseRedemptionsByUserID ────────────────────────────────────────────
-
 // pgAnonymiseChildQuery scrubs the redeemer PII from every redemption row the
 // user made, keeping the row itself as a tombstone (redemption_count is never
 // touched, so the slot stays consumed).
@@ -446,8 +435,6 @@ func (s *PostgresStore) AnonymiseRedemptionsByUserID(ctx context.Context, userID
 	}
 	return nil
 }
-
-// ─── List ───────────────────────────────────────────────────────────────────
 
 // pgListCodesQuery lists codes newest-first, optionally filtered by a
 // case-insensitive label substring. $1::text IS NULL short-circuits the

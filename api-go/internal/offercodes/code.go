@@ -28,8 +28,7 @@ var ErrAlreadyRedeemedByUser = errors.New("user has already redeemed this offer 
 const maxLabelLength = 100
 
 // minMaxRedemptions and maxMaxRedemptions bound the redemption cap a code may
-// be minted with. 1 is the single-use case; every code goes through this same
-// model.
+// be minted with.
 const (
 	minMaxRedemptions = 1
 	maxMaxRedemptions = 10000
@@ -121,8 +120,7 @@ func (r Redemption) ActiveAt(now time.Time, durationDays int) bool {
 
 // RedeemedOfferCode is one redemption joined with its code's static grant
 // fields (tier, duration) — the shape RedeemedByUserID and RedeemedByUsers
-// return now that redemption state lives in the offer_code_redemptions child
-// table rather than on OfferCode itself. UserID is populated only by the
+// return. UserID is populated only by the
 // batched RedeemedByUsers query, which groups results by redeemer; the
 // single-user RedeemedByUserID query leaves it nil (the caller already knows
 // whose redemptions it asked for).
@@ -135,8 +133,7 @@ type RedeemedOfferCode struct {
 }
 
 // ActiveAt reports whether this specific redemption's grant window is still
-// open at now, delegating to Redemption.ActiveAt — the single authoritative
-// rule — rather than re-implementing it.
+// open at now, per Redemption.ActiveAt.
 func (r RedeemedOfferCode) ActiveAt(now time.Time) bool {
 	return Redemption{Code: r.Code, RedeemedAt: r.RedeemedAt}.ActiveAt(now, r.DurationDays)
 }

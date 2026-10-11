@@ -34,7 +34,7 @@ type jwsVerifier interface {
 }
 
 // profileByUser is the verify path's store: load the caller's profile by user
-// id and save it back. profiles.CosmosStore satisfies it.
+// id and save it back.
 type profileByUser interface {
 	Get(ctx context.Context, userID string) (*profiles.UserProfile, error)
 	Save(ctx context.Context, p *profiles.UserProfile) error
@@ -55,7 +55,6 @@ type tierSync interface {
 }
 
 // idempotencyStore gives the webhook at-most-once processing.
-// CosmosNotificationStore satisfies it.
 type idempotencyStore interface {
 	IsProcessed(ctx context.Context, notificationUUID string) (bool, error)
 	MarkProcessed(ctx context.Context, notificationUUID string) error
@@ -98,8 +97,6 @@ func isCompactJWS(s string) bool {
 	if second <= 0 {
 		return false
 	}
-	// The third segment is everything after the second dot; it must be non-empty
-	// and must not contain another dot.
 	third := rest[second+1:]
 	return len(third) > 0 && !strings.Contains(third, ".")
 }
@@ -168,7 +165,7 @@ type webhookRequest struct {
 	SignedPayload string `json:"signedPayload"`
 }
 
-// userNotFoundError signals that an authenticated caller has no Cosmos profile
+// userNotFoundError signals that an authenticated caller has no profile
 // — a server-side inconsistency the verify endpoint reports as 404.
 type userNotFoundError struct{ userID string }
 
@@ -350,19 +347,12 @@ func (h *handler) webhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// F7: cheap structural pre-checks — run BEFORE the expensive JWS X.509
-	// chain verification so an attacker cannot drive CPU cost with
-	// attacker-controlled input.
-	//
-	// 1. Size bound: reject payloads that exceed the realistic maximum for a
-	//    genuine Apple App Store Server Notification JWS. This is a secondary
-	//    guard; the 1 MiB MaxBytesReader on the body already exists.
+	// Cheap structural checks run before the expensive X.509 chain verification
+	// so attacker-controlled input cannot drive CPU cost.
 	if len(req.SignedPayload) > maxWebhookPayloadBytes {
 		h.malformedBody(r, w)
 		return
 	}
-	// 2. Compact JWS shape: a valid JWS is exactly header.payload.signature —
-	//    three non-empty segments separated by exactly two dots.
 	if !isCompactJWS(req.SignedPayload) {
 		h.malformedBody(r, w)
 		return
@@ -412,7 +402,7 @@ func (h *handler) writeWebhookError(r *http.Request, w http.ResponseWriter, err 
 }
 
 // clientPayloadError reports whether err is a malformed/invalid payload error
-// (a 400), as opposed to a server-side failure (Cosmos, Auth0) which is a 500.
+// (a 400), as opposed to a server-side failure (store, Auth0) which is a 500.
 func clientPayloadError(err error) (string, bool) {
 	var pe *PayloadError
 	if errors.As(err, &pe) {
