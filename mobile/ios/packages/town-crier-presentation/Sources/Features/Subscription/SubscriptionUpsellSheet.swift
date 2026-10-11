@@ -3,12 +3,6 @@ import TownCrierDomain
 
 /// A reusable sheet presented when a user attempts an action above their subscription tier.
 ///
-/// Design (from spec 2.5):
-/// - Title: "Upgrade to use this"
-/// - Body: describes the specific feature (parameterised by entitlement)
-/// - CTA: "View Plans" -- navigates to existing `SubscriptionView`
-/// - Secondary: "Not now" -- dismisses
-///
 /// Presented via `.sheet(item:)` binding on a `@Published var entitlementGate: Entitlement?`
 /// property on ViewModels that need gating.
 public struct SubscriptionUpsellSheet: View {
@@ -31,22 +25,18 @@ public struct SubscriptionUpsellSheet: View {
       Spacer()
         .frame(height: TCSpacing.medium)
 
-      // Icon
       Image(systemName: "lock.fill")
         .font(TCTypography.displayLarge)
         .foregroundStyle(Color.tcAmber)
 
-      // Title
       Text("Upgrade to use this")
         .font(TCTypography.displaySmall)
         .foregroundStyle(Color.tcTextPrimary)
 
-      // Feature name
       Text(entitlement.displayName)
         .font(TCTypography.headline)
         .foregroundStyle(Color.tcAmber)
 
-      // Feature description
       Text(entitlement.featureDescription)
         .font(TCTypography.body)
         .foregroundStyle(Color.tcTextSecondary)
@@ -56,11 +46,9 @@ public struct SubscriptionUpsellSheet: View {
       Spacer()
         .frame(height: TCSpacing.small)
 
-      // Primary CTA
       PrimaryButton("View Plans", action: onViewPlans)
         .padding(.horizontal, TCSpacing.medium)
 
-      // Secondary dismiss
       Button(action: onDismiss) {
         Text("Not now")
           .font(TCTypography.body)
