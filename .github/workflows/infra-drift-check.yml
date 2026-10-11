@@ -33,6 +33,7 @@
 #   SITE_BUILD_KEY               — Build key for the gated SEO prerender endpoint (dev/prod only)
 #   AUTH0_M2M_CLIENT_ID          — Auth0 machine-to-machine client ID (dev/prod only)
 #   AUTH0_M2M_CLIENT_SECRET      — Auth0 machine-to-machine client secret (dev/prod only)
+#   CLAUDE_ROUTINE_TELEMETRY_TOKEN — Bearer token for the alert-fired routine (shared only)
 #
 # Requires GitHub Environments (drift-check job only):
 #   development             — with OIDC federated credential (environment:development);
@@ -40,11 +41,6 @@
 #                              cd-dev.yml's infra-shared/infra-dev jobs.
 #   production              — with OIDC federated credential (environment:production);
 #                              used for the prod stack, matching cd-prod.yml's infra job.
-#
-# The shared stack (infra/Pulumi.shared.yaml, 419 bytes vs dev/prod's 4.2K) has
-# no app-secret config (adminApiKey/siteBuildKey/auth0M2m*) and so skips the
-# "Set Pulumi secrets" step entirely — see cd-dev.yml's infra-shared job, which
-# establishes this same skip.
 
 name: Infra Drift Check
 
@@ -103,10 +99,17 @@ jobs:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
         run: pulumi stack select ${{ matrix.stack }}
 
-      # Shared has no app-secret config — cd-dev.yml's infra-shared job skips
-      # this same step for the same reason (infra/Pulumi.shared.yaml is 419
-      # bytes vs dev/prod's 4.2K; running this unconditionally would fail
-      # shared for missing required inputs, or apply irrelevant config).
+      # The shared stack's only secret mirrors cd-dev.yml's infra-shared job: it
+      # lives in ephemeral config, and the program panics without it while
+      # routineFireUrl is set.
+      - name: Set Pulumi secrets (shared)
+        if: matrix.stack == 'shared'
+        working-directory: infra
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          ROUTINE_FIRE_TOKEN: ${{ secrets.CLAUDE_ROUTINE_TELEMETRY_TOKEN }}
+        run: pulumi config set --secret routineFireToken "$ROUTINE_FIRE_TOKEN"
+
       - name: Set Pulumi secrets
         if: matrix.stack != 'shared'
         uses: ./.github/actions/setup-pulumi-secrets
