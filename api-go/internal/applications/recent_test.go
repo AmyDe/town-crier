@@ -382,7 +382,7 @@ func TestRecentHandler_NonIntIdReturns400(t *testing.T) {
 
 func TestRecentHandler_StoreErrorReturns500(t *testing.T) {
 	t.Parallel()
-	store := &fakeRecentStore{err: context.DeadlineExceeded}
+	store := &fakeRecentStore{err: errStoreFailed}
 
 	rec := serveRecent(t, store, "buildkey", "buildkey", "/v1/authorities/471/applications")
 
@@ -395,7 +395,7 @@ func TestRecentHandler_BreakdownErrorReturns500(t *testing.T) {
 	t.Parallel()
 	// The bounded read succeeds but the whole-partition breakdown fails -> 500 (no
 	// partial total).
-	store := &fakeRecentStore{apps: recentApps(t, 2), breakdownErr: context.DeadlineExceeded}
+	store := &fakeRecentStore{apps: recentApps(t, 2), breakdownErr: errStoreFailed}
 
 	rec := serveRecent(t, store, "buildkey", "buildkey", "/v1/authorities/471/applications")
 

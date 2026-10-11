@@ -316,20 +316,27 @@ func (s *PostgresStore) BreakdownByAuthority(ctx context.Context, authorityCode 
 // browse reads, built from $1 (longitude) and $2 (latitude).
 const nearbyPoint = "ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography"
 
-// findNearbyFirstPageQuery returns the nearest `limit` in-radius applications,
-// ordered by the KNN <-> distance then planit_name (the keyset tie-break).
-const findNearbyFirstPageQuery = "SELECT " + appColumns + ", location <-> " + nearbyPoint + " AS distance " +
-	"FROM applications WHERE ST_DWithin(location, " + nearbyPoint + ", $3) " +
-	"ORDER BY location <-> " + nearbyPoint + ", planit_name LIMIT $4"
+// knnThenExact returns the nearest-first query over filter. The planit_name
+// tie-break blocks the GiST KNN walk, so the knn CTE orders by distance alone to
+// find dmax, the distance of the limit-th nearest match. At least limit matches
+// lie within dmax, so the outer ST_DWithin keeps every row of the exact
+// (distance, planit_name) top limit. <-> measures on the sphere but ST_DWithin on
+// the spheroid (up to ~0.34% longer), hence the 1% + 1 m margin.
+func knnThenExact(filter, limitParam string) string {
+	return "WITH knn AS MATERIALIZED (SELECT location <-> " + nearbyPoint + " AS d FROM applications WHERE " + filter +
+		" ORDER BY location <-> " + nearbyPoint + " LIMIT " + limitParam + ") " +
+		"SELECT " + appColumns + ", location <-> " + nearbyPoint + " AS distance FROM applications WHERE " + filter +
+		" AND ST_DWithin(location, " + nearbyPoint + ", (SELECT max(d) FROM knn) * 1.01 + 1)" +
+		" ORDER BY location <-> " + nearbyPoint + ", planit_name LIMIT " + limitParam
+}
 
-// findNearbyKeysetQuery resumes after the cursor's (distance, planit_name): rows
-// strictly farther, or at the same distance with a greater name. This is the
-// stable keyset predicate matching the ORDER BY, so pages never overlap or gap.
-const findNearbyKeysetQuery = "SELECT " + appColumns + ", location <-> " + nearbyPoint + " AS distance " +
-	"FROM applications WHERE ST_DWithin(location, " + nearbyPoint + ", $3) " +
-	"AND (location <-> " + nearbyPoint + " > $5 " +
-	"OR (location <-> " + nearbyPoint + " = $5 AND planit_name > $6)) " +
-	"ORDER BY location <-> " + nearbyPoint + ", planit_name LIMIT $4"
+var findNearbyFirstPageQuery = knnThenExact("ST_DWithin(location, "+nearbyPoint+", $3)", "$4")
+
+// findNearbyKeysetQuery resumes strictly after the cursor's (distance, planit_name).
+// The keyset predicate sits in both steps so dmax is measured over the remaining rows.
+var findNearbyKeysetQuery = knnThenExact("ST_DWithin(location, "+nearbyPoint+", $3) "+
+	"AND (location <-> "+nearbyPoint+" > $5 "+
+	"OR (location <-> "+nearbyPoint+" = $5 AND planit_name > $6))", "$4")
 
 // nearbyRow carries a hydrated application plus its computed distance, so the last
 // row of a full page can be encoded into the next-page cursor.
@@ -356,14 +363,15 @@ func (s *PostgresStore) FindNearbyPage(ctx context.Context, latitude, longitude,
 		rows pgx.Rows
 		err  error
 	)
+	// QueryExecModeExec keeps Postgres on a custom plan: a generic plan does a full scan and sort.
 	if cursor == "" {
-		rows, err = s.db.Query(ctx, findNearbyFirstPageQuery, longitude, latitude, radiusMetres, limit)
+		rows, err = s.db.Query(ctx, findNearbyFirstPageQuery, pgx.QueryExecModeExec, longitude, latitude, radiusMetres, limit)
 	} else {
 		dist, name, decodeErr := decodeNearbyCursor(cursor)
 		if decodeErr != nil {
 			return nil, "", fmt.Errorf("decode nearby cursor: %w", decodeErr)
 		}
-		rows, err = s.db.Query(ctx, findNearbyKeysetQuery, longitude, latitude, radiusMetres, limit, dist, name)
+		rows, err = s.db.Query(ctx, findNearbyKeysetQuery, pgx.QueryExecModeExec, longitude, latitude, radiusMetres, limit, dist, name)
 	}
 	wrap := func(err error) error {
 		return fmt.Errorf("find applications near (%v, %v): %w", latitude, longitude, err)

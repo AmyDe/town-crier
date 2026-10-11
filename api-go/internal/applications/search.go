@@ -253,35 +253,21 @@ type SearchResponse struct {
 }
 
 // searchTier1Query, searchTier2Query, searchTier3Query each answer one match
-// tier of GET /v1/applications/search: reference exact/prefix match on uid,
-// address pg_trgm fuzzy match, description tsvector full-text match. Each is
-// ordered by KNN distance then planit_name with no radius bound, and Search
-// merges them in Go.
-//
-// Each tier asks for limit+1 rows. Every tier's rows are a subset of the global
-// distance-ordered match set, so an application among the globally nearest
-// limit+1 is always within the top limit+1 of each tier it matches; the extra
-// row lets Search detect that more matches exist (RefineQuery).
-//
-// "location IS NOT NULL" is required: the computed distance would be NULL,
-// which nearbyRow.dist (a non-pointer float64) cannot scan.
-const searchTier1Query = "SELECT " + appColumns + ", location <-> " + nearbyPoint + " AS distance " +
-	"FROM applications WHERE location IS NOT NULL " +
-	"AND (lower(uid) = lower($3) OR lower(uid) LIKE $4 ESCAPE '\\') " +
-	"AND ($5::text IS NULL OR authority_code = $5) " +
-	"ORDER BY location <-> " + nearbyPoint + ", planit_name LIMIT $6"
+// tier (reference, address trigram, description full-text) nearest-first with
+// no radius bound; Search merges them. Each asks for limit+1 rows so Search can
+// detect that more matches exist (RefineQuery). "location IS NOT NULL" is
+// required because nearbyRow.dist cannot scan a NULL distance.
+var searchTier1Query = knnThenExact("location IS NOT NULL "+
+	"AND (lower(uid) = lower($3) OR lower(uid) LIKE $4 ESCAPE '\\') "+
+	"AND ($5::text IS NULL OR authority_code = $5)", "$6")
 
-const searchTier2Query = "SELECT " + appColumns + ", location <-> " + nearbyPoint + " AS distance " +
-	"FROM applications WHERE location IS NOT NULL " +
-	"AND lower($3) <% lower(address) " +
-	"AND ($4::text IS NULL OR authority_code = $4) " +
-	"ORDER BY location <-> " + nearbyPoint + ", planit_name LIMIT $5"
+var searchTier2Query = knnThenExact("location IS NOT NULL "+
+	"AND lower($3) <% lower(address) "+
+	"AND ($4::text IS NULL OR authority_code = $4)", "$5")
 
-const searchTier3Query = "SELECT " + appColumns + ", location <-> " + nearbyPoint + " AS distance " +
-	"FROM applications WHERE location IS NOT NULL " +
-	"AND to_tsvector('english', description) @@ plainto_tsquery('english', $3) " +
-	"AND ($4::text IS NULL OR authority_code = $4) " +
-	"ORDER BY location <-> " + nearbyPoint + ", planit_name LIMIT $5"
+var searchTier3Query = knnThenExact("location IS NOT NULL "+
+	"AND to_tsvector('english', description) @@ plainto_tsquery('english', $3) "+
+	"AND ($4::text IS NULL OR authority_code = $4)", "$5")
 
 // escapeLikeWildcards backslash-escapes the LIKE metacharacters (\, %, _) in a
 // user-supplied query before it is used to build a prefix pattern, so a query
@@ -332,7 +318,8 @@ func (s *PostgresStore) Search(ctx context.Context, query, authorityCode string,
 
 	merged := make(map[appIdentity]nearbyRow)
 	for i, t := range tiers {
-		rows, err := s.db.Query(ctx, t.sql, t.args...)
+		// QueryExecModeExec keeps Postgres on a custom plan: a generic plan does a full FTS scan and sort.
+		rows, err := s.db.Query(ctx, t.sql, append([]any{pgx.QueryExecModeExec}, t.args...)...)
 		if err != nil {
 			return nil, false, fmt.Errorf("search applications %q (tier %d): %w", query, i+1, err)
 		}

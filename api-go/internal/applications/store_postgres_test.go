@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -981,6 +982,76 @@ func TestPostgresStore_FindNearbyPage_TieBreak(t *testing.T) {
 		cursor = next
 	}
 	assertNames(t, collected, []string{"APP-1-100", "APP-2-200A", "APP-3-200B", "APP-4-500"})
+}
+
+// TestPostgresStore_FindNearbyPage_TiesAcrossPageBoundary proves pages stay
+// exact when a block of identically-placed rows straddles several page boundaries.
+func TestPostgresStore_FindNearbyPage_TiesAcrossPageBoundary(t *testing.T) {
+	ctx := context.Background()
+	store := newAppPGStore(t)
+
+	var want []string
+	for i := range 3 {
+		name := fmt.Sprintf("NEAR-%d", i)
+		want = append(want, name)
+		if err := store.Upsert(ctx, at(pgApp(name, 100), float64(100+50*i))); err != nil {
+			t.Fatalf("Upsert %s: %v", name, err)
+		}
+	}
+	const tied = 30
+	for i := tied - 1; i >= 0; i-- {
+		name := tieName(i)
+		if err := store.Upsert(ctx, at(pgApp(name, 100), 500)); err != nil {
+			t.Fatalf("Upsert %s: %v", name, err)
+		}
+	}
+	for i := range tied {
+		want = append(want, tieName(i))
+	}
+
+	var got []string
+	cursor := ""
+	for range 20 {
+		page, next, err := store.FindNearbyPage(ctx, pgCentreLat, pgCentreLon, 1000, 10, cursor)
+		if err != nil {
+			t.Fatalf("FindNearbyPage: %v", err)
+		}
+		got = append(got, appNames(page)...)
+		if next == "" {
+			break
+		}
+		cursor = next
+	}
+	assertNames(t, got, want)
+}
+
+func TestPostgresStore_FindNearbyPage_FewerMatchesThanLimit(t *testing.T) {
+	ctx := context.Background()
+	store := newAppPGStore(t)
+
+	for i, d := range []float64{100, 200, 300} {
+		name := fmt.Sprintf("APP-%d", i)
+		if err := store.Upsert(ctx, at(pgApp(name, 100), d)); err != nil {
+			t.Fatalf("Upsert %s: %v", name, err)
+		}
+	}
+
+	page, next, err := store.FindNearbyPage(ctx, pgCentreLat, pgCentreLon, 1000, 10, "")
+	if err != nil {
+		t.Fatalf("FindNearbyPage: %v", err)
+	}
+	assertNames(t, appNames(page), []string{"APP-0", "APP-1", "APP-2"})
+	if next != "" {
+		t.Errorf("cursor: got %q, want empty", next)
+	}
+
+	empty, next, err := store.FindNearbyPage(ctx, pgCentreLat, pgCentreLon, 50, 10, "")
+	if err != nil {
+		t.Fatalf("FindNearbyPage empty radius: %v", err)
+	}
+	if len(empty) != 0 || next != "" {
+		t.Errorf("empty radius: got %d rows, cursor %q; want none", len(empty), next)
+	}
 }
 
 // withStart sets the application's start_date.

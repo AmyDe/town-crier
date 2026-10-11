@@ -491,7 +491,7 @@ func TestNearHandler_EmptyResultIsNonNullArray(t *testing.T) {
 
 func TestNearHandler_StoreErrorReturns500(t *testing.T) {
 	t.Parallel()
-	store := &fakeNearStore{err: context.DeadlineExceeded}
+	store := &fakeNearStore{err: errStoreFailed}
 
 	rec := serveNear(t, store, "buildkey", "buildkey",
 		"/v1/applications/near?authorityId=471&lat=51.5&lng=-0.1")
@@ -505,7 +505,7 @@ func TestNearHandler_BreakdownErrorReturns500(t *testing.T) {
 	t.Parallel()
 	// The bounded read succeeds but the whole-in-radius breakdown fails -> 500 (no
 	// partial total).
-	store := &fakeNearStore{apps: recentApps(t, 2), breakdownErr: context.DeadlineExceeded}
+	store := &fakeNearStore{apps: recentApps(t, 2), breakdownErr: errStoreFailed}
 
 	rec := serveNear(t, store, "buildkey", "buildkey",
 		"/v1/applications/near?authorityId=471&lat=51.5&lng=-0.1")
