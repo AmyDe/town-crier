@@ -174,7 +174,7 @@ func TestHandler_GetByAuthorityAndName_NotFound(t *testing.T) {
 
 func TestHandler_GetByAuthorityAndName_StoreError(t *testing.T) {
 	t.Parallel()
-	rec := serveGet(t, &fakeAppStore{err: context.DeadlineExceeded}, "/v1/applications/471/x")
+	rec := serveGet(t, &fakeAppStore{err: errStoreFailed}, "/v1/applications/471/x")
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("status: got %d, want 500", rec.Code)
 	}
@@ -200,7 +200,7 @@ func TestHandler_GetByAuthorityAndName_RefreshesOnTap(t *testing.T) {
 func TestHandler_GetByAuthorityAndName_RefreshFailureDoesNotFailRead(t *testing.T) {
 	t.Parallel()
 	a := testApplication(t)
-	refresher := &fakeRefresher{err: context.DeadlineExceeded}
+	refresher := &fakeRefresher{err: errStoreFailed}
 	rec := serveGetWith(t, &fakeAppStore{app: a, found: true}, refresher, testResolver(), "auth0|u", "/v1/applications/471/24/0123/FUL")
 
 	if rec.Code != http.StatusOK {

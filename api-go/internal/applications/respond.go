@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/jackc/pgx/v5/pgconn"
+
 	"github.com/AmyDe/town-crier/api-go/internal/authorities"
 	"github.com/AmyDe/town-crier/api-go/internal/httputil"
 )
@@ -27,14 +29,18 @@ func writeJSON(w http.ResponseWriter, r *http.Request, logger *slog.Logger, v an
 	}
 }
 
-// serverError logs and emits a bodyless 500; the error envelope is backfilled by
-// middleware.ErrorBody. A context.Canceled error means the caller disconnected,
-// so it is deliberately neither logged nor given a 500.
+// serverError logs and emits a bodyless 500 (503 when the store timed out); the
+// error envelope is backfilled by middleware.ErrorBody. A context.Canceled error
+// means the caller disconnected, so it is deliberately neither logged nor answered.
 func serverError(w http.ResponseWriter, r *http.Request, logger *slog.Logger, op string, err error) {
 	if errors.Is(err, context.Canceled) {
 		return
 	}
 	logger.ErrorContext(r.Context(), "application request failed", "op", op, "error", err)
+	if errors.Is(err, context.DeadlineExceeded) || pgconn.Timeout(err) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
 	w.WriteHeader(http.StatusInternalServerError)
 }
 

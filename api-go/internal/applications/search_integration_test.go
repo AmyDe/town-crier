@@ -279,6 +279,36 @@ func TestPostgresStore_Search_TieBreakAtEqualDistance(t *testing.T) {
 	}
 }
 
+// TestPostgresStore_Search_TiesBeyondLimitAtBoundaryDistance proves that when
+// more rows tie at the boundary distance than the limit allows, the
+// alphabetically-first tied names are kept.
+func TestPostgresStore_Search_TiesBeyondLimitAtBoundaryDistance(t *testing.T) {
+	store := newAppPGStore(t)
+	ctx := context.Background()
+
+	seed := func(name string, metres float64) {
+		a := at(searchApp(name, "uid-"+name, 100), metres)
+		a.Description = "Erection of a boundary orangery"
+		if err := store.Upsert(ctx, a); err != nil {
+			t.Fatalf("Upsert %s: %v", name, err)
+		}
+	}
+	seed("NEAR-A", 100)
+	seed("NEAR-B", 200)
+	for i := 19; i >= 0; i-- {
+		seed(tieName(i), 500)
+	}
+
+	apps, refine, err := store.Search(ctx, "orangery", "", pgCentreLat, pgCentreLon, 5)
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	assertNames(t, appNames(apps), []string{"NEAR-A", "NEAR-B", tieName(0), tieName(1), tieName(2)})
+	if !refine {
+		t.Error("refine: got false, want true")
+	}
+}
+
 func tieName(i int) string {
 	return "TIE-" + string(rune('A'+i/26)) + string(rune('A'+i%26))
 }
