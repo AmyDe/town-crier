@@ -19,31 +19,16 @@ const INITIAL_STATE: RedeemState = {
 };
 
 export interface UseRedeemOfferCodeOptions {
-  /**
-   * Called once after a successful redemption with the parsed API result.
-   * Callers use this to trigger a tier refresh — typically
-   * `getAccessTokenSilently({ cacheMode: 'off' })` plus a profile re-fetch
-   * so tier-gated UI updates. See docs/specs/offer-codes.md §"Web — Redemption
-   * in Settings".
-   */
+  /** Called once after a successful redemption with the parsed API result. */
   readonly onSuccess?: (result: RedeemResult) => void;
 }
 
-/**
- * Normalizes user input for the code field — trims surrounding whitespace and
- * uppercases the remainder. Separators (`-`, spaces) are preserved so the user
- * can see the display format as they type; the server normalizes them away at
- * redeem time.
- */
+// Separators are kept so the user sees the display format; the server strips them at redeem time.
 function normalizeCodeInput(raw: string): string {
   return raw.trim().toUpperCase();
 }
 
-/**
- * Maps a `RedeemErrorCode` to a user-facing message. Copy is kept in sync with
- * the iOS implementation per docs/specs/offer-codes.md §"iOS — Redemption in
- * Settings" / §"Web — Redemption in Settings".
- */
+// Copy is kept in sync with the iOS implementation.
 const ERROR_MESSAGES: Record<RedeemErrorCode, string> = {
   invalid_code_format: 'Please check the code and try again.',
   invalid_code: "This code isn't valid.",
@@ -70,9 +55,7 @@ export function useRedeemOfferCode(
   const setCode = useCallback((raw: string) => {
     setState((prev) => {
       const next = normalizeCodeInput(raw);
-      // If we're showing an error from a previous submit, clear it as soon as
-      // the user edits the code — they're taking corrective action and shouldn't
-      // keep seeing the stale message.
+      // Clear a stale error as soon as the user edits the code.
       if (prev.status === 'error') {
         return { ...INITIAL_STATE, code: next };
       }
@@ -81,7 +64,6 @@ export function useRedeemOfferCode(
   }, []);
 
   const submit = useCallback(async () => {
-    // Guard against double-submits while a request is in flight.
     if (state.status === 'submitting') return;
 
     const submittedCode = state.code;

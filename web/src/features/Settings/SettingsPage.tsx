@@ -15,17 +15,7 @@ import styles from './SettingsPage.module.css';
 
 interface Props {
   repository: SettingsRepository;
-  /**
-   * Optional offer-code redemption client. When provided, a "Redeem offer
-   * code" section is rendered under the profile/subscription summary.
-   */
   redeemOfferCodeClient?: RedeemOfferCodeClient;
-  /**
-   * Side-effect callback invoked on a successful redemption. Consumers use
-   * this to refresh the Auth0 access token (`getAccessTokenSilently({
-   * cacheMode: 'off' })`) so the new subscription claim is picked up.
-   * The Settings page always re-fetches its own profile query on success.
-   */
   onRedeemSuccess?: (result: RedeemResult) => void;
 }
 
@@ -48,7 +38,6 @@ export function SettingsPage({ repository, redeemOfferCodeClient, onRedeemSucces
 
   const handleRedeemSuccess = useCallback(
     (result: RedeemResult) => {
-      // Re-fetch the profile so the tier summary reflects the new entitlement.
       refresh();
       onRedeemSuccess?.(result);
     },
@@ -76,7 +65,6 @@ export function SettingsPage({ repository, redeemOfferCodeClient, onRedeemSucces
     <div className={styles.container}>
       <h1 className={styles.pageTitle}>Settings</h1>
 
-      {/* Profile section */}
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Profile</h2>
         <div className={styles.card}>
@@ -91,7 +79,6 @@ export function SettingsPage({ repository, redeemOfferCodeClient, onRedeemSucces
         </div>
       </section>
 
-      {/* Redeem offer code section (only rendered when a client is wired) */}
       {redeemOfferCodeClient && (
         <section className={styles.section}>
           <h2 className={styles.sectionTitle}>Redeem offer code</h2>
@@ -104,7 +91,6 @@ export function SettingsPage({ repository, redeemOfferCodeClient, onRedeemSucces
         </section>
       )}
 
-      {/* Notifications section */}
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Notifications</h2>
         <div className={styles.card}>
@@ -154,7 +140,6 @@ export function SettingsPage({ repository, redeemOfferCodeClient, onRedeemSucces
         </div>
       </section>
 
-      {/* Appearance section */}
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Appearance</h2>
         <div className={styles.card}>
@@ -165,7 +150,6 @@ export function SettingsPage({ repository, redeemOfferCodeClient, onRedeemSucces
         </div>
       </section>
 
-      {/* Data section */}
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Data</h2>
         <div className={styles.card}>
@@ -179,7 +163,6 @@ export function SettingsPage({ repository, redeemOfferCodeClient, onRedeemSucces
         </div>
       </section>
 
-      {/* Session section */}
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Session</h2>
         <div className={styles.card}>
@@ -192,7 +175,6 @@ export function SettingsPage({ repository, redeemOfferCodeClient, onRedeemSucces
         </div>
       </section>
 
-      {/* Danger zone */}
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Account</h2>
         <div className={styles.dangerCard}>
@@ -209,7 +191,6 @@ export function SettingsPage({ repository, redeemOfferCodeClient, onRedeemSucces
         </div>
       </section>
 
-      {/* Attribution */}
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Attribution</h2>
         <div className={styles.card}>
@@ -222,7 +203,6 @@ export function SettingsPage({ repository, redeemOfferCodeClient, onRedeemSucces
         </div>
       </section>
 
-      {/* Legal links */}
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Legal</h2>
         <div className={styles.card}>
