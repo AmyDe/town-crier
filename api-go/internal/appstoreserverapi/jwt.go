@@ -14,10 +14,8 @@ import (
 )
 
 // jwtValidity is how long a minted JWT is valid for, measured from iat. Apple
-// requires exp <= iat+3600 (60 minutes); this reconciliation job mints exactly
-// one token per short-lived job execution (no caching/refresh, unlike the
-// long-lived APNs client), so a comfortable margin under Apple's ceiling is
-// used rather than the full hour.
+// caps exp at iat+60m; one token is minted per short-lived job run, so a margin
+// under that ceiling is used.
 const jwtValidity = 55 * time.Minute
 
 // jwtHeader is the JWS header the App Store Server API expects: ES256 with
@@ -39,7 +37,7 @@ type jwtClaims struct {
 }
 
 // parseP8Key decodes a PEM block and parses the PKCS8-encoded EC private key
-// Apple ships as a .p8 file — the same shape internal/apns/jwt.go parses.
+// Apple ships as a .p8 file.
 func parseP8Key(pemBytes []byte) (*ecdsa.PrivateKey, error) {
 	block, _ := pem.Decode(pemBytes)
 	if block == nil {
@@ -56,8 +54,7 @@ func parseP8Key(pemBytes []byte) (*ecdsa.PrivateKey, error) {
 	return key, nil
 }
 
-// mintJWT signs a fresh ES256 JWT for one App Store Server API call. Minted
-// once per job execution — see jwtValidity — never cached or refreshed.
+// mintJWT signs a fresh ES256 JWT for one App Store Server API call.
 func mintJWT(key *ecdsa.PrivateKey, keyID, issuerID, bundleID string, now time.Time) (string, error) {
 	headerJSON, err := json.Marshal(jwtHeader{Alg: "ES256", Kid: keyID, Typ: "JWT"})
 	if err != nil {

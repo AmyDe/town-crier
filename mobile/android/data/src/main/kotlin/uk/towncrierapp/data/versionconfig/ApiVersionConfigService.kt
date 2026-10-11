@@ -27,10 +27,8 @@ public class ApiVersionConfigService(
     // SwallowedException: DomainError.NetworkUnavailable carries no payload
     // by design (matches every other transport-failure mapping in this
     // codebase) — nothing to preserve from the underlying IOException.
-    // UnreachableCode: false positive on the `val dto = try {...}` and
-    // `return ... ?: throw ...` statements below — both are genuinely
-    // reachable on the success path; detekt 1.23.8's type-resolution against
-    // Kotlin 2.4.0 misreports them (tracked: tc side-quest bead).
+    // UnreachableCode: detekt 1.23.8 against Kotlin 2.4.0 misreports the
+    // try/elvis-throw statements below, which are reachable on the success path.
     override suspend fun fetchMinimumVersion(): AppVersion {
         val url =
             baseUrl

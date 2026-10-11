@@ -1,9 +1,7 @@
 // Package appstoreserverapi is a small, independently-testable client for
 // Apple's App Store Server API — specifically the Get Notification History
 // endpoint the appstorereconcile worker polls to detect ASSN webhook
-// delivery gaps. It mirrors internal/apns in spirit: .p8-key JWT auth, no
-// domain/Postgres knowledge, a real HTTP client hardened with timeouts and a
-// bounded response body.
+// delivery gaps.
 package appstoreserverapi
 
 import (

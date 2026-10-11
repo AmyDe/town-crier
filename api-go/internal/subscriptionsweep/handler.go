@@ -2,20 +2,11 @@
 // (WORKER_MODE=subscription-sweep): once a day it finds paid profiles whose
 // entitlement has lapsed — offer-code grants past their duration, or App Store
 // subscriptions past expiry whose webhook never arrived — and reverts their
-// stored Cosmos tier to Free, then syncs Auth0's subscription_tier metadata to
-// match.
+// stored tier to Free, then syncs Auth0's subscription_tier metadata to match.
 //
-// It is the stored-state reconciliation half of GH #608 (Option B). The lazy
-// read-path check (UserProfile.EffectiveTier, Phase 1) already makes those users
-// Free on every entitlement gate the moment they lapse; this sweep is hygiene
-// that keeps the persisted Cosmos document and the Auth0 metadata clean. Because
-// the read path is already correct, a transient Auth0 sync failure here is benign
-// — entitlements gate on Cosmos + EffectiveTier, never on the Auth0 metadata.
-//
-// It mirrors internal/dormant: consumer-side interfaces declared here, concrete
-// stores injected from main(), hand-written test fakes, an injected now for a
-// pinned clock, and per-item failure isolation so one bad profile never aborts
-// the cycle.
+// The read path (UserProfile.EffectiveTier) already makes those users Free on
+// every entitlement gate the moment they lapse, so this sweep is hygiene and a
+// transient Auth0 sync failure here is benign.
 package subscriptionsweep
 
 import (
@@ -28,21 +19,18 @@ import (
 )
 
 // Finder returns the lapsed-paid set: every profile whose stored tier is paid but
-// whose EffectiveTier(now) has collapsed to Free. profiles.AdminStore satisfies
-// it via LapsedPaid.
+// whose EffectiveTier(now) has collapsed to Free.
 type Finder interface {
 	LapsedPaid(ctx context.Context, now time.Time) ([]*profiles.UserProfile, error)
 }
 
-// Saver persists a downgraded profile back to Cosmos. profiles.AdminStore
-// satisfies it via Save (an upsert keyed on the user id / partition key).
+// Saver persists a downgraded profile.
 type Saver interface {
 	Save(ctx context.Context, p *profiles.UserProfile) error
 }
 
 // Auth0Syncer keeps Auth0's app_metadata.subscription_tier in step with the
-// downgrade. profiles.Auth0Client (and the NoOpAuth0Client fallback) satisfy it
-// via UpdateSubscriptionTier — the same call the redemption and verify paths use.
+// downgrade.
 type Auth0Syncer interface {
 	UpdateSubscriptionTier(ctx context.Context, userID, tier string) error
 }
@@ -66,8 +54,7 @@ func New(finder Finder, saver Saver, auth0 Auth0Syncer, logger *slog.Logger, now
 // downgraded. It scans for lapsed paid profiles, then for each reverts the stored
 // tier to Free, saves, and syncs Auth0. A scan failure is fatal to the cycle; a
 // per-profile Save or Auth0 failure is logged and skipped (the profile is not
-// counted and the next daily run retries it) and the cycle continues — mirroring
-// dormant.Handler.Run.
+// counted and the next daily run retries it) and the cycle continues.
 func (h *Handler) Run(ctx context.Context) (int, error) {
 	now := h.now()
 	lapsed, err := h.finder.LapsedPaid(ctx, now)

@@ -1,6 +1,6 @@
 // Package offercodes owns the offer-code feature: code format/validation, the
-// domain model, the random generator, the Cosmos store, and the authed
-// POST /v1/offer-codes/redeem handler (GH#418 iteration 8).
+// domain model, the random generator, the Postgres store, and the authed
+// POST /v1/offer-codes/redeem handler.
 package offercodes
 
 import (

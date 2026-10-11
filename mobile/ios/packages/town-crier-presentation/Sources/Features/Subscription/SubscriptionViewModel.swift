@@ -27,7 +27,7 @@ public final class SubscriptionViewModel: ObservableObject, ErrorHandlingViewMod
   @Published public var presentedLegalDocument: LegalDocumentType?
 
   /// Fired when a purchase fails (not when cancelled or successful). A failed
-  /// purchase is a friction moment that suppresses the review prompt (GH #628).
+  /// purchase is a friction moment that suppresses the review prompt.
   public var onPurchaseFailed: (() -> Void)?
 
   private let subscriptionService: SubscriptionService

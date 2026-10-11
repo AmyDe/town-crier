@@ -65,8 +65,7 @@ type redeemResponse struct {
 	ExpiresAt platform.DotNetTime `json:"expiresAt"`
 }
 
-// apiErrorResponse is the error response body { error, message }. Unlike
-// the bodyless-backfill paths, the offer-code errors carry a human message.
+// apiErrorResponse is the error response body { error, message }.
 type apiErrorResponse struct {
 	Error   string  `json:"error"`
 	Message *string `json:"message"`
@@ -75,9 +74,9 @@ type apiErrorResponse struct {
 // redeem implements POST /v1/offer-codes/redeem: malformed code -> 400
 // invalid_code_format, unknown code -> 404 invalid_code, already-claimed (by
 // anyone, or a second time by the same caller) -> 409 code_already_redeemed,
-// caller already paid -> 409 already_subscribed. The wire contract here is
-// unchanged from the single-use model: clients cannot and do not need to tell
-// "code fully consumed by others" apart from "you already redeemed this code".
+// caller already paid -> 409 already_subscribed. Clients cannot and do not
+// need to tell "code fully consumed by others" apart from "you already
+// redeemed this code".
 func (h *handler) redeem(w http.ResponseWriter, r *http.Request) {
 	userID := auth.Subject(r.Context())
 
@@ -136,12 +135,8 @@ func (h *handler) redeem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// RedeemWithCAS is the single atomic redemption: a transaction inserting
-	// the per-user redemption row and incrementing the code's redemption
-	// counter, guarded by redemption_count < max_redemptions. No retry loop is
-	// needed — unlike the retired Cosmos CAS machinery, this is one atomic
-	// Postgres statement pair that never returns a "lost the race, try again"
-	// signal; it returns a definitive outcome on the first attempt.
+	// RedeemWithCAS is one atomic transaction with a definitive outcome on the
+	// first attempt, so no retry loop is needed.
 	switch redeemErr := h.codes.RedeemWithCAS(r.Context(), canonical, userID, now); {
 	case redeemErr == nil:
 		// success — fall through
@@ -156,9 +151,7 @@ func (h *handler) redeem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// RedeemWithCAS persisted the redemption atomically; re-read for the tier
-	// and duration so the profile grant is based on the authoritative stored
-	// state.
+	// Re-read so the profile grant uses the authoritative stored tier and duration.
 	code, err = h.codes.Get(r.Context(), canonical)
 	if err != nil {
 		h.serverError(w, r, "reload offer code after redeem", err)

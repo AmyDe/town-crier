@@ -9,13 +9,6 @@ interface Props {
   onSuccess?: (result: RedeemResult) => void;
 }
 
-/**
- * Form that lets an authenticated user redeem an offer code.
- *
- * Passive view bound to `useRedeemOfferCode` — all state and orchestration live
- * in the hook. On success the hook invokes `onSuccess` so consumers (the
- * Settings page) can refresh the Auth0 access token and the user profile.
- */
 export function RedeemOfferCode({ client, onSuccess }: Props) {
   const inputId = useId();
   const {

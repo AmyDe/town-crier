@@ -5,9 +5,8 @@ import os
 /// Folds the three subscription-tier sources (server profile, StoreKit
 /// entitlement, JWT claim) into a single resolved tier, trial flag and lifetime flag.
 ///
-/// Shared by both ``AppCoordinator`` and ``SettingsViewModel`` so the two
-/// tier-resolution paths cannot drift apart again (third recurrence after
-/// tc-aza5; original bug tc-exg6).
+/// Shared by ``AppCoordinator`` and ``SettingsViewModel`` so the two
+/// tier-resolution paths cannot drift apart.
 ///
 /// ### Resolution rules
 ///

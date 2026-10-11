@@ -42,8 +42,7 @@ func NewNotificationProcessor(verifier jwsVerifier, profilesByTxn profileByTxn, 
 
 // Process verifies the outer notification JWS, dedupes it, verifies the inner
 // transaction JWS, locates the subscriber cross-partition, applies the
-// lifecycle event, and records the notification as processed — the
-// HandleAppStoreNotificationCommandHandler logic (formerly handler.runWebhook).
+// lifecycle event, and records the notification as processed.
 // wasNew reports whether this call actually mutated the profile — false for an
 // already-processed duplicate, an unknown subscriber, an environment mismatch,
 // or a no-change event (e.g. a downgrade DID_CHANGE_RENEWAL_PREF). It is
@@ -94,10 +93,8 @@ func (p *NotificationProcessor) Process(ctx context.Context, signedPayload strin
 		return false, fmt.Errorf("locate subscriber: %w", err)
 	}
 
-	// F1: on the webhook, an environment mismatch is swallowed — the notification
-	// is still marked processed so Apple does not retry, but the profile is not
-	// mutated. This mirrors the "mark processed, no state change" contract of
-	// unknown-subscriber and no-change events already in this path.
+	// An environment mismatch is swallowed: the notification is still marked
+	// processed so Apple does not retry, but the profile is not mutated.
 	wasNew := false
 	if profile != nil && envAllowed(txn.Environment, p.allowedEnvironments) {
 		changed, err := applyNotification(profile, notification, txn)

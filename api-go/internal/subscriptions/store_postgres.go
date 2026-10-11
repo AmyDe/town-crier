@@ -35,9 +35,7 @@ var (
 )
 
 // PostgresNotificationStore records and detects processed App Store Server
-// Notifications in the apple_notifications table (Cosmos -> Postgres migration;
-// memo 0010, epic #645). It is a parallel implementation: Cosmos remains wired
-// until the flag flip in a later slice.
+// Notifications in the apple_notifications table.
 //
 // The natural key is notification_uuid (the UUID Apple supplies on every
 // delivery), so IsProcessed is a single EXISTS point read and MarkProcessed is
@@ -70,41 +68,18 @@ func (s *PostgresNotificationStore) IsProcessed(ctx context.Context, notificatio
 
 // markProcessedQuery inserts or silently refreshes an apple_notifications row.
 // ON CONFLICT DO UPDATE makes this last-writer-wins idempotent: a duplicate
-// delivery that races past IsProcessed is absorbed without a constraint error,
-// matching the Cosmos UpsertItem last-writer-wins semantics exactly.
+// delivery that races past IsProcessed is absorbed without a constraint error.
 const markProcessedQuery = `
 INSERT INTO apple_notifications (notification_uuid, processed_at)
 VALUES ($1, $2)
 ON CONFLICT (notification_uuid) DO UPDATE SET processed_at = EXCLUDED.processed_at`
 
-// MarkProcessed records the notification as handled. It uses now() as the
-// processed_at timestamp. For idempotency under concurrent delivery see the
-// SQL constant above.
+// MarkProcessed records the notification as handled, stamped with the injected
+// clock.
 func (s *PostgresNotificationStore) MarkProcessed(ctx context.Context, notificationUUID string) error {
 	_, err := s.db.Exec(ctx, markProcessedQuery, notificationUUID, s.now())
 	if err != nil {
 		return fmt.Errorf("mark processed notification %q: %w", notificationUUID, err)
-	}
-	return nil
-}
-
-// upsertProcessedQuery is identical to markProcessedQuery but named separately
-// for clarity: the backfill uses it with the original processedAt from Cosmos
-// rather than s.now(), preserving historical timestamps across the migration.
-const upsertProcessedQuery = `
-INSERT INTO apple_notifications (notification_uuid, processed_at)
-VALUES ($1, $2)
-ON CONFLICT (notification_uuid) DO UPDATE SET processed_at = EXCLUDED.processed_at`
-
-// UpsertProcessed inserts a processed notification with the given processedAt
-// timestamp. This is used exclusively by the Cosmos -> Postgres backfill
-// (cmd/pgbackfill-applenotifs) to preserve the original processing timestamp;
-// it is not part of the Store interface (the runtime path uses MarkProcessed
-// with the injected now clock).
-func (s *PostgresNotificationStore) UpsertProcessed(ctx context.Context, notificationUUID string, processedAt time.Time) error {
-	_, err := s.db.Exec(ctx, upsertProcessedQuery, notificationUUID, processedAt)
-	if err != nil {
-		return fmt.Errorf("upsert processed notification %q: %w", notificationUUID, err)
 	}
 	return nil
 }

@@ -20,7 +20,7 @@ public enum class SubscriptionTier(
          * both the server's PascalCase vocabulary ("Personal") and the JWT
          * `subscription_tier` claim's lowercase spelling ("personal").
          * Returns `null` for anything unrecognised — callers decide the
-         * fallback (never silently default to FREE here, see tc-exg6).
+         * fallback (never silently default to FREE here).
          */
         public fun fromWireValue(value: String): SubscriptionTier? =
             entries.firstOrNull { it.wireValue.equals(value, ignoreCase = true) }
