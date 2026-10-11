@@ -11,11 +11,7 @@ import (
 // notifications expire after 90 days.
 const ninetyDaysSeconds = 90 * 24 * 60 * 60
 
-// DigestNotification is the full read/write model the digest worker needs — the
-// complete Notifications-container document, not the latest-unread projection
-// used by the web API. It carries every field the digest email body and APNs
-// payload render, plus the EmailSent flag the hourly cycle flips after a
-// successful send.
+// DigestNotification is a complete stored notification record.
 type DigestNotification struct {
 	ID                     string
 	UserID                 string
@@ -29,19 +25,9 @@ type DigestNotification struct {
 	Decision               *string
 	EventType              EventType
 	Sources                string
-	// PushSent means "a push was queued for this notification", never
-	// "delivered" — it is set true the moment the user is determined
-	// push-eligible, before the poll-cycle coalescer (GH#784) has attempted
-	// any send. The coalescer flushes queued pushes as at most one per
-	// (user, watch zone) after this record is written, so a device-less
-	// send, an APNs/FCM delivery failure, or a partial multi-device/
-	// multi-platform failure all still leave this true. This is a
-	// deliberate, permanent choice (tc-97k35.4): reconciling it against the
-	// coalescer's batched, per-platform delivery outcome is materially more
-	// complex than the field's one audience — a user's own data export
-	// (profiles.ExportedNotification, "pushSent") — justifies. No business
-	// logic reads this field; treat every "true" as "queued", not "confirmed
-	// delivered".
+	// PushSent means "a push was queued", never "delivered": it is set before
+	// the coalescer sends and is deliberately never reconciled against the
+	// delivery outcome. Only the user's data export reads it.
 	PushSent  bool
 	EmailSent bool
 	CreatedAt time.Time

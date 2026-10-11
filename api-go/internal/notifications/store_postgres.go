@@ -9,22 +9,15 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// querier is the consumer-side slice of *pgxpool.Pool the store uses.
-// Only Exec and Query are needed — all reads use Query + CollectRows,
-// which keeps the interface fakeable for unit tests (no concrete pgx.Row).
-// Both *pgxpool.Pool and pgx.Tx satisfy it structurally.
+// querier omits QueryRow so unit-test fakes need no concrete pgx.Row; all reads
+// use Query + CollectRows.
 type querier interface {
 	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 }
 
-// Store is the full exported method set that notifications consumers rely on.
-// It serves two purposes: a compile-time parity check so *PostgresStore can
-// never silently diverge from the Cosmos method set, and the consumer-side
-// interface the API wiring accepts once the Postgres backend is selected.
-//
-// PurgeOlderThan is deliberately excluded: it has no Cosmos equivalent and is
-// called only by the maintenance worker, not the common API paths.
+// Store is the notifications method set consumers depend on. PurgeOlderThan is
+// deliberately excluded: only the maintenance worker calls it.
 type Store interface {
 	Create(ctx context.Context, n DigestNotification) error
 	GetLatestUnreadByApplications(ctx context.Context, userID string, applicationUIDs []string) (map[string]LatestUnread, error)
@@ -37,22 +30,9 @@ type Store interface {
 	DeleteAllByUserID(ctx context.Context, userID string) error
 }
 
-// Compile-time parity: *PostgresStore must satisfy the full Store surface.
 var _ Store = (*PostgresStore)(nil)
 
-// PostgresStore reads and writes notifications in the Postgres `notifications`
-// table (Cosmos → Postgres migration; memo 0010, epic #645).
-//
-// Key differences from the Cosmos split model (CosmosStore / DigestStore /
-// DeleteStore across three types):
-//   - Single struct over one table; the consumer-side interface union is
-//     satisfied by one concrete type, so wiring is simpler.
-//   - UserIDsWithUnsentEmails uses native SELECT DISTINCT — no cross-partition
-//     client-side dedup needed (contrast tc-b7cm and the Cosmos gateway 400).
-//   - The 90-day TTL is replaced by PurgeOlderThan; the INDEX on created_at
-//     makes the DELETE efficient.
-//   - GetLatestUnreadByApplications uses DISTINCT ON for the per-uid reduction,
-//     replacing the Cosmos "first seen wins on newest-first ordered results".
+// PostgresStore reads and writes notifications in the notifications table.
 type PostgresStore struct {
 	db querier
 }
@@ -163,8 +143,7 @@ ON CONFLICT (id) DO UPDATE SET
     created_at              = EXCLUDED.created_at`
 
 // Create writes a dispatched notification. Idempotent on the notification id
-// (ON CONFLICT (id) DO UPDATE), mirroring the Cosmos UpsertItem-by-document-id
-// contract: re-creating the same id overwrites in place.
+// (ON CONFLICT (id) DO UPDATE): re-creating the same id overwrites in place.
 func (s *PostgresStore) Create(ctx context.Context, n DigestNotification) error {
 	_, err := s.db.Exec(ctx, pgCreateQuery,
 		n.ID, n.UserID, n.ApplicationUID, n.ApplicationName, n.WatchZoneID,
@@ -178,10 +157,6 @@ func (s *PostgresStore) Create(ctx context.Context, n DigestNotification) error 
 	return nil
 }
 
-// pgLatestUnreadQuery uses DISTINCT ON (application_uid) to return the newest
-// UNREAD notification per uid in one pass. Unread is read_at IS NULL (ADR 0035,
-// replacing the created_at > last_read_at watermark predicate). The 4-column
-// projection avoids reading full document bodies for a display-only badge.
 const pgLatestUnreadQuery = "SELECT DISTINCT ON (application_uid) " +
 	"application_uid, decision, event_type, created_at " +
 	"FROM notifications " +
@@ -189,9 +164,8 @@ const pgLatestUnreadQuery = "SELECT DISTINCT ON (application_uid) " +
 	"ORDER BY application_uid, created_at DESC"
 
 // GetLatestUnreadByApplications returns, for each application uid that has at
-// least one unread notification (read_at IS NULL), the latest such notification
-// — in a single round trip instead of N+1 per-uid queries. An empty uid set
-// returns an empty map without issuing a query.
+// least one unread notification (read_at IS NULL), the latest such notification.
+// An empty uid set returns an empty map without issuing a query.
 func (s *PostgresStore) GetLatestUnreadByApplications(ctx context.Context, userID string, applicationUIDs []string) (map[string]LatestUnread, error) {
 	if len(applicationUIDs) == 0 {
 		return map[string]LatestUnread{}, nil
@@ -235,9 +209,7 @@ const pgAllByUserQuery = "SELECT " + notifColumns +
 	" FROM notifications WHERE user_id = $1 ORDER BY created_at ASC"
 
 // AllByUser returns every notification for the user, oldest first, for the
-// GDPR data export (GET /v1/me/data). No time window — the export covers the
-// whole notification history (90 days bounded by PurgeOlderThan, analogous to
-// the Cosmos 90-day TTL).
+// GDPR data export (GET /v1/me/data), with no time window.
 func (s *PostgresStore) AllByUser(ctx context.Context, userID string) ([]DigestNotification, error) {
 	rows, err := s.db.Query(ctx, pgAllByUserQuery, userID)
 	if err != nil {
@@ -257,9 +229,7 @@ const pgUnsentEmailsQuery = "SELECT " + notifColumns +
 	" FROM notifications WHERE user_id = $1 AND NOT email_sent ORDER BY created_at ASC"
 
 // UnsentEmailsByUser returns the user's notifications awaiting an email
-// (email_sent = false), oldest first — the hourly-digest pipeline's per-user
-// read. Replaces the Cosmos OR NOT IS_DEFINED(emailSent) guard: every PG row
-// has email_sent NOT NULL DEFAULT false, so legacy-row handling is unnecessary.
+// (email_sent = false), oldest first.
 func (s *PostgresStore) UnsentEmailsByUser(ctx context.Context, userID string) ([]DigestNotification, error) {
 	rows, err := s.db.Query(ctx, pgUnsentEmailsQuery, userID)
 	if err != nil {
@@ -278,10 +248,7 @@ func (s *PostgresStore) UnsentEmailsByUser(ctx context.Context, userID string) (
 const pgUserIDsWithUnsentEmailsQuery = "SELECT DISTINCT user_id FROM notifications WHERE NOT email_sent"
 
 // UserIDsWithUnsentEmails returns every user id with at least one unsent-email
-// notification — the hourly cycle's candidate set. Uses native DISTINCT instead
-// of the Cosmos cross-partition client-side dedup (the gateway 400 on
-// cross-partition DISTINCT; tc-b7cm does not apply here). A defensive client-
-// side dedup is retained to preserve the contract regardless of the SQL.
+// notification, each id once.
 func (s *PostgresStore) UserIDsWithUnsentEmails(ctx context.Context) ([]string, error) {
 	rows, err := s.db.Query(ctx, pgUserIDsWithUnsentEmailsQuery)
 	if err != nil {
@@ -306,8 +273,7 @@ func (s *PostgresStore) UserIDsWithUnsentEmails(ctx context.Context) ([]string, 
 const pgMarkEmailSentQuery = "UPDATE notifications SET email_sent = true WHERE id = $1"
 
 // MarkEmailSent flips email_sent on the notification so it is excluded from
-// the next hourly cycle, matching the Cosmos UpsertItem path that re-writes
-// the full document with EmailSent = true.
+// the next hourly cycle.
 func (s *PostgresStore) MarkEmailSent(ctx context.Context, n DigestNotification) error {
 	if _, err := s.db.Exec(ctx, pgMarkEmailSentQuery, n.ID); err != nil {
 		return fmt.Errorf("mark email sent for notification %q: %w", n.ID, err)
@@ -429,9 +395,7 @@ func (s *PostgresStore) Totals(ctx context.Context) (NotificationTotals, error) 
 const pgPurgeOlderThanQuery = "DELETE FROM notifications WHERE created_at < $1"
 
 // PurgeOlderThan deletes every notification created before cutoff and returns
-// the number of rows deleted. It is the Postgres replacement for the Cosmos
-// 90-day TTL: a maintenance worker (later slice) calls it on a schedule.
-// The INDEX on created_at makes the full-table sweep efficient.
+// the number of rows deleted.
 func (s *PostgresStore) PurgeOlderThan(ctx context.Context, cutoff time.Time) (int64, error) {
 	tag, err := s.db.Exec(ctx, pgPurgeOlderThanQuery, cutoff)
 	if err != nil {

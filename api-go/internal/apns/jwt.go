@@ -120,7 +120,7 @@ func (p *jwtProvider) mint(now time.Time) (string, error) {
 	signingInput := base64.RawURLEncoding.EncodeToString(headerJSON) + "." +
 		base64.RawURLEncoding.EncodeToString(claimsJSON)
 
-	digest := sha256Sum([]byte(signingInput))
+	digest := sha256.Sum256([]byte(signingInput))
 	r, s, err := ecdsa.Sign(rand.Reader, p.key, digest[:])
 	if err != nil {
 		return "", fmt.Errorf("apns: sign jwt: %w", err)
@@ -139,10 +139,3 @@ func jwsSignature(r, s *big.Int) []byte {
 	s.FillBytes(sig[size:])
 	return sig
 }
-
-// sha256Sum is a thin alias so the signing path and tests share one hash.
-func sha256Sum(b []byte) [32]byte { return sha256.Sum256(b) }
-
-// bigIntFromBytes reads a big-endian unsigned integer; used by tests verifying
-// the JWS signature halves.
-func bigIntFromBytes(b []byte) *big.Int { return new(big.Int).SetBytes(b) }

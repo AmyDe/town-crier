@@ -10,20 +10,14 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// querier is the consumer-side slice of *pgxpool.Pool the store uses:
-// parameterised exec/query/query-row. Both *pgxpool.Pool and pgx.Tx satisfy it
-// structurally, so the store is testable without a real connection.
 type querier interface {
 	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
-// Store is the full device-registration method set *PostgresStore satisfies and
-// the exported consumer-side interface the handlers and wiring depend on.
-//
-// PurgeOlderThan is deliberately NOT in Store: it backs the pg-purge retention
-// job and exists only on *PostgresStore.
+// Store is the device-registration method set consumers depend on.
+// PurgeOlderThan is deliberately excluded: only the retention job uses it.
 type Store interface {
 	GetByToken(ctx context.Context, userID, token string) (*DeviceRegistration, error)
 	Save(ctx context.Context, reg DeviceRegistration) error
@@ -32,15 +26,10 @@ type Store interface {
 	DeleteAllByUserID(ctx context.Context, userID string) error
 }
 
-// Compile-time check: the store satisfies the consumer-side Store interface.
 var _ Store = (*PostgresStore)(nil)
 
-// PostgresStore reads and writes device registrations in the Postgres
-// `device_registrations` table (Cosmos → Postgres migration; memo 0010, epic #645).
-//
-// Partition strategy: the Cosmos container is partitioned by /userId with document
-// id == token; the natural PK here is (user_id, token), matching exactly.
-// PurgeOlderThan replaces the Cosmos 180-day TTL: registered_at is the ageing field.
+// PostgresStore reads and writes device registrations in the
+// device_registrations table, keyed on (user_id, token).
 type PostgresStore struct {
 	db querier
 }
@@ -90,8 +79,7 @@ ON CONFLICT (user_id, token) DO UPDATE SET
     registered_at = EXCLUDED.registered_at`
 
 // Save upserts the device registration keyed on (user_id, token). A re-PUT
-// resets registered_at (the ageing field for PurgeOlderThan) to the client's
-// current instant, matching the Cosmos TTL-reset semantics.
+// resets registered_at, the ageing field for PurgeOlderThan.
 func (s *PostgresStore) Save(ctx context.Context, reg DeviceRegistration) error {
 	if _, err := s.db.Exec(ctx, pgSaveDeviceQuery,
 		reg.UserID, reg.Token, reg.Platform.String(), reg.RegisteredAt); err != nil {
@@ -216,9 +204,8 @@ func (s *PostgresStore) DeleteAllByUserID(ctx context.Context, userID string) er
 const pgPurgeDevicesQuery = "DELETE FROM device_registrations WHERE registered_at < $1"
 
 // PurgeOlderThan deletes every registration whose registered_at is before cutoff
-// and returns the number of rows deleted. It replaces the Cosmos 180-day TTL: a
-// caller schedules this with time.Now().Add(-180 * 24 * time.Hour) to enforce the
-// UK GDPR Art. 5(1)(e) storage limitation for device identifiers.
+// and returns the number of rows deleted. The retention job passes a 180-day
+// cutoff to meet the UK GDPR storage limitation for device identifiers.
 func (s *PostgresStore) PurgeOlderThan(ctx context.Context, cutoff time.Time) (int64, error) {
 	tag, err := s.db.Exec(ctx, pgPurgeDevicesQuery, cutoff)
 	if err != nil {

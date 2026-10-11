@@ -22,10 +22,6 @@ type credentials struct {
 	accessKey platform.SecretString
 }
 
-// newSecret wraps a raw value in the redacting SecretString, re-exported locally
-// so signing tests don't reach into the platform package.
-func newSecret(v string) platform.SecretString { return platform.NewSecret(v) }
-
 // parseConnectionString splits an ACS connection string of the form
 // "endpoint=https://...;accesskey=<base64>" into its endpoint (trailing slash
 // trimmed) and base64 access key. Keys are matched case-insensitively, matching
@@ -55,7 +51,7 @@ func parseConnectionString(cs string) (credentials, error) {
 	if key == "" {
 		return credentials{}, fmt.Errorf("%w: missing accesskey", ErrInvalidConnectionString)
 	}
-	return credentials{endpoint: endpoint, accessKey: newSecret(key)}, nil
+	return credentials{endpoint: endpoint, accessKey: platform.NewSecret(key)}, nil
 }
 
 // computeContentHash returns the base64-encoded SHA-256 of the request body, the

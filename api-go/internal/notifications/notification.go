@@ -1,14 +1,12 @@
-// Package notifications provides read access to the Notifications container for
-// the per-application latest-unread lookup that augments the
-// applications-by-zone endpoint (GH#418). Full notification dispatch and
-// digest generation live in the worker, out of scope for this package.
+// Package notifications models dispatched notifications and their Postgres
+// store.
 package notifications
 
 import "time"
 
 // EventType is the lifecycle event a notification was raised for. The string
-// forms ("NewApplication", "DecisionUpdate") are the exact values stored in
-// Cosmos and emitted on the wire, preserved verbatim here.
+// forms ("NewApplication", "DecisionUpdate") are the exact stored and wire
+// values.
 type EventType string
 
 const (

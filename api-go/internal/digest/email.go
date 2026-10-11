@@ -5,7 +5,6 @@ import (
 	"html"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/AmyDe/town-crier/api-go/internal/designtokens"
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
@@ -15,29 +14,16 @@ import (
 // senderAddress is the verified ACS sender address all digest emails are sent from.
 const senderAddress = "hello@towncrierapp.uk"
 
-// Email-safe font stacks (Public Notice, issue 859; sans standardisation,
-// issue 912 phase 5). Email clients cannot fetch the self-hosted webfonts
-// the rest of the brand uses, so the digest renders the type system's
-// email-safe fallbacks directly rather than pointing at a font the client
-// will never load. Headlines and body share one system-sans stack — this
-// surface never rendered the brand's display webfont itself, only a
-// deliberate email-safe serif stand-in, which the 2026-07-10
-// sans-everywhere decision retired along with every other display-serif
-// treatment across the app — and Courier New covers the mono
-// reference/date strip.
+// Email-safe font stacks: email clients cannot fetch the brand's self-hosted
+// webfonts.
 const (
 	headlineFontStack = bodyFontStack
 	bodyFontStack     = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif"
 	monoFontStack     = "'Courier New', monospace"
 )
 
-// pageTemplate is the outer Public Notice shell: a paper-toned page holding a
-// single 600px card, a lettered masthead over a double rule, the per-zone
-// notification blocks, an optional free-tier account-status line, an amber
-// CTA, and a footer with the unsubscribe link. It is light-only by design
-// (the color-scheme/supported-color-schemes meta pair): email client
-// dark-mode colour inversion is unreliable enough that a dark variant is out
-// of scope for v1 (issue 859).
+// pageTemplate is the outer page shell. It is light-only by design: email-client
+// dark-mode colour inversion is unreliable.
 const pageTemplate = `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
 <meta name="color-scheme" content="light">
@@ -70,14 +56,9 @@ const pageTemplate = `<!DOCTYPE html>
 </td></tr></table>
 </body></html>`
 
-// freeTierNoticeText is the account-status line shown on the weekly digest to
-// Free-tier recipients only (tc-m1pb5). It is a factual account statement,
-// not marketing copy: no benefit claim, no pricing, no urgency, and no CTA of
-// its own — the digest stays a service message rather than a promotion (the
-// Privacy Policy states "we do not send marketing email"). It must never
-// become a link and must never point at a paywall/plans/pricing page: it
-// leans on the existing "Open Town Crier" button rendered directly beneath
-// it.
+// freeTierNoticeText is a factual account-status line for Free-tier weekly
+// recipients, not marketing: the digest is a service message, so it must never
+// become a link or point at a paywall, plans or pricing page.
 const freeTierNoticeText = "You're on the free weekly digest."
 
 // freeTierNoticeTemplate renders the free-tier notice as its own row directly
@@ -116,9 +97,8 @@ const docHeaderTemplate = `<tr><td style="padding:0 0 6px 0;border-bottom:1px so
   </tr></table>
 </td></tr>`
 
-// decisionChipTemplate and savedIndicatorTemplate are the two "stamp" pills:
-// a solid 1px border in the relevant ink colour, uppercase, letterspaced, and
-// a transparent background (replacing the pre-brand filled chip/badge).
+// decisionChipTemplate and savedIndicatorTemplate are the two outlined "stamp"
+// pills.
 const decisionChipTemplate = `<span style="display:inline-block;background:transparent;border:1px solid %s;color:%s;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;padding:2px 6px;border-radius:4px;margin-right:6px;">[%s]</span>`
 
 const savedIndicatorTemplate = `<span data-saved-indicator style="display:inline-block;background:transparent;border:1px solid %s;color:%s;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;padding:2px 6px;border-radius:4px;margin-left:6px;">★ saved</span>`
@@ -164,17 +144,9 @@ func buildDigestSubject(totalCount int, sections []watchZoneDigest, saved []noti
 	}
 }
 
-// buildDigestHTML renders the full digest email body as a Public Notice
-// masthead-and-card layout (issue 859): a paper-toned page, a lettered
-// masthead over a double rule, one filed-notice card per watch zone (plus an
-// optional Saved Applications section), an optional free-tier account-status
-// line, an amber CTA, and a footer carrying the count and the unsubscribe
-// link. All user-supplied content is HTML-encoded. The markup stays
-// table-based with inline styles throughout — email-client reality, no
-// external stylesheet, no flexbox/grid. showFreeTierNotice renders the
-// "You're on the free weekly digest." line directly above the CTA button
-// (tc-m1pb5); callers pass true only for Free-tier recipients on the weekly
-// cycle — never the hourly cycle, which is paid-only anyway.
+// buildDigestHTML renders the digest email body. All user-supplied content is
+// HTML-encoded, and the markup stays table-based with inline styles because
+// email clients support nothing else reliably.
 func buildDigestHTML(zoneSections []watchZoneDigest, savedApplications []notifications.DigestNotification, totalCount int, showFreeTierNotice bool) string {
 	var zoneBlocks strings.Builder
 	for _, section := range zoneSections {
@@ -182,7 +154,7 @@ func buildDigestHTML(zoneSections []watchZoneDigest, savedApplications []notific
 		for _, n := range section.notifications {
 			cards.WriteString(buildNotificationCard(n))
 		}
-		fmt.Fprintf(&zoneBlocks, sectionHeaderTemplate, designtokens.TextSecondaryLightHex, "📍", htmlEncode(section.name))
+		fmt.Fprintf(&zoneBlocks, sectionHeaderTemplate, designtokens.TextSecondaryLightHex, "📍", html.EscapeString(section.name))
 		zoneBlocks.WriteString(cards.String())
 	}
 
@@ -202,7 +174,7 @@ func buildDigestHTML(zoneSections []watchZoneDigest, savedApplications []notific
 
 	freeTierNotice := ""
 	if showFreeTierNotice {
-		freeTierNotice = fmt.Sprintf(freeTierNoticeTemplate, designtokens.TextSecondaryLightHex, htmlEncode(freeTierNoticeText))
+		freeTierNotice = fmt.Sprintf(freeTierNoticeTemplate, designtokens.TextSecondaryLightHex, html.EscapeString(freeTierNoticeText))
 	}
 
 	return fmt.Sprintf(pageTemplate,
@@ -222,12 +194,8 @@ func buildDigestHTML(zoneSections []watchZoneDigest, savedApplications []notific
 	)
 }
 
-// decisionChipHex maps a UK-facing decision label (vocabulary.UKDisplayString's
-// output) to the status ink colour its outlined stamp renders in, the same
-// status-colour buckets the iOS/Android/web cards use for the same four
-// decision states. An unrecognised label (not currently possible — the four
-// vocabulary outputs are exhaustive) falls back to the primary text colour
-// rather than an unstyled chip.
+// decisionChipHex maps a vocabulary.UKDisplayString label to its status ink
+// colour, falling back to the primary text colour for an unrecognised label.
 func decisionChipHex(label string) string {
 	switch label {
 	case "Approved":
@@ -250,11 +218,11 @@ func decisionChipHex(label string) string {
 // line links to the application detail page so iOS Universal Links open the
 // app.
 func buildNotificationCard(n notifications.DigestNotification) string {
-	addressLine := htmlEncode(n.ApplicationAddress)
+	addressLine := html.EscapeString(n.ApplicationAddress)
 	if n.EventType == notifications.EventDecisionUpdate {
 		if label := vocabulary.UKDisplayString(n.Decision); label != "" {
 			hex := decisionChipHex(label)
-			addressLine = fmt.Sprintf(decisionChipTemplate, hex, hex, htmlEncode(label)) + addressLine
+			addressLine = fmt.Sprintf(decisionChipTemplate, hex, hex, html.EscapeString(label)) + addressLine
 		}
 	}
 
@@ -274,26 +242,19 @@ func buildNotificationCard(n notifications.DigestNotification) string {
 
 	docHeader := fmt.Sprintf(docHeaderTemplate,
 		designtokens.BorderLightHex,
-		monoFontStack, designtokens.TextSecondaryLightHex, htmlEncode(n.ApplicationUID),
-		monoFontStack, designtokens.TextSecondaryLightHex, formatNotificationDate(n.CreatedAt))
+		monoFontStack, designtokens.TextSecondaryLightHex, html.EscapeString(n.ApplicationUID),
+		monoFontStack, designtokens.TextSecondaryLightHex, n.CreatedAt.Format("2 Jan 2006"))
 
 	headline := fmt.Sprintf(`%s<div style="font-family:%s;font-weight:700;color:%s;font-size:15px;">%s%s</div>%s`,
 		openLink, headlineFontStack, designtokens.TextPrimaryLightHex, addressLine, savedIndicator, closeLink)
 
 	typeLine := fmt.Sprintf(`%s<div style="color:%s;font-size:13px;margin-top:4px;">%s</div>%s`,
-		openLink, designtokens.TextSecondaryLightHex, htmlEncode(appType), closeLink)
+		openLink, designtokens.TextSecondaryLightHex, html.EscapeString(appType), closeLink)
 
 	descriptionLine := fmt.Sprintf(`%s<div style="color:%s;font-size:13px;margin-top:4px;">%s</div>%s`,
-		openLink, designtokens.TextSecondaryLightHex, htmlEncode(truncate(n.ApplicationDescription, 120)), closeLink)
+		openLink, designtokens.TextSecondaryLightHex, html.EscapeString(truncate(n.ApplicationDescription, 120)), closeLink)
 
 	return fmt.Sprintf(cardTemplate, designtokens.BackgroundLightHex, docHeader, headline, typeLine, descriptionLine)
-}
-
-// formatNotificationDate renders a notification's CreatedAt as the compact
-// day/short-month/year the Public Notice mono metadata strip uses elsewhere
-// (mirrors ApplicationCard.tsx's formatDate on web).
-func formatNotificationDate(t time.Time) string {
-	return t.Format("2 Jan 2006")
 }
 
 // buildApplicationDetailURL builds the application detail URL, keeping the
@@ -307,18 +268,12 @@ func buildApplicationDetailURL(applicationUID string) string {
 	return "https://towncrierapp.uk/applications/" + strings.Join(segments, "/")
 }
 
-// htmlEncode HTML-encodes user-supplied text for safe inclusion in the email
-// body.
-func htmlEncode(text string) string {
-	return html.EscapeString(text)
-}
-
 // truncate caps text at maxLength, replacing the tail with an ellipsis when it
 // overflows.
 func truncate(text string, maxLength int) string {
-	if len([]rune(text)) <= maxLength {
+	runes := []rune(text)
+	if len(runes) <= maxLength {
 		return text
 	}
-	runes := []rune(text)
 	return string(runes[:maxLength-1]) + "…"
 }

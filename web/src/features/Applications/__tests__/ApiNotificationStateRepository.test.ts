@@ -63,7 +63,6 @@ describe('ApiNotificationStateRepository', () => {
     const client = createApiClient(baseUrl, getToken, fakeFetch);
     const repo = new ApiNotificationStateRepository(client);
 
-    // First arg is the application's `name`, second is its `areaId`.
     await repo.markApplicationRead('24/0001', 42);
 
     expect(calls).toHaveLength(1);

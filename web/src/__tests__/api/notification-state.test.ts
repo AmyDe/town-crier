@@ -68,9 +68,6 @@ describe('notificationStateApi.markApplicationRead', () => {
     const { fetch: fakeFetch, calls } = createFakeFetch(204, null);
     const client = createApiClient(baseUrl, getToken, fakeFetch);
 
-    // The first arg is the application's `name` (PlanIt case reference), not
-    // its `uid` — the wire field is called `applicationUid` for contract
-    // stability but carries the reference. The second arg is the areaId.
     await notificationStateApi(client).markApplicationRead('24/0001', 42);
 
     expect(calls).toHaveLength(1);

@@ -62,7 +62,7 @@ describe('DashboardPage', () => {
 
   it('shows loading state initially', () => {
     const spy = new SpyDashboardPort();
-    spy.fetchWatchZones = () => new Promise(() => {}); // never resolves
+    spy.fetchWatchZones = () => new Promise(() => {});
 
     renderDashboard(spy);
 

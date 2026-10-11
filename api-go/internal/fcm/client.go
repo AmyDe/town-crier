@@ -56,7 +56,6 @@ type Client struct {
 	projectID string
 	baseURL   string
 	logger    *slog.Logger
-	now       func() time.Time
 	metrics   pushMetricsRecorder
 }
 
@@ -106,7 +105,6 @@ func newClientWithBaseURL(opts Options, baseURL string, httpClient *http.Client,
 		projectID: opts.ProjectID,
 		baseURL:   baseURL,
 		logger:    logger,
-		now:       now,
 	}, nil
 }
 
