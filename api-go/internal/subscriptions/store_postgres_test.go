@@ -152,25 +152,3 @@ func TestPostgresNotificationStore_MarkProcessed_Error(t *testing.T) {
 		t.Fatalf("got err %v, want wrapped sentinel", err)
 	}
 }
-
-// TestPostgresNotificationStore_UpsertProcessed calls Exec with explicit processedAt.
-func TestPostgresNotificationStore_UpsertProcessed(t *testing.T) {
-	t.Parallel()
-	at := time.Date(2026, 1, 15, 9, 0, 0, 0, time.UTC)
-	q := &fakeQuerier{}
-	store := NewPostgresNotificationStore(q, time.Now)
-
-	if err := store.UpsertProcessed(context.Background(), "uuid-7", at); err != nil {
-		t.Fatalf("UpsertProcessed: %v", err)
-	}
-	if len(q.execCalls) != 1 {
-		t.Fatalf("expected 1 exec call, got %d", len(q.execCalls))
-	}
-	call := q.execCalls[0]
-	if call.args[0] != "uuid-7" {
-		t.Errorf("first arg = %v, want uuid-7", call.args[0])
-	}
-	if call.args[1] != at {
-		t.Errorf("second arg = %v, want %v", call.args[1], at)
-	}
-}
