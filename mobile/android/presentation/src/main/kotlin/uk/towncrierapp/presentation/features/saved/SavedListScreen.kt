@@ -44,9 +44,7 @@ import uk.towncrierapp.presentation.features.applicationlist.applicationErrorMes
 /**
  * The Saved tab: the flat, cross-zone saved list with a client-side status
  * filter. Tapping a row hands the already-cached [PlanningApplication]
- * straight to the caller so detail can render it instantly (stale-while-
- * revalidate happens there). Port of iOS `SavedApplicationListView`
- * (GH#775).
+ * straight to the caller so detail can render it instantly.
  */
 @Composable
 public fun SavedListRoute(
@@ -99,7 +97,7 @@ internal fun SavedListScreen(
     }
 }
 
-/** [SavedListScreen]'s content column, split out to keep that composable under detekt's LongMethod budget. */
+// Split out of SavedListScreen to stay under detekt's LongMethod limit.
 @Composable
 private fun SavedListContent(
     state: SavedListUiState,

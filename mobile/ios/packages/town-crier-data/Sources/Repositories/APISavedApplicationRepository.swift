@@ -57,13 +57,8 @@ public final class APISavedApplicationRepository: SavedApplicationRepository, Se
   }
 }
 
-// MARK: - Request DTO
-
-/// Body of `PUT /v1/me/saved-applications/{uid}`. Carries the full
-/// PlanningApplication payload so the API can upsert the canonical record into
-/// Cosmos at save time (see bead tc-if12). Field names mirror the API's
-/// `SaveApplicationRequest` record exactly so the camel-case JSON encoding
-/// produced by the default `JSONEncoder` matches what the API deserializes.
+/// Body of `PUT /v1/me/saved-applications/{uid}`. Field names mirror the API's
+/// save request exactly so the default `JSONEncoder` output matches.
 struct SaveApplicationRequestDTO: Encodable, Sendable {
   let name: String
   let uid: String
@@ -104,10 +99,8 @@ struct SaveApplicationRequestDTO: Encodable, Sendable {
     self.latitude = application.location?.latitude
     self.url = application.portalUrl?.absoluteString
     self.link = nil
-    // PlanIt's `lastDifferent` bookkeeping is not retained on iOS; the API
-    // accepts the value as the canonical "this is what I observed" timestamp.
-    // Using `now` is safe — it is overwritten on the next poll cycle that sees
-    // a fresher PlanIt entry.
+    // PlanIt's `lastDifferent` is not retained on iOS; `now` is sent and is
+    // overwritten on the next poll that sees a fresher PlanIt entry.
     self.lastDifferent = Self.iso8601Formatter.string(from: Date())
   }
 
@@ -128,18 +121,13 @@ struct SaveApplicationRequestDTO: Encodable, Sendable {
   }()
 }
 
-// MARK: - Response DTOs
-
-/// Individual saved application item from the API response.
 struct SavedApplicationDTO: Decodable, Sendable {
   let applicationUid: String
   let savedAt: String
   let application: PlanningApplicationDTO?
 
   func toDomain() -> SavedApplication {
-    // The backend's DotNetTime format carries fractional seconds whenever the
-    // sub-second part is non-zero; parse robustly via the shared helper. The
-    // "now" fallback is retained only for genuinely unparseable input.
+    // savedAt carries fractional seconds when non-zero; "now" is only for unparseable input.
     let date = DotNetTimeParser.date(from: savedAt) ?? Date()
     return SavedApplication(
       applicationUid: applicationUid,

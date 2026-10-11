@@ -10,12 +10,9 @@ import uk.towncrierapp.domain.applications.SavedApplication
 import uk.towncrierapp.domain.applications.SavedApplicationRepository
 
 /**
- * `SavedApplicationRepository` over the Town Crier API: a flat, cross-zone
- * list, plus save/unsave keyed by [PlanningApplicationId.value] with its
- * slash(es) percent-encoded so the reconstructed id stays a SINGLE path
- * segment on the wire (the case reference itself routinely contains further
- * slashes, e.g. `"24/0001"`). Port of iOS `APISavedApplicationRepository`
- * (GH#775).
+ * `SavedApplicationRepository` over the Town Crier API. Save/unsave send
+ * [PlanningApplicationId.value] with every `/` percent-encoded so the id stays
+ * a single path segment.
  */
 public class ApiSavedApplicationRepository(
     private val apiClient: ApiClient,
@@ -34,7 +31,6 @@ public class ApiSavedApplicationRepository(
     }
 }
 
-/** Percent-encodes every `/` in [PlanningApplicationId.value] so it survives [ApiClient]'s path-segment building as ONE segment. */
 private fun PlanningApplicationId.encodedPathSegment(): String = value.replace("/", "%2F")
 
 @Serializable

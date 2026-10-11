@@ -1,9 +1,8 @@
 import SwiftUI
 import TownCrierDomain
 
-/// The dedicated Saved tab — a flat, cross-zone list of the user's bookmarked
-/// applications, with a status filter pill row that's free for all tiers. Tap
-/// rows to open `ApplicationDetailView` (sheet wired by `TownCrierApp`).
+/// The dedicated Saved tab: a flat, cross-zone list of the user's bookmarked
+/// applications, with a status filter pill row that's free for all tiers.
 public struct SavedApplicationListView: View {
   @StateObject private var viewModel: SavedApplicationListViewModel
 
@@ -100,9 +99,6 @@ public struct SavedApplicationListView: View {
           .cardRowInsets()
           .contentShape(Rectangle())
           .onTapGesture {
-            // Pass the full payload so the detail sheet opens instantly from
-            // the cached row data; the detail VM runs `refresh()` in `.task`
-            // to keep the saved-row snapshot fresh on the server (tc-sslz).
             viewModel.selectApplication(application)
           }
       }

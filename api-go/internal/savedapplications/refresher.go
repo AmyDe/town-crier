@@ -8,9 +8,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
 )
 
-// snapshotStore is the consumer-side slice of the saved-application store the
-// refresher needs: a presence check, the user's rows (to recover the original
-// SavedAt), and an upsert. *CosmosStore satisfies it structurally.
+// snapshotStore is the slice of the saved-application store the refresher needs.
 type snapshotStore interface {
 	Exists(ctx context.Context, userID, applicationUID string) (bool, error)
 	GetByUserID(ctx context.Context, userID string) ([]SavedApplication, error)
@@ -19,8 +17,7 @@ type snapshotStore interface {
 
 // SnapshotRefresher implements refresh-on-tap: when a user views an application
 // they have already saved, re-embed the fresh snapshot into their saved row so
-// the saved list self-heals on the items they actually engage with
-// (bd tc-udby, tc-o88i).
+// the saved list self-heals on the items they actually engage with.
 type SnapshotRefresher struct {
 	store snapshotStore
 	now   func() time.Time
@@ -38,9 +35,7 @@ func NewSnapshotRefresher(store snapshotStore, now func() time.Time) *SnapshotRe
 // is used. Callers treat this as a best-effort side effect — an error here must
 // never fail the user's read.
 func (r *SnapshotRefresher) RefreshSnapshot(ctx context.Context, userID string, app applications.PlanningApplication) error {
-	// Saved rows are keyed on the canonical uid, not the master record's raw uid
-	// field. Aligning the presence check on CanonicalUID is what makes healing
-	// fire for stale-format saves (bd tc-o88i).
+	// Saved rows are keyed on the canonical uid, not the master record's raw uid.
 	canonicalUID := app.CanonicalUID()
 	exists, err := r.store.Exists(ctx, userID, canonicalUID)
 	if err != nil {
@@ -50,8 +45,6 @@ func (r *SnapshotRefresher) RefreshSnapshot(ctx context.Context, userID string, 
 		return nil
 	}
 
-	// Preserve the original SavedAt by reading the existing row; fall back to the
-	// current time when the row has vanished mid-flight.
 	savedAt := r.now()
 	rows, err := r.store.GetByUserID(ctx, userID)
 	if err != nil {

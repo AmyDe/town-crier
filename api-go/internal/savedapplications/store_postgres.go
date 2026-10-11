@@ -13,9 +13,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
 )
 
-// querier is the consumer-side slice of *pgxpool.Pool the store uses:
-// parameterised exec/query/query-row. Both *pgxpool.Pool and pgx.Tx satisfy it
-// structurally, so the store is testable without a real connection.
+// querier is the slice of *pgxpool.Pool the store uses; pgx.Tx satisfies it too.
 type querier interface {
 	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
@@ -33,21 +31,11 @@ type Store interface {
 	DeleteAllByUserID(ctx context.Context, userID string) error
 }
 
-// Compile-time check: the store satisfies the consumer-side Store interface.
 var _ Store = (*PostgresStore)(nil)
 
 // PostgresStore reads and writes saved applications in the Postgres
-// `saved_applications` table (Cosmos → Postgres migration; memo 0010, epic #645).
-//
-// Snapshot: the embedded applications.SnapshotDocument is stored as jsonb, so
-// every field the export/refresh path needs survives the round-trip without loss.
-// A nil snapshot stores NULL.
-//
-// UserIDsForApplication scopes on both application_uid AND authority_id, matching
-// the Cosmos impl exactly (PlanIt uids collide across councils — tc-th98 / GH#384,
-// so a uid-only match would falsely fan out a decision to bookmark holders in
-// another authority). The (application_uid, authority_id) composite index makes
-// this query index-served on the hot poll path.
+// `saved_applications` table. The embedded snapshot is stored as jsonb; a nil
+// snapshot stores NULL.
 type PostgresStore struct {
 	db querier
 }
@@ -65,9 +53,7 @@ ON CONFLICT (user_id, application_uid) DO UPDATE SET
     saved_at     = EXCLUDED.saved_at,
     snapshot     = EXCLUDED.snapshot`
 
-// Save upserts the saved application keyed on (user_id, application_uid). The
-// full embedded snapshot is serialised to jsonb so the list endpoint and snapshot
-// refresher need no extra hydration query.
+// Save upserts the saved application keyed on (user_id, application_uid).
 func (s *PostgresStore) Save(ctx context.Context, sa SavedApplication) error {
 	var snapshotJSON []byte
 	if sa.Application != nil {
@@ -136,9 +122,7 @@ func (s *PostgresStore) GetByUserID(ctx context.Context, userID string) ([]Saved
 	return saved, nil
 }
 
-// scanSavedApp hydrates one SavedApplication from a pgx.Row (or pgx.Rows, which
-// satisfies pgx.Row structurally). The jsonb snapshot column is unmarshalled back
-// through applications.SnapshotDocument.ToDomain so all fields round-trip cleanly.
+// scanSavedApp hydrates one SavedApplication from a pgx.Row (or pgx.Rows).
 func scanSavedApp(row pgx.Row) (SavedApplication, error) {
 	var (
 		userID         string
@@ -167,16 +151,14 @@ func scanSavedApp(row pgx.Row) (SavedApplication, error) {
 	return sa, nil
 }
 
-// pgUserIDsForApplicationQuery matches the Cosmos impl's authority predicate
-// exactly: PlanIt uids collide across councils, so scoping on authority_id is
+// PlanIt uids collide across councils, so scoping on authority_id is
 // load-bearing, not an optional optimisation.
 const pgUserIDsForApplicationQuery = "SELECT DISTINCT user_id FROM saved_applications " +
 	"WHERE application_uid = $1 AND authority_id = $2"
 
 // UserIDsForApplication returns every distinct user id that has saved the given
 // (applicationUID, authorityID). It backs the poll-path decision-event fan-out to
-// bookmark holders. The query is index-served via the composite
-// (application_uid, authority_id) index on the hot poll path.
+// bookmark holders.
 func (s *PostgresStore) UserIDsForApplication(ctx context.Context, applicationUID string, authorityID int) ([]string, error) {
 	rows, err := s.db.Query(ctx, pgUserIDsForApplicationQuery, applicationUID, authorityID)
 	if err != nil {
@@ -206,9 +188,8 @@ const pgSavedCountsByUsersQuery = "SELECT user_id, count(*) FROM saved_applicati
 	"WHERE user_id = ANY($1) GROUP BY user_id"
 
 // CountsByUsers returns each user's saved-application count in a single grouped
-// query, mirroring notifications.PostgresStore.CountsByUsers. Users absent from
-// the result are absent from the map; the caller treats a missing key as 0 via
-// the map zero value. An empty user set returns an empty map without a query.
+// query. Users absent from the result are absent from the map. An empty user
+// set returns an empty map without a query.
 func (s *PostgresStore) CountsByUsers(ctx context.Context, userIDs []string) (map[string]int, error) {
 	counts := make(map[string]int, len(userIDs))
 	if len(userIDs) == 0 {
