@@ -13,11 +13,7 @@ import (
 // PostgresAdminStore serves the admin-surface's cross-user profile operations:
 // find-by-email, find-by-original-transaction-id, digest-day candidates,
 // dormant-account scan, lapsed-paid sweep, save (grant write-back), and the
-// paged user list. It is the Postgres counterpart of *AdminStore (Cosmos) and
-// shares the same AdminProfileStore interface.
-//
-// The querier type is defined in store_postgres.go (same package). Both
-// *pgxpool.Pool and pgx.Tx satisfy it structurally.
+// paged user list.
 type PostgresAdminStore struct {
 	db querier
 }
@@ -57,7 +53,6 @@ const pgAdminSelectCols = "SELECT " + userSelectCols + " FROM users "
 // pre-existing row with the same migration-run timestamp, so two duplicate
 // rows from before that migration can tie on created_at. user_id (the primary
 // key) breaks the tie deterministically, same as List's compound sort.
-// Mirrors AdminStore.GetByEmail.
 func (s *PostgresAdminStore) GetByEmail(ctx context.Context, email string) (*UserProfile, error) {
 	rows, err := s.db.Query(ctx, pgAdminSelectCols+"WHERE email = $1 ORDER BY created_at DESC, user_id DESC LIMIT 1", email)
 	if err != nil {

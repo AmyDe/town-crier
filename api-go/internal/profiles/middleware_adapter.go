@@ -40,7 +40,7 @@ func (r *ActivityRecorder) RecordActivity(ctx context.Context, userID string, no
 	return r.store.Save(ctx, profile)
 }
 
-// TierLookup answers the rate-limiter's paid/free question from the Cosmos
+// TierLookup answers the rate-limiter's paid/free question from the stored
 // profile tier — the authoritative entitlement source per ADR 0010, never the
 // JWT claim. A user with no profile is treated as free. The injected clock lets
 // the lazy expiry check (EffectiveTier) collapse a lapsed paid tier to free.

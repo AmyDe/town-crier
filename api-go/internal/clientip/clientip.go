@@ -1,5 +1,5 @@
 // Package clientip resolves the real client IP for an inbound request when the
-// API sits behind the Cloudflare proxy (orange-cloud, tc-j222).
+// API sits behind the Cloudflare proxy (orange-cloud).
 //
 // With Cloudflare in front, r.RemoteAddr is a Cloudflare edge IP, not the
 // caller. Cloudflare forwards the real client IP in the CF-Connecting-IP header.
@@ -16,7 +16,7 @@
 // This package is the building block for FUTURE per-IP anonymous rate-limiting.
 // It is intentionally NOT wired into logging, telemetry (no span client.address
 // override), or the rate limiter (which stays keyed strictly on the
-// authenticated subject, per tc-j222). Recording a client IP anywhere that
+// authenticated subject). Recording a client IP anywhere that
 // persists or logs it is processing of personal data: it would require a
 // Privacy Policy update (a legitimate-interest legal basis plus a stated
 // retention period) and a Legitimate Interests Assessment FIRST, because the

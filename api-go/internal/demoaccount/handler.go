@@ -25,9 +25,8 @@ const (
 	// demoSubscriptionYears is how far ahead the demo Pro subscription is set to
 	// expire (10 years from the seed call time).
 	demoSubscriptionYears = 10
-	// demoNearbyLimit bounds the demo applications page. The demo zone holds five
-	// seeded apps, well under the cap; the bound just keeps the demo on the same
-	// bounded fetch as the real browse path (tc-fm8f).
+	// demoNearbyLimit keeps the demo on the same bounded fetch as the real
+	// browse path; the five seeded apps sit well under it.
 	demoNearbyLimit = 500
 )
 
@@ -44,8 +43,7 @@ type zoneStore interface {
 }
 
 // appStore seeds the demo applications and runs the spatial lookup that backs
-// the response. FindNearbyPage is authority-agnostic and cross-partition
-// (tc-zldl), and bounded to a single page (tc-fm8f).
+// the response. FindNearbyPage is authority-agnostic and bounded to a single page.
 type appStore interface {
 	Upsert(ctx context.Context, a applications.PlanningApplication) error
 	FindNearbyPage(ctx context.Context, latitude, longitude, radiusMetres float64, limit int, cursor string) ([]applications.PlanningApplication, string, error)
@@ -67,7 +65,7 @@ func Routes(mux *http.ServeMux, profiles profileStore, zones zoneStore, apps app
 	mux.HandleFunc("GET /v1/demo-account", h.getDemoAccount)
 }
 
-// getDemoAccount returns the demo account, seeding Cosmos on first call. The
+// getDemoAccount returns the demo account, seeding the store on first call. The
 // seed is gated on the profile's absence, so repeated calls are idempotent —
 // they skip straight to the spatial lookup.
 func (h *handler) getDemoAccount(w http.ResponseWriter, r *http.Request) {
@@ -86,8 +84,7 @@ func (h *handler) getDemoAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Page one of the bounded fetch; the demo never needs "load more", so the
-	// continuation token is discarded (tc-fm8f).
+	// The demo never needs "load more", so the continuation token is discarded.
 	apps, _, err := h.apps.FindNearbyPage(ctx, demoLatitude, demoLongitude, demoRadiusMetres, demoNearbyLimit, "")
 	if err != nil {
 		serverError(w, r, h.logger, "find nearby demo applications", err)

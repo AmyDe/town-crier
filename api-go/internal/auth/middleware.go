@@ -1,7 +1,7 @@
 // Package auth provides Auth0 JWT bearer authentication and fallback-deny
-// authorization (GH#418). Every route requires a valid Auth0 access token unless
-// it was explicitly registered as anonymous; unmatched routes fall through to a
-// 401 challenge (a "no endpoint -> fallback policy" flow).
+// authorization. Every route requires a valid Auth0 access token unless it was
+// explicitly registered as anonymous; unmatched routes fall through to a 401
+// challenge.
 package auth
 
 import (
@@ -76,12 +76,8 @@ func RequireAuth(v TokenValidator, mux routeMatcher, anonymousPatterns map[strin
 			return
 		}
 
-		// Stamp the pseudonymous Auth0 subject on the live request span (started
-		// by the outermost otelhttp wrapper, cmd/api/wiring.go) so the Daily
-		// Active Users dashboard tile (tc-gha6l) can chart true active users.
-		// Only on successful authentication, and never email/name/IP — GDPR
-		// minimisation (see internal/middleware/errorbody.go, recover.go for the
-		// same middleware-stamps-the-live-span precedent).
+		// Stamp only the pseudonymous subject (never email, name or IP, for GDPR
+		// minimisation) on the live request span, so dashboards can count active users.
 		trace.SpanFromContext(r.Context()).SetAttributes(semconv.EnduserID(claims.Subject))
 
 		mux.ServeHTTP(w, r.WithContext(WithClaims(r.Context(), claims)))

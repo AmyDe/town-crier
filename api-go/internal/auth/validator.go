@@ -14,9 +14,8 @@ import (
 
 // ErrUnconfigured is returned by a deny-all validator: the Auth0 domain or
 // audience was absent, so no token can be validated and every request to a
-// protected route is denied. This is fail-closed by design — the Go dev app
-// ships without Auth0 env vars until infra wires them (GH#418, it3+), and a
-// missing config must never let unauthenticated requests through.
+// protected route is denied. This is fail-closed by design: a missing config
+// must never let unauthenticated requests through.
 var ErrUnconfigured = errors.New("auth0 validator not configured")
 
 // jwksCacheTTL caps how long a fetched JWKS is trusted before a background

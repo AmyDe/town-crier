@@ -16,7 +16,7 @@ import (
 // device registrations, offer-code redemptions) are sourced by the per-feature
 // stores via the consumer-side ExportReaders (export_readers.go); each is sorted
 // deterministically so successive exports are byte-stable, and an absent reader
-// (Cosmos-less local boot) yields an empty array — never null.
+// yields an empty array, never null.
 type exportUserData struct {
 	UserID                  string                        `json:"userId"`
 	Email                   *string                       `json:"email"`
@@ -71,13 +71,13 @@ type ExportedWatchZone struct {
 	RadiusMetres float64             `json:"radiusMetres"`
 	CreatedAt    platform.DotNetTime `json:"createdAt"`
 	// Boundary is null for a circle zone and a GeoJSON Polygon for a
-	// custom-shape one (tc-6he3x.4), mirroring the HTTP watch-zone handlers'
+	// custom-shape one, mirroring the HTTP watch-zone handlers'
 	// "boundary" field.
 	Boundary *ExportedBoundary `json:"boundary"`
 }
 
 // ExportedBoundary is the GeoJSON Polygon wire representation of a
-// custom-shape watch zone's boundary (tc-6he3x.4), matching the shape the
+// custom-shape watch zone's boundary, matching the shape the
 // HTTP watch-zone handlers already emit (watchzones' unexported
 // boundaryGeoJSON type). It is declared here, not reused from watchzones,
 // because profiles must not import watchzones -- watchzones already imports
@@ -98,10 +98,8 @@ type ExportedNotification struct {
 	ApplicationType        *string `json:"applicationType"`
 	AuthorityID            int     `json:"authorityId"`
 	Decision               *string `json:"decision"`
-	// PushSent mirrors notifications.DigestNotification.PushSent: it means "a
-	// push was queued for this notification", not "confirmed delivered" (a
-	// deliberate choice, tc-97k35.4). A user reading their own data export
-	// should not take "true" here as proof a push reached their device.
+	// PushSent means a push was queued for this notification, not that it was
+	// delivered.
 	PushSent  bool                `json:"pushSent"`
 	EmailSent bool                `json:"emailSent"`
 	CreatedAt platform.DotNetTime `json:"createdAt"`
@@ -128,7 +126,7 @@ type ExportedOfferCodeRedemption struct {
 // newExportUserData builds the export contract for a profile, sourcing each child
 // collection from its reader and sorting it deterministically so two successive
 // exports of the same data are byte-identical (the iOS share fetches the export
-// repeatedly). A nil reader (Cosmos-less local boot) leaves that collection as an
+// repeatedly). A nil reader leaves that collection as an
 // empty, non-nil slice so it serialises as [] rather than null. A reader failure
 // is returned so the handler renders a 500 rather than a silently-empty section.
 func newExportUserData(ctx context.Context, p *UserProfile, readers ExportReaders) (exportUserData, error) {
@@ -142,10 +140,7 @@ func newExportUserData(ctx context.Context, p *UserProfile, readers ExportReader
 			DecisionEmail:       z.DecisionEmail,
 		})
 	}
-	// Sort by zoneId so the export is deterministic: ZonePreferences is a Go map,
-	// whose iteration order is randomised, which made the array order flake
-	// request-to-request (tc-zgnt). A stable order keeps successive exports
-	// byte-identical.
+	// ZonePreferences is a map, so sort by zoneId to keep exports byte-identical.
 	slices.SortFunc(zones, func(a, b exportedZonePreference) int {
 		return cmp.Compare(a.ZoneID, b.ZoneID)
 	})

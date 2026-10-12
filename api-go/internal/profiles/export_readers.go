@@ -42,10 +42,8 @@ type OfferCodeRedemptionReader interface {
 }
 
 // ExportReaders bundles the per-collection readers GET /v1/me/data uses to source
-// the export's child collections, mirroring CascadeDeleters. It is populated in
-// cmd/api under the same Cosmos-configured guard as profiles.Routes; on a
-// Cosmos-less local boot the fields are nil and the export renders every
-// collection as [] (never null) — newExportUserData skips a nil reader.
+// the export's child collections, mirroring CascadeDeleters. A nil field renders
+// its collection as [] (never null).
 type ExportReaders struct {
 	WatchZones           WatchZoneReader
 	Notifications        NotificationReader
