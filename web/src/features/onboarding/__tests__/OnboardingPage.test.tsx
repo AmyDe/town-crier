@@ -91,7 +91,6 @@ describe('OnboardingPage', () => {
     const geocodingSpy = new SpyGeocodingPort();
     renderOnboarding(new SpyOnboardingPort(), geocodingSpy);
 
-    // Go through welcome → postcode → radius
     await user.click(screen.getByRole('button', { name: /get started/i }));
     await user.type(screen.getByLabelText(/postcode/i), 'SW1A 1AA');
     await user.click(screen.getByRole('button', { name: /look up/i }));
@@ -100,7 +99,6 @@ describe('OnboardingPage', () => {
       expect(screen.getByRole('radiogroup', { name: /radius/i })).toBeInTheDocument();
     });
 
-    // Select 5km and confirm
     await user.click(screen.getByLabelText('5 km'));
     await user.click(screen.getByRole('button', { name: /next/i }));
 
@@ -134,7 +132,6 @@ describe('OnboardingPage', () => {
     geocodingSpy.geocodeResult = { latitude: 51.5074, longitude: -0.1278 };
     renderOnboarding(onboardingSpy, geocodingSpy);
 
-    // Complete flow: welcome → postcode → radius → confirm
     await user.click(screen.getByRole('button', { name: /get started/i }));
     await user.type(screen.getByLabelText(/postcode/i), 'SW1A 1AA');
     await user.click(screen.getByRole('button', { name: /look up/i }));
@@ -177,9 +174,7 @@ describe('OnboardingPage', () => {
     expect(
       screen.getByRole('heading', { name: /draw any shape/i }),
     ).toBeInTheDocument();
-    // No web checkout exists (GH#1031) — the upsell CTA links out to the App
-    // Store instead of a web purchase flow, tagged so installs attribute
-    // back to this surface.
+    // The upsell links out to the App Store, tagged for install attribution.
     const cta = screen.getByRole('link', { name: /upgrade/i });
     expect(cta).toHaveAttribute('href', appStoreUrl('web-onboarding-custom-shape'));
     expect(cta).toHaveAttribute('target', '_blank');
@@ -193,7 +188,6 @@ describe('OnboardingPage', () => {
     const geocodingSpy = new SpyGeocodingPort();
     renderOnboarding(onboardingSpy, geocodingSpy);
 
-    // Complete flow up to confirm
     await user.click(screen.getByRole('button', { name: /get started/i }));
     await user.type(screen.getByLabelText(/postcode/i), 'SW1A 1AA');
     await user.click(screen.getByRole('button', { name: /look up/i }));
