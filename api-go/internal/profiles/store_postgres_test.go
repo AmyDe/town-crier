@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/AmyDe/town-crier/api-go/internal/platform"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -272,8 +273,8 @@ func TestPostgresStore_UpdateZoneCountWithCAS_ConflictReturnsCASError(t *testing
 		t.Fatal("expected CAS error, got nil")
 	}
 	// Must be detectable via errors.Is so the handler can branch.
-	if !errors.Is(err, errCASPreconditionFailed) {
-		t.Fatalf("UpdateZoneCountWithCAS conflict: got %v, want to wrap errCASPreconditionFailed", err)
+	if !errors.Is(err, platform.ErrCASPreconditionFailed) {
+		t.Fatalf("UpdateZoneCountWithCAS conflict: got %v, want to wrap platform.ErrCASPreconditionFailed", err)
 	}
 }
 

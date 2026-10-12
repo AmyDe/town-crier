@@ -40,8 +40,7 @@ type underlyingValidator interface {
 // JWKS (cached, background-refreshed). When constructed without Auth0 config it
 // becomes a deny-all validator.
 type Auth0Validator struct {
-	inner  underlyingValidator
-	logger *slog.Logger
+	inner underlyingValidator
 }
 
 // NewAuth0Validator builds a validator for the given Auth0 domain and API
@@ -53,7 +52,7 @@ func NewAuth0Validator(domain, audience string, logger *slog.Logger) (*Auth0Vali
 	if domain == "" || audience == "" {
 		logger.Warn("auth0 validator unconfigured; all protected routes will deny",
 			"hasDomain", domain != "", "hasAudience", audience != "")
-		return &Auth0Validator{logger: logger}, nil
+		return &Auth0Validator{}, nil
 	}
 
 	issuerURL, err := url.Parse("https://" + domain + "/")
@@ -81,7 +80,7 @@ func NewAuth0Validator(domain, audience string, logger *slog.Logger) (*Auth0Vali
 		return nil, fmt.Errorf("build jwt validator: %w", err)
 	}
 
-	return &Auth0Validator{inner: inner, logger: logger}, nil
+	return &Auth0Validator{inner: inner}, nil
 }
 
 // ValidateToken validates the raw token and returns its claims. A deny-all

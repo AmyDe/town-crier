@@ -14,6 +14,7 @@ import (
 
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
 	"github.com/AmyDe/town-crier/api-go/internal/erasure"
+	"github.com/AmyDe/town-crier/api-go/internal/httputil"
 )
 
 // maxBodyBytes caps the request body the /v1/me write handlers read.
@@ -293,27 +294,22 @@ func profileResultFrom(p *UserProfile, now time.Time) profileResult {
 	}
 }
 
-// writeJSON encodes v as a 200 application/json; charset=utf-8 response with
-// HTML escaping off and no trailing newline (the same approach the /api/me
-// handler uses). Every /v1/me success path is a 200, so the status is fixed.
+// writeJSON writes v as a 200 JSON response; every /v1/me success path is a 200.
 func (h *handler) writeJSON(w http.ResponseWriter, r *http.Request, v any) {
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(v); err != nil {
+	body, err := httputil.EncodeJSON(v)
+	if err != nil {
 		h.serverError(w, r, "encode response", err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	if _, err := w.Write(bytes.TrimRight(buf.Bytes(), "\n")); err != nil {
+	if _, err := w.Write(body); err != nil {
 		h.logger.ErrorContext(r.Context(), "write response", "error", err)
 	}
 }
 
-// serverError logs and emits a bodyless 500; the error envelope (with Detail) is
-// backfilled by middleware.ErrorBody, mirroring the rest of the API. The failing
-// operation is carried as a structured field so the log message stays constant.
+// serverError logs and emits a bodyless 500; middleware.ErrorBody backfills the
+// error envelope.
 func (h *handler) serverError(w http.ResponseWriter, r *http.Request, op string, err error) {
 	h.logger.ErrorContext(r.Context(), "profile request failed", "op", op, "error", err)
 	w.WriteHeader(http.StatusInternalServerError)
