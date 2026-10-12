@@ -14,7 +14,6 @@ import (
 
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
 	"github.com/AmyDe/town-crier/api-go/internal/erasure"
-	"github.com/AmyDe/town-crier/api-go/internal/httputil"
 )
 
 // maxBodyBytes caps the request body the /v1/me write handlers read.
@@ -272,16 +271,20 @@ func profileResultFrom(p *UserProfile, now time.Time) profileResult {
 	}
 }
 
-// writeJSON writes v as a 200 JSON response; every /v1/me success path is a 200.
+// writeJSON encodes v as a 200 application/json; charset=utf-8 response with
+// HTML escaping off and no trailing newline. Every /v1/me success path is a 200,
+// so the status is fixed.
 func (h *handler) writeJSON(w http.ResponseWriter, r *http.Request, v any) {
-	body, err := httputil.EncodeJSON(v)
-	if err != nil {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
 		h.serverError(w, r, "encode response", err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	if _, err := w.Write(body); err != nil {
+	if _, err := w.Write(bytes.TrimRight(buf.Bytes(), "\n")); err != nil {
 		h.logger.ErrorContext(r.Context(), "write response", "error", err)
 	}
 }
