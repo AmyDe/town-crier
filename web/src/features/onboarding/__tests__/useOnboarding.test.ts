@@ -81,7 +81,6 @@ describe('useOnboarding', () => {
     const spy = new SpyOnboardingPort();
     const { result } = renderHook(() => useOnboarding(spy));
 
-    // Advance to confirm
     act(() => { result.current.start(); });
     act(() => { result.current.handleGeocode(geocodeResult); });
     act(() => { result.current.selectRadius(2000); });
@@ -137,11 +136,6 @@ describe('useOnboarding', () => {
   });
 
   describe('upgradeTier', () => {
-    // There is no purchase/checkout UI on web yet (GH#1031 section 8) — no
-    // real trigger calls this today. These tests exercise the plumbing
-    // directly so a future purchase-completion callback has somewhere to
-    // hook in without restarting onboarding.
-
     it('swaps the current step from radius to drawing mid-flow', () => {
       const spy = new SpyOnboardingPort();
       const { result } = renderHook(() => useOnboarding(spy));

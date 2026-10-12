@@ -19,18 +19,14 @@ import (
 // maxBodyBytes caps the request body the /v1/me write handlers read.
 const maxBodyBytes = 1 << 20
 
-// profileStore is the consumer-side store the handlers use. *CosmosStore
-// satisfies it; tests substitute a hand-written fake.
+// profileStore is the consumer-side store the handlers use.
 type profileStore interface {
 	Get(ctx context.Context, userID string) (*UserProfile, error)
 	Save(ctx context.Context, p *UserProfile) error
 	Delete(ctx context.Context, userID string) error
 }
 
-// handler serves the /v1/me lifecycle. It depends on the profile store, the
-// Auth0 management client (real or no-op), the per-container cascade deleters
-// account erasure runs, the per-collection readers GET /v1/me/data exports, a
-// clock, and a logger — all injected, no globals.
+// handler serves the /v1/me lifecycle.
 type handler struct {
 	store         profileStore
 	auth0         Auth0Manager
@@ -61,9 +57,8 @@ func Routes(mux *http.ServeMux, store profileStore, auth0 Auth0Manager, cascade 
 	mux.HandleFunc("PATCH /v1/me", h.patch)
 	mux.HandleFunc("DELETE /v1/me", h.delete)
 	mux.HandleFunc("GET /v1/me/data", h.exportData)
-	// Per-zone notification preferences read/write the profile document, so they
-	// are served here (over the profile store) even though their route sits under
-	// /me/watch-zones.
+	// Zone preferences live on the profile, so they are served here despite the
+	// /me/watch-zones route.
 	mux.HandleFunc("GET /v1/me/watch-zones/{zoneId}/preferences", h.getZonePreferences)
 	mux.HandleFunc("PUT /v1/me/watch-zones/{zoneId}/preferences", h.putZonePreferences)
 }
@@ -193,26 +188,9 @@ func (h *handler) patch(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, r, profileResultFrom(profile, h.now()))
 }
 
-// delete implements DELETE /v1/me as a complete UK GDPR Art. 17 erasure. It reads
-// first so a missing profile is a 404 before any cascade, then runs the shared
-// erasure.Cascade: it erases the user's data from every per-user container, then
-// the profile document, then — last — the Auth0 user.
-//
-// Ordering is the safety contract: child records are removed before the profile,
-// so a mid-cascade failure leaves the profile present (GET still 200s) and the
-// account retryable by a repeat DELETE rather than half-erased; the Auth0 user is
-// deleted last so an Auth0 Management-API failure can never strand un-erased
-// Cosmos data. Each cascade store tolerates a 404 on an individual document
-// internally, and the Auth0 delete tolerates a 404, so the whole flow is
-// idempotent.
-//
-// The cascade execution is now shared with the dormant-cleanup worker via
-// internal/erasure (single source of truth, bead tc-gf0g) so the ordered
-// container list lives in exactly one place; the earlier drift (the Go handler
-// once deleted only the profile and the Auth0 user, orphaning watch zones, saved
-// applications, notifications, device registrations and the notification-state
-// watermark — bead tc-qkf2) cannot silently recur. The Get-first 404 check and
-// the ordering contract above are unchanged.
+// delete implements DELETE /v1/me as a complete UK GDPR Art. 17 erasure. A
+// missing profile is a 404 before any cascade runs; erasure.Cascade owns the
+// ordering and idempotency contract.
 func (h *handler) delete(w http.ResponseWriter, r *http.Request) {
 	subject := auth.Subject(r.Context())
 
@@ -294,8 +272,8 @@ func profileResultFrom(p *UserProfile, now time.Time) profileResult {
 }
 
 // writeJSON encodes v as a 200 application/json; charset=utf-8 response with
-// HTML escaping off and no trailing newline (the same approach the /api/me
-// handler uses). Every /v1/me success path is a 200, so the status is fixed.
+// HTML escaping off and no trailing newline. Every /v1/me success path is a 200,
+// so the status is fixed.
 func (h *handler) writeJSON(w http.ResponseWriter, r *http.Request, v any) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
@@ -311,9 +289,8 @@ func (h *handler) writeJSON(w http.ResponseWriter, r *http.Request, v any) {
 	}
 }
 
-// serverError logs and emits a bodyless 500; the error envelope (with Detail) is
-// backfilled by middleware.ErrorBody, mirroring the rest of the API. The failing
-// operation is carried as a structured field so the log message stays constant.
+// serverError logs and emits a bodyless 500; middleware.ErrorBody backfills the
+// error envelope.
 func (h *handler) serverError(w http.ResponseWriter, r *http.Request, op string, err error) {
 	h.logger.ErrorContext(r.Context(), "profile request failed", "op", op, "error", err)
 	w.WriteHeader(http.StatusInternalServerError)

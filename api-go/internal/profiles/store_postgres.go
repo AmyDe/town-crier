@@ -24,16 +24,6 @@ type querier interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
-// errCASPreconditionFailed is the sentinel returned by UpdateZoneCountWithCAS
-// when the conditional UPDATE matches zero rows (the version guard fired,
-// meaning a concurrent writer won the race). It is identical to
-// platform.ErrCASPreconditionFailed so the watchzones quota CAS handler can
-// branch on a single errors.Is check regardless of which backend is wired.
-//
-// Note: this is NOT a re-declaration. The Postgres store re-uses the platform
-// sentinel directly so callers need not know which backend produced the error.
-var errCASPreconditionFailed = platform.ErrCASPreconditionFailed
-
 // Store is the full point-store method set *PostgresStore satisfies and the
 // exported consumer-side interface the handlers and wiring depend on.
 //
@@ -70,18 +60,12 @@ var (
 	_ AdminProfileStore = (*PostgresAdminStore)(nil)
 )
 
-// PostgresStore reads and writes user profiles in the Postgres `users` table
-// (Cosmos → Postgres + PostGIS migration; memo 0010, epic #645). It is a
-// parallel implementation: the Cosmos store remains wired until the backend
-// flag flips, so nothing here is on a live path yet.
-//
-// Partition strategy: user_id is the natural primary key — every /v1/me
-// operation is a single-row point read/write. Cross-user scans (digest sweep,
-// dormant check) are in PostgresAdminStore.
+// PostgresStore reads and writes user profiles in the Postgres `users` table.
+// Cross-user scans live in PostgresAdminStore.
 //
 // CAS: the version column is a monotonic optimistic-lock counter.
 // UpdateZoneCountWithCAS issues UPDATE ... WHERE user_id=$1 AND version=$n and
-// increments version on success. Zero rows affected → ErrCASPreconditionFailed.
+// increments version on success. Zero rows affected → platform.ErrCASPreconditionFailed.
 type PostgresStore struct {
 	db querier
 }
@@ -389,7 +373,7 @@ func (s *PostgresStore) UpdateZoneCountWithCAS(ctx context.Context, userID strin
 		return fmt.Errorf("CAS update profile %q: %w", userID, err)
 	}
 	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("CAS update profile %q: %w", userID, errCASPreconditionFailed)
+		return fmt.Errorf("CAS update profile %q: %w", userID, platform.ErrCASPreconditionFailed)
 	}
 	return nil
 }

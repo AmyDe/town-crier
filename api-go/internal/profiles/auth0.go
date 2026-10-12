@@ -194,20 +194,11 @@ func (c *Auth0Client) token(ctx context.Context) (string, error) {
 	return c.cachedToken, nil
 }
 
-// userURL builds the management-API user resource URL with the user id escaped.
-// url.PathEscape leaves sub-delims like "|" unescaped, but Auth0 ids carry "|"
-// (e.g. "auth0|abc"); escapeUserID encodes "|" and other sub-delims so the
-// resource path is correctly percent-encoded.
+// userURL escapes the user id with url.QueryEscape because url.PathEscape leaves
+// the "|" in Auth0 ids (e.g. "auth0|abc") unescaped; the one divergence, space to
+// "+", cannot occur in an Auth0 subject.
 func (c *Auth0Client) userURL(userID string) string {
-	return c.baseURL + "/api/v2/users/" + escapeUserID(userID)
-}
-
-// escapeUserID escapes a user id for use as a single path segment, encoding
-// "|" and other sub-delims. url.QueryEscape matches for the realistic id forms
-// (provider|id, email) which never contain spaces; the only divergence —
-// space -> "+" — cannot occur in an Auth0 subject.
-func escapeUserID(userID string) string {
-	return url.QueryEscape(userID)
+	return c.baseURL + "/api/v2/users/" + url.QueryEscape(userID)
 }
 
 // NoOpAuth0Client is the fallback used when the Auth0 M2M config is absent:

@@ -21,7 +21,6 @@ export function useUserProfile(
   const profile = optimisticProfile ?? fetchedProfile;
 
   const refresh = useCallback(() => {
-    // Clear any optimistic overlay so the refetched profile is shown unaltered.
     setOptimisticProfile(null);
     refetchProfile();
   }, [refetchProfile]);

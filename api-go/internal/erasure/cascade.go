@@ -1,17 +1,10 @@
 // Package erasure holds the single shared GDPR Art. 17 account-erasure cascade
 // run by both account-deletion entry points: the dormant-cleanup worker
-// (WORKER_MODE=dormant-cleanup) and DELETE /v1/me. Both previously encoded the
-// same ordered container list independently, the exact drift that caused bead
-// tc-qkf2 (the HTTP handler omitted the cascade while the worker's grew ahead of
-// it). Centralising the order here means a new per-user container is added once,
-// not twice (bead tc-gf0g).
+// (WORKER_MODE=dormant-cleanup) and DELETE /v1/me.
 //
-// The package is deliberately dependency-free (stdlib only) so the profiles
-// package can import it without an import cycle — profiles imports erasure for
-// Cascade, and erasure must never import profiles (nor dormant). The
-// profile-absent tolerance that previously lived inside the cascade is injected
-// as a predicate (Deleters.ProfileAbsent) so erasure needs no knowledge of any
-// concrete sentinel error.
+// The package is deliberately stdlib-only so profiles can import it without an
+// import cycle; the profile-absent tolerance is injected as
+// Deleters.ProfileAbsent so erasure needs no concrete sentinel error.
 package erasure
 
 import (
@@ -84,14 +77,14 @@ func (d Deleters) profileAbsent(err error) bool {
 // Ordering is the safety contract: every personal-data scrub runs before the
 // profile, so a mid-cascade failure leaves the profile present (the account
 // stays retryable rather than half-erased); Auth0 is deleted last so an Auth0
-// Management-API failure can never strand un-erased Cosmos data. A profile delete
+// Management-API failure can never strand un-erased data. A profile delete
 // that reports the profile is already gone (per Deleters.ProfileAbsent) is
 // tolerated and the cascade proceeds to Auth0.
 //
 // The offer-code step anonymises rather than deletes: the OfferCodes container
 // holds admin-issued campaign artifacts keyed by code, so on erasure the
 // redeemer back-reference (redeemedByUserId + redeemedAt) is scrubbed while the
-// code's consumed state is kept (bead tc-5jyh).
+// code's consumed state is kept.
 func Cascade(ctx context.Context, userID string, d Deleters) error {
 	if err := d.Notifications.DeleteAllByUserID(ctx, userID); err != nil {
 		return fmt.Errorf("delete notifications: %w", err)

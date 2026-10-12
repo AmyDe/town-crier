@@ -24,15 +24,12 @@ export function ConnectedSettingsPage() {
     [getAccessTokenSilently],
   );
 
-  // After a successful redemption, force Auth0 to drop its cached access
-  // token so the next request carries the new `subscription_tier` claim.
-  // The Settings page itself re-fetches the profile — see `SettingsPage`.
+  // Drop Auth0's cached token so the next request carries the new subscription_tier claim.
   const handleRedeemSuccess = useCallback(async () => {
     try {
       await getAccessTokenSilently({ cacheMode: 'off' });
     } catch {
-      // A failure here only means tier-gated UI lags until the next natural
-      // token refresh — user-facing success feedback still shows correctly.
+      // Best effort: tier-gated UI only lags until the next natural token refresh.
     }
   }, [getAccessTokenSilently]);
 

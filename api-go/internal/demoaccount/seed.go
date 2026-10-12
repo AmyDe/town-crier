@@ -1,6 +1,6 @@
 // Package demoaccount owns the App Store reviewer demo endpoint:
 // GET /v1/demo-account (anonymous). On first call for the fixed demo identity it
-// idempotently seeds Cosmos — a Pro-tier profile, a Westminster watch zone, and
+// idempotently seeds the database — a Pro-tier profile, a Westminster watch zone, and
 // five fixed Westminster planning applications — then returns the zone plus the
 // applications found within the zone via a spatial lookup.
 //

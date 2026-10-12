@@ -24,8 +24,7 @@ type Page struct {
 }
 
 // SubscriptionTier enumerates the entitlement levels. The string forms ("Free",
-// "Personal", "Pro") are the canonical values stored in Cosmos and served on the
-// wire.
+// "Personal", "Pro") are the canonical values stored and served on the wire.
 type SubscriptionTier int
 
 const (
@@ -93,14 +92,11 @@ func (t SubscriptionTier) WatchZoneLimit() int {
 
 // AllowsCustomBoundary reports whether the tier may draw a custom-shape
 // (polygon) watch zone boundary rather than a plain circle: Personal and Pro,
-// never Free. Part of the custom-shape watch zones entitlement (epic GH#1031).
+// never Free.
 func (t SubscriptionTier) AllowsCustomBoundary() bool { return t.IsPaid() }
 
 // AllowsWatchZoneFilter reports whether the tier may set a pre-canned
-// keyword filter on a watch zone: Pro only, never Free or Personal. Narrower
-// than AllowsCustomBoundary (which any paid tier grants via IsPaid) —
-// pre-canned filters are a deliberate Pro-tier-exclusive upsell (GH#1090,
-// epic tc-w825j), not a Personal-tier capability.
+// keyword filter on a watch zone: Pro only, never Free or Personal.
 func (t SubscriptionTier) AllowsWatchZoneFilter() bool { return t.IsPaidPro() }
 
 // MaxZoneRadiusMetres returns the maximum enclosing-circle radius, in metres,

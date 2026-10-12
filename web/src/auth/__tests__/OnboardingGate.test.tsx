@@ -68,10 +68,8 @@ describe('OnboardingGate', () => {
   });
 
   it('shows loading indicator while loading', () => {
-    // Create a spy that never resolves
     const spy = new SpyProfileRepository();
     spy.fetchProfileResult = existingProfile;
-    // Override to return a never-resolving promise
     spy.fetchProfile = () => new Promise<UserProfile | null>(() => {});
 
     renderWithProfile(spy);

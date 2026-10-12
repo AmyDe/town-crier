@@ -13,14 +13,7 @@ export function useOnboarding(port: OnboardingPort) {
   const [geocode, setGeocode] = useState<GeocodeResult | null>(null);
   const [postcode, setPostcode] = useState('');
   const [radiusMetres, setRadiusMetres] = useState(1000);
-  /**
-   * A brand-new onboarding user has no established subscription yet
-   * (ConnectedOnboardingPage only reaches this flow when `fetchProfile()`
-   * resolves `null`), so this always starts Free. `upgradeTier` exists so a
-   * future purchase-completion callback can flip it mid-flow — nothing
-   * calls it from real UI yet, since no billing/checkout route exists on
-   * web (GH#1031 section 8). See `upgradeTier` below.
-   */
+  // New onboarding users have no subscription yet, so the tier starts Free.
   const [tier, setTier] = useState<SubscriptionTier>('Free');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -53,14 +46,7 @@ export function useOnboarding(port: OnboardingPort) {
     setStep('confirm');
   }, []);
 
-  /**
-   * Flips the onboarding tier mid-flow. There is no purchase/checkout UI on
-   * web yet (GH#1031 section 8) — nothing calls this today — but it exists
-   * so a future purchase-completion callback can hook in without
-   * restarting onboarding. When the user upgrades away from Free while
-   * sat on the radius step, swap straight to the drawing step so they land
-   * on the boundary-drawing UI instead of losing their place.
-   */
+  // Leaving Free while on the radius step jumps to the drawing step.
   const upgradeTier = useCallback((newTier: SubscriptionTier) => {
     setTier(newTier);
     if (newTier !== 'Free') {

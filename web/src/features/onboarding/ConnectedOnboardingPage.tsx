@@ -31,10 +31,7 @@ export function ConnectedOnboardingPage() {
     };
   }, [client]);
 
-  const geocodingPort: GeocodingPort = useMemo(() => {
-    const geo = geocodingApi(client);
-    return { geocode: (postcode) => geo.geocode(postcode) };
-  }, [client]);
+  const geocodingPort: GeocodingPort = useMemo(() => geocodingApi(client), [client]);
 
   if (hasProfile === null) return null;
   if (hasProfile) return <Navigate to="/dashboard" replace />;
