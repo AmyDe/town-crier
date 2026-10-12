@@ -269,9 +269,7 @@ func TestPostgresStore_LegacyCoalesceRoundTrip(t *testing.T) {
 	ctx := context.Background()
 
 	// Directly INSERT a row with NULL nullable-bool columns, bypassing Save
-	// (which always writes non-null booleans). This exercises the coalesceTrue
-	// logic in scanUserRow for real rows — the precise scenario DecodeDocument
-	// handles when backfilling legacy Cosmos documents.
+	// (which always writes non-null booleans).
 	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	_, err := store.db.Exec(ctx, `
 		INSERT INTO users (
