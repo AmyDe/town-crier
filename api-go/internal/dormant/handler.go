@@ -69,7 +69,7 @@ func (h *Handler) Run(ctx context.Context) (int, error) {
 
 	deleted := 0
 	for _, p := range dormant {
-		if err := h.erase(ctx, p.UserID); err != nil {
+		if err := erasure.Cascade(ctx, p.UserID, h.deleters); err != nil {
 			h.logger.ErrorContext(ctx, "dormant account erasure failed; will retry next cycle", "user", p.UserID, "error", err)
 			continue
 		}
@@ -77,12 +77,4 @@ func (h *Handler) Run(ctx context.Context) (int, error) {
 	}
 	h.logger.InfoContext(ctx, "dormant cleanup cycle complete", "scanned", len(dormant), "deleted", deleted)
 	return deleted, nil
-}
-
-// erase runs the shared GDPR Art. 17 erasure cascade for one user. The ordering
-// and profile-absent tolerance live in internal/erasure; the profile-absent
-// predicate (errors.Is(err, profiles.ErrNotFound)) is supplied by main() when it
-// builds the deleters.
-func (h *Handler) erase(ctx context.Context, userID string) error {
-	return erasure.Cascade(ctx, userID, h.deleters)
 }

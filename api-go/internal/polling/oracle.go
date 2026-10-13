@@ -70,11 +70,6 @@ func NewOracle(fetch windowPageFetcher, members oracleMemberStore, diffs oracleD
 // day began. It returns the first fetch or store error; a PlanIt limit is also
 // reported through the outcome's Stop.
 func (o *Oracle) Run(ctx context.Context, now time.Time) (OracleOutcome, error) {
-	res, err := o.run(ctx, now)
-	return res, err
-}
-
-func (o *Oracle) run(ctx context.Context, now time.Time) (OracleOutcome, error) {
 	res := OracleOutcome{Classified: map[string]int{}}
 	nightStart, _ := BudgetDay(now)
 	for _, axis := range [...]planit.Axis{planit.AxisStart, planit.AxisDecided} {
@@ -94,8 +89,7 @@ func (o *Oracle) run(ctx context.Context, now time.Time) (OracleOutcome, error) 
 
 func (o *Oracle) runAxis(ctx context.Context, axis planit.Axis, res *OracleOutcome) error {
 	wideStart := o.now()
-	local := wideStart.In(budgetLocation)
-	today := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, time.UTC)
+	today := dateOnly(wideStart.In(budgetLocation))
 	from := today.AddDate(0, 0, -coverageBandMaxAge)
 
 	wide, err := o.wideRead(ctx, axis, from, today, res)
