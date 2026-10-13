@@ -4,9 +4,6 @@ import (
 	"fmt"
 	"time"
 
-	// Bundles IANA tzdata so Europe/London resolves in a minimal container.
-	_ "time/tzdata"
-
 	"github.com/AmyDe/town-crier/api-go/internal/planit"
 )
 
@@ -86,7 +83,7 @@ type PlannedWork struct {
 // first (newest day first, start before decided), then coverage-band windows.
 func NextWindowWork(cfg WindowPlanConfig, state WindowPlanState, now time.Time, callsToday int) *PlannedWork {
 	local := now.In(budgetLocation)
-	today := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, time.UTC)
+	today := dateOnly(local)
 
 	if local.Hour() >= dayStartHour && local.Hour() < dayEndHour {
 		return nextDelta(cfg, state, local, today)

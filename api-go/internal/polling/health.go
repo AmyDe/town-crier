@@ -133,8 +133,7 @@ func alertBandUnverified(windows []WindowState, now time.Time) bool {
 
 func unverifiedWindows(windows []WindowState, now time.Time) int {
 	nightStart, _ := BudgetDay(now)
-	local := now.In(budgetLocation)
-	today := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, time.UTC)
+	today := dateOnly(now.In(budgetLocation))
 	byRef := make(map[WindowRef]WindowState, len(windows))
 	for _, w := range windows {
 		byRef[WindowRef{Axis: w.Axis, Day: w.Day}] = w

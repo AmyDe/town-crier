@@ -273,8 +273,7 @@ func (r *Runner) budgetAware(stop StopReason, parent, budget context.Context) St
 }
 
 func (r *Runner) loadState(ctx context.Context, now time.Time, skipped map[WindowRef]struct{}) (WindowPlanState, error) {
-	local := now.In(budgetLocation)
-	today := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, time.UTC)
+	today := dateOnly(now.In(budgetLocation))
 	windows, err := r.d.State.Load(ctx, today.AddDate(0, 0, -coverageBandMaxAge), today)
 	if err != nil {
 		return WindowPlanState{}, fmt.Errorf("load poll_window: %w", err)
@@ -329,21 +328,7 @@ func alertBandComplete(state WindowPlanState, now time.Time) bool {
 	if local.Hour() >= dayStartHour && local.Hour() < dayEndHour {
 		return false
 	}
-	nightStart, _ := BudgetDay(now)
-	today := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, time.UTC)
-	byRef := make(map[WindowRef]WindowState, len(state.Windows))
-	for _, w := range state.Windows {
-		byRef[WindowRef{Axis: w.Axis, Day: w.Day}] = w
-	}
-	for age := 0; age <= alertBandMaxAge; age++ {
-		for _, axis := range [...]planit.Axis{planit.AxisStart, planit.AxisDecided} {
-			w := byRef[WindowRef{Axis: axis, Day: today.AddDate(0, 0, -age)}]
-			if w.LastCompleteAt == nil || w.LastCompleteAt.Before(nightStart) {
-				return false
-			}
-		}
-	}
-	return true
+	return unverifiedWindows(state.Windows, now) == 0
 }
 
 func (r *Runner) health(ctx context.Context, counts RunCounts) Health {
@@ -353,8 +338,7 @@ func (r *Runner) health(ctx context.Context, counts RunCounts) Health {
 		r.d.Log.WarnContext(ctx, "poll.health_failed", slog.Any("error", err))
 		return Health{}
 	}
-	local := now.In(budgetLocation)
-	today := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, time.UTC)
+	today := dateOnly(now.In(budgetLocation))
 	in.Windows, err = r.d.State.Load(ctx, today.AddDate(0, 0, -alertBandMaxAge), today)
 	if err != nil {
 		r.d.Log.WarnContext(ctx, "poll.health_failed", slog.Any("error", err))

@@ -193,8 +193,7 @@ func (o *RunObserver) FullReadComplete(ctx context.Context, ref WindowRef, start
 
 func (o *RunObserver) writeDeltaSeen(ctx context.Context, q planit.WindowQuery, p planit.FetchPageResult) error {
 	now := o.now()
-	local := now.In(budgetLocation)
-	today := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, time.UTC)
+	today := dateOnly(now.In(budgetLocation))
 	oldest := today.AddDate(0, 0, -alertBandMaxAge)
 	var rows []DeltaSeen
 	for _, app := range p.Applications {

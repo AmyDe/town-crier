@@ -155,7 +155,7 @@ func TestHandler_Run_DeletesEachDormantAccountWithFullCascade(t *testing.T) {
 			t.Errorf("%s profile not deleted", id)
 		}
 	}
-	// Auth0 runs last per account, after every Cosmos erasure.
+	// Auth0 runs last per account, after every store erasure.
 	if len(auth0.deleted) != 2 || auth0.deleted[0] != "auth0|a" || auth0.deleted[1] != "auth0|b" {
 		t.Errorf("auth0 deletes: got %v, want [auth0|a auth0|b]", auth0.deleted)
 	}

@@ -325,8 +325,6 @@ func resultFor(res planit.FetchPageResult, err error) CallResult {
 		return CallResult{Status: intPtr(403)}
 	case errors.As(err, &httpErr):
 		return CallResult{Status: intPtr(httpErr.StatusCode)}
-	case errors.Is(err, planit.ErrTimeout):
-		return CallResult{}
 	default:
 		return CallResult{}
 	}

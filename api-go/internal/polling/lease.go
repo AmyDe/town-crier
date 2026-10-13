@@ -1,11 +1,11 @@
 package polling
 
 // leaseDocumentID is the id of the single lease row gating concurrent poll
-// cycles. It lives in its own row keyed by id='polling'.
+// cycles.
 const leaseDocumentID = "polling"
 
-// LeaseHandle carries the holder id of the winning write so Release can perform a
-// conditional (holder-scoped) delete.
+// LeaseHandle carries the winning holder id in ETag so Release can perform a
+// holder-scoped delete.
 type LeaseHandle struct {
 	ETag string
 }
