@@ -11,17 +11,18 @@ const CACHEABLE_STATUSES = new Set([200, 301, 404]);
 /**
  * Fetches an SEO path from the API through the edge cache. `x-tc-cached-at` holds the
  * store time in epoch milliseconds; the stored copy keeps the origin's Cache-Control in
- * `x-tc-origin-cache-control` so clients never see the 7-day edge max-age.
+ * `x-tc-origin-cache-control` so clients never see the 7-day edge max-age. The query
+ * string is dropped from both the cache key and the origin URL, since the API ignores it.
  */
 export async function fetchSeo(url: URL, env: Env, deps: Deps): Promise<Response> {
-  const key = url.toString();
+  const key = url.origin + url.pathname;
   const cached = await deps.cache.match(key);
   const ageSeconds = cached ? cachedAgeSeconds(cached, deps.now()) : Infinity;
   if (cached && ageSeconds < FRESH_SECONDS) {
     return fromCache(cached, false);
   }
 
-  const origin = await fetchOrigin(new URL(env.API_ORIGIN).origin + url.pathname + url.search, env, deps);
+  const origin = await fetchOrigin(new URL(env.API_ORIGIN).origin + url.pathname, env, deps);
   if (origin && origin.status < 500) {
     if (CACHEABLE_STATUSES.has(origin.status)) {
       deps.waitUntil(deps.cache.put(key, toStoredCopy(origin, deps.now())));

@@ -169,4 +169,16 @@ describe("edge cache", () => {
     expect(cache.puts).toHaveLength(0);
     expect(cache.store.size).toBe(0);
   });
+
+  it("ignores the query string for the cache key and origin URL", async () => {
+    const { fetch, cache, ctx, deps } = makeDeps({ fetch: new FakeFetch(async () => page("page")) });
+
+    await handle(new Request(`${PAGE}?x=1`), env, deps);
+    await ctx.settle();
+    const second = await handle(new Request(`${PAGE}?x=2`), env, deps);
+
+    expect(fetch.calls.map((c) => c.url)).toEqual(["https://api.example.test/planning/croydon"]);
+    expect(cache.puts).toEqual([PAGE]);
+    expect(await second.text()).toBe("page");
+  });
 });

@@ -61,7 +61,7 @@ describe("routing", () => {
     expect(fetch.calls.map((c) => c.url)).toEqual([
       "https://api.example.test/planning",
       "https://api.example.test/planning/croydon/",
-      "https://api.example.test/planning/croydon/purley?page=2",
+      "https://api.example.test/planning/croydon/purley",
       "https://api.example.test/sitemap.xml",
     ]);
     for (const call of fetch.calls) {
