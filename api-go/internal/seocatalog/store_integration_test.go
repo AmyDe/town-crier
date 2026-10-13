@@ -215,10 +215,11 @@ func TestAssign_ChangedLastDifferentReassigns(t *testing.T) {
 	}
 }
 
-func TestAssign_WatermarkSkipsUnchanged(t *testing.T) {
+func TestAssign_WatermarkSkipsUnchangedOlderThanLookback(t *testing.T) {
 	pool := newPool(t)
 	s := newStore(t, pool, nil, town(1, "town-one", 0))
-	seedApp(t, pool, 1, "APP-1", at(100), baseTime)
+	seedApp(t, pool, 1, "APP-OLD", at(100), baseTime)
+	seedApp(t, pool, 1, "APP-NEW", at(100), baseTime.Add(4*24*time.Hour))
 	mustAssign(t, s)
 	if _, err := pool.Exec(context.Background(), "DELETE FROM seo_town_assignments"); err != nil {
 		t.Fatalf("delete assignments: %v", err)
@@ -226,11 +227,51 @@ func TestAssign_WatermarkSkipsUnchanged(t *testing.T) {
 
 	sum := mustAssign(t, s)
 
-	if _, ok := assignedTown(t, pool, 1, "APP-1"); ok {
-		t.Error("unchanged application was reassigned despite the watermark")
+	if _, ok := assignedTown(t, pool, 1, "APP-OLD"); ok {
+		t.Error("application older than the lookback was re-scanned")
 	}
-	if sum.Processed != 0 {
-		t.Errorf("processed = %d, want 0", sum.Processed)
+	if _, ok := assignedTown(t, pool, 1, "APP-NEW"); !ok {
+		t.Error("application inside the lookback was not re-scanned")
+	}
+	if sum.Processed != 1 {
+		t.Errorf("processed = %d, want 1", sum.Processed)
+	}
+}
+
+func TestAssign_LateArrivalWithinLookbackIsAssigned(t *testing.T) {
+	pool := newPool(t)
+	s := newStore(t, pool, nil, town(1, "town-one", 0))
+	seedApp(t, pool, 1, "APP-1", at(100), baseTime)
+	mustAssign(t, s)
+
+	seedApp(t, pool, 1, "APP-LATE", at(100), baseTime.Add(-20*time.Hour))
+	mustAssign(t, s)
+
+	if got, _ := assignedTown(t, pool, 1, "APP-LATE"); got != "town-one" {
+		t.Errorf("late application town = %q, want town-one", got)
+	}
+}
+
+func TestAssign_WatermarkNeverMovesBack(t *testing.T) {
+	pool := newPool(t)
+	s := newStore(t, pool, nil, town(1, "town-one", 0))
+	seedApp(t, pool, 1, "APP-1", at(100), baseTime)
+	mustAssign(t, s)
+
+	seedApp(t, pool, 1, "APP-LATE", at(100), baseTime.Add(-20*time.Hour))
+	mustAssign(t, s)
+
+	var raw string
+	if err := pool.QueryRow(context.Background(),
+		"SELECT value FROM seo_state WHERE key = 'assign_watermark'").Scan(&raw); err != nil {
+		t.Fatalf("read watermark: %v", err)
+	}
+	got, err := time.Parse(time.RFC3339Nano, raw)
+	if err != nil {
+		t.Fatalf("parse watermark %q: %v", raw, err)
+	}
+	if !got.Equal(baseTime) {
+		t.Errorf("watermark = %v, want %v", got, baseTime)
 	}
 }
 

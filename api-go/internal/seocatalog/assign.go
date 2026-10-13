@@ -11,7 +11,10 @@ import (
 )
 
 const (
-	assignBatchSize      = 5000
+	assignBatchSize = 5000
+	// assignLookback re-scans rows behind the watermark because last_different is
+	// PlanIt's timestamp, and records can arrive hours to a day after it.
+	assignLookback       = 3 * 24 * time.Hour
 	stateGazetteerHash   = "gazetteer_hash"
 	stateAssignWatermark = "assign_watermark"
 	upsertTownsSQL       = `INSERT INTO seo_towns (authority_code, slug, name, population, location)
@@ -55,10 +58,11 @@ type AssignSummary struct {
 }
 
 // Assign syncs seo_towns from the gazetteer, then assigns every application
-// changed since the stored watermark to its nearest town within
-// AssignmentRadiusMetres in the same authority (exact ties go to the lower town
-// slug), removing the assignment of one with no location or no town in range. A
-// changed gazetteer clears all assignments and the watermark first.
+// whose last_different is later than the stored watermark minus three days to
+// its nearest town within AssignmentRadiusMetres in the same authority (exact
+// ties go to the lower town slug), removing the assignment of one with no
+// location or no town in range. The watermark only moves forward. A changed
+// gazetteer clears all assignments and the watermark first.
 func (s *Store) Assign(ctx context.Context) (AssignSummary, error) {
 	var sum AssignSummary
 	reset, err := s.syncGazetteer(ctx)
@@ -67,8 +71,13 @@ func (s *Store) Assign(ctx context.Context) (AssignSummary, error) {
 	}
 	sum.Reset = reset
 
+	watermark, err := readWatermark(ctx, s.pool)
+	if err != nil {
+		return sum, err
+	}
+	lower := watermark.Add(-assignLookback)
 	for {
-		n, err := s.assignBatch(ctx)
+		n, upper, err := s.assignBatch(ctx, lower, watermark)
 		if err != nil {
 			return sum, err
 		}
@@ -77,6 +86,10 @@ func (s *Store) Assign(ctx context.Context) (AssignSummary, error) {
 		}
 		sum.Batches++
 		sum.Processed += n
+		lower = upper
+		if upper.After(watermark) {
+			watermark = upper
+		}
 	}
 }
 
@@ -154,47 +167,51 @@ func syncTownsTx(ctx context.Context, tx pgx.Tx, towns []Town) error {
 	return nil
 }
 
-// assignBatch processes the next slice of changed applications in one
-// transaction and returns how many it covered (0 when caught up). The slice is
-// extended to every application sharing its newest last_different, so the
-// advancing watermark never skips a tied row.
-func (s *Store) assignBatch(ctx context.Context) (n int, err error) {
+// assignBatch processes the next slice of applications after lower in one
+// transaction and returns how many it covered (0 when caught up) and the
+// slice's newest last_different. The slice is extended to every application
+// sharing that newest value, so the advancing cursor never skips a tied row.
+// The stored watermark is only written when upper passes it.
+func (s *Store) assignBatch(ctx context.Context, lower, watermark time.Time) (n int, upper time.Time, err error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("begin assign batch: %w", err)
+		return 0, upper, fmt.Errorf("begin assign batch: %w", err)
 	}
 	defer rollback(ctx, tx)
 
-	watermark, err := readWatermark(ctx, tx)
-	if err != nil {
-		return 0, err
+	var newest *time.Time
+	if err = tx.QueryRow(ctx, batchBoundsSQL, lower, assignBatchSize).Scan(&n, &newest); err != nil {
+		return 0, upper, fmt.Errorf("find assign batch: %w", err)
 	}
-	var upper *time.Time
-	if err = tx.QueryRow(ctx, batchBoundsSQL, watermark, assignBatchSize).Scan(&n, &upper); err != nil {
-		return 0, fmt.Errorf("find assign batch: %w", err)
+	if n == 0 || newest == nil {
+		return 0, upper, nil
 	}
-	if n == 0 || upper == nil {
-		return 0, nil
-	}
+	upper = *newest
 	radius := float64(AssignmentRadiusMetres)
-	if _, err = tx.Exec(ctx, removeAssignmentsSQL, watermark, *upper, radius); err != nil {
-		return 0, fmt.Errorf("remove stale assignments: %w", err)
+	if _, err = tx.Exec(ctx, removeAssignmentsSQL, lower, upper, radius); err != nil {
+		return 0, upper, fmt.Errorf("remove stale assignments: %w", err)
 	}
-	if _, err = tx.Exec(ctx, upsertAssignmentsSQL, watermark, *upper, radius); err != nil {
-		return 0, fmt.Errorf("assign applications to towns: %w", err)
+	if _, err = tx.Exec(ctx, upsertAssignmentsSQL, lower, upper, radius); err != nil {
+		return 0, upper, fmt.Errorf("assign applications to towns: %w", err)
 	}
-	if _, err = tx.Exec(ctx, setStateSQL, stateAssignWatermark, upper.UTC().Format(time.RFC3339Nano)); err != nil {
-		return 0, fmt.Errorf("advance assign watermark: %w", err)
+	if upper.After(watermark) {
+		if _, err = tx.Exec(ctx, setStateSQL, stateAssignWatermark, upper.UTC().Format(time.RFC3339Nano)); err != nil {
+			return 0, upper, fmt.Errorf("advance assign watermark: %w", err)
+		}
 	}
 	if err = tx.Commit(ctx); err != nil {
-		return 0, fmt.Errorf("commit assign batch: %w", err)
+		return 0, upper, fmt.Errorf("commit assign batch: %w", err)
 	}
-	return n, nil
+	return n, upper, nil
 }
 
-func readWatermark(ctx context.Context, tx pgx.Tx) (time.Time, error) {
+type rowQuerier interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
+func readWatermark(ctx context.Context, q rowQuerier) (time.Time, error) {
 	var raw string
-	err := tx.QueryRow(ctx, "SELECT value FROM seo_state WHERE key = $1", stateAssignWatermark).Scan(&raw)
+	err := q.QueryRow(ctx, "SELECT value FROM seo_state WHERE key = $1", stateAssignWatermark).Scan(&raw)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return time.Unix(0, 0).UTC(), nil
 	}
