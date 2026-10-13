@@ -154,16 +154,12 @@ func (h *handler) authority(ctx context.Context, page seocatalog.Page) (any, *ti
 }
 
 func (h *handler) town(ctx context.Context, page seocatalog.Page) (any, *time.Time, error) {
-	apps, err := h.store.TownApplications(ctx, page.AuthorityCode, page.TownSlug, listLimit)
+	apps, err := h.store.TownApplications(ctx, page.Path)
 	if err != nil {
 		return nil, nil, err
 	}
-	lastmod, err := h.store.TownLastmod(ctx, page.AuthorityCode, page.TownSlug)
-	if err != nil {
-		return nil, nil, err
-	}
-	v, err := buildTownView(h.now(), page, apps, lastmod)
-	return v, lastmod, err
+	v, err := buildTownView(h.now(), page, apps, page.Lastmod)
+	return v, page.Lastmod, err
 }
 
 // newest is the latest lastmod among entries of the given kind ("" = any kind).

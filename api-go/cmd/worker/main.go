@@ -3,7 +3,7 @@
 // the process runs it once, flushes telemetry, and exits with a status code.
 //
 // poll, digest, hourly-digest, dormant-cleanup, subscription-sweep, pg-purge,
-// appstore-reconcile, seo-assign and seo-catalog are implemented. Every store is backed by
+// appstore-reconcile and seo-catalog are implemented. Every store is backed by
 // Postgres + PostGIS (the single datastore); the shared pool is built once at
 // boot and a pool failure is fatal.
 package main
@@ -187,21 +187,17 @@ func run() int {
 
 	// The SEO runners are built only for their own modes so a gazetteer problem
 	// cannot affect any other job.
-	var (
-		seoAssigner  worker.SEOAssignRunner
-		seoCataloger worker.SEOCatalogRunner
-	)
-	if mode == "seo-assign" || mode == "seo-catalog" {
+	var seoCataloger worker.SEOCatalogRunner
+	if mode == "seo-catalog" {
 		seo, err := buildSEO(pool, logger)
 		if err != nil {
 			logger.Error("build seo runners", "error", err)
 			return 1
 		}
-		seoAssigner = seoAssignRunner{seo}
 		seoCataloger = seoCatalogRunner{seo}
 	}
 
-	return worker.Run(context.Background(), mode, digester, dormantRunner, poller, sweepRunner, purger, reconciler, seoAssigner, seoCataloger, logger)
+	return worker.Run(context.Background(), mode, digester, dormantRunner, poller, sweepRunner, purger, reconciler, seoCataloger, logger)
 }
 
 // buildNotifyFanOut constructs the decision-dispatch, zone-enqueue and

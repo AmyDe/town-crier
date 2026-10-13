@@ -98,6 +98,11 @@ func loadFixture(t *testing.T) *fakeStore {
 	for path, day := range f.Lastmod {
 		s.lastmod[path] = parseDate(t, &day)
 	}
+	for i := range s.pages {
+		if s.pages[i].Kind == seocatalog.KindTown {
+			s.pages[i].Lastmod = s.lastmod[s.pages[i].Path]
+		}
+	}
 	for path, list := range f.Applications {
 		for _, a := range list {
 			ld, err := time.Parse(time.RFC3339, a.LastDifferent)
@@ -158,21 +163,12 @@ func (s *fakeStore) AuthorityApplications(_ context.Context, code string, limit 
 	return s.apps[p.Path][:min(limit, len(s.apps[p.Path]))], nil
 }
 
-func (s *fakeStore) TownApplications(_ context.Context, code, slug string, limit int) ([]applications.PlanningApplication, error) {
-	p, ok := s.byCode(seocatalog.KindTown, code, slug)
-	if !ok {
-		return nil, nil
-	}
-	return s.apps[p.Path][:min(limit, len(s.apps[p.Path]))], nil
+func (s *fakeStore) TownApplications(_ context.Context, path string) ([]applications.PlanningApplication, error) {
+	return s.apps[path], nil
 }
 
 func (s *fakeStore) AuthorityLastmod(_ context.Context, code string) (*time.Time, error) {
 	p, _ := s.byCode(seocatalog.KindAuthority, code, "")
-	return s.lastmod[p.Path], nil
-}
-
-func (s *fakeStore) TownLastmod(_ context.Context, code, slug string) (*time.Time, error) {
-	p, _ := s.byCode(seocatalog.KindTown, code, slug)
 	return s.lastmod[p.Path], nil
 }
 

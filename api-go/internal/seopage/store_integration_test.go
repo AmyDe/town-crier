@@ -20,7 +20,7 @@ var baseTime = time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
 func newIntegrationStore(t *testing.T) (*PostgresStore, *pgxpool.Pool) {
 	t.Helper()
 	pool := pgtest.New(t)
-	pgtest.Truncate(t, pool, "applications", "seo_town_assignments", "seo_pages", "seo_redirects")
+	pgtest.Truncate(t, pool, "applications", "seo_town_applications", "seo_pages", "seo_redirects")
 	return NewPostgresStore(pool, applications.NewPostgresStore(pool)), pool
 }
 
@@ -28,10 +28,10 @@ func seedPage(t *testing.T, pool *pgxpool.Pool, p seocatalog.Page, breakdown, ch
 	t.Helper()
 	_, err := pool.Exec(context.Background(), `
 		INSERT INTO seo_pages (path, kind, authority_code, town_slug, display_name, authority_name, total,
-		                       status_breakdown, children, neighbours, lat, lng, sort_order)
-		VALUES ($1, $2, NULLIF($3, ''), NULLIF($4, ''), $5, NULLIF($6, ''), $7, $8::jsonb, $9::jsonb, $10::jsonb, $11, $12, $13)`,
+		                       status_breakdown, children, neighbours, lat, lng, lastmod, sort_order)
+		VALUES ($1, $2, NULLIF($3, ''), NULLIF($4, ''), $5, NULLIF($6, ''), $7, $8::jsonb, $9::jsonb, $10::jsonb, $11, $12, $13, $14)`,
 		p.Path, p.Kind, p.AuthorityCode, p.TownSlug, p.DisplayName, p.AuthorityName, p.Total,
-		breakdown, children, neighbours, p.Lat, p.Lng, p.SortOrder)
+		breakdown, children, neighbours, p.Lat, p.Lng, p.Lastmod, p.SortOrder)
 	if err != nil {
 		t.Fatalf("seed page %q: %v", p.Path, err)
 	}
@@ -49,13 +49,13 @@ func seedApplication(t *testing.T, pool *pgxpool.Pool, authorityCode, name strin
 	}
 }
 
-func assign(t *testing.T, pool *pgxpool.Pool, authorityCode, name, townSlug string, lastDifferent time.Time) {
+func listTown(t *testing.T, pool *pgxpool.Pool, path string, rank int, authorityCode, name string) {
 	t.Helper()
 	_, err := pool.Exec(context.Background(),
-		`INSERT INTO seo_town_assignments (authority_code, planit_name, town_slug, last_different) VALUES ($1, $2, $3, $4)`,
-		authorityCode, name, townSlug, lastDifferent)
+		`INSERT INTO seo_town_applications (path, rank, authority_code, planit_name) VALUES ($1, $2, $3, $4)`,
+		path, rank, authorityCode, name)
 	if err != nil {
-		t.Fatalf("assign %s: %v", name, err)
+		t.Fatalf("list %s at %s#%d: %v", name, path, rank, err)
 	}
 }
 
@@ -162,25 +162,34 @@ func TestPostgresStore_AuthorityApplicationsOrderedByRealDateAndLimited(t *testi
 	}
 }
 
-func TestPostgresStore_TownApplicationsOnlyAssignedInRealDateOrder(t *testing.T) {
+func TestPostgresStore_TownApplicationsFollowRankWithCurrentState(t *testing.T) {
 	store, pool := newIntegrationStore(t)
 	d := func(day int) *time.Time { v := time.Date(2026, 5, day, 0, 0, 0, 0, time.UTC); return &v }
-	seedApplication(t, pool, "52", "truro-old", d(2), baseTime)
-	seedApplication(t, pool, "52", "truro-new", d(25), baseTime)
-	seedApplication(t, pool, "52", "falmouth-app", d(28), baseTime)
-	seedApplication(t, pool, "52", "unassigned", d(29), baseTime)
-	seedApplication(t, pool, "99", "truro-other-authority", d(29), baseTime)
-	assign(t, pool, "52", "truro-old", "truro", baseTime)
-	assign(t, pool, "52", "truro-new", "truro", baseTime)
-	assign(t, pool, "52", "falmouth-app", "falmouth", baseTime)
-	assign(t, pool, "99", "truro-other-authority", "truro", baseTime)
+	seedApplication(t, pool, "52", "second", d(2), baseTime)
+	seedApplication(t, pool, "52", "first", d(25), baseTime)
+	seedApplication(t, pool, "52", "other-town", d(28), baseTime)
+	listTown(t, pool, "cornwall/truro", 2, "52", "second")
+	listTown(t, pool, "cornwall/truro", 1, "52", "first")
+	listTown(t, pool, "cornwall/falmouth", 1, "52", "other-town")
+	listTown(t, pool, "cornwall/falmouth", 2, "52", "first")
 
-	apps, err := store.TownApplications(context.Background(), "52", "truro", 30)
+	apps, err := store.TownApplications(context.Background(), "cornwall/truro")
 	if err != nil {
 		t.Fatalf("TownApplications: %v", err)
 	}
-	if got := names(apps); !reflect.DeepEqual(got, []string{"truro-new", "truro-old"}) {
-		t.Fatalf("applications = %v, want [truro-new truro-old]", got)
+	if got := names(apps); !reflect.DeepEqual(got, []string{"first", "second"}) {
+		t.Fatalf("applications = %v, want [first second] in rank order", got)
+	}
+}
+
+func TestPostgresStore_PageCarriesTownLastmod(t *testing.T) {
+	store, pool := newIntegrationStore(t)
+	lm := baseTime.Add(time.Hour)
+	seedPage(t, pool, seocatalog.Page{Path: "cornwall/truro", Kind: seocatalog.KindTown, AuthorityCode: "52", TownSlug: "truro", DisplayName: "Truro", Lastmod: &lm}, `[]`, `[]`, `[]`)
+
+	p, ok, err := store.Page(context.Background(), "cornwall/truro")
+	if err != nil || !ok || p.Lastmod == nil || !p.Lastmod.Equal(lm) {
+		t.Fatalf("Page = %+v, %v, %v, want lastmod %v", p, ok, err, lm)
 	}
 }
 
@@ -199,35 +208,16 @@ func TestPostgresStore_AuthorityLastmod(t *testing.T) {
 	}
 }
 
-func TestPostgresStore_TownLastmod(t *testing.T) {
-	store, pool := newIntegrationStore(t)
-	seedApplication(t, pool, "52", "a", nil, baseTime)
-	seedApplication(t, pool, "52", "b", nil, baseTime)
-	seedApplication(t, pool, "52", "c", nil, baseTime)
-	assign(t, pool, "52", "a", "truro", baseTime)
-	assign(t, pool, "52", "b", "truro", baseTime.Add(time.Hour))
-	assign(t, pool, "52", "c", "falmouth", baseTime.Add(72*time.Hour))
-
-	got, err := store.TownLastmod(context.Background(), "52", "truro")
-	if err != nil || got == nil || !got.Equal(baseTime.Add(time.Hour)) {
-		t.Fatalf("TownLastmod = %v, %v, want %v", got, err, baseTime.Add(time.Hour))
-	}
-	none, err := store.TownLastmod(context.Background(), "52", "nowhere")
-	if err != nil || none != nil {
-		t.Fatalf("unassigned TownLastmod = %v, %v, want nil", none, err)
-	}
-}
-
 func TestPostgresStore_SitemapInSortOrderWithLastmods(t *testing.T) {
 	store, pool := newIntegrationStore(t)
 	seedPage(t, pool, seocatalog.Page{Path: "", Kind: seocatalog.KindHub, DisplayName: "Planning applications", SortOrder: 0}, `[]`, `[]`, `[]`)
 	seedPage(t, pool, seocatalog.Page{Path: "cornwall", Kind: seocatalog.KindAuthority, AuthorityCode: "52", DisplayName: "Cornwall", SortOrder: 1}, `[]`, `[]`, `[]`)
-	seedPage(t, pool, seocatalog.Page{Path: "cornwall/truro", Kind: seocatalog.KindTown, AuthorityCode: "52", TownSlug: "truro", DisplayName: "Truro", SortOrder: 2}, `[]`, `[]`, `[]`)
+	townLM := baseTime
+	seedPage(t, pool, seocatalog.Page{Path: "cornwall/truro", Kind: seocatalog.KindTown, AuthorityCode: "52", TownSlug: "truro", DisplayName: "Truro", Lastmod: &townLM, SortOrder: 2}, `[]`, `[]`, `[]`)
 	seedPage(t, pool, seocatalog.Page{Path: "empty", Kind: seocatalog.KindAuthority, AuthorityCode: "77", DisplayName: "Empty", SortOrder: 3}, `[]`, `[]`, `[]`)
 	seedPage(t, pool, seocatalog.Page{Path: "towns", Kind: seocatalog.KindTowns, DisplayName: "Towns", SortOrder: 4}, `[]`, `[]`, `[]`)
 	seedApplication(t, pool, "52", "a", nil, baseTime)
 	seedApplication(t, pool, "52", "b", nil, baseTime.Add(24*time.Hour))
-	assign(t, pool, "52", "a", "truro", baseTime)
 
 	entries, err := store.Sitemap(context.Background())
 	if err != nil {
@@ -241,7 +231,7 @@ func TestPostgresStore_SitemapInSortOrderWithLastmods(t *testing.T) {
 	for _, e := range entries {
 		got = append(got, row{e.Path, e.Lastmod})
 	}
-	authorityLM, townLM := baseTime.Add(24*time.Hour), baseTime
+	authorityLM := baseTime.Add(24 * time.Hour)
 	want := []row{{"", nil}, {"cornwall", &authorityLM}, {"cornwall/truro", &townLM}, {"empty", nil}, {"towns", nil}}
 	if len(got) != len(want) {
 		t.Fatalf("Sitemap = %d entries, want %d", len(got), len(want))

@@ -509,10 +509,7 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 	if err = createWorkerJob(ctx, ec, "pg-purge", "0 2 * * *", 600, "pg-purge"); err != nil {
 		return err
 	}
-	if err = createWorkerJob(ctx, ec, "seo-assign", "20 * * * *", 1800, "seo-assign"); err != nil {
-		return err
-	}
-	if err = createWorkerJob(ctx, ec, "seo-catalog", "10 10 * * *", 1800, "seo-catalog"); err != nil {
+	if err = createWorkerJob(ctx, ec, "seo-catalog", "40 5 * * *", 1800, "seo-catalog"); err != nil {
 		return err
 	}
 

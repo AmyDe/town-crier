@@ -1,12 +1,10 @@
 // Package seocatalog maintains the Postgres catalog behind the programmatic SEO
-// pages: the embedded town gazetteer, the stored application-to-town
-// assignment, and the daily-recomputed page set (seo_pages, seo_redirects).
+// pages: the embedded town gazetteer and the daily-recomputed page set
+// (seo_pages, seo_redirects, seo_town_applications).
 package seocatalog
 
 import (
-	"crypto/sha256"
 	_ "embed"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 )
@@ -14,8 +12,8 @@ import (
 //go:embed resources/towns.json
 var embeddedTowns []byte
 
-// Town is one gazetteer record. Every town uses the same
-// AssignmentRadiusMetres radius.
+// Town is one gazetteer record. Every town uses the same TownRadiusMetres
+// radius.
 type Town struct {
 	Slug        string  `json:"slug"`
 	Name        string  `json:"name"`
@@ -25,11 +23,9 @@ type Town struct {
 	Population  int     `json:"population"`
 }
 
-// Gazetteer is a parsed town list plus the SHA-256 (hex) of its source bytes,
-// used to detect a changed gazetteer between runs.
+// Gazetteer is a parsed town list.
 type Gazetteer struct {
 	Towns []Town
-	Hash  string
 }
 
 // ParseGazetteer decodes a gazetteer JSON array.
@@ -38,8 +34,7 @@ func ParseGazetteer(raw []byte) (Gazetteer, error) {
 	if err := json.Unmarshal(raw, &towns); err != nil {
 		return Gazetteer{}, fmt.Errorf("parse town gazetteer: %w", err)
 	}
-	sum := sha256.Sum256(raw)
-	return Gazetteer{Towns: towns, Hash: hex.EncodeToString(sum[:])}, nil
+	return Gazetteer{Towns: towns}, nil
 }
 
 // EmbeddedGazetteer returns the gazetteer compiled into the binary.

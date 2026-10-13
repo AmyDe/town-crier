@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"time"
 
 	"github.com/AmyDe/town-crier/api-go/internal/authorities"
 )
@@ -21,9 +22,11 @@ const (
 const (
 	// CoverageThreshold is the minimum application count for a page to publish.
 	CoverageThreshold = 10
-	// AssignmentRadiusMetres is the town radius for assignment and for town
-	// totals; it is the same for every town.
-	AssignmentRadiusMetres = 5000
+	// TownRadiusMetres is the radius around a town centre that defines its
+	// application set; it is the same for every town.
+	TownRadiusMetres = 5000
+	// TownListSize is the number of applications listed on a town page.
+	TownListSize = 30
 	// NearbyTownsCount is the neighbour count on a town page.
 	NearbyTownsCount = 8
 	// NeighbourAuthoritiesCount is the neighbour count on an authority page.
@@ -77,6 +80,7 @@ type Page struct {
 	Neighbours      []Neighbour
 	Lat             *float64
 	Lng             *float64
+	Lastmod         *time.Time
 	SortOrder       int
 }
 
@@ -87,10 +91,21 @@ type Redirect struct {
 	Target string
 }
 
-// Catalog is the full recomputed page set.
+// TownApplication is one seo_town_applications row: the application at Rank
+// (1 is newest) on the town page at Path.
+type TownApplication struct {
+	Path          string
+	Rank          int
+	AuthorityCode string
+	PlanitName    string
+}
+
+// Catalog is the full recomputed page set. TownApplications is filled by the
+// store, not by BuildCatalog.
 type Catalog struct {
-	Pages     []Page
-	Redirects []Redirect
+	Pages            []Page
+	Redirects        []Redirect
+	TownApplications []TownApplication
 }
 
 // AuthorityStats are the whole-authority aggregates for one authority code.
@@ -108,7 +123,9 @@ type TownKey struct {
 
 // TownStats are the whole-radius aggregates for one town.
 type TownStats struct {
-	Total     int
+	Total int
+	// Lastmod is the newest last_different in the whole radius; nil when none.
+	Lastmod   *time.Time
 	Breakdown []StateCount
 }
 
@@ -314,7 +331,7 @@ func townPages(records []townRecord) []Page {
 			Path: r.path, Kind: KindTown, AuthorityCode: r.authorityCode, TownSlug: r.town.Slug,
 			DisplayName: r.town.Name, AuthorityName: r.authorityName,
 			Total: r.stats.Total, StatusBreakdown: nonNilBreakdown(r.stats.Breakdown),
-			Children: []TownLink{}, Neighbours: neighbours, Lat: &lat, Lng: &lng,
+			Children: []TownLink{}, Neighbours: neighbours, Lat: &lat, Lng: &lng, Lastmod: r.stats.Lastmod,
 		})
 	}
 	return pages

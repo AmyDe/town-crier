@@ -15,8 +15,7 @@ type Store interface {
 	RedirectTarget(ctx context.Context, path string) (string, bool, error)
 	Pages(ctx context.Context, kind string) ([]seocatalog.Page, error)
 	AuthorityApplications(ctx context.Context, authorityCode string, limit int) ([]applications.PlanningApplication, error)
-	TownApplications(ctx context.Context, authorityCode, townSlug string, limit int) ([]applications.PlanningApplication, error)
+	TownApplications(ctx context.Context, path string) ([]applications.PlanningApplication, error)
 	AuthorityLastmod(ctx context.Context, authorityCode string) (*time.Time, error)
-	TownLastmod(ctx context.Context, authorityCode, townSlug string) (*time.Time, error)
 	Sitemap(ctx context.Context) ([]SitemapEntry, error)
 }

@@ -17,8 +17,8 @@ type seoAdapter struct {
 	logger *slog.Logger
 }
 
-// buildSEO wires the seo-assign and seo-catalog runners over the embedded
-// gazetteer and authority list.
+// buildSEO wires the seo-catalog runner over the embedded gazetteer and
+// authority list.
 func buildSEO(pool *pgxpool.Pool, logger *slog.Logger) (*seoAdapter, error) {
 	gazetteer, err := seocatalog.EmbeddedGazetteer()
 	if err != nil {
@@ -26,18 +26,6 @@ func buildSEO(pool *pgxpool.Pool, logger *slog.Logger) (*seoAdapter, error) {
 	}
 	store := seocatalog.NewStore(pool, gazetteer, authorities.NewLookup())
 	return &seoAdapter{store: store, logger: logger}, nil
-}
-
-type seoAssignRunner struct{ *seoAdapter }
-
-func (a seoAssignRunner) Run(ctx context.Context) (int, error) {
-	sum, err := a.store.Assign(ctx)
-	if err != nil {
-		return 0, err
-	}
-	a.logger.InfoContext(ctx, "seo-assign completed",
-		"batches", sum.Batches, "processed", sum.Processed, "gazetteerReset", sum.Reset)
-	return sum.Processed, nil
 }
 
 type seoCatalogRunner struct{ *seoAdapter }

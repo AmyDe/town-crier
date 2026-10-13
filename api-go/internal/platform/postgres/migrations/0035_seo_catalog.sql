@@ -10,15 +10,13 @@ CREATE TABLE seo_towns (
 );
 CREATE INDEX seo_towns_location_gist ON seo_towns USING gist (location);
 
-CREATE TABLE seo_town_assignments (
+CREATE TABLE seo_town_applications (
+    path            text NOT NULL,
+    rank            integer NOT NULL,
     authority_code  text NOT NULL,
     planit_name     text NOT NULL,
-    town_slug       text NOT NULL,
-    last_different  timestamptz NOT NULL,
-    PRIMARY KEY (authority_code, planit_name),
-    FOREIGN KEY (authority_code, planit_name) REFERENCES applications (authority_code, planit_name) ON DELETE CASCADE
+    PRIMARY KEY (path, rank)
 );
-CREATE INDEX seo_town_assignments_town ON seo_town_assignments (authority_code, town_slug, last_different DESC);
 
 CREATE TABLE seo_pages (
     path              text PRIMARY KEY,
@@ -33,6 +31,7 @@ CREATE TABLE seo_pages (
     neighbours        jsonb NOT NULL DEFAULT '[]',
     lat               double precision,
     lng               double precision,
+    lastmod           timestamptz,
     sort_order        integer NOT NULL
 );
 
@@ -51,5 +50,5 @@ CREATE TABLE seo_state (
 DROP TABLE IF EXISTS seo_state;
 DROP TABLE IF EXISTS seo_redirects;
 DROP TABLE IF EXISTS seo_pages;
-DROP TABLE IF EXISTS seo_town_assignments;
+DROP TABLE IF EXISTS seo_town_applications;
 DROP TABLE IF EXISTS seo_towns;

@@ -898,7 +898,7 @@ func TestPostgresStore_FindNearbyPage(t *testing.T) {
 }
 
 // TestPostgresStore_RecentNearPoint_OrdersByRealDateDescNullsLast proves
-// RecentNearPoint (GH#912 Phase 2, ?sort=recent) orders by recentRealDateOrder —
+// RecentNearPoint (GH#912 Phase 2, ?sort=recent) orders by RecentRealDateOrder —
 // most-recently-decided, falling back to most-recently-submitted, with NULLS
 // LAST on both — while still applying the ST_DWithin radius filter, mirroring
 // TestPostgresStore_RecentByAuthority_OrdersByRealDateDescNullsLast but

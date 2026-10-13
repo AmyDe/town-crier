@@ -7,23 +7,21 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const pgRecentByTownQuery = "SELECT " + appColumns +
-	" FROM applications WHERE authority_code = $1 AND EXISTS (" +
-	"SELECT 1 FROM seo_town_assignments s WHERE s.authority_code = applications.authority_code " +
-	"AND s.planit_name = applications.planit_name AND s.town_slug = $2) " +
-	"ORDER BY " + recentRealDateOrder + " LIMIT $3"
+const pgCatalogTownQuery = "SELECT " + appColumns +
+	" FROM seo_town_applications s JOIN applications a USING (authority_code, planit_name)" +
+	" WHERE s.path = $1 ORDER BY s.rank"
 
-// RecentByTown returns up to cap most-recently-active applications assigned to
-// the town (seo_town_assignments), ordered by recentRealDateOrder. It backs the
-// live SEO town page.
-func (s *PostgresStore) RecentByTown(ctx context.Context, authorityCode, townSlug string, cap int) ([]PlanningApplication, error) {
-	rows, err := s.db.Query(ctx, pgRecentByTownQuery, authorityCode, townSlug, cap)
+// CatalogTownApplications returns the applications the seo-catalog job
+// precomputed for the town page at path ("<authority>/<town>"), in rank order,
+// with their current state. It backs the live SEO town page.
+func (s *PostgresStore) CatalogTownApplications(ctx context.Context, path string) ([]PlanningApplication, error) {
+	rows, err := s.db.Query(ctx, pgCatalogTownQuery, path)
 	if err != nil {
-		return nil, fmt.Errorf("recent applications for town %q/%q: %w", authorityCode, townSlug, err)
+		return nil, fmt.Errorf("catalog applications for town %q: %w", path, err)
 	}
 	apps, err := pgx.CollectRows(rows, scanAppRow)
 	if err != nil {
-		return nil, fmt.Errorf("recent applications for town %q/%q: %w", authorityCode, townSlug, err)
+		return nil, fmt.Errorf("catalog applications for town %q: %w", path, err)
 	}
 	return apps, nil
 }

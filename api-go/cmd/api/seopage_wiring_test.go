@@ -34,13 +34,11 @@ func (fakeSEOStore) AuthorityApplications(context.Context, string, int) ([]appli
 	return nil, nil
 }
 
-func (fakeSEOStore) TownApplications(context.Context, string, string, int) ([]applications.PlanningApplication, error) {
+func (fakeSEOStore) TownApplications(context.Context, string) ([]applications.PlanningApplication, error) {
 	return nil, nil
 }
 
 func (fakeSEOStore) AuthorityLastmod(context.Context, string) (*time.Time, error) { return nil, nil }
-
-func (fakeSEOStore) TownLastmod(context.Context, string, string) (*time.Time, error) { return nil, nil }
 
 func (fakeSEOStore) Sitemap(context.Context) ([]seopage.SitemapEntry, error) { return nil, nil }
 

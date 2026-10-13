@@ -34,7 +34,7 @@ func (d fakeDirectory) All() []authorities.Authority { return d }
 func newPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	pool := pgtest.New(t)
-	pgtest.Truncate(t, pool, "applications", "seo_towns", "seo_town_assignments", "seo_pages", "seo_redirects", "seo_state")
+	pgtest.Truncate(t, pool, "applications", "seo_towns", "seo_town_applications", "seo_pages", "seo_redirects", "seo_state")
 	return pool
 }
 
@@ -79,6 +79,36 @@ func seedApp(t *testing.T, pool *pgxpool.Pool, authorityID int, name string, nor
 	}
 }
 
+func seedDated(t *testing.T, pool *pgxpool.Pool, authorityID int, name string, northMetres float64, start, lastDifferent time.Time) {
+	t.Helper()
+	_, err := pool.Exec(context.Background(), `
+		INSERT INTO applications (planit_name, authority_code, uid, area_name, area_id, app_state, location, start_date, last_different)
+		VALUES ($1, $2, $3, 'Area', $4, 'Undecided', ST_SetSRID(ST_MakePoint($5::float8, $6::float8), 4326)::geography, $7, $8)`,
+		name, strconv.Itoa(authorityID), "uid-"+name, authorityID, baseLng, latNorth(northMetres), start, lastDifferent)
+	if err != nil {
+		t.Fatalf("seed dated application %s: %v", name, err)
+	}
+}
+
+func townList(t *testing.T, pool *pgxpool.Pool, path string) []string {
+	t.Helper()
+	rows, err := pool.Query(context.Background(),
+		"SELECT planit_name FROM seo_town_applications WHERE path = $1 ORDER BY rank", path)
+	if err != nil {
+		t.Fatalf("read town list %q: %v", path, err)
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var n string
+		if err := rows.Scan(&n); err != nil {
+			t.Fatalf("scan town list: %v", err)
+		}
+		out = append(out, n)
+	}
+	return out
+}
+
 func at(m float64) *float64 { return &m }
 
 func seedMany(t *testing.T, pool *pgxpool.Pool, authorityID int, prefix string, count int, northMetres float64) {
@@ -88,27 +118,6 @@ func seedMany(t *testing.T, pool *pgxpool.Pool, authorityID int, prefix string, 
 	}
 }
 
-func assignedTown(t *testing.T, pool *pgxpool.Pool, authorityID int, name string) (string, bool) {
-	t.Helper()
-	var slug string
-	err := pool.QueryRow(context.Background(),
-		"SELECT town_slug FROM seo_town_assignments WHERE authority_code = $1 AND planit_name = $2",
-		strconv.Itoa(authorityID), name).Scan(&slug)
-	if err != nil {
-		return "", false
-	}
-	return slug, true
-}
-
-func mustAssign(t *testing.T, s *seocatalog.Store) seocatalog.AssignSummary {
-	t.Helper()
-	sum, err := s.Assign(context.Background())
-	if err != nil {
-		t.Fatalf("Assign: %v", err)
-	}
-	return sum
-}
-
 func mustRebuild(t *testing.T, s *seocatalog.Store) seocatalog.CatalogSummary {
 	t.Helper()
 	sum, err := s.Rebuild(context.Background())
@@ -116,183 +125,6 @@ func mustRebuild(t *testing.T, s *seocatalog.Store) seocatalog.CatalogSummary {
 		t.Fatalf("Rebuild: %v", err)
 	}
 	return sum
-}
-
-func TestAssign_NearestTownWithinRadius(t *testing.T) {
-	pool := newPool(t)
-	s := newStore(t, pool, nil, town(1, "far-town", 0), town(1, "near-town", 4000))
-	seedApp(t, pool, 1, "APP-1", at(3000), baseTime)
-
-	mustAssign(t, s)
-
-	if got, ok := assignedTown(t, pool, 1, "APP-1"); !ok || got != "near-town" {
-		t.Errorf("assigned town = %q (found %v), want near-town", got, ok)
-	}
-}
-
-func TestAssign_TieGoesToLowerSlug(t *testing.T) {
-	pool := newPool(t)
-	s := newStore(t, pool, nil, town(1, "b-town", 1000), town(1, "a-town", 1000))
-	seedApp(t, pool, 1, "APP-1", at(2000), baseTime)
-
-	mustAssign(t, s)
-
-	if got, _ := assignedTown(t, pool, 1, "APP-1"); got != "a-town" {
-		t.Errorf("assigned town = %q, want a-town", got)
-	}
-}
-
-func TestAssign_OutOfRangeHasNoAssignment(t *testing.T) {
-	pool := newPool(t)
-	s := newStore(t, pool, nil, town(1, "only-town", 0))
-	seedApp(t, pool, 1, "APP-FAR", at(6000), baseTime)
-
-	mustAssign(t, s)
-
-	if got, ok := assignedTown(t, pool, 1, "APP-FAR"); ok {
-		t.Errorf("assigned town = %q, want none", got)
-	}
-}
-
-func TestAssign_OtherAuthorityTownIgnored(t *testing.T) {
-	pool := newPool(t)
-	s := newStore(t, pool, nil, town(1, "town-one", 0))
-	seedApp(t, pool, 2, "APP-OTHER", at(100), baseTime)
-
-	mustAssign(t, s)
-
-	if got, ok := assignedTown(t, pool, 2, "APP-OTHER"); ok {
-		t.Errorf("assigned town = %q, want none", got)
-	}
-}
-
-func TestAssign_NullLocationRemovesAssignment(t *testing.T) {
-	pool := newPool(t)
-	s := newStore(t, pool, nil, town(1, "town-one", 0))
-	seedApp(t, pool, 1, "APP-1", at(100), baseTime)
-	mustAssign(t, s)
-	if _, ok := assignedTown(t, pool, 1, "APP-1"); !ok {
-		t.Fatal("expected an initial assignment")
-	}
-
-	if _, err := pool.Exec(context.Background(),
-		"UPDATE applications SET location = NULL, last_different = $1 WHERE planit_name = 'APP-1'", baseTime.Add(time.Hour)); err != nil {
-		t.Fatalf("null location: %v", err)
-	}
-	mustAssign(t, s)
-
-	if got, ok := assignedTown(t, pool, 1, "APP-1"); ok {
-		t.Errorf("assigned town = %q, want none after location removed", got)
-	}
-}
-
-func TestAssign_ChangedLastDifferentReassigns(t *testing.T) {
-	pool := newPool(t)
-	s := newStore(t, pool, nil, town(1, "south-town", 0), town(1, "north-town", 4500))
-	seedApp(t, pool, 1, "APP-1", at(100), baseTime)
-	mustAssign(t, s)
-	if got, _ := assignedTown(t, pool, 1, "APP-1"); got != "south-town" {
-		t.Fatalf("initial town = %q, want south-town", got)
-	}
-
-	later := baseTime.Add(2 * time.Hour)
-	if _, err := pool.Exec(context.Background(), `
-		UPDATE applications SET last_different = $1,
-		  location = ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography WHERE planit_name = 'APP-1'`,
-		later, baseLng, latNorth(4400)); err != nil {
-		t.Fatalf("move application: %v", err)
-	}
-	mustAssign(t, s)
-
-	var slug string
-	var lastDifferent time.Time
-	if err := pool.QueryRow(context.Background(),
-		"SELECT town_slug, last_different FROM seo_town_assignments WHERE planit_name = 'APP-1'").Scan(&slug, &lastDifferent); err != nil {
-		t.Fatalf("read assignment: %v", err)
-	}
-	if slug != "north-town" || !lastDifferent.Equal(later) {
-		t.Errorf("assignment = (%q, %v), want (north-town, %v)", slug, lastDifferent, later)
-	}
-}
-
-func TestAssign_WatermarkSkipsUnchangedOlderThanLookback(t *testing.T) {
-	pool := newPool(t)
-	s := newStore(t, pool, nil, town(1, "town-one", 0))
-	seedApp(t, pool, 1, "APP-OLD", at(100), baseTime)
-	seedApp(t, pool, 1, "APP-NEW", at(100), baseTime.Add(4*24*time.Hour))
-	mustAssign(t, s)
-	if _, err := pool.Exec(context.Background(), "DELETE FROM seo_town_assignments"); err != nil {
-		t.Fatalf("delete assignments: %v", err)
-	}
-
-	sum := mustAssign(t, s)
-
-	if _, ok := assignedTown(t, pool, 1, "APP-OLD"); ok {
-		t.Error("application older than the lookback was re-scanned")
-	}
-	if _, ok := assignedTown(t, pool, 1, "APP-NEW"); !ok {
-		t.Error("application inside the lookback was not re-scanned")
-	}
-	if sum.Processed != 1 {
-		t.Errorf("processed = %d, want 1", sum.Processed)
-	}
-}
-
-func TestAssign_LateArrivalWithinLookbackIsAssigned(t *testing.T) {
-	pool := newPool(t)
-	s := newStore(t, pool, nil, town(1, "town-one", 0))
-	seedApp(t, pool, 1, "APP-1", at(100), baseTime)
-	mustAssign(t, s)
-
-	seedApp(t, pool, 1, "APP-LATE", at(100), baseTime.Add(-20*time.Hour))
-	mustAssign(t, s)
-
-	if got, _ := assignedTown(t, pool, 1, "APP-LATE"); got != "town-one" {
-		t.Errorf("late application town = %q, want town-one", got)
-	}
-}
-
-func TestAssign_WatermarkNeverMovesBack(t *testing.T) {
-	pool := newPool(t)
-	s := newStore(t, pool, nil, town(1, "town-one", 0))
-	seedApp(t, pool, 1, "APP-1", at(100), baseTime)
-	mustAssign(t, s)
-
-	seedApp(t, pool, 1, "APP-LATE", at(100), baseTime.Add(-20*time.Hour))
-	mustAssign(t, s)
-
-	var raw string
-	if err := pool.QueryRow(context.Background(),
-		"SELECT value FROM seo_state WHERE key = 'assign_watermark'").Scan(&raw); err != nil {
-		t.Fatalf("read watermark: %v", err)
-	}
-	got, err := time.Parse(time.RFC3339Nano, raw)
-	if err != nil {
-		t.Fatalf("parse watermark %q: %v", raw, err)
-	}
-	if !got.Equal(baseTime) {
-		t.Errorf("watermark = %v, want %v", got, baseTime)
-	}
-}
-
-func TestAssign_GazetteerHashChangeReassignsAll(t *testing.T) {
-	pool := newPool(t)
-	first := newStore(t, pool, nil, town(1, "old-town", 0))
-	seedApp(t, pool, 1, "APP-1", at(100), baseTime)
-	mustAssign(t, first)
-	if got, _ := assignedTown(t, pool, 1, "APP-1"); got != "old-town" {
-		t.Fatalf("initial town = %q, want old-town", got)
-	}
-
-	second := newStore(t, pool, nil, town(1, "new-town", 0))
-	sum := mustAssign(t, second)
-
-	if !sum.Reset {
-		t.Error("Reset = false, want true for a changed gazetteer")
-	}
-	if got, _ := assignedTown(t, pool, 1, "APP-1"); got != "new-town" {
-		t.Errorf("town after gazetteer change = %q, want new-town", got)
-	}
 }
 
 func pageExists(t *testing.T, pool *pgxpool.Pool, path string) bool {
@@ -349,7 +181,6 @@ func TestCatalog_TownCoverageGateUsesWholeRadius(t *testing.T) {
 	seedMany(t, pool, 1, "A", 6, 0)
 	seedMany(t, pool, 1, "B", 6, 1000)
 	seedMany(t, pool, 1, "G", 9, 20000)
-	mustAssign(t, s)
 
 	mustRebuild(t, s)
 
@@ -486,6 +317,36 @@ func TestCatalog_AuthorityNeighboursSixByTownCentroid(t *testing.T) {
 	}
 }
 
+func TestCatalog_ReplaceIsAtomicForTownLists(t *testing.T) {
+	pool := newPool(t)
+	dir := fakeDirectory{district(1, "Shire")}
+	seedMany(t, pool, 1, "A", 12, 100)
+	mustRebuild(t, newStore(t, pool, dir, town(1, "alpha", 0)))
+	before := townList(t, pool, "shire/alpha")
+	if len(before) != 12 {
+		t.Fatalf("initial list = %d, want 12", len(before))
+	}
+
+	ctx := context.Background()
+	if _, err := pool.Exec(ctx, `
+		CREATE FUNCTION seo_town_applications_fail() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'list insert blocked'; END $$;
+		CREATE TRIGGER seo_town_applications_fail BEFORE INSERT ON seo_town_applications FOR EACH ROW EXECUTE FUNCTION seo_town_applications_fail()`); err != nil {
+		t.Fatalf("create trigger: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), "DROP TRIGGER IF EXISTS seo_town_applications_fail ON seo_town_applications; DROP FUNCTION IF EXISTS seo_town_applications_fail()")
+	})
+
+	seedMany(t, pool, 1, "B", 3, 100)
+	if _, err := newStore(t, pool, dir, town(1, "alpha", 0)).Rebuild(ctx); err == nil {
+		t.Fatal("Rebuild succeeded, want the blocked list insert to fail it")
+	}
+
+	if after := townList(t, pool, "shire/alpha"); fmt.Sprint(after) != fmt.Sprint(before) {
+		t.Errorf("list after failed rebuild = %v, want unchanged %v", after, before)
+	}
+}
+
 func TestCatalog_ReplaceIsAtomic(t *testing.T) {
 	pool := newPool(t)
 	dir := fakeDirectory{district(1, "First"), district(2, "Second")}
@@ -538,5 +399,115 @@ func TestCatalog_TownsSlugCollisionKeepsPreviousCatalog(t *testing.T) {
 	}
 	if after := pagePaths(t, pool); fmt.Sprint(after) != fmt.Sprint(before) {
 		t.Errorf("pages after collision = %v, want unchanged %v", after, before)
+	}
+}
+
+func TestCatalog_GazetteerSyncRemovesDeletedTowns(t *testing.T) {
+	pool := newPool(t)
+	dir := fakeDirectory{district(1, "Shire")}
+	mustRebuild(t, newStore(t, pool, dir, town(1, "old-town", 0), town(1, "kept", 5000)))
+
+	mustRebuild(t, newStore(t, pool, dir, town(1, "kept", 5000), town(1, "new-town", 9000)))
+
+	rows, err := pool.Query(context.Background(), "SELECT slug FROM seo_towns ORDER BY slug")
+	if err != nil {
+		t.Fatalf("list towns: %v", err)
+	}
+	defer rows.Close()
+	var got []string
+	for rows.Next() {
+		var slug string
+		if err := rows.Scan(&slug); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		got = append(got, slug)
+	}
+	if fmt.Sprint(got) != "[kept new-town]" {
+		t.Errorf("seo_towns = %v, want [kept new-town]", got)
+	}
+}
+
+func TestCatalog_TownListNewestThirtyWithinRadius(t *testing.T) {
+	pool := newPool(t)
+	s := newStore(t, pool, fakeDirectory{district(1, "Shire")}, town(1, "alpha", 0))
+	for i := range 35 {
+		seedDated(t, pool, 1, fmt.Sprintf("IN-%02d", i), 100, baseTime.AddDate(0, 0, -i), baseTime)
+	}
+	seedDated(t, pool, 1, "OUT-NEWEST", 6000, baseTime.AddDate(0, 0, 10), baseTime)
+
+	mustRebuild(t, s)
+
+	got := townList(t, pool, "shire/alpha")
+	if len(got) != 30 {
+		t.Fatalf("list length = %d, want 30", len(got))
+	}
+	if got[0] != "IN-00" || got[29] != "IN-29" {
+		t.Errorf("list runs %s..%s, want IN-00..IN-29 newest first", got[0], got[29])
+	}
+}
+
+func TestCatalog_TownListOverlapsBetweenTowns(t *testing.T) {
+	pool := newPool(t)
+	s := newStore(t, pool, fakeDirectory{district(1, "Shire")}, town(1, "alpha", 0), town(1, "beta", 3000))
+	seedMany(t, pool, 1, "SHARED", 12, 1500)
+
+	mustRebuild(t, s)
+
+	a, b := townList(t, pool, "shire/alpha"), townList(t, pool, "shire/beta")
+	if len(a) != 12 || fmt.Sprint(a) != fmt.Sprint(b) {
+		t.Errorf("alpha = %v, beta = %v, want the same 12 applications on both", a, b)
+	}
+}
+
+func TestCatalog_TownListIgnoresOtherAuthority(t *testing.T) {
+	pool := newPool(t)
+	s := newStore(t, pool, fakeDirectory{district(1, "Shire"), district(2, "Other")}, town(1, "alpha", 0))
+	seedMany(t, pool, 1, "OWN", 10, 100)
+	seedMany(t, pool, 2, "FOREIGN", 5, 100)
+
+	mustRebuild(t, s)
+
+	for _, n := range townList(t, pool, "shire/alpha") {
+		if len(n) >= 7 && n[:7] == "FOREIGN" {
+			t.Errorf("list contains other-authority application %s", n)
+		}
+	}
+	if got := len(townList(t, pool, "shire/alpha")); got != 10 {
+		t.Errorf("list length = %d, want 10", got)
+	}
+}
+
+func TestCatalog_TownListSkipsNullLocation(t *testing.T) {
+	pool := newPool(t)
+	s := newStore(t, pool, fakeDirectory{district(1, "Shire")}, town(1, "alpha", 0))
+	seedMany(t, pool, 1, "LOC", 10, 100)
+	seedApp(t, pool, 1, "NOLOC", nil, baseTime.Add(time.Hour))
+
+	mustRebuild(t, s)
+
+	for _, n := range townList(t, pool, "shire/alpha") {
+		if n == "NOLOC" {
+			t.Error("list contains an application with no location")
+		}
+	}
+}
+
+func TestCatalog_TownLastmodWholeRadius(t *testing.T) {
+	pool := newPool(t)
+	s := newStore(t, pool, fakeDirectory{district(1, "Shire")}, town(1, "alpha", 0))
+	for i := range 31 {
+		seedDated(t, pool, 1, fmt.Sprintf("N-%02d", i), 100, baseTime.AddDate(0, 0, 5-i), baseTime)
+	}
+	newest := baseTime.Add(48 * time.Hour)
+	seedDated(t, pool, 1, "OLD-START-NEW-CHANGE", 200, baseTime.AddDate(-1, 0, 0), newest)
+
+	mustRebuild(t, s)
+
+	var lastmod *time.Time
+	if err := pool.QueryRow(context.Background(), "SELECT lastmod FROM seo_pages WHERE path = 'shire/alpha'").Scan(&lastmod); err != nil {
+		t.Fatalf("read lastmod: %v", err)
+	}
+	if lastmod == nil || !lastmod.Equal(newest) {
+		t.Errorf("lastmod = %v, want %v from the whole 5,000 m set", lastmod, newest)
 	}
 }
