@@ -7,11 +7,8 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
 )
 
-// spyZoneStore is a hand-written full watchzones.Store double used by the notify
-// wiring tests. It records the FindZonesContaining coordinates so a test can
-// prove the notify fan-out reaches the store through the watchzones.Store
-// interface (the riskiest poll path — issue #664 Phase B). Every other method
-// returns the empty path; the notify tests only drive FindZonesContaining.
+// spyZoneStore is a full watchzones.Store double that records the
+// FindZonesContaining coordinates; every other method returns the empty path.
 type spyZoneStore struct {
 	mu              sync.Mutex
 	findCalls       int
@@ -20,8 +17,6 @@ type spyZoneStore struct {
 	findReturnZones []watchzones.WatchZone
 }
 
-// Compile-time proof the spy is a genuine watchzones.Store — the exact interface
-// the worker wiring threads through the notify, digest and dormant paths.
 var _ watchzones.Store = (*spyZoneStore)(nil)
 
 func newSpyZoneStore() *spyZoneStore { return &spyZoneStore{} }
@@ -49,14 +44,8 @@ func (s *spyZoneStore) Delete(_ context.Context, _, _ string) error { return nil
 
 func (s *spyZoneStore) DeleteAllByUserID(_ context.Context, _ string) error { return nil }
 
-// fakeDescriptionMatcher is a hand-written double for notifydispatch's
-// consumer-side descriptionMatcher interface (GH#1090, epic tc-w825j,
-// tc-w825j.5): it proves the worker wiring builds an Enqueuer whose matcher
-// dependency structurally satisfies that interface, the same role
-// *applications.PostgresStore plays in production. The notify wiring tests
-// here only exercise FindZonesContaining (see spyZoneStore), so
-// MatchesExpression is never expected to be called; matched/err let a future
-// test drive it if that changes.
+// fakeDescriptionMatcher is a double for notifydispatch's descriptionMatcher; the
+// wiring tests never call MatchesExpression.
 type fakeDescriptionMatcher struct {
 	mu      sync.Mutex
 	calls   int

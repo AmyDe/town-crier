@@ -11,14 +11,12 @@ import (
 	"time"
 )
 
-// notifPurger deletes notification rows older than a cutoff. The
-// *notifications.PostgresStore satisfies it via PurgeOlderThan.
+// notifPurger deletes notification rows older than a cutoff.
 type notifPurger interface {
 	PurgeOlderThan(ctx context.Context, cutoff time.Time) (int64, error)
 }
 
-// devicePurger deletes device-registration rows older than a cutoff. The
-// *devicetokens.PostgresStore satisfies it via PurgeOlderThan.
+// devicePurger deletes device-registration rows older than a cutoff.
 type devicePurger interface {
 	PurgeOlderThan(ctx context.Context, cutoff time.Time) (int64, error)
 }
@@ -44,9 +42,7 @@ type Handler struct {
 }
 
 // New wires the purge handler. notifRetention and deviceRetention are the
-// look-back windows (e.g. 90*24*time.Hour and 180*24*time.Hour); now is
-// injected so tests can pin the clock. Production passes time.Now and
-// durations derived from platform.Config retention fields.
+// look-back windows; now is injected so tests can pin the clock.
 func New(
 	notifs notifPurger,
 	devices devicePurger,

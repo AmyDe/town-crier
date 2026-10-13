@@ -1,19 +1,6 @@
-// Package dormant holds the dormant-account cleanup worker mode
-// (WORKER_MODE=dormant-cleanup): once a day it finds user accounts inactive for
-// the retention window and runs the full GDPR erasure cascade for each — deleting
-// the user's notifications, watch zones, saved applications, device
-// registrations, and notification-state watermark from Cosmos, then the profile,
-// then the Auth0 user via the Management (M2M) API.
-//
-// The cascade itself lives in internal/erasure so the dormant worker and the
-// DELETE /v1/me HTTP handler share one ordered erasure (bead tc-gf0g); this
-// package only scans for dormant accounts and drives the cascade per account.
-//
-// Consumer-side interfaces are declared here, concrete stores injected from
-// main(), and hand-written test fakes keep the package unit-testable. The
-// 12-month retention window is a code constant (not config) so the privacy
-// policy's "12 months of inactivity" promise is enforced uniformly (UK GDPR
-// Art. 5(1)(e), ADR 0023).
+// Package dormant implements the dormant-account cleanup worker mode
+// (WORKER_MODE=dormant-cleanup): once a day it finds accounts inactive for the
+// retention window and runs the shared internal/erasure cascade for each.
 package dormant
 
 import (
@@ -45,21 +32,15 @@ type Handler struct {
 	now      func() time.Time
 }
 
-// New builds a dormant-cleanup handler. now is injected so tests pin the cutoff;
-// production passes time.Now. The deleters carry the per-container erasure steps
-// and the profile-absent predicate that lets the cascade tolerate a
-// concurrently-deleted profile.
+// New builds a dormant-cleanup handler. now is injected so tests pin the cutoff.
 func New(finder Finder, deleters erasure.Deleters, logger *slog.Logger, now func() time.Time) *Handler {
 	return &Handler{finder: finder, deleters: deleters, logger: logger, now: now}
 }
 
 // Run executes one cleanup cycle and returns the number of accounts fully erased.
-// It scans for dormant accounts, then runs the erasure cascade for each. A child
-// step that fails leaves the profile intact (so the next daily run retries) and
-// the account is not counted; a profile that has already been deleted by a
-// concurrent caller is tolerated and still counted (its end state is achieved).
-// A scan failure is fatal to the cycle; per-account failures are logged and the
-// run continues (per-account failures are isolated and logged).
+// A scan failure is an error. A failed erasure step leaves the profile intact for
+// the next daily run, is logged and is not counted; a profile already deleted
+// concurrently still counts.
 func (h *Handler) Run(ctx context.Context) (int, error) {
 	cutoff := h.now().AddDate(0, -retentionMonths, 0)
 	dormant, err := h.finder.Dormant(ctx, cutoff)

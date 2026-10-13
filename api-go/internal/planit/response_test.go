@@ -122,13 +122,9 @@ func TestToDomain_AbsentLastDifferentMapsToZeroTime(t *testing.T) {
 	}
 }
 
-// richmondshireFixture mirrors the real 2026-07-12 Richmondshire record
-// (GH#935): the 18 existing core fields, the six new top-level fields (altid
-// and associated_id null in the real sample; reference also null), a 24-key
-// other_fields map including the three DP-restricted keys (their real value is
-// the literal placeholder "See source"), a redundant top-level GeoJSON
-// location object (must be ignored — location_x/location_y already build the
-// geography point), and the secs_taken/to envelope fields (also ignored).
+// richmondshireFixture mirrors a real Richmondshire record, including null
+// altid/associated_id/reference, the three DP-restricted other_fields keys, a
+// top-level GeoJSON location object and the secs_taken/to envelope fields.
 const richmondshireFixture = `{
 	"name": "24/0001",
 	"uid": "24/0001/FUL",

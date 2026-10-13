@@ -42,12 +42,8 @@ type planItRecord struct {
 	Link          *string  `json:"link"`
 	LastDifferent string   `json:"last_different"`
 
-	// The fields below are the PlanIt full-field widening (GH#935). All are
-	// carried into applications.PlanningApplication's silent fields verbatim
-	// (minus the three DP-restricted OtherFields keys); the top-level
-	// "location" GeoJSON object PlanIt also returns is deliberately absent
-	// here (no json tag) so it is ignored — location_x/location_y already
-	// build the geography point, so it is redundant.
+	// PlanIt's top-level "location" GeoJSON object is deliberately not decoded:
+	// location_x/location_y already build the point.
 	Reference    *string         `json:"reference"`
 	Altid        json.RawMessage `json:"altid"`         // may be a JSON string OR array depending on scraper
 	AssociatedID json.RawMessage `json:"associated_id"` // same string-or-array shape as Altid
@@ -57,12 +53,9 @@ type planItRecord struct {
 	OtherFields  map[string]any  `json:"other_fields"`
 }
 
-// restrictedOtherFieldsKeys are the three PlanIt other_fields keys carrying
-// Data-Protection-restricted values (PlanIt itself returns the literal
-// placeholder "See source" for each). Owner decision 2026-07-12: strip
-// exactly these three keys — nothing else — verbatim-minus-three has zero
-// ambiguity, and every other other_fields key (including applicant_address,
-// agent company/address/tel fields, and coordinate duplicates) is kept.
+// restrictedOtherFieldsKeys are the other_fields keys PlanIt marks "See source"
+// for Data-Protection reasons. Exactly these are stripped; every other key,
+// including applicant_address and agent contact fields, is kept.
 var restrictedOtherFieldsKeys = [...]string{"applicant_name", "agent_name", "case_officer"}
 
 // stripRestrictedOtherFields returns a copy of fields with
@@ -85,12 +78,8 @@ func stripRestrictedOtherFields(fields map[string]any) map[string]any {
 	return out
 }
 
-// rawJSONOrNil returns raw's bytes, or nil when raw is absent or its value is
-// the JSON literal null — so an explicit "altid": null (PlanIt's real shape
-// when the field is unset) maps to a nil domain pointer rather than the
-// 4-byte literal "null". json.RawMessage always captures a JSON value's exact
-// matched token with no surrounding whitespace, so a plain byte comparison is
-// sufficient here.
+// rawJSONOrNil returns a copy of raw, or nil when raw is absent or the JSON
+// literal null (PlanIt's shape for an unset altid).
 func rawJSONOrNil(raw json.RawMessage) []byte {
 	if len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
 		return nil
@@ -98,11 +87,9 @@ func rawJSONOrNil(raw json.RawMessage) []byte {
 	return append([]byte(nil), raw...)
 }
 
-// parsePlanItInstantLenient parses an optional PlanIt bookkeeping timestamp
-// (LastChanged/LastScraped), tolerating an absent, empty, or unparseable
-// value by mapping it to nil rather than failing the whole record — unlike
-// LastDifferent, these fields are pure PlanIt bookkeeping (GH#935) and must
-// never cause a real application to be dropped.
+// parsePlanItInstantLenient maps an absent, empty or unparseable bookkeeping
+// timestamp (LastChanged/LastScraped) to nil, unlike LastDifferent, so these
+// fields never cause a record to be dropped.
 func parsePlanItInstantLenient(value *string) *time.Time {
 	if value == nil || *value == "" {
 		return nil
@@ -114,14 +101,9 @@ func parsePlanItInstantLenient(value *string) *time.Time {
 	return &t
 }
 
-// toDomain maps a PlanIt record to the applications.PlanningApplication snapshot:
-// location_x is longitude, location_y latitude; app_type / app_state are carried
-// as non-empty pointers; date-only fields parse to *time.Time; last_different
-// parses as a UTC instant, tolerating the no-timezone fractional-second form
-// PlanIt actually emits.
-//
-// An ABSENT last_different (empty string) maps to the zero time rather than an
-// error. A non-empty but malformed value is still an error.
+// toDomain maps a PlanIt record to an applications.PlanningApplication
+// (location_x is longitude, location_y latitude). An empty last_different maps
+// to the zero time; a malformed one is an error.
 func (r planItRecord) toDomain() (applications.PlanningApplication, error) {
 	startDate, err := parseDateOnly(r.StartDate)
 	if err != nil {
@@ -179,14 +161,12 @@ func (r planItRecord) toDomain() (applications.PlanningApplication, error) {
 // planItInstantLayouts are tried in order when parsing PlanIt's last_different.
 // PlanIt emits a naive UTC timestamp with variable fractional seconds and NO
 // timezone (e.g. "2026-06-13T00:06:34.112581"); RFC3339Nano is kept first so a
-// TZ-bearing value (should PlanIt ever send one) still parses. tc-8l96.
+// TZ-bearing value (should PlanIt ever send one) still parses.
 var planItInstantLayouts = []string{
-	time.RFC3339Nano,             // TZ present, optional fractional seconds
-	"2006-01-02T15:04:05.999999", // no TZ, optional fractional seconds -> UTC
+	time.RFC3339Nano,
+	"2006-01-02T15:04:05.999999",
 }
 
-// parsePlanItInstant parses a PlanIt last_different timestamp as UTC, tolerating
-// the no-timezone fractional-second form PlanIt actually returns.
 func parsePlanItInstant(value string) (time.Time, error) {
 	for _, layout := range planItInstantLayouts {
 		if t, err := time.Parse(layout, value); err == nil {

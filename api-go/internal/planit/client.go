@@ -72,9 +72,7 @@ func (e *HTTPError) Error() string {
 }
 
 // httpErrorRecorder is the consumer-side slice of the metrics registry the
-// client records towncrier.planit.http_errors on. *metrics.Registry satisfies
-// it; nil leaves the counter dark. The tag keys are owned by the recorder
-// (http.response.status_code, planit.authority_code).
+// client records towncrier.planit.http_errors on; nil leaves the counter dark.
 type httpErrorRecorder interface {
 	PlanItHTTPError(ctx context.Context, statusCode, authorityID int)
 }
@@ -95,10 +93,8 @@ type Options struct {
 	Version string
 }
 
-// FetchPageResult is one fetch of a PlanIt index-paginated response: the parsed
-// applications, the echoed from (the record offset the response actually
-// started at), the reported total (nil when PlanIt omitted it), and whether
-// more records may follow.
+// FetchPageResult is one page of a PlanIt response. Total is nil when PlanIt
+// omitted it.
 type FetchPageResult struct {
 	// From is the record offset PlanIt's response reports it started at (the
 	// response's own "from" field), falling back to the requested startIndex
@@ -121,8 +117,7 @@ type Client struct {
 }
 
 // NewClient validates the base URL and wires the client. A non-HTTPS base URL is
-// rejected unless it targets localhost (for tests). HTTPClient and Sleep fall
-// back to hardened defaults when nil.
+// rejected unless it targets localhost (for tests).
 func NewClient(opts Options) (*Client, error) {
 	if opts.BaseURL == "" {
 		return nil, ErrMissingBaseURL
@@ -139,9 +134,7 @@ func NewClient(opts Options) (*Client, error) {
 	if hc == nil {
 		hc = &http.Client{Timeout: 30 * time.Second}
 	}
-	// Wrap the transport so every PlanIt GET emits an OTel client span
-	// (Type=HTTP in AppDependencies) named "PlanIt search". The host lands in
-	// server.address; the static span name keeps cardinality low.
+	// The static span name keeps cardinality low; the host lands in server.address.
 	inner := *hc
 	inner.Transport = spanAttrTransport{next: hc.Transport}
 	hc = platform.WrapHTTPClient(&inner, func(string, *http.Request) string { return "PlanIt search" }, opts.TraceOptions...)
@@ -155,8 +148,7 @@ func NewClient(opts Options) (*Client, error) {
 	}, nil
 }
 
-// decodePage classifies resp, decodes the PlanIt envelope, and maps its
-// records. It closes resp.Body.
+// decodePage maps resp to a FetchPageResult. It closes resp.Body.
 func decodePage(resp *http.Response, authorityIDForMetrics, startIndex, pageSize int) (FetchPageResult, error) {
 	defer func() { _ = resp.Body.Close() }()
 
@@ -188,11 +180,8 @@ func decodePage(resp *http.Response, authorityIDForMetrics, startIndex, pageSize
 		from = *parsed.From
 	}
 
-	// Zero-progress guard: PlanIt reporting more records remain (from < total)
-	// while returning none this fetch would livelock a caller that blindly
-	// resumes at the same index forever. Treat it as a hard fetch error
-	// instead — every caller's existing per-unit (authority/lane) error path
-	// skips to the next unit and retries this one next cycle.
+	// No records while from < total would livelock a caller that resumes at the
+	// same index, so it is a hard error.
 	if len(apps) == 0 && parsed.Total != nil && from < *parsed.Total {
 		return FetchPageResult{}, fmt.Errorf("planit fetch (authority %d) at index %d: %w", authorityIDForMetrics, startIndex, ErrZeroProgress)
 	}
@@ -224,9 +213,6 @@ func classify(resp *http.Response) error {
 		}
 		return &RateLimitError{RetryAfter: retryAfter}
 	}
-	// Best-effort: a read failure here still leaves a valid HTTPError with
-	// StatusCode set (io.ReadAll returns whatever partial bytes it read even
-	// on error), so there's nothing actionable to do with the error itself.
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, errorBodyPrefixBytes)) //nolint:errcheck // partial body is fine; StatusCode is what matters
 	return &HTTPError{StatusCode: resp.StatusCode, Body: string(body)}
 }
