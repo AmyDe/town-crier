@@ -105,7 +105,7 @@ const MAX_FETCH_CONCURRENCY = 16;
  * Fallback centroid radius (metres) sent to `/v1/applications/near` for BOTH
  * the primary town point and every sibling centroid (tc-s0yf, GH #819),
  * mirroring the Go server's own default (`api-go/internal/applications/near.go`).
- * The committed town gazetteer (`web/src/data/towns.json`) has no per-town
+ * The committed town gazetteer (`api-go/internal/seocatalog/resources/towns.json`) has no per-town
  * radius field yet, so every town — primary and sibling alike — uses this one
  * value; the server's own clamp (max 10000m) never engages while every radius
  * sent equals its own default. Once the gazetteer grows a per-town radius,
@@ -279,13 +279,13 @@ export const AUTHORITIES_FILE = join(
 );
 
 /**
- * The town gazetteer is a slim, committed JSON file in the web app's source
- * tree (`web/src/data/towns.json`). It is regenerated occasionally by
+ * The town gazetteer is a slim, committed JSON file in the Go API's embedded
+ * tree (`api-go/internal/seocatalog/resources/towns.json`). It is regenerated occasionally by
  * `scripts/generate-towns.mjs` from OS Open Names — never downloaded at build
  * time. Each row is `{ slug, name, lat, lng, authorityId, population }`.
  * @type {string}
  */
-export const TOWNS_FILE = join(SCRIPT_DIR, '..', 'src', 'data', 'towns.json');
+export const TOWNS_FILE = join(SCRIPT_DIR, '..', '..', 'api-go', 'internal', 'seocatalog', 'resources', 'towns.json');
 
 /**
  * The hand-written base Static Web Apps config (`navigationFallback`,

@@ -1,0 +1,41 @@
+{{define "town"}}{{template "head" .Layout}}      <main>
+        <h1>Planning applications in {{.Area}}</h1>
+        {{if .DataUpdated}}<p class="dataUpdated">{{.DataUpdated}}</p>{{end}}
+        <p class="lead">{{.Lead}}</p>
+{{template "inlineCta" .}}
+
+{{template "summary" .}}
+
+{{template "ledger" .}}
+
+        <section class="explainer">
+          <h2>How to comment on a planning application in {{.Area}}</h2>
+          <p>
+            Anyone can have their say on a planning application in {{.Area}}. Find the
+            application on the {{.AuthorityName}} planning authority's public-access portal
+            using the reference number above, then submit a comment before the
+            consultation deadline. Comments are usually limited to planning matters
+            such as overlooking, loss of light, traffic, noise and the character of
+            the area.
+          </p>
+          <p>
+            {{.AuthorityName}} is the local planning authority responsible for deciding
+            applications in {{.Area}}. Town Crier mirrors the public record so you can
+            keep track of what is happening near you, but the council remains the
+            authoritative source and the place to submit formal comments.
+          </p>
+        </section>
+{{- if .Nearby}}
+        <section class="nearbyAreas">
+          <h2>Nearby areas</h2>
+          <p>Planning applications in the towns nearest here, including neighbouring council areas.</p>
+          <ul class="nearbyAreas__list">
+            {{- range .Nearby}}
+            <li><a href="{{.Href}}">{{.Text}}</a></li>
+            {{- end}}
+          </ul>
+        </section>
+{{- end}}
+{{template "bottomCta" .}}
+      </main>
+{{template "foot" .Layout}}{{end}}

@@ -263,7 +263,7 @@ func (s *PostgresStore) MatchesExpression(ctx context.Context, description, expr
 	return matches, nil
 }
 
-// recentRealDateOrder is the shared "sort by the stable real-world lifecycle
+// RecentRealDateOrder is the shared "sort by the stable real-world lifecycle
 // date, not PlanIt's last_different re-index marker" ORDER BY clause (#819
 // decision 1). last_different is bumped to "now" whenever PlanIt re-indexes an
 // application regardless of its actual age, which floats stale applications to
@@ -275,13 +275,13 @@ func (s *PostgresStore) MatchesExpression(ctx context.Context, description, expr
 // The tie-break (start_date DESC NULLS LAST, then planit_name ASC) makes the
 // order fully deterministic when two applications share the same GREATEST
 // value. Shared by pgRecentByAuthorityQuery and pgRecentNearestTownQuery.
-const recentRealDateOrder = "GREATEST(decided_date, start_date) DESC NULLS LAST, start_date DESC NULLS LAST, planit_name"
+const RecentRealDateOrder = "GREATEST(decided_date, start_date) DESC NULLS LAST, start_date DESC NULLS LAST, planit_name"
 
 const pgRecentByAuthorityQuery = "SELECT " + appColumns +
-	" FROM applications WHERE authority_code = $1 ORDER BY " + recentRealDateOrder + " LIMIT $2"
+	" FROM applications WHERE authority_code = $1 ORDER BY " + RecentRealDateOrder + " LIMIT $2"
 
 // RecentByAuthority returns up to cap most-recently-active applications in the
-// authority, ordered by recentRealDateOrder. It backs the build-time SEO endpoint.
+// authority, ordered by RecentRealDateOrder. It backs the build-time SEO endpoint.
 func (s *PostgresStore) RecentByAuthority(ctx context.Context, authorityCode string, cap int) ([]PlanningApplication, error) {
 	rows, err := s.db.Query(ctx, pgRecentByAuthorityQuery, authorityCode, cap)
 	if err != nil {
@@ -390,27 +390,27 @@ func (s *PostgresStore) FindNearbyPage(ctx context.Context, latitude, longitude,
 		limit, wrap)
 }
 
-// pgRecentNearPointQuery mirrors pgRecentByAuthorityQuery's recentRealDateOrder
+// pgRecentNearPointQuery mirrors pgRecentByAuthorityQuery's RecentRealDateOrder
 // but is authority-agnostic and radius-bounded (ST_DWithin over nearbyPoint,
 // exactly like findNearbyFirstPageQuery) instead of authority-scoped — the
 // public near-point browse endpoint's ?sort=recent (GH#912 Phase 2). It returns
 // a single ordered page with NO keyset continuation, unlike FindNearbyPage:
-// recentRealDateOrder's primary key, GREATEST(decided_date, start_date), and its
+// RecentRealDateOrder's primary key, GREATEST(decided_date, start_date), and its
 // secondary key, start_date, are each independently nullable, so a correct
 // keyset predicate needs a per-NULL-combination branch (see statusKeysetQuery
 // and its three siblings in zonepage.go for the shape that takes) for an
 // ordering nothing has needed to paginate before now — RecentByAuthority and
-// RecentNearestTown, the two other recentRealDateOrder call sites, are both
+// RecentNearestTown, the two other RecentRealDateOrder call sites, are both
 // single-page cap-only reads too. The near-point recent sort's only consumer
 // (the anonymous browse list, GH#912 Phase 3) fetches one bounded page
 // (<= nearPointMaxLimit), so this mirrors that existing single-page shape
 // rather than building an unused continuation.
 const pgRecentNearPointQuery = "SELECT " + appColumns +
 	" FROM applications WHERE ST_DWithin(location, " + nearbyPoint + ", $3) " +
-	"ORDER BY " + recentRealDateOrder + " LIMIT $4"
+	"ORDER BY " + RecentRealDateOrder + " LIMIT $4"
 
 // RecentNearPoint returns up to limit applications within radiusMetres of
-// (latitude, longitude), ordered by recentRealDateOrder (most-recently-decided,
+// (latitude, longitude), ordered by RecentRealDateOrder (most-recently-decided,
 // falling back to most-recently-submitted, NULLS LAST) — the near-point browse
 // endpoint's ?sort=recent (GH#912 Phase 2). It is authority-agnostic like
 // FindNearbyPage, which remains the sole paginated (?sort=distance) path; see
@@ -450,7 +450,7 @@ WHERE a.authority_code = $1
 	WHERE ST_DWithin(a.location, s.pt, s.radius)
 	  AND (a.location <-> s.pt) < (a.location <-> ` + seoNearbyPoint + `)
   )
-ORDER BY ` + recentRealDateOrder + `
+ORDER BY ` + RecentRealDateOrder + `
 LIMIT $8`
 
 // RecentNearestTown returns up to cap applications assigned to THIS town by the

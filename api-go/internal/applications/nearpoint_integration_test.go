@@ -85,7 +85,7 @@ func TestNearPointHandler_Integration_RealPostGIS(t *testing.T) {
 }
 
 // TestNearPointHandler_Integration_SortRecent drives the full HTTP handler with
-// ?sort=recent against real PostGIS (GH#912 Phase 2): recentRealDateOrder
+// ?sort=recent against real PostGIS (GH#912 Phase 2): RecentRealDateOrder
 // ordering (including a NULL decided_date row sorting last, NULLS LAST) and the
 // ST_DWithin radius filter both apply, and no X-Next-Cursor header is ever set
 // (RecentNearPoint does not paginate — see its doc comment, store_postgres.go).

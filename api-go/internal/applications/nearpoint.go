@@ -35,7 +35,7 @@ const (
 // nearPointSortDistance and nearPointSortRecent are the accepted ?sort= values.
 // nearPointSortDistance is the default nearest-first KNN order with keyset
 // pagination via ?cursor=/X-Next-Cursor. nearPointSortRecent orders by
-// recentRealDateOrder (store_postgres.go) and does NOT paginate: a full page
+// RecentRealDateOrder (store_postgres.go) and does NOT paginate: a full page
 // never sets X-Next-Cursor.
 const (
 	nearPointSortDistance = "distance"

@@ -1,0 +1,141 @@
+{{define "head"}}<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="apple-itunes-app" content="app-id={{.AppleAppID}}" />
+    <title>{{.Title}}</title>
+    {{- if .MetaDescription}}
+    <meta name="description" content="{{.MetaDescription}}" />
+    {{- end}}
+    <meta name="robots" content="{{.Robots}}" />
+    {{- if .Canonical}}
+    <link rel="canonical" href="{{.Canonical}}" />
+    {{- end}}
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    {{- if .Canonical}}
+    <meta property="og:title" content="{{.OGTitle}}" />
+    <meta property="og:description" content="{{.MetaDescription}}" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="{{.Canonical}}" />
+    <meta property="og:site_name" content="Town Crier" />
+    <script type="application/ld+json">{{.JSONLD}}</script>
+    {{- end}}
+    <style>
+{{template "styles"}}
+{{- if .TownsStyles}}
+{{template "townsIndexStyles"}}
+{{- end}}
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="siteHeader">
+        <div class="siteHeader__inner">
+          <a href="/" class="siteHeader__wordmark">Town Crier</a>
+          <a class="siteHeader__cta" href="{{.HeaderCTA}}" rel="noopener" target="_blank">Get the app</a>
+        </div>
+        <div class="siteHeader__ruleHeavy"></div>
+        <div class="siteHeader__ruleHairline"></div>
+      </header>
+      <nav class="breadcrumb" aria-label="Breadcrumb">
+        <ol>
+          {{- range .Crumbs}}
+          <li>{{if .Href}}<a href="{{.Href}}">{{.Label}}</a>{{else}}{{.Label}}{{end}}</li>
+          {{- end}}
+        </ol>
+      </nav>
+{{end}}
+
+{{define "foot"}}
+      <footer class="siteFooter">
+        <ul class="attribution">
+          {{- range .Attribution}}
+          <li>{{.}}</li>
+          {{- end}}
+        </ul>
+        <p>© {{.Year}} Town Crier · Ivo and the Bea Ltd</p>
+        <p><a href="/legal/privacy">Privacy Policy</a> · <a href="/legal/terms">Terms of Service</a></p>
+      </footer>
+    </div>
+  </body>
+</html>
+{{end}}
+
+{{define "icon"}}{{if eq . "granted"}}<svg class="stamp__icon" width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5 6.5 11.5 12.5 4.5" /></svg>{{else if eq . "refused"}}<svg class="stamp__icon" width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4 12 12" /><path d="M12 4 4 12" /></svg>{{else}}<svg class="stamp__icon" width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8H12" /></svg>{{end}}{{end}}
+
+{{define "inlineCta"}}        <p class="ctaInline">
+          <a class="ctaInline__button" href="{{.InlineHref}}" rel="noopener" target="_blank">Get push alerts for {{.Area}} →</a>
+        </p>{{end}}
+
+{{define "summary"}}    <section class="statusSummary" aria-label="Application status summary">
+      <h2 class="statusSummary__heading">Status breakdown</h2>
+      <div class="statusSummary__strip">
+        <span class="statusSummary__item stamp stamp--granted">{{template "icon" "granted"}}<span class="stamp__label">{{.Summary.Granted}} Granted</span></span>
+        <span class="statusSummary__item stamp stamp--refused">{{template "icon" "refused"}}<span class="stamp__label">{{.Summary.Refused}} Refused</span></span>
+        <span class="statusSummary__item stamp stamp--neutral">{{template "icon" "neutral"}}<span class="stamp__label">{{.Summary.Undecided}} Undecided</span></span>
+        <span class="statusSummary__total">{{.Summary.Total}} total</span>
+      </div>
+      {{- if .Summary.OtherTotal}}
+      <details class="statusSummary__other">
+        <summary>Other ({{.Summary.OtherTotal}})</summary>
+        <ul class="statusSummary__otherList">
+          {{- range .Summary.Other}}
+          <li><span class="statusSummary__otherLabel">{{.Label}}</span><span class="statusSummary__otherCount">{{.Count}}</span></li>
+          {{- end}}
+        </ul>
+      </details>
+      {{- end}}
+    </section>{{end}}
+
+{{define "ledger"}}        <h2 class="ledger__heading">Latest notices</h2>
+        <ul class="ledger">
+          {{- range .Items}}
+          {{- if .CTA}}
+      <li class="ledgerCta">
+        <h3 class="ledgerCta__heading">Get told when the next one lands</h3>
+        <p class="ledgerCta__body">Town Crier watches {{.CTA.Area}} and alerts you when a new application is submitted or decided. Free to download.</p>
+        <a class="ledgerCta__button" href="{{.CTA.Href}}" rel="noopener" target="_blank">Get the app</a>
+      </li>
+          {{- else}}
+      <li class="ledgerRow">
+        {{- if .Row.ShareURL}}
+        <a class="ledgerRow__link" href="{{.Row.ShareURL}}">
+          {{- template "rowBody" .Row}}
+        </a>
+        {{- else}}
+          {{- template "rowBody" .Row}}
+        {{- end}}
+      </li>
+          {{- end}}
+          {{- end}}
+        </ul>{{end}}
+
+{{define "rowBody"}}
+        <div class="ledgerRow__meta">
+          {{if .Ref}}<p class="ledgerRow__ref">{{.Ref}}</p>{{end}}
+          {{if .DateLine}}<p class="ledgerRow__date">{{.DateLine}}</p>{{end}}
+        </div>
+        <div class="ledgerRow__body">
+          <div class="ledgerRow__head">
+            <h3 class="ledgerRow__address">{{.Address}}</h3>
+            <span class="stamp stamp--{{.Modifier}}">{{template "icon" .Modifier}}<span class="stamp__label">{{.Label}}</span></span>
+          </div>
+          <p class="ledgerRow__desc">{{.Description}}</p>
+          {{if .ShareURL}}<span class="ledgerRow__cta">View details →</span>{{end}}
+        </div>
+{{- end}}
+
+{{define "bottomCta"}}        <section class="cta">
+          <h2 class="cta__heading">Get push alerts for {{.Area}}</h2>
+          <p>
+            Draw a circle on the map and Town Crier will notify you the moment a new
+            planning application is submitted or decided inside it. Most councils
+            allow around three weeks for comments, so hearing early matters.
+          </p>
+          <a class="cta__button" href="{{.BottomHref}}" rel="noopener" target="_blank">Download free on the App Store</a>
+          <div class="cta__qr">
+            {{.QR}}
+            <p class="cta__qrCaption">Or scan with your phone camera to get the app.</p>
+          </div>
+        </section>{{end}}

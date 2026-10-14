@@ -301,7 +301,7 @@ describe('runPrerender — same-name town dedup (tc-77ll)', () => {
 
 describe('real-world case: Croydon shows zero town links (tc-r4n9.4 investigation)', () => {
   it('documents why: the gazetteer carries exactly one Croydon-authority row, named "Croydon" itself, so the pre-existing same-name dedup (tc-77ll) suppresses it -- not an ordering regression or a stale snapshot', async () => {
-    // Mirrors the real committed values in web/src/data/towns.json for
+    // Mirrors the real committed values in api-go/internal/seocatalog/resources/towns.json for
     // authorityId 301 (Croydon): a SINGLE row, name "Croydon". ONS's Census 2021
     // Built-Up-Areas methodology treats each Greater London borough as one
     // borough-shaped BUA rather than distinct settlements (see the "London

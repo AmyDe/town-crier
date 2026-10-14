@@ -1,0 +1,872 @@
+{
+  "version": 1,
+  "generatedAt": "2026-06-21T00:00:00.000Z",
+  "minPopulation": 5000,
+  "limit": 30,
+  "authorities": [
+    {
+      "id": 100,
+      "name": "Basingstoke and Deane"
+    },
+    {
+      "id": 52,
+      "name": "Cornwall"
+    },
+    {
+      "id": 120,
+      "name": "King's Lynn and West Norfolk"
+    },
+    {
+      "id": 75,
+      "name": "Wrexham"
+    }
+  ],
+  "authorityPages": [
+    {
+      "id": 100,
+      "name": "Basingstoke and Deane",
+      "areaType": "English District",
+      "areaName": "Basingstoke and Deane",
+      "total": 42,
+      "statusBreakdown": [
+        {
+          "appState": "Permitted",
+          "count": 20
+        },
+        {
+          "appState": "Rejected",
+          "count": 12
+        },
+        {
+          "appState": "Undecided",
+          "count": 8
+        },
+        {
+          "appState": null,
+          "count": 2
+        }
+      ],
+      "applications": [
+        {
+          "uid": "BDB/2026/0001",
+          "name": "26/00001/FUL",
+          "address": "1 High Street, Testville, TV0 1AB",
+          "description": "Application number 1 for a loft conversion with rear dormer.",
+          "appState": "Permitted",
+          "startDate": "2026-04-28",
+          "lastDifferent": "2026-06-28T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/BDB-0",
+          "url": "https://council.example/BDB/0"
+        },
+        {
+          "uid": "BDB/2026/0002",
+          "name": "26/00002/FUL",
+          "address": "2 High Street, Testville, TV1 1AB",
+          "description": "Demolition of existing outbuildings and the erection of a three-storey mixed-use building comprising ground floor commercial units and twelve residential flats with associated parking and landscaping works.",
+          "appState": "Rejected",
+          "startDate": "2026-04-27",
+          "decidedDate": "2026-05-27",
+          "lastDifferent": "2026-06-27T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/BDB-1",
+          "url": "https://council.example/BDB/1"
+        },
+        {
+          "uid": "BDB/2026/0003",
+          "name": "26/00003/FUL",
+          "address": "3 High Street, Testville, TV2 1AB",
+          "description": "Application number 3 for a loft conversion with rear dormer.",
+          "appState": "Undecided",
+          "startDate": "2026-04-26",
+          "decidedDate": "2026-05-26",
+          "lastDifferent": "2026-06-26T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/BDB-2",
+          "url": "https://council.example/BDB/2"
+        },
+        {
+          "uid": "BDB/2026/0004",
+          "name": "26/00004/FUL",
+          "address": "4 High Street, Testville, TV3 1AB",
+          "description": "Application number 4 for a loft conversion with rear dormer.",
+          "appState": "Conditions",
+          "startDate": "2026-04-25",
+          "lastDifferent": "2026-06-25T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/BDB-3",
+          "url": "https://council.example/BDB/3"
+        },
+        {
+          "uid": "BDB/2026/0005",
+          "name": "26/00005/FUL",
+          "address": "5 High Street, Testville, TV4 1AB",
+          "description": "Application number 5 for a loft conversion with rear dormer.",
+          "appState": "Withdrawn",
+          "startDate": "2026-04-24",
+          "decidedDate": "2026-05-24",
+          "lastDifferent": "2026-06-24T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/BDB-4",
+          "url": "https://council.example/BDB/4"
+        },
+        {
+          "uid": "BDB/2026/0006",
+          "name": "26/00006/FUL",
+          "address": "6 High Street, Testville, TV5 1AB",
+          "description": "Application number 6 for a loft conversion with rear dormer.",
+          "appState": null,
+          "startDate": "2026-04-23",
+          "decidedDate": "2026-05-23",
+          "lastDifferent": "2026-06-23T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/BDB-5",
+          "url": "https://council.example/BDB/5"
+        },
+        {
+          "uid": "BDB/2026/0007",
+          "name": "26/00007/FUL",
+          "address": "7 High Street, Testville, TV6 1AB",
+          "description": "Application number 7 for a loft conversion with rear dormer.",
+          "appState": "Permitted",
+          "startDate": "2026-04-22",
+          "lastDifferent": "2026-06-22T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/BDB-6",
+          "url": "https://council.example/BDB/6"
+        },
+        {
+          "uid": "BDB/2026/0008",
+          "name": "26/00008/FUL",
+          "address": "8 High Street, Testville, TV7 1AB",
+          "description": "Application number 8 for a loft conversion with rear dormer.",
+          "appState": "Rejected",
+          "startDate": "2026-04-21",
+          "decidedDate": "2026-05-21",
+          "lastDifferent": "2026-06-21T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/BDB-7",
+          "url": "https://council.example/BDB/7"
+        },
+        {
+          "uid": "BDB/2026/0009",
+          "name": "26/00009/FUL",
+          "address": "9 High Street, Testville, TV8 1AB",
+          "description": "Application number 9 for a loft conversion with rear dormer.",
+          "appState": "Undecided",
+          "startDate": "2026-04-20",
+          "decidedDate": "2026-05-20",
+          "lastDifferent": "2026-06-20T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/BDB-8",
+          "url": "https://council.example/BDB/8"
+        },
+        {
+          "uid": "BDB/2026/0010",
+          "name": "26/00010/FUL",
+          "address": "10 High Street, Testville, TV0 1AB",
+          "description": "Application number 10 for a loft conversion with rear dormer.",
+          "appState": "Conditions",
+          "startDate": "2026-04-19",
+          "lastDifferent": "2026-06-19T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/BDB-9",
+          "url": "https://council.example/BDB/9"
+        },
+        {
+          "uid": "BDB/2026/0011",
+          "name": "26/00011/FUL",
+          "address": "11 High Street, Testville, TV1 1AB",
+          "description": "Application number 11 for a loft conversion with rear dormer.",
+          "appState": "Withdrawn",
+          "startDate": "2026-04-18",
+          "decidedDate": "2026-05-18",
+          "lastDifferent": "2026-06-18T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/BDB-10",
+          "url": "https://council.example/BDB/10"
+        },
+        {
+          "uid": "BDB/2026/0012",
+          "name": "26/00012/FUL",
+          "address": "12 High Street, Testville, TV2 1AB",
+          "description": "Application number 12 for a loft conversion with rear dormer.",
+          "appState": null,
+          "startDate": "2026-04-17",
+          "decidedDate": "2026-05-17",
+          "lastDifferent": "2026-06-17T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/BDB-11",
+          "url": "https://council.example/BDB/11"
+        },
+        {
+          "uid": "BDB/2026/0013",
+          "name": "26/00013/FUL",
+          "address": "13 High Street, Testville, TV3 1AB",
+          "description": "Application number 13 for a loft conversion with rear dormer.",
+          "appState": "Permitted",
+          "startDate": "2026-04-16",
+          "lastDifferent": "2026-06-16T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/BDB-12",
+          "url": "https://council.example/BDB/12"
+        },
+        {
+          "uid": "BDB/2026/0014",
+          "name": "26/00014/FUL",
+          "address": "14 High Street, Testville, TV4 1AB",
+          "description": "Application number 14 for a loft conversion with rear dormer.",
+          "appState": "Rejected",
+          "startDate": "2026-04-15",
+          "decidedDate": "2026-05-15",
+          "lastDifferent": "2026-06-15T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/BDB-13",
+          "url": "https://council.example/BDB/13"
+        }
+      ]
+    },
+    {
+      "id": 52,
+      "name": "Cornwall",
+      "areaType": "English Unitary Authority",
+      "areaName": "Cornwall",
+      "total": 230,
+      "statusBreakdown": [
+        {
+          "appState": "Permitted",
+          "count": 150
+        },
+        {
+          "appState": "Rejected",
+          "count": 40
+        },
+        {
+          "appState": "Undecided",
+          "count": 20
+        },
+        {
+          "appState": "Conditions",
+          "count": 12
+        },
+        {
+          "appState": "Withdrawn",
+          "count": 8
+        }
+      ],
+      "applications": [
+        {
+          "uid": "CW/2026/0001",
+          "name": "PA26/00001/FUL",
+          "address": "1 High Street, Testville, TV0 1AB",
+          "description": "Application number 1 for a loft conversion with rear dormer.",
+          "appState": "Permitted",
+          "startDate": "2026-04-28",
+          "lastDifferent": "2026-06-28T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/CW-0",
+          "url": "https://council.example/CW/0"
+        },
+        {
+          "uid": "CW/2026/0002",
+          "name": "PA26/00002/FUL",
+          "address": "2 High Street, Testville, TV1 1AB",
+          "description": "Demolition of existing outbuildings and the erection of a three-storey mixed-use building comprising ground floor commercial units and twelve residential flats with associated parking and landscaping works.",
+          "appState": "Rejected",
+          "startDate": "2026-04-27",
+          "decidedDate": "2026-05-27",
+          "lastDifferent": "2026-06-27T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/CW-1",
+          "url": "https://council.example/CW/1"
+        },
+        {
+          "uid": "CW/2026/0003",
+          "name": "PA26/00003/FUL",
+          "address": "3 High Street, Testville, TV2 1AB",
+          "description": "Application number 3 for a loft conversion with rear dormer.",
+          "appState": "Undecided",
+          "startDate": "2026-04-26",
+          "decidedDate": "2026-05-26",
+          "lastDifferent": "2026-06-26T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/CW-2",
+          "url": "https://council.example/CW/2"
+        },
+        {
+          "uid": "CW/2026/0004",
+          "name": "PA26/00004/FUL",
+          "address": "4 High Street, Testville, TV3 1AB",
+          "description": "Application number 4 for a loft conversion with rear dormer.",
+          "appState": "Conditions",
+          "startDate": "2026-04-25",
+          "lastDifferent": "2026-06-25T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/CW-3",
+          "url": "https://council.example/CW/3"
+        }
+      ]
+    },
+    {
+      "id": 120,
+      "name": "King's Lynn and West Norfolk",
+      "areaType": "English District",
+      "areaName": "King's Lynn and West Norfolk",
+      "total": 12,
+      "statusBreakdown": [
+        {
+          "appState": "Permitted",
+          "count": 6
+        },
+        {
+          "appState": "Rejected",
+          "count": 4
+        },
+        {
+          "appState": "Undecided",
+          "count": 2
+        }
+      ],
+      "applications": [
+        {
+          "uid": "KL/2026/0001",
+          "name": "26/00100/F",
+          "address": "The \"Old\" Mill, King's Lynn <PE30 1AA>",
+          "description": "Change of use & conversion of <b>mill</b> to flats; see \"notes\" and 'plans'.",
+          "appState": "Permitted",
+          "startDate": "2026-03-01",
+          "decidedDate": "2026-05-20",
+          "lastDifferent": "2026-06-20T09:00:00+00:00",
+          "link": null,
+          "url": null
+        },
+        {
+          "uid": "KL/2026/0002",
+          "name": "3PL/2026/0042/F",
+          "address": "",
+          "description": "",
+          "appState": null,
+          "startDate": null,
+          "lastDifferent": "2026-06-18T09:00:00+00:00",
+          "link": "https://planit.org.uk/x",
+          "url": null
+        }
+      ]
+    },
+    {
+      "id": 75,
+      "name": "Wrexham",
+      "areaType": "Welsh Principal Area",
+      "areaName": "Wrexham",
+      "total": 25,
+      "statusBreakdown": [
+        {
+          "appState": "Permitted",
+          "count": 15
+        },
+        {
+          "appState": "Rejected",
+          "count": 6
+        },
+        {
+          "appState": "Undecided",
+          "count": 4
+        }
+      ],
+      "applications": [
+        {
+          "uid": "WX/2026/0001",
+          "name": "P/00001/FUL",
+          "address": "1 High Street, Testville, TV0 1AB",
+          "description": "Application number 1 for a loft conversion with rear dormer.",
+          "appState": "Permitted",
+          "startDate": "2026-04-16",
+          "lastDifferent": "2026-06-16T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/WX-0",
+          "url": "https://council.example/WX/0"
+        },
+        {
+          "uid": "WX/2026/0002",
+          "name": "P/00002/FUL",
+          "address": "2 High Street, Testville, TV1 1AB",
+          "description": "Demolition of existing outbuildings and the erection of a three-storey mixed-use building comprising ground floor commercial units and twelve residential flats with associated parking and landscaping works.",
+          "appState": "Rejected",
+          "startDate": "2026-04-15",
+          "decidedDate": "2026-05-15",
+          "lastDifferent": "2026-06-15T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/WX-1",
+          "url": "https://council.example/WX/1"
+        }
+      ]
+    }
+  ],
+  "townPages": [
+    {
+      "slug": "truro",
+      "name": "Truro",
+      "lat": 50.2632,
+      "lng": -5.051,
+      "authorityId": 52,
+      "population": 25000,
+      "total": 18,
+      "statusBreakdown": [
+        {
+          "appState": "Permitted",
+          "count": 10
+        },
+        {
+          "appState": "Rejected",
+          "count": 6
+        },
+        {
+          "appState": "Undecided",
+          "count": 0
+        },
+        {
+          "appState": null,
+          "count": 2
+        }
+      ],
+      "applications": [
+        {
+          "uid": "CWT/2026/0001",
+          "name": "PA26/T00001/FUL",
+          "address": "1 High Street, Testville, TV0 1AB",
+          "description": "Application number 1 for a loft conversion with rear dormer.",
+          "appState": "Permitted",
+          "startDate": "2026-04-26",
+          "lastDifferent": "2026-06-26T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/CWT-0",
+          "url": "https://council.example/CWT/0"
+        },
+        {
+          "uid": "CWT/2026/0002",
+          "name": "PA26/T00002/FUL",
+          "address": "2 High Street, Testville, TV1 1AB",
+          "description": "Demolition of existing outbuildings and the erection of a three-storey mixed-use building comprising ground floor commercial units and twelve residential flats with associated parking and landscaping works.",
+          "appState": "Rejected",
+          "startDate": "2026-04-25",
+          "decidedDate": "2026-05-25",
+          "lastDifferent": "2026-06-25T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/CWT-1",
+          "url": "https://council.example/CWT/1"
+        }
+      ]
+    },
+    {
+      "slug": "falmouth",
+      "name": "Falmouth",
+      "lat": 50.1526,
+      "lng": -5.0707,
+      "authorityId": 52,
+      "population": 22000,
+      "total": 14,
+      "statusBreakdown": [
+        {
+          "appState": "Permitted",
+          "count": 8
+        },
+        {
+          "appState": "Rejected",
+          "count": 3
+        },
+        {
+          "appState": "Undecided",
+          "count": 3
+        }
+      ],
+      "applications": [
+        {
+          "uid": "CWF/2026/0001",
+          "name": "PA26/F00001/FUL",
+          "address": "1 High Street, Testville, TV0 1AB",
+          "description": "Application number 1 for a loft conversion with rear dormer.",
+          "appState": "Permitted",
+          "startDate": "2026-04-22",
+          "lastDifferent": "2026-06-22T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/CWF-0",
+          "url": "https://council.example/CWF/0"
+        },
+        {
+          "uid": "CWF/2026/0002",
+          "name": "PA26/F00002/FUL",
+          "address": "2 High Street, Testville, TV1 1AB",
+          "description": "Demolition of existing outbuildings and the erection of a three-storey mixed-use building comprising ground floor commercial units and twelve residential flats with associated parking and landscaping works.",
+          "appState": "Rejected",
+          "startDate": "2026-04-21",
+          "decidedDate": "2026-05-21",
+          "lastDifferent": "2026-06-21T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/CWF-1",
+          "url": "https://council.example/CWF/1"
+        },
+        {
+          "uid": "CWF/2026/0003",
+          "name": "PA26/F00003/FUL",
+          "address": "3 High Street, Testville, TV2 1AB",
+          "description": "Application number 3 for a loft conversion with rear dormer.",
+          "appState": "Undecided",
+          "startDate": "2026-04-20",
+          "decidedDate": "2026-05-20",
+          "lastDifferent": "2026-06-20T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/CWF-2",
+          "url": "https://council.example/CWF/2"
+        }
+      ]
+    },
+    {
+      "slug": "st-austell",
+      "name": "St Austell",
+      "lat": 50.3395,
+      "lng": -4.7894,
+      "authorityId": 52,
+      "population": 28000,
+      "total": 11,
+      "statusBreakdown": [
+        {
+          "appState": "Permitted",
+          "count": 5
+        },
+        {
+          "appState": "Rejected",
+          "count": 2
+        },
+        {
+          "appState": "Undecided",
+          "count": 3
+        },
+        {
+          "appState": "Conditions",
+          "count": 1
+        }
+      ],
+      "applications": [
+        {
+          "uid": "CWS/2026/0001",
+          "name": "PA26/S00001/FUL",
+          "address": "1 High Street, Testville, TV0 1AB",
+          "description": "Application number 1 for a loft conversion with rear dormer.",
+          "appState": "Permitted",
+          "startDate": "2026-04-25",
+          "lastDifferent": "2026-06-25T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/CWS-0",
+          "url": "https://council.example/CWS/0"
+        },
+        {
+          "uid": "CWS/2026/0002",
+          "name": "PA26/S00002/FUL",
+          "address": "2 High Street, Testville, TV1 1AB",
+          "description": "Demolition of existing outbuildings and the erection of a three-storey mixed-use building comprising ground floor commercial units and twelve residential flats with associated parking and landscaping works.",
+          "appState": "Rejected",
+          "startDate": "2026-04-24",
+          "decidedDate": "2026-05-24",
+          "lastDifferent": "2026-06-24T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/CWS-1",
+          "url": "https://council.example/CWS/1"
+        },
+        {
+          "uid": "CWS/2026/0003",
+          "name": "PA26/S00003/FUL",
+          "address": "3 High Street, Testville, TV2 1AB",
+          "description": "Application number 3 for a loft conversion with rear dormer.",
+          "appState": "Undecided",
+          "startDate": "2026-04-23",
+          "decidedDate": "2026-05-23",
+          "lastDifferent": "2026-06-23T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/CWS-2",
+          "url": "https://council.example/CWS/2"
+        },
+        {
+          "uid": "CWS/2026/0004",
+          "name": "PA26/S00004/FUL",
+          "address": "4 High Street, Testville, TV3 1AB",
+          "description": "Application number 4 for a loft conversion with rear dormer.",
+          "appState": "Conditions",
+          "startDate": "2026-04-22",
+          "lastDifferent": "2026-06-22T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/CWS-3",
+          "url": "https://council.example/CWS/3"
+        },
+        {
+          "uid": "CWS/2026/0005",
+          "name": "PA26/S00005/FUL",
+          "address": "5 High Street, Testville, TV4 1AB",
+          "description": "Application number 5 for a loft conversion with rear dormer.",
+          "appState": "Withdrawn",
+          "startDate": "2026-04-21",
+          "decidedDate": "2026-05-21",
+          "lastDifferent": "2026-06-21T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/CWS-4",
+          "url": "https://council.example/CWS/4"
+        },
+        {
+          "uid": "CWS/2026/0006",
+          "name": "PA26/S00006/FUL",
+          "address": "6 High Street, Testville, TV5 1AB",
+          "description": "Application number 6 for a loft conversion with rear dormer.",
+          "appState": null,
+          "startDate": "2026-04-20",
+          "decidedDate": "2026-05-20",
+          "lastDifferent": "2026-06-20T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/CWS-5",
+          "url": "https://council.example/CWS/5"
+        },
+        {
+          "uid": "CWS/2026/0007",
+          "name": "PA26/S00007/FUL",
+          "address": "7 High Street, Testville, TV6 1AB",
+          "description": "Application number 7 for a loft conversion with rear dormer.",
+          "appState": "Permitted",
+          "startDate": "2026-04-19",
+          "lastDifferent": "2026-06-19T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/CWS-6",
+          "url": "https://council.example/CWS/6"
+        },
+        {
+          "uid": "CWS/2026/0008",
+          "name": "PA26/S00008/FUL",
+          "address": "8 High Street, Testville, TV7 1AB",
+          "description": "Application number 8 for a loft conversion with rear dormer.",
+          "appState": "Rejected",
+          "startDate": "2026-04-18",
+          "decidedDate": "2026-05-18",
+          "lastDifferent": "2026-06-18T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/CWS-7",
+          "url": "https://council.example/CWS/7"
+        },
+        {
+          "uid": "CWS/2026/0009",
+          "name": "PA26/S00009/FUL",
+          "address": "9 High Street, Testville, TV8 1AB",
+          "description": "Application number 9 for a loft conversion with rear dormer.",
+          "appState": "Undecided",
+          "startDate": "2026-04-17",
+          "decidedDate": "2026-05-17",
+          "lastDifferent": "2026-06-17T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/CWS-8",
+          "url": "https://council.example/CWS/8"
+        },
+        {
+          "uid": "CWS/2026/0010",
+          "name": "PA26/S00010/FUL",
+          "address": "10 High Street, Testville, TV0 1AB",
+          "description": "Application number 10 for a loft conversion with rear dormer.",
+          "appState": "Conditions",
+          "startDate": "2026-04-16",
+          "lastDifferent": "2026-06-16T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/CWS-9",
+          "url": "https://council.example/CWS/9"
+        },
+        {
+          "uid": "CWS/2026/0011",
+          "name": "PA26/S00011/FUL",
+          "address": "11 High Street, Testville, TV1 1AB",
+          "description": "Application number 11 for a loft conversion with rear dormer.",
+          "appState": "Withdrawn",
+          "startDate": "2026-04-15",
+          "decidedDate": "2026-05-15",
+          "lastDifferent": "2026-06-15T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/CWS-10",
+          "url": "https://council.example/CWS/10"
+        },
+        {
+          "uid": "CWS/2026/0012",
+          "name": "PA26/S00012/FUL",
+          "address": "12 High Street, Testville, TV2 1AB",
+          "description": "Application number 12 for a loft conversion with rear dormer.",
+          "appState": null,
+          "startDate": "2026-04-14",
+          "decidedDate": "2026-05-14",
+          "lastDifferent": "2026-06-14T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/CWS-11",
+          "url": "https://council.example/CWS/11"
+        }
+      ]
+    },
+    {
+      "slug": "penryn",
+      "name": "Penryn",
+      "lat": 50.1696,
+      "lng": -5.1058,
+      "authorityId": 52,
+      "population": 7000,
+      "total": 4,
+      "statusBreakdown": [
+        {
+          "appState": "Permitted",
+          "count": 2
+        },
+        {
+          "appState": "Rejected",
+          "count": 1
+        },
+        {
+          "appState": "Undecided",
+          "count": 1
+        }
+      ],
+      "applications": [
+        {
+          "uid": "CWP/2026/0001",
+          "name": "PA26/P00001/FUL",
+          "address": "1 High Street, Testville, TV0 1AB",
+          "description": "Application number 1 for a loft conversion with rear dormer.",
+          "appState": "Permitted",
+          "startDate": "2026-04-28",
+          "lastDifferent": "2026-06-28T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/CWP-0",
+          "url": "https://council.example/CWP/0"
+        },
+        {
+          "uid": "CWP/2026/0002",
+          "name": "PA26/P00002/FUL",
+          "address": "2 High Street, Testville, TV1 1AB",
+          "description": "Demolition of existing outbuildings and the erection of a three-storey mixed-use building comprising ground floor commercial units and twelve residential flats with associated parking and landscaping works.",
+          "appState": "Rejected",
+          "startDate": "2026-04-27",
+          "decidedDate": "2026-05-27",
+          "lastDifferent": "2026-06-27T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/CWP-1",
+          "url": "https://council.example/CWP/1"
+        }
+      ]
+    },
+    {
+      "slug": "basingstoke",
+      "name": "Basingstoke",
+      "lat": 51.2665,
+      "lng": -1.0924,
+      "authorityId": 100,
+      "population": 113000,
+      "total": 30,
+      "statusBreakdown": [
+        {
+          "appState": "Permitted",
+          "count": 14
+        },
+        {
+          "appState": "Rejected",
+          "count": 9
+        },
+        {
+          "appState": "Undecided",
+          "count": 7
+        }
+      ],
+      "applications": [
+        {
+          "uid": "BDT/2026/0001",
+          "name": "26/B00001/FUL",
+          "address": "1 High Street, Testville, TV0 1AB",
+          "description": "Application number 1 for a loft conversion with rear dormer.",
+          "appState": "Permitted",
+          "startDate": "2026-04-28",
+          "lastDifferent": "2026-06-28T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/BDT-0",
+          "url": "https://council.example/BDT/0"
+        },
+        {
+          "uid": "BDT/2026/0002",
+          "name": "26/B00002/FUL",
+          "address": "2 High Street, Testville, TV1 1AB",
+          "description": "Demolition of existing outbuildings and the erection of a three-storey mixed-use building comprising ground floor commercial units and twelve residential flats with associated parking and landscaping works.",
+          "appState": "Rejected",
+          "startDate": "2026-04-27",
+          "decidedDate": "2026-05-27",
+          "lastDifferent": "2026-06-27T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/BDT-1",
+          "url": "https://council.example/BDT/1"
+        },
+        {
+          "uid": "BDT/2026/0003",
+          "name": "26/B00003/FUL",
+          "address": "3 High Street, Testville, TV2 1AB",
+          "description": "Application number 3 for a loft conversion with rear dormer.",
+          "appState": "Undecided",
+          "startDate": "2026-04-26",
+          "decidedDate": "2026-05-26",
+          "lastDifferent": "2026-06-26T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/BDT-2",
+          "url": "https://council.example/BDT/2"
+        }
+      ]
+    },
+    {
+      "slug": "tadley",
+      "name": "Tadley",
+      "lat": 51.3503,
+      "lng": -1.1291,
+      "authorityId": 100,
+      "population": 12000,
+      "total": 12,
+      "statusBreakdown": [
+        {
+          "appState": "Permitted",
+          "count": 6
+        },
+        {
+          "appState": "Rejected",
+          "count": 3
+        },
+        {
+          "appState": "Undecided",
+          "count": 3
+        }
+      ],
+      "applications": [
+        {
+          "uid": "BDY/2026/0001",
+          "name": "26/Y00001/FUL",
+          "address": "1 High Street, Testville, TV0 1AB",
+          "description": "Application number 1 for a loft conversion with rear dormer.",
+          "appState": "Permitted",
+          "startDate": "2026-04-19",
+          "lastDifferent": "2026-06-19T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/BDY-0",
+          "url": "https://council.example/BDY/0"
+        },
+        {
+          "uid": "BDY/2026/0002",
+          "name": "26/Y00002/FUL",
+          "address": "2 High Street, Testville, TV1 1AB",
+          "description": "Demolition of existing outbuildings and the erection of a three-storey mixed-use building comprising ground floor commercial units and twelve residential flats with associated parking and landscaping works.",
+          "appState": "Rejected",
+          "startDate": "2026-04-18",
+          "decidedDate": "2026-05-18",
+          "lastDifferent": "2026-06-18T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/BDY-1",
+          "url": "https://council.example/BDY/1"
+        }
+      ]
+    },
+    {
+      "slug": "wrexham",
+      "name": "Wrexham",
+      "lat": 53.0462,
+      "lng": -2.9925,
+      "authorityId": 75,
+      "population": 65000,
+      "total": 15,
+      "statusBreakdown": [
+        {
+          "appState": "Permitted",
+          "count": 9
+        },
+        {
+          "appState": "Rejected",
+          "count": 3
+        },
+        {
+          "appState": "Undecided",
+          "count": 3
+        }
+      ],
+      "applications": [
+        {
+          "uid": "WXT/2026/0001",
+          "name": "P/T00001/FUL",
+          "address": "1 High Street, Testville, TV0 1AB",
+          "description": "Application number 1 for a loft conversion with rear dormer.",
+          "appState": "Permitted",
+          "startDate": "2026-04-28",
+          "lastDifferent": "2026-06-28T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/WXT-0",
+          "url": "https://council.example/WXT/0"
+        },
+        {
+          "uid": "WXT/2026/0002",
+          "name": "P/T00002/FUL",
+          "address": "2 High Street, Testville, TV1 1AB",
+          "description": "Demolition of existing outbuildings and the erection of a three-storey mixed-use building comprising ground floor commercial units and twelve residential flats with associated parking and landscaping works.",
+          "appState": "Rejected",
+          "startDate": "2026-04-27",
+          "decidedDate": "2026-05-27",
+          "lastDifferent": "2026-06-27T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/WXT-1",
+          "url": "https://council.example/WXT/1"
+        }
+      ]
+    }
+  ]
+}
