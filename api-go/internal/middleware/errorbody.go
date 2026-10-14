@@ -58,17 +58,9 @@ func ErrorBody(logger *slog.Logger) func(http.Handler) http.Handler {
 			if err := bw.backfill(); err != nil {
 				logger.ErrorContext(ctx, "write error body", "status", bw.status, "error", err)
 			}
-			// Flag the request span as failed for any server error (>= 500) so it
-			// shows as failed in App Insights AppRequests and is queryable
-			// (tc-8x8g task D). This is the single central hook — handlers don't
-			// touch the span. 4xx are client errors and are deliberately left
-			// unflagged. When telemetry is disabled SpanFromContext returns a
-			// no-op span and this is a no-op.
-			//
-			// The panic path (Recover, which runs inside this middleware) already
-			// set Error status with the richer panic message and recorded the
-			// exception; a non-nil holder.detail is that signal, so we skip the
-			// generic re-set to avoid clobbering the panic message.
+			// Flag the span failed for 5xx only; 4xx are deliberately left unflagged.
+			// A non-nil holder.detail means Recover already set a richer panic
+			// status, so skip to avoid clobbering it.
 			if bw.status >= http.StatusInternalServerError && holder.detail == nil {
 				trace.SpanFromContext(ctx).SetStatus(codes.Error, http.StatusText(bw.status))
 			}
@@ -121,11 +113,7 @@ func (b *backfillWriter) backfill() error {
 	if b.flushed || b.status < 400 || b.wroteBody {
 		return nil
 	}
-	var detail *string
-	if b.holder != nil {
-		detail = b.holder.detail
-	}
-	body, err := json.Marshal(errorResponse{Status: b.status, Title: reasonPhrase(b.status), Detail: detail})
+	body, err := json.Marshal(errorResponse{Status: b.status, Title: reasonPhrase(b.status), Detail: b.holder.detail})
 	if err != nil {
 		b.flushed = true
 		b.ResponseWriter.WriteHeader(b.status)

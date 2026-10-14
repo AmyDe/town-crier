@@ -147,12 +147,3 @@ func (r *Registry) PushDeliveryFailed(ctx context.Context, platform string) {
 	}
 	r.pushDeliveryFailed.Add(ctx, 1, metric.WithAttributes(attribute.String("platform", platform)))
 }
-
-// boolStr renders a bool as the lowercase "true"/"false" string used in App
-// Insights metric tags.
-func boolStr(b bool) string {
-	if b {
-		return "true"
-	}
-	return "false"
-}
