@@ -1244,10 +1244,10 @@ expected
 	// Action group (tc-ttjor / GH #938 PR3): consumed by the prod env stack's poll-queue-depth
 	// metric alert (infra/environment.go) so both alerts notify the same email receiver.
 	ctx.Export("actionGroupId", actionGroup.ID())
-	ctx.Export("acsConnectionString", communication.ListCommunicationServiceKeysOutput(ctx, communication.ListCommunicationServiceKeysOutputArgs{
+	ctx.Export("acsConnectionString", pulumi.ToSecret(communication.ListCommunicationServiceKeysOutput(ctx, communication.ListCommunicationServiceKeysOutputArgs{
 		ResourceGroupName:        resourceGroup.Name,
 		CommunicationServiceName: communicationServiceUk.Name,
-	}).PrimaryConnectionString())
+	}).SecondaryConnectionString()))
 
 	return nil
 }
