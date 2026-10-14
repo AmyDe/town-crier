@@ -1,32 +1,12 @@
 import type { Coordinates } from '../../domain/types';
 
-/**
- * Computes the map view `BoundaryMap` shows on first mount (GH#1031, bead
- * tc-7se1w.7): a fixed close-in view centred on the postcode-geocoded centre
- * when there are no vertices yet (a brand-new custom shape — today's
- * behaviour, unchanged), or a view that fits the bounding box of the
- * existing vertices with margin when re-opening a zone that already has a
- * drawn polygon. Without this, the fixed zoom clips a large polygon's
- * vertices/edges outside the visible map on reopen.
- *
- * Conceptual sibling of iOS's `BoundaryDrawingRegion.fitting` (tc-7se1w.2):
- * same shape of fix (pure, unit-testable bounds computation; 30% margin;
- * a minimum-span floor), expressed idiomatically for react-leaflet's
- * `bounds` prop instead of MapKit's `MKCoordinateRegion`.
- */
-
-/** The fixed zoom used when there are no vertices yet — matches the zoom
- * `BoundaryMap` always used before tc-7se1w.7. */
+/** The fixed zoom used when there are no vertices yet. */
 export const FRESH_DRAW_ZOOM = 15;
 
-/** Extra room around the tightest bounding box of the vertices, as a
- * fraction of the box's own span — keeps drawn edges/vertices from sitting
- * flush against the map's edge rather than comfortably inside it. */
+/** Margin around the vertices' bounding box, as a fraction of its span. */
 export const BOUNDS_MARGIN_FRACTION = 0.3;
 
-/** Smallest span (degrees of latitude/longitude) the fitted bounds are
- * allowed to shrink to — stops a single vertex or a tightly clustered few
- * vertices from producing an absurdly close-in zoom. */
+/** Minimum fitted span in degrees, so one vertex or a tight cluster does not zoom in absurdly. */
 export const MINIMUM_SPAN_DEGREES = 0.006;
 
 export interface BoundaryMapFixedView {
@@ -43,6 +23,11 @@ export interface BoundaryMapFitBoundsView {
 
 export type BoundaryMapView = BoundaryMapFixedView | BoundaryMapFitBoundsView;
 
+/**
+ * Initial view for `BoundaryMap`: the fixed zoom at `initialCentre` when there
+ * are no vertices, otherwise bounds fitting the vertices with margin so a large
+ * re-opened polygon is not clipped.
+ */
 export function computeBoundaryMapView(
   vertices: readonly Coordinates[],
   initialCentre: Coordinates,

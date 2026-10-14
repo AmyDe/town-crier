@@ -10,12 +10,7 @@ export class ApiRequestError extends Error {
 
 export interface ApiClient {
   get<T>(path: string, params?: Record<string, string>): Promise<T>;
-  /**
-   * Like `get`, but also surfaces the raw response headers so callers can read
-   * out-of-band metadata such as the `X-Next-Cursor` keyset-pagination header
-   * exposed by the watch-zone applications list (GH#711). `get` stays the
-   * header-blind fast path for the common case.
-   */
+  /** Like `get`, but also returns the response headers, e.g. `X-Next-Cursor` for keyset pagination. */
   getWithHeaders<T>(
     path: string,
     params?: Record<string, string>,

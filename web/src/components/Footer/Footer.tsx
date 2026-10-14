@@ -22,13 +22,7 @@ export function Footer() {
           </a>
         </div>
 
-        {/*
-         * Plain full-page <a> tags, not React Router <Link>: /planning/ and
-         * /planning/towns/ are static-generated pages outside the SPA (#821
-         * Phases 1-2), and /search — though an in-SPA route (#821 Phase 4) —
-         * is kept in the same plain-anchor style as the legal nav below for
-         * visual/behavioural consistency across this footer.
-         */}
+        {/* Plain <a>, not <Link>: /planning/ and /planning/towns/ are static pages outside the SPA. */}
         <p className={styles.sectionLabel}>Explore</p>
         <nav aria-label="Explore" className={styles.explore}>
           <a href="/planning/" className={styles.exploreLink}>Planning applications by council</a>

@@ -8,17 +8,13 @@ import type {
 } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import type { Coordinates } from '../../domain/types';
+import { OSM_ATTRIBUTION, OSM_TILE_URL } from '../osmTiles';
 import { computeBoundaryMapView } from './boundaryMapView';
 import styles from './BoundaryMap.module.css';
-
-const OSM_TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-const OSM_ATTRIBUTION =
-  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
 // Leaflet SVG layers accept raw colour values, not CSS custom properties —
 // this hex MUST be kept in sync BY HAND with --tc-amber in tokens.css (dark
 // theme value, #E9A620 / rgb(233, 166, 32)) whenever the palette changes.
-// Mirrors ConfirmMap's convention for the confirm-step circle.
 const CLOSED_RING_OPTIONS = {
   color: 'rgba(233, 166, 32, 0.8)',
   fillColor: 'rgb(233, 166, 32)',
@@ -26,8 +22,6 @@ const CLOSED_RING_OPTIONS = {
   weight: 2,
 };
 
-// The in-progress (not yet closed) ring is drawn as a dashed line with no
-// fill, so it reads as "still being drawn" rather than a completed shape.
 const OPEN_RING_OPTIONS = {
   color: 'rgba(233, 166, 32, 0.8)',
   weight: 2,
@@ -80,12 +74,8 @@ export function BoundaryMap({
   );
   const hasVertices = vertices.length > 0;
 
-  // Computed once from the vertices present when this component first
-  // mounts (the lazy initialiser runs exactly once) — re-opening a zone
-  // with an existing polygon fits the map to its bounding box, while a
-  // brand-new shape (no vertices yet) keeps the fixed default view for the
-  // whole drawing session, even as vertices are added. See
-  // `computeBoundaryMapView` (GH#1031, bead tc-7se1w.7).
+  // Computed once on mount: a new shape keeps the fixed view for the whole
+  // drawing session even as vertices are added.
   const [mapView] = useState(() => computeBoundaryMapView(vertices, centre));
   const mapViewProps =
     mapView.kind === 'fixed'
@@ -138,10 +128,8 @@ export function BoundaryMap({
           )}
 
           {vertices.map((vertex, index) => (
-            // Vertices are only ever appended/removed at the tail (drawing
-            // order), never reordered — index is a stable identity here, and
-            // using it (rather than the mutable lat/lng) is what lets a marker
-            // keep its React identity while it's being dragged.
+            // Vertices only change at the tail, so index is a stable key and
+            // keeps a marker's identity while it is dragged.
             <Marker
               key={index}
               position={[vertex.latitude, vertex.longitude]}
@@ -152,8 +140,6 @@ export function BoundaryMap({
                   const { lat, lng } = marker.getLatLng();
                   onMoveVertex(index, { latitude: lat, longitude: lng });
                 },
-                // Only the first vertex closes the ring when clicked — every
-                // other marker click is a no-op (dragging is how you adjust it).
                 ...(index === 0 ? { click: () => onCloseRing() } : {}),
               }}
             />
