@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -509,5 +510,132 @@ func TestCatalog_TownLastmodWholeRadius(t *testing.T) {
 	}
 	if lastmod == nil || !lastmod.Equal(newest) {
 		t.Errorf("lastmod = %v, want %v from the whole 5,000 m set", lastmod, newest)
+	}
+}
+
+func seedState(t *testing.T, pool *pgxpool.Pool, authorityID int, name string, northMetres float64, state *string, lastDifferent time.Time) {
+	t.Helper()
+	_, err := pool.Exec(context.Background(), `
+		INSERT INTO applications (planit_name, authority_code, uid, area_name, area_id, app_state, location, last_different)
+		VALUES ($1, $2, $3, 'Area', $4, $5, ST_SetSRID(ST_MakePoint($6::float8, $7::float8), 4326)::geography, $8)`,
+		name, strconv.Itoa(authorityID), "uid-"+name, authorityID, state, baseLng, latNorth(northMetres), lastDifferent)
+	if err != nil {
+		t.Fatalf("seed application %s: %v", name, err)
+	}
+}
+
+func seedStates(t *testing.T, pool *pgxpool.Pool, authorityID int, prefix string, northMetres float64, state *string, count int, lastDifferent time.Time) {
+	t.Helper()
+	for i := range count {
+		seedState(t, pool, authorityID, fmt.Sprintf("%s-%02d", prefix, i), northMetres, state, lastDifferent)
+	}
+}
+
+type townPage struct {
+	total     int
+	breakdown string
+	lastmod   time.Time
+}
+
+func readTownPage(t *testing.T, pool *pgxpool.Pool, path string) townPage {
+	t.Helper()
+	var (
+		p   townPage
+		raw []byte
+	)
+	if err := pool.QueryRow(context.Background(),
+		"SELECT total, status_breakdown, lastmod FROM seo_pages WHERE path = $1", path).Scan(&p.total, &raw, &p.lastmod); err != nil {
+		t.Fatalf("read page %q: %v", path, err)
+	}
+	var counts []struct {
+		AppState *string `json:"appState"`
+		Count    int     `json:"count"`
+	}
+	if err := json.Unmarshal(raw, &counts); err != nil {
+		t.Fatalf("decode breakdown for %q: %v", path, err)
+	}
+	for _, c := range counts {
+		state := "<nil>"
+		if c.AppState != nil {
+			state = *c.AppState
+		}
+		p.breakdown += fmt.Sprintf("%s=%d ", state, c.Count)
+	}
+	return p
+}
+
+func TestCatalog_TownStatsPerTownRadiusAndAuthority(t *testing.T) {
+	pool := newPool(t)
+	s := newStore(t, pool, fakeDirectory{district(1, "Shire"), district(2, "Other")},
+		town(1, "alpha", 0), town(1, "beta", 3000))
+	approved, undecided, refused, withdrawn := "Approved", "Undecided", "Refused", "Withdrawn"
+
+	seedStates(t, pool, 1, "BOTH-A", 1500, &approved, 4, baseTime)
+	seedStates(t, pool, 1, "BOTH-U", 1500, &undecided, 3, baseTime)
+	seedStates(t, pool, 1, "BOTH-N", 1500, nil, 2, baseTime)
+	seedStates(t, pool, 1, "ALPHA-R", -2500, &refused, 2, baseTime.Add(72*time.Hour))
+	seedStates(t, pool, 1, "BETA-W", 7500, &withdrawn, 2, baseTime.Add(48*time.Hour))
+	seedState(t, pool, 1, "OUT-SOUTH", -5050, &approved, baseTime.Add(96*time.Hour))
+	seedState(t, pool, 1, "OUT-NORTH", 8050, &approved, baseTime.Add(96*time.Hour))
+	seedApp(t, pool, 1, "NO-LOCATION", nil, baseTime.Add(96*time.Hour))
+	seedStates(t, pool, 2, "FOREIGN", 1500, &approved, 5, baseTime.Add(120*time.Hour))
+
+	mustRebuild(t, s)
+
+	tests := []struct {
+		path string
+		want townPage
+	}{
+		{"shire/alpha", townPage{11, "Approved=4 Undecided=3 Refused=2 <nil>=2 ", baseTime.Add(72 * time.Hour)}},
+		{"shire/beta", townPage{11, "Approved=4 Undecided=3 Withdrawn=2 <nil>=2 ", baseTime.Add(48 * time.Hour)}},
+	}
+	for _, tc := range tests {
+		got := readTownPage(t, pool, tc.path)
+		if got.total != tc.want.total || got.breakdown != tc.want.breakdown || !got.lastmod.Equal(tc.want.lastmod) {
+			t.Errorf("%s = %+v, want %+v", tc.path, got, tc.want)
+		}
+	}
+}
+
+func TestCatalog_TownStatsQueryScansApplicationsOnce(t *testing.T) {
+	pool := newPool(t)
+	ctx := context.Background()
+	var towns []seocatalog.Town
+	for i := range 20 {
+		towns = append(towns, town(1+i%4, fmt.Sprintf("t%02d", i), float64(i)*4000))
+	}
+	mustRebuild(t, newStore(t, pool, fakeDirectory{}, towns...))
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO applications (planit_name, authority_code, uid, area_name, area_id, app_state, location, last_different)
+		SELECT 'P-' || g, (1 + g % 4)::text, 'uid-P-' || g, 'Area', 1 + g % 4, 'Undecided',
+		       ST_SetSRID(ST_MakePoint($1::float8, $2::float8 + (g % 800) * 0.001), 4326)::geography, $3
+		FROM generate_series(1, 4000) g`, baseLng, baseLat, baseTime); err != nil {
+		t.Fatalf("seed applications: %v", err)
+	}
+	if _, err := pool.Exec(ctx, "ANALYZE applications; ANALYZE seo_towns"); err != nil {
+		t.Fatalf("analyze: %v", err)
+	}
+
+	rows, err := pool.Query(ctx, "EXPLAIN "+seocatalog.TownStatsQuery, float64(seocatalog.TownRadiusMetres))
+	if err != nil {
+		t.Fatalf("explain: %v", err)
+	}
+	var plan strings.Builder
+	for rows.Next() {
+		var line string
+		if err := rows.Scan(&line); err != nil {
+			t.Fatalf("scan plan: %v", err)
+		}
+		plan.WriteString(line + "\n")
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("read plan: %v", err)
+	}
+
+	got := plan.String()
+	if !strings.Contains(got, "Seq Scan on applications") ||
+		strings.Contains(got, "Bitmap Heap Scan on applications") ||
+		strings.Contains(got, "Index Scan using applications_location_gist") {
+		t.Errorf("plan does not read applications once in a sequential scan:\n%s", got)
 	}
 }
