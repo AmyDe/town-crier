@@ -6,12 +6,7 @@ import styles from './ApplicationCard.module.css';
 
 interface Props {
   application: PlanningApplicationSummary;
-  /**
-   * Called when the card is opened (tap-to-read). Navigation still proceeds —
-   * this fires alongside the link, letting the Applications list mark the
-   * application read. Optional so read-only surfaces (saved list, dashboard)
-   * can render the card without wiring it.
-   */
+  /** Fires alongside navigation when the card is opened (tap-to-read). */
   onOpen?: (application: PlanningApplicationSummary) => void;
 }
 
@@ -24,14 +19,6 @@ function truncate(text: string | null, maxLength: number): string {
   return text.slice(0, maxLength) + '...';
 }
 
-/**
- * "Filed notice" card (Public Notice component language, epic #848 R1): a
- * mono document-header strip (reference left, date right) over a 1px rule,
- * the address as the card's title, an outlined status stamp (icon + label —
- * never colour alone), and a 2px top rule that is the card's unread signal —
- * text-primary when read, amber when unread. The top rule replaces the
- * former leading unread dot; it reuses the same `latestUnreadEvent` signal.
- */
 export function ApplicationCard({ application, onOpen }: Props) {
   const isUnread = application.latestUnreadEvent !== null;
   const statusClass = statusClassName(application.appState, styles);

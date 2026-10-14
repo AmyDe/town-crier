@@ -2,17 +2,12 @@ import { useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Circle, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { OSM_ATTRIBUTION, OSM_TILE_URL } from '../osmTiles';
 import styles from './ConfirmMap.module.css';
-
-const OSM_TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-const OSM_ATTRIBUTION =
-  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
 // Leaflet SVG layers accept raw colour values, not CSS custom properties —
 // this hex MUST be kept in sync BY HAND with --tc-amber in tokens.css (dark
 // theme value, #E9A620 / rgb(233, 166, 32)) whenever the palette changes.
-// Public Notice component language: a dashed amber ring at low fill opacity,
-// not a solid highlight.
 const CIRCLE_OPTIONS = {
   color: 'rgba(233, 166, 32, 0.8)',
   fillColor: 'rgb(233, 166, 32)',

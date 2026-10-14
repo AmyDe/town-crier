@@ -4,17 +4,13 @@
 package api
 
 import (
-	"bytes"
-	"encoding/json"
 	"log/slog"
 	"net/http"
 
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
+	"github.com/AmyDe/town-crier/api-go/internal/httputil"
 )
 
-// userIDResponse is the GET /api/me response shape. The JSON key is userId —
-// explicit camelCase via the json struct tag — not the PascalCase the field name
-// would otherwise produce.
 type userIDResponse struct {
 	UserID string `json:"userId"`
 }
@@ -32,23 +28,14 @@ type handler struct {
 }
 
 func (h handler) me(w http.ResponseWriter, r *http.Request) {
-	// The subject was injected by the auth middleware after validating the
-	// bearer token.
-	resp := userIDResponse{UserID: auth.Subject(r.Context())}
-
-	// Encode through a buffer with HTML escaping off and trim the trailing
-	// newline so the wire bytes are compact.
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(resp); err != nil {
+	body, err := httputil.EncodeJSON(userIDResponse{UserID: auth.Subject(r.Context())})
+	if err != nil {
 		h.logger.ErrorContext(r.Context(), "encode me response", "error", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	// Content-Type is application/json with an explicit charset=utf-8 parameter.
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	if _, err := w.Write(bytes.TrimRight(buf.Bytes(), "\n")); err != nil {
+	if _, err := w.Write(body); err != nil {
 		h.logger.ErrorContext(r.Context(), "write me response", "error", err)
 	}
 }

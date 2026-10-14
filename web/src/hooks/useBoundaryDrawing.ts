@@ -1,10 +1,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import type { Coordinates, WatchZoneBoundary } from '../domain/types';
 
-/**
- * 3 is the geometric minimum for a polygon — matches the server-side
- * validation range (3 to 50 vertices) in GH#1031.
- */
+/** Geometric minimum for a polygon; matches server validation (3 to 50 vertices). */
 const MIN_VERTICES = 3;
 
 export interface BoundaryDrawingState {

@@ -46,13 +46,9 @@ func (s *statusWriter) Write(p []byte) (int, error) {
 // Unwrap lets http.ResponseController reach the underlying writer (Flush etc.).
 func (s *statusWriter) Unwrap() http.ResponseWriter { return s.ResponseWriter }
 
-// RouteSpan names the inbound request span after the matched ServeMux route (tc-r8eo),
-// e.g.
-// "GET /v1/me") and records the real HTTP status code on the span. Azure Monitor
-// maps span Name -> AppRequests.Name and http.response.status_code ->
-// ResultCode, so without this every Go request row showed only the bare verb and
-// a span-status ResultCode (0/2), leaving status-keyed dashboards and 4xx/5xx
-// alerts blind.
+// RouteSpan names the inbound request span after the matched ServeMux route
+// (e.g. "GET /v1/me") and records the HTTP status code on the span, which Azure
+// Monitor maps to AppRequests.Name and ResultCode.
 //
 // It resolves the pattern up front via the matcher (the same deterministic
 // lookup auth.RequireAuth uses) rather than reading r.Pattern, because the

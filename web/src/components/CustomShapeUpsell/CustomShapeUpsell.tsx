@@ -1,12 +1,7 @@
 import styles from './CustomShapeUpsell.module.css';
 
 interface Props {
-  /**
-   * App Store link (campaign-tagged, see `appStoreUrl` in `config/links.ts`)
-   * for the upgrade CTA. Web has no in-app checkout — subscriptions are an
-   * iOS in-app purchase — so this points out to the store listing, mirroring
-   * `Pricing.tsx`. No CTA renders when omitted.
-   */
+  /** App Store link for the upgrade CTA (web has no checkout). No CTA renders when omitted. */
   upgradeHref?: string;
 }
 

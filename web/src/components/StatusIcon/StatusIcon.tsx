@@ -1,14 +1,6 @@
 /**
- * Small decorative glyph paired with every status "stamp" across the app
- * (ApplicationCard, ApplicationDetailPage, SearchResultCard) so status is
- * never conveyed by colour alone (design-language accessibility requirement —
- * ~8% of men have some form of colour vision deficiency). Purely decorative:
- * `aria-hidden`, no text content — the accessible label lives in the caller
- * alongside it.
- *
- * A minimal hand-rolled glyph set, consistent with this codebase's existing
- * inline-SVG icons (Navbar hamburger, ThemeToggle sun/moon) — not the full
- * icon system, which is out of scope here (epic #848 R7).
+ * Decorative status glyph (`aria-hidden`) so status is never conveyed by
+ * colour alone; the accessible label lives in the caller.
  */
 
 export type StatusIconGlyph = 'pending' | 'granted' | 'rejected' | 'withdrawn' | 'appealed';
