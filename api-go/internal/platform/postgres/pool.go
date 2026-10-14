@@ -16,11 +16,15 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strconv"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgconn/ctxwatch"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -64,12 +68,46 @@ func DSNFromEnv() string {
 // connections lazily, so a malformed DSN fails here at parse time while an
 // unreachable-but-valid DSN succeeds and only errors when a query is issued
 // (callers ping to detect that — see the pgtest helper).
-func NewPool(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
-	pool, err := pgxpool.New(ctx, dsn)
+func NewPool(ctx context.Context, dsn string, opts ...PoolOption) (*pgxpool.Pool, error) {
+	cfg, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		return nil, fmt.Errorf("create postgres pool: %w", err)
+	}
+	applyOptions(cfg, opts)
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("create postgres pool: %w", err)
 	}
 	return pool, nil
+}
+
+// PoolOption adjusts a pool configuration before the pool is built.
+type PoolOption func(*pgxpool.Config)
+
+// cancelDeadlineDelay is how long a cancelled query waits for the server to
+// honour the CancelRequest before pgx closes the socket.
+const cancelDeadlineDelay = 5 * time.Second
+
+// WithStatementGuards bounds every statement on the pool's connections
+// server-side: statementTimeout sets the session statement_timeout,
+// checkInterval sets client_connection_check_interval so the server notices a
+// dead client, and a cancelled context sends a CancelRequest to the server
+// instead of only closing the socket.
+func WithStatementGuards(statementTimeout, checkInterval time.Duration) PoolOption {
+	return func(cfg *pgxpool.Config) {
+		params := cfg.ConnConfig.RuntimeParams
+		params["statement_timeout"] = strconv.FormatInt(statementTimeout.Milliseconds(), 10)
+		params["client_connection_check_interval"] = strconv.FormatInt(checkInterval.Milliseconds(), 10)
+		cfg.ConnConfig.BuildContextWatcherHandler = func(conn *pgconn.PgConn) ctxwatch.Handler {
+			return &pgconn.CancelRequestContextWatcherHandler{Conn: conn, DeadlineDelay: cancelDeadlineDelay}
+		}
+	}
+}
+
+func applyOptions(cfg *pgxpool.Config, opts []PoolOption) {
+	for _, opt := range opts {
+		opt(cfg)
+	}
 }
 
 // ConnParams are the discrete, passwordless connection inputs for Entra
@@ -99,16 +137,16 @@ type tokenSource interface {
 // Entra token (scope azurePostgresTokenScope) as the connection password on
 // every new physical connection, honouring AZURE_CLIENT_ID exactly as the
 // Cosmos and Service Bus clients do.
-func NewPoolFromEnv(ctx context.Context) (*pgxpool.Pool, error) {
+func NewPoolFromEnv(ctx context.Context, opts ...PoolOption) (*pgxpool.Pool, error) {
 	if os.Getenv("POSTGRES_AUTH") != authModeAzureManagedIdentity {
-		return NewPool(ctx, DSNFromEnv())
+		return NewPool(ctx, DSNFromEnv(), opts...)
 	}
 
 	cred, err := newManagedIdentityCredential(os.Getenv("AZURE_CLIENT_ID"))
 	if err != nil {
 		return nil, err
 	}
-	return NewTokenCredentialPool(ctx, paramsFromEnv(), cred)
+	return newTokenPool(ctx, paramsFromEnv(), aadTokenSource{cred: cred}, opts...)
 }
 
 // NewTokenCredentialPool builds a passwordless pgx pool that authenticates every
@@ -121,11 +159,12 @@ func NewTokenCredentialPool(ctx context.Context, p ConnParams, cred azcore.Token
 	return newTokenPool(ctx, p, aadTokenSource{cred: cred})
 }
 
-func newTokenPool(ctx context.Context, p ConnParams, ts tokenSource) (*pgxpool.Pool, error) {
+func newTokenPool(ctx context.Context, p ConnParams, ts tokenSource, opts ...PoolOption) (*pgxpool.Pool, error) {
 	cfg, err := buildMIPoolConfig(p, ts)
 	if err != nil {
 		return nil, err
 	}
+	applyOptions(cfg, opts)
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("create managed-identity postgres pool: %w", err)

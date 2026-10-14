@@ -43,11 +43,16 @@ type CatalogSummary struct {
 const authorityStatsQuery = `SELECT authority_code, app_state, count(*), coalesce(max(area_name), '')
 FROM applications GROUP BY authority_code, app_state`
 
-// townStatsQuery drives from applications so the planner scans it once and
-// probes the GiST index on the small seo_towns table.
+// townStatsQuery reads applications once and probes the seo_towns GiST index
+// per row. OFFSET 0 stops the planner flattening the LATERAL into a plain join:
+// it misestimates that join and picks a per-town scan of applications, which
+// on a table larger than RAM is a long run of random disk reads.
 const townStatsQuery = `SELECT t.authority_code, t.slug, a.app_state, count(*), max(a.last_different)
 FROM applications a
-JOIN seo_towns t ON a.authority_code = t.authority_code AND ST_DWithin(a.location, t.location, $1)
+CROSS JOIN LATERAL (
+  SELECT s.authority_code, s.slug FROM seo_towns s
+  WHERE s.authority_code = a.authority_code AND ST_DWithin(s.location, a.location, $1)
+  OFFSET 0) t
 GROUP BY t.authority_code, t.slug, a.app_state`
 
 // townListQuery returns each published town's newest TownListSize applications.

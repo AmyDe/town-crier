@@ -5,8 +5,11 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // fakeTokenSource is a hand-written stand-in for the Entra token acquirer so the
@@ -172,5 +175,64 @@ func TestNewPool_RejectsMalformedDSN(t *testing.T) {
 	_, err := NewPool(context.Background(), "postgres://user:pass word@host:5432/db")
 	if err == nil {
 		t.Fatal("NewPool() with a malformed DSN returned nil error, want a parse error")
+	}
+}
+
+func TestWithStatementGuards_SetsSessionLimitsAndServerCancel(t *testing.T) {
+	t.Parallel()
+	cfg, err := pgxpool.ParseConfig("postgres://u@localhost:5432/db?sslmode=disable")
+	if err != nil {
+		t.Fatalf("ParseConfig() error = %v", err)
+	}
+
+	WithStatementGuards(10*time.Minute, 10*time.Second)(cfg)
+
+	params := cfg.ConnConfig.RuntimeParams
+	if got := params["statement_timeout"]; got != "600000" {
+		t.Errorf("statement_timeout = %q, want 600000", got)
+	}
+	if got := params["client_connection_check_interval"]; got != "10000" {
+		t.Errorf("client_connection_check_interval = %q, want 10000", got)
+	}
+	h, ok := cfg.ConnConfig.BuildContextWatcherHandler(&pgconn.PgConn{}).(*pgconn.CancelRequestContextWatcherHandler)
+	if !ok {
+		t.Fatal("context watcher handler is not a CancelRequestContextWatcherHandler")
+	}
+	if h.CancelRequestDelay != 0 || h.DeadlineDelay <= 0 {
+		t.Errorf("handler delays = (%v, %v), want (0, > 0)", h.CancelRequestDelay, h.DeadlineDelay)
+	}
+}
+
+func TestNewPoolFromEnv_AppliesOptionsOnBothAuthPaths(t *testing.T) {
+	cases := []struct {
+		name string
+		env  map[string]string
+	}{
+		{"password", map[string]string{
+			"POSTGRES_AUTH":     "",
+			"TEST_DATABASE_URL": "postgres://towncrier:towncrier@localhost:5433/towncrier_test?sslmode=disable",
+		}},
+		{"managed identity", map[string]string{
+			"POSTGRES_AUTH": "azure-managed-identity",
+			"POSTGRES_HOST": "example.postgres.database.azure.com",
+			"POSTGRES_DB":   "town_crier_dev",
+			"POSTGRES_USER": "towncrier_api",
+			"PGPASSWORD":    "",
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			for k, v := range tc.env {
+				t.Setenv(k, v)
+			}
+			pool, err := NewPoolFromEnv(context.Background(), WithStatementGuards(time.Minute, time.Second))
+			if err != nil {
+				t.Fatalf("NewPoolFromEnv() error = %v", err)
+			}
+			defer pool.Close()
+			if got := pool.Config().ConnConfig.RuntimeParams["statement_timeout"]; got != "60000" {
+				t.Fatalf("statement_timeout = %q, want 60000", got)
+			}
+		})
 	}
 }
