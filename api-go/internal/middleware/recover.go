@@ -40,10 +40,6 @@ func Recover(logger *slog.Logger) func(http.Handler) http.Handler {
 				err := panicError(rec)
 				logger.ErrorContext(ctx, "recovered from panic",
 					"method", r.Method, "path", r.URL.Path, "error", err)
-				// Record the panic on the active request span (started by
-				// otelhttp) so it surfaces in App Insights AppExceptions and the
-				// request shows as failed (tc-8x8g). When telemetry is disabled
-				// SpanFromContext returns a no-op span and these are no-ops.
 				span := trace.SpanFromContext(ctx)
 				span.RecordError(err)
 				span.SetStatus(codes.Error, err.Error())

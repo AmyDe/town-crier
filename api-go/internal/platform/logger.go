@@ -10,15 +10,11 @@ import (
 
 // NewOTelLogger returns a logger that fans every record out to BOTH a stdout
 // JSON handler (-> ContainerAppConsoleLogs) AND the otelslog bridge (-> OTel
-// logs -> App Insights AppTraces). tc-8x8g / ADR 0027: without the bridge the Go
-// API emits zero AppTraces, so error-level slog records never reach telemetry.
+// logs -> App Insights AppTraces).
 //
 // The otelslog handler reads the GLOBAL OTel LoggerProvider, which is the no-op
-// provider until SetupTelemetry installs an SDK one. So when telemetry is
-// disabled, the bridge silently drops records and only the JSON sink emits —
-// preserving the existing behaviour. The bridge auto-attaches trace/span IDs
-// from the ctx passed to slog's *Context methods, giving trace correlation for
-// free.
+// provider until SetupTelemetry installs an SDK one, so when telemetry is
+// disabled only the JSON sink emits.
 func NewOTelLogger(w io.Writer, level slog.Level) *slog.Logger {
 	jsonHandler := slog.NewJSONHandler(w, &slog.HandlerOptions{Level: level})
 	otelHandler := otelslog.NewHandler(defaultServiceName)

@@ -115,7 +115,6 @@ func (a azblobAPI) download(ctx context.Context, container, key string) (io.Read
 }
 
 func (a azblobAPI) upload(ctx context.Context, container, key string, data []byte) error {
-	// Store.Put wraps this with the key context; return it raw here.
 	_, err := a.client.UploadBuffer(ctx, container, key, data, nil)
 	return err
 }
