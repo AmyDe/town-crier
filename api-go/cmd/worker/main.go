@@ -117,10 +117,6 @@ func run() int {
 	// metrics (tc-21np).
 	registry := metrics.New(otel.Meter(metrics.MeterName))
 
-	// Build the shared Postgres pool unconditionally — Postgres is the only
-	// datastore. One pool is reused by every store and every builder below; it
-	// closes on process exit. A pool error is always fatal: the worker cannot run
-	// any mode without its store.
 	pool, perr := postgres.NewPoolFromEnv(context.Background(), poolOptions(mode)...)
 	if perr != nil {
 		logger.Error("postgres: build pool", "error", perr)
