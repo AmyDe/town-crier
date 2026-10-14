@@ -34,7 +34,7 @@ func (d fakeDirectory) All() []authorities.Authority { return d }
 func newPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	pool := pgtest.New(t)
-	pgtest.Truncate(t, pool, "applications", "seo_towns", "seo_town_applications", "seo_pages", "seo_redirects", "seo_state")
+	pgtest.Truncate(t, pool, "applications", "seo_towns", "seo_town_applications", "seo_pages", "seo_redirects")
 	return pool
 }
 

@@ -40,14 +40,8 @@ CREATE TABLE seo_redirects (
     target text NOT NULL
 );
 
-CREATE TABLE seo_state (
-    key   text PRIMARY KEY,
-    value text NOT NULL
-);
-
 -- +goose Down
 
-DROP TABLE IF EXISTS seo_state;
 DROP TABLE IF EXISTS seo_redirects;
 DROP TABLE IF EXISTS seo_pages;
 DROP TABLE IF EXISTS seo_town_applications;
