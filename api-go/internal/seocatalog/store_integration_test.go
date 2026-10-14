@@ -600,7 +600,7 @@ func TestCatalog_TownStatsPerTownRadiusAndAuthority(t *testing.T) {
 func TestCatalog_TownStatsQueryScansApplicationsOnce(t *testing.T) {
 	pool := newPool(t)
 	ctx := context.Background()
-	var towns []seocatalog.Town
+	towns := make([]seocatalog.Town, 0, 20)
 	for i := range 20 {
 		towns = append(towns, town(1+i%4, fmt.Sprintf("t%02d", i), float64(i)*4000))
 	}
