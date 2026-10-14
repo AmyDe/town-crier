@@ -77,6 +77,32 @@ class Aggregation(unittest.TestCase):
         for example in acs[0]["examples"]:
             self.assertNotIn(ACS, example["context"])
 
+    def test_context_masks_every_secret_on_the_line(self):
+        a = J(["Qm9ndXNBQUFB", "Rm9yVGVzdHNPbmx5MTIzNDU2Nzg5MGFi"])
+        b = J(["Qm9ndXNCQkJC", "Rm9yVGVzdHNPbmx5MDk4NzY1NDMyMXp5"])
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as z:
+            z.writestr("0_dump.txt", f'{TS}{{"client_secret": "{a}", "password": "{b}"}}\n')
+        agg = collections.defaultdict(lambda: {"rules": set(), "occurrences": 0, "runs": set(), "steps": set(), "examples": []})
+        lc.scan_zip(buf.getvalue(), {"workflow": "CD Dev", "run_id": 1, "attempt": 1, "url": ""}, agg)
+        self.assertEqual({a, b}, set(agg))
+        for entry in agg.values():
+            for example in entry["examples"]:
+                self.assertNotIn(a, example["context"])
+                self.assertNotIn(b, example["context"])
+
+    def test_secret_far_into_a_long_line(self):
+        token = J(["gh", "p_", "aB3dE5fG7hI9jK1lM3nO5pQ7rS9tU1vW3xY5"])
+        masked, hits = lc.scan_log_line(TS + "x" * 9000 + f" {token} " + "y" * 100)
+        self.assertEqual([token], [value for value, _ in hits])
+        self.assertNotIn(token, masked)
+
+    def test_nested_values_keep_all_rules_on_the_outermost(self):
+        hits = lc.scan_log_line(f'{TS}  "connection_string": "{ACS}"')[1]
+        self.assertEqual(1, len(hits))
+        self.assertIn("json-secret-field", hits[0][1])
+        self.assertIn("connection-string", hits[0][1])
+
     def test_one_value_is_one_candidate_with_all_rules(self):
         hits = lc.scan_log_line(f'{TS}    acsConnectionString : "{ACS}"')[1]
         self.assertEqual(len(hits), 1)

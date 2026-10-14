@@ -60,6 +60,10 @@ NOISE_VALUE = re.compile(
 )
 UUID_ONLY = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 HEX_ONLY = re.compile(r"^[0-9a-fA-F]+$")
+WINDOW = 4000
+WINDOW_OVERLAP = 512
+CONTEXT_BEFORE = 120
+CONTEXT_WIDTH = 300
 
 
 def fingerprint(value):
@@ -79,25 +83,44 @@ def keep(rule, value, line):
     return True
 
 
+def windows(line):
+    # Overlapping windows keep a secret near a window edge whole without one huge regex input.
+    if len(line) <= WINDOW:
+        return [line]
+    step = WINDOW - WINDOW_OVERLAP
+    return [line[i:i + WINDOW] for i in range(0, len(line) - WINDOW_OVERLAP, step)]
+
+
 def scan_log_line(line):
-    line = TIMESTAMP.sub("", line)[:4000]
-    hits = [(rule, value) for _, _, rule, value in c.scan_line("log.txt", 0, line)]
-    for rule, rx in LOG_RULES:
-        for m in rx.finditer(line):
-            hits.append((rule, m.group(m.lastindex or 0)))
+    """Return (masked line, [(value, rules)]); every raw hit is masked, kept or not."""
+    line = TIMESTAMP.sub("", line)
+    hits = []
+    for chunk in windows(line):
+        hits += [(rule, value) for _, _, rule, value in c.scan_line("log.txt", 0, chunk)]
+        for rule, rx in LOG_RULES:
+            for m in rx.finditer(chunk):
+                hits.append((rule, m.group(m.lastindex or 0)))
     kept = {}
     for rule, value in hits:
         value = value.strip()
         if keep(rule, value, line):
             kept.setdefault(value, set()).add(rule)
-    out = []
+    maximal = [v for v in kept if not any(v != o and v in o for o in kept)]
+    merged = {v: set(kept[v]) for v in maximal}
     for value, found in kept.items():
-        container = next((v for v in kept if v != value and value in v), None)
-        if container is None:
-            out.append((value, found))
-        else:
-            kept[container] |= found
-    return line, [(value, kept[value]) for value, _ in out]
+        for container in maximal:
+            if value != container and value in container:
+                merged[container] |= found
+    masked = line
+    for value in sorted({v.strip() for _, v in hits if v.strip()}, key=len, reverse=True):
+        masked = masked.replace(value, c.mask(value))
+    return masked, list(merged.items())
+
+
+def context(masked_line, value):
+    at = max(masked_line.find(c.mask(value)), 0)
+    start = max(at - CONTEXT_BEFORE, 0)
+    return masked_line[start:start + CONTEXT_WIDTH]
 
 
 def scan_zip(data, meta, agg):
@@ -120,7 +143,7 @@ def scan_zip(data, meta, agg):
                             **meta,
                             "job_file": name,
                             "line": lineno,
-                            "context": line.replace(value, c.mask(value))[:300],
+                            "context": context(line, value),
                         })
 
 
@@ -150,7 +173,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--hours", type=int, default=48)
     ap.add_argument("--repo", default="AmyDe/town-crier")
-    ap.add_argument("--zip", nargs="*", help="scan these log archives instead of downloading")
+    ap.add_argument("--zip", nargs="+", help="scan these log archives instead of downloading")
     args = ap.parse_args()
 
     agg = collections.defaultdict(lambda: {"rules": set(), "occurrences": 0, "runs": set(), "steps": set(), "examples": []})
