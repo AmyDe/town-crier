@@ -309,7 +309,7 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 	// must not be able to write to prod. Mapped to a SELECT-only Postgres role
 	// via `pgbootstrap -readonly` — see
 	// docs/adr/0038-dev-seed-least-privilege-prod-read.md. Consumed by the
-	// dev-seed Container Apps Job created in infra/environment.go (tc-grvu.6);
+	// dev-seed Container Apps Job created in infra/environment.go;
 	// not wired into any resource in this file.
 	devSeedReaderIdentity, err := managedidentity.NewUserAssignedIdentity(ctx, "id-town-crier-dev-seed-reader", &managedidentity.UserAssignedIdentityArgs{
 		ResourceName:      pulumi.String("id-town-crier-dev-seed-reader"),
@@ -560,7 +560,7 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 	// Location is pinned to uksouth (rather than left to the provider default the way the
 	// workspace above is) because, unlike the Global action group, Log Analytics-based scheduled
 	// query rules are regional and must be explicit — mirrors the same rationale documented on
-	// the Service Bus namespace in environment.go (tc-ds1e).
+	// the Service Bus namespace in environment.go.
 	const planitFailureRatioQuery = `AppDependencies
 | where Target has "planit"
 | summarize Total = count(), NonRetryableFailures = countif(Success == false and tostring(Properties["http.response.status_code"]) != "429")
@@ -648,7 +648,7 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 	}
 
 	// LinkedDomains authorises the CommunicationService to send mail from the
-	// towncrierapp.uk Domain. Without this, sends fail with 404 DomainNotLinked (tc-luxj).
+	// towncrierapp.uk Domain. Without this, sends fail with 404 DomainNotLinked.
 	communicationServiceUk, err := communication.NewCommunicationService(ctx, "acs-town-crier-uk", &communication.CommunicationServiceArgs{
 		CommunicationServiceName: pulumi.String("acs-town-crier-uk"),
 		ResourceGroupName:        resourceGroup.Name,
@@ -1155,7 +1155,7 @@ expected
 	const dashboardPlanItErrorsQuery = `let data = dependencies | where customDimensions['deployment.environment'] == 'prod' | where target == 'PlanIt search' and success == false | extend status = tostring(customDimensions['http.response.status_code']) | where status != '429' | summarize Value=toreal(count()) by timestamp=bin(timestamp, 1h), status; union data, (datatable(timestamp:datetime, Value:real, status:string)[]) | render timechart`
 	// Replaces the former dashboardEmailsSentVsFailedQuery (target == 'ACS email send'), which
 	// counted the send+poll HTTP calls behind each email rather than the email itself, inflating
-	// per-email counts. 'Email send' is the one-span-per-email telemetry (tc-gha6l).
+	// per-email counts. 'Email send' is the one-span-per-email telemetry.
 	const dashboardEmailsByKindQuery = `let data = dependencies | where customDimensions['deployment.environment'] == 'prod' | where name == 'Email send' | summarize Value=toreal(count()) by timestamp=bin(timestamp, 1h), series=strcat(tostring(customDimensions['email.kind']), iff(success == true, '', ' (failed)')); union data, (datatable(timestamp:datetime, Value:real, series:string)[]) | render timechart`
 	const dashboardAPNsPushesQuery = `let data = dependencies | where customDimensions['deployment.environment'] == 'prod' | where target == 'APNs push' | summarize Value=toreal(count()) by timestamp=bin(timestamp, 1h), outcome=iff(success == true, 'Sent', 'Failed'); union data, (datatable(timestamp:datetime, Value:real, outcome:string)[]) | render timechart`
 
