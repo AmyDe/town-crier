@@ -102,12 +102,11 @@ type Config struct {
 	// credentials, so it is a SecretString. Empty means no webhooks.
 	SubscriptionWebhooks SecretString
 
-	// SiteBuildKey gates the build-time SEO endpoint
-	// GET /v1/authorities/{id}/applications (the X-Build-Key header). It is a
-	// dedicated, least-privilege key, distinct from AdminAPIKey: the SEO endpoint
-	// reads only public planning data, never user PII or subscriptions. Empty
-	// means the endpoint rejects every request, so an unconfigured deployment
-	// exposes no SEO surface.
+	// SiteBuildKey gates the SEO endpoints served to the Cloudflare Worker (the
+	// X-Build-Key header). It is a dedicated, least-privilege key, distinct from
+	// AdminAPIKey: the SEO endpoints read only public planning data, never user
+	// PII or subscriptions. Empty means they reject every request, so an
+	// unconfigured deployment exposes no SEO surface.
 	SiteBuildKey string
 
 	// AppleBundleID is the App Store bundle id a verified StoreKit transaction

@@ -26,8 +26,7 @@ type querier interface {
 }
 
 // Store is the full method set the Applications store exposes to its consumers
-// across packages (handler's appStore, recent.go's recentStore, near.go's
-// nearStore, watchzones.appFinder's FindNearbyPage, the savedapplications snapshot
+// across packages (handler's appStore, watchzones.appFinder's FindNearbyPage, the savedapplications snapshot
 // backfill's GetByUID, demoaccount's Upsert + FindNearbyPage, and the poll
 // Upsert). It is the exported consumer-side interface cmd/api's newRouter accepts
 // for the Applications routes. Every narrower per-handler interface is a subset
@@ -37,7 +36,6 @@ type Store interface {
 	GetByAuthorityAndName(ctx context.Context, authorityCode, name string) (PlanningApplication, bool, error)
 	GetByUID(ctx context.Context, uid, authorityCode string) (PlanningApplication, bool, error)
 	RecentByAuthority(ctx context.Context, authorityCode string, cap int) ([]PlanningApplication, error)
-	BreakdownByAuthority(ctx context.Context, authorityCode string) ([]StateCount, error)
 	FindNearbyPage(ctx context.Context, latitude, longitude, radiusMetres float64, limit int, cursor string) ([]PlanningApplication, string, error)
 	RecentNearPoint(ctx context.Context, latitude, longitude, radiusMetres float64, limit int) ([]PlanningApplication, error)
 	FindInZonePage(ctx context.Context, q InZoneQuery) ([]PlanningApplication, string, error)
@@ -45,15 +43,11 @@ type Store interface {
 	FindInBoundaryPage(ctx context.Context, latitude, longitude float64, boundary []Coordinate, limit int, cursor string) ([]PlanningApplication, string, error)
 	FindClustersInBoundary(ctx context.Context, q BoundaryClusterQuery) ([]Cluster, error)
 	FindInBoundaryZonePage(ctx context.Context, q InBoundaryQuery) ([]PlanningApplication, string, error)
-	RecentNearestTown(ctx context.Context, authorityCode string, lat, lng, radiusMetres float64, siblings []TownCentroid, cap int) ([]PlanningApplication, error)
-	BreakdownNearby(ctx context.Context, authorityCode string, lat, lng, radiusMetres float64) ([]StateCount, error)
 	Search(ctx context.Context, query, authorityCode string, lat, lon float64, limit int) ([]PlanningApplication, bool, error)
 }
 
 var (
 	_ appStore    = (*PostgresStore)(nil)
-	_ recentStore = (*PostgresStore)(nil)
-	_ nearStore   = (*PostgresStore)(nil)
 	_ searchStore = (*PostgresStore)(nil)
 	_ Store       = (*PostgresStore)(nil)
 )
@@ -329,14 +323,14 @@ func (s *PostgresStore) MatchesExpression(ctx context.Context, description, expr
 // neither sorts last (NULLS LAST) rather than erroring or floating to the top.
 // The tie-break (start_date DESC NULLS LAST, then planit_name ASC) makes the
 // order fully deterministic when two applications share the same GREATEST
-// value. Shared by pgRecentByAuthorityQuery and pgRecentNearestTownQuery.
+// value. Shared by pgRecentByAuthorityQuery and pgRecentNearPointQuery.
 const RecentRealDateOrder = "GREATEST(decided_date, start_date) DESC NULLS LAST, start_date DESC NULLS LAST, planit_name"
 
 const pgRecentByAuthorityQuery = "SELECT " + appColumns +
 	" FROM applications WHERE authority_code = $1 ORDER BY " + RecentRealDateOrder + " LIMIT $2"
 
 // RecentByAuthority returns up to cap most-recently-active applications in the
-// authority, ordered by RecentRealDateOrder. It backs the build-time SEO endpoint.
+// authority, ordered by RecentRealDateOrder. It backs the live SEO authority page.
 func (s *PostgresStore) RecentByAuthority(ctx context.Context, authorityCode string, cap int) ([]PlanningApplication, error) {
 	rows, err := s.db.Query(ctx, pgRecentByAuthorityQuery, authorityCode, cap)
 	if err != nil {
@@ -347,24 +341,6 @@ func (s *PostgresStore) RecentByAuthority(ctx context.Context, authorityCode str
 		return nil, fmt.Errorf("recent applications for authority %q: %w", authorityCode, err)
 	}
 	return apps, nil
-}
-
-const pgBreakdownByAuthorityQuery = "SELECT app_state, count(*) FROM applications " +
-	"WHERE authority_code = $1 GROUP BY app_state"
-
-// BreakdownByAuthority returns the per-app_state distribution over the whole
-// authority, ordered by sortStateCounts (count DESC, then app_state ASC, nil last).
-// A NULL app_state is its own GROUP BY bucket and folds into the single nil bucket.
-func (s *PostgresStore) BreakdownByAuthority(ctx context.Context, authorityCode string) ([]StateCount, error) {
-	rows, err := s.db.Query(ctx, pgBreakdownByAuthorityQuery, authorityCode)
-	if err != nil {
-		return nil, fmt.Errorf("status breakdown for authority %q: %w", authorityCode, err)
-	}
-	out, err := collectBreakdown(rows)
-	if err != nil {
-		return nil, fmt.Errorf("status breakdown for authority %q: %w", authorityCode, err)
-	}
-	return out, nil
 }
 
 // nearbyPoint is the GeoJSON-equivalent query point for the authority-agnostic
@@ -454,9 +430,8 @@ func (s *PostgresStore) FindNearbyPage(ctx context.Context, latitude, longitude,
 // secondary key, start_date, are each independently nullable, so a correct
 // keyset predicate needs a per-NULL-combination branch (see statusKeysetQuery
 // and its three siblings in zonepage.go for the shape that takes) for an
-// ordering nothing has needed to paginate before now — RecentByAuthority and
-// RecentNearestTown, the two other RecentRealDateOrder call sites, are both
-// single-page cap-only reads too. The near-point recent sort's only consumer
+// ordering nothing has needed to paginate before now — RecentByAuthority, the other
+// RecentRealDateOrder call site, is a single-page cap-only read too. The near-point recent sort's only consumer
 // (the anonymous browse list, GH#912 Phase 3) fetches one bounded page
 // (<= nearPointMaxLimit), so this mirrors that existing single-page shape
 // rather than building an unused continuation.
@@ -510,100 +485,6 @@ func (s *PostgresStore) queryApps(ctx context.Context, query string, args ...any
 		return nil, err
 	}
 	return pgx.CollectRows(rows, scanAppRow)
-}
-
-// seoNearbyPoint is the query point for the authority-scoped SEO spatial reads,
-// built from $2 (longitude) and $3 (latitude); $1 is the authority_code.
-const seoNearbyPoint = "ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography"
-
-// pgRecentNearestTownQuery starts from this town's own in-radius set (index-
-// served) and drops any row a covering sibling is strictly nearer to, so the
-// cost tracks the town's radius rather than the whole authority times its
-// sibling count. On an exact distance tie the row stays with this town.
-const pgRecentNearestTownQuery = `
-WITH siblings AS (
-	SELECT ST_SetSRID(ST_MakePoint(lng, lat), 4326)::geography AS pt, radius
-	FROM unnest($5::double precision[], $6::double precision[], $7::double precision[])
-	     AS sib(lng, lat, radius)
-)
-SELECT ` + appColumns + `
-FROM applications a
-WHERE a.authority_code = $1
-  AND ST_DWithin(a.location, ` + seoNearbyPoint + `, $4)
-  AND NOT EXISTS (
-	SELECT 1 FROM siblings s
-	WHERE ST_DWithin(a.location, s.pt, s.radius)
-	  AND (a.location <-> s.pt) < (a.location <-> ` + seoNearbyPoint + `)
-  )
-ORDER BY ` + RecentRealDateOrder + `
-LIMIT $8`
-
-// RecentNearestTown returns up to cap applications assigned to THIS town by the
-// query-time Voronoi partition (#819 decisions 2-3): authority-scoped, kept
-// only if this town's own (lat, lng, radiusMetres) or one of siblings' own
-// (lat, lng, radiusMetres) covers it, and assigned to whichever covering town
-// is nearest — so an application whose true-nearest centroid can't reach it,
-// but a farther sibling's wider radius can, lands on that farther sibling
-// instead of being orphaned (the in-range-nearest rule). siblings is every
-// OTHER gazetteer town centroid (each with its own radius) in the same
-// authority; a nil/empty siblings degrades to a plain radius read for this
-// town alone. Ordered by GREATEST(decided_date, start_date) DESC NULLS LAST
-// (decision 1), tie-broken by start_date DESC NULLS LAST, planit_name.
-// Authority pages are NOT partitioned (decision 4) — RecentByAuthority is
-// unaffected by this method.
-func (s *PostgresStore) RecentNearestTown(ctx context.Context, authorityCode string, lat, lng, radiusMetres float64, siblings []TownCentroid, cap int) ([]PlanningApplication, error) {
-	lngs := make([]float64, len(siblings))
-	lats := make([]float64, len(siblings))
-	radii := make([]float64, len(siblings))
-	for i, c := range siblings {
-		lngs[i] = c.Lng
-		lats[i] = c.Lat
-		radii[i] = c.RadiusMetres
-	}
-	rows, err := s.db.Query(ctx, pgRecentNearestTownQuery,
-		authorityCode, lng, lat, radiusMetres, lngs, lats, radii, cap)
-	if err != nil {
-		return nil, fmt.Errorf("recent applications nearest town in %q: %w", authorityCode, err)
-	}
-	apps, err := pgx.CollectRows(rows, scanAppRow)
-	if err != nil {
-		return nil, fmt.Errorf("recent applications nearest town in %q: %w", authorityCode, err)
-	}
-	return apps, nil
-}
-
-const pgBreakdownNearbyQuery = "SELECT app_state, count(*) FROM applications " +
-	"WHERE authority_code = $1 AND ST_DWithin(location, " + seoNearbyPoint + ", $4) GROUP BY app_state"
-
-// BreakdownNearby returns the per-app_state distribution over the in-radius,
-// authority-scoped set, ordered by sortStateCounts. The NULL bucket folds into nil.
-func (s *PostgresStore) BreakdownNearby(ctx context.Context, authorityCode string, lat, lng, radiusMetres float64) ([]StateCount, error) {
-	rows, err := s.db.Query(ctx, pgBreakdownNearbyQuery, authorityCode, lng, lat, radiusMetres)
-	if err != nil {
-		return nil, fmt.Errorf("status breakdown near %q: %w", authorityCode, err)
-	}
-	out, err := collectBreakdown(rows)
-	if err != nil {
-		return nil, fmt.Errorf("status breakdown near %q: %w", authorityCode, err)
-	}
-	return out, nil
-}
-
-// collectBreakdown scans (app_state, count) rows into StateCounts (NULL app_state
-// -> nil bucket) and applies the shared sortStateCounts ordering.
-func collectBreakdown(rows pgx.Rows) ([]StateCount, error) {
-	out, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (StateCount, error) {
-		var sc StateCount
-		if err := row.Scan(&sc.AppState, &sc.Count); err != nil {
-			return StateCount{}, err
-		}
-		return sc, nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	sortStateCounts(out)
-	return out, nil
 }
 
 // nearbyCursor is the opaque keyset cursor: the last row's distance (as a

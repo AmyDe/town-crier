@@ -263,3 +263,5 @@ func TestPlanningApplication_HasSameBusinessFieldsAs(t *testing.T) {
 		t.Error("nil vs set AppState must compare not-equal")
 	}
 }
+
+func strPtr(s string) *string { return &s }
