@@ -12,8 +12,6 @@ var grantTiers = []string{"Free", "Personal", "Pro"}
 
 const grantSubscriptionUsage = "Usage: tc grant-subscription --email <email> --tier <Free|Personal|Pro>"
 
-// runGrantSubscription implements `tc grant-subscription`: validate the
-// arguments and PUT them to /v1/admin/subscriptions, reporting the outcome.
 func runGrantSubscription(ctx context.Context, client *Client, env Env, args *ParsedArgs) int {
 	email, err := args.GetRequired("email")
 	if err != nil {

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -120,7 +121,6 @@ func (e *pollingEnv) call(ctx context.Context, method string, body any) (polling
 	return st, nil
 }
 
-// runPollingStatus implements `tc polling-status`: one row per environment.
 func runPollingStatus(ctx context.Context, cfgs map[string]Config, env Env) int {
 	envs := newPollingEnvs(cfgs)
 	failed := false
@@ -220,12 +220,7 @@ func runPollingSwitch(ctx context.Context, cfgs map[string]Config, env Env, args
 }
 
 func isPollingEnv(name string) bool {
-	for _, n := range pollingEnvNames {
-		if n == name {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(pollingEnvNames, name)
 }
 
 func pollingDone(ctx context.Context, env Env, envs []*pollingEnv) int {

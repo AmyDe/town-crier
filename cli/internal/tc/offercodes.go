@@ -25,11 +25,6 @@ var offerCodeTiers = []string{"Personal", "Pro"}
 
 const generateOfferCodesUsage = "Usage: tc generate-offer-codes --count <N> --tier <Personal|Pro> --duration-days <D> --label <label> [--max-redemptions <M>]"
 
-// runGenerateOfferCodes implements `tc generate-offer-codes`: validate the
-// arguments, POST them to /v1/admin/offer-codes, stream the generated codes to
-// stdout (one per line), and print a summary to stderr. Every code in the
-// batch shares one label and one redemption cap (--max-redemptions, default 1
-// — the single-use case).
 func runGenerateOfferCodes(ctx context.Context, client *Client, env Env, args *ParsedArgs) int {
 	countStr, err := args.GetRequired("count")
 	if err != nil {
@@ -128,10 +123,7 @@ func runGenerateOfferCodes(ctx context.Context, client *Client, env Env, args *P
 	return exitOK
 }
 
-// runListOfferCodes implements `tc list-offer-codes [--label <substring>]`:
-// fetch the code listing from GET /v1/admin/offer-codes and render it as a
-// table. There is no pagination beyond the API's own default limit — the
-// table is admin-minted and small.
+// No pagination beyond the API's default limit: the table is admin-minted and small.
 func runListOfferCodes(ctx context.Context, client *Client, env Env, args *ParsedArgs) int {
 	path := "/v1/admin/offer-codes"
 	if label, hasLabel := args.GetOptional("label"); hasLabel {
@@ -148,8 +140,6 @@ func runListOfferCodes(ctx context.Context, client *Client, env Env, args *Parse
 	return exitOK
 }
 
-// printOfferCodesTable renders the listing as an aligned table: code, label,
-// tier, duration, redeemed-x-of-N, created, last redeemed.
 func printOfferCodesTable(out io.Writer, items listOfferCodesResponse) {
 	const (
 		hCode         = "Code"
