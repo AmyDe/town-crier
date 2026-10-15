@@ -70,7 +70,6 @@ describe('ApiLegalDocumentPort', () => {
 
   it('throws an error when fetch rejects', async () => {
     stub.shouldReject = true;
-    stub.rejectError = new Error('Network failure');
 
     await expect(port.fetchDocument('privacy')).rejects.toThrow('Network failure');
   });

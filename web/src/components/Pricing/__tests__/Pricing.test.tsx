@@ -71,7 +71,6 @@ describe('Pricing', () => {
     const badges = screen.getAllByText('Recommended');
     expect(badges).toHaveLength(1);
 
-    // The badge should be within the Personal card
     const cards = screen.getAllByRole('article');
     const personalCard = cards.find((card) =>
       within(card).queryByText('Personal'),

@@ -46,7 +46,6 @@ describe('HowItWorks', () => {
 
     for (const item of items) {
       const paragraphs = within(item).getAllByText(/.+/);
-      // Each item should have at least a title and a description
       expect(paragraphs.length).toBeGreaterThanOrEqual(2);
     }
   });

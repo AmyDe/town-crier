@@ -13,7 +13,6 @@ describe('ConnectedLegalPage', () => {
       </MemoryRouter>,
     );
 
-    // It should show loading state initially since the real API won't respond in test
     expect(screen.getByText(/loading/i)).toBeInTheDocument();
   });
 });
