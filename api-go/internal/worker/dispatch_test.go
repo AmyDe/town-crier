@@ -558,3 +558,60 @@ func TestRun_SEOCatalogErrorExitsOne(t *testing.T) {
 		t.Errorf("exit code: got %d, want 1 for a run error", code)
 	}
 }
+
+type fakeSEOCatalogWithIndexNow struct {
+	fakeSEOCatalog
+	submitCalls int
+	submitted   int
+	skipped     int
+	submitErr   error
+}
+
+func (f *fakeSEOCatalogWithIndexNow) SubmitIndexNow(context.Context) (int, int, error) {
+	f.submitCalls++
+	return f.submitted, f.skipped, f.submitErr
+}
+
+func TestRun_SEOCatalogSubmitsIndexNowAfterRebuild(t *testing.T) {
+	t.Parallel()
+	r := &fakeSEOCatalogWithIndexNow{submitted: 5, skipped: 1715}
+	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
+
+	code := Run(context.Background(), "seo-catalog", nil, nil, nil, nil, nil, nil, r, logger)
+
+	if code != 0 || r.calls != 1 || r.submitCalls != 1 {
+		t.Errorf("code=%d rebuilds=%d submits=%d, want 0/1/1", code, r.calls, r.submitCalls)
+	}
+}
+
+func TestRun_SEOCatalogSkipsIndexNowWhenRebuildFails(t *testing.T) {
+	t.Parallel()
+	r := &fakeSEOCatalogWithIndexNow{fakeSEOCatalog: fakeSEOCatalog{err: errors.New("collision")}}
+	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
+
+	code := Run(context.Background(), "seo-catalog", nil, nil, nil, nil, nil, nil, r, logger)
+
+	if code != 1 || r.submitCalls != 0 {
+		t.Errorf("code=%d submits=%d, want 1/0", code, r.submitCalls)
+	}
+}
+
+func TestRun_SEOCatalogIndexNowFailureLogsErrorAndExitsOne(t *testing.T) {
+	t.Parallel()
+	r := &fakeSEOCatalogWithIndexNow{submitErr: errors.New("status 422: bad host")}
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+
+	code := Run(context.Background(), "seo-catalog", nil, nil, nil, nil, nil, nil, r, logger)
+
+	if code != 1 {
+		t.Errorf("exit code: got %d, want 1", code)
+	}
+	if r.calls != 1 {
+		t.Errorf("rebuild calls: got %d, want 1", r.calls)
+	}
+	out := buf.String()
+	if !strings.Contains(out, `"level":"ERROR"`) || !strings.Contains(out, "status 422: bad host") {
+		t.Errorf("log lacks ERROR with status/body: %s", out)
+	}
+}
