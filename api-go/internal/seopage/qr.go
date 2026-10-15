@@ -12,7 +12,7 @@ import (
 const qrQuietZone = 4
 
 // qrSVG renders text as an inline SVG QR code (error correction M, quiet zone
-// 4) drawn as one path of unit squares, the same shape the prerendered pages use.
+// 4) drawn as one path of unit squares.
 func qrSVG(text, ariaLabel string) (template.HTML, error) {
 	code, err := qr.Encode(text, qr.M)
 	if err != nil {

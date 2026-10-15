@@ -62,15 +62,13 @@ var healthCheckPaths = map[string]struct{}{
 // above, evaluated only for otherwise-anonymous requests: when it returns
 // true the request passes straight through untouched, exactly like
 // authenticated traffic. nil means no additional exemption. The motivating
-// case (GH#872 collateral, tc-zod82) is the build-time SEO endpoints
-// (GET /v1/authorities/{id}/applications, GET /v1/applications/near): they
-// authenticate via the X-Build-Key header checked inside the handler
-// (applications.requireBuildKey), not via Auth0, so auth.Subject is always
-// empty for them and the CI seo-refresh job's ~418 sequential requests from
-// one runner IP were being metered as anonymous and 429ing. Callers build the
-// predicate from applications.BuildKeyMatches (cmd/api/wiring.go) rather than
-// this package importing internal/applications directly, keeping middleware
-// dependency-free.
+// case (GH#872 collateral, tc-zod82) is the SEO endpoints served to the
+// Cloudflare Worker (internal/seopage): they authenticate via the X-Build-Key
+// header checked inside the handler, not via Auth0, so auth.Subject is always
+// empty for them and the Worker's traffic would be metered as anonymous.
+// Callers build the predicate from applications.BuildKeyMatches
+// (cmd/api/wiring.go) rather than this package importing internal/applications
+// directly, keeping middleware dependency-free.
 //
 // The client IP itself is never logged, stored, or exported anywhere beyond
 // this in-memory accounting: only the numeric limit/retry values are recorded
