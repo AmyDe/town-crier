@@ -215,8 +215,6 @@ func expiredCode(code string, redeemedAt time.Time) offercodes.RedeemedOfferCode
 	}
 }
 
-func strPtr(s string) *string { return &s }
-
 func serve(t *testing.T, hf http.HandlerFunc, method, target, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	var rdr *strings.Reader

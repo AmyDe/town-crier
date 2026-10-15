@@ -8,11 +8,8 @@ import (
 	"strings"
 )
 
-// imageStore is the consumer-side cache seam over the baked share-card PNGs: the
-// image handler reads a card by its area-scoped key and writes it once on a miss.
-// The production implementation is the Azure `share-cards` Blob container (Slice
-// 3 infra, #738); until it is wired the handler runs with a nil store and simply
-// regenerates on every request. Get takes ctx first — it does network I/O.
+// imageStore caches baked share-card PNGs by area-scoped key; the handler
+// writes a card once on a miss.
 type imageStore interface {
 	Get(ctx context.Context, key string) (png []byte, found bool, err error)
 	Put(ctx context.Context, key string, png []byte) error
@@ -94,14 +91,10 @@ func (h *imageHandler) serve(w http.ResponseWriter, r *http.Request) {
 	h.writePNG(r.Context(), w, png)
 }
 
-// readCache returns the baked card for key when a cache is wired and holds it. A
-// nil cache (Slice 2, pre-Blob) logs the miss once and regenerates; a cache read
-// error is non-fatal — the caller regenerates.
+// readCache returns the cached card; a nil cache or a read error means regenerate.
 func (h *imageHandler) readCache(ctx context.Context, key string) ([]byte, bool) {
 	if h.cache == nil {
-		// The Blob container + MI RBAC land in Slice 3. Until then every request
-		// regenerates; log it so the missing store stays visible without being
-		// noisy (one line per served card).
+		// Log once per request so an unwired store stays visible.
 		h.logger.InfoContext(ctx, "share card store unwired; regenerating on demand", "key", key)
 		return nil, false
 	}
@@ -129,8 +122,6 @@ func (h *imageHandler) writeCache(ctx context.Context, key string, png []byte) {
 func (h *imageHandler) writePNG(ctx context.Context, w http.ResponseWriter, png []byte) {
 	w.Header().Set("Content-Type", "image/png")
 	w.Header().Set("Cache-Control", "public, max-age=86400")
-	// gosec G705: these are PNG bytes served with Content-Type image/png (a baked
-	// map or the branded fallback), never HTML — not an XSS sink.
 	if _, err := w.Write(png); err != nil { //nolint:gosec // PNG body served as image/png, not HTML
 		h.logger.ErrorContext(ctx, "share card write failed", "error", err)
 	}

@@ -57,10 +57,8 @@ func (h *handler) grantSubscription(w http.ResponseWriter, r *http.Request) {
 		profile.ActivateSubscription(tier, farFutureExpiry)
 	}
 
-	// Sync Auth0 before writing Postgres: a failed sync then leaves no stray
-	// committed tier change behind for the caller to silently lose track of.
-	// There is no transaction/rollback here (see tc-i0t8e) — sync-then-save is
-	// the deliberate mitigation instead.
+	// Sync Auth0 before writing Postgres: with no transaction, this order means a
+	// failed sync leaves no committed tier change behind.
 	if err := h.auth0.UpdateSubscriptionTier(r.Context(), profile.UserID, profile.Tier.String()); err != nil {
 		h.serverError(w, r, "sync auth0 tier", err)
 		return

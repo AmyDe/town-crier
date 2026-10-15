@@ -1,5 +1,5 @@
 // Package assetlinks serves the Android Digital Asset Links document on the
-// public share host (GH#782, Android App Links). Android's package manager
+// public share host (Android App Links). Android's package manager
 // fetches GET /.well-known/assetlinks.json over HTTPS to verify a package
 // claiming an https intent-filter with android:autoVerify="true" — the
 // Android equivalent of internal/aasa's apple-app-site-association document,

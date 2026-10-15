@@ -10,7 +10,6 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 )
 
-// defaultPageSize is the default page size for the admin users list.
 const defaultPageSize = 20
 
 type listItem struct {

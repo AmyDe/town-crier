@@ -1,5 +1,5 @@
 // Package aasa serves the Apple App Site Association document on the public
-// share host (#738, Slice 3). Apple's daemon fetches
+// share host. Apple's daemon fetches
 // GET /.well-known/apple-app-site-association — with no ".json" extension on the
 // path — and REQUIRES the response carry Content-Type application/json. The
 // document declares the Universal Links applinks component for the share-page
