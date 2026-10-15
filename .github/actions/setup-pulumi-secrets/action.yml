@@ -11,7 +11,7 @@ inputs:
     description: API key for admin endpoints
     required: true
   site-build-key:
-    description: Build key for the gated SEO prerender endpoint
+    description: Build key for the gated SEO endpoints
     required: true
   auth0-m2m-client-id:
     description: Auth0 machine-to-machine client ID
