@@ -509,7 +509,12 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 	if err = createWorkerJob(ctx, ec, "pg-purge", "0 2 * * *", 600, "pg-purge"); err != nil {
 		return err
 	}
-	if err = createWorkerJob(ctx, ec, "seo-catalog", "20 2 * * *", 1800, "seo-catalog"); err != nil {
+	// Dev and prod share one Postgres server, so their catalog rebuilds must not overlap.
+	seoCatalogCron := "20 2 * * *"
+	if env == "dev" {
+		seoCatalogCron = "50 2 * * *"
+	}
+	if err = createWorkerJob(ctx, ec, "seo-catalog", seoCatalogCron, 1800, "seo-catalog"); err != nil {
 		return err
 	}
 
