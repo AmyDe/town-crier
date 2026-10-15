@@ -19,9 +19,8 @@
 # workflow_dispatch event has no `schedule` value, so the `|| workflow_dispatch`
 # arm covers manual runs of both jobs from a single trigger.
 #
-# Cron times deliberately avoid the two other scheduled workflows in this repo
-# (seo-refresh.yml: 10 10 * * * daily; dev-container-app-cleanup.yml: 0 3 * * 1
-# Monday) — chosen for tidiness (repo is public, Actions minutes are free), not
+# Cron times deliberately avoid the other scheduled workflow in this repo
+# (dev-container-app-cleanup.yml: 0 3 * * 1 Monday) — chosen for tidiness (repo is public, Actions minutes are free), not
 # because a collision would break anything.
 #
 # Requires secrets (drift-check job only; cf-ip-check needs none):
@@ -30,7 +29,7 @@
 #   AZURE_SUBSCRIPTION_ID        — Azure subscription
 #   PULUMI_ACCESS_TOKEN          — Pulumi Cloud access token
 #   ADMIN_API_KEY                — API key for admin endpoints (dev/prod stacks only)
-#   SITE_BUILD_KEY               — Build key for the gated SEO prerender endpoint (dev/prod only)
+#   SITE_BUILD_KEY               — Build key for the gated SEO endpoints (API and Worker) (dev/prod only)
 #   AUTH0_M2M_CLIENT_ID          — Auth0 machine-to-machine client ID (dev/prod only)
 #   AUTH0_M2M_CLIENT_SECRET      — Auth0 machine-to-machine client secret (dev/prod only)
 #   CLAUDE_ROUTINE_TELEMETRY_TOKEN — Bearer token for the alert-fired routine (shared only)

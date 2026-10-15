@@ -8,7 +8,7 @@ import (
 )
 
 // resourceNamesEnvPath is the single source of truth for Azure resource names consumed
-// by the GitHub Actions workflows (cd-dev.yml, cd-prod.yml, seo-refresh.yml,
+// by the GitHub Actions workflows (cd-dev.yml, cd-prod.yml,
 // dev-container-app-cleanup.yml), relative to this package.
 const resourceNamesEnvPath = "../.github/config/resource-names.env"
 

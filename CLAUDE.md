@@ -40,7 +40,7 @@ Town Crier is a mobile-first app that monitors UK local authority planning appli
 /docs               adr/, memo/, cost-forecast/, product-overview.md.
 /scripts            Release + legal helpers (ios-release-notes.sh, sync-legal.sh, check-legal-drift.sh);
                     wf/ orchestration (worktree-setup.sh, watch-pr.sh, next-version.sh, release-notes.sh).
-/.github/workflows  pr-gate, cd-dev, cd-prod, cd-ios-testflight, auto-merge, seo-refresh,
+/.github/workflows  pr-gate, cd-dev, cd-prod, cd-ios-testflight, auto-merge,
                     dev-container-app-cleanup, ios-capability-ops, legal-drift-check.
 /.claude            skills/, agents/ (worker definitions), PreToolUse hooks (require-bead.sh,
                     require-worktree.sh), worktrees/.
