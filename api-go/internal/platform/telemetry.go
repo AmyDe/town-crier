@@ -192,3 +192,9 @@ func SetupTelemetry(ctx context.Context, logger *slog.Logger) (func(context.Cont
 		}
 	}, nil
 }
+
+// CurrentDeploymentEnvironment is the deployment environment ("prod", "dev")
+// derived from POSTGRES_DB, or "" when it cannot be derived.
+func CurrentDeploymentEnvironment() string {
+	return deploymentEnvironment(os.Getenv("POSTGRES_DB"))
+}
