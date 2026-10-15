@@ -1,6 +1,5 @@
 // Package sharepage serves the public, anonymous, server-rendered HTML share
-// page for a single planning application at GET /a/{authoritySlug}/{ref...} —
-// the tracer surface of the shareable-application-page epic (#738).
+// page for a single planning application at GET /a/{authoritySlug}/{ref...}.
 //
 // The page emits ONLY public planning data: it reads no auth or user data, sets
 // no cookies, and logs no client IP. Its identity is the (authority slug, PlanIt
@@ -65,11 +64,8 @@ func (h *handler) serve(w http.ResponseWriter, r *http.Request) {
 
 	app, found, err := h.store.GetByAuthorityAndName(r.Context(), strconv.Itoa(areaID), ref)
 	if err != nil {
-		// A context.Canceled error means the caller disconnected before the
-		// response was ready (e.g. a rapid map pan cancelling an in-flight
-		// fetch) rather than a genuine server fault — deliberately not logged
-		// at error level and not given a 500: the caller is already gone, so
-		// nothing meaningfully needs to be written back (tc-ftccw).
+		// context.Canceled means the caller disconnected; there is nothing to
+		// write back and it is not a server fault.
 		if errors.Is(err, context.Canceled) {
 			return
 		}

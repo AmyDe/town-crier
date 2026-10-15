@@ -60,10 +60,7 @@ func LoadEnvironments(path string) (map[string]Config, error) {
 
 // DefaultConfigPath returns ~/.config/tc/config.json.
 func DefaultConfigPath() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		home = ""
-	}
+	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".config", "tc", "config.json")
 }
 

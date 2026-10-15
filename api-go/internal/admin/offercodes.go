@@ -15,8 +15,7 @@ import (
 // maxOfferCodeCount bounds a single generate request to 1000 codes.
 const maxOfferCodeCount = 1000
 
-// defaultMaxRedemptions is the redemption cap applied when a mint request
-// omits maxRedemptions — the single-use case every code used to default to.
+// defaultMaxRedemptions applies when a mint request omits maxRedemptions.
 const defaultMaxRedemptions = 1
 
 // minRequestMaxRedemptions and maxRequestMaxRedemptions bound the
@@ -113,8 +112,8 @@ func (h *handler) generateOfferCodes(w http.ResponseWriter, r *http.Request) {
 	}
 
 	body := strings.Join(formatted, "\n") + "\n"
-	// Bare "text/plain" (no charset): the contract test (tc-52t6) requires no
-	// charset suffix; Go's default would append "; charset=utf-8".
+	// Bare "text/plain": the contract requires no charset suffix, which Go's
+	// default would append.
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write([]byte(body)); err != nil {

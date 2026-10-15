@@ -17,9 +17,7 @@ export function LandingPage() {
     () => searchParams.get('signed_out') === 'true',
   );
 
-  // Wake the API container while the user reads the landing page.
-  // Azure Container Apps can take ~12s to cold-start from zero replicas;
-  // by the time the user clicks sign-in and completes Auth0, it's warm.
+  // Wakes the API container (Azure Container Apps cold start is ~12s) before the user signs in.
   useEffect(() => {
     fetch(`${API_BASE_URL}/health`).catch(() => {});
   }, []);

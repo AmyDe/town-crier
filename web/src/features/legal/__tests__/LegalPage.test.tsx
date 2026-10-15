@@ -70,7 +70,6 @@ describe('LegalPage', () => {
 
   it('shows loading state while fetching', () => {
     const spy = new SpyLegalDocumentPort();
-    // Default spy never resolves immediately in this test frame
     renderLegalPage('privacy', spy);
 
     expect(screen.getByText(/loading/i)).toBeInTheDocument();

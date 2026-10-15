@@ -98,8 +98,6 @@ export function Navbar() {
         </div>
       </div>
 
-      {/* Masthead double rule (Public Notice component language) —
-          2.5px heavy rule over a 1px hairline, landing page only. */}
       <div className={styles.ruleHeavy} data-testid="masthead-rule-heavy" />
       <div className={styles.ruleHairline} data-testid="masthead-rule-hairline" />
     </nav>

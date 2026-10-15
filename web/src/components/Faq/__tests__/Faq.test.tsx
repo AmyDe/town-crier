@@ -74,7 +74,6 @@ describe('Faq', () => {
       const summary = detail.querySelector('summary');
       expect(summary).toBeInTheDocument();
 
-      // Each detail should have content beyond just the summary
       const answerText = detail.textContent!.replace(summary!.textContent!, '').trim();
       expect(answerText.length).toBeGreaterThan(0);
     });

@@ -61,7 +61,7 @@ const (
 // cloudflareIPv4Ranges is Cloudflare's published list of IPv4 origin-pull ranges.
 //
 // Snapshot of https://www.cloudflare.com/ips-v4, fetched 2026-06-19. The Go API
-// container app is fronted by the Cloudflare orange-cloud proxy (tc-j222); these
+// container app is fronted by the Cloudflare orange-cloud proxy; these
 // ranges are applied as Allow rules on the ACA ingress (see
 // cloudflareIngressIPRestrictions) so the *.azurecontainerapps.io origin only
 // accepts traffic that arrives via Cloudflare.
@@ -112,8 +112,8 @@ func cloudflareIngressIPRestrictions() app.IpSecurityRestrictionRuleArray {
 	return rules
 }
 
-// apiHealthProbes builds the liveness and readiness probes for the Go API's Container App
-// (tc-97k35.2, GH #943 scope-out item). Both hit GET /health on apiContainerPort: it is
+// apiHealthProbes builds the liveness and readiness probes for the Go API's Container App.
+// Both hit GET /health on apiContainerPort: it is
 // registered anonymously (no bearer token) and returns a pre-encoded static body with no
 // downstream calls, so it is safe and cheap to probe on every cycle and can't itself flap from
 // a dependency outage. Timing/threshold fields are left unset so ACA applies its own defaults
@@ -161,7 +161,7 @@ type envContext struct {
 func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, tags pulumi.StringMap) error {
 	frontendDomain := conf.Require("frontendDomain")
 	apiDomain := conf.Require("apiDomain")
-	// Optional public share-page host (#738 Slice 3). When set, it is bound as a SECOND custom
+	// Optional public share-page host. When set, it is bound as a SECOND custom
 	// domain on the existing API ACA app (managed cert, CNAME validation). Unset (empty) skips
 	// the cert + binding entirely — prod is a later staged step, so only dev sets it for now.
 	shareDomain := conf.Get("shareDomain")
@@ -176,7 +176,7 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 		customDomainPhase = v
 	}
 	adminAPIKey := conf.RequireSecret("adminApiKey")
-	// Build key the Go endpoint validates for the gated SEO prerender route (tc-nnte).
+	// Build key the Go endpoint validates for the gated SEO prerender route.
 	siteBuildKey := conf.RequireSecret("siteBuildKey")
 	auth0M2mClientID := conf.RequireSecret("auth0M2mClientId")
 	auth0M2mClientSecret := conf.RequireSecret("auth0M2mClientSecret")
@@ -189,7 +189,7 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 		apnsUseSandbox = "true"
 	}
 
-	// FCM (Firebase Cloud Messaging) for Android push (#780). ServiceAccountJSON is the full
+	// FCM (Firebase Cloud Messaging) for Android push. ServiceAccountJSON is the full
 	// service-account key JSON (secret, mirrors how apnsAuthKey carries the .p8); ProjectID is
 	// plain per-stack config. Both stacks target the same Firebase project — FCM has no sandbox
 	// concept, so there is no dev/prod split here (unlike apnsUseSandbox).
@@ -257,7 +257,7 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 		}
 	}
 
-	// Public share page (#738 Slice 3): bind the share host as a SECOND custom domain on the same
+	// Public share page: bind the share host as a SECOND custom domain on the same
 	// API ACA app so one app serves JSON on api. and HTML on share.. The origin-lock
 	// ipSecurityRestrictions on the shared ingress are inherited automatically.
 	//
@@ -351,18 +351,18 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 	secrets := app.SecretArray{
 		&app.SecretArgs{Name: pulumi.String("auth0-m2m-client-id"), Value: auth0M2mClientID},
 		&app.SecretArgs{Name: pulumi.String("auth0-m2m-client-secret"), Value: auth0M2mClientSecret},
-		// Admin key the Go X-Admin-Key gate validates for /v1/admin requests (tc-52t6).
+		// Admin key the Go X-Admin-Key gate validates for /v1/admin requests.
 		&app.SecretArgs{Name: pulumi.String("admin-api-key"), Value: adminAPIKey},
-		// Build key the Go gate validates for the SEO prerender endpoint (tc-nnte).
+		// Build key the Go gate validates for the SEO prerender endpoint.
 		&app.SecretArgs{Name: pulumi.String("site-build-key"), Value: siteBuildKey},
 	}
 
 	// Build the API container env-var array. Postgres connection vars are dev-only: the dev
-	// API authenticates to town_crier_dev via Entra managed identity (GH #653). AZURE_CLIENT_ID
+	// API authenticates to town_crier_dev via Entra managed identity. AZURE_CLIENT_ID
 	// is already present and reused for the token fetch — no duplication.
 	apiEnvVars := app.EnvironmentVarArray{
 		app.EnvironmentVarArgs{Name: pulumi.String("OTEL_SERVICE_NAME"), Value: pulumi.String(ImageRepoAPI)},
-		// Read by the in-process Azure Monitor metrics exporter (tc-0rt1).
+		// Read by the in-process Azure Monitor metrics exporter.
 		app.EnvironmentVarArgs{Name: pulumi.String("APPLICATIONINSIGHTS_CONNECTION_STRING"), Value: appInsightsConnectionString},
 		app.EnvironmentVarArgs{Name: pulumi.String("AZURE_CLIENT_ID"), Value: cosmosDataIdentityClientID},
 		app.EnvironmentVarArgs{Name: pulumi.String("AUTH0_DOMAIN"), Value: pulumi.String(auth0Domain)},
@@ -373,7 +373,7 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 		app.EnvironmentVarArgs{Name: pulumi.String("ADMIN_API_KEY"), SecretRef: pulumi.String("admin-api-key"), Value: pulumi.String("")},
 		app.EnvironmentVarArgs{Name: pulumi.String("POLLING_ENABLED_DEFAULT"), Value: pulumi.String(pollingEnabledDefault(env))},
 		app.EnvironmentVarArgs{Name: pulumi.String("SITE_BUILD_KEY"), SecretRef: pulumi.String("site-build-key"), Value: pulumi.String("")},
-		// Blob endpoint for the share-cards container (#738 Slice 3): the share-page OG handler
+		// Blob endpoint for the share-cards container: the share-page OG handler
 		// caches baked map cards here. Computed directly from env because the account name is
 		// deterministic (sttowncrier{env}); this avoids a cross-resource dependency on the storage
 		// account, which is created later in this stack (after apiEnvVars is built). Always set for
@@ -397,7 +397,7 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 		// Accept Sandbox StoreKit transactions on dev: TestFlight builds route to the dev
 		// API (api-dev) and TestFlight purchases carry environment="Sandbox". Without this,
 		// APPLE_ENVIRONMENT falls back to the code default "Production" only and the verify
-		// handler rejects every TestFlight purchase, so pro features never unlock (tc-81c9).
+		// handler rejects every TestFlight purchase, so pro features never unlock.
 		// Prod deliberately stays Production-only (omits this var) so a sandbox tester cannot
 		// self-grant a paid tier against production.
 		apiEnvVars = append(apiEnvVars,
@@ -417,7 +417,7 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 			Transport:     pulumi.String(string(app.IngressTransportMethodHttp)),
 			CustomDomains: goApiCustomDomains,
 			// Lock the *.azurecontainerapps.io origin to Cloudflare IPv4 ranges so it can
-			// only be reached via the Cloudflare proxy, not bypassed directly (tc-0und).
+			// only be reached via the Cloudflare proxy, not bypassed directly.
 			IpSecurityRestrictions: cloudflareIngressIPRestrictions(),
 		},
 		Registries: app.RegistryCredentialsArray{
@@ -460,7 +460,7 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 						Memory: pulumi.String(containerMemory),
 					},
 					Env: apiEnvVars,
-					// Liveness + readiness against GET /health (tc-97k35.2). Without an explicit
+					// Liveness + readiness against GET /health. Without an explicit
 					// Probes list ACA falls back to a bare TCP check, which only proves the port
 					// is open, not that the process can serve a request. Applies to both env
 					// stacks (this same function builds both dev and prod's API Container App) —
@@ -505,7 +505,7 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 	// WORKER_MODE=pg-purge which calls Postgres PurgeOlderThan to enforce the 90-day
 	// (Notifications) and 180-day (DeviceRegistrations) retention defaults (memo 0010 / GH #669).
 	// Created for both envs: it enforces retention against town_crier_dev on dev, the same as
-	// prod against town_crier_prod (GH #681).
+	// prod against town_crier_prod.
 	if err = createWorkerJob(ctx, ec, "pg-purge", "0 2 * * *", 600, "pg-purge"); err != nil {
 		return err
 	}
@@ -669,7 +669,7 @@ func addGoWorkerEnv(envVars app.EnvironmentVarArray, ec envContext, workerMode s
 	// digest push. The apns-auth-key secret is on every worker job (see the
 	// shared secrets above). Without these env vars buildPushSender falls back to
 	// the NoOp sender and silently drops every push — which is exactly why the
-	// poll worker delivered no instant pushes in prod (tc-wjbm).
+	// poll worker delivered no instant pushes in prod.
 	if workerMode == "poll" || workerMode == "digest" || workerMode == "hourly-digest" {
 		envVars = append(envVars,
 			app.EnvironmentVarArgs{Name: pulumi.String("APNS_ENABLED"), Value: pulumi.String("true")},
@@ -681,7 +681,7 @@ func addGoWorkerEnv(envVars app.EnvironmentVarArray, ec envContext, workerMode s
 		)
 	}
 
-	// FCM push (#780): the same three jobs that send APNs also send FCM to Android devices.
+	// FCM push: the same three jobs that send APNs also send FCM to Android devices.
 	// FCM_SERVICE_ACCOUNT_JSON is the service-account key JSON (secret, on every job like
 	// apns-auth-key); FCM_PROJECT_ID is plain per-stack config. Without these
 	// buildPlatformDispatcher falls back to the FCM NoOp sender (APNs delivery unaffected).
@@ -803,7 +803,7 @@ func createSeoSnapshotStorage(ctx *pulumi.Context, env string, resourceGroupName
 		// Azure's API is inconsistent about echoing networkRuleSet.ipRules/virtualNetworkRules
 		// as [] vs omitting them entirely — dev and prod disagreed in opposite directions when
 		// this was declared as an explicit empty array, so ignore both sub-paths rather than
-		// chase a literal value that only matches one stack (tc-61eoz.8).
+		// chase a literal value that only matches one stack.
 	}, pulumi.IgnoreChanges([]string{"networkRuleSet.ipRules", "networkRuleSet.virtualNetworkRules"}))
 	if err != nil {
 		return pulumi.StringOutput{}, pulumi.StringOutput{}, err
@@ -820,7 +820,7 @@ func createSeoSnapshotStorage(ctx *pulumi.Context, env string, resourceGroupName
 	}
 
 	// Second container on the same account: share-cards holds the cache-once baked OG map cards
-	// for the public share page (#738 Slice 3). Same private-access profile as seo-snapshot.
+	// for the public share page. Same private-access profile as seo-snapshot.
 	_, err = storage.NewBlobContainer(ctx, fmt.Sprintf("share-cards-%s", env), &storage.BlobContainerArgs{
 		AccountName:       account.Name,
 		ResourceGroupName: resourceGroupName,

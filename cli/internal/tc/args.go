@@ -12,8 +12,6 @@ type ParsedArgs struct {
 	options map[string]string
 }
 
-// helpAliases are the first-argument forms that map to the "help" command,
-// matched case-insensitively (help, -h, --help).
 var helpAliases = map[string]struct{}{
 	"help":   {},
 	"-h":     {},

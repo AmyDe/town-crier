@@ -102,7 +102,6 @@ describe('useLegalDocument', () => {
 
     expect(result.current.document).toEqual(privacyPolicy());
 
-    // Make second fetch hang until we resolve it manually
     spy.fetchDocument = (documentType: string) => {
       spy.fetchDocumentCalls.push(documentType);
       return new Promise<LegalDocument>((resolve) => {
@@ -112,13 +111,11 @@ describe('useLegalDocument', () => {
 
     rerender({ type: 'terms' });
 
-    // While the second fetch is pending, state should show loading, not stale privacy doc
     await waitFor(() => {
       expect(result.current.isLoading).toBe(true);
     });
     expect(result.current.document).toBeNull();
 
-    // Resolve the second fetch
     resolveSecondFetch!(termsOfService());
 
     await waitFor(() => {

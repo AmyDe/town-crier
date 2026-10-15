@@ -10,11 +10,8 @@ import (
 	"strings"
 )
 
-// defaultPageSize is the list-users default when no page size is given.
 const defaultPageSize = 20
 
-// runListUsers implements `tc list-users`: page through /v1/admin/users,
-// printing a table per page and prompting before fetching the next one.
 func runListUsers(ctx context.Context, client *Client, env Env, args *ParsedArgs) int {
 	search, hasSearch := args.GetOptional("search")
 
@@ -92,10 +89,8 @@ func buildListUsersPath(hasSearch bool, search string, pageSize int, continuatio
 	return sb.String()
 }
 
-// printUsersTable renders one page as an aligned table. Column widths are
-// computed per page (rather than hard-coded) so any user-id length — a short
-// Auth0 id or a ~49-char Apple id — renders without pushing the later columns
-// out of alignment.
+// Column widths are computed per page so a ~49-char Apple user id does not push
+// later columns out of alignment.
 func printUsersTable(out io.Writer, page *listUsersResponse) {
 	const (
 		hUserID     = "UserId"

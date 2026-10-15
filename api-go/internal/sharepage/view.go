@@ -24,15 +24,11 @@ const (
 	// requires alongside ct — a bare ct is silently dropped from App Analytics.
 	// It is a build-time constant identifying us, never the visitor; mirrors
 	// APP_STORE_PROVIDER_TOKEN in web/src/config/links.ts.
-	appStoreBaseURL       = "https://apps.apple.com/gb/app/town-crier-planning-alerts/id6764095657"
+	appStoreBaseURL       = "https://apps.apple.com/gb/app/town-crier-planning-alerts/id" + appleAppID
 	appStoreProviderToken = "128810278"
 	shareCampaignToken    = "share-page"
 	appStoreMediaType     = "8"
 
-	// homeURL is the Town Crier marketing homepage. The share page has no
-	// per-application web destination, so the always-present homepage link
-	// (Problem 3, #763) points here regardless of device or which application is
-	// being viewed.
 	homeURL = "https://towncrierapp.uk"
 
 	// ogDescriptionMaxRunes bounds the og:/twitter:description so a long proposal
@@ -104,17 +100,14 @@ func buildPageView(app applications.PlanningApplication, slug, ref string) pageV
 		Title:         headline + " · Town Crier",
 		OGTitle:       headline,
 		OGDescription: summarise(app.Description, place),
-		// The unfurl image is the generated OSM map-card route for this exact
-		// (slug, ref); that route decides map vs branded fallback, so the page
-		// always points here (Slice 2, #738).
-		OGImage:      shareOrigin + "/og/" + slug + "/" + ref + ".png",
-		CanonicalURL: canonical,
-		AppleAppID:   appleAppID,
-		CTAHref:      ctaURL(),
-		HomeURL:      homeURL,
-		Ref:          ref,
-		Address:      app.Address,
-		Description:  app.Description,
+		OGImage:       shareOrigin + "/og/" + slug + "/" + ref + ".png",
+		CanonicalURL:  canonical,
+		AppleAppID:    appleAppID,
+		CTAHref:       ctaURL(),
+		HomeURL:       homeURL,
+		Ref:           ref,
+		Address:       app.Address,
+		Description:   app.Description,
 	}
 
 	if app.Postcode != nil && !addressIncludesPostcode(app.Address, *app.Postcode) {

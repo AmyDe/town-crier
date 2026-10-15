@@ -40,9 +40,7 @@ type store struct {
 	docs map[string][]byte
 }
 
-// newStore loads and compacts the embedded documents once. It panics on a
-// malformed embedded resource because that is a build-time invariant, not a
-// runtime condition — the only acceptable panic site per the standards.
+// newStore panics on a malformed embedded resource: it is a build-time invariant.
 func newStore() *store {
 	s := &store{docs: make(map[string][]byte, 2)}
 	for key, file := range map[string]string{
@@ -58,9 +56,8 @@ func newStore() *store {
 	return s
 }
 
-// loadCompact reads an embedded document and re-encodes it compactly in
-// struct field order. Round-tripping through the struct (rather than serving
-// the raw pretty-printed file) produces compact wire bytes in declaration order.
+// loadCompact re-encodes the document via the struct so the wire bytes are
+// compact and in declaration order.
 func loadCompact(file string) ([]byte, error) {
 	raw, err := resources.ReadFile(file)
 	if err != nil {
@@ -70,9 +67,7 @@ func loadCompact(file string) ([]byte, error) {
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		return nil, fmt.Errorf("unmarshal %s: %w", file, err)
 	}
-	// Disable HTML escaping: JSON-encoding legal content must not escape <, >,
-	// or & (Go's json.Encoder escapes them by default, which would corrupt the
-	// text).
+	// The default HTML escaping would corrupt <, > and & in the legal text.
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)

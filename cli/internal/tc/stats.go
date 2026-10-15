@@ -6,10 +6,6 @@ import (
 	"io"
 )
 
-// runStats implements `tc stats`: fetch the whole-user-base aggregate from
-// GET /v1/admin/stats and render it as a compact, grouped plain-text block.
-// Error handling mirrors runListUsers: a non-2xx status or empty body prints to
-// stderr and returns the runtime exit code.
 func runStats(ctx context.Context, client *Client, env Env, _ *ParsedArgs) int {
 	var resp *statsResponse
 	if err := client.GetJSON(ctx, "/v1/admin/stats", &resp); err != nil {

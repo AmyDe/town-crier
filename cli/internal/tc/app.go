@@ -6,7 +6,6 @@ import (
 	"fmt"
 )
 
-// version is printed by `tc version`.
 const version = "tc 0.1.0"
 
 const helpText = `tc — Town Crier admin CLI

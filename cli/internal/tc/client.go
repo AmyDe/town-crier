@@ -11,7 +11,6 @@ import (
 	"time"
 )
 
-// apiKeyHeader is the admin authentication header the API expects.
 const apiKeyHeader = "X-Admin-Key"
 
 // maxRespBytes bounds JSON response bodies read fully into memory.
@@ -36,8 +35,6 @@ func NewClient(cfg Config) *Client {
 	}
 }
 
-// do builds and sends a request with the given method, path, and optional JSON
-// body, returning the raw response for the caller to interpret.
 func (c *Client) do(ctx context.Context, method, path string, body any) (*http.Response, error) {
 	var reader io.Reader
 	if body != nil {

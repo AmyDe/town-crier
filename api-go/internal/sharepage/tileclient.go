@@ -62,8 +62,6 @@ func (c *OSMTileClient) Fetch(ctx context.Context, z, x, y int) (image.Image, er
 	ctx, cancel := context.WithTimeout(ctx, tileFetchTimeout)
 	defer cancel()
 
-	// gosec G107: the host is the constant osmTileBaseURL and the path is built
-	// from integer tile coordinates only — no external free-text in the URL.
 	url := fmt.Sprintf("%s/%d/%d/%d.png", c.baseURL, z, x, y)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil) //nolint:gosec // constant host + integer coordinates
 	if err != nil {
