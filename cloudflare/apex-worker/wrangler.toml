@@ -6,7 +6,10 @@ workers_dev = false
 [env.dev]
 name = "town-crier-apex-dev"
 workers_dev = false
-routes = [{ pattern = "preview-dev.towncrierapp.uk", custom_domain = true }]
+routes = [
+  { pattern = "preview-dev.towncrierapp.uk", custom_domain = true },
+  { pattern = "dev.towncrierapp.uk/*", zone_name = "towncrierapp.uk" },
+]
 
 [env.dev.vars]
 SWA_ORIGIN = "https://lemon-sand-07669da03.6.azurestaticapps.net"
@@ -16,7 +19,10 @@ INDEXABLE_HOSTS = ""
 [env.prod]
 name = "town-crier-apex-prod"
 workers_dev = false
-routes = [{ pattern = "preview.towncrierapp.uk", custom_domain = true }]
+routes = [
+  { pattern = "preview.towncrierapp.uk", custom_domain = true },
+  { pattern = "towncrierapp.uk/*", zone_name = "towncrierapp.uk" },
+]
 
 [env.prod.vars]
 SWA_ORIGIN = "https://calm-river-03a6ccb03.1.azurestaticapps.net"
