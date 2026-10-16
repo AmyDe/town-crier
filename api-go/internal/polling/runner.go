@@ -198,7 +198,7 @@ func (r *Runner) loop(ctx context.Context) (RunResult, error) {
 	oracleTried := false
 	for {
 		if ctx.Err() != nil {
-			return cancelled(res)
+			return cancelled(res), nil
 		}
 		now := r.d.Now()
 		if now.Sub(start) >= r.cfg.RunBudget {
@@ -207,7 +207,7 @@ func (r *Runner) loop(ctx context.Context) (RunResult, error) {
 		}
 		on, err := r.d.Switch.Enabled(ctx)
 		if err != nil && ctx.Err() != nil {
-			return cancelled(res)
+			return cancelled(res), nil
 		}
 		if err != nil {
 			res.Stop = StopError
@@ -219,7 +219,7 @@ func (r *Runner) loop(ctx context.Context) (RunResult, error) {
 		}
 		state, err := r.loadState(ctx, now, skipped)
 		if err != nil && ctx.Err() != nil {
-			return cancelled(res)
+			return cancelled(res), nil
 		}
 		if err != nil {
 			res.Stop = StopError
@@ -227,7 +227,7 @@ func (r *Runner) loop(ctx context.Context) (RunResult, error) {
 		}
 		calls, err := r.d.Calls.CallsToday(ctx, now)
 		if err != nil && ctx.Err() != nil {
-			return cancelled(res)
+			return cancelled(res), nil
 		}
 		if err != nil {
 			res.Stop = StopError
@@ -240,7 +240,7 @@ func (r *Runner) loop(ctx context.Context) (RunResult, error) {
 			out, oerr := r.d.Oracle.Run(budgetCtx, now)
 			res.Pages += out.Pages
 			if ctx.Err() != nil {
-				return cancelled(res)
+				return cancelled(res), nil
 			}
 			if oerr != nil {
 				r.d.Log.WarnContext(ctx, "poll.oracle_failed", slog.Any("error", oerr))
@@ -266,7 +266,7 @@ func (r *Runner) loop(ctx context.Context) (RunResult, error) {
 		}
 		res.Pages += out.Pages
 		if ctx.Err() != nil {
-			return cancelled(res)
+			return cancelled(res), nil
 		}
 		if stop := r.budgetAware(out.Stop, ctx, budgetCtx); stop != "" {
 			if out.Err != nil && stop != StopRunBudget {
@@ -285,9 +285,9 @@ func (r *Runner) loop(ctx context.Context) (RunResult, error) {
 	}
 }
 
-func cancelled(res RunResult) (RunResult, error) {
+func cancelled(res RunResult) RunResult {
 	res.Stop = StopCancelled
-	return res, nil
+	return res
 }
 
 func (r *Runner) releaseLease(ctx context.Context, h LeaseHandle) {
