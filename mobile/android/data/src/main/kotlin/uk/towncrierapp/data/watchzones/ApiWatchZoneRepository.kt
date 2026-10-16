@@ -14,11 +14,9 @@ import uk.towncrierapp.domain.watchzones.WatchZoneId
 import uk.towncrierapp.domain.watchzones.WatchZoneRepository
 
 /**
- * `WatchZoneRepository` over the Town Crier API. Port of iOS
- * `APIWatchZoneRepository`. `create`/`update`/`delete` discard their response
- * bodies via [ApiClient.requestBytes] — the domain port's return type is
- * `Unit` (parity with iOS `save`/`update`/`delete`), and the caller reloads
- * the list afterwards.
+ * `WatchZoneRepository` over the Town Crier API. `create`/`update`/`delete`
+ * discard their response bodies via [ApiClient.requestBytes]; the caller
+ * reloads the list afterwards.
  */
 public class ApiWatchZoneRepository(
     private val apiClient: ApiClient,
@@ -28,9 +26,8 @@ public class ApiWatchZoneRepository(
         apiClient
             .request(ApiEndpoint.get("/v1/me/watch-zones"), ListWatchZonesResponseDto.serializer())
             .zones
-            // A malformed individual zone (e.g. a legacy record with an
-            // out-of-range coordinate) is skipped rather than failing the
-            // whole list — parity with iOS's `compactMap` behaviour.
+            // A malformed individual zone is skipped rather than failing the
+            // whole list.
             .mapNotNull { dto -> runCatchingDomainInvariant { dto.toDomain() } }
 
     override suspend fun create(zone: WatchZone) {
@@ -50,8 +47,7 @@ public class ApiWatchZoneRepository(
     }
 
     @Suppress("SwallowedException")
-    // Idempotent delete — already gone counts as success (epic #770 contract);
-    // the exception carries no further information the caller needs.
+    // Idempotent delete: already gone counts as success.
     override suspend fun delete(id: WatchZoneId) {
         try {
             apiClient.requestBytes(ApiEndpoint.delete("/v1/me/watch-zones/${id.value}"))
@@ -64,13 +60,9 @@ public class ApiWatchZoneRepository(
 }
 
 /**
- * The create endpoint's only 403 is "quota exceeded" (tc-gpjk / tc-z95t bead
- * brief), so ANY 403 on create — whether the server already shaped it as an
- * entitlement body or a plain error string — normalises to
- * `insufficientEntitlement("personal")`. This is a deliberate Android
- * divergence from iOS, which preserves an already-entitlement-shaped body's
- * `required` value; here the bead brief calls for the simpler, always-
- * personal mapping since a plain create 403 is quota-only in practice.
+ * The create endpoint's only 403 is "quota exceeded", so ANY 403 on create
+ * normalises to `insufficientEntitlement("personal")`. Deliberately simpler
+ * than iOS, which preserves an entitlement-shaped body's `required` value.
  */
 private fun DomainError.normalisedForCreateQuota(): DomainError =
     when (this) {
@@ -93,8 +85,6 @@ private inline fun <T> runCatchingDomainInvariant(block: () -> T): T? =
         null
     }
 
-// MARK: - DTOs
-
 @Serializable
 internal data class ListWatchZonesResponseDto(
     val zones: List<WatchZoneDto>,
@@ -109,12 +99,11 @@ internal data class WatchZoneDto(
     val radiusMetres: Double,
     val authorityId: Int = 0,
     // Absent on legacy zones created before these flags existed — default to
-    // true so those zones keep receiving every alert (epic #770 contract).
+    // true so those zones keep receiving every alert.
     val pushEnabled: Boolean = true,
     val emailInstantEnabled: Boolean = true,
     // null for a circle zone, and absent on responses predating this field
-    // (older API, or a legacy circle-only zone) — both hydrate to null
-    // (GH#1072 Phase 2), same back-compat convention as the flags above.
+    // (older API, or a legacy circle-only zone) — both hydrate to null.
     val boundary: GeoJsonPolygonDto? = null,
 )
 
