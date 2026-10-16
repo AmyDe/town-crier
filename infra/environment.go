@@ -155,6 +155,7 @@ type envContext struct {
 	auth0Domain                 string
 	auth0M2mClientID            pulumi.StringOutput
 	auth0M2mClientSecret        pulumi.StringOutput
+	subscriptionWebhooks        *pulumi.StringOutput
 	tags                        pulumi.StringMap
 }
 
@@ -180,6 +181,12 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 	siteBuildKey := conf.RequireSecret("siteBuildKey")
 	auth0M2mClientID := conf.RequireSecret("auth0M2mClientId")
 	auth0M2mClientSecret := conf.RequireSecret("auth0M2mClientSecret")
+	// ACA rejects empty secret values, so the secret and env var exist only when the key is set.
+	var subscriptionWebhooks *pulumi.StringOutput
+	if conf.Get("subscriptionWebhooks") != "" {
+		v := conf.RequireSecret("subscriptionWebhooks")
+		subscriptionWebhooks = &v
+	}
 
 	// APNs (Apple Push Notification service). AuthKey is the .p8 PEM contents (secret).
 	// UseSandbox derives from the env: dev hits api.sandbox.push.apple.com.
@@ -321,6 +328,7 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 		auth0Domain:                 auth0Domain,
 		auth0M2mClientID:            auth0M2mClientID,
 		auth0M2mClientSecret:        auth0M2mClientSecret,
+		subscriptionWebhooks:        subscriptionWebhooks,
 		tags:                        tags,
 	}
 
@@ -356,6 +364,9 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 		// Build key the Go gate validates for the SEO prerender endpoint.
 		&app.SecretArgs{Name: pulumi.String("site-build-key"), Value: siteBuildKey},
 	}
+	if subscriptionWebhooks != nil {
+		secrets = append(secrets, &app.SecretArgs{Name: pulumi.String("subscription-webhooks"), Value: *subscriptionWebhooks})
+	}
 
 	// Build the API container env-var array. Postgres connection vars are dev-only: the dev
 	// API authenticates to town_crier_dev via Entra managed identity. AZURE_CLIENT_ID
@@ -379,6 +390,9 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 		// account, which is created later in this stack (after apiEnvVars is built). Always set for
 		// both dev and prod (DNS-independent); empty-safe on the consumer side.
 		app.EnvironmentVarArgs{Name: pulumi.String("SHARE_CARDS_BLOB_URL"), Value: pulumi.String(fmt.Sprintf("https://sttowncrier%s.blob.core.windows.net", env))},
+	}
+	if subscriptionWebhooks != nil {
+		apiEnvVars = append(apiEnvVars, app.EnvironmentVarArgs{Name: pulumi.String("SUBSCRIPTION_WEBHOOKS"), SecretRef: pulumi.String("subscription-webhooks"), Value: pulumi.String("")})
 	}
 	// Both env stacks (dev + prod — the only environment stacks) run on Postgres
 	// single-store (memo 0010 / GH #669 prod, GH #681 dev). The API authenticates to
@@ -595,6 +609,10 @@ func createWorkerJob(ctx *pulumi.Context, ec envContext, nameSuffix, cronExpress
 		)
 	}
 
+	if workerMode == "subscription-sweep" && ec.subscriptionWebhooks != nil {
+		secrets = append(secrets, &app.SecretArgs{Name: pulumi.String("subscription-webhooks"), Value: *ec.subscriptionWebhooks})
+	}
+
 	configuration := &app.JobConfigurationArgs{
 		ReplicaTimeout: pulumi.Int(replicaTimeout),
 		Registries: app.RegistryCredentialsArray{
@@ -707,6 +725,12 @@ func addGoWorkerEnv(envVars app.EnvironmentVarArray, ec envContext, workerMode s
 			app.EnvironmentVarArgs{Name: pulumi.String("AUTH0_DOMAIN"), Value: pulumi.String(ec.auth0Domain)},
 			app.EnvironmentVarArgs{Name: pulumi.String("AUTH0_M2M_CLIENT_ID"), SecretRef: pulumi.String("auth0-m2m-client-id"), Value: pulumi.String("")},
 			app.EnvironmentVarArgs{Name: pulumi.String("AUTH0_M2M_CLIENT_SECRET"), SecretRef: pulumi.String("auth0-m2m-client-secret"), Value: pulumi.String("")},
+		)
+	}
+
+	if workerMode == "subscription-sweep" && ec.subscriptionWebhooks != nil {
+		envVars = append(envVars,
+			app.EnvironmentVarArgs{Name: pulumi.String("SUBSCRIPTION_WEBHOOKS"), SecretRef: pulumi.String("subscription-webhooks"), Value: pulumi.String("")},
 		)
 	}
 
