@@ -9,7 +9,7 @@ import (
 
 const (
 	alertBandMaxAge    = 14
-	coverageBandMaxAge = 90
+	coverageBandMaxAge = 30
 	coverageMaxStale   = 7 * 24 * time.Hour
 	deltaMaskDays      = 14
 	dayStartHour       = 6
@@ -56,7 +56,7 @@ type WindowState struct {
 }
 
 // WindowPlanState is everything NextWindowWork reads. Windows holds the
-// poll_window rows for the 0 to 90 day range (a missing row is a window never
+// poll_window rows for the 0 to 30 day range (a missing row is a window never
 // read). DeltaStartedAt maps each delta work to its latest planit_call with
 // page_index 0.
 type WindowPlanState struct {
