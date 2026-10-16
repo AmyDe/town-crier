@@ -82,18 +82,18 @@ func (n *Notifier) Wait() {
 func (n *Notifier) deliver(ctx context.Context, typ EventType, before, after Snapshot, source Source, occurredAt time.Time) {
 	stats, err := n.totals.UserStats(ctx, occurredAt)
 	if err != nil {
-		n.logger.WarnContext(ctx, "subscription webhook totals failed", "event_type", string(typ))
+		n.logger.WarnContext(ctx, "subscription webhook totals failed", "eventType", string(typ))
 		return
 	}
 	candidates, err := n.totals.PaidCandidates(ctx)
 	if err != nil {
-		n.logger.WarnContext(ctx, "subscription webhook totals failed", "event_type", string(typ))
+		n.logger.WarnContext(ctx, "subscription webhook totals failed", "eventType", string(typ))
 		return
 	}
 	payload := BuildPayload(newEventID(), typ, before, after, source, occurredAt, ComputeTotals(stats.Total, candidates, occurredAt))
 	raw, err := json.Marshal(payload)
 	if err != nil {
-		n.logger.ErrorContext(ctx, "subscription webhook payload failed", "event_type", string(typ))
+		n.logger.ErrorContext(ctx, "subscription webhook payload failed", "eventType", string(typ))
 		return
 	}
 
@@ -115,14 +115,14 @@ func (n *Notifier) post(ctx context.Context, index int, hook Webhook, typ EventT
 	if hook.BodyField != "" {
 		wrapped, err := json.Marshal(map[string]string{hook.BodyField: string(payload)})
 		if err != nil {
-			n.logger.ErrorContext(ctx, "subscription webhook body failed", "webhook_index", index, "event_type", string(typ))
+			n.logger.ErrorContext(ctx, "subscription webhook body failed", "webhookIndex", index, "eventType", string(typ))
 			return
 		}
 		body = wrapped
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, hook.URL, bytes.NewReader(body))
 	if err != nil {
-		n.logger.WarnContext(ctx, "subscription webhook request invalid", "webhook_index", index, "event_type", string(typ))
+		n.logger.WarnContext(ctx, "subscription webhook request invalid", "webhookIndex", index, "eventType", string(typ))
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
@@ -131,11 +131,11 @@ func (n *Notifier) post(ctx context.Context, index int, hook Webhook, typ EventT
 	}
 	resp, err := n.client.Do(req)
 	if err != nil {
-		n.logger.WarnContext(ctx, "subscription webhook delivery failed", "webhook_index", index, "event_type", string(typ))
+		n.logger.WarnContext(ctx, "subscription webhook delivery failed", "webhookIndex", index, "eventType", string(typ))
 		return
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		n.logger.WarnContext(ctx, "subscription webhook rejected", "webhook_index", index, "status", resp.StatusCode, "event_type", string(typ))
+		n.logger.WarnContext(ctx, "subscription webhook rejected", "webhookIndex", index, "status", resp.StatusCode, "eventType", string(typ))
 	}
 }

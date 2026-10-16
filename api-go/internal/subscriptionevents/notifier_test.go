@@ -158,7 +158,7 @@ func TestNotifier_FailureLogsWarningWithoutSecrets(t *testing.T) {
 			n.Wait()
 
 			out := logs.String()
-			if !containsAny(out, "level=WARN") || !containsAny(out, "webhook_index=0", "event_type=reverted_to_free") {
+			if !containsAny(out, "level=WARN") || !containsAny(out, "webhookIndex=0", "eventType=reverted_to_free") {
 				t.Errorf("expected warning with index and event type, got %q", out)
 			}
 			if containsAny(out, "secret-path", "SECRET-TOKEN", "127.0.0.1") {

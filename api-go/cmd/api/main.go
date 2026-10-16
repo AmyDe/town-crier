@@ -29,6 +29,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 	"github.com/AmyDe/town-crier/api-go/internal/savedapplications"
 	"github.com/AmyDe/town-crier/api-go/internal/seopage"
+	"github.com/AmyDe/town-crier/api-go/internal/subscriptionevents"
 	"github.com/AmyDe/town-crier/api-go/internal/subscriptions"
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
 	"go.opentelemetry.io/otel"
@@ -190,10 +191,17 @@ func main() {
 		log.Fatalf("designations client: %v", err)
 	}
 
+	webhooks, err := subscriptionevents.ParseWebhooks(cfg.SubscriptionWebhooks.Expose())
+	if err != nil {
+		logger.Error("subscription webhooks misconfigured; running with none", "error", err)
+		webhooks = nil
+	}
+	subscriptionNotifier := subscriptionevents.NewNotifier(adminStore, webhooks, subscriptionevents.NewHTTPClient(), logger, time.Now)
+
 	srv := platform.NewServer(":"+cfg.Port, newRouter(validator, cfg.CorsAllowedOrigins, store, manager, cascade, exportReaders, deviceStore, stateStore, notifStore, watchZoneStore, appStore, savedStore, geocodeClient, designationClient, offerStore, adminStore, cfg.AdminAPIKey, cfg.SiteBuildKey, jwsVerifier, appleNotifStore, cfg.AppleBundleID, cfg.AppleEnvironments, registry, shareCardCache, cfg.AnonRateLimitBurst, cfg.AnonRateLimitRefillPerMinute, pollingAdminDeps{
 		Switch: polling.NewSwitch(polling.NewPostgresPollControlStore(pool), cfg.PollingEnabledDefault),
 		Calls:  polling.NewPostgresPlanItCallStore(pool),
-	}, seopage.NewPostgresStore(pool, appStore), logger))
+	}, subscriptionNotifier, seopage.NewPostgresStore(pool, appStore), logger))
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
