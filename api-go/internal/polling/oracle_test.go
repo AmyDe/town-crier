@@ -126,7 +126,7 @@ func TestOracle_WideReadShapeAndPaging(t *testing.T) {
 		t.Fatalf("out = %+v", out)
 	}
 	q := r.fetch.queries[0]
-	if q.Work != planit.WorkOracleStart || q.Axis != planit.AxisStart || !q.From.Equal(oracleToday.AddDate(0, 0, -90)) || !q.To.Equal(oracleToday) || q.DifferentStart != nil {
+	if q.Work != planit.WorkOracleStart || q.Axis != planit.AxisStart || !q.From.Equal(oracleToday.AddDate(0, 0, -30)) || !q.To.Equal(oracleToday) || q.DifferentStart != nil {
 		t.Fatalf("start query = %+v", q)
 	}
 	if got := r.fetch.queries[1].Index; got != 300 {
