@@ -60,12 +60,8 @@ type WatchZone struct {
 	PushEnabled         bool
 	EmailInstantEnabled bool
 	Boundary            Boundary
-	// FilterKey is the zone's pre-canned keyword filter (GH#1090, epic
-	// tc-w825j): the zero value ("") means unfiltered, the same
-	// zero-value-means-unset pattern as most other domain fields — unlike
-	// Boundary, no derived field needs recomputing when it changes. Setting
-	// it to a non-empty value is a Pro-tier-only entitlement, enforced by
-	// the HTTP layer, not here.
+	// FilterKey is the zone's pre-canned keyword filter; "" means unfiltered.
+	// Setting it is Pro-only, enforced by the HTTP layer, not here.
 	FilterKey FilterKey
 }
 
@@ -154,8 +150,8 @@ type Boundary []Coordinate
 // struct, so slices.Equal is sufficient — no epsilon tolerance, and a nil
 // Boundary compares equal to an empty non-nil one, matching slices.Equal's
 // own nil-vs-empty handling). This is deliberately exact rather than
-// approximate: the only caller (the PATCH handler's boundary tier gate,
-// tc-h3aov) compares an incoming boundary against the zone's
+// approximate: the only caller (the PATCH handler's boundary tier gate)
+// compares an incoming boundary against the zone's
 // currently-stored one to detect a client resending the SAME shape
 // unchanged, and the incoming value is always a JSON round-trip of a value
 // this server itself previously returned via boundaryToGeoJSON — so no

@@ -13,7 +13,7 @@ import (
 // fakeZoneRow is a hand-written pgx.Row test double scanning the 11-column
 // pgZoneColumns projection scanZone expects: id, user_id, name, latitude,
 // longitude, radius_metres, created_at, push_enabled, email_instant_enabled,
-// boundary geojson, filter_key (GH#1090, epic tc-w825j). It exists purely to
+// boundary geojson, filter_key. It exists purely to
 // prove filter_key's round trip through scanZone at the fake level -- the
 // store's broader read/write behaviour (list/get/delete/find, boundary
 // geometry) is already covered by the real-DB integration suite in

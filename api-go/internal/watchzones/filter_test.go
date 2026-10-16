@@ -129,8 +129,7 @@ func TestFilterCatalog_KeywordFiltersHaveExpressions(t *testing.T) {
 // would build and pass every other test, but silently never appear in GET
 // /v1/watch-zones/filter-catalog (catalog_handler.go skips any
 // filterCatalogOrder entry missing from filterCatalog, but nothing catches
-// the reverse) -- defeating GH#1104/GH#1090's "adding a filter is a Go-only
-// deploy" premise.
+// the reverse) -- defeating the "adding a filter is a Go-only deploy" premise.
 func TestFilterCatalogOrder_MatchesFilterCatalog(t *testing.T) {
 	t.Parallel()
 

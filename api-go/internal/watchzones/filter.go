@@ -42,7 +42,7 @@ type FilterDefinition struct {
 // gate). Checked as a plain Go string-slice membership test against the
 // already-loaded application — never as a SQL NOT-expression, which would
 // force a sequential scan and bypass the applications_description_fts GIN
-// index (see filter.go package doc / GH#1090 Technical Context).
+// index.
 var filterExcludedAppTypes = []string{"Trees", "Conditions", "Amendment", "Advertising", "Telecoms"}
 
 // filterCatalog is the seven pre-canned watch-zone filters, validated
@@ -73,7 +73,7 @@ var filterExcludedAppTypes = []string{"Trees", "Conditions", "Amendment", "Adver
 //     both a bare word and a phrase built from it.
 //   - English stemming collapses plurals and some unrelated forms onto the
 //     same lexeme (e.g. `flat`/`flats`), which is why new_homes deliberately
-//     excludes bare `flat` — see GH#1090 for the false-positive analysis.
+//     excludes bare `flat`.
 //
 // Do not "clean up" or paraphrase these operators — every expression here
 // was validated against live production data and a change silently
@@ -135,9 +135,7 @@ var filterCatalogOrder = []FilterKey{
 
 // IsValidFilterKey reports whether key is a member of the catalog. The
 // empty string is never valid: "" means "no filter", and callers must gate
-// on a non-empty value before calling IsValidFilterKey (per GH#1090's
-// create/patch gating logic: `if req.FilterKey != nil && *req.FilterKey !=
-// "" { ... IsValidFilterKey ... }`).
+// on a non-empty value before calling IsValidFilterKey.
 func IsValidFilterKey(key string) bool {
 	_, ok := filterCatalog[FilterKey(key)]
 	return ok

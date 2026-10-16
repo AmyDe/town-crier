@@ -44,9 +44,7 @@ type fakeAppFinder struct {
 	lastUnread   bool
 
 	// lastLatitude/lastLongitude/lastRadiusMetres capture the circle FindNearbyPage
-	// was called with -- for a custom-shape zone these are the polygon's derived
-	// centroid/enclosing radius (tc-6he3x.4's documented interim fallback in
-	// findZonePage/clusters, ahead of tc-6he3x.5's boundary-scoped finder).
+	// was called with.
 	lastLatitude, lastLongitude, lastRadiusMetres float64
 
 	clusters         []applications.Cluster
@@ -79,7 +77,7 @@ func (f *fakeAppFinder) FindNearbyPage(_ context.Context, latitude, longitude, r
 	// Mirror the bounded store contract: never hand back more than `limit` rows.
 	// The production store caps at the query layer (the page-size hint); the fake
 	// caps here so handler tests can prove the downstream unread lookup receives a
-	// bounded UID set (tc-fm8f).
+	// bounded UID set.
 	apps := f.apps
 	if limit > 0 && len(apps) > limit {
 		apps = apps[:limit]
@@ -285,7 +283,7 @@ func testApp(uid, name string) applications.PlanningApplication {
 
 // testAppInAuthority builds a nearby application tagged to a specific authority,
 // for asserting the browse path surfaces neighbour-authority apps across a
-// border (tc-zldl).
+// border.
 func testAppInAuthority(uid, name string, areaID int) applications.PlanningApplication {
 	a := testApp(uid, name)
 	a.AreaID = areaID
@@ -297,7 +295,7 @@ func TestCreate_PersistsZoneAndReturnsNearbyApplications(t *testing.T) {
 	t.Parallel()
 	// A border-spanning zone whose circle covers applications from two different
 	// authorities. The browse path is authority-agnostic, so the create response
-	// must surface both (tc-zldl).
+	// must surface both.
 	d := nearbyDeps{
 		store:    &fakeZoneStore{},
 		profiles: &fakeProfileReader{profile: proProfile(t)},
@@ -349,14 +347,9 @@ func TestCreate_PersistsZoneAndReturnsNearbyApplications(t *testing.T) {
 	}
 }
 
-// TestCreate_PolygonCentroidWithNoNearbyPostcode is the regression test for the
-// bug that started this bead (GH#1076): a polygon watch zone whose derived
-// centroid falls at a real-world coordinate with no nearby postcodes.io result
-// used to 500 when the create path reverse-geocoded the centroid to a PlanIt
-// authority id. The create path no longer resolves (or stores) an authority at
-// all, so creating a zone at this exact coordinate must now succeed
-// regardless of postcode data -- proven here with no resolver dependency
-// wired into NearbyRoutes at all.
+// TestCreate_PolygonCentroidWithNoNearbyPostcode proves a polygon zone whose
+// derived centroid has no nearby postcodes.io result still creates: the create
+// path resolves no authority, so no resolver dependency is wired.
 func TestCreate_PolygonCentroidWithNoNearbyPostcode(t *testing.T) {
 	t.Parallel()
 	const (
@@ -424,8 +417,7 @@ func TestCreate_QuotaExceededIs403(t *testing.T) {
 // ErrDuplicateName (a unique-violation on watch_zones' UNIQUE (user_id, name)
 // constraint against a different, already-existing row -- create always
 // mints a fresh id, so ON CONFLICT (id) can never catch this) maps to 409
-// zone_name_taken rather than falling through to the generic 500 (GH#1083,
-// tc-h4y98).
+// zone_name_taken rather than falling through to the generic 500.
 func TestCreate_DuplicateNameIs409(t *testing.T) {
 	t.Parallel()
 	d := nearbyDeps{
@@ -737,7 +729,7 @@ func TestApplications_BoundsUnreadLookupToReturnedPage(t *testing.T) {
 	t.Parallel()
 	// The finder has more than a page worth of apps available; the bounded fetch
 	// returns only `limit` (default 500), so the unread lookup must receive a
-	// bounded UID set — never every app in a dense zone (tc-fm8f).
+	// bounded UID set — never every app in a dense zone.
 	d := nearbyDeps{
 		store:    &fakeZoneStore{zones: []WatchZone{mustZone(t, "zone-1")}},
 		apps:     &fakeAppFinder{apps: manyApps(600)},
@@ -761,8 +753,7 @@ func TestApplications_BoundsUnreadLookupToReturnedPage(t *testing.T) {
 func TestApplications_SurfacesNeighbourAuthorityApps(t *testing.T) {
 	t.Parallel()
 	// A zone pinned to authority 471 whose circle crosses into authority 246. The
-	// applications list is now authority-agnostic, so both sides must appear
-	// (tc-zldl / tc-w11n).
+	// applications list is authority-agnostic, so both sides must appear.
 	d := nearbyDeps{
 		store: &fakeZoneStore{zones: []WatchZone{mustZone(t, "zone-1")}},
 		apps: &fakeAppFinder{apps: []applications.PlanningApplication{
@@ -917,8 +908,6 @@ func TestValid_RejectsNonFiniteCoordinates(t *testing.T) {
 		})
 	}
 }
-
-// --- Boundary (custom-shape) create tests (tc-6he3x.4) ---------------------
 
 // TestCreate_Boundary_FreeTierIs403 proves a Free-tier caller supplying a
 // non-null boundary on create is rejected with 403 boundary_requires_paid_tier
@@ -1098,8 +1087,6 @@ func TestCreate_Boundary_InvalidShapeIs400(t *testing.T) {
 	}
 }
 
-// --- filterKey create tests (GH#1090, epic tc-w825j) ------------------------
-
 // TestCreate_FilterKey_FreeOrPersonalTierIs403 proves a non-Pro caller
 // supplying a non-empty filterKey on create is rejected with 403
 // filter_requires_pro_tier and never persisted -- Pro-only, deliberately
@@ -1253,18 +1240,6 @@ func TestCreate_FilterKey_AbsentIsUnfilteredAndNullOnWire(t *testing.T) {
 	}
 }
 
-// NOTE (tc-grlnc, discovered-from tc-acbsh): two tests used to live here --
-// TestApplications_CustomShapeZone_UsesEnclosingRadiusInterimFallback and
-// TestClusters_CustomShapeZone_UsesEnclosingRadiusInterimFallback -- pinning
-// the tc-6he3x.4 interim behaviour (a param-less custom-shape request routing
-// through the legacy circle finders). tc-6he3x.5 (PR #1047) replaced that
-// routing with FindInBoundaryPage/FindClustersInBoundary but left these two
-// tests asserting the superseded behaviour, so they failed independent of any
-// other change (confirmed via `git stash` before this bead's edits). Deleted
-// as dead, contradicting test code -- TestApplications_CustomShapeZoneUsesBoundaryPath
-// and TestClusters_CustomShapeZoneUsesBoundaryClusterQuery already cover the
-// current (correct) routing.
-
 // sortDeps builds a standard dependency set for the applications-list sort tests:
 // one seeded zone, a configurable finder, no watermark.
 func sortDeps(t *testing.T, apps *fakeAppFinder) nearbyDeps {
@@ -1303,11 +1278,10 @@ func TestApplications_ParamlessUsesLegacyDistancePath(t *testing.T) {
 	}
 }
 
-// TestApplications_CircleZoneStillUsesLegacyDistancePath is the explicit
-// regression this bead calls for (tc-6he3x.5): a circle zone's applications
-// list is completely unaffected by the new polygon branch, sort/filter
-// requests included -- it keeps routing to FindNearbyPage/FindInZonePage
-// exactly as before, never FindInBoundaryPage.
+// TestApplications_CircleZoneStillUsesLegacyDistancePath proves a circle zone's
+// applications list is unaffected by the polygon branch, sort/filter requests
+// included: it routes to FindNearbyPage/FindInZonePage, never
+// FindInBoundaryPage.
 func TestApplications_CircleZoneStillUsesLegacyDistancePath(t *testing.T) {
 	t.Parallel()
 	apps := &fakeAppFinder{}
@@ -1376,8 +1350,7 @@ func TestApplications_CustomShapeZoneUsesBoundaryPath(t *testing.T) {
 }
 
 // TestApplications_CustomShapeZoneSortAndFilterRoutesToBoundaryZonePage proves
-// the gap tc-6he3x.4/tc-6he3x.5 left open is closed (tc-acbsh): a custom-shape
-// zone's ?sort=/?status= now route to the boundary-aware sort/filter finder
+// a custom-shape zone's ?sort=/?status= route to the boundary-aware sort/filter finder
 // (FindInBoundaryZonePage), never silently ignored and never falling through
 // to the plain boundary page or the circle-zone FindInZonePage.
 func TestApplications_CustomShapeZoneSortAndFilterRoutesToBoundaryZonePage(t *testing.T) {
@@ -2341,7 +2314,7 @@ func TestClusters_StoreErrorIs500(t *testing.T) {
 // TestClusters_ContextCanceled_NoServerErrorNoErrorLog proves a client
 // disconnect (context.Canceled from the store, wrapped as a real caller would
 // wrap it) is NOT treated as a server fault: no 500 is written and no
-// error-level log line is emitted (tc-ftccw). A disconnected caller is
+// error-level log line is emitted. A disconnected caller is
 // already gone, so nothing meaningfully needs to be sent back.
 func TestClusters_ContextCanceled_NoServerErrorNoErrorLog(t *testing.T) {
 	t.Parallel()

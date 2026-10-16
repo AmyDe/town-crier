@@ -189,8 +189,7 @@ func TestWatchZonePostgresStore_Save_UpsertOnID(t *testing.T) {
 // UNIQUE (user_id, name) constraint (0001_init_postgis.sql), so inserting a
 // second zone with a fresh id but a name the user already owns must surface as
 // the domain sentinel ErrDuplicateName rather than the raw Postgres
-// unique-violation (GH#1083, tc-h4y98) -- the bug that was propagating as an
-// unhandled 500 through both the create and patch handlers.
+// unique-violation.
 func TestWatchZonePostgresStore_Save_DuplicateNameSameUserIsErrDuplicateName(t *testing.T) {
 	ctx := context.Background()
 	store := newZonePGStore(t)
