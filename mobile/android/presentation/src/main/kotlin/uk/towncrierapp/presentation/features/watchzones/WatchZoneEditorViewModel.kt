@@ -25,28 +25,18 @@ import java.util.UUID
 
 /**
  * Drives create/edit of a single watch zone: postcode geocoding, tier-based
- * radius limits, and the two instant-alert toggles. Port of iOS
- * `WatchZoneEditorViewModel`. Navigation (dismiss-on-save, route-to-paywall)
- * is modelled as state the Route reconciles — see [WatchZoneEditorUiState].
+ * radius limits, and the two instant-alert toggles. Navigation
+ * (dismiss-on-save, route-to-paywall) is modelled as state the Route reconciles — see [WatchZoneEditorUiState].
  */
 @Suppress("TooManyFunctions")
-// This screen genuinely owns 11 independent, single-purpose interactions
-// (name/postcode/radius/toggle edits, submit, save, two one-shot signal
-// consumers matching the `consumeX()` convention shared with
-// ZonePreferencesViewModel, plus GH#1072 Phase 3's onShapeEvent — itself
-// already a single dispatch point standing in for 5 shape/polygon actions,
-// see WatchZoneShapeEvent). Splitting further means either merging
-// semantically-distinct consumeX() methods (breaks the cross-ViewModel
-// naming convention) or hiving off an unrelated class purely to dodge this
-// count — neither improves readability over the one-function overage.
+// Eleven independent single-purpose interactions; splitting further would
+// break the consumeX() convention shared with ZonePreferencesViewModel.
 public class WatchZoneEditorViewModel(
     private val geocoder: PostcodeGeocoder,
     private val repository: WatchZoneRepository,
     tier: SubscriptionTier,
     private val editingZone: WatchZone? = null,
-    // Defaults to a no-op so every pre-existing call site (tests, and any
-    // future caller with nothing to invalidate) keeps compiling unchanged;
-    // the composition root wires the real cache seam explicitly (tc-cnme).
+    // Defaults to a no-op; the composition root wires the real cache.
     private val applicationCacheStore: ApplicationCacheStore = NoOpApplicationCacheStore,
 ) : ViewModel() {
     private val limits = WatchZoneLimits(tier)
@@ -85,12 +75,12 @@ public class WatchZoneEditorViewModel(
     }
 
     /**
-     * Routes every shape-mode/polygon-drawing interaction (GH#1072 Phase 3)
+     * Routes every shape-mode/polygon-drawing interaction
      * through one dispatch point — see [WatchZoneShapeEvent] for why a
      * single method covers five distinct user actions. All the actual rules
      * (the 3-vertex close gate, the 50-vertex cap, [WatchZoneBoundary.of]
      * validation, the Free-tier custom-mode guard) live in
-     * [PolygonDrawingState.applyShapeEvent] (GH#1072 Phase 5, tc-v6fo0.5) —
+     * [PolygonDrawingState.applyShapeEvent] —
      * shared with onboarding's custom-shape drawing step rather than
      * duplicated — kept out of this class so its own function/complexity
      * budgets stay unaffected by them.
@@ -131,7 +121,7 @@ public class WatchZoneEditorViewModel(
      * Any other failure sets the inline error and leaves the editor open.
      */
     @Suppress("SwallowedException")
-    // Deliberate degrade path (tc-gpjk): a quota breach routes to the paywall
+    // Deliberate degrade path: a quota breach routes to the paywall
     // placeholder — the UI only needs THAT it happened, not the exception itself.
     public fun save() {
         val state = _uiState.value
@@ -163,7 +153,7 @@ public class WatchZoneEditorViewModel(
                     name = state.name.trim(),
                     // A custom-shape zone's centre/radius are derived from its
                     // boundary (centroid + enclosing radius), same as the
-                    // server (issue #1072) — circle mode keeps clamping the
+                    // server — circle mode keeps clamping the
                     // slider value to the tier's radius cap; a drawn shape
                     // isn't reshaped to fit, it's sent as drawn and the server
                     // is the source of truth on `boundary_too_large`.
@@ -177,10 +167,8 @@ public class WatchZoneEditorViewModel(
             try {
                 if (editingZone != null) {
                     repository.update(zone)
-                    // Only the edit path invalidates (tc-cnme): a brand-new
-                    // zone has no prior applications-list cache entry to
-                    // invalidate, mirroring iOS AppCoordinator+WatchZones.swift's
-                    // onSave callback.
+                    // Only edits invalidate: a new zone has no cached
+                    // applications-list entry.
                     applicationCacheStore.invalidate(zone.id)
                 } else {
                     repository.create(zone)
@@ -219,14 +207,6 @@ private fun WatchZoneEditorUiState.isShapeReady(): Boolean =
         WatchZoneShapeMode.CUSTOM -> isPolygonClosed
     }
 
-// MARK: - Shape-mode/polygon-drawing event handling (GH#1072 Phase 3/5)
-//
-// Top-level, not class members, for the same TooManyFunctions/complexity
-// budget reason as withSaveEnabled/isShapeReady above. The actual rules live
-// in PolygonDrawingState.kt (shared with onboarding, tc-v6fo0.5); these two
-// functions just convert WatchZoneEditorUiState's flat fields to/from that
-// shared holder at the point onShapeEvent/save need it.
-
 private fun WatchZoneEditorUiState.toPolygonDrawingState(): PolygonDrawingState =
     PolygonDrawingState(
         shapeMode = shapeMode,
@@ -247,8 +227,6 @@ private fun WatchZoneEditorUiState.withPolygonDrawing(drawing: PolygonDrawingSta
 
 private fun WatchZoneEditorUiState.resolveShapeForSave(): ShapeForSave = toPolygonDrawingState().resolveShapeForSave()
 
-// The default ApplicationCacheStore (tc-cnme) — genuinely stateless, so a
-// shared `object` (not a hidden mutable global) is the right shape here.
 private object NoOpApplicationCacheStore : ApplicationCacheStore {
     override suspend fun get(zoneId: WatchZoneId): CachedApplicationPage? = null
 

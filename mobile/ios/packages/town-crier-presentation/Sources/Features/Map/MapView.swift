@@ -4,14 +4,8 @@ import TownCrierDomain
 
 /// Map view displaying planning application pins colour-coded by status.
 ///
-/// tc-3b1hj: the screen is full-bleed — no `.navigationTitle`/nav bar (the
-/// tab bar already says "Map"; the caller hides the bar and this view's map
-/// layer ignores the safe area on every edge). The Settings entry point that
-/// used to live in the nav bar's trailing toolbar item is now a floating
-/// circular button this view owns directly, wired via `onSettingsTapped` —
-/// mirrors the callback-closure pattern already used elsewhere (e.g.
-/// `AnonymousApplicationListView`'s CTA banner) rather than reaching for the
-/// Coordinator directly, which would break the MVVM-C dependency rule.
+/// The screen is full-bleed with no nav bar; Settings is a floating button
+/// wired via `onSettingsTapped`.
 public struct MapView: View {
   @StateObject private var viewModel: MapViewModel
   private let onSettingsTapped: () -> Void
@@ -187,24 +181,14 @@ public struct MapView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.tcBackground)
       } else if viewModel.showMap {
-        // iOS: MKMapView with native clustering (GH#542, GH#682 slice 5).
-        // macOS (SPM compile target): fall back to SwiftUI Map so the package
-        // still compiles for swift test without UIKit.
+        // macOS (SPM compile target) falls back to SwiftUI Map so the package
+        // compiles for swift test without UIKit.
         //
-        // tc-edyvn: stays mounted even when the current viewport (or the
-        // whole zone) has zero clusters -- a full-screen empty-state takeover
-        // here used to unmount the map entirely, trapping the user with no
-        // way to zoom back out. `ClusteredMapView` already draws the zone
-        // boundary overlay independent of marker count, so a zero-cluster
-        // viewport just shows the bare map with the outline and no pins,
-        // fully pannable/zoomable.
+        // Stays mounted even with zero clusters: an empty-state takeover would
+        // leave the user no way to zoom back out.
         #if canImport(UIKit)
-          // Full-bleed (tc-3b1hj): the nav bar is hidden on this screen, so
-          // the map extends to every physical edge, including under the
-          // status bar/notch at the top — `headerSection` and
-          // `floatingSettingsButton` still land in the ordinary safe area
-          // via `.safeAreaInset`, they just no longer force the map itself
-          // to stop short of the top edge.
+          // Full-bleed: `headerSection` and `floatingSettingsButton` still
+          // land in the ordinary safe area via `.safeAreaInset`.
           ClusteredMapView(viewModel: viewModel)
             .ignoresSafeArea()
         #else

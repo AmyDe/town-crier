@@ -186,7 +186,7 @@ func TestHandler_Patch_UpdatesAndReturnsZone(t *testing.T) {
 	if got.Zone.Latitude != z.Latitude {
 		t.Errorf("unset fields changed: %+v", got.Zone)
 	}
-	// Back-compat shim (tc-9nbs4.6): authorityId must be present on the wire,
+	// Back-compat shim: authorityId must be present on the wire,
 	// not just zero-valued after decode (absence also decodes as 0).
 	var raw struct {
 		Zone map[string]json.RawMessage `json:"zone"`
@@ -230,7 +230,7 @@ func TestHandler_Patch_UpdatesEveryMappedField(t *testing.T) {
 		Latitude:     52.4862,
 		Longitude:    -1.8904,
 		RadiusMetres: 3000,
-		// Back-compat shim (tc-9nbs4.6): always 0, never resolved.
+		// Back-compat shim: always 0, never resolved.
 		AuthorityID:         0,
 		PushEnabled:         false,
 		EmailInstantEnabled: false,
@@ -239,7 +239,7 @@ func TestHandler_Patch_UpdatesEveryMappedField(t *testing.T) {
 	if got.Zone != want {
 		t.Errorf("response zone: got %+v, want %+v", got.Zone, want)
 	}
-	// Back-compat shim (tc-9nbs4.6): authorityId must be present on the wire,
+	// Back-compat shim: authorityId must be present on the wire,
 	// not just zero-valued after decode (absence also decodes as 0).
 	var raw struct {
 		Zone map[string]json.RawMessage `json:"zone"`
@@ -312,16 +312,10 @@ func TestHandler_Patch_NotFound(t *testing.T) {
 	}
 }
 
-// TestHandler_Patch_NotFound_TakesPrecedenceOverBoundaryTierGate pins a
-// precedence change that fell out of tc-k3ncu's fix: the zone load
-// (h.store.Get) now runs before the shared boundary/filter tier-gate block
-// (it has to, so the filter gate can compare against the zone's current
-// FilterKey), so a PATCH naming a nonexistent zone ID now 404s before the
-// tier gate ever runs -- even when the body would otherwise have tripped it.
-// Before the reorder this returned 403 boundary_requires_paid_tier (tier
-// checked first); now it returns 404, without needing a profile reader wired
-// at all (the gate block, including its own-profile-nil check, is never
-// reached). No caller-visible regression: not found beats not entitled.
+// TestHandler_Patch_NotFound_TakesPrecedenceOverBoundaryTierGate proves the
+// zone load (h.store.Get) runs before the boundary/filter tier-gate block, so
+// a PATCH naming a nonexistent zone ID 404s even when the body would have
+// tripped the gate, without needing a profile reader wired.
 func TestHandler_Patch_NotFound_TakesPrecedenceOverBoundaryTierGate(t *testing.T) {
 	t.Parallel()
 	body := mustJSON(t, struct {
@@ -352,8 +346,7 @@ func TestHandler_Patch_BlankNameIsServerError(t *testing.T) {
 // TestHandler_Patch_DuplicateNameIs409 proves that a Store.Save failure
 // carrying ErrDuplicateName (a unique-violation on watch_zones' UNIQUE
 // (user_id, name) constraint against a different, already-existing row) maps
-// to 409 zone_name_taken rather than falling through to the generic 500
-// (GH#1083, tc-h4y98).
+// to 409 zone_name_taken rather than falling through to the generic 500.
 func TestHandler_Patch_DuplicateNameIs409(t *testing.T) {
 	t.Parallel()
 	z := testZone(t)
@@ -371,8 +364,6 @@ func TestHandler_Patch_DuplicateNameIs409(t *testing.T) {
 		t.Errorf("error code: got %q, want %q", env.Error, zoneNameTakenCode)
 	}
 }
-
-// --- PATCH boundary tri-state tests (tc-6he3x.4) ----------------------------
 
 // TestHandler_Patch_Boundary_AbsentLeavesShapeUnchanged proves an absent
 // "boundary" key leaves an existing custom shape untouched (acceptance
@@ -593,13 +584,11 @@ func TestHandler_Patch_Boundary_NoProfileReaderWiredIs500(t *testing.T) {
 }
 
 // TestHandler_Patch_Boundary_ResendingUnchangedValueSucceedsForDowngradedTier
-// proves the fix for tc-h3aov (the same defect pattern tc-k3ncu fixed for the
-// filter gate): a downgraded (Free-tier) caller who already owns a
+// proves a downgraded (Free-tier) caller who already owns a
 // custom-shape zone and resends its UNCHANGED boundary vertices alongside an
 // unrelated field edit (name here — the same pattern a client that always
 // PATCHes full state on every edit produces) must succeed, because nothing
-// about the boundary actually changed. Before the fix, settingBoundary gated
-// on mere non-emptiness of the incoming boundary and always 403'd here.
+// about the boundary actually changed.
 func TestHandler_Patch_Boundary_ResendingUnchangedValueSucceedsForDowngradedTier(t *testing.T) {
 	t.Parallel()
 	base := testZone(t)
@@ -676,7 +665,7 @@ func TestHandler_Patch_Boundary_ChangingExistingBoundaryStillRequiresPaidTier403
 // even needed): this one wires a real (free-tier) profile reader and proves
 // that even with the tier gate fully able to run and reject the request,
 // the 404 for a non-existent (or not-owned) zone ID still wins, and the
-// rejected request is never persisted (tc-h3aov).
+// rejected request is never persisted.
 func TestHandler_Patch_NotFound_TakesPrecedenceOverBoundaryTierGate_ProfileWired(t *testing.T) {
 	t.Parallel()
 	store := &fakeZoneStore{}
@@ -698,8 +687,6 @@ func TestHandler_Patch_NotFound_TakesPrecedenceOverBoundaryTierGate_ProfileWired
 		t.Error("must not save when the zone does not exist")
 	}
 }
-
-// --- PATCH filterKey tri-state tests (GH#1090, epic tc-w825j) --------------
 
 // TestHandler_Patch_FilterKey_FreeOrPersonalTierIs403 proves a non-Pro
 // caller's PATCH that SETS a non-empty filterKey is rejected with 403
@@ -886,10 +873,7 @@ func TestHandler_Patch_FilterKey_NoProfileReaderWiredIs500(t *testing.T) {
 // proves that a downgraded (Free/Personal) caller who resends the zone's own
 // already-stored filterKey unchanged -- alongside an edit to an unrelated
 // field, as a client that always sends full state on every PATCH would -- is
-// NOT gated by the Pro-tier check (tc-k3ncu). Before the fix, the gate ran on
-// mere presence of a non-empty filterKey and could not tell "setting a new
-// filter" apart from "resending the existing one", so this PATCH wrongly
-// 403'd a Pro-canned filter retained after downgrade.
+// NOT gated by the Pro-tier check.
 func TestHandler_Patch_FilterKey_DowngradedTierResendingUnchangedFilterSucceeds(t *testing.T) {
 	t.Parallel()
 	z := testZone(t)
@@ -913,9 +897,8 @@ func TestHandler_Patch_FilterKey_DowngradedTierResendingUnchangedFilterSucceeds(
 }
 
 // TestHandler_Patch_FilterKey_DowngradedTierChangingFilterStillGated proves
-// the fix above did not weaken the underlying protection: a downgraded caller
-// who changes the zone's filterKey to a genuinely DIFFERENT value is still
-// rejected with 403 filter_requires_pro_tier (tc-k3ncu).
+// a downgraded caller who changes the zone's filterKey to a genuinely
+// DIFFERENT value is still rejected with 403 filter_requires_pro_tier.
 func TestHandler_Patch_FilterKey_DowngradedTierChangingFilterStillGated(t *testing.T) {
 	t.Parallel()
 	z := testZone(t)
@@ -1016,8 +999,8 @@ func TestHandler_List_MarksPausedZonesOverEffectiveTierLimit(t *testing.T) {
 	}
 
 	// Golden-check first: every pre-existing field must round-trip unchanged,
-	// and "paused", "boundary" (tc-6he3x.4) and "filterKey" (GH#1090, epic
-	// tc-w825j) are the only additions (11 keys total per zone).
+	// and "paused", "boundary" and "filterKey" are the only additions (11 keys
+	// total per zone).
 	var raw struct {
 		Zones []map[string]any `json:"zones"`
 	}
@@ -1037,7 +1020,7 @@ func TestHandler_List_MarksPausedZonesOverEffectiveTierLimit(t *testing.T) {
 				t.Errorf("zone %d: missing pre-existing/expected key %q", i, k)
 			}
 		}
-		// authorityId is a back-compat shim (tc-9nbs4.6): always present, always 0.
+		// authorityId is a back-compat shim: always present, always 0.
 		if authorityID, ok := obj["authorityId"].(float64); !ok || authorityID != 0 {
 			t.Errorf("zone %d: authorityId = %v, want 0", i, obj["authorityId"])
 		}

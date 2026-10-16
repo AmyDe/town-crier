@@ -116,8 +116,7 @@ func TestWatchZone_WithUpdates_EmptyUpdateIsIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("WithUpdates: %v", err)
 	}
-	// WatchZone now carries a slice field (Boundary), so it is no longer
-	// comparable with == / !=; reflect.DeepEqual is the structural equivalent.
+	// WatchZone has a slice field (Boundary), so it is not comparable with ==.
 	if !reflect.DeepEqual(updated, z) {
 		t.Errorf("empty update changed zone: got %+v, want %+v", updated, z)
 	}
@@ -405,7 +404,7 @@ func TestBoundary_EnclosingRadiusMetres_EmptyBoundaryDoesNotPanic(t *testing.T) 
 }
 
 // TestBoundary_Equal proves Boundary.Equal's exact, order-sensitive
-// element-wise comparison (tc-h3aov): the PATCH handler's boundary tier gate
+// element-wise comparison: the PATCH handler's boundary tier gate
 // uses it to tell "the caller resent the SAME shape unchanged" apart from
 // "the caller is setting a new/different shape".
 func TestBoundary_Equal(t *testing.T) {

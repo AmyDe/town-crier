@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback } from 'react';
 import type { WatchZoneSummary, UpdateWatchZoneRequest, WatchZoneBoundary } from '../../domain/types';
 import type { WatchZoneRepository } from '../../domain/ports/watch-zone-repository';
 import type { ShapeMode } from './ShapeModeToggle';
@@ -38,21 +38,12 @@ export function useZoneEdit(
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const nameError = useMemo(() => {
-    if (name.trim() === '') {
-      return 'Zone name is required';
-    }
-    return null;
-  }, [name]);
+  const nameError = name.trim() === '' ? 'Zone name is required' : null;
 
   const effectiveBoundary = shapeMode === 'custom' ? (currentBoundary ?? null) : null;
 
-  const boundaryError = useMemo(() => {
-    if (shapeMode === 'custom' && effectiveBoundary === null) {
-      return MISSING_BOUNDARY_ERROR;
-    }
-    return null;
-  }, [shapeMode, effectiveBoundary]);
+  const boundaryError =
+    shapeMode === 'custom' && effectiveBoundary === null ? MISSING_BOUNDARY_ERROR : null;
 
   const baselineShapeMode = shapeModeOf(baselineBoundary);
   const boundaryDirty =

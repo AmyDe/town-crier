@@ -2,13 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, it, expect } from 'vitest';
 
-/**
- * Leaflet ships popup styles with a hardcoded white background.
- * In dark mode the app's text tokens resolve to light colours,
- * making popup text invisible. These tests guarantee that override
- * styles exist and use the correct design tokens so the bug cannot
- * silently regress.
- */
+/** Leaflet's hardcoded white popup background hides light text in dark mode. */
 describe('Leaflet popup dark-mode overrides', () => {
   const cssPath = resolve(__dirname, '..', 'leaflet-overrides.css');
   let css: string;

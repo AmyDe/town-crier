@@ -78,11 +78,9 @@ describe('WatchZoneListPage', () => {
     const deleteButtons = screen.getAllByRole('button', { name: /delete/i });
     await user.click(deleteButtons[0]!);
 
-    // Confirm dialog appears
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(screen.getByText(/are you sure/i)).toBeInTheDocument();
 
-    // After confirming, delete is called
     spy.listResult = [aSecondWatchZone()];
     await user.click(screen.getByRole('button', { name: /confirm/i }));
 

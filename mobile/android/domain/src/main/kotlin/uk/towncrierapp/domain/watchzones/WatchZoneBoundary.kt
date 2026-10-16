@@ -8,12 +8,10 @@ package uk.towncrierapp.domain.watchzones
  * validated [WatchZoneBoundary] means the zone is a custom shape. [of] is
  * the only way to obtain one — the private constructor guarantees every
  * instance in hand is already a valid, closed ring, so nothing downstream
- * re-validates it (the smart-constructor idiom, android-coding-standards
- * skill: architecture-and-modules.md). A hand-drawn shape failing validation
- * is expected user input, not a programmer error — unlike [Coordinate]'s
- * `require`-based invariants — so [of] returns a [WatchZoneBoundaryResult]
- * the caller must handle exhaustively rather than throwing (kotlin-idiom.md).
- * Port of iOS `WatchZoneBoundary`.
+ * re-validates it. A hand-drawn shape failing validation is expected user
+ * input, not a programmer error — unlike [Coordinate]'s `require`-based
+ * invariants — so [of] returns a [WatchZoneBoundaryResult] the caller must
+ * handle exhaustively rather than throwing.
  */
 public class WatchZoneBoundary private constructor(
     public val vertices: List<Coordinate>,
@@ -75,7 +73,7 @@ public class WatchZoneBoundary private constructor(
         // 3 is the geometric minimum for a polygon, 50 is generous for a
         // hand-drawn shape while bounding payload size and matching-query
         // cost. Both exclude the closing repeat. Public so the editor
-        // drawing UI (GH#1072 Phase 3, :presentation, a different module)
+        // drawing UI (:presentation, a different module)
         // can gate "close" and "add vertex" affordances off the same
         // numbers rather than duplicating them.
         public const val MIN_VERTICES: Int = 3

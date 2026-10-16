@@ -31,7 +31,7 @@ export class ApiMapAdapter implements MapPort {
     status: ApplicationStatus | null,
   ): Promise<readonly MapCluster[]> {
     const bbox = `${bounds.west},${bounds.south},${bounds.east},${bounds.north}`;
-    return this.apps.getClusters(zoneId as string, { bbox, zoom, status });
+    return this.apps.getClusters(zoneId, { bbox, zoom, status });
   }
 
   async fetchApplicationByMember(member: ClusterMember): Promise<PlanningApplication> {

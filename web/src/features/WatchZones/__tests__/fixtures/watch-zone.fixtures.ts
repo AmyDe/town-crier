@@ -35,11 +35,7 @@ export function aSecondWatchZone(overrides?: Partial<WatchZoneSummary>): WatchZo
   };
 }
 
-/**
- * A small closed square ring, [longitude, latitude] tuple order — matches
- * the wire shape `WatchZoneBoundary` mirrors. First and last vertex are
- * identical, per the GeoJSON closed-ring convention.
- */
+/** A small closed square ring in GeoJSON [longitude, latitude] order. */
 export function aWatchZoneBoundary(overrides?: Partial<WatchZoneBoundary>): WatchZoneBoundary {
   return {
     type: 'Polygon',

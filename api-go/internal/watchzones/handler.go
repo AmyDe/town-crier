@@ -26,14 +26,9 @@ const maxBodyBytes = 1 << 20
 // (Create/Update endpoints).
 const invalidPayloadMessage = "Invalid watch zone payload."
 
-// Custom-shape boundary error codes and messages. Unlike
-// invalidPayloadMessage above (whose text IS the apiErrorResponse "error"
-// field, an established watchzones convention this bead does not touch),
-// these carry a stable machine-readable code separately from the human
-// message -- the same (code, message) shape internal/offercodes and
-// internal/subscriptions already use -- because a client (iOS/web) needs to
-// tell "wrong tier" apart from "bad shape" apart from "too big" to route to
-// the right UX (paywall vs. a validation error vs. a resize prompt).
+// Custom-shape boundary error codes carry a stable machine-readable code
+// separate from the message, so a client can route "wrong tier", "bad shape"
+// and "too big" to the right UX (paywall, validation error, resize prompt).
 const (
 	// boundaryRequiresPaidTierCode/-Message: 403, a Free-tier caller supplied a
 	// non-null boundary on create, or on a PATCH that sets one.
@@ -59,10 +54,8 @@ const (
 	zoneNameTakenMessage = "You already have a watch zone with this name."
 )
 
-// Pre-canned watch-zone filter error codes and messages (GH#1090, epic
-// tc-w825j), sitting alongside the boundary_* codes above and sharing their
-// (code, message) convention. Shared by both the create path (nearby.go) and
-// the patch path (this file) rather than duplicated per file.
+// Pre-canned watch-zone filter error codes, shared by the create path
+// (nearby.go) and the patch path.
 const (
 	// filterRequiresProTierCode/-Message: 403, a Free- or Personal-tier caller
 	// supplied a non-empty filterKey on create, or on a PATCH that sets one.
@@ -138,8 +131,7 @@ func WithMetricsRecorder(rec MetricsRecorder) Option {
 }
 
 // WithProfileCAS wires the CAS-capable profile store used by the create path
-// for atomic quota enforcement and the delete path for quota decrement. When
-// absent the create path falls back to the non-atomic count-then-save (legacy).
+// for atomic quota enforcement and the delete path for quota decrement.
 func WithProfileCAS(cas profileCAS) Option {
 	return func(h *handler) { h.profileCAS = cas }
 }
@@ -147,10 +139,8 @@ func WithProfileCAS(cas profileCAS) Option {
 // WithProfileReader wires the profile reader the list/patch handlers use to
 // compute each zone's derived "paused" field: a zone whose
 // oldest-first rank among the caller's own zones — by (CreatedAt, ID) —
-// exceeds their current effective-tier watch-zone limit. Mirrors nearby.go's
-// create-path profile read. Not wiring this option leaves h.profiles nil, so
-// every zone reports unpaused (fail open, never block a read on a missing
-// dependency).
+// exceeds their current effective-tier watch-zone limit. Not wiring this
+// option leaves every zone unpaused.
 func WithProfileReader(pr profileReader) Option {
 	return func(h *handler) { h.profiles = pr }
 }
@@ -186,10 +176,9 @@ func Routes(mux *http.ServeMux, store zoneStore, logger *slog.Logger, opts ...Op
 }
 
 // watchZoneSummary is the per-zone wire shape returned by list and update.
-// createdAt is deliberately absent from the summary. Paused is additive:
-// a derived, never-stored flag — see pausedIDs. AuthorityID is a
-// wire-format-only back-compat shim: the domain no longer has
-// an authority id, but the field must stay present for older clients.
+// createdAt is deliberately absent. Paused is derived, never stored (see
+// pausedIDs). AuthorityID is always 0 and stays only for older clients'
+// strict decoding.
 type watchZoneSummary struct {
 	ID                  string  `json:"id"`
 	Name                string  `json:"name"`
@@ -201,13 +190,10 @@ type watchZoneSummary struct {
 	EmailInstantEnabled bool    `json:"emailInstantEnabled"`
 	Paused              bool    `json:"paused"`
 	// Boundary is null for a circle zone and a GeoJSON Polygon for a
-	// custom-shape one; Latitude/Longitude/RadiusMetres remain
-	// the polygon's derived centroid/enclosing radius either way, so every
-	// pre-existing circle-shaped consumer keeps working unchanged.
+	// custom-shape one, whose Latitude/Longitude/RadiusMetres hold the
+	// derived centroid and enclosing radius.
 	Boundary *boundaryGeoJSON `json:"boundary"`
-	// FilterKey is null for an unfiltered zone and the catalog key string
-	// otherwise, mirroring Boundary's presence
-	// convention.
+	// FilterKey is null for an unfiltered zone, else the catalog key.
 	FilterKey *string `json:"filterKey"`
 }
 
@@ -218,10 +204,7 @@ func summaryOf(z WatchZone, paused bool) watchZoneSummary {
 		Latitude:     z.Latitude,
 		Longitude:    z.Longitude,
 		RadiusMetres: z.RadiusMetres,
-		// AuthorityID is hardcoded to 0, not resolved from z: it's a
-		// wire-format-only back-compat shim for the pre-tc-9nbs4.4 shipped
-		// iOS client's strict decode. No client reads the value — see
-		// bead tc-9nbs4.6 / GH#1076.
+		// Hardcoded 0 for older iOS clients' strict decode; no client reads it.
 		AuthorityID:         0,
 		PushEnabled:         z.PushEnabled,
 		EmailInstantEnabled: z.EmailInstantEnabled,
@@ -435,12 +418,11 @@ func decodeFilterKeyUpdate(raw json.RawMessage) (*string, error) {
 // patch implements PATCH /v1/me/watch-zones/{zoneId}: range-validate the body
 // (400), decode the tri-state boundary and filterKey fields (400
 // boundary_invalid / filter_key_invalid on a malformed value), load the zone
-// (404 if absent or not owned by the caller -- this takes precedence over
-// every tier-gate check below, tc-h3aov / tc-k3ncu), gate an
-// actually-changed boundary-setting or filter-setting update on the caller's
-// tier (403 boundary_requires_paid_tier / filter_requires_pro_tier;
-// resending the zone's own currently-stored boundary or filterKey unchanged
-// is never gated, tc-h3aov / tc-k3ncu), apply the merge (400 boundary_invalid
+// (404 if absent or not owned by the caller, taking precedence over every
+// tier gate), gate an actually-changed boundary-setting or filter-setting
+// update on the caller's tier (403 boundary_requires_paid_tier /
+// filter_requires_pro_tier; resending the zone's own currently-stored
+// boundary or filterKey unchanged is never gated), apply the merge (400 boundary_invalid
 // / filter_key_invalid on an invalid shape/key, 500 on any other domain
 // invariant violation e.g. a blank name), gate the resulting radius (400
 // boundary_too_large), persist, and return the updated summary.
@@ -471,17 +453,9 @@ func (h *handler) patch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// The zone must be loaded before the tier gate below (and before computing
-	// settingFilter/settingBoundary) for two reasons: a 404 on a
-	// missing/not-owned zone ID must take precedence over every tier-gate
-	// check (tc-h3aov, mirroring the precedence tc-k3ncu's reviewer flagged
-	// for the identical filter-gate fix), and settingFilter/settingBoundary
-	// each need the zone's currently-stored FilterKey/Boundary to tell
-	// "setting a NEW value" apart from "resending the zone's own unchanged
-	// value" -- e.g. a client that always sends full
-	// state on every PATCH, including an unrelated field like name or
-	// radius. Loaded once here and reused for WithUpdates below; do not
-	// fetch it a second time.
+	// Load the zone before the tier gates: a missing zone must 404 before any
+	// gate, and the gates need the stored FilterKey/Boundary to tell a new value
+	// from a client resending full state unchanged.
 	zone, err := h.store.Get(r.Context(), userID, zoneID)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
@@ -502,9 +476,7 @@ func (h *handler) patch(w http.ResponseWriter, r *http.Request) {
 	// "Setting" a boundary (as opposed to leaving it alone, explicitly nulling
 	// it back to a circle, or resending the SAME shape the zone already has --
 	// e.g. a client that always PATCHes full state on every edit) is the only
-	// case the paid-tier gate and the radius ceiling apply to (tc-6he3x.4
-	// acceptance criteria 4 and 6; the unchanged-resend carve-out is tc-h3aov,
-	// mirroring tc-k3ncu's identical fix for the filter gate).
+	// case the paid-tier gate and the radius ceiling apply to.
 	settingBoundary := boundaryUpdate != nil && len(*boundaryUpdate) > 0 && !zone.Boundary.Equal(*boundaryUpdate)
 
 	var tier profiles.SubscriptionTier

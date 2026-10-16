@@ -104,11 +104,8 @@ type createRequest struct {
 	PushEnabled         *bool            `json:"pushEnabled"`
 	EmailInstantEnabled *bool            `json:"emailInstantEnabled"`
 	Boundary            *boundaryGeoJSON `json:"boundary"`
-	// FilterKey is the pre-canned watch-zone filter to apply (GH#1090, epic
-	// tc-w825j). A plain pointer suffices on create -- unlike PATCH, there is
-	// no existing value to distinguish "leave alone" from, so nil and "" both
-	// mean "no filter". Non-empty requires Pro (see create's gating block) and
-	// must be a member of the catalog (IsValidFilterKey).
+	// FilterKey: nil and "" both mean no filter (unlike PATCH, create has no
+	// existing value to leave alone). Non-empty requires Pro and a catalog key.
 	FilterKey *string `json:"filterKey"`
 }
 
@@ -118,12 +115,11 @@ type createRequest struct {
 const maxRadiusMetres = 10_000
 
 // defaultNearbyLimit, defaultSortedLimit and maxNearbyLimit bound the per-request
-// page of nearby applications. The browse path fetches a SINGLE bounded page so a
-// dense urban zone can no longer drain tens of thousands of documents and blow the
-// server write timeout.
+// page of nearby applications, so a dense urban zone cannot blow the server write
+// timeout.
 //
-// The legacy param-less path keeps the 500 default (byte-identical backward-compat
-// contract, #541). The sort-aware path (?sort=) uses a smaller 150 default for a
+// The param-less path keeps the 500 default (backward-compat contract). The
+// sort-aware path (?sort=) uses a smaller 150 default for a
 // snappier first paint and infinite-scroll increment. maxNearbyLimit
 // is the shared clamp ceiling for both. The create + demo paths fetch page one only.
 const (
@@ -273,9 +269,7 @@ func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 		req.RadiusMetres = radius
 	}
 
-	// A non-empty filterKey is a Pro-only entitlement (GH#1090, epic
-	// tc-w825j) -- gated right after the boundary block (mirroring its
-	// cheapest-check-first order) and before the quota check below, so a
+	// A non-empty filterKey is Pro-only, checked before the quota claim so a
 	// disallowed or unrecognised filter never consumes a quota slot.
 	var filterKey FilterKey
 	if req.FilterKey != nil && *req.FilterKey != "" {
@@ -374,11 +368,10 @@ type latestUnreadEventWire struct {
 // (first touch) the unread lookup is skipped and every row's latestUnreadEvent
 // is null.
 //
-// Routing: a param-less call (no ?sort=) keeps the legacy nearest-first path
-// (FindNearbyPage, default 500) byte-identical for the in-review iOS build (#541).
-// A ?sort= call opts into the server-side sort surface (FindInZonePage, default
-// 150) with a sort-aware keyset cursor (epic #682 slices 1-3; recent-activity
-// joins the caller's own notifications via the threaded userID).
+// Routing: a param-less call (no ?sort=) keeps the nearest-first path
+// (FindNearbyPage, default 500) for older clients. A ?sort= call uses the
+// server-side sort surface (FindInZonePage, default 150) with a sort-aware
+// keyset cursor; recent-activity joins the caller's own notifications.
 func (h *handler) applications(w http.ResponseWriter, r *http.Request) {
 	userID := auth.Subject(r.Context())
 	zoneID := r.PathValue("zoneId")
@@ -447,8 +440,7 @@ func (h *handler) applications(w http.ResponseWriter, r *http.Request) {
 
 	// Classify each row's latest unread notification. Unread is purely
 	// read_at IS NULL (ADR 0035), independent of any notification_state row, so
-	// this runs unconditionally — a brand-new user (who no longer gets a seeded
-	// state row) still surfaces per-application unread badges.
+	// this runs unconditionally.
 	uids := make([]string, 0, len(apps))
 	for _, a := range apps {
 		uids = append(uids, a.UID)
@@ -494,13 +486,8 @@ func (h *handler) applications(w http.ResponseWriter, r *http.Request) {
 // restricts on. rawLimit is the unparsed ?limit= value; cursor is the
 // transport-unwrapped continuation token.
 //
-// Custom-shape zones mirror the circle-zone
-// branching below exactly, one level up: the plain boundary-scoped page
-// (FindInBoundaryPage) for a truly param-less request, and the sort-and-
-// filter-aware boundary page (FindInBoundaryZonePage) as soon as a sort or a
-// filter is requested -- full parity with a circle zone, just ST_Covers
-// against the polygon replacing ST_DWithin against the circle. Circle zones
-// are completely unaffected by either branch.
+// Custom-shape zones branch the same way using the boundary-scoped finders
+// (FindInBoundaryPage, FindInBoundaryZonePage).
 func (h *handler) findZonePage(ctx context.Context, userID string, zone WatchZone, sort applications.Sort, sortPresent bool, status string, unread bool, rawLimit, cursor string) ([]applications.PlanningApplication, string, error) {
 	if zone.IsCustomShape() {
 		if !sortPresent && status == "" && !unread {
@@ -627,9 +614,8 @@ func (h *handler) clusters(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, r, http.StatusOK, clusters)
 }
 
-// parseZoom resolves ?zoom= to a grid cell size via applications.GridDegreesForZoom
-// (GH#924 — the zoom -> grid table moved to applications/gridzoom.go, shared with
-// the anonymous clusters endpoint). An absent or non-integer value is rejected
+// parseZoom resolves ?zoom= to a grid cell size via
+// applications.GridDegreesForZoom. An absent or non-integer value is rejected
 // locally; an out-of-range one is rejected by GridDegreesForZoom — either way a
 // garbage zoom is a clean 400, never a silent default.
 func parseZoom(raw string) (float64, bool) {

@@ -36,7 +36,7 @@ public final class APIWatchZoneRepository: WatchZoneRepository, Sendable {
   }
 
   /// The create endpoint's only 403 is "quota exceeded", so a 403 on save means
-  /// the user has hit their tier's watch-zone limit (tc-gpjk). Normalise it to
+  /// the user has hit their tier's watch-zone limit. Normalise it to
   /// `.insufficientEntitlement` — which carries the "Upgrade Required" UX — so
   /// the UI routes to the paywall rather than showing a generic "Server Error".
   /// An already-mapped `.insufficientEntitlement` (entitlement-shaped body) is
@@ -111,7 +111,7 @@ public final class APIWatchZoneRepository: WatchZoneRepository, Sendable {
     }
   }
 
-  /// Fetches the pre-canned watch-zone filter catalog (GH#1104, tc-m8j90.2).
+  /// Fetches the pre-canned watch-zone filter catalog.
   /// Anonymous server-side (`wiring.go`'s `anonymousPatterns`), but
   /// `URLSessionAPIClient` doesn't differentiate authed vs anonymous
   /// requests, so this reuses the same authenticated client as every other
@@ -142,9 +142,8 @@ struct CreateWatchZoneRequest: Encodable, Sendable {
   let boundary: GeoJSONPolygon?
   /// Omitted from the payload when `nil` (default `Encodable` synthesis) --
   /// create has no prior value to distinguish "leave alone" from, so
-  /// omission and explicit absence are the same thing (GH#1098, mirrors
-  /// `boundary`'s create-time treatment). An opaque wire value (GH#1104,
-  /// tc-m8j90.2) -- sent verbatim, never validated client-side.
+  /// omission and explicit absence are the same thing. An opaque wire value
+  /// -- sent verbatim, never validated client-side.
   let filterKey: String?
 }
 
@@ -159,7 +158,7 @@ struct CreateWatchZoneRequest: Encodable, Sendable {
 /// `api-go/internal/watchzones/handler.go`) treats an absent key as "leave
 /// untouched" and an explicit `null` as "clear", so this distinction
 /// matters: a circle zone (`boundary == nil`) and an unfiltered zone
-/// (`filterKey == nil`) always need the latter (GH#1031, GH#1098).
+/// (`filterKey == nil`) always need the latter.
 struct UpdateWatchZoneRequest: Encodable, Sendable {
   let name: String
   let latitude: Double
@@ -243,19 +242,19 @@ struct WatchZoneSummaryDTO: Decodable, Sendable {
   let pushEnabled: Bool
   let emailInstantEnabled: Bool
   /// Server-derived: true when this zone currently exceeds the user's
-  /// effective tier quota and has stopped generating notifications (GH#889
-  /// P1/P2). Absent on responses predating this field, so it hydrates to
+  /// effective tier quota and has stopped generating notifications. Absent
+  /// on responses predating this field, so it hydrates to
   /// `false` (an unpaused zone) — same forward/back-compat treatment as
   /// `pushEnabled`/`emailInstantEnabled` above.
   let paused: Bool
-  /// The custom-shape polygon boundary, or `nil` for a circle zone
-  /// (GH#1031). Absent on responses predating this field, so it hydrates to
-  /// `nil` (a circle) — same back-compat treatment as `paused` above.
+  /// The custom-shape polygon boundary, or `nil` for a circle zone.
+  /// Absent on responses predating this field, so it hydrates to `nil` (a
+  /// circle) — same back-compat treatment as `paused` above.
   let boundary: GeoJSONPolygon?
   /// The pre-canned notification filter applied to this zone, or `nil` for
-  /// unfiltered (GH#1098). Absent on responses predating this field hydrates
+  /// unfiltered. Absent on responses predating this field hydrates
   /// to `nil` -- same back-compat treatment as `boundary` above. Decoded as
-  /// an opaque `String?` (GH#1104, tc-m8j90.2): any value round-trips
+  /// an opaque `String?`: any value round-trips
   /// verbatim, recognised by this build's fetched catalog or not.
   let filterKey: String?
 
@@ -294,12 +293,11 @@ struct WatchZoneSummaryDTO: Decodable, Sendable {
     self.pushEnabled = try container.decodeIfPresent(Bool.self, forKey: .pushEnabled) ?? true
     self.emailInstantEnabled =
       try container.decodeIfPresent(Bool.self, forKey: .emailInstantEnabled) ?? true
-    // GH#889 P2: absent (older API/back-compat) hydrates to false (not paused).
+    // Absent (older API/back-compat) hydrates to false (not paused).
     self.paused = try container.decodeIfPresent(Bool.self, forKey: .paused) ?? false
-    // GH#1031: absent (older API/back-compat, or a plain circle zone) hydrates to nil.
+    // Absent (older API/back-compat, or a plain circle zone) hydrates to nil.
     self.boundary = try container.decodeIfPresent(GeoJSONPolygon.self, forKey: .boundary)
-    // GH#1098: absent or null both hydrate to nil. GH#1104/tc-m8j90.2: any
-    // non-null string round-trips verbatim -- no enum-backed validation.
+    // Absent or null both hydrate to nil; any non-null string round-trips verbatim -- no enum-backed validation.
     self.filterKey = try container.decodeIfPresent(String.self, forKey: .filterKey)
   }
 
@@ -325,8 +323,8 @@ struct WatchZoneSummaryDTO: Decodable, Sendable {
   }
 }
 
-/// Response envelope for `GET /v1/watch-zones/filter-catalog` (GH#1104,
-/// tc-m8j90.2): a named wrapper object, matching this codebase's existing
+/// Response envelope for `GET /v1/watch-zones/filter-catalog`: a named
+/// wrapper object, matching this codebase's existing
 /// list-shaped response convention (e.g. `ListWatchZonesResponse`'s
 /// `zones`), not a bare array.
 struct FilterCatalogResponse: Decodable, Sendable {

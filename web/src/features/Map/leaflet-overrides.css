@@ -24,8 +24,6 @@
   color: var(--tc-text-primary);
 }
 
-/* Cluster markers: the bubble's amber is set inline and the pin's colour via --tc-pin-color, both by markerIcons.ts. */
-
 .tc-cluster-bubble {
   display: flex;
   align-items: center;
