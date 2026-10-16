@@ -6,6 +6,8 @@ Date: 2026-09-29
 
 Accepted
 
+Amended 2026-10-16: the coverage band reads ages 15 to 30, not 15 to 90, because the daily call cap cannot keep 15 to 90 fresh (see POLLING.md, "Settled decisions").
+
 Supersedes [0024](0024-service-bus-only-polling.md) (the polling trigger and the bootstrap chain), [0038](0038-dev-seed-least-privilege-prod-read.md), [0041](0041-poll-planit-on-a-churn-masked-delta-axis.md), [0042](0042-historical-backward-backfill-lane.md), [0043](0043-keep-lane-d-out-of-lane-a-mask-band.md), [0044](0044-resumable-checkpointed-national-poll-flow.md) and [0047](0047-lane-e-recent-window-sweep.md). Design detail and acceptance criteria live in GitHub issue #1178.
 
 ## Context
