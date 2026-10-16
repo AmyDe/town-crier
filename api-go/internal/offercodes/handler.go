@@ -13,6 +13,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/httputil"
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
+	"github.com/AmyDe/town-crier/api-go/internal/subscriptionevents"
 )
 
 const maxBodyBytes = 1 << 20
@@ -41,17 +42,23 @@ type tierSync interface {
 	UpdateSubscriptionTier(ctx context.Context, userID, tier string) error
 }
 
+// subscriptionNotifier is told about each successful tier-changing save.
+type subscriptionNotifier interface {
+	Changed(ctx context.Context, before, after subscriptionevents.Snapshot, source subscriptionevents.Source)
+}
+
 type handler struct {
 	codes    codeStore
 	profiles profileStore
 	auth0    tierSync
+	notifier subscriptionNotifier
 	now      func() time.Time
 	logger   *slog.Logger
 }
 
 // Routes registers the authed redeem endpoint on mux.
-func Routes(mux *http.ServeMux, codes codeStore, profileStore profileStore, auth0 tierSync, now func() time.Time, logger *slog.Logger) {
-	h := &handler{codes: codes, profiles: profileStore, auth0: auth0, now: now, logger: logger}
+func Routes(mux *http.ServeMux, codes codeStore, profileStore profileStore, auth0 tierSync, notifier subscriptionNotifier, now func() time.Time, logger *slog.Logger) {
+	h := &handler{codes: codes, profiles: profileStore, auth0: auth0, notifier: notifier, now: now, logger: logger}
 	mux.HandleFunc("POST /v1/offer-codes/redeem", h.redeem)
 }
 
@@ -159,11 +166,15 @@ func (h *handler) redeem(w http.ResponseWriter, r *http.Request) {
 	}
 
 	expiry := now.AddDate(0, 0, code.DurationDays)
+	before := subscriptionevents.SnapshotOf(profile)
 	profile.ActivateSubscription(code.Tier, expiry)
 
 	if err := h.profiles.Save(r.Context(), profile); err != nil {
 		h.serverError(w, r, "save profile", err)
 		return
+	}
+	if h.notifier != nil {
+		h.notifier.Changed(r.Context(), before, subscriptionevents.SnapshotOf(profile), subscriptionevents.SourceOfferCode)
 	}
 	if err := h.auth0.UpdateSubscriptionTier(r.Context(), profile.UserID, profile.Tier.String()); err != nil {
 		h.serverError(w, r, "sync auth0 tier", err)

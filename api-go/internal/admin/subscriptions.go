@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
+	"github.com/AmyDe/town-crier/api-go/internal/subscriptionevents"
 )
 
 // farFutureExpiry is the sentinel expiry an admin grant assigns to a paid tier
@@ -51,6 +52,7 @@ func (h *handler) grantSubscription(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	before := subscriptionevents.SnapshotOf(profile)
 	if tier == profiles.TierFree {
 		profile.ExpireSubscription()
 	} else {
@@ -66,6 +68,9 @@ func (h *handler) grantSubscription(w http.ResponseWriter, r *http.Request) {
 	if err := h.profiles.Save(r.Context(), profile); err != nil {
 		h.serverError(w, r, "save profile", err)
 		return
+	}
+	if h.notifier != nil {
+		h.notifier.Changed(r.Context(), before, subscriptionevents.SnapshotOf(profile), subscriptionevents.SourceAdmin)
 	}
 
 	h.writeJSON(r, w, grantResult{UserID: profile.UserID, Email: profile.Email, Tier: profile.Tier.String()})

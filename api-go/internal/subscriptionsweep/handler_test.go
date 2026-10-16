@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
+	"github.com/AmyDe/town-crier/api-go/internal/subscriptionevents"
 )
 
 // --- hand-written fakes -----------------------------------------------------
@@ -74,8 +75,23 @@ func lapsedProfile(t *testing.T, userID string) *profiles.UserProfile {
 	return p
 }
 
+type spyNotifier struct {
+	before, after []subscriptionevents.Snapshot
+	sources       []subscriptionevents.Source
+}
+
+func (s *spyNotifier) Changed(_ context.Context, before, after subscriptionevents.Snapshot, source subscriptionevents.Source) {
+	s.before = append(s.before, before)
+	s.after = append(s.after, after)
+	s.sources = append(s.sources, source)
+}
+
 func newHandler(finder Finder, saver Saver, auth0 Auth0Syncer, now time.Time) *Handler {
-	return New(finder, saver, auth0, slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil)), func() time.Time { return now })
+	return newHandlerNotifying(finder, saver, auth0, &spyNotifier{}, now)
+}
+
+func newHandlerNotifying(finder Finder, saver Saver, auth0 Auth0Syncer, notify Notifier, now time.Time) *Handler {
+	return New(finder, saver, auth0, notify, slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil)), func() time.Time { return now })
 }
 
 // --- tests ------------------------------------------------------------------
@@ -218,5 +234,27 @@ func TestHandler_Run_LifetimeHolderKeepsProAndSyncsStoredTier(t *testing.T) {
 	}
 	if got := auth0.synced["auth0|lifetime"]; got != "Pro" {
 		t.Errorf("auth0 tier = %q, want Pro (stored tier, not a Free literal)", got)
+	}
+}
+
+func TestHandler_Run_NotifiesOncePerSavedDowngrade(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 6, 23, 9, 0, 0, 0, time.UTC)
+	finder := &fakeFinder{lapsed: []*profiles.UserProfile{lapsedProfile(t, "auth0|a"), lapsedProfile(t, "auth0|b")}}
+	saver := newFakeSaver()
+	saver.saveErr["auth0|b"] = errors.New("db down")
+	spy := &spyNotifier{}
+
+	if _, err := newHandlerNotifying(finder, saver, newFakeAuth0(), spy, now).Run(context.Background()); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if len(spy.sources) != 1 {
+		t.Fatalf("calls = %d, want 1 (failed save must not notify)", len(spy.sources))
+	}
+	wantBefore := subscriptionevents.Snapshot{Tier: profiles.TierPro, Plan: subscriptionevents.PlanComped}
+	wantAfter := subscriptionevents.Snapshot{Tier: profiles.TierFree, Plan: subscriptionevents.PlanNone}
+	if spy.sources[0] != subscriptionevents.SourceSweep || spy.before[0] != wantBefore || spy.after[0] != wantAfter {
+		t.Errorf("call = %v %v %v", spy.sources[0], spy.before[0], spy.after[0])
 	}
 }

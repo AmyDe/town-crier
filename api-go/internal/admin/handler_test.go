@@ -13,6 +13,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
 	"github.com/AmyDe/town-crier/api-go/internal/offercodes"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
+	"github.com/AmyDe/town-crier/api-go/internal/subscriptionevents"
 	"github.com/AmyDe/town-crier/api-go/internal/subscriptions"
 )
 
@@ -94,6 +95,8 @@ type fakeAdminStore struct {
 	// a fakeTierSync's order slice so a test can assert call ordering between
 	// the two collaborators (see TestGrant_Auth0FailureLeavesProfileUnsaved).
 	order *[]string
+
+	saveErr error
 }
 
 func (f *fakeAdminStore) PaidCandidates(_ context.Context) ([]*profiles.UserProfile, error) {
@@ -115,6 +118,9 @@ func (f *fakeAdminStore) GetByEmail(_ context.Context, email string) (*profiles.
 func (f *fakeAdminStore) Save(_ context.Context, p *profiles.UserProfile) error {
 	if f.order != nil {
 		*f.order = append(*f.order, "save")
+	}
+	if f.saveErr != nil {
+		return f.saveErr
 	}
 	f.saved = p
 	return nil
@@ -827,5 +833,60 @@ func TestListOfferCodes_StoreError(t *testing.T) {
 	rec := serve(t, h.listOfferCodes, http.MethodGet, "/v1/admin/offer-codes", "")
 	if rec.Code != http.StatusInternalServerError {
 		t.Errorf("status = %d, want 500", rec.Code)
+	}
+}
+
+type spyNotifier struct {
+	calls []spyCall
+}
+
+type spyCall struct {
+	before, after subscriptionevents.Snapshot
+	source        subscriptionevents.Source
+}
+
+func (s *spyNotifier) Changed(_ context.Context, before, after subscriptionevents.Snapshot, source subscriptionevents.Source) {
+	s.calls = append(s.calls, spyCall{before, after, source})
+}
+
+func TestGrant_NotifiesOnceAfterSave(t *testing.T) {
+	t.Parallel()
+
+	store := &fakeAdminStore{byEmail: map[string]*profiles.UserProfile{"u@example.com": freeProfile(t)}}
+	spy := &spyNotifier{}
+	h := newTestHandler(store, &fakeNotifCounts{}, &fakeTierSync{}, &fakeOfferStore{}, &fakeGenerator{}, time.Now())
+	h.notifier = spy
+
+	rec := serve(t, h.grantSubscription, http.MethodPut, "/v1/admin/subscriptions", `{"email":"u@example.com","tier":"Pro"}`)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	if len(spy.calls) != 1 {
+		t.Fatalf("calls = %d, want 1", len(spy.calls))
+	}
+	c := spy.calls[0]
+	wantBefore := subscriptionevents.Snapshot{Tier: profiles.TierFree, Plan: subscriptionevents.PlanNone}
+	wantAfter := subscriptionevents.Snapshot{Tier: profiles.TierPro, Plan: subscriptionevents.PlanComped}
+	if c.source != subscriptionevents.SourceAdmin || c.before != wantBefore || c.after != wantAfter {
+		t.Errorf("call = %+v", c)
+	}
+}
+
+func TestGrant_DoesNotNotifyWhenSaveFails(t *testing.T) {
+	t.Parallel()
+
+	store := &fakeAdminStore{byEmail: map[string]*profiles.UserProfile{"u@example.com": freeProfile(t)}, saveErr: errBoom}
+	spy := &spyNotifier{}
+	h := newTestHandler(store, &fakeNotifCounts{}, &fakeTierSync{}, &fakeOfferStore{}, &fakeGenerator{}, time.Now())
+	h.notifier = spy
+
+	rec := serve(t, h.grantSubscription, http.MethodPut, "/v1/admin/subscriptions", `{"email":"u@example.com","tier":"Pro"}`)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	if len(spy.calls) != 0 {
+		t.Errorf("calls = %d, want 0", len(spy.calls))
 	}
 }

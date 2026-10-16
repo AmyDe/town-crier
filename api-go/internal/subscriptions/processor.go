@@ -10,6 +10,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
+	"github.com/AmyDe/town-crier/api-go/internal/subscriptionevents"
 )
 
 // NotificationProcessor applies one already-fetched, not-yet-verified App
@@ -25,17 +26,19 @@ type NotificationProcessor struct {
 	auth0               tierSync
 	idempotency         idempotencyStore
 	allowedEnvironments []string
+	notifier            subscriptionNotifier
 	logger              *slog.Logger
 }
 
 // NewNotificationProcessor builds a processor over the given collaborators.
-func NewNotificationProcessor(verifier jwsVerifier, profilesByTxn profileByTxn, auth0 tierSync, idempotency idempotencyStore, allowedEnvironments []string, logger *slog.Logger) *NotificationProcessor {
+func NewNotificationProcessor(verifier jwsVerifier, profilesByTxn profileByTxn, auth0 tierSync, idempotency idempotencyStore, allowedEnvironments []string, notifier subscriptionNotifier, logger *slog.Logger) *NotificationProcessor {
 	return &NotificationProcessor{
 		verifier:            verifier,
 		profilesByTxn:       profilesByTxn,
 		auth0:               auth0,
 		idempotency:         idempotency,
 		allowedEnvironments: allowedEnvironments,
+		notifier:            notifier,
 		logger:              logger,
 	}
 }
@@ -97,6 +100,7 @@ func (p *NotificationProcessor) Process(ctx context.Context, signedPayload strin
 	// processed so Apple does not retry, but the profile is not mutated.
 	wasNew := false
 	if profile != nil && envAllowed(txn.Environment, p.allowedEnvironments) {
+		before := subscriptionevents.SnapshotOf(profile)
 		changed, err := applyNotification(profile, notification, txn)
 		if err != nil {
 			return false, err
@@ -104,6 +108,9 @@ func (p *NotificationProcessor) Process(ctx context.Context, signedPayload strin
 		if changed {
 			if err := p.profilesByTxn.Save(ctx, profile); err != nil {
 				return false, fmt.Errorf("save profile %q: %w", profile.UserID, err)
+			}
+			if p.notifier != nil {
+				p.notifier.Changed(ctx, before, subscriptionevents.SnapshotOf(profile), subscriptionevents.SourceAppStore)
 			}
 			if err := p.auth0.UpdateSubscriptionTier(ctx, profile.UserID, profile.Tier.String()); err != nil {
 				if !errors.Is(err, profiles.ErrAuth0UserNotFound) {

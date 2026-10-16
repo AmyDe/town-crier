@@ -42,6 +42,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/polling"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 	"github.com/AmyDe/town-crier/api-go/internal/savedapplications"
+	"github.com/AmyDe/town-crier/api-go/internal/subscriptionevents"
 	"github.com/AmyDe/town-crier/api-go/internal/subscriptions"
 	"github.com/AmyDe/town-crier/api-go/internal/subscriptionsweep"
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
@@ -309,14 +310,21 @@ func buildAuth0Deleter(cfg platform.Config, logger *slog.Logger) erasure.Auth0De
 	)
 }
 
-// buildSweep constructs the subscription-sweep handler, wiring the lapsed-paid
+// buildSweep constructs the subscription-sweep runner, wiring the lapsed-paid
 // finder and profile saver (both the Postgres admin store) and the Auth0 M2M
 // syncer (real when its credentials are present, NoOp otherwise so a job without
 // Auth0 M2M config still reverts the stored tier).
-func buildSweep(cfg platform.Config, st *stores, logger *slog.Logger) *subscriptionsweep.Handler {
-	// adminStore backs both LapsedPaid (Finder) and Save (Saver).
+func buildSweep(cfg platform.Config, st *stores, logger *slog.Logger) sweepRunner {
+	// adminStore backs LapsedPaid (Finder), Save (Saver) and the webhook totals.
 	adminStore := st.profileAdmin
-	return subscriptionsweep.New(adminStore, adminStore, buildAuth0Syncer(cfg, logger), logger, time.Now)
+	webhooks, err := subscriptionevents.ParseWebhooks(cfg.SubscriptionWebhooks.Expose())
+	if err != nil {
+		logger.Error("subscription webhooks misconfigured; running with none", "error", err)
+		webhooks = nil
+	}
+	notifier := subscriptionevents.NewNotifier(adminStore, webhooks, subscriptionevents.NewHTTPClient(), logger, time.Now)
+	handler := subscriptionsweep.New(adminStore, adminStore, buildAuth0Syncer(cfg, logger), notifier, logger, time.Now)
+	return sweepRunner{cycle: handler, notifier: notifier}
 }
 
 // buildAuth0Syncer returns the real Auth0 Management (M2M) client when the M2M
@@ -396,6 +404,7 @@ func buildAppStoreReconcile(cfg platform.Config, st *stores, logger *slog.Logger
 		buildAuth0Syncer(cfg, logger),
 		st.appleNotif,
 		cfg.AppleEnvironments,
+		nil,
 		logger,
 	)
 

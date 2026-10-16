@@ -2,6 +2,7 @@ package offercodes
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
+	"github.com/AmyDe/town-crier/api-go/internal/subscriptionevents"
 )
 
 // fakeCodeStore is a hand-written codeStore double that mirrors the real
@@ -85,6 +87,7 @@ func (f *fakeCodeStore) RedeemWithCAS(_ context.Context, canonical, userID strin
 type fakeProfileStore struct {
 	profile *profiles.UserProfile
 	getErr  error
+	saveErr error
 	saved   *profiles.UserProfile
 }
 
@@ -96,6 +99,9 @@ func (f *fakeProfileStore) Get(_ context.Context, _ string) (*profiles.UserProfi
 }
 
 func (f *fakeProfileStore) Save(_ context.Context, p *profiles.UserProfile) error {
+	if f.saveErr != nil {
+		return f.saveErr
+	}
 	f.saved = p
 	return nil
 }
@@ -129,8 +135,13 @@ func serveRedeem(t *testing.T, codes codeStore, profileStore profileStore, auth0
 
 func serveRedeemAs(t *testing.T, codes codeStore, profileStore profileStore, auth0 tierSync, now time.Time, body, userID string) *httptest.ResponseRecorder {
 	t.Helper()
+	return serveRedeemNotifying(t, codes, profileStore, auth0, &spyNotifier{}, now, body, userID)
+}
+
+func serveRedeemNotifying(t *testing.T, codes codeStore, profileStore profileStore, auth0 tierSync, notifier subscriptionNotifier, now time.Time, body, userID string) *httptest.ResponseRecorder {
+	t.Helper()
 	mux := http.NewServeMux()
-	Routes(mux, codes, profileStore, auth0, func() time.Time { return now }, slog.New(slog.DiscardHandler))
+	Routes(mux, codes, profileStore, auth0, notifier, func() time.Time { return now }, slog.New(slog.DiscardHandler))
 	req := httptest.NewRequestWithContext(auth.WithSubject(context.Background(), userID),
 		http.MethodPost, "/v1/offer-codes/redeem", strings.NewReader(body))
 	rec := httptest.NewRecorder()
@@ -411,5 +422,54 @@ func TestRedeem_ConcurrentRedemptionsYieldOneSuccess(t *testing.T) {
 	}
 	if successes != 1 || conflicts != 1 {
 		t.Errorf("want 1 success + 1 conflict, got statuses %v", results)
+	}
+}
+
+type spyNotifier struct {
+	calls []spyCall
+}
+
+type spyCall struct {
+	before, after subscriptionevents.Snapshot
+	source        subscriptionevents.Source
+}
+
+func (s *spyNotifier) Changed(_ context.Context, before, after subscriptionevents.Snapshot, source subscriptionevents.Source) {
+	s.calls = append(s.calls, spyCall{before, after, source})
+}
+
+func TestRedeem_NotifiesOnceAfterSave(t *testing.T) {
+	t.Parallel()
+	spy := &spyNotifier{}
+	now := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
+
+	rec := serveRedeemNotifying(t, seededCode(t), &fakeProfileStore{profile: freeProfile(t)}, &fakeTierSync{}, spy, now, `{"code":"ABCDEFGHJKMN"}`, "auth0|u1")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	if len(spy.calls) != 1 {
+		t.Fatalf("calls = %d, want 1", len(spy.calls))
+	}
+	c := spy.calls[0]
+	wantBefore := subscriptionevents.Snapshot{Tier: profiles.TierFree, Plan: subscriptionevents.PlanNone}
+	wantAfter := subscriptionevents.Snapshot{Tier: profiles.TierPro, Plan: subscriptionevents.PlanComped}
+	if c.source != subscriptionevents.SourceOfferCode || c.before != wantBefore || c.after != wantAfter {
+		t.Errorf("call = %+v", c)
+	}
+}
+
+func TestRedeem_DoesNotNotifyWhenSaveFails(t *testing.T) {
+	t.Parallel()
+	spy := &spyNotifier{}
+	now := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
+
+	rec := serveRedeemNotifying(t, seededCode(t), &fakeProfileStore{profile: freeProfile(t), saveErr: errors.New("db down")}, &fakeTierSync{}, spy, now, `{"code":"ABCDEFGHJKMN"}`, "auth0|u1")
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	if len(spy.calls) != 0 {
+		t.Errorf("calls = %d, want 0", len(spy.calls))
 	}
 }

@@ -14,6 +14,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/httputil"
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
+	"github.com/AmyDe/town-crier/api-go/internal/subscriptionevents"
 )
 
 const maxBodyBytes = 1 << 20
@@ -60,6 +61,11 @@ type idempotencyStore interface {
 	MarkProcessed(ctx context.Context, notificationUUID string) error
 }
 
+// subscriptionNotifier is told about each successful tier-changing save.
+type subscriptionNotifier interface {
+	Changed(ctx context.Context, before, after subscriptionevents.Snapshot, source subscriptionevents.Source)
+}
+
 type handler struct {
 	verifier       jwsVerifier
 	profilesByUser profileByUser
@@ -72,6 +78,7 @@ type handler struct {
 	now                 func() time.Time
 	logger              *slog.Logger
 	processor           *NotificationProcessor
+	notifier            subscriptionNotifier
 }
 
 // conflictError signals that the transaction's originalTransactionId is already
@@ -118,7 +125,7 @@ func envAllowed(env string, allowed []string) bool {
 // (Apple -> API), so it is added to the wiring's anonymousPatterns.
 // allowedEnvironments is the set of Apple StoreKit environments the handler
 // accepts (e.g. ["Production"] for prod, ["Sandbox","Production"] for dev).
-func Routes(mux *http.ServeMux, verifier jwsVerifier, profilesByUser profileByUser, profilesByTxn profileByTxn, auth0 tierSync, idempotency idempotencyStore, bundleID string, allowedEnvironments []string, now func() time.Time, logger *slog.Logger) {
+func Routes(mux *http.ServeMux, verifier jwsVerifier, profilesByUser profileByUser, profilesByTxn profileByTxn, auth0 tierSync, idempotency idempotencyStore, bundleID string, allowedEnvironments []string, notifier subscriptionNotifier, now func() time.Time, logger *slog.Logger) {
 	h := &handler{
 		verifier:            verifier,
 		profilesByUser:      profilesByUser,
@@ -128,7 +135,8 @@ func Routes(mux *http.ServeMux, verifier jwsVerifier, profilesByUser profileByUs
 		allowedEnvironments: allowedEnvironments,
 		now:                 now,
 		logger:              logger,
-		processor:           NewNotificationProcessor(verifier, profilesByTxn, auth0, idempotency, allowedEnvironments, logger),
+		notifier:            notifier,
+		processor:           NewNotificationProcessor(verifier, profilesByTxn, auth0, idempotency, allowedEnvironments, notifier, logger),
 	}
 	mux.HandleFunc("POST /v1/subscriptions/verify", h.verify)
 	mux.HandleFunc("POST /v1/webhooks/appstore", h.webhook)
@@ -222,6 +230,7 @@ func (h *handler) runVerify(ctx context.Context, userID string, signedTransactio
 		return verifyResponse{}, fmt.Errorf("load profile %q: %w", userID, err)
 	}
 	tierBefore := profile.Tier
+	before := subscriptionevents.SnapshotOf(profile)
 
 	now := h.now()
 	highestTier := profiles.TierFree
@@ -293,6 +302,9 @@ func (h *handler) runVerify(ctx context.Context, userID string, signedTransactio
 
 	if err := h.profilesByUser.Save(ctx, profile); err != nil {
 		return verifyResponse{}, fmt.Errorf("save profile %q: %w", userID, err)
+	}
+	if h.notifier != nil {
+		h.notifier.Changed(ctx, before, subscriptionevents.SnapshotOf(profile), subscriptionevents.SourceAppStore)
 	}
 	if err := h.auth0.UpdateSubscriptionTier(ctx, profile.UserID, profile.Tier.String()); err != nil {
 		return verifyResponse{}, fmt.Errorf("sync auth0 tier %q: %w", userID, err)

@@ -21,6 +21,7 @@ type processorTestDeps struct {
 	byTxn       *fakeProfileByTxn
 	auth0       *fakeAuth0
 	idempotency *fakeIdempotency
+	notifier    *spyNotifier
 	processor   *NotificationProcessor
 }
 
@@ -37,8 +38,9 @@ func newTestProcessorWithLogger(allowedEnvs []string, logger *slog.Logger) *proc
 		byTxn:       &fakeProfileByTxn{},
 		auth0:       &fakeAuth0{},
 		idempotency: newFakeIdempotency(),
+		notifier:    &spyNotifier{},
 	}
-	d.processor = NewNotificationProcessor(d.verifier, d.byTxn, d.auth0, d.idempotency, allowedEnvs, logger)
+	d.processor = NewNotificationProcessor(d.verifier, d.byTxn, d.auth0, d.idempotency, allowedEnvs, d.notifier, logger)
 	return d
 }
 

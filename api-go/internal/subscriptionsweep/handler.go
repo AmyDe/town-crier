@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
+	"github.com/AmyDe/town-crier/api-go/internal/subscriptionevents"
 )
 
 // Finder returns the lapsed-paid set: every profile whose stored tier is paid but
@@ -35,19 +36,25 @@ type Auth0Syncer interface {
 	UpdateSubscriptionTier(ctx context.Context, userID, tier string) error
 }
 
+// Notifier is told about each successful downgrade save.
+type Notifier interface {
+	Changed(ctx context.Context, before, after subscriptionevents.Snapshot, source subscriptionevents.Source)
+}
+
 // Handler runs one subscription-sweep cycle.
 type Handler struct {
 	finder Finder
 	saver  Saver
 	auth0  Auth0Syncer
+	notify Notifier
 	logger *slog.Logger
 	now    func() time.Time
 }
 
 // New builds a subscription-sweep handler. now is injected so tests pin the
 // lapsed cutoff; production passes time.Now.
-func New(finder Finder, saver Saver, auth0 Auth0Syncer, logger *slog.Logger, now func() time.Time) *Handler {
-	return &Handler{finder: finder, saver: saver, auth0: auth0, logger: logger, now: now}
+func New(finder Finder, saver Saver, auth0 Auth0Syncer, notify Notifier, logger *slog.Logger, now func() time.Time) *Handler {
+	return &Handler{finder: finder, saver: saver, auth0: auth0, notify: notify, logger: logger, now: now}
 }
 
 // Run executes one sweep cycle and returns the number of profiles fully
@@ -79,9 +86,13 @@ func (h *Handler) Run(ctx context.Context) (int, error) {
 // cycle retries, and if the sync fails only the informational Auth0 metadata is
 // stale because entitlements gate on EffectiveTier.
 func (h *Handler) downgrade(ctx context.Context, p *profiles.UserProfile) error {
+	before := subscriptionevents.SnapshotOf(p)
 	p.ExpireSubscription()
 	if err := h.saver.Save(ctx, p); err != nil {
 		return fmt.Errorf("save downgraded profile %q: %w", p.UserID, err)
+	}
+	if h.notify != nil {
+		h.notify.Changed(ctx, before, subscriptionevents.SnapshotOf(p), subscriptionevents.SourceSweep)
 	}
 	if err := h.auth0.UpdateSubscriptionTier(ctx, p.UserID, p.Tier.String()); err != nil {
 		return fmt.Errorf("sync auth0 tier for %q: %w", p.UserID, err)

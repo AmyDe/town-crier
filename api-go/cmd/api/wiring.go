@@ -31,6 +31,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/savedapplications"
 	"github.com/AmyDe/town-crier/api-go/internal/seopage"
 	"github.com/AmyDe/town-crier/api-go/internal/sharepage"
+	"github.com/AmyDe/town-crier/api-go/internal/subscriptionevents"
 	"github.com/AmyDe/town-crier/api-go/internal/subscriptions"
 	"github.com/AmyDe/town-crier/api-go/internal/versionconfig"
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
@@ -264,6 +265,7 @@ func newRouter(
 	anonRateLimitBurst int,
 	anonRateLimitRefillPerMinute int,
 	pollingAdmin pollingAdminDeps,
+	notifier *subscriptionevents.Notifier,
 	seoStore seopage.Store,
 	logger *slog.Logger,
 ) http.Handler {
@@ -437,7 +439,7 @@ func newRouter(
 	if store != nil && offerStore != nil {
 		// Offer-code redeem is authed: it loads the caller's profile, grants the
 		// coded tier, and syncs Auth0. Needs both the profile and offer-code stores.
-		offercodes.Routes(mux, offerStore, store, auth0, time.Now, logger)
+		offercodes.Routes(mux, offerStore, store, auth0, notifier, time.Now, logger)
 	}
 	if adminStore != nil && offerStore != nil {
 		// Admin endpoints are anonymous to Auth0 and gated by the X-Admin-Key. The
@@ -446,7 +448,7 @@ func newRouter(
 		// reader (RedeemedByUsers). The notif/saved/device readers enrich the user
 		// list and feed the stats reach block; each may be nil on a store-less boot,
 		// and the handlers treat a nil reader as "metric absent".
-		admin.Routes(mux, adminKey, adminStore, notifStore, savedStore, deviceStore, offerStore, auth0, offerStore, offercodes.NewRandomGenerator(), time.Now, logger)
+		admin.Routes(mux, adminKey, adminStore, notifStore, savedStore, deviceStore, offerStore, auth0, notifier, offerStore, offercodes.NewRandomGenerator(), time.Now, logger)
 	}
 	if pollingAdmin.Switch != nil && pollingAdmin.Calls != nil {
 		admin.PollingRoutes(mux, adminKey, pollingAdmin.Switch, pollingAdmin.Calls, time.Now, logger)
@@ -455,7 +457,7 @@ func newRouter(
 		// Subscriptions: verify (authed, by user id via the profile store) and the
 		// App Store webhook (anonymous, by original transaction id via the admin
 		// store, deduped through the AppleNotifications idempotency store).
-		subscriptions.Routes(mux, jwsVerifier, store, adminStore, auth0, appleNotifStore, appleBundleID, appleEnvironments, time.Now, logger)
+		subscriptions.Routes(mux, jwsVerifier, store, adminStore, auth0, appleNotifStore, appleBundleID, appleEnvironments, notifier, time.Now, logger)
 	}
 
 	authed := auth.RequireAuth(validator, &dispatchMux{ServeMux: mux, dispatch: dispatch}, anonymousPatterns)

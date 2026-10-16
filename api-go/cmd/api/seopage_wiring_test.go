@@ -45,7 +45,7 @@ func (fakeSEOStore) Sitemap(context.Context) ([]seopage.SitemapEntry, error) { r
 func newSEORouter(t *testing.T, buildKey string, burst int) http.Handler {
 	t.Helper()
 	logger := slog.New(slog.DiscardHandler)
-	return newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, fakeAppStore{}, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", buildKey, nil, nil, "", nil, nil, nil, burst, 60, pollingAdminDeps{}, fakeSEOStore{}, logger)
+	return newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, fakeAppStore{}, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", buildKey, nil, nil, "", nil, nil, nil, burst, 60, pollingAdminDeps{}, nil, fakeSEOStore{}, logger)
 }
 
 func seoRequest(t *testing.T, h http.Handler, path, key, remoteAddr string) *httptest.ResponseRecorder {
