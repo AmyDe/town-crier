@@ -10,6 +10,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
 	"github.com/AmyDe/town-crier/api-go/internal/offercodes"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
+	"github.com/AmyDe/town-crier/api-go/internal/subscriptionevents"
 )
 
 const maxBodyBytes = 1 << 20
@@ -76,6 +77,11 @@ type codeGenerator interface {
 	Generate() (string, error)
 }
 
+// subscriptionNotifier is told about each successful tier-changing save.
+type subscriptionNotifier interface {
+	Changed(ctx context.Context, before, after subscriptionevents.Snapshot, source subscriptionevents.Source)
+}
+
 type handler struct {
 	profiles     profileAdminStore
 	notifCounts  notificationCounts
@@ -83,6 +89,7 @@ type handler struct {
 	deviceCounts deviceCountReader
 	redemptions  offerRedemptionReader
 	auth0        tierSync
+	notifier     subscriptionNotifier
 	codes        offerCodeStore
 	generator    codeGenerator
 	now          func() time.Time
@@ -94,7 +101,7 @@ type handler struct {
 // so the key gate is their only authentication. The enrichment/reach readers
 // (notifCounts, savedCounts, deviceCounts, redemptions) may be nil on a
 // store-less local boot; the handlers treat a nil reader as "metric absent".
-func Routes(mux *http.ServeMux, adminKey string, profileStore profileAdminStore, notifCounts notificationCounts, savedCounts savedCountReader, deviceCounts deviceCountReader, redemptions offerRedemptionReader, auth0 tierSync, codes offerCodeStore, generator codeGenerator, now func() time.Time, logger *slog.Logger) {
+func Routes(mux *http.ServeMux, adminKey string, profileStore profileAdminStore, notifCounts notificationCounts, savedCounts savedCountReader, deviceCounts deviceCountReader, redemptions offerRedemptionReader, auth0 tierSync, notifier subscriptionNotifier, codes offerCodeStore, generator codeGenerator, now func() time.Time, logger *slog.Logger) {
 	h := &handler{
 		profiles:     profileStore,
 		notifCounts:  notifCounts,
@@ -102,6 +109,7 @@ func Routes(mux *http.ServeMux, adminKey string, profileStore profileAdminStore,
 		deviceCounts: deviceCounts,
 		redemptions:  redemptions,
 		auth0:        auth0,
+		notifier:     notifier,
 		codes:        codes,
 		generator:    generator,
 		now:          now,
