@@ -52,6 +52,7 @@ func (f *fakeVerifier) VerifyAndDecode(signed string) (string, error) {
 type fakeProfileByUser struct {
 	profile *profiles.UserProfile
 	getErr  error
+	saveErr error
 	saved   *profiles.UserProfile
 }
 
@@ -63,6 +64,9 @@ func (f *fakeProfileByUser) Get(context.Context, string) (*profiles.UserProfile,
 }
 
 func (f *fakeProfileByUser) Save(_ context.Context, p *profiles.UserProfile) error {
+	if f.saveErr != nil {
+		return f.saveErr
+	}
 	f.saved = p
 	return nil
 }
@@ -73,6 +77,7 @@ type fakeProfileByTxn struct {
 	// profilesByTxnID maps originalTransactionID to a profile, supporting F2
 	// conflict tests where different txn ids resolve to different profiles.
 	profilesByTxnID map[string]*profiles.UserProfile
+	saveErr         error
 	saved           *profiles.UserProfile
 }
 
@@ -90,6 +95,9 @@ func (f *fakeProfileByTxn) GetByOriginalTransactionID(_ context.Context, txnID s
 }
 
 func (f *fakeProfileByTxn) Save(_ context.Context, p *profiles.UserProfile) error {
+	if f.saveErr != nil {
+		return f.saveErr
+	}
 	f.saved = p
 	return nil
 }
@@ -130,6 +138,7 @@ type testDeps struct {
 	byTxn       *fakeProfileByTxn
 	auth0       *fakeAuth0
 	idempotency *fakeIdempotency
+	notifier    *spyNotifier
 	mux         *http.ServeMux
 }
 
@@ -155,9 +164,10 @@ func newTestDepsWithEnvsAndLogger(allowedEnvs []string, logger *slog.Logger) *te
 		byTxn:       &fakeProfileByTxn{},
 		auth0:       &fakeAuth0{},
 		idempotency: newFakeIdempotency(),
+		notifier:    &spyNotifier{},
 		mux:         http.NewServeMux(),
 	}
-	Routes(d.mux, d.verifier, d.byUser, d.byTxn, d.auth0, d.idempotency, testBundleID, allowedEnvs,
+	Routes(d.mux, d.verifier, d.byUser, d.byTxn, d.auth0, d.idempotency, testBundleID, allowedEnvs, d.notifier,
 		func() time.Time { return testNow }, logger)
 	return d
 }
