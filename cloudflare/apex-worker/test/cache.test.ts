@@ -123,6 +123,32 @@ describe("edge cache", () => {
     expect(response.headers.get("x-tc-stale")).toBe("1");
   });
 
+  it("serves stale copy instead of a bodyless build-key 404", async () => {
+    const { fetch, clock, ctx, cache, deps } = await primeCache();
+    clock.advanceSeconds(7_200);
+    fetch.respondWith(async () => new Response(null, { status: 404 }));
+
+    const response = await handle(new Request(PAGE), env, deps);
+    await ctx.settle();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-tc-stale")).toBe("1");
+    expect(await response.text()).toBe("cached page");
+    expect(await cache.store.get(PAGE)!.clone().text()).toBe("cached page");
+  });
+
+  it("returns 503 for a bodyless build-key 404 with no copy", async () => {
+    const fetch = new FakeFetch(async () => new Response(null, { status: 404 }));
+    const { cache, ctx, deps } = makeDeps({ fetch });
+
+    const response = await handle(new Request(PAGE), env, deps);
+    await ctx.settle();
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("Retry-After")).toBe("60");
+    expect(cache.puts).toHaveLength(0);
+  });
+
   it("returns 503 when origin fails and no copy", async () => {
     const fetch = new FakeFetch(async () => new Response("boom", { status: 500 }));
     const { cache, ctx, deps } = makeDeps({ fetch });

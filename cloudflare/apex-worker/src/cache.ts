@@ -23,7 +23,7 @@ export async function fetchSeo(url: URL, env: Env, deps: Deps): Promise<Response
   }
 
   const origin = await fetchOrigin(new URL(env.API_ORIGIN).origin + url.pathname, env, deps);
-  if (origin && origin.status < 500) {
+  if (origin && origin.status < 500 && !isBuildKeyRejection(origin)) {
     if (CACHEABLE_STATUSES.has(origin.status)) {
       deps.waitUntil(deps.cache.put(key, toStoredCopy(origin, deps.now())));
     }
@@ -60,6 +60,13 @@ async function fetchOrigin(target: string, env: Env, deps: Deps): Promise<Origin
   } finally {
     clearTimeout(timer);
   }
+}
+
+// The API answers a wrong X-Build-Key with a bodyless 404, while a real unknown page
+// is a rendered 404. Treat the bodyless one as an origin failure so a key mismatch
+// serves the stale copy or a 503 instead of caching 404 over every page.
+function isBuildKeyRejection(origin: OriginResponse): boolean {
+  return origin.status === 404 && origin.body.byteLength === 0;
 }
 
 function cachedAgeSeconds(cached: Response, now: number): number {
