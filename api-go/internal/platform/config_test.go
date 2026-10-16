@@ -3,6 +3,7 @@ package platform
 import (
 	"log/slog"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -246,6 +247,33 @@ func TestLoadConfig_AdminAPIKey(t *testing.T) {
 		}
 		if cfg.AdminAPIKey != "" {
 			t.Errorf("AdminAPIKey: got %q, want empty", cfg.AdminAPIKey)
+		}
+	})
+}
+
+func TestLoadConfig_SubscriptionWebhooks(t *testing.T) {
+	t.Run("set and redacted", func(t *testing.T) {
+		t.Setenv("SUBSCRIPTION_WEBHOOKS", `[{"url":"https://example.test/h"}]`)
+		cfg, err := LoadConfig()
+		if err != nil {
+			t.Fatalf("LoadConfig: %v", err)
+		}
+		if got := cfg.SubscriptionWebhooks.Expose(); got != `[{"url":"https://example.test/h"}]` {
+			t.Errorf("SubscriptionWebhooks: got %q", got)
+		}
+		if strings.Contains(cfg.SubscriptionWebhooks.String(), "example.test") {
+			t.Error("SubscriptionWebhooks String() leaks the value")
+		}
+	})
+
+	t.Run("absent defaults empty", func(t *testing.T) {
+		t.Setenv("SUBSCRIPTION_WEBHOOKS", "")
+		cfg, err := LoadConfig()
+		if err != nil {
+			t.Fatalf("LoadConfig: %v", err)
+		}
+		if cfg.SubscriptionWebhooks.Expose() != "" {
+			t.Errorf("SubscriptionWebhooks: got %q, want empty", cfg.SubscriptionWebhooks.Expose())
 		}
 	})
 }

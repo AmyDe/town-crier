@@ -97,6 +97,11 @@ type Config struct {
 	// deployment exposes no admin surface.
 	AdminAPIKey string
 
+	// SubscriptionWebhooks is the raw SUBSCRIPTION_WEBHOOKS JSON array of
+	// subscription-change webhook targets. It holds receiver URLs and
+	// credentials, so it is a SecretString. Empty means no webhooks.
+	SubscriptionWebhooks SecretString
+
 	// SiteBuildKey gates the build-time SEO endpoint
 	// GET /v1/authorities/{id}/applications (the X-Build-Key header). It is a
 	// dedicated, least-privilege key, distinct from AdminAPIKey: the SEO endpoint
@@ -280,8 +285,10 @@ func LoadConfig() (Config, error) {
 		PostcodesIoBaseURL: getenv("POSTCODES_IO_BASE_URL", defaultPostcodesIoBaseURL),
 		GovUkBaseURL:       getenv("GOVUK_PLANNING_DATA_BASE_URL", defaultGovUkBaseURL),
 
-		AdminAPIKey:  os.Getenv("ADMIN_API_KEY"),
-		SiteBuildKey: os.Getenv("SITE_BUILD_KEY"),
+		AdminAPIKey: os.Getenv("ADMIN_API_KEY"),
+
+		SubscriptionWebhooks: NewSecret(os.Getenv("SUBSCRIPTION_WEBHOOKS")),
+		SiteBuildKey:         os.Getenv("SITE_BUILD_KEY"),
 
 		AppleBundleID:     getenv("APPLE_BUNDLE_ID", defaultAppleBundleID),
 		AppleEnvironments: parseAppleEnvironments(os.Getenv("APPLE_ENVIRONMENT")),
