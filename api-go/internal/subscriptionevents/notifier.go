@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 )
@@ -41,9 +43,20 @@ func NewNotifier(totals TotalsReader, webhooks []Webhook, client *http.Client, l
 
 // NewHTTPClient returns the 5-second, otel-instrumented client used for delivery.
 func NewHTTPClient() *http.Client {
-	return platform.WrapHTTPClient(&http.Client{Timeout: httpClientTimeout}, func(string, *http.Request) string {
+	return newHTTPClient(http.DefaultTransport)
+}
+
+func newHTTPClient(base http.RoundTripper, opts ...otelhttp.Option) *http.Client {
+	client := &http.Client{Timeout: httpClientTimeout}
+	// Innermost, so it overwrites the span's url.full (webhook URLs carry tokens) after otelhttp starts the span.
+	client.Transport = &platform.RedactingTransport{Next: base, Redact: redactWebhookURL}
+	return platform.WrapHTTPClient(client, func(string, *http.Request) string {
 		return "Subscription webhook"
-	})
+	}, opts...)
+}
+
+func redactWebhookURL(r *http.Request) string {
+	return r.URL.Scheme + "://" + r.URL.Host
 }
 
 // Changed reports a saved change. It returns immediately: when the snapshots
