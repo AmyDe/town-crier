@@ -21,8 +21,8 @@ const (
 	// work after a cancelled run is bounded to fit inside that grace period.
 	cancelledFlushTimeout = 10 * time.Second
 	leaseReleaseTimeout   = 5 * time.Second
-	runSpanName = "PlanIt poll run"
-	tracerName  = "github.com/AmyDe/town-crier/api-go/internal/polling"
+	runSpanName           = "PlanIt poll run"
+	tracerName            = "github.com/AmyDe/town-crier/api-go/internal/polling"
 )
 
 // OracleOutcome is what one oracle pass reports: Stop is set when a PlanIt

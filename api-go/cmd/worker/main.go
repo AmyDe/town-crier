@@ -15,6 +15,8 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/google/uuid"
@@ -68,40 +70,36 @@ func main() {
 	os.Exit(run())
 }
 
-// run is main's body split out so its deferred telemetry flush executes before
-// the process exits — os.Exit in main would skip every defer. It returns the
-// process exit code, propagated by main via os.Exit.
+// shutdownContext returns a context cancelled by SIGINT or SIGTERM, so a
+// Container Apps stop ends the running mode and its deferred cleanup runs.
+func shutdownContext(parent context.Context) (context.Context, context.CancelFunc) {
+	return signal.NotifyContext(parent, syscall.SIGINT, syscall.SIGTERM)
+}
+
+// run is main's body split out so its defers run before os.Exit. It returns
+// the process exit code.
 func run() int {
+	ctx, stop := shutdownContext(context.Background())
+	defer stop()
+
 	cfg, err := platform.LoadConfig()
 	if err != nil {
 		log.Print(err)
 		return 1
 	}
 
-	// NewOTelLogger fans every record out to stdout JSON (ContainerAppConsoleLogs)
-	// AND the otelslog bridge -> the global OTel LoggerProvider -> App Insights
-	// AppTraces. The bridge targets the GLOBAL LoggerProvider, which is the no-op
-	// provider until SetupTelemetry (called next) installs an SDK one; the global
-	// provider's delegation upgrades this logger in place, so building it before
-	// SetupTelemetry is correct (tc-1x8j / tc-8x8g / ADR 0027). Without it the
-	// worker's slog records (e.g. digest "send failed") never reach telemetry —
-	// worker spans arrive but logs do not, leaving ACS send failures invisible.
+	// The bridge targets the global LoggerProvider, which SetupTelemetry
+	// replaces next; the global provider upgrades this logger in place.
 	logger := platform.NewOTelLogger(os.Stdout, cfg.LogLevel)
 
 	mode := os.Getenv("WORKER_MODE")
 
-	// SetupTelemetry self-disables when OTEL_EXPORTER_OTLP_ENDPOINT is unset, so
-	// local/dev boots leave the no-op Tracer and Logger providers in place.
-	// OTEL_SERVICE_NAME (set to town-crier-worker-go by infra) drives the service
-	// name on exported spans and logs. The deferred shutdown force-flushes the
-	// final batch before this short-lived process exits — without it the worker
-	// can terminate before its spans and logs reach the collector; the deferred
-	// shutdown flushes the final batch.
 	shutdownTelemetry, err := platform.SetupTelemetry(context.Background(), logger)
 	if err != nil {
 		log.Print(err)
 		return 1
 	}
+	// The flush uses its own context so it still runs after a stop signal.
 	defer func() {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -110,14 +108,9 @@ func run() int {
 		}
 	}()
 
-	// The business-metric registry is built from the global MeterProvider
-	// SetupTelemetry just installed (a no-op provider when telemetry is disabled).
-	// It is threaded through the builders below so the PlanIt client and the
-	// notification dispatchers emit their towncrier.*
-	// metrics (tc-21np).
 	registry := metrics.New(otel.Meter(metrics.MeterName))
 
-	pool, perr := postgres.NewPoolFromEnv(context.Background(), poolOptions(mode)...)
+	pool, perr := postgres.NewPoolFromEnv(ctx, poolOptions(mode)...)
 	if perr != nil {
 		logger.Error("postgres: build pool", "error", perr)
 		return 1
@@ -138,17 +131,10 @@ func run() int {
 		appleNotif:   subscriptions.NewPostgresNotificationStore(pool, time.Now),
 	}
 
-	// The digest, dormant-cleanup, subscription-sweep and pg-purge handlers build
-	// unconditionally now Postgres is always present. The email and push senders
-	// fall back to NoOp when their credentials are absent, so a job without
-	// ACS/APNs config still boots cleanly.
 	digester := buildDigester(cfg, registry, st, logger)
 	dormantRunner := buildDormant(cfg, st, logger)
 	sweepRunner := buildSweep(cfg, st, logger)
 
-	// The pg-purge runner enforces row retention for Notifications (90 days by
-	// default, NOTIFICATIONS_RETENTION_DAYS) and DeviceRegistrations (180 days,
-	// DEVICE_REGISTRATIONS_RETENTION_DAYS), and purges the polling tables.
 	purger := pgpurge.New(
 		st.notification,
 		st.device,
@@ -158,9 +144,8 @@ func run() int {
 		logger,
 	).WithPollRetention(polling.NewPostgresRetentionStore(pool))
 
-	// The poll runner is built only for WORKER_MODE=poll: it needs PlanIt config
-	// and validates the poll settings, so a malformed value fails only that job.
-	// Declared as the interface so the unbuilt case stays a genuinely nil value.
+	// Built only for its own mode so a malformed poll setting fails only that
+	// job. Declared as the interface so the unbuilt case stays a true nil.
 	var poller worker.PollRunner
 	if mode == "poll" {
 		adapter, err := buildPoller(cfg, pool, registry, st, logger)
@@ -171,18 +156,13 @@ func run() int {
 		poller = adapter
 	}
 
-	// The appstore-reconcile runner is built only when APPSTORE_RECONCILE_ENABLED
-	// is set and its App Store Server API key material parses. A job missing
-	// either leaves reconciler a genuinely nil interface; appstore-reconcile then
-	// logs and exits 0 rather than crash-looping — this feature is genuinely
-	// optional during rollout (tc-97k35.6, GH#1011).
 	var reconciler worker.AppStoreReconcileRunner
 	if r := buildAppStoreReconcile(cfg, st, logger); r != nil {
 		reconciler = r
 	}
 
-	// The SEO runners are built only for their own modes so a gazetteer problem
-	// cannot affect any other job.
+	// Built only for its own mode so a gazetteer problem cannot affect any
+	// other job.
 	var seoCataloger worker.SEOCatalogRunner
 	if mode == "seo-catalog" {
 		seo, err := buildSEO(pool, logger)
@@ -193,7 +173,7 @@ func run() int {
 		seoCataloger = seoCatalogRunner{seo}
 	}
 
-	return worker.Run(context.Background(), mode, digester, dormantRunner, poller, sweepRunner, purger, reconciler, seoCataloger, logger)
+	return worker.Run(ctx, mode, digester, dormantRunner, poller, sweepRunner, purger, reconciler, seoCataloger, logger)
 }
 
 // buildNotifyFanOut constructs the decision-dispatch, zone-enqueue and
