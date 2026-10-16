@@ -19,6 +19,10 @@ inputs:
   auth0-m2m-client-secret:
     description: Auth0 machine-to-machine client secret
     required: true
+  subscription-webhooks:
+    description: SUBSCRIPTION_WEBHOOKS JSON array; when empty the config key is left unset and no webhooks are deployed
+    required: false
+    default: ""
   working-directory:
     description: Directory containing the Pulumi project
     required: false
@@ -30,8 +34,13 @@ runs:
     - name: Set Pulumi config secrets
       shell: bash
       working-directory: ${{ inputs.working-directory }}
+      env:
+        SUBSCRIPTION_WEBHOOKS: ${{ inputs.subscription-webhooks }}
       run: |
         pulumi config set --secret adminApiKey "${{ inputs.admin-api-key }}"
         pulumi config set --secret siteBuildKey "${{ inputs.site-build-key }}"
         pulumi config set --secret auth0M2mClientId "${{ inputs.auth0-m2m-client-id }}"
         pulumi config set --secret auth0M2mClientSecret "${{ inputs.auth0-m2m-client-secret }}"
+        if [ -n "$SUBSCRIPTION_WEBHOOKS" ]; then
+          pulumi config set --secret subscriptionWebhooks "$SUBSCRIPTION_WEBHOOKS"
+        fi

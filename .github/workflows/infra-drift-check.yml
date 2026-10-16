@@ -120,6 +120,7 @@ jobs:
           site-build-key: ${{ secrets.SITE_BUILD_KEY }}
           auth0-m2m-client-id: ${{ secrets.AUTH0_M2M_CLIENT_ID }}
           auth0-m2m-client-secret: ${{ secrets.AUTH0_M2M_CLIENT_SECRET }}
+          subscription-webhooks: ${{ matrix.stack == 'prod' && secrets.SUBSCRIPTION_WEBHOOKS || '' }}
 
       # --expect-no-changes makes this exit non-zero the moment the refreshed
       # state shows any diff from the program — the drift-detection mechanism

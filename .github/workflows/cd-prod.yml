@@ -76,6 +76,7 @@ jobs:
           site-build-key: ${{ secrets.SITE_BUILD_KEY }}
           auth0-m2m-client-id: ${{ secrets.AUTH0_M2M_CLIENT_ID }}
           auth0-m2m-client-secret: ${{ secrets.AUTH0_M2M_CLIENT_SECRET }}
+          subscription-webhooks: ${{ secrets.SUBSCRIPTION_WEBHOOKS }}
 
       - name: Pulumi up (prod)
         working-directory: infra
