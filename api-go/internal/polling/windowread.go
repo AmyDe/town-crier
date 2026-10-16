@@ -28,6 +28,7 @@ const (
 	StopRateLimited StopReason = "rate_limited"
 	StopForbidden   StopReason = "forbidden"
 	StopTimeout     StopReason = "timeout"
+	StopCancelled   StopReason = "cancelled"
 	StopError       StopReason = "error"
 )
 
@@ -48,6 +49,8 @@ func stopReasonFor(err error) StopReason {
 		return StopRateLimited
 	case errors.As(err, &forbidden):
 		return StopForbidden
+	case errors.Is(err, context.Canceled):
+		return StopCancelled
 	case errors.Is(err, planit.ErrTimeout), errors.Is(err, context.DeadlineExceeded):
 		return StopTimeout
 	default:

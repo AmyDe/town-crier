@@ -507,6 +507,32 @@ func TestPacer_Do_DeadlineDuringSpacingSendsNothingAndWritesNoRow(t *testing.T) 
 	}
 }
 
+func TestPacer_Do_CancelDuringRealSpacingWaitReturnsPromptlyWithNoRow(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 6, 10, 20, 0, 0, 0, londonTZ)
+	log := &fakePlanItCallLog{rows: []PlanItCall{{ID: 1, At: now, Status: intp(200)}}, next: 1}
+	p := NewPacer(log, PacerConfig{DailyCap: 300, MinSpacing: 60 * time.Second}, func() time.Time { return now }, SleepContext)
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(10*time.Millisecond, cancel)
+	sent := false
+	began := time.Now()
+
+	_, err := p.Do(ctx, planit.WorkWindowStart, time.Time{}, 0, func(context.Context) (planit.FetchPageResult, error) {
+		sent = true
+		return planit.FetchPageResult{}, nil
+	})
+
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v", err)
+	}
+	if waited := time.Since(began); waited > 5*time.Second {
+		t.Fatalf("waited %s, want the spacing wait to end on cancel", waited)
+	}
+	if sent || len(log.rows) != 1 {
+		t.Fatalf("sent = %v rows = %+v, want no request and no new row", sent, log.rows)
+	}
+}
+
 func TestPacer_Do_RunBudgetDeadlineDuringRequestIsAborted(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 6, 10, 20, 0, 0, 0, londonTZ)
