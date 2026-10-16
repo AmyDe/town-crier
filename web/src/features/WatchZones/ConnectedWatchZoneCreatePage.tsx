@@ -12,10 +12,7 @@ export function ConnectedWatchZoneCreatePage() {
   const client = useApiClient();
   const navigate = useNavigate();
   const repository = useMemo(() => new ApiWatchZoneRepository(client), [client]);
-  const geocodingPort: GeocodingPort = useMemo(
-    () => ({ geocode: (postcode) => geocodingApi(client).geocode(postcode) }),
-    [client],
-  );
+  const geocodingPort: GeocodingPort = useMemo(() => geocodingApi(client), [client]);
 
   const profileRepository = useProfileRepository();
   const { data: profile } = useFetchData(

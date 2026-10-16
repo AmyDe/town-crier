@@ -10,7 +10,6 @@ import type {
 import type { MapBounds, MapPort } from '../../domain/ports/map-port';
 import { extractErrorMessage } from '../../utils/extractErrorMessage';
 
-/** Debounce window for viewport-driven cluster refetches (Leaflet move/zoom). */
 const REGION_DEBOUNCE_MS = 250;
 
 interface MapRegion {

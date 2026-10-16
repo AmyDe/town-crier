@@ -72,12 +72,7 @@
   margin: 0;
 }
 
-/*
- * Paused status stamp — outlined "stamp" pattern (Public Notice component
- * language): uppercase, letterspaced, 1.5px currentColor border, icon +
- * label always. Uses the withdrawn hue since a paused zone is inactive, not
- * an error or warning.
- */
+/* Uses the withdrawn hue since a paused zone is inactive, not an error or warning. */
 .pausedBadge {
   display: inline-flex;
   align-items: center;

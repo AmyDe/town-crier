@@ -49,7 +49,6 @@ describe('useWatchZones', () => {
       expect(result.current.isLoading).toBe(false);
     });
 
-    // After delete, list returns only one zone
     spy.listResult = [aSecondWatchZone()];
 
     await act(async () => {
@@ -77,7 +76,6 @@ describe('useWatchZones', () => {
     });
 
     expect(result.current.error).toBe('Delete failed');
-    // Zones should remain unchanged
     expect(result.current.zones).toHaveLength(1);
   });
 

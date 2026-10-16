@@ -120,7 +120,6 @@ describe('WatchZoneEditPage', () => {
       name: /decision.*push/i,
     });
 
-    // Update preferences result for the refetch
     spy.getPreferencesResult = zonePreferences({
       newApplicationPush: true,
       newApplicationEmail: true,

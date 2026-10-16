@@ -132,7 +132,6 @@ describe('WatchZoneCreatePage', () => {
     await user.type(postcodeInput, 'CB1 2AD');
     await user.click(screen.getByRole('button', { name: /look up/i }));
 
-    // Should now see details form
     expect(await screen.findByLabelText(/zone name/i)).toBeInTheDocument();
     expect(screen.getByRole('radiogroup', { name: /radius/i })).toBeInTheDocument();
   });
@@ -149,23 +148,18 @@ describe('WatchZoneCreatePage', () => {
       />,
     );
 
-    // Step 1: Look up postcode
     await user.type(screen.getByRole('textbox', { name: /postcode/i }), 'CB1 2AD');
     await user.click(screen.getByRole('button', { name: /look up/i }));
 
-    // Step 2: Fill in details
     const nameInput = await screen.findByLabelText(/zone name/i);
     await user.type(nameInput, 'Home');
     await user.click(screen.getByLabelText('5 km'));
 
-    // Advance to confirm step
     await user.click(screen.getByRole('button', { name: /next/i }));
 
-    // Step 3: Confirm — should see map and postcode
     expect(screen.getByTestId('map-container')).toBeInTheDocument();
     expect(screen.getByText('CB1 2AD')).toBeInTheDocument();
 
-    // Confirm
     await user.click(screen.getByRole('button', { name: /confirm/i }));
 
     expect(repoSpy.createCalls).toHaveLength(1);
