@@ -1,5 +1,7 @@
 package subscriptionevents
 
+import "github.com/AmyDe/town-crier/api-go/internal/profiles"
+
 // EventType names a kind of subscription change.
 type EventType string
 
@@ -31,14 +33,14 @@ func Classify(before, after Snapshot) (EventType, bool) {
 	switch {
 	case before == after:
 		return "", false
-	case after.Tier == 0 && before.Tier != 0:
+	case after.Tier == profiles.TierFree && before.Tier != profiles.TierFree:
 		return EventRevertedToFree, true
-	case before.Tier == 0 && after.Tier != 0:
+	case before.Tier == profiles.TierFree && after.Tier != profiles.TierFree:
 		if after.InTrial {
 			return EventTrialStarted, true
 		}
 		return EventPaidStarted, true
-	case before.Tier == 0:
+	case before.Tier == profiles.TierFree:
 		return "", false
 	case after.Tier > before.Tier:
 		return EventUpgraded, true
