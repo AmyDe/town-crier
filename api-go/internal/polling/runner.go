@@ -17,8 +17,12 @@ import (
 
 const (
 	runLeaseTTL = 65 * time.Minute
-	runSpanName = "PlanIt poll run"
-	tracerName  = "github.com/AmyDe/town-crier/api-go/internal/polling"
+	// A stop signal leaves the container about 30 s before it is killed, so the
+	// work after a cancelled run is bounded to fit inside that grace period.
+	cancelledFlushTimeout = 10 * time.Second
+	leaseReleaseTimeout   = 5 * time.Second
+	runSpanName           = "PlanIt poll run"
+	tracerName            = "github.com/AmyDe/town-crier/api-go/internal/polling"
 )
 
 // OracleOutcome is what one oracle pass reports: Stop is set when a PlanIt
@@ -133,7 +137,10 @@ func NewRunner(cfg RunnerConfig, deps RunnerDeps) *Runner {
 // when no page was read, so events held over quiet hours go out at the first
 // run after quiet hours end. A held lease returns without work.
 // Limits such as backoff, the daily cap, 429, 403 and timeouts end the run
-// normally; only lease and state failures return an error.
+// normally; only lease and state failures return an error. When ctx is
+// cancelled the run stops with StopCancelled and no error: it flushes pushes
+// already queued, leaves pending events for the next run, computes no health
+// and releases the lease.
 func (r *Runner) Run(ctx context.Context) (RunResult, error) {
 	acq, err := r.d.Lease.TryAcquire(ctx, runLeaseTTL)
 	if err != nil {
@@ -146,7 +153,7 @@ func (r *Runner) Run(ctx context.Context) (RunResult, error) {
 		r.d.Log.InfoContext(ctx, "poll.lease_held")
 		return RunResult{}, nil
 	}
-	defer r.d.Lease.Release(context.WithoutCancel(ctx), acq.Handle)
+	defer r.releaseLease(ctx, acq.Handle)
 
 	ctx, span := otel.Tracer(tracerName).Start(ctx, runSpanName)
 	defer span.End()
@@ -159,11 +166,18 @@ func (r *Runner) Run(ctx context.Context) (RunResult, error) {
 	}
 
 	flushCtx := context.WithoutCancel(ctx)
-	r.d.Dispatch.DispatchPending(flushCtx)
-	if ferr := r.d.Flusher.Flush(flushCtx); ferr != nil {
-		r.d.Log.WarnContext(ctx, "poll.flush_failed", slog.Any("error", ferr))
+	if res.Stop == StopCancelled {
+		r.d.Log.InfoContext(flushCtx, "poll.cancelled", slog.Int("pages", res.Pages))
+		var cancel context.CancelFunc
+		flushCtx, cancel = context.WithTimeout(flushCtx, cancelledFlushTimeout)
+		defer cancel()
+	} else {
+		r.d.Dispatch.DispatchPending(flushCtx)
 	}
-	if res.Stop != StopDisabled {
+	if ferr := r.d.Flusher.Flush(flushCtx); ferr != nil {
+		r.d.Log.WarnContext(flushCtx, "poll.flush_failed", slog.Any("error", ferr))
+	}
+	if res.Stop != StopDisabled && res.Stop != StopCancelled {
 		res.Health = r.health(flushCtx, res.Counts)
 	}
 	r.setSpanAttrs(span, res)
@@ -183,12 +197,18 @@ func (r *Runner) loop(ctx context.Context) (RunResult, error) {
 	skipped := map[WindowRef]struct{}{}
 	oracleTried := false
 	for {
+		if ctx.Err() != nil {
+			return cancelled(res), nil
+		}
 		now := r.d.Now()
 		if now.Sub(start) >= r.cfg.RunBudget {
 			res.Stop = StopRunBudget
 			return res, r.finish(ctx, &res, now)
 		}
 		on, err := r.d.Switch.Enabled(ctx)
+		if err != nil && ctx.Err() != nil {
+			return cancelled(res), nil
+		}
 		if err != nil {
 			res.Stop = StopError
 			return res, fmt.Errorf("read polling switch: %w", err)
@@ -198,11 +218,17 @@ func (r *Runner) loop(ctx context.Context) (RunResult, error) {
 			return res, r.finish(ctx, &res, now)
 		}
 		state, err := r.loadState(ctx, now, skipped)
+		if err != nil && ctx.Err() != nil {
+			return cancelled(res), nil
+		}
 		if err != nil {
 			res.Stop = StopError
 			return res, err
 		}
 		calls, err := r.d.Calls.CallsToday(ctx, now)
+		if err != nil && ctx.Err() != nil {
+			return cancelled(res), nil
+		}
 		if err != nil {
 			res.Stop = StopError
 			return res, fmt.Errorf("count calls today: %w", err)
@@ -213,6 +239,9 @@ func (r *Runner) loop(ctx context.Context) (RunResult, error) {
 			oracleTried = true
 			out, oerr := r.d.Oracle.Run(budgetCtx, now)
 			res.Pages += out.Pages
+			if ctx.Err() != nil {
+				return cancelled(res), nil
+			}
 			if oerr != nil {
 				r.d.Log.WarnContext(ctx, "poll.oracle_failed", slog.Any("error", oerr))
 			}
@@ -236,6 +265,9 @@ func (r *Runner) loop(ctx context.Context) (RunResult, error) {
 			out = r.d.Reader.ReadWindow(budgetCtx, *item, windowStateFor(state, item))
 		}
 		res.Pages += out.Pages
+		if ctx.Err() != nil {
+			return cancelled(res), nil
+		}
 		if stop := r.budgetAware(out.Stop, ctx, budgetCtx); stop != "" {
 			if out.Err != nil && stop != StopRunBudget {
 				r.d.Log.WarnContext(ctx, "poll.read_stopped", slog.String("work", string(item.Work)), slog.String("stop", string(stop)), slog.Any("error", out.Err))
@@ -250,6 +282,19 @@ func (r *Runner) loop(ctx context.Context) (RunResult, error) {
 		if item.DifferentStart == nil && !out.Complete {
 			skipped[WindowRef{Axis: item.Axis, Day: item.Day}] = struct{}{}
 		}
+	}
+}
+
+func cancelled(res RunResult) RunResult {
+	res.Stop = StopCancelled
+	return res
+}
+
+func (r *Runner) releaseLease(ctx context.Context, h LeaseHandle) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), leaseReleaseTimeout)
+	defer cancel()
+	if out := r.d.Lease.Release(ctx, h); out != LeaseReleased {
+		r.d.Log.WarnContext(ctx, "poll.lease_release_failed", slog.Int("outcome", int(out)))
 	}
 }
 

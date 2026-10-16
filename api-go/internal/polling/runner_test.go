@@ -82,11 +82,12 @@ func (w *runWorld) allWindowsComplete() {
 }
 
 type fakeRunLease struct {
-	acquire  LeaseAcquireResult
-	err      error
-	acquired int
-	released int
-	ttl      time.Duration
+	acquire    LeaseAcquireResult
+	err        error
+	acquired   int
+	released   int
+	releaseErr error
+	ttl        time.Duration
 }
 
 func (f *fakeRunLease) TryAcquire(_ context.Context, ttl time.Duration) (LeaseAcquireResult, error) {
@@ -95,20 +96,23 @@ func (f *fakeRunLease) TryAcquire(_ context.Context, ttl time.Duration) (LeaseAc
 	return f.acquire, f.err
 }
 
-func (f *fakeRunLease) Release(context.Context, LeaseHandle) LeaseReleaseOutcome {
+func (f *fakeRunLease) Release(ctx context.Context, _ LeaseHandle) LeaseReleaseOutcome {
 	f.released++
+	f.releaseErr = ctx.Err()
 	return LeaseReleased
 }
 
 type fakeRunFlusher struct {
-	w      *runWorld
-	resets int
-	flush  int
+	w             *runWorld
+	resets        int
+	flush         int
+	flushDeadline bool
 }
 
 func (f *fakeRunFlusher) Reset() { f.resets++; f.w.events = append(f.w.events, "reset") }
-func (f *fakeRunFlusher) Flush(context.Context) error {
+func (f *fakeRunFlusher) Flush(ctx context.Context) error {
 	f.flush++
+	_, f.flushDeadline = ctx.Deadline()
 	f.w.events = append(f.w.events, "flush")
 	return nil
 }
@@ -269,6 +273,81 @@ func TestRunner_SwitchReadErrorFailsClosed(t *testing.T) {
 	if err == nil || res.Stop != StopError || len(r.world.reads) != 0 {
 		t.Fatalf("stop = %s reads = %d err = %v", res.Stop, len(r.world.reads), err)
 	}
+}
+
+func TestRunner_CancelledMidRunStopsAndReleasesLease(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		read func(w *runWorld, item PlannedWork) WindowReadResult
+	}{
+		{"during a read", func(*runWorld, PlannedWork) WindowReadResult {
+			return WindowReadResult{Stop: StopError, Err: fmt.Errorf("sleep: %w", context.Canceled)}
+		}},
+		{"between reads", func(w *runWorld, item PlannedWork) WindowReadResult {
+			return w.complete(item)
+		}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			r := newRunnerRig(t, londonAt(6, 10, 20, 0), nil)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			r.world.script = func(w *runWorld, item PlannedWork) WindowReadResult {
+				if len(w.reads) < 2 {
+					return w.complete(item)
+				}
+				cancel()
+				return tc.read(w, item)
+			}
+
+			res, err := r.runner.Run(ctx)
+
+			if err != nil {
+				t.Fatalf("err = %v, want a cancelled run to end cleanly", err)
+			}
+			if !res.Acquired || res.Stop != StopCancelled || len(r.world.reads) != 2 {
+				t.Fatalf("acquired = %v stop = %s reads = %d", res.Acquired, res.Stop, len(r.world.reads))
+			}
+			if r.lease.released != 1 || r.lease.releaseErr != nil {
+				t.Fatalf("released = %d releaseCtxErr = %v, want one release on a live context", r.lease.released, r.lease.releaseErr)
+			}
+			if r.health.calls != 0 || res.Health.Level != "" {
+				t.Fatalf("health computed for a cancelled run: %+v", res.Health)
+			}
+			if r.disp.calls != 0 {
+				t.Fatalf("dispatch = %d, want pending events left for the next run", r.disp.calls)
+			}
+			if r.flusher.flush != 1 || !r.flusher.flushDeadline {
+				t.Fatalf("flush = %d deadline = %v, want one bounded flush", r.flusher.flush, r.flusher.flushDeadline)
+			}
+		})
+	}
+}
+
+func TestRunner_CancelledSwitchReadEndsCleanly(t *testing.T) {
+	t.Parallel()
+	r := newRunnerRig(t, londonAt(6, 10, 20, 0), nil)
+	r.sw.err = fmt.Errorf("read poll_control: %w", context.Canceled)
+	ctx, cancel := context.WithCancel(context.Background())
+	r.runner.d.Switch = cancelOnCheck{cancel: cancel, next: r.sw}
+
+	res, err := r.runner.Run(ctx)
+
+	if err != nil || res.Stop != StopCancelled || r.lease.released != 1 {
+		t.Fatalf("stop = %s err = %v released = %d", res.Stop, err, r.lease.released)
+	}
+}
+
+type cancelOnCheck struct {
+	cancel context.CancelFunc
+	next   pollSwitch
+}
+
+func (c cancelOnCheck) Enabled(ctx context.Context) (bool, error) {
+	c.cancel()
+	return c.next.Enabled(ctx)
 }
 
 func TestRunner_TransientLeaseErrorIsReturned(t *testing.T) {

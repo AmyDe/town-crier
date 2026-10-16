@@ -179,8 +179,8 @@ func TestNextWindowWork_AlertDueRelativeToStartOfCurrentNight(t *testing.T) {
 }
 
 func allCoverageComplete(today, at time.Time) []WindowState {
-	out := make([]WindowState, 0, 152)
-	for age := 15; age <= 90; age++ {
+	out := make([]WindowState, 0, 32)
+	for age := 15; age <= 30; age++ {
 		day := today.AddDate(0, 0, -age)
 		out = append(out, completeAt(planit.AxisStart, day, at), completeAt(planit.AxisDecided, day, at))
 	}
@@ -196,7 +196,7 @@ func TestNextWindowWork_BandEdges(t *testing.T) {
 	// Only the window at the given age is missing; everything else is complete.
 	only := func(age int) *PlannedWork {
 		var state WindowPlanState
-		for a := range 92 {
+		for a := range 32 {
 			for _, ax := range []planit.Axis{planit.AxisStart, planit.AxisDecided} {
 				if a == age && ax == planit.AxisStart {
 					continue
@@ -206,14 +206,14 @@ func TestNextWindowWork_BandEdges(t *testing.T) {
 		}
 		return NextWindowWork(cfg, state, now, 0)
 	}
-	for _, age := range []int{0, 14, 15, 90} {
+	for _, age := range []int{0, 14, 15, 30} {
 		w := only(age)
 		if w == nil || !w.Day.Equal(today.AddDate(0, 0, -age)) {
 			t.Fatalf("age %d: got %+v", age, w)
 		}
 	}
-	if w := only(91); w != nil {
-		t.Fatalf("age 91 must never be read, got %+v", w)
+	if w := only(31); w != nil {
+		t.Fatalf("age 31 must never be read, got %+v", w)
 	}
 }
 
@@ -235,7 +235,7 @@ func TestNextWindowWork_CoverageDueAfterSevenDays(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			state := WindowPlanState{Windows: allAlertComplete(today, now)}
-			for age := 15; age <= 90; age++ {
+			for age := 15; age <= 30; age++ {
 				for _, ax := range []planit.Axis{planit.AxisStart, planit.AxisDecided} {
 					ws := WindowState{Axis: ax, Day: today.AddDate(0, 0, -age), LastCompleteAt: tp(now)}
 					if age == 20 && ax == planit.AxisDecided {
