@@ -285,6 +285,7 @@ func TestWindowReader_StopReasons(t *testing.T) {
 		{"429", &planit.RateLimitError{}, StopRateLimited},
 		{"403", &planit.ForbiddenError{}, StopForbidden},
 		{"timeout", fmt.Errorf("x: %w", planit.ErrTimeout), StopTimeout},
+		{"cancelled", fmt.Errorf("sleep: %w", context.Canceled), StopCancelled},
 		{"other", errors.New("boom"), StopError},
 	}
 	for _, tc := range tests {
