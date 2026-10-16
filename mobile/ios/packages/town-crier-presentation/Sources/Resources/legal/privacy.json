@@ -1,7 +1,7 @@
 {
   "documentType": "privacy",
   "title": "Privacy Policy",
-  "lastUpdated": "2026-10-07",
+  "lastUpdated": "2026-10-16",
   "sections": [
     {
       "heading": "Who We Are",
@@ -13,7 +13,7 @@
     },
     {
       "heading": "Why We Collect It",
-      "body": "We use your data on two lawful bases under UK GDPR. To deliver the service you asked for (Article 6(1)(b), contract): your account, watch zones, preferences, push token, and subscription information. To keep the service reliable and secure (Article 6(1)(f), legitimate interests): authentication, server-side error telemetry, email delivery records, and limiting the rate of unauthenticated requests to prevent abuse (see \"Rate Limiting and Abuse Prevention\" below). We do not process any data on the basis of consent, we do not make automated decisions with legal effects on you, and we do not send marketing email."
+      "body": "We use your data on two lawful bases under UK GDPR. To deliver the service you asked for (Article 6(1)(b), contract): your account, watch zones, preferences, push token, and subscription information. To keep the service reliable and secure (Article 6(1)(f), legitimate interests): authentication, server-side error telemetry, email delivery records, and limiting the rate of unauthenticated requests to prevent abuse (see \"Rate Limiting and Abuse Prevention\" below). We do not process any data on the basis of consent, we do not make automated decisions with legal effects on you, and we do not send marketing email. We also count changes to subscriptions, such as trials started, upgrades and cancellations, as totals to help us run the business (Article 6(1)(f), legitimate interests). These counts never say who you are."
     },
     {
       "heading": "Who Processes Your Data for Us",
