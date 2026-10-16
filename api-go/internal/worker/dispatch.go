@@ -119,6 +119,13 @@ type SEOCatalogRunner interface {
 	Run(ctx context.Context) (authorityPages, townPages int, err error)
 }
 
+// IndexNowSubmitter is optionally implemented by a SEOCatalogRunner that should
+// notify IndexNow after a successful rebuild. It returns the URLs submitted and
+// the unchanged URLs skipped.
+type IndexNowSubmitter interface {
+	SubmitIndexNow(ctx context.Context) (submitted, skipped int, err error)
+}
+
 // Run dispatches on WORKER_MODE and returns the process exit code. It is the
 // testable core of cmd/worker/main.go. An unset or unknown mode is a deployment
 // accident and fails fast. Optional runners (purger, reconciler) may be nil:
@@ -338,7 +345,9 @@ func runAppStoreReconcile(ctx context.Context, runner AppStoreReconcileRunner, l
 
 // runSEOCatalog executes one seo-catalog run under a soft self-cancel budget,
 // inside a telemetry span named "SEO Catalog Rebuild". A nil runner or a run
-// error exits 1.
+// error exits 1. When the runner implements IndexNowSubmitter it is called after
+// a successful rebuild; its failure is logged and exits 1 without undoing the
+// catalog, so the job execution shows red and the next run resubmits.
 func runSEOCatalog(ctx context.Context, runner SEOCatalogRunner, logger *slog.Logger) int {
 	tracer := otel.Tracer(tracerName)
 	ctx, span := tracer.Start(ctx, "SEO Catalog Rebuild")
@@ -363,5 +372,21 @@ func runSEOCatalog(ctx context.Context, runner SEOCatalogRunner, logger *slog.Lo
 		attribute.Int("seo_catalog.authority_pages", authorityPages),
 		attribute.Int("seo_catalog.town_pages", townPages),
 	)
+
+	submitter, ok := runner.(IndexNowSubmitter)
+	if !ok {
+		return 0
+	}
+	submitted, skipped, err := submitter.SubmitIndexNow(runCtx)
+	span.SetAttributes(
+		attribute.Int("seo_catalog.indexnow_submitted", submitted),
+		attribute.Int("seo_catalog.indexnow_skipped", skipped),
+	)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		logger.ErrorContext(ctx, "seo-catalog indexnow submission failed", "error", err)
+		return 1
+	}
 	return 0
 }

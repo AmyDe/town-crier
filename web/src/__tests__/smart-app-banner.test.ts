@@ -20,8 +20,6 @@ describe('Apple Smart App Banner (SPA shell)', () => {
   });
 
   it('points at config/links.ts as the source of truth for the id', () => {
-    // A comment keeps the static value honest against APPLE_APP_ID, which the
-    // lockstep guard pins to constants.mjs. There is no banner without the note.
     expect(html).toContain('src/config/links.ts');
   });
 

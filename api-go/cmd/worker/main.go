@@ -170,7 +170,7 @@ func run() int {
 			logger.Error("build seo runners", "error", err)
 			return 1
 		}
-		seoCataloger = seoCatalogRunner{seo}
+		seoCataloger = newSEOCatalogRunner(seoCatalogRunner{seo}, platform.CurrentDeploymentEnvironment(), buildIndexNow(pool, logger))
 	}
 
 	return worker.Run(ctx, mode, digester, dormantRunner, poller, sweepRunner, purger, reconciler, seoCataloger, logger)

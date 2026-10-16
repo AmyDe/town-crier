@@ -1,6 +1,5 @@
 # Judged false positives, one per line: <fingerprint>  # <path>:<line> <rule>: <reason>
 # A fingerprint hashes path + rule + value: moving a line keeps it suppressed, editing the value re-surfaces it.
-
 756a3dace660a292  # .claude/skills/handover/SKILL.md:51 url-credentials: local and CI test Postgres credentials
 ba809a4a1761b039  # .claude/skills/handover/SKILL.md:52 high-entropy-string: not a secret (identifier, path, env or secret-ref name)
 f4bdc494d2813c55  # .github/workflows/cd-ios-testflight.yml:223 secret-assignment: test fixture
@@ -8,9 +7,9 @@ f4bdc494d2813c55  # .github/workflows/cd-ios-testflight.yml:223 secret-assignmen
 c04e36082d760f4e  # .github/workflows/pr-gate.yml:138 secret-assignment: local and CI test Postgres credentials
 f3b684c30ac32e41  # .github/workflows/pr-gate.yml:162 url-credentials: local and CI test Postgres credentials
 77237775192efc8e  # .github/workflows/pr-gate.yml:499 high-entropy-token: not a secret (identifier, path, env or secret-ref name)
-cc45fe3b6ab83ffe  # .github/workflows/seo-refresh.yml:318 high-entropy-token: IndexNow key, public by design
 3f8f358c88563854  # CLAUDE.md:84 high-entropy-string: not a secret (identifier, path, env or secret-ref name)
 fef971238c216f03  # api-go/Makefile:5 url-credentials: local and CI test Postgres credentials
+bbed43ddfed53c34  # api-go/cmd/worker/seo.go:20 high-entropy-string: IndexNow key, public by design
 1ed0b169407cdb63  # api-go/cmd/pgmigrate/main.go:55 secret-assignment: not a secret (identifier, path, env or secret-ref name)
 08e86ce3435ff4c1  # api-go/cmd/pgmigrate/main_test.go:18 secret-assignment: test fixture
 c2941cdf448e6212  # api-go/cmd/worker/appstorereconcile_wiring_test.go:12 private-key-block: test fixture

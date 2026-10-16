@@ -21,7 +21,7 @@ export default defineConfig([
     },
   },
   {
-    // Build-time prerender scripts are plain Node ESM, not part of the app bundle.
+    // Maintenance scripts are plain Node ESM, not part of the app bundle.
     files: ['scripts/**/*.mjs'],
     extends: [js.configs.recommended],
     languageOptions: {

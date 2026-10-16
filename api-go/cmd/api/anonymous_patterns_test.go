@@ -39,22 +39,13 @@ func TestAnonymousPatterns_IncludesApplicationSearch(t *testing.T) {
 // applications-near-a-point endpoint (GH#868 Phase 2): a resident browsing the
 // map before creating an account needs no token. The middleware keys on the
 // exact registered pattern string, so this must match the route wired in
-// applications byte-for-byte. This is a DIFFERENT route from the build-key
-// SEO endpoint below (GET /v1/applications/near) — do not confuse the two.
+// applications byte-for-byte.
 func TestAnonymousPatterns_IncludesNearPoint(t *testing.T) {
 	t.Parallel()
 
 	const nearPoint = "GET /v1/applications/near-point"
 	if _, ok := anonymousPatterns[nearPoint]; !ok {
 		t.Errorf("anonymousPatterns must include %q", nearPoint)
-	}
-
-	const buildKeySEONear = "GET /v1/applications/near"
-	if _, ok := anonymousPatterns[buildKeySEONear]; !ok {
-		t.Errorf("anonymousPatterns must still include the distinct build-key SEO route %q", buildKeySEONear)
-	}
-	if nearPoint == buildKeySEONear {
-		t.Fatal("near-point and the build-key SEO near route must be distinct patterns")
 	}
 }
 

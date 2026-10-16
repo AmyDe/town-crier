@@ -2,7 +2,10 @@
   "navigationFallback": {
     "rewrite": "/index.html",
     "exclude": [
-      "*.{css,js,svg,png,jpg,jpeg,gif,ico,woff,woff2,ttf,eot,json,txt}"
+      "*.{css,js,svg,png,jpg,jpeg,gif,ico,woff,woff2,ttf,eot,json,txt}",
+      "/planning",
+      "/planning/*",
+      "/sitemap.xml"
     ]
   },
   "globalHeaders": {

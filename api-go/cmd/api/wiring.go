@@ -73,21 +73,12 @@ var anonymousPatterns = map[string]struct{}{
 	// so it is anonymous to Auth0; the signed JWS is its authentication. (The
 	// sibling POST /v1/subscriptions/verify is authed and absent here.)
 	"POST /v1/webhooks/appstore": {},
-	// The build-time SEO endpoints are anonymous to Auth0 (no bearer token); they
-	// are authenticated solely by the X-Build-Key gate inside the handler, mirroring
-	// the admin routes. They read only public planning data. The first feeds
-	// authority pages; the second feeds town pages (bounded geo query).
-	"GET /v1/authorities/{id}/applications": {},
-	"GET /v1/applications/near":             {},
 	// The public applications-near-a-point endpoint (GH#868 Phase 2) is anonymous
 	// to Auth0: it backs the iOS anonymous browse map, letting a fresh install
-	// see real applications near a point before creating an account. It is a
-	// DIFFERENT route from the build-key SEO endpoint immediately above — that
-	// one is build-time-only and gated by X-Build-Key inside the handler; this
-	// one is a genuine public runtime endpoint, metered solely by the per-IP
-	// AnonRateLimit (GH#868 Phase 1) plus its own radius/limit clamps (a
-	// point+radius read is a far more attractive whole-table scraping target
-	// than the text search below).
+	// see real applications near a point before creating an account. It is
+	// metered solely by the per-IP AnonRateLimit (GH#868 Phase 1) plus its own
+	// radius/limit clamps (a point+radius read is a far more attractive
+	// whole-table scraping target than the text search below).
 	"GET /v1/applications/near-point": {},
 	// The anonymous clusters endpoint (GH#924 Phase 1) is anonymous to Auth0: it
 	// backs the iOS anonymous browse map with the same PostGIS grid-aggregated
@@ -223,9 +214,8 @@ type adminUserStore interface {
 //	    (ACA probes; see middleware.AnonRateLimit's doc for the convention), as
 //	    is any request bearing a valid X-Build-Key (GH#872 collateral,
 //	    tc-zod82): the build-key SEO endpoints authenticate inside the handler
-//	    rather than via Auth0, so without this exemption they are wrongly
-//	    metered as anonymous and the CI seo-refresh job's sequential requests
-//	    from one runner IP 429.
+//	    rather than via Auth0, so without this exemption the Worker's requests
+//	    would be metered as anonymous.
 //	  - RateLimit/RecordActivity are no-ops for anonymous routes (no subject),
 //	    the mirror image of AnonRateLimit's no-op for authenticated ones.
 //
@@ -312,11 +302,10 @@ func newRouter(
 	//
 	// The exemption predicate recognises a valid X-Build-Key via
 	// applications.BuildKeyMatches (GH#872 collateral, tc-zod82): the build-key
-	// SEO endpoints (RecentRoutes/NearRoutes below) authenticate inside the
-	// handler rather than via Auth0, so without this exemption their traffic —
-	// including the CI seo-refresh job's ~418 sequential requests from one
-	// runner IP — is wrongly metered as anonymous. A missing or wrong key still
-	// exempts nothing, preserving the anti-scraping posture for everyone else.
+	// SEO endpoints (internal/seopage) authenticate inside the handler rather
+	// than via Auth0, so without this exemption the Worker's traffic is wrongly
+	// metered as anonymous. A missing or wrong key still exempts nothing,
+	// preserving the anti-scraping posture for everyone else.
 	anonRefillPerSecond := float64(anonRateLimitRefillPerMinute) / 60
 	buildKeyExempt := func(r *http.Request) bool { return applications.BuildKeyMatches(r, siteBuildKey) }
 	dispatch = middleware.AnonRateLimit(middleware.NewAnonRateLimitStore(anonRefillPerSecond), anonRateLimitBurst, buildKeyExempt, logger)(dispatch)
@@ -353,17 +342,8 @@ func newRouter(
 		} else {
 			applications.Routes(mux, appStore, nil, authorities.NewLookup(), logger)
 		}
-		// The build-time SEO endpoints (anonymous to Auth0, gated by the dedicated
-		// X-Build-Key) read recent applications from the same store: RecentRoutes by
-		// authority (authority pages) and NearRoutes by a bounded geo point (town
-		// pages). Both are registered here because they need the applications store;
-		// the routes are absent on a store-less local boot, where they fall to the
-		// 401 fallback.
-		applications.RecentRoutes(mux, appStore, siteBuildKey, logger)
-		applications.NearRoutes(mux, appStore, siteBuildKey, logger)
 		// The anonymous application search (#821 Phase 3, tc-geq7h.3) reads from the
-		// same store; it needs no build key (unlike the two SEO routes above) since
-		// it is not a build-time-only surface — it is the public-facing endpoint the
+		// same store; it needs no build key since it is the public-facing endpoint the
 		// /search web page (tc-geq7h.4) calls directly from a visitor's browser. It is
 		// anonymous to Auth0 (see anonymousPatterns) and, like every other anonymous
 		// route, metered by the per-IP AnonRateLimit (GH#868 Phase 1, above): the
@@ -373,8 +353,7 @@ func newRouter(
 		// The public applications-near-a-point endpoint (GH#868 Phase 2; GH#879
 		// Phase 1 added the authority-slug resolver so each result carries
 		// authoritySlug, mirroring SearchRoutes) reads from the same store. It is
-		// anonymous to Auth0 (see anonymousPatterns, a route distinct from the
-		// build-key SEO NearRoutes above) and, like every other anonymous route,
+		// anonymous to Auth0 (see anonymousPatterns) and, like every other anonymous route,
 		// metered by the per-IP AnonRateLimit (GH#868 Phase 1) plus its own
 		// radius/limit clamps.
 		applications.NearPointRoutes(mux, appStore, authorities.NewLookup(), logger)

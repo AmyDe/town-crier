@@ -77,7 +77,7 @@ func shareURL(authoritySlug, ref string) string {
 var shortMonths = [...]string{"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sept", "Oct", "Nov", "Dec"}
 
 // formatDate renders a UTC date as "2 Jan 2006" with the en-GB short month
-// names ("Sept" for September), matching the prerendered pages.
+// names ("Sept" for September), matching the established page copy.
 func formatDate(t time.Time) string {
 	t = t.UTC()
 	return fmt.Sprintf("%d %s %d", t.Day(), shortMonths[t.Month()-1], t.Year())
@@ -181,7 +181,7 @@ func plural(n int, one, many string) string {
 }
 
 // collate orders names case-insensitively, falling back to the exact string,
-// approximating the locale-aware ordering of the prerendered index pages.
+// approximating locale-aware ordering.
 func collate(a, b string) int {
 	if c := strings.Compare(strings.ToLower(a), strings.ToLower(b)); c != 0 {
 		return c
