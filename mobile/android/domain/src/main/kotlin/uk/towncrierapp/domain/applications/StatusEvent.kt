@@ -9,7 +9,7 @@ import java.time.LocalDate
  * event, and a `decidedDate` row produces a second event carrying the
  * application's actual (decided) status — but only when
  * [ApplicationStatus.isDecided] is true, otherwise it is folded away. Max 2
- * points. Port of iOS `StatusEvent` (GH#775).
+ * points.
  */
 public data class StatusEvent(
     public val status: ApplicationStatus,

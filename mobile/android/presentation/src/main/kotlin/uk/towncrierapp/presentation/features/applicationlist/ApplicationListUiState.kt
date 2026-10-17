@@ -13,8 +13,7 @@ import uk.towncrierapp.domain.watchzones.WatchZoneId
  * field drives the OS badge only, #777 D7). [hasMore] is a page's
  * `nextCursor != null`. [availableSorts] hides
  * [ApplicationSortOrder.DISTANCE] whenever no zone is active (nothing to be
- * distant from). Port of iOS `ApplicationListViewModel`'s published state
- * (GH#775).
+ * distant from).
  */
 public data class ApplicationListUiState(
     val zones: List<WatchZone> = emptyList(),

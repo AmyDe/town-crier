@@ -11,7 +11,7 @@ import java.util.concurrent.ConcurrentHashMap
  * [uk.towncrierapp.domain.applications.OfflineAwareRepository], which is what
  * lets this be a plain keyed map). A `ConcurrentHashMap` is enough
  * concurrency safety for a handful of zone-keyed reads/writes; no explicit
- * locking is warranted. Port of iOS `InMemoryApplicationCacheStore` (GH#775).
+ * locking is warranted.
  */
 public class InMemoryApplicationCacheStore : ApplicationCacheStore {
     private val entries = ConcurrentHashMap<WatchZoneId, CachedApplicationPage>()

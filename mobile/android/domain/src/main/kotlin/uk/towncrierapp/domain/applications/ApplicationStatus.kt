@@ -5,8 +5,7 @@ package uk.towncrierapp.domain.applications
  * own case — including [Unresolved]/[Referred]/[NotAvailable], which decode
  * successfully but are display-grouped with [Unknown] (see `StatusDisplay` in
  * `:presentation`) — so a genuinely unrecognised future value still has
- * somewhere honest to land: [Unknown]. Port of iOS `ApplicationStatus`
- * (GH#775).
+ * somewhere honest to land: [Unknown].
  */
 public sealed interface ApplicationStatus {
     public data object Undecided : ApplicationStatus
@@ -68,7 +67,7 @@ public val ApplicationStatus.wireValue: String
 
 /**
  * Whether a decision has actually been made — the exact set `statusHistory`
- * synthesis (GH#775) uses to decide whether a `decidedDate` becomes a second
+ * synthesis uses to decide whether a `decidedDate` becomes a second
  * timeline event, or is folded away because the application isn't actually
  * decided yet (e.g. [ApplicationStatus.Unresolved]).
  */

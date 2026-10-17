@@ -39,8 +39,7 @@ import java.time.OffsetDateTime
  * is present — the card's top rule doubles as the same unread signal
  * ([noticeCard]'s `isNew`), mirroring iOS `ApplicationListRow`'s dot +
  * `noticeCardStyle` combination. Status is never color-alone: [StatusBadge]
- * always pairs its color with an icon and label too. Port of iOS
- * `ApplicationRow` (GH#775).
+ * always pairs its color with an icon and label too.
  */
 @Composable
 public fun ApplicationRow(

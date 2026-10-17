@@ -52,7 +52,7 @@ import java.time.LocalDate
  * status badge, description headline, fields card, [StatusTimeline], a
  * "View on Council Portal" Custom Tab button when present, and toolbar
  * save-toggle + share (share enabled only once the by-id refresh supplies an
- * `authoritySlug`). Port of iOS `ApplicationDetailView` (GH#775).
+ * `authoritySlug`).
  */
 @Composable
 public fun ApplicationDetailRoute(

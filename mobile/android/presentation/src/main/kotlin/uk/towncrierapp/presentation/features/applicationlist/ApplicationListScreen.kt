@@ -52,8 +52,7 @@ import uk.towncrierapp.presentation.designsystem.components.PrimaryButton
 
 /**
  * The Applications tab: zone chips, status/unread filter chips, a sort menu
- * in the top app bar, and cursor-based infinite scroll. Port of iOS
- * `ApplicationListView` (GH#775).
+ * in the top app bar, and cursor-based infinite scroll.
  */
 @Composable
 public fun ApplicationListRoute(

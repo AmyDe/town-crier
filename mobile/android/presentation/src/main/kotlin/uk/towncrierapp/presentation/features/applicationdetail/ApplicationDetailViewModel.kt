@@ -20,8 +20,7 @@ import uk.towncrierapp.domain.auth.DomainError
  * fetch's fresh copy, re-entrancy-guarded against a second rapid
  * navigation), and save/unsave with saved-state comparison by the
  * RECONSTRUCTED [uk.towncrierapp.domain.applications.PlanningApplicationId]
- * (tc-jjl4), never a raw uid string. Port of iOS `ApplicationDetailViewModel`
- * (GH#775).
+ * never a raw uid string.
  */
 public class ApplicationDetailViewModel(
     private val repository: PlanningApplicationRepository,
