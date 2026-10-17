@@ -275,7 +275,6 @@ jobs:
           vite-auth0-domain: ${{ vars.VITE_AUTH0_DOMAIN }}
           vite-auth0-client-id: ${{ vars.VITE_AUTH0_CLIENT_ID }}
           vite-auth0-audience: ${{ vars.VITE_AUTH0_AUDIENCE }}
-          vite-applicationinsights-connection-string: ${{ vars.VITE_APPLICATIONINSIGHTS_CONNECTION_STRING }}
           seo-town-min-population: ${{ vars.SEO_TOWN_MIN_POPULATION || '5000' }}
           render-mode: 'true'
           storage-account-name: ${{ env.STORAGE_ACCOUNT_PROD }}
