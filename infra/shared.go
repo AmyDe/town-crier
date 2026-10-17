@@ -1059,7 +1059,7 @@ expected
 		displayName: "App Store reconcile found missed notifications (prod)",
 		description: "An App Store reconcile cycle found Apple notifications that were never recorded as processed. See GH #1011.",
 		severity:    2,
-		window:      "PT6H",
+		window:      "PT12H",
 		freq:        "PT30M",
 		query:       appStoreReconcileGapQuery,
 		threshold:   0,
