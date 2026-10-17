@@ -17,9 +17,6 @@ import (
 // the API contract: a request's ?sort= value and the mode embedded in a keyset
 // cursor are both this type, so a cursor minted under one sort can be rejected
 // when replayed under another (see FindInZonePage and ErrCursorSortMismatch).
-//
-// Slices 1-3 (epic #682) implement {distance, newest, oldest, status,
-// recent-activity} — the full UI sort set.
 type Sort string
 
 const (
@@ -59,7 +56,7 @@ func (s Sort) Supported() bool {
 	}
 }
 
-// The status filter vocabulary (epic #682 slice 4). These are the PlanIt
+// The status filter vocabulary. These are the PlanIt
 // app_state chip values the clients filter on; ?status= exact-matches the raw
 // app_state column against one of these. "All" (or an absent ?status=) means no
 // status filter; any other value is rejected with 400 (see StatusSupported).
@@ -87,9 +84,7 @@ func StatusSupported(status string) bool {
 
 // InZoneQuery is the full request descriptor for FindInZonePage: where to look
 // (UserID, Latitude, Longitude, RadiusMetres), how to order (Sort), how to
-// filter (Status, Unread), and how to page (Limit, Cursor). It replaces a long
-// positional parameter list (epic #682 slice 4) so the call site reads as one
-// query object rather than ten arguments.
+// filter (Status, Unread), and how to page (Limit, Cursor).
 //
 // Status is the exact app_state to match; "" means no status filter. Unread true
 // restricts to applications with an unread notification for UserID; false means
@@ -124,8 +119,8 @@ var (
 	// different filter would gap or overlap pages, so consumers map this to HTTP
 	// 400 — symmetric with ErrCursorSortMismatch, never a silent reset.
 	ErrCursorFilterMismatch = errors.New("cursor filter does not match request filter")
-	// ErrUnsupportedSort signals a sort value outside the set this slice
-	// implements. Consumers map it to HTTP 400.
+	// ErrUnsupportedSort signals a sort value outside the supported set.
+	// Consumers map it to HTTP 400.
 	ErrUnsupportedSort = errors.New("unsupported sort")
 )
 
@@ -142,9 +137,8 @@ var (
 //   - recent-activity: TS (the activity timestamp, nil for a NULL-activity tail
 //     row) + AC (authority_code) + N (planit_name).
 //
-// It is base64url-encoded JSON. F and U are omitempty so an unfiltered cursor is
-// byte-identical to the pre-slice-4 cursors (they decode to F="" U=false, which
-// matches an unfiltered request — old cursors keep working). AS, SD and TS use a
+// It is base64url-encoded JSON. F and U are omitempty, so cursors minted before
+// the filters existed still decode as unfiltered. AS, SD and TS use a
 // nil pointer (omitted field) to mean a NULL key value, so the next page's
 // predicate can pick the matching NULLS-LAST tail branch. SD is a "2006-01-02"
 // date string so the predicate compares against an unambiguous ::date, not a
@@ -311,10 +305,7 @@ func scanDatePageRow(row pgx.CollectableRow) (datePageRow, error) {
 // FindInZonePage returns one page of up to q.Limit applications within
 // q.RadiusMetres of (q.Latitude, q.Longitude), ordered by q.Sort and filtered by
 // q.Status / q.Unread, plus an opaque sort-and-filter-aware cursor for the next
-// page (empty when exhausted). It generalises FindNearbyPage (which stays the
-// legacy default-distance path with its own cursor) to the {distance, newest,
-// oldest, status, recent-activity} sorts of epic #682 slices 1-3 and the status /
-// unread filters of slice 4. Every sort keeps the ST_DWithin spatial predicate
+// page (empty when exhausted). Every sort keeps the ST_DWithin spatial predicate
 // and a total order whose keyset predicate exactly matches its ORDER BY, so pages
 // never overlap or gap; the filters compose by restricting the candidate set
 // without touching the ordering. The cursor embeds the sort mode AND the active
@@ -346,10 +337,7 @@ func (s *PostgresStore) FindInZonePage(ctx context.Context, q InZoneQuery) ([]Pl
 		c = &decoded
 	}
 
-	// Filtered requests (a status value and/or the unread flag) take the dynamic
-	// builder, which composes the status predicate and/or the unread INNER JOIN
-	// into the sort's query. Unfiltered requests stay on the proven per-sort
-	// constant queries unchanged.
+	// Filtered requests take the dynamic builder; unfiltered ones use the per-sort constant queries.
 	if q.Status != "" || q.Unread {
 		return s.findFilteredZonePage(ctx, q, c)
 	}
@@ -719,8 +707,7 @@ func (b *argBuilder) add(v any) string {
 	return "$" + strconv.Itoa(len(b.args))
 }
 
-// findFilteredZonePage serves the status / unread filtered requests (epic #682
-// slice 4). It composes the same per-sort ORDER BY + keyset predicates the
+// findFilteredZonePage serves the status / unread filtered requests. It composes the same per-sort ORDER BY + keyset predicates the
 // unfiltered path uses with a status predicate (AND app_state = $x) and/or an
 // INNER JOIN to the caller's unread notifications, then collects with the sort's
 // projection scanner and mints a filter-stamped next cursor. c is the validated

@@ -63,9 +63,6 @@ type BBox struct {
 // (west < east, south < north), so a malformed viewport is a clean 400 rather
 // than a degenerate or world-spanning query.
 func ParseBBox(raw string) (BBox, bool) {
-	if raw == "" {
-		return BBox{}, false
-	}
 	parts := strings.Split(raw, ",")
 	if len(parts) != 4 {
 		return BBox{}, false

@@ -76,8 +76,7 @@ const findBoundaryKeysetQuery = "SELECT " + appColumns + ", location <-> " + nea
 	"OR (location <-> " + nearbyPoint + " = $5 AND planit_name > $6)) " +
 	"ORDER BY location <-> " + nearbyPoint + ", planit_name LIMIT $4"
 
-// FindInBoundaryPage is FindNearbyPage's custom-shape counterpart (GH#1031,
-// tc-6he3x.5): one nearest-first page of up to limit applications ST_Covers-
+// FindInBoundaryPage is FindNearbyPage's custom-shape counterpart: one nearest-first page of up to limit applications ST_Covers-
 // contained in boundary (a closed polygon ring, [longitude, latitude]-ordered),
 // plus an opaque continuation cursor byte-identical in shape to
 // FindNearbyPage's. latitude and longitude are the zone's derived centroid

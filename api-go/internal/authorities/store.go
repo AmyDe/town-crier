@@ -23,9 +23,8 @@ type Authority struct {
 	AreaType string `json:"areaType"`
 }
 
-// staticStore holds the authorities pre-sorted by name (ordinal-ignore-case),
-// indexed by id for O(1) point lookups, and indexed both ways between slug and
-// id. The slug maps are built once at construction, never per call.
+// staticStore holds the authorities sorted by name (ordinal-ignore-case) plus
+// id and slug indexes.
 type staticStore struct {
 	sorted   []Authority
 	byIDx    map[int]Authority
@@ -58,11 +57,8 @@ func newStaticStore() *staticStore {
 
 		slug := Slugify(a.Name)
 		idToSlug[a.ID] = slug
-		// Collision policy: if two authority names slugify to the same slug, the
-		// FIRST by store order wins. records is already sorted by name
-		// (ordinal-ignore-case), so the winner is deterministic. Collisions are
-		// not expected among LPA names, but this keeps resolution stable if one
-		// ever appears.
+		// On a slug collision the first authority in sorted order wins, keeping
+		// resolution deterministic.
 		if _, exists := slugToID[slug]; !exists {
 			slugToID[slug] = a.ID
 		}

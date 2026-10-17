@@ -9,9 +9,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/httputil"
 )
 
-// provider is the consumer-side view the handler needs: resolve the designation
-// context for a point. The concrete *Client satisfies it structurally; the
-// handler test substitutes a hand fake.
+// provider resolves the designation context for a point.
 type provider interface {
 	Get(ctx context.Context, latitude, longitude float64) (Context, error)
 }

@@ -1,8 +1,6 @@
 package authorities
 
-// Lookup is the exported, cross-package handle for resolving authority ids to
-// their display metadata. Features such as application-authorities depend on it
-// without reaching into the package's unexported static store.
+// Lookup resolves authority ids and slugs to display metadata for other packages.
 type Lookup struct {
 	store *staticStore
 }
@@ -17,8 +15,7 @@ func (l *Lookup) ByID(id int) (Authority, bool) {
 	return l.store.byID(id)
 }
 
-// All returns every authority in the static list, sorted by name. The polling
-// all-authority provider filters this set down to the pollable area types.
+// All returns every authority in the static list, sorted by name.
 func (l *Lookup) All() []Authority {
 	return l.store.all()
 }
