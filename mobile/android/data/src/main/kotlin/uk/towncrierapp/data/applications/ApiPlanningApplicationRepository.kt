@@ -28,8 +28,7 @@ import java.time.LocalDate
  * `sort` (epic #770: Android never exercises the legacy param-less path) and
  * `limit=`[PAGE_SIZE]; `status`/`unread` are mutually exclusive by
  * [ApplicationFilter]'s shape, not a runtime check. Continuation is the
- * opaque `X-Next-Cursor` response header via [ApiClient.requestPaged]. Port
- * of iOS `APIApplicationRepository` (GH#775).
+ * opaque `X-Next-Cursor` response header via [ApiClient.requestPaged].
  */
 public class ApiPlanningApplicationRepository(
     private val apiClient: ApiClient,
@@ -169,7 +168,7 @@ internal fun PlanningApplicationRowDto.toDomain(): PlanningApplication {
         location = resolveLocation(latitude, longitude),
         // "link" (the external council-portal URL) takes priority over "url"
         // (PlanIt's own page) — the "View on Council Portal" action wants the
-        // former (GH#775).
+        // former.
         portalUrl = link ?: url,
         statusHistory = synthesizeStatusHistory(status, startDate, decidedDate),
         latestUnreadEvent = latestUnreadEvent?.toDomain(),
@@ -234,7 +233,7 @@ internal fun MapClusterDto.toDomain(): MapCluster =
 
 // A missing/unparseable createdAt drops just the unread indicator, not the
 // whole row — a stale or malformed event server-side shouldn't hide an
-// otherwise-good application (GH#775).
+// otherwise-good application.
 internal fun LatestUnreadEventDto.toDomain(): LatestUnreadEvent? =
     DotNetTimeParser.parse(createdAt)?.let { LatestUnreadEvent(type = type, decision = decision, createdAt = it) }
 
@@ -245,7 +244,7 @@ private fun resolveStatus(appState: String?): ApplicationStatus =
 
 // startDate is the primary source; lastDifferent (always present) is the
 // fallback for the rare row missing it — receivedDate is non-nullable
-// domain-side and must resolve to SOMETHING (GH#775).
+// domain-side and must resolve to SOMETHING.
 private fun resolveReceivedDate(
     startDate: String?,
     lastDifferent: String,
@@ -261,7 +260,7 @@ private fun resolveLocation(
 
 // Max two points: startDate -> Undecided, decidedDate -> the actual decided
 // status, but ONLY when that status really is decided — a decidedDate on a
-// still-Unresolved/Referred/etc. row is folded away (GH#775).
+// still-Unresolved/Referred/etc. row is folded away.
 private fun synthesizeStatusHistory(
     status: ApplicationStatus,
     startDate: String?,

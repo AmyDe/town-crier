@@ -15,12 +15,8 @@ import (
 // can route a map-pin tap straight to the application summary sheet with no
 // re-fetch.
 //
-// AuthoritySlug (GH#924 Phase 1) is populated ONLY by the anonymous clusters
-// handler (anonclusters.go): the anonymous client's only point-read is the
-// by-slug endpoint, and cluster members otherwise carry only the authority
-// area id, not its slug. omitempty keeps the authed watch-zone clusters
-// response byte-identical (that handler never sets it) — a parallel response
-// type would duplicate the whole Cluster shape for one field.
+// AuthoritySlug is set only by the anonymous clusters handler, whose client
+// reads by slug; omitempty keeps the authed clusters response unchanged.
 type PlanningApplicationID struct {
 	Authority     string `json:"authority"`
 	Name          string `json:"name"`

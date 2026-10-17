@@ -22,7 +22,6 @@ import uk.towncrierapp.domain.watchzones.WatchZoneRepository
 /**
  * Drives the Applications tab: zone chips, status/unread filter chips, sort
  * persistence, cursor-based infinite scroll, tap-to-read, and mark-all-read.
- * Port of iOS `ApplicationListViewModel` (GH#775).
  */
 public class ApplicationListViewModel(
     private val applicationRepository: PlanningApplicationRepository,
@@ -90,7 +89,7 @@ public class ApplicationListViewModel(
 
     /** Optimistically clears [application]'s unread state, then fires-and-forgets the mark-read request (errors swallowed). */
     @Suppress("SwallowedException")
-    // Fire-and-forget by design (GH#775): the optimistic local clear already
+    // Fire-and-forget by design: the optimistic local clear already
     // reflects the user's intent; a failed background sync isn't worth an
     // error banner the user didn't ask to see.
     public fun markAsRead(application: PlanningApplication) {

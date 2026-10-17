@@ -23,11 +23,7 @@ describe('SearchResultCard', () => {
     clipboard = new SpyClipboard();
   });
 
-  // `userEvent.setup()` installs its own clipboard stub on `navigator.clipboard`
-  // (testing-library/user-event's attachClipboardStubToView), unconditionally
-  // overwriting anything set beforehand — so the spy must be installed AFTER
-  // `userEvent.setup()`, not before, or clicks silently hit user-event's stub
-  // instead of this test's spy.
+  // `userEvent.setup()` overwrites `navigator.clipboard`, so the spy must be installed after it.
   function setupUserWithSpyClipboard() {
     const user = userEvent.setup();
     Object.defineProperty(navigator, 'clipboard', {

@@ -7,8 +7,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// BoundaryClusterQuery is FindClustersInBoundary's request descriptor
-// (GH#1031, tc-6he3x.5): the custom-shape zone's polygon (Boundary) replaces
+// BoundaryClusterQuery is FindClustersInBoundary's request descriptor: the custom-shape zone's polygon (Boundary) replaces
 // ClusterQuery's membership circle (Latitude, Longitude, RadiusMetres); the
 // viewport, grid size, status filter and coalesce threshold carry the same
 // meaning as ClusterQuery's.
@@ -107,8 +106,8 @@ const (
 	boundaryClusterQueryByStatus    = boundaryClusterQueryHead + "\n\t\tAND app_state = $8" + boundaryClusterQueryTail
 )
 
-// FindClustersInBoundary is FindClustersInZone's custom-shape counterpart
-// (GH#1031, tc-6he3x.5): grid-aggregated cluster bubbles for the viewport q,
+// FindClustersInBoundary is FindClustersInZone's custom-shape counterpart:
+// grid-aggregated cluster bubbles for the viewport q,
 // restricted to applications ST_Covers-contained in q.Boundary rather than
 // within a circle. The cell/centroid/status-breakdown/member-list shape is
 // identical to FindClustersInZone's Cluster rows; see FindClustersInZone and

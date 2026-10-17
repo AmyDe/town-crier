@@ -135,10 +135,6 @@ describe('ApiSearchPort', () => {
   });
 
   it('throws a friendly message when fetch itself fails (offline, DNS, CORS, etc.)', async () => {
-    // Real browsers throw an unfriendly, engine-specific message here — Chrome's
-    // "Failed to fetch", Firefox's "NetworkError when attempting to fetch
-    // resource", Safari's "Load failed" — none of which should reach an
-    // anonymous visitor of a public page verbatim.
     stub.shouldReject = true;
     stub.rejectError = new TypeError('Failed to fetch');
 

@@ -6,7 +6,6 @@ package uk.towncrierapp.domain.applications
  * `unreadOnly: Boolean` pair — "status AND unread" is unrepresentable BY
  * CONSTRUCTION (the server 400s if both are sent; this makes that combination
  * impossible to build in the first place, so no runtime guard is needed).
- * Port of iOS `ApplicationFilter` (GH#775).
  */
 public sealed interface ApplicationFilter {
     public data object All : ApplicationFilter

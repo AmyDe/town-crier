@@ -18,7 +18,7 @@ import java.io.IOException
 private val APPLICATIONS_LIST_SORT_KEY = stringPreferencesKey("applicationsListSort")
 private val LAST_SELECTED_ZONE_KEY = stringPreferencesKey("lastSelectedZone.applications")
 
-/** DataStore Preferences-backed [ApplicationListPreferencesStore]. Port of iOS's `UserDefaults`-backed equivalent (GH#775). */
+/** DataStore Preferences-backed [ApplicationListPreferencesStore]. */
 public class DataStoreApplicationListPreferencesStore(
     private val dataStore: DataStore<Preferences>,
 ) : ApplicationListPreferencesStore {

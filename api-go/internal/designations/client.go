@@ -1,5 +1,5 @@
 // Package designations owns the planning-designation feature: the GOV.UK
-// planning.data.gov.uk outbound client and GET /v1/designations (GH#418).
+// planning.data.gov.uk outbound client and GET /v1/designations.
 package designations
 
 import (
@@ -57,8 +57,7 @@ func NewClient(baseURL string, httpClient *http.Client) (*Client, error) {
 		return nil, fmt.Errorf("designations: parse base URL: %w", err)
 	}
 	configuredHost := u.Host // host:port or bare host; must match exactly
-	// Copy by value so we never mutate the caller's client (avoids data races
-	// when the same *http.Client is reused across multiple NewClient calls).
+	// Copy by value so the caller's shared client is never mutated.
 	hc := *httpClient
 	hc.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 		if req.URL.Host != configuredHost {
@@ -90,14 +89,9 @@ type entity struct {
 // failure, or a malformed body returns an error; the handler maps that to the
 // empty context (logging the failure and degrading gracefully).
 func (c *Client) Get(ctx context.Context, latitude, longitude float64) (Context, error) {
-	// WKT is "POINT(longitude latitude)" with invariant (shortest round-trip)
-	// formatting, percent-encoded via escapeDataString.
 	point := "POINT(" + strconv.FormatFloat(longitude, 'g', -1, 64) + " " + strconv.FormatFloat(latitude, 'g', -1, 64) + ")"
 	endpoint := c.baseURL + "/api/v1/entity.json?geometry_intersects=" + escapeDataString(point) + "&dataset=" + datasets
 
-	// gosec G704: the host is the trusted GovUkBaseURL config value; the query is
-	// built from parsed float coordinates and a fixed dataset list, so no
-	// attacker-controlled host can be reached — not an SSRF vector.
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil) //nolint:gosec // trusted config host + numeric coordinates
 	if err != nil {
 		return Context{}, fmt.Errorf("build designations request: %w", err)
@@ -123,9 +117,6 @@ func (c *Client) Get(ctx context.Context, latitude, longitude float64) (Context,
 	var parsed entityResponse
 	if err := json.Unmarshal(body, &parsed); err != nil {
 		return Context{}, fmt.Errorf("decode designations response: %w", err)
-	}
-	if len(parsed.Entities) == 0 {
-		return Context{}, nil
 	}
 	return mapContext(parsed.Entities), nil
 }

@@ -10,8 +10,7 @@ import java.time.LocalDate
  * [PlanningApplicationId.name], kept as its own field so the presentation
  * layer never has to reach into [id] to render the fields card. [location] is
  * `null` when the row carries no coordinate; [portalUrl] is `null` when
- * PlanIt has no external council-portal link for this application. Port of
- * iOS `PlanningApplication` (GH#775).
+ * PlanIt has no external council-portal link for this application.
  */
 public data class PlanningApplication(
     public val id: PlanningApplicationId,

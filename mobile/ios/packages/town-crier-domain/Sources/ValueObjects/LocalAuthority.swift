@@ -5,8 +5,7 @@ public struct LocalAuthority: Equatable, Hashable, Sendable {
   public let areaType: String?
   /// URL-safe slug for the public share surface (e.g. `"kingston"`), as emitted
   /// by the API on the detail/by-slug JSON. `nil` on list/zone payloads, which
-  /// omit it. Always supplied by the server — iOS never computes it
-  /// (GH #738 Slice 4).
+  /// omit it. Always supplied by the server; iOS never computes it.
   public let slug: String?
 
   public init(code: String, name: String, areaType: String? = nil, slug: String? = nil) {

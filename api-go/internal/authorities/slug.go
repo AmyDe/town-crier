@@ -2,11 +2,8 @@ package authorities
 
 import "strings"
 
-// apostropheStripper removes the ASCII apostrophe (') and the Unicode right
-// single quotation mark (U+2019) so possessive names slug cleanly:
-// "King's Lynn" -> "kings-lynn", not "king-s-lynn". This must run BEFORE the
-// non-alphanumeric collapse in Slugify, otherwise the apostrophe would itself
-// become a hyphen.
+// apostropheStripper removes ASCII ' and U+2019 so "King's Lynn" slugs to
+// "kings-lynn"; it must run before the non-alphanumeric collapse in Slugify.
 var apostropheStripper = strings.NewReplacer("'", "", "’", "")
 
 // Slugify converts an authority name into a lowercase-hyphenated URL slug. It is
@@ -20,10 +17,8 @@ var apostropheStripper = strings.NewReplacer("'", "", "’", "")
 //  4. collapse each maximal run of non-[a-z0-9] runes into a single "-";
 //  5. trim leading and trailing "-".
 //
-// Step 4 is Unicode-aware, matching the JS regex /[^a-z0-9]+/g: it iterates over
-// runes and keeps a rune only when it is an ASCII a-z or 0-9 (after lowercasing);
-// every other rune — accented letters, CJK, punctuation, whitespace — is a
-// separator. Iterating runes (not bytes) avoids splitting a multibyte character.
+// Step 4 matches the JS regex /[^a-z0-9]+/g over runes, so every non-ASCII rune
+// is a separator and a multibyte character is never split.
 func Slugify(name string) string {
 	lowered := strings.ToLower(name)
 	expanded := strings.ReplaceAll(lowered, "&", " and ")

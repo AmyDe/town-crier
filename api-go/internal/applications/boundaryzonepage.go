@@ -9,8 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// InBoundaryQuery is FindInBoundaryZonePage's request descriptor (GH#1031,
-// tc-acbsh): the custom-shape zone's polygon (Boundary, a closed ring,
+// InBoundaryQuery is FindInBoundaryZonePage's request descriptor: the custom-shape zone's polygon (Boundary, a closed ring,
 // [longitude, latitude]-ordered) replaces InZoneQuery's membership circle
 // (RadiusMetres) as the containment test; Latitude/Longitude are the polygon's
 // derived centroid, used ONLY to order SortDistance nearest-centroid-first
@@ -150,8 +149,7 @@ const (
 		boundaryActivityOrderBy
 )
 
-// FindInBoundaryZonePage is FindInZonePage's custom-shape counterpart
-// (GH#1031, tc-acbsh): one page of up to q.Limit applications ST_Covers-
+// FindInBoundaryZonePage is FindInZonePage's custom-shape counterpart: one page of up to q.Limit applications ST_Covers-
 // contained in q.Boundary, ordered by q.Sort and filtered by q.Status/
 // q.Unread, plus an opaque sort-and-filter-aware cursor for the next page
 // (empty when exhausted). It supports the same {distance, newest, oldest,
@@ -191,10 +189,7 @@ func (s *PostgresStore) FindInBoundaryZonePage(ctx context.Context, q InBoundary
 		return nil, "", fmt.Errorf("encode boundary geojson: %w", err)
 	}
 
-	// Filtered requests (a status value and/or the unread flag) take the
-	// dynamic builder, composing the status predicate and/or the unread INNER
-	// JOIN into the sort's query -- exactly as findFilteredZonePage does.
-	// Unfiltered requests stay on the proven per-sort constant queries above.
+	// Filtered requests take the dynamic builder; unfiltered ones use the per-sort constant queries.
 	if q.Status != "" || q.Unread {
 		return s.findFilteredBoundaryZonePage(ctx, q, boundaryJSON, c)
 	}

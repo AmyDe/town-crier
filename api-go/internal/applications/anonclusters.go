@@ -110,9 +110,6 @@ func (h *clustersHandler) clusters(w http.ResponseWriter, r *http.Request) {
 // sensible default: an absent, non-integer, or out-of-range value is a clean
 // 400, mirroring watchzones' parseZoom.
 func parseClustersZoom(raw string) (float64, bool) {
-	if raw == "" {
-		return 0, false
-	}
 	z, err := strconv.Atoi(raw)
 	if err != nil {
 		return 0, false

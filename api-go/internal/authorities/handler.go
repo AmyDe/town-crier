@@ -10,14 +10,6 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/httputil"
 )
 
-// authorityStore is the consumer-side view the handler needs. The concrete
-// *staticStore satisfies it structurally; tests can substitute a fake.
-type authorityStore interface {
-	all() []Authority
-	byID(id int) (Authority, bool)
-}
-
-// listItem is one entry in the GET /v1/authorities response.
 type listItem struct {
 	ID       int    `json:"id"`
 	Name     string `json:"name"`
@@ -46,15 +38,13 @@ type detailResult struct {
 func Routes(mux *http.ServeMux, logger *slog.Logger) {
 	h := handler{store: newStaticStore(), logger: logger}
 	mux.HandleFunc("GET /v1/authorities", h.list)
-	// Trailing slash: GET /v1/authorities/ should also serve the list. Go's mux
-	// treats it as a distinct path that {id} will not match, so register it
-	// explicitly.
+	// Go's mux treats the trailing-slash path as distinct and {id} will not match it.
 	mux.HandleFunc("GET /v1/authorities/{$}", h.list)
 	mux.HandleFunc("GET /v1/authorities/{id}", h.byID)
 }
 
 type handler struct {
-	store  authorityStore
+	store  *staticStore
 	logger *slog.Logger
 }
 
@@ -79,10 +69,7 @@ func (h handler) list(w http.ResponseWriter, r *http.Request) {
 func (h handler) byID(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(r.PathValue("id"))
 	if err != nil {
-		// Non-integer id: Go's {id} wildcard matches any segment, so the handler
-		// self-denies non-ints with the same 401 challenge the auth middleware
-		// would emit — the PascalCase envelope is backfilled downstream by
-		// middleware.ErrorBody.
+		// {id} matches any segment; a non-int id gets the same 401 challenge the auth middleware emits.
 		auth.Challenge(w)
 		return
 	}
@@ -111,9 +98,7 @@ func (h handler) writeJSON(r *http.Request, w http.ResponseWriter, v any) {
 	}
 }
 
-// containsOrdinalIgnoreCase mirrors string.Contains(value, search,
-// StringComparison.OrdinalIgnoreCase) for ASCII data: a case-insensitive
-// substring test.
+// containsOrdinalIgnoreCase reports whether substr is within s, ignoring ASCII case.
 func containsOrdinalIgnoreCase(s, substr string) bool {
 	return strings.Contains(strings.ToUpper(s), strings.ToUpper(substr))
 }

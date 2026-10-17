@@ -3,7 +3,6 @@ import type { PostcodeLookupPort } from '../../../domain/ports/postcode-lookup-p
 import type { SearchLocation } from '../../../domain/ports/search-port';
 import { extractErrorMessage } from '../../../utils/extractErrorMessage';
 
-/** Debounce window between the last postcode keystroke and the client-side lookup. */
 const POSTCODE_DEBOUNCE_MS = 400;
 /** Shortest valid UK postcode ("M1 1AE" without its space) — avoids firing on every keystroke. */
 const MIN_POSTCODE_LENGTH = 5;

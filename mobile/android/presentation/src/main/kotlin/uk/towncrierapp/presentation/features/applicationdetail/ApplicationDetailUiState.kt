@@ -9,8 +9,7 @@ import uk.towncrierapp.domain.auth.DomainError
  * never a blank/loading flash) and is replaced once [ApplicationDetailViewModel.refresh]'s
  * by-id fetch completes. [canShare] is only true once that fetch has supplied
  * an `authoritySlug` — share needs the by-slug identity, which list/saved
- * rows never carry. Port of iOS `ApplicationDetailViewModel`'s published
- * state (GH#775).
+ * rows never carry.
  */
 public data class ApplicationDetailUiState(
     val application: PlanningApplication,

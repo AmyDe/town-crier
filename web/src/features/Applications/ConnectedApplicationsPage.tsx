@@ -12,21 +12,19 @@ export function ConnectedApplicationsPage() {
   const browsePort: ApplicationsBrowsePort = useMemo(
     () => ({
       fetchByZone: (query) =>
-        applicationsApi(client).getByZonePaged(query.zoneId as string, {
+        applicationsApi(client).getByZonePaged(query.zoneId, {
           sort: query.sort,
           status: query.status,
           unread: query.unread,
           cursor: query.cursor,
         }),
-      // Whole-zone unread total for the "Unread (N)" chip: exhaust the
-      // unread-only paged query (following X-Next-Cursor) and sum the rows.
-      // Unread sets are small, so this is typically a single request; `sort` is
-      // irrelevant to a count. Independent of the main list's pagination.
+      // Whole-zone unread total: exhausts the unread-only paged query (following
+      // X-Next-Cursor); `sort` is irrelevant to a count.
       countUnread: async (zoneId) => {
         let total = 0;
         let cursor: string | null = null;
         do {
-          const page = await applicationsApi(client).getByZonePaged(zoneId as string, {
+          const page = await applicationsApi(client).getByZonePaged(zoneId, {
             sort: 'newest',
             status: null,
             unread: true,

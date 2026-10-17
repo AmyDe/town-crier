@@ -23,7 +23,7 @@ import java.time.Duration
  * back to, the original error propagates unchanged (so a genuine offline
  * failure surfaces as [DomainError.NetworkUnavailable], not something
  * misleading). [detail] is a plain, uncached pass-through — only the zone
- * application list is cached. Port of iOS `OfflineAwareRepository` (GH#775).
+ * application list is cached.
  */
 public class OfflineAwareRepository(
     private val remote: PlanningApplicationRepository,

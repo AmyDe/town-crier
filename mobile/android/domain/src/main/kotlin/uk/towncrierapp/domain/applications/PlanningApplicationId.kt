@@ -6,9 +6,8 @@ package uk.towncrierapp.domain.applications
  * `"24/0001"` — itself routinely containing further slashes). [value] is the
  * canonical `"authority/name"` wire encoding used as the saved-applications
  * path segment (percent-encoded there — see `ApiSavedApplicationRepository`)
- * and as the reconstruction key for saved-application rows (GH#775; tc-jjl4:
- * saved-state comparison must use this reconstructed id, not a raw uid
- * string). Port of iOS `PlanningApplicationId`.
+ * and as the reconstruction key for saved-application rows (saved-state
+ * comparison must use this reconstructed id, not a raw uid string).
  */
 public data class PlanningApplicationId(
     public val authority: String,
