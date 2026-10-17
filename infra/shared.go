@@ -514,6 +514,8 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 
 	// The action group lives in the shared stack because the log alerts that use it query the
 	// shared workspace. The prod stack reads it through the exported actionGroupId.
+	// There is deliberately no Azure app push receiver: the alert triage routine pushes only
+	// when the owner must act, and email keeps the record of every alert.
 	actionGroupArgs := &monitor.ActionGroupArgs{
 		ActionGroupName:   pulumi.String("ag-town-crier-shared"),
 		ResourceGroupName: resourceGroup.Name,
@@ -525,12 +527,6 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 				Name:                 pulumi.String("owner"),
 				EmailAddress:         pulumi.String(alertEmail),
 				UseCommonAlertSchema: pulumi.Bool(true),
-			},
-		},
-		AzureAppPushReceivers: monitor.AzureAppPushReceiverArray{
-			monitor.AzureAppPushReceiverArgs{
-				Name:         pulumi.String("owner-app"),
-				EmailAddress: pulumi.String("amy@salter.uk"),
 			},
 		},
 		Tags: tags,
