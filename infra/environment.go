@@ -149,6 +149,9 @@ type envContext struct {
 	appInsightsConnectionString pulumi.StringOutput
 	acsConnectionString         pulumi.StringOutput
 	apnsAuthKey                 pulumi.StringOutput
+	appStoreServerAPIKey        pulumi.StringOutput
+	appStoreServerAPIKeyID      string
+	appStoreServerAPIIssuerID   string
 	apnsUseSandbox              string
 	fcmProjectID                string
 	fcmServiceAccountJSON       pulumi.StringOutput
@@ -195,6 +198,10 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 	if env == "dev" {
 		apnsUseSandbox = "true"
 	}
+
+	appStoreServerAPIKey := conf.RequireSecret("appStoreServerAPIKey")
+	appStoreServerAPIKeyID := conf.Require("appStoreServerAPIKeyID")
+	appStoreServerAPIIssuerID := conf.Require("appStoreServerAPIIssuerID")
 
 	// FCM (Firebase Cloud Messaging) for Android push. ServiceAccountJSON is the full
 	// service-account key JSON (secret, mirrors how apnsAuthKey carries the .p8); ProjectID is
@@ -323,6 +330,9 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 		acsConnectionString:         acsConnectionString,
 		apnsAuthKey:                 apnsAuthKey,
 		apnsUseSandbox:              apnsUseSandbox,
+		appStoreServerAPIKey:        appStoreServerAPIKey,
+		appStoreServerAPIKeyID:      appStoreServerAPIKeyID,
+		appStoreServerAPIIssuerID:   appStoreServerAPIIssuerID,
 		fcmProjectID:                fcmProjectID,
 		fcmServiceAccountJSON:       fcmServiceAccountJSON,
 		auth0Domain:                 auth0Domain,
@@ -515,6 +525,9 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 	if err = createWorkerJob(ctx, ec, "subscription-sweep", "30 4 * * *", 600, "subscription-sweep"); err != nil {
 		return err
 	}
+	if err = createWorkerJob(ctx, ec, "appstore-reconcile", "15 */6 * * *", 600, "appstore-reconcile"); err != nil {
+		return err
+	}
 	// pg-purge — daily at 02:00 UTC. Replaces the Cosmos per-document TTLs: runs
 	// WORKER_MODE=pg-purge which calls Postgres PurgeOlderThan to enforce the 90-day
 	// (Notifications) and 180-day (DeviceRegistrations) retention defaults (memo 0010 / GH #669).
@@ -607,6 +620,10 @@ func createWorkerJob(ctx *pulumi.Context, ec envContext, nameSuffix, cronExpress
 			&app.SecretArgs{Name: pulumi.String("auth0-m2m-client-id"), Value: ec.auth0M2mClientID},
 			&app.SecretArgs{Name: pulumi.String("auth0-m2m-client-secret"), Value: ec.auth0M2mClientSecret},
 		)
+	}
+
+	if workerMode == "appstore-reconcile" {
+		secrets = append(secrets, &app.SecretArgs{Name: pulumi.String("appstore-server-api-key"), Value: ec.appStoreServerAPIKey})
 	}
 
 	if workerMode == "subscription-sweep" && ec.subscriptionWebhooks != nil {
@@ -725,6 +742,22 @@ func addGoWorkerEnv(envVars app.EnvironmentVarArray, ec envContext, workerMode s
 			app.EnvironmentVarArgs{Name: pulumi.String("AUTH0_DOMAIN"), Value: pulumi.String(ec.auth0Domain)},
 			app.EnvironmentVarArgs{Name: pulumi.String("AUTH0_M2M_CLIENT_ID"), SecretRef: pulumi.String("auth0-m2m-client-id"), Value: pulumi.String("")},
 			app.EnvironmentVarArgs{Name: pulumi.String("AUTH0_M2M_CLIENT_SECRET"), SecretRef: pulumi.String("auth0-m2m-client-secret"), Value: pulumi.String("")},
+		)
+	}
+
+	if workerMode == "appstore-reconcile" {
+		appStoreEnvironment := "Production"
+		if ec.env == "dev" {
+			appStoreEnvironment = "Sandbox"
+		}
+		envVars = append(envVars,
+			app.EnvironmentVarArgs{Name: pulumi.String("APPSTORE_RECONCILE_ENABLED"), Value: pulumi.String("true")},
+			app.EnvironmentVarArgs{Name: pulumi.String("APPSTORE_SERVER_API_KEY"), SecretRef: pulumi.String("appstore-server-api-key"), Value: pulumi.String("")},
+			app.EnvironmentVarArgs{Name: pulumi.String("APPSTORE_SERVER_API_KEY_ID"), Value: pulumi.String(ec.appStoreServerAPIKeyID)},
+			app.EnvironmentVarArgs{Name: pulumi.String("APPSTORE_SERVER_API_ISSUER_ID"), Value: pulumi.String(ec.appStoreServerAPIIssuerID)},
+			app.EnvironmentVarArgs{Name: pulumi.String("APPSTORE_SERVER_API_ENVIRONMENT"), Value: pulumi.String(appStoreEnvironment)},
+			app.EnvironmentVarArgs{Name: pulumi.String("APPSTORE_RECONCILE_APPLY_ENABLED"), Value: pulumi.String("false")},
+			app.EnvironmentVarArgs{Name: pulumi.String("APPSTORE_RECONCILE_LOOKBACK_HOURS"), Value: pulumi.String("30")},
 		)
 	}
 
