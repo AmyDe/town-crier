@@ -1049,6 +1049,23 @@ expected
 		return err
 	}
 
+	const appStoreReconcileGapQuery = `AppDependencies
+| where Name == "App Store Reconcile Cycle"
+| where tostring(Properties["deployment.environment"]) == "prod"
+| where toint(Properties["appstore_reconcile.gaps_count"]) > 0`
+	if err = createLogAlert(ctx, resourceGroup, logAnalytics.ID(), actionGroup, tags, logAlertSpec{
+		name:        "alert-appstore-reconcile-gap-shared",
+		displayName: "App Store reconcile found missed notifications (prod)",
+		description: "An App Store reconcile cycle found Apple notifications that were never recorded as processed. See GH #1011.",
+		severity:    2,
+		window:      "PT12H",
+		freq:        "PT30M",
+		query:       appStoreReconcileGapQuery,
+		threshold:   0,
+	}); err != nil {
+		return err
+	}
+
 	// Share-page bot-filtered volume by slug (tc-kg77x / GH #1020). Analytics-layer only: two
 	// saved KQL functions over existing AppRequests telemetry, no new logging or stored data.
 	if err = createSharePageAnalytics(ctx, resourceGroup, logAnalytics); err != nil {
