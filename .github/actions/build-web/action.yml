@@ -41,9 +41,6 @@ inputs:
   vite-auth0-audience:
     description: VITE_AUTH0_AUDIENCE — Auth0 API audience
     required: true
-  vite-applicationinsights-connection-string:
-    description: VITE_APPLICATIONINSIGHTS_CONNECTION_STRING — App Insights connection string
-    required: true
   site-build-key:
     description: SITE_BUILD_KEY — build key for the gated SEO prerender endpoint (empty = SPA-only, prerender skips)
     required: false
@@ -94,7 +91,6 @@ runs:
         VITE_AUTH0_DOMAIN: ${{ inputs.vite-auth0-domain }}
         VITE_AUTH0_CLIENT_ID: ${{ inputs.vite-auth0-client-id }}
         VITE_AUTH0_AUDIENCE: ${{ inputs.vite-auth0-audience }}
-        VITE_APPLICATIONINSIGHTS_CONNECTION_STRING: ${{ inputs.vite-applicationinsights-connection-string }}
         SITE_BUILD_KEY: ${{ inputs.site-build-key }}
         SEO_TOWN_MIN_POPULATION: ${{ inputs.seo-town-min-population }}
 
@@ -111,7 +107,6 @@ runs:
         VITE_AUTH0_DOMAIN: ${{ inputs.vite-auth0-domain }}
         VITE_AUTH0_CLIENT_ID: ${{ inputs.vite-auth0-client-id }}
         VITE_AUTH0_AUDIENCE: ${{ inputs.vite-auth0-audience }}
-        VITE_APPLICATIONINSIGHTS_CONNECTION_STRING: ${{ inputs.vite-applicationinsights-connection-string }}
         SITE_BUILD_KEY: ""
         SEO_TOWN_MIN_POPULATION: ${{ inputs.seo-town-min-population }}
 
