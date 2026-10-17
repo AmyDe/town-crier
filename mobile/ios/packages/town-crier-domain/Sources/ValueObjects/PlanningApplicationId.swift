@@ -3,7 +3,7 @@
 ///
 /// Using a struct of two fields rather than a single concatenated string keeps
 /// the parts inseparable at the type level and eliminates the ambiguity between
-/// a bare case reference and an authority-prefixed variant (tc-dzwo.1).
+/// a bare case reference and an authority-prefixed variant.
 public struct PlanningApplicationId: Equatable, Hashable, Sendable {
   /// The local authority area ID, expressed as a decimal string (e.g. `"42"`).
   public let authority: String
