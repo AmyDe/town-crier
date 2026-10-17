@@ -54,7 +54,6 @@ function renderPage({
   );
 }
 
-/** Convenience: a single-page result (no further pages). */
 function onePage(rows: readonly PlanningApplicationSummary[]) {
   return { rows, nextCursor: null };
 }

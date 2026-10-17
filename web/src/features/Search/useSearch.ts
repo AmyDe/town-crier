@@ -3,7 +3,6 @@ import type { SearchLocation, SearchPort } from '../../domain/ports/search-port'
 import type { SearchResult } from '../../domain/types';
 import { extractErrorMessage } from '../../utils/extractErrorMessage';
 
-/** Debounce window between the last keystroke and firing the search call. */
 const SEARCH_DEBOUNCE_MS = 400;
 
 interface SearchState {

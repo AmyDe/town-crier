@@ -89,10 +89,6 @@ export function ApplicationsPage({
     }
   }
 
-  function handleUnreadClick() {
-    setUnreadOnly(!unreadOnly);
-  }
-
   function handleSortChange(value: string) {
     if (isApplicationsSort(value)) {
       setSort(value);
@@ -146,7 +142,7 @@ export function ApplicationsPage({
                   type="button"
                   className={`${styles.chip} ${unreadOnly ? styles.chipPressed : ''}`}
                   aria-pressed={unreadOnly}
-                  onClick={handleUnreadClick}
+                  onClick={() => setUnreadOnly(!unreadOnly)}
                 >
                   Unread ({unreadCount})
                 </button>
