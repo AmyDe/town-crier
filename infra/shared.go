@@ -786,21 +786,9 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		}
 	}
 
-	// Container Apps jobs — one failed-execution alert per prod job, generated via a loop over
-	// a per-job spec slice (rather than seven copy-pasted blocks), same "same alert shape,
-	// per-item tunables" idiom as postgresAlertSpec above. Scopes are constructed ARM IDs: these
-	// jobs live in the prod stack (infra/environment.go, createWorkerJob), named
-	// job-tc-<name>-prod.
-	//
-	// All seven jobs share the default shape (WindowSize PT30M, Threshold GreaterThan 0 — fires
-	// on any single Failed execution). "poll" briefly carried a widened PT6H/threshold>1 window
-	// (tc-k5c9w, alert-noise audit 2026-07-23) because its exit code conflated isolated
-	// self-healing PlanIt fetch hiccups with genuine failures, making single-execution alerting
-	// too noisy (13 firings/30d). tc-uitxr (shipped to prod 2026-08-13) fixed that at the
-	// source — poll-cycle lane errors are now classified by origin so exit 1 only fires on
-	// genuine Postgres/state-store failures — so tc-8dg4a reverted "poll" back to the default
-	// single-failure sensitivity: a real DB problem should page fast, not wait for a second
-	// failure within 6 hours.
+	// Scopes are constructed ARM IDs because the jobs live in the prod stack (createWorkerJob in
+	// infra/environment.go). Each entry must name a job that still exists: Azure silently
+	// disables an alert whose scope is deleted, which then shows up as drift.
 	type failedExecutionJobSpec struct {
 		name       string
 		windowSize string
@@ -808,7 +796,6 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 	}
 	prodFailedExecutionJobs := []failedExecutionJobSpec{
 		{name: "poll", windowSize: "PT30M", threshold: 0},
-		{name: "poll-bootstrap", windowSize: "PT30M", threshold: 0},
 		{name: "digest", windowSize: "PT30M", threshold: 0},
 		{name: "digest-hourly", windowSize: "PT30M", threshold: 0},
 		{name: "dormant-cleanup", windowSize: "PT30M", threshold: 0},
