@@ -62,11 +62,11 @@ async function fetchOrigin(target: string, env: Env, deps: Deps): Promise<Origin
   }
 }
 
-// The API answers a wrong X-Build-Key with a bodyless 404, while a real unknown page
-// is a rendered 404. Treat the bodyless one as an origin failure so a key mismatch
-// serves the stale copy or a 503 instead of caching 404 over every page.
+// A real unknown page is a text/html 404. The API answers a wrong X-Build-Key with a
+// bodyless 404 that its ErrorBody middleware fills with a JSON envelope, so any non-HTML
+// 404 is a key mismatch: serve the stale copy or a 503 instead of caching it.
 function isBuildKeyRejection(origin: OriginResponse): boolean {
-  return origin.status === 404 && origin.body.byteLength === 0;
+  return origin.status === 404 && !(origin.headers.get("Content-Type") ?? "").startsWith("text/html");
 }
 
 function cachedAgeSeconds(cached: Response, now: number): number {
