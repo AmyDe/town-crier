@@ -796,7 +796,6 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		{name: "digest-hourly", windowSize: "PT30M", threshold: 0},
 		{name: "dormant-cleanup", windowSize: "PT30M", threshold: 0},
 		{name: "subscription-sweep", windowSize: "PT30M", threshold: 0},
-		{name: "appstore-reconcile", windowSize: "PT30M", threshold: 0},
 		{name: "pg-purge", windowSize: "PT30M", threshold: 0},
 	}
 	for _, job := range prodFailedExecutionJobs {
@@ -1021,7 +1020,7 @@ expected
 		return err
 	}
 
-	const jobAbsenceDailyQuery = `let expected = datatable(JobSpan:string)["Digest Cycle", "Dormant Cleanup Cycle", "Subscription Sweep Cycle", "App Store Reconcile Cycle", "Postgres Purge Cycle"];
+	const jobAbsenceDailyQuery = `let expected = datatable(JobSpan:string)["Digest Cycle", "Dormant Cleanup Cycle", "Subscription Sweep Cycle", "Postgres Purge Cycle"];
 expected
 | join kind=leftouter (
     AppDependencies
@@ -1033,7 +1032,7 @@ expected
 	if err = createLogAlert(ctx, resourceGroup, logAnalytics.ID(), actionGroup, tags, logAlertSpec{
 		name:        "alert-worker-absence-daily-prod",
 		displayName: "Daily worker cycle absent (prod)",
-		description: "A prod job expected to run at least daily (digest, dormant-cleanup, subscription-sweep, appstore-reconcile, or pg-purge) produced no AppDependencies span in the last 24 hours. Dimensioned by JobSpan so the fired alert names the missing job.",
+		description: "A prod job expected to run at least daily (digest, dormant-cleanup, subscription-sweep, or pg-purge) produced no AppDependencies span in the last 24 hours. Dimensioned by JobSpan so the fired alert names the missing job.",
 		severity:    2,
 		window:      "P1D",
 		freq:        "PT1H",
