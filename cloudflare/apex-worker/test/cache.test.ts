@@ -11,6 +11,13 @@ function page(body: string, status = 200): Response {
   });
 }
 
+function buildKeyRejection(): Response {
+  return new Response('{"Status":404,"Title":"Not Found","Detail":null}', {
+    status: 404,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
 async function primeCache(body = "cached page") {
   const fetch = new FakeFetch(async () => page(body));
   const harness = makeDeps({ fetch });
@@ -60,7 +67,7 @@ describe("edge cache", () => {
       if (url.endsWith("/wrexham/wrexham")) {
         return new Response(null, { status: 301, headers: { Location: "https://towncrierapp.uk/planning/wrexham" } });
       }
-      if (url.endsWith("/missing")) return new Response("nope", { status: 404 });
+      if (url.endsWith("/missing")) return page("nope", 404);
       return new Response("gone", { status: 410 });
     });
     const { cache, ctx, deps } = makeDeps({ fetch });
@@ -121,6 +128,32 @@ describe("edge cache", () => {
     const response = await handle(new Request(PAGE), env, deps);
 
     expect(response.headers.get("x-tc-stale")).toBe("1");
+  });
+
+  it("serves stale copy instead of a build-key 404", async () => {
+    const { fetch, clock, ctx, cache, deps } = await primeCache();
+    clock.advanceSeconds(7_200);
+    fetch.respondWith(async () => buildKeyRejection());
+
+    const response = await handle(new Request(PAGE), env, deps);
+    await ctx.settle();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-tc-stale")).toBe("1");
+    expect(await response.text()).toBe("cached page");
+    expect(await cache.store.get(PAGE)!.clone().text()).toBe("cached page");
+  });
+
+  it("returns 503 for a build-key 404 with no copy", async () => {
+    const fetch = new FakeFetch(async () => buildKeyRejection());
+    const { cache, ctx, deps } = makeDeps({ fetch });
+
+    const response = await handle(new Request(PAGE), env, deps);
+    await ctx.settle();
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("Retry-After")).toBe("60");
+    expect(cache.puts).toHaveLength(0);
   });
 
   it("returns 503 when origin fails and no copy", async () => {

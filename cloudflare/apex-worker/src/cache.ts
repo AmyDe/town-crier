@@ -23,7 +23,7 @@ export async function fetchSeo(url: URL, env: Env, deps: Deps): Promise<Response
   }
 
   const origin = await fetchOrigin(new URL(env.API_ORIGIN).origin + url.pathname, env, deps);
-  if (origin && origin.status < 500) {
+  if (origin && origin.status < 500 && !isBuildKeyRejection(origin)) {
     if (CACHEABLE_STATUSES.has(origin.status)) {
       deps.waitUntil(deps.cache.put(key, toStoredCopy(origin, deps.now())));
     }
@@ -60,6 +60,13 @@ async function fetchOrigin(target: string, env: Env, deps: Deps): Promise<Origin
   } finally {
     clearTimeout(timer);
   }
+}
+
+// A real unknown page is a text/html 404. The API answers a wrong X-Build-Key with a
+// bodyless 404 that its ErrorBody middleware fills with a JSON envelope, so any non-HTML
+// 404 is a key mismatch: serve the stale copy or a 503 instead of caching it.
+function isBuildKeyRejection(origin: OriginResponse): boolean {
+  return origin.status === 404 && !(origin.headers.get("Content-Type") ?? "").startsWith("text/html");
 }
 
 function cachedAgeSeconds(cached: Response, now: number): number {
