@@ -113,7 +113,7 @@ AppDependencies
 ```
 - Executions `Succeeded`, about one per hour. Overlapping runs exit 0 on the lease, so a run with no span and a fast exit is fine occasionally.
 - No `PlanIt poll run` span for 2h in a row is ❌ (job disabled, lease stuck for its 65 min TTL, or a crash before the span).
-- `stop_reason` `forbidden` or `error` repeating is ❌. `no_work` at night means every window is complete, which is the good outcome.
+- `stop_reason` `forbidden` or `error` repeating is ❌. `no_work` at night means every window is complete, which is the good outcome. `hourly_cap` at night means the run used its 15 calls for the rolling hour and the next run carries on; it is ⚠️ only on the 05:00 UTC run or later, when the night work should be done.
 
 ### 3. Alert band verified (the core check)
 Every alert-band window (ages 0 to 14) should have completed a read since 18:00 Europe/London of the night that just ended. Read-only, against Postgres:
@@ -203,4 +203,4 @@ State the current **London time and whether it is inside the night window (18:00
 
 End with 1 to 3 watch items and one recommendation line. Keep prose under 200 words.
 
-**Never flag as problems on their own:** a few 429s, backoff, an hourly cadence, a run stopping on `run_budget` or `no_work`, a quiet daytime, quiet-hours `pending` events, or a `PlanIt` timeout share that is flat. Escalate a 429 only when the first request after a backoff came before its `Retry-After`. Never make a live PlanIt call as part of this check: the hard limits in `POLLING.md` apply, and the call log already holds the facts.
+**Never flag as problems on their own:** a few 429s, backoff, an hourly cadence, a run stopping on `run_budget`, `hourly_cap` or `no_work`, a quiet daytime, quiet-hours `pending` events, or a `PlanIt` timeout share that is flat. Escalate a 429 only when the first request after a backoff came before its `Retry-After`. Never make a live PlanIt call as part of this check: the hard limits in `POLLING.md` apply, and the call log already holds the facts.
