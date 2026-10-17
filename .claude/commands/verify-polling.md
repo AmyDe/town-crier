@@ -113,7 +113,7 @@ AppDependencies
 ```
 - Executions `Succeeded`, about one per hour. Overlapping runs exit 0 on the lease, so a run with no span and a fast exit is fine occasionally.
 - No `PlanIt poll run` span for 2h in a row is ❌ (job disabled, lease stuck for its 65 min TTL, or a crash before the span).
-- `stop_reason` `forbidden` or `error` repeating is ❌. `no_work` at night means every window is complete, which is the good outcome. `hourly_cap` at night means the run used its 15 calls for the rolling hour and the next run carries on; it is ⚠️ only on the 05:00 UTC run or later, when the night work should be done.
+- `stop_reason` `forbidden` or `error` repeating is ❌. `no_work` at night means every window is complete, which is the good outcome. `hourly_cap` means the run used its 15 calls for the rolling hour and the next run carries on, at night or in the daytime. It is ⚠️ only on the 05:00 London run, the last night run, because then the night work did not finish.
 
 ### 3. Alert band verified (the core check)
 Every alert-band window (ages 0 to 14) should have completed a read since 18:00 Europe/London of the night that just ended. Read-only, against Postgres:

@@ -349,7 +349,7 @@ AppDependencies
 | summarize runs = count(), latest = max(TimeGenerated) by env, health, stop, reasons
 | order by env asc, runs desc
 ```
-`poll.health` is `ok`, `degraded` or `critical`, computed in Go from the database. Any `critical` (`forbidden`, `surge`) needs a person. A `poll.stop_reason` of `no_work`, `run_budget`, `daily_cap` or `hourly_cap` is normal. `hourly_cap` means the run sent its 15 calls and the next slot falls after its 55-minute budget, so the next run carries on; at night it is the usual stop until the windows are done. The poller's own tables (`planit_call`, `poll_window`, `application_event`, `poll_event`, `poll_oracle_diff`) are checked in `/verify-polling`.
+`poll.health` is `ok`, `degraded` or `critical`, computed in Go from the database. Any `critical` (`forbidden`, `surge`) needs a person. A `poll.stop_reason` of `no_work`, `run_budget`, `daily_cap` or `hourly_cap` is normal. `hourly_cap` means the run sent its 15 calls and the next slot falls after its 55-minute budget, so the next run carries on. It is the usual stop at night and after the morning delta batch. The poller's own tables (`planit_call`, `poll_window`, `application_event`, `poll_event`, `poll_oracle_diff`) are checked in `/verify-polling`.
 
 **4b. Failure detail**
 ```kql
@@ -372,7 +372,7 @@ Judge PlanIt by **the poll run's health**, not by the 429 count. The poller pace
 | 429s present, `poll.health` `degraded` with `alert_band_unverified` for more than a night | ❌ Finding. Poll is starved. |
 | 429s absent but no `PlanIt poll run` span in 2h | ❌ Finding. Job, lease or schedule is stuck. |
 | `poll.health` `critical` with `forbidden` (a 403) | ❌ Finding. Check the User-Agent first. A person must act. |
-| `poll.stop_reason == "hourly_cap"` on the 05:00 UTC run or later | ⚠️ Night work did not finish within 15 calls an hour. Check the alert band is verified. |
+| `poll.stop_reason == "hourly_cap"` on the 05:00 London run (the last night run) | ⚠️ Night work did not finish. Check the alert band is verified. |
 | `poll.stop_reason == "daily_cap"` before morning on several nights | ⚠️ Budget too tight. Compare prod 240 plus dev 60 against the operator's 300. |
 | Non-429 failures (5xx, timeouts, DNS) climbing | ❌ Finding. Upstream is genuinely unwell. |
 
