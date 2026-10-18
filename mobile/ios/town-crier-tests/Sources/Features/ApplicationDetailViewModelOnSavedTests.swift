@@ -4,8 +4,8 @@ import TownCrierDomain
 
 @testable import TownCrierPresentation
 
-/// Verifies the `onSaved` callback added for the review-prompt feature (GH #628)
-/// fires only on a successful false→true save — never on unsave or failure.
+/// Verifies `onSaved` fires only on a successful false→true save, never on
+/// unsave or failure.
 @Suite("ApplicationDetailViewModel — onSaved")
 @MainActor
 struct ApplicationDetailViewModelOnSavedTests {

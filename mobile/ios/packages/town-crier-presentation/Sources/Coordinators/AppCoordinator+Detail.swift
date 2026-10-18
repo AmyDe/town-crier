@@ -8,15 +8,15 @@ extension AppCoordinator {
   /// Presents the detail sheet synchronously from a row payload — bypasses the
   /// per-id fetch so the sheet appears instantly. The detail view model still
   /// runs `refresh()` in `.task` to keep saved-row snapshots fresh on the
-  /// server (bd tc-sslz, tc-udby). Also used by the map summary sheet's
-  /// "View full details" button (tc-1q07), which already holds the full object.
+  /// server. Also used by the map summary sheet's "View full details" button,
+  /// which already holds the full object.
   func showApplicationDetail(_ application: PlanningApplication) {
     isDetailApplicationAnonymous = false
     detailApplication = application
   }
 
   /// Presents the detail sheet in anonymous mode from an already-loaded
-  /// application (GH#879 Phase 2) — the anonymous map/summary sheet's "View
+  /// application — the anonymous map/summary sheet's "View
   /// full details" button. No network call, mirrors
   /// ``showApplicationDetail(_:)-(PlanningApplication)`` but flags the
   /// resulting detail view model as anonymous so
@@ -28,20 +28,15 @@ extension AppCoordinator {
   }
 
   func showApplicationDetail(_ id: PlanningApplicationId) {
-    // Cancel any in-flight detail load so rapid 4× taps from a digest
-    // email card collapse to a single presentation. Without this, multiple
-    // overlapping tasks could each mutate `detailApplication` after their
-    // `await` resumed, causing the sheet to flicker or fail to present
-    // (tc-dt3x).
+    // Cancel any in-flight detail load so rapid taps collapse to a single
+    // presentation instead of overlapping tasks each mutating `detailApplication`.
     pendingDetailLoad?.cancel()
     pendingDetailLoad = Task { [weak self] in
       guard let self else { return }
       do {
         let application = try await repository.fetchApplication(by: id)
-        // The cancellation above only cancels the prior `Task`, which has
-        // no effect on `try await` calls that don't check cooperatively.
-        // After the await resumes we must check `Task.isCancelled` so a
-        // superseded fetch does not stomp the latest tap's mutation.
+        // Cancellation doesn't interrupt a non-cooperative `await`, so a
+        // superseded fetch must not stomp the latest tap's mutation.
         guard !Task.isCancelled else { return }
         isDetailApplicationAnonymous = false
         detailApplication = application
@@ -93,7 +88,7 @@ extension AppCoordinator {
   }
 
   /// Test-only synchronisation: await the most recent
-  /// `showApplicationDetail` fetch. Replaces flaky `Task.sleep` waits.
+  /// `showApplicationDetail` fetch.
   public func waitForPendingDetailLoad() async {
     await pendingDetailLoad?.value
   }
@@ -123,9 +118,8 @@ extension AppCoordinator {
     viewModel.onDismiss = { [weak self] in
       self?.detailApplication = nil
     }
-    // Review-prompt value moments (GH #628): a portal tap-through and a save are
-    // both genuine engagement peaks. The save callback fires only on a
-    // successful false→true save (the view model guarantees this).
+    // The save callback fires only on a successful false→true save (the view
+    // model guarantees this).
     viewModel.onOpenPortal = { [weak self] _ in
       self?.reviewPromptTracker?.record(.tappedPortal)
     }
