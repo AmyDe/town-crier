@@ -423,7 +423,7 @@ const pgRecentNearPointSinceQuery = "SELECT " + appColumns +
 // recentNearPointWindowDays are tried in order before the unbounded query. A
 // window that fills the limit returns exactly the unbounded top-N, because
 // every excluded row sorts after every included one.
-var recentNearPointWindowDays = []int{90, 365}
+var recentNearPointWindowDays = []int{30, 90, 365}
 
 // RecentNearPoint returns up to limit applications within radiusMetres of
 // (latitude, longitude), ordered by RecentRealDateOrder (most-recently-decided,
