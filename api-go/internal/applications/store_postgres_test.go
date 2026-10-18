@@ -951,6 +951,40 @@ func TestPostgresStore_RecentNearPoint_OrdersByRealDateDescNullsLast(t *testing.
 	assertNames(t, appNames(capped), []string{"DECIDED-RECENT", "STARTED-ONLY"})
 }
 
+func TestPostgresStore_RecentNearPoint_DateWindowsMatchUnboundedOrder(t *testing.T) {
+	ctx := context.Background()
+	store := newAppPGStore(t)
+
+	today := time.Now().UTC().Truncate(24 * time.Hour)
+	daysAgo := func(name string, offset float64, days int) PlanningApplication {
+		a := at(pgApp(name, 100), offset)
+		a.StartDate = pgPtr(today.AddDate(0, 0, -days))
+		return a
+	}
+	apps := []PlanningApplication{
+		daysAgo("D10", 100, 10),
+		daysAgo("D40", 200, 40),
+		daysAgo("D200", 300, 200),
+		daysAgo("D500", 400, 500),
+		daysAgo("D900", 500, 900),
+		at(pgApp("NO-DATES", 100), 600),
+	}
+	for _, a := range apps {
+		if err := store.Upsert(ctx, a); err != nil {
+			t.Fatalf("Upsert %s: %v", a.Name, err)
+		}
+	}
+
+	all := []string{"D10", "D40", "D200", "D500", "D900", "NO-DATES"}
+	for limit := 1; limit <= len(all)+1; limit++ {
+		got, err := store.RecentNearPoint(ctx, pgCentreLat, pgCentreLon, 6000, limit)
+		if err != nil {
+			t.Fatalf("RecentNearPoint limit=%d: %v", limit, err)
+		}
+		assertNames(t, appNames(got), all[:min(limit, len(all))])
+	}
+}
+
 // TestPostgresStore_FindNearbyPage_TieBreak proves the planit_name tie-break
 // keeps keyset pagination correct when two applications share an exact distance.
 func TestPostgresStore_FindNearbyPage_TieBreak(t *testing.T) {

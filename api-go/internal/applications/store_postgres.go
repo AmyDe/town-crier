@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -409,6 +410,21 @@ const pgRecentNearPointQuery = "SELECT " + appColumns +
 	" FROM applications WHERE ST_DWithin(location, " + nearbyPoint + ", $3) " +
 	"ORDER BY " + RecentRealDateOrder + " LIMIT $4"
 
+// pgRecentNearPointSinceQuery adds a lower bound on the sort key so the planner
+// can AND the applications_real_date bitmap with the spatial one and fetch only
+// recent heap rows: an unbounded read in dense London does one random page read
+// per in-radius row, which exceeds nearPointTimeout on a cold cache. $5 is cast
+// to date so the predicate matches the index expression.
+const pgRecentNearPointSinceQuery = "SELECT " + appColumns +
+	" FROM applications WHERE ST_DWithin(location, " + nearbyPoint + ", $3) " +
+	"AND GREATEST(decided_date, start_date) >= $5::date " +
+	"ORDER BY " + RecentRealDateOrder + " LIMIT $4"
+
+// recentNearPointWindowDays are tried in order before the unbounded query. A
+// window that fills the limit returns exactly the unbounded top-N, because
+// every excluded row sorts after every included one.
+var recentNearPointWindowDays = []int{90, 365}
+
 // RecentNearPoint returns up to limit applications within radiusMetres of
 // (latitude, longitude), ordered by RecentRealDateOrder (most-recently-decided,
 // falling back to most-recently-submitted, NULLS LAST) — the near-point browse
@@ -416,15 +432,30 @@ const pgRecentNearPointQuery = "SELECT " + appColumns +
 // FindNearbyPage, which remains the sole paginated (?sort=distance) path; see
 // pgRecentNearPointQuery for why this one does not paginate.
 func (s *PostgresStore) RecentNearPoint(ctx context.Context, latitude, longitude, radiusMetres float64, limit int) ([]PlanningApplication, error) {
-	rows, err := s.db.Query(ctx, pgRecentNearPointQuery, longitude, latitude, radiusMetres, limit)
-	if err != nil {
-		return nil, fmt.Errorf("recent applications near (%v, %v): %w", latitude, longitude, err)
+	today := time.Now().UTC().Truncate(24 * time.Hour)
+	for _, days := range recentNearPointWindowDays {
+		since := today.AddDate(0, 0, -days).Format(time.DateOnly)
+		apps, err := s.queryApps(ctx, pgRecentNearPointSinceQuery, pgx.QueryExecModeExec, longitude, latitude, radiusMetres, limit, since)
+		if err != nil {
+			return nil, fmt.Errorf("recent applications near (%v, %v) since %s: %w", latitude, longitude, since, err)
+		}
+		if len(apps) >= limit {
+			return apps, nil
+		}
 	}
-	apps, err := pgx.CollectRows(rows, scanAppRow)
+	apps, err := s.queryApps(ctx, pgRecentNearPointQuery, pgx.QueryExecModeExec, longitude, latitude, radiusMetres, limit)
 	if err != nil {
 		return nil, fmt.Errorf("recent applications near (%v, %v): %w", latitude, longitude, err)
 	}
 	return apps, nil
+}
+
+func (s *PostgresStore) queryApps(ctx context.Context, query string, args ...any) ([]PlanningApplication, error) {
+	rows, err := s.db.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, scanAppRow)
 }
 
 // seoNearbyPoint is the query point for the authority-scoped SEO spatial reads,
