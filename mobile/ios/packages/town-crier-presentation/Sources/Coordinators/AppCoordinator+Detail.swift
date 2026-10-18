@@ -118,8 +118,6 @@ extension AppCoordinator {
     viewModel.onDismiss = { [weak self] in
       self?.detailApplication = nil
     }
-    // The save callback fires only on a successful false→true save (the view
-    // model guarantees this).
     viewModel.onOpenPortal = { [weak self] _ in
       self?.reviewPromptTracker?.record(.tappedPortal)
     }
