@@ -1,24 +1,12 @@
 import Foundation
 import TownCrierDomain
 
-/// Foreground badge sync + push-tap per-application mark-read (tc-0sfx.3).
-///
-/// See ADR 0035 (`docs/adr/0035-per-application-notification-read-state.md`).
-///
-/// Both flows are deliberately fire-and-forget:
-///
-/// - `syncBadge` runs whenever the scene enters the foreground. A failure
-///   leaves the existing OS-level badge in place; the next foreground entry
-///   will retry.
-/// - the push-tap mark-read runs immediately after a push deep-link is routed,
-///   and on success reconciles the OS badge from the server right away rather
-///   than waiting on the next scenePhase `syncBadge()` (tc-4x8e0). Marking
-///   read is idempotent, so a transient failure is acceptable — a later
-///   `fetchState` reconciles.
+/// Foreground badge sync and push-tap mark-read. Both are deliberately
+/// fire-and-forget: a failure leaves the OS badge as it was, and the next
+/// foreground `syncBadge()` or `fetchState` reconciles it.
 extension AppCoordinator {
-  /// Fetches the current `NotificationState` and pushes `totalUnreadCount`
-  /// into the application icon badge. Best-effort — errors are swallowed and
-  /// logged; the badge is left untouched on failure.
+  /// Sets the app icon badge to the server's `totalUnreadCount`. Best-effort:
+  /// errors are logged and the badge is left untouched.
   public func syncBadge() async {
     let task: Task<Void, Never> = Task { [weak self] in
       await self?.performBadgeSync()
@@ -27,11 +15,8 @@ extension AppCoordinator {
     await task.value
   }
 
-  /// Single entry point for push-notification taps. Parses the APNs `userInfo`
-  /// payload; when it carries an application deep link, routes to that
-  /// application's detail AND marks it read (tapping the push means the user
-  /// has seen it — ADR 0035). A push with no application deep link (e.g. a
-  /// digest push) simply no-ops: there is no single application to mark.
+  /// Routes a push tap's application deep link and marks that application
+  /// read. A push without one (e.g. a digest push) no-ops.
   public func handlePushTap(userInfo: [AnyHashable: Any]) {
     guard let deepLink = NotificationPayloadParser.parseDeepLink(from: userInfo) else {
       return
@@ -42,16 +27,9 @@ extension AppCoordinator {
     }
   }
 
-  /// Marks the deep-linked application read via the composite
-  /// `(applicationUid, authorityId)`. `applicationUid` is the bare PlanIt ref
-  /// (`id.name`); `authorityId` is `id.authority` (which is
-  /// `String(authorityId)`) converted back to `Int`. A non-numeric authority
-  /// no-ops. Stored as `pendingApplicationMarkRead` so tests can await it;
-  /// production is fire-and-forget. On success, reconciles the OS badge from
-  /// the server via `performBadgeSync()` rather than leaving it to race the
-  /// next scenePhase-triggered `syncBadge()` (tc-4x8e0). A failed mark-read
-  /// leaves the badge untouched — a retry or the next foreground sync
-  /// reconciles.
+  /// `id.authority` is `String(authorityId)`, so it is parsed back to `Int`;
+  /// a non-numeric authority no-ops. On success the badge is reconciled
+  /// immediately rather than racing the next scenePhase `syncBadge()`.
   private func markPushedApplicationRead(_ id: PlanningApplicationId) {
     guard let notificationStateRepository, let authorityId = Int(id.authority) else {
       return
@@ -77,8 +55,7 @@ extension AppCoordinator {
     await pendingBadgeSync?.value
   }
 
-  /// Test-only synchronisation: await the most recent push-tap mark-read so
-  /// assertions can run after the repository call settles.
+  /// Test-only synchronisation: await the most recent push-tap mark-read.
   public func waitForPendingApplicationMarkRead() async {
     await pendingApplicationMarkRead?.value
   }

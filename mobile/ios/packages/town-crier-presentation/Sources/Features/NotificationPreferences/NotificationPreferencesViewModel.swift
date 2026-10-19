@@ -1,16 +1,10 @@
 import Foundation
 import TownCrierDomain
 
-/// ViewModel for the in-app notification preferences screen.
-///
-/// Owns *what* triggers a notification (saved-application push/email,
-/// weekly email digest, digest day) and exposes a read-only watch-zone
-/// count for the navigation row that links into the Zones tab.
-///
-/// Setters mirror `SettingsViewModel.persistSavedDecisionPreference` —
-/// optimistic UI update, full-profile PATCH so unchanged fields round-trip
-/// from the cached server profile, rollback to the previous value on
-/// failure. ``pushEnabled`` is round-tripped silently (not user-facing).
+/// ViewModel for the in-app notification preferences screen. Setters update
+/// optimistically, PATCH the full profile so unchanged fields round-trip from
+/// the cached server profile, and roll back on failure. ``pushEnabled`` is
+/// round-tripped silently (not user-facing).
 @MainActor
 public final class NotificationPreferencesViewModel: ObservableObject, ErrorHandlingViewModel {
   @Published public private(set) var savedDecisionPush: Bool = true
@@ -42,13 +36,10 @@ public final class NotificationPreferencesViewModel: ObservableObject, ErrorHand
     self.notificationService = notificationService
   }
 
-  /// Loads the server profile and watch-zone count in parallel.
-  ///
-  /// On profile fetch failure, all four user-facing toggles fall back to
-  /// `true`/defaults (the API's documented opt-out semantics — the user is
-  /// treated as opted in until they say otherwise) and the cached profile
-  /// is cleared so subsequent setters can still PATCH using safe defaults.
-  /// Watch-zone count failures leave the count at zero.
+  /// Loads the server profile and watch-zone count. On profile fetch failure
+  /// the toggles fall back to their opted-in defaults and the cached profile is
+  /// cleared so setters still PATCH safe defaults. Watch-zone count failures
+  /// leave the count at zero.
   public func load() async {
     error = nil
 
@@ -79,10 +70,8 @@ public final class NotificationPreferencesViewModel: ObservableObject, ErrorHand
     authorizationStatus = resolvedStatus
   }
 
-  /// Asks the system for notification permission and re-reads the resulting
-  /// authorization status. Surfaces request failures via ``handleError(_:)``
-  /// while still re-querying the status so the UI reflects the user's
-  /// final choice (e.g. "Don't allow" still produces `.denied`).
+  /// Asks the system for notification permission, then re-reads the status
+  /// even if the request throws, so "Don't allow" still produces `.denied`.
   public func requestPermission() async {
     error = nil
     do {
@@ -93,9 +82,7 @@ public final class NotificationPreferencesViewModel: ObservableObject, ErrorHand
     authorizationStatus = await notificationService.authorizationStatus()
   }
 
-  /// Re-reads the system authorization status without prompting. Called from
-  /// the View on `scenePhase == .active` so changes the user makes in iOS
-  /// Settings are reflected without a manual reload.
+  /// Re-reads the system authorization status without prompting.
   public func refreshAuthorizationStatus() async {
     authorizationStatus = await notificationService.authorizationStatus()
   }
@@ -161,10 +148,6 @@ public final class NotificationPreferencesViewModel: ObservableObject, ErrorHand
     }
   }
 
-  /// Shared persistence path for all four setters. Reflects the desired
-  /// values immediately (optimistic UI), PATCHes the full preference set
-  /// using `cachedServerProfile` for any field the caller hasn't changed,
-  /// and rolls back the published values on failure.
   private func persist(
     savedDecisionPush nextSavedDecisionPush: Bool,
     savedDecisionEmail nextSavedDecisionEmail: Bool,

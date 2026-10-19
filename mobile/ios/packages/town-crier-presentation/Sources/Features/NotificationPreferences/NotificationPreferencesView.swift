@@ -1,20 +1,9 @@
 import SwiftUI
 import TownCrierDomain
 
-/// In-app notification preferences screen — replaces the iOS-Settings deep
-/// link that previously fronted the "Notification Preferences" row.
-///
-/// Sections:
-///   1. Permission (only when status is `.notDetermined` or `.denied`)
-///   2. Saved Applications (push + email toggles)
-///   3. Email Digest (weekly toggle + day picker)
-///   4. Watch Zones (read-only count → navigation row that switches tabs)
-///
-/// A footer link deep-links into iOS system Settings for *how* notifications
-/// are delivered (banners/sounds/Focus modes/badges) — hidden when status is
-/// `.notDetermined` because iOS has no per-app subpage to deep-link to until
-/// the user makes a choice (the link otherwise drops them into the system
-/// Notifications hub).
+/// In-app notification preferences screen. The iOS-Settings footer link is
+/// hidden while status is `.notDetermined` because iOS has no per-app subpage
+/// to deep-link to until the user makes a choice.
 public struct NotificationPreferencesView: View {
   @StateObject private var viewModel: NotificationPreferencesViewModel
   @Environment(\.scenePhase) private var scenePhase
@@ -31,17 +20,14 @@ public struct NotificationPreferencesView: View {
     self.onSystemSettingsTap = onSystemSettingsTap
   }
 
-  /// `true` when the iOS-Settings footer link should be hidden. Mirrors the
-  /// spec table: hide only when `.notDetermined` (no subpage exists yet);
-  /// show in all other cases including the still-loading `nil` state to
-  /// avoid a flash of UI as the status resolves.
+  /// `true` when the iOS-Settings footer link should be hidden. It stays
+  /// visible while the status is still `nil` to avoid a flash as it resolves.
   public var shouldHideSystemSettingsLink: Bool {
     viewModel.authorizationStatus == .notDetermined
   }
 
   /// Test-only seam: invoke the watch-zones callback as if the user had
-  /// tapped the row. Mirrors `SettingsView.requestNotificationPreferences()`
-  /// so the wiring is verifiable without UI-level automation.
+  /// tapped the row.
   public func requestZonesTap() {
     onZonesTap?()
   }
@@ -58,9 +44,7 @@ public struct NotificationPreferencesView: View {
     await viewModel.requestPermission()
   }
 
-  /// Test-only seam: simulate the View transitioning to the active scene
-  /// phase. Mirrors the `.onChange(of: scenePhase)` handler that triggers a
-  /// foreground refresh of the authorization status.
+  /// Test-only seam: simulate the View transitioning to the active scene phase.
   public func requestScenePhaseActive() async {
     await viewModel.refreshAuthorizationStatus()
   }

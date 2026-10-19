@@ -1,12 +1,9 @@
 import Foundation
 import TownCrierDomain
 
-/// Hits the notification read-state endpoints (see ADR 0035,
-/// `docs/adr/0035-per-application-notification-read-state.md`).
-///
-/// `fetchState` is the single read; `markAllRead` and `markApplicationRead`
-/// are fire-and-forget writes returning 204. Per-application mark-read is
-/// idempotent, so callers never need to check current state first.
+/// Notification read-state endpoints. `markAllRead` and `markApplicationRead`
+/// are fire-and-forget writes returning 204; per-application mark-read is
+/// idempotent.
 public final class APINotificationStateRepository: NotificationStateRepository, Sendable {
   private let apiClient: URLSessionAPIClient
 
@@ -72,9 +69,8 @@ struct NotificationStateDTO: Decodable, Sendable {
   let totalUnreadCount: Int
 
   func toDomain() -> NotificationState {
-    // The backend's DotNetTime format carries fractional seconds whenever the
-    // sub-second part is non-zero; parse robustly via the shared helper. The
-    // epoch fallback is retained only for genuinely unparseable input.
+    // Fractional seconds are present only when non-zero; the epoch fallback
+    // covers unparseable input.
     let date = DotNetTimeParser.date(from: lastReadAt) ?? Date(timeIntervalSince1970: 0)
     return NotificationState(
       lastReadAt: date,
@@ -87,7 +83,7 @@ struct NotificationStateDTO: Decodable, Sendable {
 /// Wire shape of `POST /v1/me/applications/mark-read`. Modelled as an array so
 /// the wire format is forward-compatible (clients send a single element today).
 /// Each item is scoped by the composite `(applicationUid, authorityId)` because
-/// a PlanIt reference is unique only within a council — see ADR 0035.
+/// a PlanIt reference is unique only within a council.
 struct MarkApplicationsReadRequestDTO: Encodable, Sendable {
   struct Item: Encodable, Sendable {
     let applicationUid: String
