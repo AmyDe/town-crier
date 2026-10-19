@@ -42,7 +42,7 @@ const savedBucket = ""
 
 // PushCoalescer accumulates push-eligible notifications during a poll cycle and
 // flushes them at cycle end as at most one push per (user, watch zone), plus
-// one per-user "saved" bucket for zone-less notifications (GH#784). It owns the
+// one per-user "saved" bucket for zone-less notifications. It owns the
 // send-path collaborators the dispatchers used to call inline per notification:
 // device lookup, the unread badge, the platform dispatcher (APNs + FCM), and
 // zone-name resolution.

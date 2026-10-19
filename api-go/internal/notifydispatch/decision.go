@@ -12,15 +12,13 @@ import (
 )
 
 // zoneMatcher runs the cross-partition point-in-zone lookup. It is purely
-// geographic — boundary-agnostic, with no authority scoping (tc-b179), so a zone
-// matches a containing application regardless of either's authority.
-// *watchzones.CosmosStore satisfies it.
+// geographic, with no authority scoping, so a zone matches a containing
+// application regardless of either's authority.
 type zoneMatcher interface {
 	FindZonesContaining(ctx context.Context, latitude, longitude float64) ([]watchzones.WatchZone, error)
 }
 
 // savedMatcher runs the cross-partition saved-bookmark lookup.
-// *savedapplications.CosmosStore satisfies it.
 type savedMatcher interface {
 	UserIDsForApplication(ctx context.Context, applicationUID string, authorityID int) ([]string, error)
 }
@@ -42,10 +40,8 @@ type DecisionDispatcher struct {
 	metrics       notificationMetricsRecorder
 }
 
-// WithMetrics wires the recorder the dispatcher records
-// towncrier.notifications.created on. A post-construction setter so the existing
-// dispatch call sites and tests are unaffected; cmd/worker calls it once after
-// building the dispatcher. Returns the dispatcher for chaining.
+// WithMetrics sets the recorder the dispatcher records
+// towncrier.notifications.created on and returns the dispatcher for chaining.
 func (d *DecisionDispatcher) WithMetrics(rec notificationMetricsRecorder) *DecisionDispatcher {
 	d.metrics = rec
 	return d
@@ -110,8 +106,8 @@ func (d *DecisionDispatcher) Dispatch(ctx context.Context, app applications.Plan
 		}
 	}
 
-	// Saved bookmark holders — scoped to the polled application's council, since
-	// PlanIt uids collide across councils (tc-th98 / GH#384).
+	// Saved bookmarks are scoped to the application's council because PlanIt
+	// uids collide across councils.
 	savedUserIDs, err := d.saved.UserIDsForApplication(ctx, app.UID, app.AreaID)
 	if err != nil {
 		return err
@@ -167,8 +163,8 @@ func (d *DecisionDispatcher) dispatchForUser(ctx context.Context, app applicatio
 
 	// PushSent means "queued", not "delivered": it is set true here, before the
 	// coalescer has attempted any send, and is never reconciled against the
-	// actual delivery outcome (a deliberate choice, tc-97k35.4 — see
-	// notifications.DigestNotification.PushSent's doc comment).
+	// actual delivery outcome (a deliberate choice; see
+	// notifications.DigestNotification.PushSent).
 	if d.canPush(profile, m) {
 		n.PushSent = true
 		d.push.Add(userID, n)
