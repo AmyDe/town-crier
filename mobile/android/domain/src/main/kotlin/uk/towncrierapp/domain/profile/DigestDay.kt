@@ -2,10 +2,9 @@ package uk.towncrierapp.domain.profile
 
 /**
  * The day of the week the weekly email digest is sent on. Declared
- * Monday-first for direct use in a UK-facing picker (`entries` IS the
- * display order — no separate week-order list needed, unlike iOS's
- * Sunday-first `DayOfWeek` + `weekOrderUK`). [wireValue] is the server's
- * English weekday name (`weekdayName` in `api-go/internal/profiles/handler.go`).
+ * Monday-first so `entries` is the display order for a UK-facing picker.
+ * [wireValue] is the server's English weekday name (`weekdayName` in
+ * `api-go/internal/profiles/handler.go`).
  */
 public enum class DigestDay(
     public val wireValue: String,

@@ -47,7 +47,7 @@ import uk.towncrierapp.presentation.designsystem.TownCrierTheme
  * Global notification preferences: saved-application push/email, the weekly
  * email digest, and its day (Monday-Sunday). A "permission not granted"
  * banner appears when the OS `POST_NOTIFICATIONS` permission is
- * not-determined or denied. Port of iOS `NotificationPreferencesView`.
+ * not-determined or denied.
  */
 @Composable
 public fun NotificationPreferencesRoute(

@@ -10,16 +10,6 @@ import uk.towncrierapp.domain.profile.aServerProfile
 import uk.towncrierapp.presentation.MainDispatcherExtension
 import kotlin.test.assertEquals
 
-/**
- * Port of iOS `NotificationPreferencesViewModelTests`: global toggles for
- * `savedDecisionPush`/`savedDecisionEmail`/`emailDigestEnabled`/`digestDay`,
- * optimistic-update-with-rollback, every setter PATCHing the full five-field
- * body. Loads via `GET /v1/me` ([uk.towncrierapp.domain.profile.UserProfileRepository.fetchProfile])
- * rather than the `POST /v1/me` ensure-profile call, since only GET/PATCH
- * return the user's actual saved preferences on the wire (see KEY DECISIONS,
- * tc-4jjw) — this is what makes a real round-trip (`toggle → reload →
- * see the persisted value`) actually work.
- */
 @ExtendWith(MainDispatcherExtension::class)
 class NotificationPreferencesViewModelTest {
     private fun aProfile(

@@ -10,11 +10,9 @@ import uk.towncrierapp.domain.applications.NotificationStateRepository
 import uk.towncrierapp.domain.applications.PlanningApplicationId
 
 /**
- * `NotificationStateRepository` over the Town Crier API (ADR 0035). ⚠️
- * [MarkReadItemDto.applicationUid] carries [PlanningApplicationId.name] (the
- * case reference), NOT the uid — a wire misnomer ported as-is, never "fixed"
- * (GH#775). [markRead] batches at [MARK_READ_BATCH_SIZE] ids per request. The
- * legacy `/advance` endpoint is deliberately not implemented.
+ * `NotificationStateRepository` over the Town Crier API (ADR 0035). [markRead]
+ * batches at [MARK_READ_BATCH_SIZE] ids per request. The legacy `/advance`
+ * endpoint is deliberately not implemented.
  */
 public class ApiNotificationStateRepository(
     private val apiClient: ApiClient,
@@ -45,8 +43,6 @@ public class ApiNotificationStateRepository(
     }
 }
 
-// MARK: - DTOs
-
 @Serializable
 internal data class NotificationStateDto(
     val lastReadAt: String? = null,
@@ -61,9 +57,7 @@ internal fun NotificationStateDto.toDomain(): NotificationState =
         totalUnreadCount = totalUnreadCount,
     )
 
-// The `applicationUid` key literally holds the case NAME, not a uid — an
-// intentional, ported-as-is server misnomer (GH#775). Do not rename this to
-// match its actual content; the wire contract is the wire contract.
+// The `applicationUid` key holds the case name, not a uid: a server misnomer. Do not rename it.
 @Serializable
 internal data class MarkReadItemDto(
     val applicationUid: String,
