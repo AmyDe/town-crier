@@ -15,6 +15,6 @@ export class SpyDashboardPort implements DashboardPort {
 
   async fetchRecentApplications(zoneId: WatchZoneId): Promise<readonly PlanningApplicationSummary[]> {
     this.fetchRecentApplicationsCalls.push(zoneId);
-    return this.fetchRecentApplicationsResults.get(zoneId as string) ?? [];
+    return this.fetchRecentApplicationsResults.get(zoneId) ?? [];
   }
 }
