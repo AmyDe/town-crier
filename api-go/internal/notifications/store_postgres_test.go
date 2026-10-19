@@ -65,7 +65,6 @@ type fakeRows struct {
 }
 
 func newFakeRows(rows [][]any) *fakeRows { return &fakeRows{rows: rows} }
-func errRows(err error) *fakeRows        { return &fakeRows{err: err} }
 
 func (r *fakeRows) Next() bool {
 	if r.err != nil {

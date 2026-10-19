@@ -98,28 +98,16 @@ func NewClient(opts Options, logger *slog.Logger, now func() time.Time) (*Client
 	return newClientWithBaseURL(opts, opts.baseURL(), httpClient, logger, now)
 }
 
-// tracedPushClient wraps base with the same redaction-then-tracing chain
-// NewClient applies in production, so tests can exercise the real
-// construction seam against a stub transport instead of re-assembling it by
-// hand — a regression that drops either wrapper here is caught by both. opts
-// forwards to WrapHTTPClient; production passes none (global tracer
-// provider), tests pass otelhttp.WithTracerProvider for hermetic assertions.
+// tracedPushClient applies the redaction-then-tracing chain NewClient uses, so
+// tests exercise the real construction seam against a stub transport.
 func tracedPushClient(base http.RoundTripper, opts ...otelhttp.Option) *http.Client {
 	httpClient := &http.Client{
-		Transport: base,
-		Timeout:   requestTimeout,
+		Timeout: requestTimeout,
 	}
-	// Redact the device token from the request URL before otelhttp records it
-	// into the span's url.full attribute (see redactPushURL). This must sit
-	// INNERMOST — wrapping transport, not httpClient — so otelhttp.NewTransport
-	// (applied next, by WrapHTTPClient) still starts the span first and calls
-	// this RoundTripper afterwards, letting it overwrite url.full before the
-	// request reaches transport for the real network call.
+	// Redaction must wrap the transport, not the client, so otelhttp starts the
+	// span first and url.full is overwritten before the request is sent.
 	httpClient.Transport = &platform.RedactingTransport{Next: base, Redact: redactPushURL}
-	// Wrap the transport so every APNs push emits an OTel client span
-	// (Type=HTTP in AppDependencies) named "APNs push". api.push.apple.com lands
-	// in server.address; the static span name keeps cardinality low (no per-device
-	// token in the name).
+	// The static span name keeps cardinality low (no device token).
 	return platform.WrapHTTPClient(httpClient, func(string, *http.Request) string { return "APNs push" }, opts...)
 }
 

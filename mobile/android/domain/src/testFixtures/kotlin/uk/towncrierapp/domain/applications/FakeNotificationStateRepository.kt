@@ -3,7 +3,6 @@ package uk.towncrierapp.domain.applications
 import uk.towncrierapp.domain.auth.DomainError
 import java.time.OffsetDateTime
 
-/** Hand-written fake for [NotificationStateRepository] — state-based, per testing.md conventions. */
 public class FakeNotificationStateRepository(
     public var stateResult: NotificationState =
         NotificationState(lastReadAt = OffsetDateTime.now(), version = 1, totalUnreadCount = 0),

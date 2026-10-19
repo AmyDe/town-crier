@@ -3,11 +3,7 @@ package uk.towncrierapp.presentation.features.notificationprefs
 import uk.towncrierapp.domain.auth.DomainError
 import uk.towncrierapp.domain.profile.DigestDay
 
-/**
- * State for [NotificationPreferencesScreen]/[NotificationPreferencesViewModel].
- * [pushEnabled] is round-tripped silently on every PATCH — it has no toggle
- * on this screen (parity with iOS `NotificationPreferencesViewModel`).
- */
+/** [pushEnabled] has no toggle on this screen; it is round-tripped unchanged on every PATCH. */
 public data class NotificationPreferencesUiState(
     val isLoading: Boolean = true,
     val pushEnabled: Boolean = true,

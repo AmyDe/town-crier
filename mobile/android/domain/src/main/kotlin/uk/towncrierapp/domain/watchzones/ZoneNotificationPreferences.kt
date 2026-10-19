@@ -4,9 +4,8 @@ package uk.towncrierapp.domain.watchzones
  * Per-zone notification preferences controlling which alert channels the
  * user receives for a specific watch zone. Wire shape matches
  * `GET/PUT /v1/me/watch-zones/{zoneId}/preferences`. All four per-channel
- * toggles default to `true` so newly-created zones opt in to every alert;
- * free-tier downgrades are applied at dispatch time on the server. Port of
- * iOS `ZoneNotificationPreferences`.
+ * toggles default to `true`; free-tier downgrades are applied at dispatch time
+ * on the server.
  */
 public data class ZoneNotificationPreferences(
     public val zoneId: WatchZoneId,

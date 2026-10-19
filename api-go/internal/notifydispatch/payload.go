@@ -13,7 +13,7 @@ import (
 // savedThreadID is the aps.thread-id value for a zone-less (saved) push — both
 // a single saved alert and the saved summary bucket — so Notification Center
 // groups a user's saved-application pushes together regardless of any watch
-// zone that also matched (GH#784).
+// zone that also matched.
 const savedThreadID = "saved"
 
 // apnsAlertPayload is the APNs body for a single-notification (instant) push.
@@ -45,7 +45,7 @@ type apnsAlertContent struct {
 // routing "kind" discriminator and, for a zone bucket, the watchZoneId. It
 // deliberately carries no applicationRef/notificationId — that absence is how
 // iOS knows to open the in-app notifications list rather than a single
-// application (GH#784).
+// application.
 type apnsSummaryPayload struct {
 	Aps         apnsSummaryAps `json:"aps"`
 	Kind        string         `json:"kind"`

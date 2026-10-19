@@ -1,21 +1,9 @@
 import Foundation
 import TownCrierDomain
 
-/// ViewModel for the home-tab push-permission nudge banner (issue #624).
-///
-/// A paid user who never granted notification permission is paying for instant
-/// alerts they will never receive. This banner is the persistent safety net: it
-/// shows on the Applications tab whenever the user is on a paid tier and
-/// notifications are not authorized, and its primary action branches on the
-/// system authorization status (mirroring `NotificationPreferencesViewModel`):
-///
-/// - `.notDetermined` → request the system prompt, then re-read the status.
-/// - `.denied` → invoke `onOpenSettings` (the system prompt can never be
-///   re-shown once denied; the only recovery is the iOS Settings deep link).
-///
-/// `authorizationStatus` is `nil` until the first ``load()`` completes; the
-/// banner stays hidden in that window to avoid a flash before the status
-/// resolves.
+/// ViewModel for the home-tab push-permission nudge banner. `.denied` can only
+/// deep-link to iOS Settings because the system prompt cannot be re-shown once
+/// denied.
 @MainActor
 public final class PushNudgeViewModel: ObservableObject {
   /// Reflects the system notification permission. `nil` until the first
@@ -36,9 +24,8 @@ public final class PushNudgeViewModel: ObservableObject {
     self.onOpenSettings = onOpenSettings
   }
 
-  /// `true` only for a paid tier whose resolved authorization is not yet
-  /// `.authorized`. Hidden while the status is still loading (`nil`) and for
-  /// any free-tier user.
+  /// `true` only for a paid tier whose resolved authorization is not
+  /// `.authorized`; hidden while the status is still `nil`.
   public var isVisible: Bool {
     guard tier > .free, let authorizationStatus else { return false }
     return authorizationStatus != .authorized
@@ -69,9 +56,7 @@ public final class PushNudgeViewModel: ObservableObject {
     authorizationStatus = await notificationService.authorizationStatus()
   }
 
-  /// Re-reads the authorization status without prompting. Called from the view
-  /// on `scenePhase == .active` so the banner disappears once the user enables
-  /// notifications in iOS Settings and returns.
+  /// Re-reads the authorization status without prompting.
   public func refresh() async {
     authorizationStatus = await notificationService.authorizationStatus()
   }

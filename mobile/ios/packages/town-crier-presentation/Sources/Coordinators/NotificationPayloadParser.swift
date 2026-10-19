@@ -11,13 +11,8 @@ import TownCrierDomain
 /// mapping; this parser owns the payload schema and sentence shape.
 public enum NotificationPayloadParser {
   public static func parseDeepLink(from userInfo: [AnyHashable: Any]) -> DeepLink? {
-    // Both `applicationRef` (PlanIt case reference) and `authorityId` (Int) are
-    // required to build a `PlanningApplicationId` struct and perform a partitioned
-    // Cosmos point read on the server (tc-dzwo.1). A payload missing either field
-    // falls back to nil — the delegate skips the deep link rather than triggering
-    // the cross-partition scan that caused "Server Error" on push-tap.
-    // Digest pushes have no applicationRef — those return nil here and the
-    // delegate must still complete on MainActor (see NotificationDelegate).
+    // Both fields are required to identify the application on the server; a
+    // payload missing either (including every digest push) yields nil.
     guard let applicationRef = userInfo["applicationRef"] as? String,
       let authorityId = userInfo["authorityId"] as? Int
     else {
@@ -37,11 +32,6 @@ public enum NotificationPayloadParser {
   ///
   /// Sentence shape: `"Application <name> was <UK term>"`, e.g.
   /// `"Application 12345 was Approved with conditions"`.
-  ///
-  /// - Parameter userInfo: The raw `userInfo` dictionary from a
-  ///   `UNNotification` request.
-  /// - Returns: The UK-vocabulary body string, or `nil` if the payload is
-  ///   not a renderable decision update.
   public static func renderBody(from userInfo: [AnyHashable: Any]) -> String? {
     guard let eventType = userInfo["eventType"] as? String,
       eventType == "DecisionUpdate"

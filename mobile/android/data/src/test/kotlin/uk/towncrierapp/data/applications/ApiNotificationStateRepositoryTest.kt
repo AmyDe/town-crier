@@ -17,14 +17,6 @@ private fun Request.bodyAsString(): String {
     return buffer.readUtf8()
 }
 
-/**
- * `GET /v1/me/notification-state`, `POST /v1/me/applications/mark-read`
- * (⚠️ the `applicationUid` wire key holds the case NAME, i.e. [PlanningApplicationId.name],
- * not the uid — ported as-is, not "fixed"), and
- * `POST /v1/me/notification-state/mark-all-read`. Port of the iOS
- * `APINotificationStateRepositoryTests` suite (GH#775). The legacy `/advance`
- * endpoint is deliberately not implemented.
- */
 class ApiNotificationStateRepositoryTest {
     private fun makeSut(transport: FakeHttpTransport = FakeHttpTransport()): ApiNotificationStateRepository {
         val apiClient = ApiClient("https://api-dev.towncrierapp.uk", transport, FakeAuthenticationService())

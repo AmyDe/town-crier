@@ -3,9 +3,7 @@ import Foundation
 /// Port for the server-side notification read state.
 ///
 /// A notification is unread iff its server-side `read_at IS NULL`. Read state
-/// clears per application (opening it) or wholesale (mark-all-read); the
-/// retired scroll-to-clear watermark no longer applies. See ADR 0035
-/// (`docs/adr/0035-per-application-notification-read-state.md`).
+/// clears per application (opening it) or wholesale (mark-all-read).
 ///
 /// - `GET /v1/me/notification-state` returns the current `NotificationState`.
 /// - `POST /v1/me/notification-state/mark-all-read` clears every unread

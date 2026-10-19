@@ -58,7 +58,6 @@ type fakeNSRows struct {
 }
 
 func newNSRows(rows [][]any) *fakeNSRows { return &fakeNSRows{rows: rows} }
-func errNSRows(err error) *fakeNSRows    { return &fakeNSRows{err: err} }
 
 func (r *fakeNSRows) Next() bool {
 	if r.err != nil {

@@ -37,7 +37,7 @@ export class ApiDashboardAdapter implements DashboardPort {
   }
 
   async fetchRecentApplications(zoneId: WatchZoneId): Promise<readonly PlanningApplicationSummary[]> {
-    const apps = await this.applications.getByZone(zoneId as string);
+    const apps = await this.applications.getByZone(zoneId);
     return apps.map(toSummary);
   }
 }

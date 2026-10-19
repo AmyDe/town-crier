@@ -2,11 +2,8 @@ package uk.towncrierapp.domain.applications
 
 /**
  * Read state (ADR 0035). [markRead] and [markAllRead] take domain
- * [PlanningApplicationId]s — the wire's `applicationUid`-key-holds-a-name
- * misnomer and the int `authorityId` conversion are entirely a `:data`
- * concern (see `ApiNotificationStateRepository`). Port of iOS
- * `NotificationStateRepository`. The legacy `/advance` endpoint is
- * deliberately NOT represented here.
+ * [PlanningApplicationId]s; wire-format conversion is a `:data` concern. The
+ * legacy `/advance` endpoint is deliberately not represented here.
  */
 public interface NotificationStateRepository {
     public suspend fun state(): NotificationState

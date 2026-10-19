@@ -4,11 +4,6 @@ import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
-/**
- * `DigestDay`'s wire strings are the server's English weekday names
- * (`weekdayName` in `api-go/internal/profiles/handler.go`); the enum itself
- * is declared Monday-first for direct use in a UK-facing picker (epic #770).
- */
 class DigestDayTest {
     @Test
     fun `entries are declared Monday-first for a UK-facing picker`() {

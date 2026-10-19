@@ -20,7 +20,7 @@
 // Neither dispatcher sends a push itself: a push-eligible notification is
 // handed to a pushQueue (*PushCoalescer in production), which coalesces the
 // whole poll cycle's queued notifications into at most one push per (user,
-// watch zone) — plus one per-user "saved" bucket — at cycle end (GH#784). The
+// watch zone) — plus one per-user "saved" bucket — at cycle end. The
 // dispatchers do the gating; the coalescer does no gating of its own.
 package notifydispatch
 
@@ -38,22 +38,21 @@ import (
 )
 
 // notificationWriter is the consumer-side slice of the Notifications store the
-// dispatchers need: a dedup read and a create. *notifications.DigestStore
-// satisfies it.
+// dispatchers need: a dedup read and a create.
 type notificationWriter interface {
 	GetByUserAndApplication(ctx context.Context, userID, applicationUID string, authorityID int, eventType notifications.EventType) (*notifications.DigestNotification, error)
 	Create(ctx context.Context, n notifications.DigestNotification) error
 }
 
 // profileReader loads a user's profile to read the tier (instant push is
-// paid-only) and the push preference. *profiles.CosmosStore satisfies it.
+// paid-only) and the push preference.
 type profileReader interface {
 	Get(ctx context.Context, userID string) (*profiles.UserProfile, error)
 }
 
 // zoneRanker is the consumer-side slice of the watch-zone store the enqueuer
 // needs: zoneMatcher's point-in-zone lookup plus GetByUserID, which the pause
-// check (GH#889) uses to rank a user's zones oldest-first by (CreatedAt, ID)
+// check uses to rank a user's zones oldest-first by (CreatedAt, ID)
 // against their effective-tier watch-zone limit. *watchzones.PostgresStore
 // (and the watchzones.Store interface cmd/worker wires) satisfy both.
 type zoneRanker interface {
@@ -79,9 +78,9 @@ type notificationMetricsRecorder interface {
 }
 
 // descriptionMatcher is the consumer-side slice of the applications store the
-// enqueuer needs to evaluate a watch zone's pre-canned keyword filter
-// (GH#1090, epic tc-w825j): a full-text match of an application's description
-// against a catalog filter's to_tsquery expression.
+// enqueuer needs to evaluate a watch zone's pre-canned keyword filter: a
+// full-text match of an application's description against a catalog filter's
+// to_tsquery expression.
 // *applications.PostgresStore satisfies it.
 type descriptionMatcher interface {
 	MatchesExpression(ctx context.Context, description, expression string) (bool, error)
@@ -104,10 +103,8 @@ type Enqueuer struct {
 	metrics       notificationMetricsRecorder
 }
 
-// WithMetrics wires the recorder the enqueuer records
-// towncrier.notifications.created on. A post-construction setter so the existing
-// dispatch call sites and tests are unaffected; cmd/worker calls it once after
-// building the enqueuer. Returns the enqueuer for chaining.
+// WithMetrics sets the recorder the enqueuer records
+// towncrier.notifications.created on and returns the enqueuer for chaining.
 func (e *Enqueuer) WithMetrics(rec notificationMetricsRecorder) *Enqueuer {
 	e.metrics = rec
 	return e
@@ -115,8 +112,8 @@ func (e *Enqueuer) WithMetrics(rec notificationMetricsRecorder) *Enqueuer {
 
 // NewEnqueuer wires the enqueuer. newID mints the notification id (a GUID in
 // production); now stamps the record's creation time. Both are injected so tests
-// can pin them. matcher evaluates a filtered zone's keyword expression
-// (GH#1090, epic tc-w825j) — see matchesFilter.
+// can pin them. matcher evaluates a filtered zone's keyword expression; see
+// matchesFilter.
 func NewEnqueuer(
 	notifs notificationWriter,
 	zones zoneRanker,
@@ -196,13 +193,9 @@ func (e *Enqueuer) Enqueue(ctx context.Context, app applications.PlanningApplica
 		return nil
 	}
 
-	// Pause check (GH#889): a subscription downgrade that leaves a user
-	// holding more zones than their new tier allows must stop generating NEW
-	// notification records for the over-quota zones — ranked oldest-first by
-	// (CreatedAt, ID) — without touching the zones themselves (they stay
-	// listed, editable and browsable; watchzones.handler surfaces the same
-	// derivation as the "paused" field). The unlimited (Pro) tier never needs
-	// the extra ranking query.
+	// After a downgrade, zones ranked beyond the tier's limit (oldest first by
+	// (CreatedAt, ID)) stop generating records; watchzones.handler derives the
+	// same "paused" field. The unlimited tier skips the ranking query.
 	limit := profile.EffectiveTier(e.now()).WatchZoneLimit()
 	if limit < math.MaxInt32 {
 		userZones, zerr := e.zones.GetByUserID(ctx, zone.UserID)
@@ -232,8 +225,8 @@ func (e *Enqueuer) Enqueue(ctx context.Context, app applications.PlanningApplica
 	// notification record (picked up by the weekly digest) but no push. PushSent
 	// means "queued", not "delivered": it is set true here, before the coalescer
 	// has attempted any send, and is never reconciled against the actual
-	// delivery outcome (a deliberate choice, tc-97k35.4 — see
-	// notifications.DigestNotification.PushSent's doc comment).
+	// delivery outcome (a deliberate choice; see
+	// notifications.DigestNotification.PushSent).
 	if profile.EffectiveTier(e.now()).IsPaid() && profile.Preferences.PushEnabled {
 		n.PushSent = true
 		e.push.Add(zone.UserID, n)
@@ -248,16 +241,10 @@ func (e *Enqueuer) Enqueue(ctx context.Context, app applications.PlanningApplica
 	return nil
 }
 
-// matchesFilter reports whether app passes zone's pre-canned keyword filter
-// (GH#1090, epic tc-w825j). An unfiltered zone (the FilterKey zero value)
-// always matches — no catalog lookup, no DB call. A FilterKey not found in
-// the catalog fails open (matches) rather than blocking a fan-out on a
-// read-time inconsistency that create/patch validation should already have
-// prevented, mirroring this file's fail-open conventions elsewhere (a
-// missing profile in Enqueue, a zoneID absent from its own zone set in
-// isPaused). The app_type gate is checked first and is a plain in-memory
-// membership test against the already-loaded application — no DB call — so
-// an excluded app_type is rejected before ever reaching the matcher.
+// matchesFilter reports whether app passes zone's pre-canned keyword filter.
+// An unfiltered zone, or a FilterKey missing from the catalog, fails open
+// (matches). The in-memory app_type gate runs before the matcher, so an
+// excluded app_type never reaches the DB.
 func (e *Enqueuer) matchesFilter(ctx context.Context, zone watchzones.WatchZone, app applications.PlanningApplication) (bool, error) {
 	if zone.FilterKey == "" {
 		return true, nil
@@ -275,7 +262,7 @@ func (e *Enqueuer) matchesFilter(ctx context.Context, zone watchzones.WatchZone,
 	return e.matcher.MatchesExpression(ctx, app.Description, def.Expression)
 }
 
-// isPaused reports whether the zone identified by zoneID is paused (GH#889):
+// isPaused reports whether the zone identified by zoneID is paused:
 // ranked oldest-first by (CreatedAt, ID) among zones (the owning user's full
 // zone set), its rank exceeds limit. The caller only invokes this once it has
 // already confirmed the tier is not unlimited. A zoneID absent from zones

@@ -222,10 +222,7 @@ func isInvalidToken(httpStatus int, status, errorCode string) bool {
 	case "UNREGISTERED", "INVALID_ARGUMENT":
 		return true
 	}
-	if status == "NOT_FOUND" || httpStatus == http.StatusNotFound {
-		return true
-	}
-	return false
+	return status == "NOT_FOUND" || httpStatus == http.StatusNotFound
 }
 
 // parseError extracts the canonical status and the FCM-specific errorCode from a

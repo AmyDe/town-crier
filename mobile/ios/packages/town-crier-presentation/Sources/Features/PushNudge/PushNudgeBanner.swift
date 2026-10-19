@@ -1,17 +1,8 @@
 import SwiftUI
 import TownCrierDomain
 
-/// Home-tab push-permission nudge banner (issue #624, Prong 2).
-///
-/// A passive view: all logic lives in ``PushNudgeViewModel``. Rendered above
-/// the Applications list, it appears only when the user is on a paid tier and
-/// notifications are not authorized. The single button branches on status —
-/// "Turn on" requests the system prompt when `.notDetermined`, "Open Settings"
-/// deep-links to iOS Settings when `.denied`.
-///
-/// Status is loaded on appear and re-read on `scenePhase == .active` so the
-/// banner disappears once the user enables notifications in iOS Settings and
-/// returns.
+/// Home-tab push-permission nudge banner. A passive view: all logic lives in
+/// ``PushNudgeViewModel``.
 public struct PushNudgeBanner: View {
   @StateObject private var viewModel: PushNudgeViewModel
   @Environment(\.scenePhase) private var scenePhase

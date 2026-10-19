@@ -18,12 +18,7 @@ import uk.towncrierapp.presentation.designsystem.TownCrierSpacing
 import uk.towncrierapp.presentation.designsystem.TownCrierTheme
 import uk.towncrierapp.presentation.designsystem.components.PrimaryButton
 
-/**
- * Step 4 - tier-aware. A paid tier (has the instant-alert entitlement) sees
- * "Enable notifications" + "Skip for now"; a free-tier user sees honest
- * digest-only copy and a single "Finish" - no OS permission is ever
- * requested for them, since free accounts get no pushes.
- */
+/** Free-tier users are never shown the OS permission prompt, because free accounts get no pushes. */
 @Composable
 internal fun NotificationPermissionStep(
     state: OnboardingUiState,
