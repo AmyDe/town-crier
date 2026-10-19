@@ -122,7 +122,6 @@ func (s *PostgresStore) GetByUserID(ctx context.Context, userID string) ([]Saved
 	return saved, nil
 }
 
-// scanSavedApp hydrates one SavedApplication from a pgx.Row (or pgx.Rows).
 func scanSavedApp(row pgx.Row) (SavedApplication, error) {
 	var (
 		userID         string
@@ -180,10 +179,8 @@ func (s *PostgresStore) UserIDsForApplication(ctx context.Context, applicationUI
 	return userIDs, nil
 }
 
-// pgSavedCountsByUsersQuery tallies each user's saved-application count in one
-// grouped pass. The (user_id, application_uid) primary key makes each row a
-// distinct save, so count(*) per user needs no DISTINCT. Users with no rows
-// produce no row; the caller defaults them to 0.
+// count(*) needs no DISTINCT because (user_id, application_uid) is the primary
+// key. Users with no rows produce no row; the caller defaults them to 0.
 const pgSavedCountsByUsersQuery = "SELECT user_id, count(*) FROM saved_applications " +
 	"WHERE user_id = ANY($1) GROUP BY user_id"
 

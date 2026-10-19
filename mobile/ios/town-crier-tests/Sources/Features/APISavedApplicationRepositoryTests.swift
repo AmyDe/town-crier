@@ -203,10 +203,8 @@ struct APISavedApplicationRepositoryTests {
 
   @Test("loadAll parses a fractional-seconds savedAt (not now)")
   func loadAll_fractionalSecondsSavedAt_parsesCorrectly() async throws {
-    // The Go backend emits fractional seconds when the sub-second part is
-    // non-zero. A plain .withInternetDateTime parse returns nil and used to
-    // silently substitute Date() (now) — the tc-ephy bug, which corrupts the
-    // saved-application sort/display order.
+    // The Go backend emits fractional seconds when non-zero; a plain
+    // .withInternetDateTime parse returns nil and would fall back to Date().
     let json = """
       [
         {
@@ -223,7 +221,6 @@ struct APISavedApplicationRepositoryTests {
     let result = try await sut.loadAll()
 
     #expect(result.count == 1)
-    // Must NOT fall back to "now".
     #expect(abs(result[0].savedAt.timeIntervalSinceNow) > 60)
     let wholeSecond = try #require(
       DotNetTimeParser.date(from: "2026-04-10T14:30:00Z")

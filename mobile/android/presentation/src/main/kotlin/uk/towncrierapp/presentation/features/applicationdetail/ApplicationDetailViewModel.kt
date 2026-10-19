@@ -26,10 +26,6 @@ public class ApplicationDetailViewModel(
     private val repository: PlanningApplicationRepository,
     private val savedApplicationRepository: SavedApplicationRepository,
     initial: PlanningApplication,
-    // Defaults to a no-op so every pre-existing call site (tests, and any
-    // caller with nothing to notify) keeps compiling unchanged; the
-    // composition root wires the real review-prompt signal explicitly
-    // (GH #628 / tc-4jjw) — see ApplicationNavGraph.kt.
     private val onSaved: suspend () -> Unit = {},
 ) : ViewModel() {
     private val _uiState =
@@ -62,11 +58,8 @@ public class ApplicationDetailViewModel(
             }
     }
 
-    /** Resolves [ApplicationDetailUiState.isSaved] by comparing the RECONSTRUCTED id, never the raw wire uid (tc-jjl4). */
+    /** Resolves [ApplicationDetailUiState.isSaved] by comparing the RECONSTRUCTED id, never the raw wire uid. */
     @Suppress("SwallowedException")
-    // Best-effort by design: a failed saved-state check leaves the toggle at
-    // its last-known value rather than surfacing an error banner for a
-    // background consistency check the user didn't initiate.
     public fun checkSavedState() {
         viewModelScope.launch {
             try {
@@ -84,8 +77,7 @@ public class ApplicationDetailViewModel(
     /**
      * Optimistically flips [ApplicationDetailUiState.isSaved], reverting and
      * surfacing an error on failure. Fires [onSaved] only on a successful
-     * false-to-true save — never on unsave, never on failure — driving the
-     * review-prompt `savedApplication` signal (GH #628).
+     * false-to-true save, never on unsave or failure.
      */
     public fun toggleSave() {
         val id = _uiState.value.application.id

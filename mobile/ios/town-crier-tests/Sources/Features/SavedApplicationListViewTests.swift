@@ -5,15 +5,8 @@ import TownCrierDomain
 
 @testable import TownCrierPresentation
 
-/// View-level regression coverage for the Saved masthead fix (GH#912 Phase
-/// 1): the tab previously showed only the system nav-bar title in the system
-/// font, with no `MastheadView` row wired in at all. `WatchZoneListViewTests`
-/// establishes the pattern this suite mirrors — SwiftUI view trees aren't
-/// introspectable in this codebase (no ViewInspector), so these are
-/// construction/render smoke tests; the meaningful regression guard is
-/// architectural: `SavedApplicationListView.body` now composes a
-/// `mastheadRow` as the first row of the `List`, alongside
-/// `.mastheadNavigationBar()`.
+/// Construction/render smoke tests only: SwiftUI view trees aren't
+/// introspectable here (no ViewInspector), as in `WatchZoneListViewTests`.
 @Suite("SavedApplicationListView")
 @MainActor
 struct SavedApplicationListViewTests {

@@ -17,9 +17,8 @@ public struct TimelineItem: Equatable, Sendable {
 /// Optionally supports stale-while-revalidate refresh when a
 /// ``PlanningApplicationRepository`` is injected. The view presents the cached
 /// payload synchronously, then ``refresh()`` runs the per-id fetch in the
-/// background. The fetch must still fire on every detail open because
-/// `GetApplicationByUidQueryHandler.TryRefreshSavedSnapshotAsync` (bd tc-udby)
-/// is the only path that keeps saved-row snapshots fresh on the server.
+/// background. The fetch must still fire on every detail open because it is
+/// the only path that keeps saved-row snapshots fresh on the server.
 @MainActor
 public final class ApplicationDetailViewModel: ObservableObject {
   /// The current planning application payload. Display-ready properties are
@@ -108,12 +107,8 @@ public final class ApplicationDetailViewModel: ObservableObject {
   /// one path or the other by the coordinator's factory.
   private let anonymousApplicationDetailRepository: AnonymousApplicationDetailRepository?
 
-  /// Re-entrancy guard for ``refresh()``. The detail sheet's `.task` can fire
-  /// repeatedly for a single open — alongside scenePhase changes or a
-  /// re-appear — and each unguarded call previously spawned a duplicate
-  /// per-id fetch. SRE telemetry caught `GET /v1/applications/{ref}` firing up
-  /// to 6 times within seconds, all cancelled (HTTP 499). While one refresh is
-  /// in flight, further calls short-circuit (bd tc-eum5).
+  /// Re-entrancy guard for ``refresh()``: the detail sheet's `.task` can fire
+  /// repeatedly for a single open, so further calls short-circuit while one is in flight.
   private var isRefreshInFlight = false
 
   private var applicationId: PlanningApplicationId { application.id }
@@ -137,12 +132,8 @@ public final class ApplicationDetailViewModel: ObservableObject {
   /// No-op if no repository was provided.
   ///
   /// The match compares the reconstructed ``PlanningApplicationId`` of each
-  /// saved item's embedded snapshot against this application's id — never the
-  /// raw top-level `applicationUid` string. The stored top-level uid can be in
-  /// a different format from the snapshot id reconstructed by
-  /// `PlanningApplicationDTO.toDomain()`, which would otherwise make a saved
-  /// item read as "unsaved" (bd tc-jjl4). The snapshot id is the source of
-  /// truth the rest of the Saved tab already uses.
+  /// saved item's embedded snapshot, never the raw top-level `applicationUid`,
+  /// whose format can differ from the id built by `PlanningApplicationDTO.toDomain()`.
   public func loadSavedState() async {
     guard let repository = savedApplicationRepository else { return }
     do {
@@ -158,16 +149,14 @@ public final class ApplicationDetailViewModel: ObservableObject {
   ///
   /// Two mutually-exclusive paths, chosen by which repository the
   /// coordinator's factory injected: the authed by-id read (required to keep
-  /// saved-row snapshots fresh on the server, bd tc-sslz/tc-udby), or the
-  /// anonymous by-slug read (GH#879 Phase 2), which is skipped silently when
+  /// saved-row snapshots fresh on the server), or the
+  /// anonymous by-slug read, which is skipped silently when
   /// the cached application carries no authority slug — refreshing a
   /// slug-less payload by slug is meaningless. No-op if neither repository
   /// was injected.
   public func refresh() async {
-    // Drop re-entrant calls while a refresh is already running so a single
-    // detail open issues at most one fetch (bd tc-eum5). The flag is read
-    // and set synchronously before any `await`, so a second call scheduled
-    // on the same actor sees it set and returns immediately.
+    // The flag is read and set before any `await`, so a second call on the
+    // same actor sees it set and returns immediately.
     guard !isRefreshInFlight else { return }
     isRefreshInFlight = true
     defer { isRefreshInFlight = false }

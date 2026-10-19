@@ -145,7 +145,7 @@ struct SavedApplicationListViewModelTests {
     #expect(selectedId == PlanningApplicationId(authority: "CAM", name: "2026/0042"))
   }
 
-  // MARK: - Stale-While-Revalidate selection (tc-sslz)
+  // MARK: - Stale-While-Revalidate selection
 
   @Test func selectApplicationWithPayload_notifiesPayloadCallback() async throws {
     var selectedApplication: PlanningApplication?
