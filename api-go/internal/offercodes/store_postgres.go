@@ -26,23 +26,17 @@ const pgUniqueViolationCode = "23505"
 // later UPDATE step.
 const pgForeignKeyViolationCode = "23503"
 
-// querier is the consumer-side slice of *pgxpool.Pool the Postgres offer-code
-// store uses for single-statement operations. Both *pgxpool.Pool and pgx.Tx
-// satisfy it structurally, so the store is decoupled from the concrete pool
-// type.
+// querier is the subset of *pgxpool.Pool (and pgx.Tx) the store uses for
+// single-statement operations.
 type querier interface {
 	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
-// pool is the full consumer-side interface the Postgres offer-code store
-// needs: point reads/writes via querier, plus transactions. RedeemWithCAS and
-// AnonymiseRedemptionsByUserID each need a real transaction — the insert into
-// offer_code_redemptions and the paired offer_codes UPDATE must commit or roll
-// back together, so a crash (or a rejected UPDATE) between them can never
-// leave an orphan child row with no matching counter change. *pgxpool.Pool
-// satisfies this interface structurally.
+// pool adds transactions to querier: RedeemWithCAS and
+// AnonymiseRedemptionsByUserID must commit the redemption row and the paired
+// offer_codes UPDATE atomically.
 type pool interface {
 	querier
 	Begin(ctx context.Context) (pgx.Tx, error)
@@ -50,12 +44,6 @@ type pool interface {
 
 // Store is the full offer-code method set *PostgresStore satisfies and the
 // exported consumer-side interface cmd/api's wiring accepts.
-//
-// The set covers:
-//   - the codeStore interface in handler.go (Get/Save/RedeemWithCAS)
-//   - the admin offerCodeStore interface in admin/handler.go (Save/List)
-//   - erasure.RedemptionAnonymiser (AnonymiseRedemptionsByUserID)
-//   - the GDPR export reader (RedeemedByUserID)
 type Store interface {
 	Get(ctx context.Context, canonical string) (OfferCode, error)
 	Save(ctx context.Context, c OfferCode) error
@@ -64,7 +52,6 @@ type Store interface {
 	AnonymiseRedemptionsByUserID(ctx context.Context, userID string) error
 }
 
-// Compile-time check: the store satisfies the exported Store interface.
 var _ Store = (*PostgresStore)(nil)
 
 // PostgresStore reads and writes offer codes in Postgres: the parent
@@ -72,8 +59,8 @@ var _ Store = (*PostgresStore)(nil)
 // Crockford code) and the child offer_code_redemptions table (one row per
 // user who has redeemed a code).
 //
-// Every code carries a MaxRedemptions cap (1 for the single-use case) and a RedemptionCount tombstone counter that is
-// never decremented. A redemption inserts a row into offer_code_redemptions —
+// Every code carries a MaxRedemptions cap and a RedemptionCount tombstone
+// counter that is never decremented. A redemption inserts a row into offer_code_redemptions —
 // enforcing "one redemption per user per code" via a partial unique index on
 // (code, user_id) — and atomically increments the counter, guarded by
 // `redemption_count < max_redemptions`. GDPR erasure
@@ -82,10 +69,8 @@ var _ Store = (*PostgresStore)(nil)
 //
 // Legacy columns (redeemed, redeemed_by_user_id, redeemed_at) stay on
 // offer_codes and are dual-written by RedeemWithCAS and scrubbed by
-// AnonymiseRedemptionsByUserID: a staged-rollout safety net so a rolled-back
-// binary still recognises a consumed code (see migration 0019). They are
-// never read back into the domain model — RedemptionCount/MaxRedemptions are
-// authoritative going forward.
+// AnonymiseRedemptionsByUserID so a rolled-back binary still recognises a
+// consumed code (see migration 0019). They are never read back.
 type PostgresStore struct {
 	db     pool
 	logger *slog.Logger
@@ -232,9 +217,9 @@ func (s *PostgresStore) RedeemWithCAS(ctx context.Context, canonical, userID str
 
 	if _, err := tx.Exec(ctx, pgInsertRedemptionQuery, canonical, userID, now); err != nil {
 		switch {
-		case isUniqueViolation(err):
+		case hasPgCode(err, pgUniqueViolationCode):
 			return ErrAlreadyRedeemedByUser
-		case isForeignKeyViolation(err):
+		case hasPgCode(err, pgForeignKeyViolationCode):
 			return ErrNotFound
 		default:
 			return fmt.Errorf("insert redemption for %q: %w", canonical, err)
@@ -266,33 +251,14 @@ func (s *PostgresStore) RedeemWithCAS(ctx context.Context, canonical, userID str
 	return ErrAlreadyRedeemed
 }
 
-// isUniqueViolation reports whether err is a Postgres unique-constraint
-// violation (SQLSTATE 23505).
-func isUniqueViolation(err error) bool {
+func hasPgCode(err error, code string) bool {
 	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
-		return pgErr.Code == pgUniqueViolationCode
-	}
-	return false
+	return errors.As(err, &pgErr) && pgErr.Code == code
 }
 
-// isForeignKeyViolation reports whether err is a Postgres foreign-key
-// violation (SQLSTATE 23503).
-func isForeignKeyViolation(err error) bool {
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
-		return pgErr.Code == pgForeignKeyViolationCode
-	}
-	return false
-}
-
-// rollback runs tx's deferred, best-effort Rollback. On the success path (the
-// caller already committed) pgx's documented behaviour is that Rollback
-// becomes a no-op returning pgx.ErrTxClosed — that case is expected and not
-// logged. Any other error means the rollback did not actually happen, so the
-// transaction's locks/resources may still be held; that is logged (not
-// returned) because this always runs from a defer, after the method has
-// already produced its real result.
+// rollback runs tx's deferred, best-effort Rollback. pgx.ErrTxClosed after a
+// commit is expected and not logged; any other error is logged, not returned,
+// because this always runs from a defer.
 func (s *PostgresStore) rollback(ctx context.Context, tx pgx.Tx) {
 	if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
 		s.logger.ErrorContext(ctx, "offer code store: transaction rollback failed", "error", err)

@@ -9,10 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// querier is the consumer-side slice of *pgxpool.Pool the Postgres store uses:
-// parameterised exec/query/query-row. Defining it here (not importing pgxpool)
-// keeps the store decoupled from the concrete pool and lets a pgx.Tx stand in.
-// Both *pgxpool.Pool and pgx.Tx satisfy it structurally.
+// querier is the subset of *pgxpool.Pool (and pgx.Tx) the store uses.
 type querier interface {
 	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
@@ -27,8 +24,6 @@ type Store interface {
 	MarkProcessed(ctx context.Context, notificationUUID string) error
 }
 
-// Compile-time check: the store satisfies the exported Store interface and the
-// handler's package-local idempotencyStore interface.
 var (
 	_ Store            = (*PostgresNotificationStore)(nil)
 	_ idempotencyStore = (*PostgresNotificationStore)(nil)
@@ -66,9 +61,6 @@ func (s *PostgresNotificationStore) IsProcessed(ctx context.Context, notificatio
 	return processed, nil
 }
 
-// markProcessedQuery inserts or silently refreshes an apple_notifications row.
-// ON CONFLICT DO UPDATE makes this last-writer-wins idempotent: a duplicate
-// delivery that races past IsProcessed is absorbed without a constraint error.
 const markProcessedQuery = `
 INSERT INTO apple_notifications (notification_uuid, processed_at)
 VALUES ($1, $2)
