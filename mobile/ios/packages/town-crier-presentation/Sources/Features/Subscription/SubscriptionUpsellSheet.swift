@@ -65,12 +65,10 @@ public struct SubscriptionUpsellSheet: View {
 
   // MARK: - Test Helpers
 
-  /// Simulates tapping "View Plans" for unit testing.
   func simulateViewPlansTap() {
     onViewPlans()
   }
 
-  /// Simulates tapping "Not now" for unit testing.
   func simulateDismissTap() {
     onDismiss()
   }

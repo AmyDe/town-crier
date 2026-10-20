@@ -31,9 +31,7 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
 
   private var transactionListenerTask: Task<Void, Never>?
 
-  /// Reports verified StoreKit transactions to the Town Crier backend so the
-  /// server can update the user's entitlement state (ADR 0010). Optional —
-  /// when nil the service relies purely on on-device StoreKit verification.
+  /// Optional: when nil the service relies purely on on-device StoreKit verification.
   private let verificationService: SubscriptionVerificationService?
 
   public init(verificationService: SubscriptionVerificationService? = nil) {
@@ -192,17 +190,12 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
     }
   }
 
-  /// POSTs the JWS list from `Transaction.currentEntitlements` to the Town
-  /// Crier backend via the injected ``SubscriptionVerificationService`` so the
-  /// server re-verifies the restore and updates Cosmos (ADR 0010 — Restore
-  /// Purchases).
+  /// POSTs the JWS list from `Transaction.currentEntitlements` to the backend
+  /// via the injected ``SubscriptionVerificationService`` for re-verification.
   ///
-  /// A restore is an explicit user action initiated from the "Restore
-  /// Purchases" control, so — unlike ``reportPurchase(signedTransaction:)`` —
-  /// a verification rejection (e.g. an HTTP 401 for a tampered JWS) is
-  /// rethrown so the UI can tell the user. An empty list is a no-op: there is
-  /// nothing to verify, and the backend already treats the absence of active
-  /// transactions as the `Free` tier. No-op too when no service is injected.
+  /// Unlike ``reportPurchase(signedTransaction:)``, a verification rejection
+  /// (e.g. an HTTP 401 for a tampered JWS) is rethrown so the UI can tell the
+  /// user. No-op for an empty list or when no service is injected.
   func reportRestore(signedTransactions: [String]) async throws {
     guard let verificationService, !signedTransactions.isEmpty else { return }
     _ = try await verificationService.verifyRestore(signedTransactions: signedTransactions)

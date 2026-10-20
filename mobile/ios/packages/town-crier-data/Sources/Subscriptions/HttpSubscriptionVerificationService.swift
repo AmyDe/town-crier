@@ -5,8 +5,7 @@ import TownCrierDomain
 /// StoreKit 2 transactions to `POST /v1/subscriptions/verify`.
 ///
 /// The request carries the compact JWS string(s) verbatim; the backend
-/// cryptographically verifies them against Apple's certificate chain and writes
-/// the resolved tier/expiry to the user's Cosmos `UserProfile` (ADR 0010).
+/// cryptographically verifies them against Apple's certificate chain.
 public final class HttpSubscriptionVerificationService: SubscriptionVerificationService, Sendable {
   private let apiClient: URLSessionAPIClient
 

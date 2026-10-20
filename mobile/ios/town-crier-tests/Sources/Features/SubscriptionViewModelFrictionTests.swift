@@ -4,9 +4,8 @@ import TownCrierDomain
 
 @testable import TownCrierPresentation
 
-/// Verifies the `onPurchaseFailed` friction callback added for the review-prompt
-/// feature (GH #628): a failed purchase is a friction moment and must suppress
-/// the review session. A cancelled or successful purchase must not.
+/// A failed purchase fires `onPurchaseFailed` to suppress the review prompt; a
+/// cancelled or successful purchase must not.
 @Suite("SubscriptionViewModel — purchase friction")
 @MainActor
 struct SubscriptionViewModelFrictionTests {
