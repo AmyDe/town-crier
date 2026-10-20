@@ -1,11 +1,11 @@
 {
   "documentType": "privacy",
   "title": "Privacy Policy",
-  "lastUpdated": "2026-10-16",
+  "lastUpdated": "2026-10-19",
   "sections": [
     {
       "heading": "Who We Are",
-      "body": "Town Crier is operated by Ivo and the Bea Ltd, a UK-registered company. We are the data controller for the personal information you give us. For any data query, write to privacy@towncrierapp.uk."
+      "body": "Town Crier is operated by Ivo and the Bea Ltd, a UK-registered company. We are the data controller for the personal information you give us, and for the planning application details described in \"People Named in Planning Applications\" below. For any data query, write to privacy@towncrierapp.uk."
     },
     {
       "heading": "What We Collect",
@@ -22,6 +22,10 @@
     {
       "heading": "International Transfers",
       "body": "Most of your data stays in the United Kingdom. Apple runs push notifications, the App Store, and Apple Maps from Ireland and the United States, and transfers UK data under Standard Contractual Clauses (you can ask Apple for a copy at apple.com/legal/privacy/contact). Azure Static Web Apps, which serves our website, is in the European Union, which the UK recognises as providing adequate data protection. Cloudflare is a United States company with data centres around the world, so a request to our servers can be handled outside the UK, usually at the Cloudflare location nearest to you. Cloudflare is certified under the UK-US data bridge (the UK Extension to the EU-US Data Privacy Framework), with Standard Contractual Clauses in its Data Processing Addendum as a fallback. You can request a copy by writing to privacy@towncrierapp.uk. Some of our UK-based processors, notably Microsoft Azure and Auth0, are subsidiaries of United States companies. Although your data is stored and processed in the UK, a US parent company could in principle receive a legal demand from US authorities. Both providers publish Data Processing Agreements committing to notify us of, and contest, any such demand where legally permitted. You can request a copy of those agreements by writing to privacy@towncrierapp.uk."
+    },
+    {
+      "heading": "People Named in Planning Applications",
+      "body": "This section is for anyone whose details appear in a planning application, such as the person who applied or their agent, rather than for people who use the app. We get planning applications from PlanIt (planit.org.uk), which collects them from the public planning registers that councils publish. For each application we store what the council published: the site address, the description, the reference, its dates, status and decision, and other details the council lists, which can include the applicant's address and the agent's contact details. We don't store the names of applicants, agents or case officers. We show the site address, description, status and dates in the app and on our public planning pages, so residents can follow what's proposed near them. We don't show applicant addresses or agent contact details anywhere. Our lawful basis is legitimate interests (UK GDPR Article 6(1)(f)): helping people follow planning applications that councils have already made public. We keep application records for as long as Town Crier runs, so the planning history of each place stays complete. If an application includes your details, you have the same rights as anyone else, including the right to object (Article 21) and to ask us to delete your details (Article 17). Write to privacy@towncrierapp.uk. We give this notice here rather than writing to each person, because we don't hold contact details for most of them and contacting everyone would take disproportionate effort (Article 14(5)(b))."
     },
     {
       "heading": "Cookies and Similar Storage",
