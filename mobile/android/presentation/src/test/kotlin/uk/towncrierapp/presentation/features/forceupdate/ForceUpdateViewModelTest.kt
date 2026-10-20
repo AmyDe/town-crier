@@ -11,8 +11,7 @@ import kotlin.test.assertTrue
 
 /**
  * Pre-login force-update gate: `GET /v1/version-config` vs the running
- * build's version. Port of iOS `ForceUpdateViewModelTests` — a check
- * failure must never block the user (fail open).
+ * build's version; a check failure must never block the user (fail open).
  */
 @ExtendWith(MainDispatcherExtension::class)
 class ForceUpdateViewModelTest {

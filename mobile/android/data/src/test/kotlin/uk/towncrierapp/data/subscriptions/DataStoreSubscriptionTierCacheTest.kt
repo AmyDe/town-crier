@@ -19,7 +19,7 @@ import kotlin.test.assertNull
 /**
  * The `cachedSubscriptionTier` DataStore Preferences latch — the fast-path
  * read on cold start, before [uk.towncrierapp.domain.subscriptions.resolveTier]'s
- * network round-trip completes (epic #770 "API contract essentials").
+ * network round-trip completes.
  * `PreferenceDataStoreFactory.create` over a temp file runs on the plain JVM
  * — no Robolectric needed.
  */
@@ -76,7 +76,7 @@ class DataStoreSubscriptionTierCacheTest {
         }
 }
 
-/** A [DataStore] whose `updateData` (and so `edit { }`) always throws [exception] — proves write methods guard against it (tc-l31ve). */
+/** A [DataStore] whose `updateData` (and so `edit { }`) always throws [exception] — proves write methods guard against it. */
 private class ThrowingDataStore(
     private val exception: Throwable,
 ) : DataStore<Preferences> {

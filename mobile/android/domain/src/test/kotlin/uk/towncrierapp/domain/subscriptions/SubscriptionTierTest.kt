@@ -6,7 +6,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * `SubscriptionTier` is ordered Free < Personal < Pro (epic #770) so tier
+ * `SubscriptionTier` is ordered Free < Personal < Pro so tier
  * merging (`maxOf`) picks the richer tier, and its wire strings are the
  * server's PascalCase vocabulary ("Free"/"Personal"/"Pro").
  */

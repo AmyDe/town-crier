@@ -29,27 +29,16 @@ import uk.towncrierapp.presentation.designsystem.TownCrierSpacing
 import uk.towncrierapp.presentation.designsystem.TownCrierTheme
 import uk.towncrierapp.presentation.designsystem.components.PrimaryButton
 
-/** Border thickness of the upsell card's amber outline — see [WatchZoneInlineUpsellCard] doc. */
 private val UPSELL_CARD_BORDER_THICKNESS = 1.5.dp
 
-/** Letter-spacing of the upsell card's small-caps eyebrow — see [WatchZoneInlineUpsellCard] doc. */
 private val UPSELL_EYEBROW_LETTER_SPACING = 0.12.em
 
 /**
- * Richer inline upsell card shown beneath a free-tier user's single watch
- * zone once they hit their one-zone cap (tc-t8hc) — see
- * [WatchZoneListUiState.showsFreeTierUpsell]
- * for the single source of truth on visibility. Sells the whole plan, not
- * just one feature; copy is verbatim iOS wording (bead brief tc-z95t). Port
- * of iOS `WatchZoneInlineUpsellCard`.
- *
- * Styling follows the Public Notice upsell-surface language (epic #848 R5):
- * a 1.5dp amber border and a brass small-caps eyebrow, deliberately NOT the
- * shared [uk.towncrierapp.presentation.designsystem.noticeCard] treatment —
- * this card's border itself carries the brand accent. The "View Plans" CTA
- * ([PrimaryButton], amber-filled) is the only filled-amber container on the
- * card — the card itself stays bordered, never filled (amber-rationing
- * rule, same as web/iOS).
+ * Inline upsell card shown beneath a free-tier user's single watch zone once
+ * they hit the one-zone cap; visibility is decided by
+ * [WatchZoneListUiState.showsFreeTierUpsell]. Deliberately bordered amber, not
+ * the shared [uk.towncrierapp.presentation.designsystem.noticeCard] treatment,
+ * so the "View Plans" [PrimaryButton] stays the only filled-amber element.
  */
 @Composable
 public fun WatchZoneInlineUpsellCard(
