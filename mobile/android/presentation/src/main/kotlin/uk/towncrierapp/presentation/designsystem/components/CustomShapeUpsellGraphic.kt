@@ -31,20 +31,16 @@ import uk.towncrierapp.presentation.designsystem.TownCrierTheme
 import kotlin.math.cos
 import kotlin.math.sin
 
-/** Side length of each of the graphic's two square tiles. */
 private val TILE_SIZE = 96.dp
 
-/** Stroke width for both the dashed circle and the solid polygon outline. */
 private val OUTLINE_STROKE_WIDTH = 2.dp
 
-/** On/off dash lengths for the default-shape circle's stroke. */
 private val CIRCLE_DASH_ON = 18.dp
 private val CIRCLE_DASH_OFF = 12.dp
 
 /**
  * Decorative graphic contrasting the default circle watch zone with a custom
  * shape (polygon) watch zone, to explain the paid custom-shape entitlement.
- * Mirrors iOS `CustomShapeUpsellGraphic` and web `CustomShapeUpsell.tsx`.
  */
 @Composable
 public fun CustomShapeUpsellGraphic(modifier: Modifier = Modifier) {
@@ -99,20 +95,9 @@ public fun CustomShapeUpsellGraphic(modifier: Modifier = Modifier) {
 }
 
 /**
- * Pure geometry for [CustomShapeUpsellGraphic]'s irregular polygon ("blob")
- * tile, factored out of the drawing code so vertex generation is
- * unit-testable without a Compose rendering pipeline. Mirrors iOS
- * `CustomShapePolygonGeometry`.
- *
- * Vertices are placed at evenly-spaced angles around the centre of the given
- * [Size], each pulled in from a shared base radius by a fixed, hand-picked
- * multiplier no greater than `1.0` (so every vertex stays inscribed within
- * the size passed to it — no overflow into a neighbouring element). The
- * multipliers are deliberately irregular (not a smooth curve or true
- * randomness) so the outline reads as a hand-drawn boundary rather than a
- * regular polygon — deterministic and simple, since this is a decorative
- * graphic rather than data-driven geometry. Values reused verbatim from iOS
- * for visual parity across platforms.
+ * Each multiplier is at most `1.0` so every vertex stays inside the given
+ * [Size]; they are deliberately irregular so the outline reads as hand-drawn,
+ * and match iOS verbatim for visual parity.
  */
 internal object CustomShapePolygonGeometry {
     internal val radiusMultipliers: List<Float> = listOf(0.9f, 0.6f, 1.0f, 0.55f, 0.85f, 0.5f, 0.95f, 0.65f)

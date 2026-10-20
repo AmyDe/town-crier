@@ -16,8 +16,8 @@ import uk.towncrierapp.domain.versionconfig.VersionConfigService
  * Blocking pre-login version gate: unauthenticated `GET /v1/version-config`
  * versus [currentVersion] (`BuildConfig.VERSION_NAME`, injected from `:app`
  * since `:presentation` cannot see another module's generated BuildConfig).
- * Re-checked on every auth-state transition (epic #770). A failed check
- * never blocks the user — port of iOS `ForceUpdateViewModel`.
+ * Re-checked on every auth-state transition. A failed check never blocks the
+ * user.
  */
 public class ForceUpdateViewModel(
     private val versionConfigService: VersionConfigService,
@@ -27,8 +27,7 @@ public class ForceUpdateViewModel(
     public val uiState: StateFlow<ForceUpdateUiState> = _uiState.asStateFlow()
 
     @Suppress("SwallowedException")
-    // Fail open by design — a version-config outage must never lock users
-    // out, regardless of which DomainError case it was (matches iOS).
+    // Fail open: a version-config outage must never lock users out, whatever the DomainError.
     public fun checkVersion() {
         val runningVersion = AppVersion.parse(currentVersion) ?: return
         viewModelScope.launch {

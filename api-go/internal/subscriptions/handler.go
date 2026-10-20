@@ -19,14 +19,9 @@ import (
 
 const maxBodyBytes = 1 << 20
 
-// maxWebhookPayloadBytes is the upper bound on the SignedPayload field of an
-// App Store Server Notification before JWS verification is attempted. A real
-// Apple notification outer JWS is roughly 2–4 KB (header + notification JSON +
-// three X.509 DER certificates base64url-encoded in the x5c header). 32 KB
-// gives a generous 8× headroom above the realistic maximum and is still cheap
-// enough to check in a single len() call, well below the 1 MiB body cap.
-// Anything larger cannot be a genuine Apple notification and is rejected before
-// the expensive X.509 chain verification runs.
+// maxWebhookPayloadBytes caps SignedPayload before JWS verification: a real
+// Apple notification is roughly 2–4 KB, so anything over 32 KB is rejected
+// before the expensive X.509 chain check.
 const maxWebhookPayloadBytes = 32 * 1024
 
 // jwsVerifier verifies and decodes an Apple StoreKit JWS. *JWSVerifier satisfies it.
@@ -69,7 +64,7 @@ type subscriptionNotifier interface {
 type handler struct {
 	verifier       jwsVerifier
 	profilesByUser profileByUser
-	// profilesByTxn is used directly by the verify path's F2 ownership check
+	// profilesByTxn is used directly by the verify path's ownership check
 	// (runVerify); the webhook path reaches the same store through processor.
 	profilesByTxn       profileByTxn
 	auth0               tierSync
@@ -90,10 +85,8 @@ func (e *conflictError) Error() string {
 	return "Transaction is already claimed by another account."
 }
 
-// isCompactJWS reports whether s is a syntactically valid compact JWS:
-// exactly three non-empty segments separated by two dots
-// (header.payload.signature). It performs no base64url decoding or JSON
-// parsing — the intent is a cheap shape check before expensive crypto.
+// isCompactJWS is a cheap shape check (three non-empty dot-separated segments,
+// no decoding) run before expensive crypto.
 func isCompactJWS(s string) bool {
 	first := strings.Index(s, ".")
 	if first <= 0 {
@@ -361,11 +354,7 @@ func (h *handler) webhook(w http.ResponseWriter, r *http.Request) {
 
 	// Cheap structural checks run before the expensive X.509 chain verification
 	// so attacker-controlled input cannot drive CPU cost.
-	if len(req.SignedPayload) > maxWebhookPayloadBytes {
-		h.malformedBody(r, w)
-		return
-	}
-	if !isCompactJWS(req.SignedPayload) {
+	if len(req.SignedPayload) > maxWebhookPayloadBytes || !isCompactJWS(req.SignedPayload) {
 		h.malformedBody(r, w)
 		return
 	}
@@ -447,8 +436,7 @@ func (h *handler) writeJSON(r *http.Request, w http.ResponseWriter, status int, 
 }
 
 func (h *handler) writeError(r *http.Request, w http.ResponseWriter, status int, code, message string) {
-	msg := message
-	body, err := httputil.EncodeJSON(apiErrorResponse{Error: code, Message: &msg})
+	body, err := httputil.EncodeJSON(apiErrorResponse{Error: code, Message: &message})
 	if err != nil {
 		h.serverError(r, w, "encode error", err)
 		return

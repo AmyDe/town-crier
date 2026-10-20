@@ -52,8 +52,7 @@ func TestPostgresNotificationStore_IsProcessed_RoundTrip(t *testing.T) {
 
 // TestPostgresNotificationStore_MarkProcessed_Idempotent proves ON CONFLICT
 // (notification_uuid) DO UPDATE absorbs a second mark of the same UUID without
-// a unique-constraint error — matching CosmosNotificationStore's
-// last-writer-wins UpsertItem behaviour.
+// a unique-constraint error.
 func TestPostgresNotificationStore_MarkProcessed_Idempotent(t *testing.T) {
 	ctx := context.Background()
 	store := newNotifPGStore(t)

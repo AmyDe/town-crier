@@ -5,7 +5,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** Port of iOS `EntitlementMapTests` — full entitlement/quota matrix (tc-z95t, epic #770). */
 class EntitlementMapTest {
     @Test
     fun `free tier has no entitlements`() {

@@ -1,6 +1,5 @@
 package uk.towncrierapp.domain.versionconfig
 
-/** Hand-written fake for [VersionConfigService]. */
 public class FakeVersionConfigService(
     public var fetchMinimumVersionResult: Result<AppVersion> = Result.success(AppVersion(1, 0, 0)),
 ) : VersionConfigService {

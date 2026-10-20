@@ -82,8 +82,6 @@ func isWhitespace(c rune) bool {
 	}
 }
 
-// toUpperASCII upper-cases an ASCII letter, matching char.ToUpperInvariant for
-// the offer-code character set (ASCII letters/digits). Non-letters pass through.
 func toUpperASCII(c rune) rune {
 	if c >= 'a' && c <= 'z' {
 		return c - ('a' - 'A')

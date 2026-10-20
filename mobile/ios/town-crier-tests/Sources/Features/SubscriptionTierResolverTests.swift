@@ -8,7 +8,7 @@ import TownCrierDomain
 /// and `SettingsViewModel` delegate to. The resolver folds the three tier
 /// sources (server profile, StoreKit, JWT claim) into a single answer and
 /// guarantees a paying user is never silently downgraded to `.free` due to a
-/// transient server failure (bug tc-exg6).
+/// transient server failure.
 @Suite("SubscriptionTierResolver")
 struct SubscriptionTierResolverTests {
 

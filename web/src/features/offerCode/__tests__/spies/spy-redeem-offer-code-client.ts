@@ -1,15 +1,6 @@
 import type { RedeemOfferCodeClient } from '../../api/redeemOfferCode';
 import { RedeemError, type RedeemResult } from '../../api/types';
 
-/**
- * Hand-written test double for the offer-code redemption client.
- *
- * The production client is a function `(code: string) => Promise<RedeemResult>`,
- * so the spy exposes `.client` bound to this instance as the drop-in replacement.
- * Tests can read `calls` to verify invocations and set `result` / `error` to
- * script outcomes. No `vi.fn()` / `vi.mock()` — consistent with the repo-wide
- * manual-fakes convention.
- */
 export class SpyRedeemOfferCodeClient {
   calls: string[] = [];
   result: RedeemResult = { tier: 'Pro', expiresAt: '2026-05-18T00:00:00Z' };
@@ -32,11 +23,7 @@ export class SpyRedeemOfferCodeClient {
     return this.result;
   };
 
-  /**
-   * Switch the spy into "pending" mode — the next call to `client` returns a
-   * promise that only resolves/rejects when `resolvePending` / `rejectPending`
-   * is invoked. Useful for asserting transient `submitting` state.
-   */
+  /** The next call to `client` stays pending until `resolvePending` or `rejectPending`. */
   deferNext(): void {
     let resolve: (value: RedeemResult) => void = () => {};
     let reject: (reason: unknown) => void = () => {};

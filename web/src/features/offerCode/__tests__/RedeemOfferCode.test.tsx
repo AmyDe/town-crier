@@ -95,7 +95,6 @@ describe('RedeemOfferCode', () => {
     await user.type(screen.getByLabelText(/offer code/i), 'A7KM-ZQR3-FNXP');
     await user.click(screen.getByRole('button', { name: /redeem/i }));
 
-    // Wait for the success status to appear
     await screen.findByRole('status');
 
     expect(onSuccessCalls).toEqual([PRO_RESULT]);
@@ -109,7 +108,6 @@ describe('RedeemOfferCode', () => {
     await user.type(screen.getByLabelText(/offer code/i), 'A7KM-ZQR3-FNXP');
     await user.click(screen.getByRole('button', { name: /redeem/i }));
 
-    // The button should now indicate loading and be disabled.
     const button = screen.getByRole('button', { name: /redeem/i });
     expect(button).toBeDisabled();
     expect(button).toHaveAttribute('aria-busy', 'true');
@@ -128,11 +126,9 @@ describe('RedeemOfferCode', () => {
 
     await screen.findByRole('status');
 
-    // In the success state, a "Redeem another" button should appear.
     const resetButton = screen.getByRole('button', { name: /redeem another/i });
     await user.click(resetButton);
 
-    // After reset, the input is cleared and the submit button is disabled again.
     const input = screen.getByLabelText(/offer code/i) as HTMLInputElement;
     expect(input.value).toBe('');
     expect(screen.getByRole('button', { name: /redeem/i })).toBeDisabled();

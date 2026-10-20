@@ -4,7 +4,7 @@ import TownCrierDomain
 
 @testable import TownCrierPresentation
 
-/// Post-purchase notification prompt (issue #624, Prong 1).
+/// Post-purchase notification prompt.
 ///
 /// After a purchase resolves to a paid tier and notifications have never been
 /// requested (`.notDetermined`), `resolveSubscriptionTier()` triggers the

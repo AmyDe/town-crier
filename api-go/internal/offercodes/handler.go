@@ -105,9 +105,7 @@ func (h *handler) redeem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify the code exists and is not already fully redeemed before loading
-	// the profile. This is a fast-path check; RedeemWithCAS below is the
-	// authoritative atomic enforcement.
+	// Fast-path check; RedeemWithCAS below is the authoritative atomic enforcement.
 	code, err := h.codes.Get(r.Context(), canonical)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
@@ -122,8 +120,6 @@ func (h *handler) redeem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// A missing profile for an authenticated caller is a server-side
-	// inconsistency; any load failure is a 500.
 	profile, err := h.profiles.Get(r.Context(), userID)
 	if err != nil {
 		h.serverError(w, r, "load profile", err)
@@ -132,21 +128,16 @@ func (h *handler) redeem(w http.ResponseWriter, r *http.Request) {
 
 	now := h.now()
 
-	// Gate on the EFFECTIVE tier, not the raw stored one: a lapsed paid grant
-	// (Tier still Pro/Personal but SubscriptionExpiry — and any grace period —
-	// in the past) is entitled to Free, so it must be allowed to redeem a new
-	// code. Only a currently-active paid tier blocks redemption.
+	// Gate on the effective tier, not the stored one: a lapsed paid grant is
+	// entitled to Free and may redeem a new code.
 	if profile.EffectiveTier(now).IsPaid() {
 		h.writeError(r, w, http.StatusConflict, "already_subscribed",
 			"User already has an active subscription; offer codes are only available to free-tier users.")
 		return
 	}
 
-	// RedeemWithCAS is one atomic transaction with a definitive outcome on the
-	// first attempt, so no retry loop is needed.
 	switch redeemErr := h.codes.RedeemWithCAS(r.Context(), canonical, userID, now); {
 	case redeemErr == nil:
-		// success — fall through
 	case errors.Is(redeemErr, ErrNotFound):
 		h.writeError(r, w, http.StatusNotFound, "invalid_code", "Offer code '"+canonical+"' was not found.")
 		return
@@ -198,8 +189,7 @@ func (h *handler) writeJSON(r *http.Request, w http.ResponseWriter, v any) {
 }
 
 func (h *handler) writeError(r *http.Request, w http.ResponseWriter, status int, code, message string) {
-	msg := message
-	body, err := httputil.EncodeJSON(apiErrorResponse{Error: code, Message: &msg})
+	body, err := httputil.EncodeJSON(apiErrorResponse{Error: code, Message: &message})
 	if err != nil {
 		h.serverError(w, r, "encode error", err)
 		return

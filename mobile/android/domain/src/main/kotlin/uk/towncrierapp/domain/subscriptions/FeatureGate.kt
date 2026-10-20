@@ -4,7 +4,7 @@ package uk.towncrierapp.domain.subscriptions
  * Proactive UI-gating helper: wraps a [SubscriptionTier] and delegates to
  * [EntitlementMap] for all business logic, letting ViewModels check
  * entitlements and quotas — and badge/disable controls before the user taps —
- * without a network round-trip. Port of iOS `FeatureGate`.
+ * without a network round-trip.
  */
 public data class FeatureGate(
     public val tier: SubscriptionTier,

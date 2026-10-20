@@ -74,7 +74,7 @@ func (f *fakeProfileByUser) Save(_ context.Context, p *profiles.UserProfile) err
 type fakeProfileByTxn struct {
 	// profile is returned for all txn lookups when profilesByTxnID is nil.
 	profile *profiles.UserProfile
-	// profilesByTxnID maps originalTransactionID to a profile, supporting F2
+	// profilesByTxnID maps originalTransactionID to a profile, supporting
 	// conflict tests where different txn ids resolve to different profiles.
 	profilesByTxnID map[string]*profiles.UserProfile
 	saveErr         error
@@ -626,7 +626,7 @@ func TestWebhook_SubscribedActivatesProfile(t *testing.T) {
 	}
 }
 
-// TestWebhook_Auth0UserNotFoundReturns200 pins the GH#1165 Phase 1 contract: a
+// TestWebhook_Auth0UserNotFoundReturns200 pins the contract that a
 // missing Auth0 user during the tier sync must not fail the webhook, since the
 // Postgres profile (already saved) is the source of truth.
 func TestWebhook_Auth0UserNotFoundReturns200(t *testing.T) {
@@ -738,8 +738,6 @@ func TestWebhook_ErrorContract(t *testing.T) {
 		})
 	}
 }
-
-// --- ASSN notification-type span tests (tc-3jx8d) ---
 
 // spanStarter mimics otelhttp: it begins a server span on the request ctx so
 // the webhook handler (further in) has a live span to stamp, matching the
@@ -1035,8 +1033,6 @@ func TestWebhook_IgnoresSandboxTransactionInProduction(t *testing.T) {
 	}
 }
 
-// --- F2: transaction ownership tests ---
-
 func TestVerify_RejectsTransactionOwnedByAnotherUser(t *testing.T) {
 	t.Parallel()
 	d := newTestDeps()
@@ -1175,8 +1171,6 @@ func TestWebhook_RejectsOversizedPayloadBeforeVerify(t *testing.T) {
 	}
 }
 
-// --- observability tests (tc-mqa4) ---
-
 // decodeJSONLogLines splits newline-delimited JSON log output into decoded
 // records, skipping blank lines.
 func decodeJSONLogLines(t *testing.T, raw []byte) []map[string]any {
@@ -1206,7 +1200,7 @@ func findLogLine(lines []map[string]any, msg string) (map[string]any, bool) {
 	return nil, false
 }
 
-// TestVerify_LogsOutcomeOnSuccess pins the tc-mqa4 observability requirement:
+// TestVerify_LogsOutcomeOnSuccess pins the observability requirement:
 // a successful verify must emit a single info-level "subscription verify
 // completed" log line reporting the resulting tier, how many signed
 // transactions were submitted, and whether the call changed the stored tier

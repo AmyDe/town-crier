@@ -4,12 +4,9 @@ import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 
 /**
- * Pure port of iOS `SubscriptionTierResolver`'s per-pass formula, degraded to
- * the 2-way form epic #770 assigns this issue (no store tier until #783):
- * `max(serverTier ?? max(cachedTier, jwtTier), jwtTier)`. The retry-once-on-
- * free orchestration (calling this twice around a session refresh) lives in
- * `:presentation`'s auth coordinator — this function is the single-pass
- * arithmetic it calls.
+ * Single-pass formula `max(serverTier ?? max(cachedTier, jwtTier), jwtTier)`;
+ * the retry-once-on-free orchestration lives in `:presentation`'s auth
+ * coordinator.
  */
 class TierResolutionTest {
     @Test

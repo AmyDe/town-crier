@@ -60,11 +60,8 @@ func (p *NotificationProcessor) Process(ctx context.Context, signedPayload strin
 		return false, err
 	}
 
-	// Stamp the notification type on the live request span as soon as it's
-	// decoded, before any idempotency/ignore logic runs — visibility into what
-	// Apple actually sent is the point, including for notifications this
-	// processor goes on to ignore (unknown subscriber, environment mismatch).
-	// These are enum strings, no PII.
+	// Stamped before the idempotency and ignore logic so notifications we go on
+	// to ignore are still visible. Enum strings only, no PII.
 	span := trace.SpanFromContext(ctx)
 	span.SetAttributes(attribute.String("assn.notification_type", notification.NotificationType))
 	if notification.Subtype != "" {

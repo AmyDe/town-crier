@@ -5,7 +5,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** Port of iOS `FeatureGateTests` (tc-z95t). */
 class FeatureGateTest {
     @Test
     fun `carries the tier it was constructed with`() {

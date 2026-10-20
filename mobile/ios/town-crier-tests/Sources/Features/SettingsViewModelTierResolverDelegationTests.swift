@@ -5,8 +5,7 @@ import TownCrierDomain
 @testable import TownCrierPresentation
 
 /// Verifies `SettingsViewModel` delegates tier resolution to the shared
-/// `SubscriptionTierResolver` (tc-exg6.1), so its path cannot drift from
-/// `AppCoordinator` again (third recurrence after tc-aza5).
+/// `SubscriptionTierResolver`, so its path cannot drift from `AppCoordinator`.
 @Suite("SettingsViewModel — Shared tier resolver delegation")
 @MainActor
 struct SettingsViewModelTierResolverDelegationTests {

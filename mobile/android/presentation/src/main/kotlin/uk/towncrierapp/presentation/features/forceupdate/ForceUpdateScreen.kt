@@ -19,7 +19,7 @@ import uk.towncrierapp.presentation.designsystem.TownCrierSpacing
 import uk.towncrierapp.presentation.designsystem.TownCrierTheme
 import uk.towncrierapp.presentation.designsystem.components.PrimaryButton
 
-/** The Play Store listing to deep-link to — the real package id, never the `.dev`-suffixed one (don't repeat iOS's placeholder-store-id bug). */
+/** The Play Store listing to deep-link to: the real package id, never the `.dev`-suffixed one. */
 public const val PLAY_STORE_URL: String = "https://play.google.com/store/apps/details?id=uk.towncrierapp.mobile"
 
 /**

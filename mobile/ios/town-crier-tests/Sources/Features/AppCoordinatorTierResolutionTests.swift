@@ -59,10 +59,7 @@ struct AppCoordinatorTierResolutionTests {
 
   @Test
   func resolveSubscriptionTier_callsCreateOnUserProfileRepository_toEnsureServerProfile() async {
-    // Bug tc-a6it: iOS sign-in must POST /v1/me so new TestFlight users get a
-    // Cosmos UserProfile document. The server's CreateUserProfileCommandHandler
-    // is idempotent — calling create() on every tier resolve safely backfills
-    // the profile for users who don't have one yet, and is a no-op when they do.
+    // POST /v1/me is idempotent, so create() on every tier resolve backfills missing profiles.
     let (sut, _, _, profileSpy) = makeSUT(
       authSession: .valid,
       serverProfile: makeServerProfile(tier: .free)
@@ -75,39 +72,22 @@ struct AppCoordinatorTierResolutionTests {
 
   @Test
   func resolveSubscriptionTier_reEnsuresServerProfile_afterSignIn() async {
-    // Regression for tc-k9fk (GA-breaking first-run watch-zone 500). On a fresh
-    // install the launch-time tier resolve runs while the user is still
-    // UNauthenticated, so POST /v1/me cannot create a Cosmos UserProfile (no
-    // token -> the request 401s and ServerTierResolver swallows it). The user
-    // then signs in. The fix keys the launch
-    // `.task(id: loginViewModel.isAuthenticated)` so resolveSubscriptionTier()
-    // RE-RUNS on the unauthenticated->authenticated transition, ensuring the
-    // profile on the post-auth path -- not only at launch. Without the re-run
-    // the profile never exists this session and the first watch-zone POST 500s
-    // (its quota check loads the profile and hits a Cosmos 404).
-    //
-    // The view wiring (`.task(id:)`) lives in the non-testable app target, so
-    // this locks the coordinator-side invariant the fix depends on: a resolve
-    // AFTER sign-in re-invokes create() and applies the ensured tier.
+    // The launch-time resolve runs unauthenticated, so create() fails; the app
+    // target's `.task(id: loginViewModel.isAuthenticated)` re-runs the resolve
+    // after sign-in, which must call create() again and apply the ensured tier.
     let (sut, authSpy, _, profileSpy) = makeSUT()
 
-    // Phase 1 -- first launch while UNauthenticated. The unauthenticated
-    // POST /v1/me 401s server-side, so create() fails and no profile is
-    // established this pass.
+    // Unauthenticated launch: create() fails.
     authSpy.currentSessionResult = nil
     profileSpy.createResult = .failure(DomainError.networkUnavailable)
     await sut.resolveSubscriptionTier()
     let createCallsBeforeSignIn = profileSpy.createCallCount
 
-    // Phase 2 -- the user signs in; a session (and token) is now available, so
-    // the idempotent POST /v1/me succeeds and backfills the server profile.
+    // Signed in: create() succeeds.
     authSpy.currentSessionResult = .valid
     profileSpy.createResult = .success(makeServerProfile(tier: .personal))
     await sut.resolveSubscriptionTier()
 
-    // The post-auth re-run must ensure the profile (create invoked again) and
-    // apply its tier -- proving the profile is established on sign-in, not just
-    // attempted and dropped at launch.
     #expect(profileSpy.createCallCount > createCallsBeforeSignIn)
     #expect(sut.subscriptionTier == .personal)
   }
@@ -255,9 +235,7 @@ struct AppCoordinatorTierResolutionTests {
   @Test
   func resolveSubscriptionTier_delegatesToSharedResolver_passingJwtAndPreviousTiers() async throws {
     // The coordinator must hand off to the injected `SubscriptionTierResolving`
-    // so the resolution rule (server / StoreKit / JWT folding + no-downgrade
-    // fallback) lives in one place — the third recurrence of the Settings ↔
-    // Coordinator drift fixed by tc-exg6.
+    // so the resolution rule lives in one place.
     let defaults = try #require(UserDefaults(suiteName: UUID().uuidString))
     defaults.set("personal", forKey: "cachedSubscriptionTier")
     let fakeResolver = FakeSubscriptionTierResolver()

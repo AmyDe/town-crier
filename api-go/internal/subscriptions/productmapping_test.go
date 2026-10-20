@@ -22,7 +22,7 @@ func TestTierForProduct(t *testing.T) {
 		{"pro lifetime", "uk.towncrierapp.pro.lifetime", profiles.TierPro, false},
 		{"personal annual is not sold", "uk.towncrierapp.personal.annual", profiles.TierFree, true},
 		// The legacy typo IDs (extra ".co.") must NOT map — they are the bug this
-		// mapping deliberately does not carry over (tc-7g3i.12).
+		// mapping deliberately does not carry over.
 		{"legacy personal typo", "uk.co.towncrier.personal.monthly", profiles.TierFree, true},
 		{"legacy pro typo", "uk.co.towncrier.pro.monthly", profiles.TierFree, true},
 		{"unknown", "com.example.bogus", profiles.TierFree, true},

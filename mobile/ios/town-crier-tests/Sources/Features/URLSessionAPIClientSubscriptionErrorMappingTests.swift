@@ -12,9 +12,7 @@ private struct TestBody: Codable, Sendable {
   let title: String
 }
 
-/// 409 subscription-conflict error mapping (tc-k42ce.2, GH#1165). Split out of
-/// `URLSessionAPIClientWatchZoneErrorMappingTests` since it is a distinct
-/// endpoint family, mirroring the existing per-concern test-file split.
+/// 409 subscription-conflict error mapping.
 @Suite("URLSessionAPIClient -- Subscription Error Mapping")
 struct URLSessionAPIClientSubscriptionErrorMappingTests {
   // swiftlint:disable:next force_unwrapping

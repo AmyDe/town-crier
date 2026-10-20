@@ -16,35 +16,23 @@ var ErrNotFound = errors.New("offer code not found")
 var ErrAlreadyRedeemed = errors.New("offer code has already been redeemed")
 
 // ErrAlreadyRedeemedByUser is returned by RedeemWithCAS when the calling user
-// has already personally redeemed this code. It is a distinct sentinel from
-// ErrAlreadyRedeemed (a different user consuming the last slot) so the store
-// and its tests can tell the two apart, but the redeem handler maps both to
-// the same wire error (409 code_already_redeemed) — clients can't and don't
-// need to distinguish "someone else got there first" from "you already used
-// this code".
+// has already redeemed this code. It is distinct from ErrAlreadyRedeemed, but
+// the redeem handler maps both to 409 code_already_redeemed.
 var ErrAlreadyRedeemedByUser = errors.New("user has already redeemed this offer code")
 
-// maxLabelLength bounds the admin-facing label at mint time.
 const maxLabelLength = 100
 
-// minMaxRedemptions and maxMaxRedemptions bound the redemption cap a code may
-// be minted with.
 const (
 	minMaxRedemptions = 1
 	maxMaxRedemptions = 10000
 )
 
 // OfferCode is a redeemable code granting a paid tier for a fixed duration, up
-// to MaxRedemptions distinct users. Fields are exported so the store can
-// rehydrate a stored row directly; NewOfferCode enforces the invariants for
+// to MaxRedemptions distinct users. NewOfferCode enforces the invariants for
 // freshly minted codes.
 //
-// RedemptionCount is the tombstone counter that survives GDPR Art. 17
-// anonymisation: individual redemptions (rows in the child
-// offer_code_redemptions table) have their PII scrubbed on erasure, but
-// RedemptionCount is never decremented, so a consumed slot can never be
-// reclaimed by a new redeemer. IsFullyRedeemed is the authoritative "no slots
-// left" check derived from it.
+// RedemptionCount survives GDPR anonymisation and is never decremented, so a
+// consumed slot can never be reclaimed by a new redeemer.
 type OfferCode struct {
 	Code            string
 	Tier            profiles.SubscriptionTier
@@ -94,12 +82,6 @@ func (c *OfferCode) IsFullyRedeemed() bool { return c.RedemptionCount >= c.MaxRe
 // Redemption is one user's claim on a code: which code, who redeemed it (nil
 // after GDPR anonymisation), and when (also nil after anonymisation — the
 // child row survives as a tombstone, but its PII is scrubbed).
-//
-// ActiveAt is the single authoritative "still-active offer window" rule reused
-// by both the list-users offer-code column and the admin stats comped/active-
-// offer aggregate, so the two surfaces can never disagree on whether a
-// redemption still counts. A redemption that was never made, or whose
-// RedeemedAt has been scrubbed by anonymisation, is never active.
 type Redemption struct {
 	Code       string
 	UserID     *string
@@ -107,10 +89,8 @@ type Redemption struct {
 }
 
 // ActiveAt reports whether this redemption's granted-tier window is still open
-// at now: the redemption instant plus durationDays has not yet passed.
-// durationDays comes from the redemption's code (Redemption itself does not
-// carry it, since duration is a property of the code, not of any one
-// redemption).
+// at now: the redemption instant plus durationDays (from the redemption's code)
+// has not yet passed. A scrubbed RedeemedAt is never active.
 func (r Redemption) ActiveAt(now time.Time, durationDays int) bool {
 	if r.RedeemedAt == nil {
 		return false
@@ -118,12 +98,9 @@ func (r Redemption) ActiveAt(now time.Time, durationDays int) bool {
 	return r.RedeemedAt.Add(time.Duration(durationDays) * 24 * time.Hour).After(now)
 }
 
-// RedeemedOfferCode is one redemption joined with its code's static grant
-// fields (tier, duration) — the shape RedeemedByUserID and RedeemedByUsers
-// return. UserID is populated only by the
-// batched RedeemedByUsers query, which groups results by redeemer; the
-// single-user RedeemedByUserID query leaves it nil (the caller already knows
-// whose redemptions it asked for).
+// RedeemedOfferCode is one redemption joined with its code's tier and
+// duration, as returned by RedeemedByUserID and RedeemedByUsers. UserID is set
+// only by RedeemedByUsers.
 type RedeemedOfferCode struct {
 	Code         string
 	Tier         profiles.SubscriptionTier

@@ -5,10 +5,7 @@ import TownCrierDomain
 @testable import TownCrierPresentation
 
 /// A purchase or restore whose Apple ID transaction already belongs to a
-/// different Town Crier account (tc-k42ce.2, GH#1165). The single-owner rule
-/// (`requireOwnedBy`, `api-go/internal/subscriptions/handler.go`) is correct
-/// and unchanged -- this covers the app surfacing that verdict instead of
-/// failing silently.
+/// different Town Crier account surfaces an alert instead of failing silently.
 @Suite("SubscriptionViewModel — subscription claimed by another account")
 @MainActor
 struct SubscriptionViewModelTransactionClaimedTests {

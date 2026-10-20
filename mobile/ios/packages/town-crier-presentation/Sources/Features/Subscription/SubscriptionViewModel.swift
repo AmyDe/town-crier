@@ -125,9 +125,6 @@ public final class SubscriptionViewModel: ObservableObject, ErrorHandlingViewMod
   }
 
   /// Initiates purchase of the given product.
-  /// On success, refreshes the auth token so the JWT `subscription_tier` claim
-  /// reflects the new tier. Token refresh is best-effort — failure does not
-  /// affect the purchase outcome.
   public func purchase(productId: String) async {
     isPurchasing = true
     error = nil
@@ -182,7 +179,6 @@ public final class SubscriptionViewModel: ObservableObject, ErrorHandlingViewMod
 
   // MARK: - Token refresh
 
-  /// Refreshes the auth session to pick up an updated `subscription_tier` claim.
   /// Best-effort: failure is silently absorbed so the purchase/restore is not affected.
   private func refreshAuthSession() async {
     _ = try? await authenticationService.refreshSession()
