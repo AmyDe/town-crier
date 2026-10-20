@@ -25,7 +25,7 @@ func (f *fakeFinder) LapsedPaid(_ context.Context, now time.Time) ([]*profiles.U
 	return f.lapsed, f.err
 }
 
-// fakeSaver records the profiles upserted back to Cosmos and can be primed with a
+// fakeSaver records the profiles saved and can be primed with a
 // per-user save error, so the test can isolate a single profile's failure.
 type fakeSaver struct {
 	saved   map[string]profiles.SubscriptionTier // tier at the moment of Save
@@ -127,7 +127,6 @@ func TestHandler_Run_DowngradesEachLapsedProfileAndSyncsAuth0(t *testing.T) {
 	}
 
 	for _, id := range []string{"auth0|a", "auth0|b"} {
-		// Each lapsed profile is reverted to Free in Cosmos before being saved.
 		if tier, ok := saver.saved[id]; !ok || tier != profiles.TierFree {
 			t.Errorf("%s saved tier: got %v (saved=%v), want Free", id, tier, ok)
 		}
@@ -195,7 +194,7 @@ func TestHandler_Run_SaveFailureIsolatedAndContinues(t *testing.T) {
 
 func TestHandler_Run_Auth0FailureIsolatedAndContinues(t *testing.T) {
 	t.Parallel()
-	// The first profile's Auth0 sync fails after its Cosmos save succeeded; it is
+	// The first profile's Auth0 sync fails after its save succeeded; it is
 	// not counted, but the cycle continues to the second profile.
 	finder := &fakeFinder{lapsed: []*profiles.UserProfile{lapsedProfile(t, "auth0|a0fail"), lapsedProfile(t, "auth0|ok")}}
 	saver := newFakeSaver()

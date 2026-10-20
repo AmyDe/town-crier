@@ -192,7 +192,7 @@ func TestPostgresStore_RedeemWithCAS_NotFound_Integration(t *testing.T) {
 }
 
 // TestPostgresStore_MultiRedemption_AcceptsUpToCapThenRejects is the core
-// multi-redemption contract (GH#866): a code minted with maxRedemptions=3
+// multi-redemption contract: a code minted with maxRedemptions=3
 // accepts exactly three distinct redeemers, then rejects a fourth with
 // ErrAlreadyRedeemed.
 func TestPostgresStore_MultiRedemption_AcceptsUpToCapThenRejects(t *testing.T) {

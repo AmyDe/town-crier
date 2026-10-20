@@ -330,7 +330,7 @@ func TestRedeem_AlreadySubscribed(t *testing.T) {
 	}
 }
 
-// TestRedeem_LapsedSubscriptionCanRedeem is the regression test for tc-jh0o:
+// TestRedeem_LapsedSubscriptionCanRedeem covers a lapsed grant:
 // the profile's raw Tier is still paid but SubscriptionExpiry is in the past
 // with no grace period, so EffectiveTier collapses to Free and the guard must
 // allow the redemption to proceed (and succeed).

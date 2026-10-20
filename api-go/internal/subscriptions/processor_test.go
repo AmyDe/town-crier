@@ -45,8 +45,7 @@ func newTestProcessorWithLogger(allowedEnvs []string, logger *slog.Logger) *proc
 }
 
 // TestNotificationProcessor_Process_SubscribedActivatesProfile pins wasNew=true
-// for a SUBSCRIBED notification against a known subscriber — the byte-identical
-// behaviour of the former runWebhook, extended with the new return value.
+// for a SUBSCRIBED notification against a known subscriber.
 func TestNotificationProcessor_Process_SubscribedActivatesProfile(t *testing.T) {
 	t.Parallel()
 	d := newTestProcessor(testAllowedEnvs)
@@ -233,7 +232,7 @@ func TestNotificationProcessor_Process_VerifierErrorPropagates(t *testing.T) {
 }
 
 // TestNotificationProcessor_Process_Auth0UserNotFoundIsNotFatal pins the
-// GH#1165 Phase 1 contract: a missing Auth0 user during the tier sync does not
+// contract that a missing Auth0 user during the tier sync does not
 // fail the notification, because the Postgres profile is already saved and is
 // the source of truth.
 func TestNotificationProcessor_Process_Auth0UserNotFoundIsNotFatal(t *testing.T) {
