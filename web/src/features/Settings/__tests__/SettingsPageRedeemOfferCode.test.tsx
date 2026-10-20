@@ -101,7 +101,6 @@ describe('SettingsPage — RedeemOfferCode integration', () => {
     await user.type(screen.getByLabelText(/offer code/i), 'A7KM-ZQR3-FNXP');
     await user.click(screen.getByRole('button', { name: /^redeem$/i }));
 
-    // Wait for the redemption to complete (success status renders).
     await screen.findByText(/you're on pro/i);
 
     expect(onRedeemSuccessCalls).toEqual([PRO_RESULT]);
@@ -109,26 +108,21 @@ describe('SettingsPage — RedeemOfferCode integration', () => {
 
   it('re-fetches the profile after a successful redemption so tier-gated UI updates', async () => {
     const user = userEvent.setup();
-    // First load: free. After redemption: pro.
     spyRepo.fetchProfileResult = freeUserProfile();
     spyClient.result = PRO_RESULT;
 
     renderPage();
 
-    // Initial render shows Free tier.
     expect(await screen.findByText('Free')).toBeInTheDocument();
     const initialFetchCount = spyRepo.fetchProfileCalls;
 
-    // Script the repo to return Pro on the next fetch.
     spyRepo.fetchProfileResult = proUserProfile();
 
     await user.type(screen.getByLabelText(/offer code/i), 'A7KM-ZQR3-FNXP');
     await user.click(screen.getByRole('button', { name: /^redeem$/i }));
 
-    // Wait for the success state to render.
     await screen.findByText(/you're on pro/i);
 
-    // The settings page should have triggered a profile refresh.
     expect(spyRepo.fetchProfileCalls).toBeGreaterThan(initialFetchCount);
     expect(await screen.findByText('Pro')).toBeInTheDocument();
   });

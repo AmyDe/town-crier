@@ -1,4 +1,4 @@
-import type { UserProfile, SubscriptionTier } from '../../../../domain/types';
+import type { UserProfile } from '../../../../domain/types';
 
 export function freeUserProfile(
   overrides?: Partial<UserProfile>,
@@ -10,7 +10,7 @@ export function freeUserProfile(
     digestDay: 1,
     savedDecisionPush: true,
     savedDecisionEmail: true,
-    tier: 'Free' as SubscriptionTier,
+    tier: 'Free',
     ...overrides,
   };
 }
@@ -21,7 +21,7 @@ export function proUserProfile(
   return {
     ...freeUserProfile(),
     userId: 'auth0|pro456',
-    tier: 'Pro' as SubscriptionTier,
+    tier: 'Pro',
     ...overrides,
   };
 }

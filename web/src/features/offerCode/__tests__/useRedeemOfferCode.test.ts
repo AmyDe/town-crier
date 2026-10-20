@@ -155,9 +155,6 @@ describe('useRedeemOfferCode', () => {
     });
 
     it('falls back to a generic message for non-RedeemError exceptions', async () => {
-      // A non-RedeemError thrown by the client (e.g. an unexpected runtime
-      // error) should still surface cleanly to the user as a generic network-
-      // style message rather than leaking the raw exception.
       const clientThatThrowsPlainError: RedeemOfferCodeClient = async () => {
         throw new Error('unexpected');
       };
@@ -285,7 +282,6 @@ describe('useRedeemOfferCode', () => {
         firstSubmit = result.current.submit();
       });
 
-      // While the first call is in flight, a second submit should be a no-op.
       await act(async () => {
         await result.current.submit();
       });
