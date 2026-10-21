@@ -4,16 +4,13 @@
  * (`[{ slug, name, lat, lng, authorityId, population }]`).
  *
  * THIS SCRIPT IS NOT PART OF THE BUILD AND NEVER RUNS IN CI. It is run by a
- * human, by hand, when the gazetteer needs (re)generating. The build
- * (`prerender-planning.mjs`) only ever READS the committed JSON — it never
- * downloads ONS data. Keep it that way: no network calls belong in here.
+ * human, by hand, when the gazetteer needs (re)generating. No network calls
+ * belong in here.
  *
  * ── What this emits ─────────────────────────────────────────────────────────
  * Every England-&-Wales (excluding London) Built-Up Area (BUA) with a
  * population >= 5,000, as `{ slug, name, lat, lng, authorityId, population }`.
- * The gazetteer carries ALL BUAs >= 5k; the build-time threshold filter
- * (SEO_TOWN_MIN_POPULATION, default 20000, in prerender-planning.mjs) does the
- * >= 20k selection later. Lowering the published threshold never needs a regen.
+ * The gazetteer carries ALL BUAs >= 5k.
  *
  * Scope for THIS generator: England-ex-London + Wales (ONS Census 2021 BUA
  * file) PLUS London (tc-2avw.7), composed on top via a second population CSV,

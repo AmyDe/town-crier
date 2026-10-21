@@ -11,8 +11,8 @@
  *   node scripts/design-tokens/generate.mjs --check    fail (exit 1) if any
  *                                                       committed output is stale
  *
- * Generated files are committed to git; builds never invoke this generator (the
- * SEO renderer reads the committed lib, mobile builds must not depend on Node).
+ * Generated files are committed to git; builds never invoke this generator (mobile
+ * builds must not depend on Node).
  * The `--check` mode mirrors scripts/check-legal-drift.sh semantics: a PR that
  * edits tokens.json (or a generated file) without regenerating fails the gate.
  *
@@ -366,12 +366,12 @@ ${indentLines(media, 2)}
 }
 
 // --------------------------------------------------------------------------
-// Emitter: web/scripts/lib/tokens.generated.mjs  (the SEO/share-page block)
+// SEO-page token stylesheet (rendered into seopage/templates/tokens.gohtml)
 // --------------------------------------------------------------------------
 
 /**
  * Emit the SEO custom-property block for one theme. This is a *subset* of the
- * SPA tokens (only what the static pages' pageStyles() uses) and uses the
+ * SPA tokens (only what the SEO pages use) and uses the
  * three-bucket status chip vocabulary (decision 4, #794) rather than the full
  * PlanIt palette.
  *
@@ -457,28 +457,8 @@ function seoThemedVars(tokens, theme, indent, withComments) {
 }
 
 /**
- * Emit `web/scripts/lib/tokens.generated.mjs`: the light-first SEO token block
- * consumed by pageStyles() in render-shared.mjs. Light values live on `:root`;
- * dark values move into `@media (prefers-color-scheme: dark)`. The leading
- * provenance comment is the only change the generated block introduces to the
- * rendered static pages.
- *
- * @param {any} tokens
- * @returns {string}
- */
-export function emitSeoTokensMjs(tokens) {
-  const css = seoTokenCss(tokens);
-
-  return `// GENERATED FILE — edit design/tokens.json and run scripts/design-tokens/generate.mjs
-// Consumed by web/scripts/lib/render-shared.mjs pageStyles(). See ADR 0040.
-
-export const SEO_TOKEN_CSS = \`${css}\`;
-`;
-}
-
-/**
  * The SEO-page custom-property stylesheet (light `:root` + dark `@media`),
- * shared by the web prerender block and the Go SEO templates.
+ * used by the Go SEO templates.
  *
  * @param {any} tokens
  * @returns {string}
@@ -501,7 +481,7 @@ ${dark}
 /**
  * Emit `api-go/internal/seopage/templates/tokens.gohtml`: a `{{define
  * "tokenVars"}}` block holding the SEO-page token stylesheet, byte-equal to the
- * block `SEO_TOKEN_CSS` carries into the prerendered pages.
+ * SEO-page token stylesheet.
  *
  * @param {any} tokens
  * @returns {string}
@@ -625,7 +605,7 @@ function sharepageThemeBlock(tokens, theme, indent, withInvariants) {
       `${pad}--font-display:${tokens.typography['font-display']};--font-mono:${tokens.typography['font-mono']};`,
       `${pad}/* Shared status vocabulary (tc-r4n9 decision 4): three colour buckets, not a`,
       `${pad}   five-way traffic light — granted (green), refused (red), neutral for`,
-      `${pad}   "Undecided" and every long-tail state. Mirrors web/scripts/lib/render-shared.mjs. */`,
+      `${pad}   "Undecided" and every long-tail state. */`,
     );
   }
   lines.push(
@@ -1142,7 +1122,6 @@ export function emitSkillDoc(tokens, path = SKILL_DOC_PATH) {
 export function buildOutputs(tokens) {
   return [
     { path: join(REPO_ROOT, 'web', 'src', 'styles', 'tokens.css'), content: emitSpaTokensCss(tokens) },
-    { path: join(REPO_ROOT, 'web', 'scripts', 'lib', 'tokens.generated.mjs'), content: emitSeoTokensMjs(tokens) },
     { path: join(REPO_ROOT, 'api-go', 'internal', 'designtokens', 'tokens_gen.go'), content: emitGoTokens(tokens) },
     {
       path: join(REPO_ROOT, 'api-go', 'internal', 'sharepage', 'templates', 'tokens.gohtml'),

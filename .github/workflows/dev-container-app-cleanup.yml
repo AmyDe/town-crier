@@ -34,7 +34,7 @@
 # Requires .github/config/resource-names.env — single source of truth for
 # the dev resource group name. Loaded into $GITHUB_ENV by the `cleanup` job
 # (after checkout, as RESOURCE_GROUP_DEV) rather than a workflow-level `env:`
-# literal, so it can't drift from cd-dev.yml/seo-refresh.yml. Asserted
+# literal, so it can't drift from cd-dev.yml. Asserted
 # against infra/environment.go's naming conventions by an /infra Go test
 # (issue #835 slice 6).
 

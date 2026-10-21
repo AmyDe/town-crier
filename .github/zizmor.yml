@@ -90,7 +90,6 @@ rules:
       - cd-ios-testflight.yml
       - cd-prod.yml
       - pr-gate.yml
-      - seo-refresh.yml
 
   # cache-poisoning (4 findings, High confidence/severity): actions/cache
   # (SPM) and ruby/setup-ruby's bundler-cache in cd-ios-testflight.yml, and

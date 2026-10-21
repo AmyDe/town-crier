@@ -171,7 +171,7 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 	shareDomain := conf.Get("shareDomain")
 	auth0Domain := conf.Require("auth0Domain")
 	// CI OIDC identity (the town-crier-github-actions service principal) object ID. Granted
-	// Storage Blob Data Contributor on the SEO snapshot account below. Same principal the
+	// Storage Blob Data Contributor on the blob storage account below. Same principal the
 	// shared stack grants AcrPush; supplied via config because it's an external app reg.
 	ciServicePrincipalID := conf.Require("ciServicePrincipalId")
 	auth0Audience := conf.Require("auth0Audience")
@@ -180,7 +180,7 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 		customDomainPhase = v
 	}
 	adminAPIKey := conf.RequireSecret("adminApiKey")
-	// Build key the Go endpoint validates for the gated SEO prerender route.
+	// Build key the Go endpoint validates for the gated SEO routes.
 	siteBuildKey := conf.RequireSecret("siteBuildKey")
 	auth0M2mClientID := conf.RequireSecret("auth0M2mClientId")
 	auth0M2mClientSecret := conf.RequireSecret("auth0M2mClientSecret")
@@ -371,7 +371,7 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 		&app.SecretArgs{Name: pulumi.String("auth0-m2m-client-secret"), Value: auth0M2mClientSecret},
 		// Admin key the Go X-Admin-Key gate validates for /v1/admin requests.
 		&app.SecretArgs{Name: pulumi.String("admin-api-key"), Value: adminAPIKey},
-		// Build key the Go gate validates for the SEO prerender endpoint.
+		// Build key the Go gate validates for the SEO endpoints.
 		&app.SecretArgs{Name: pulumi.String("site-build-key"), Value: siteBuildKey},
 	}
 	if subscriptionWebhooks != nil {
@@ -580,10 +580,7 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 		return err
 	}
 
-	// SEO snapshot storage (epic tc-w5w9 / GH #598): a per-environment Storage Account +
-	// seo-snapshot blob container, with the CI OIDC identity granted Storage Blob Data
-	// Contributor (weekly seo-refresh writes the snapshot; every build reads it).
-	seoSnapshotAccountName, seoSnapshotContainerName, err := createSeoSnapshotStorage(ctx, env, resourceGroup.Name, ciServicePrincipalID,
+	err = createBlobStorage(ctx, env, resourceGroup.Name, ciServicePrincipalID,
 		shared.GetStringOutput(pulumi.String("cosmosDataIdentityPrincipalId")), tags)
 	if err != nil {
 		return err
@@ -591,8 +588,6 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 
 	ctx.Export("resourceGroupName", resourceGroup.Name)
 	ctx.Export("staticWebAppName", staticWebApp.Name)
-	ctx.Export("seoSnapshotStorageAccountName", seoSnapshotAccountName)
-	ctx.Export("seoSnapshotContainerName", seoSnapshotContainerName)
 
 	return nil
 }
@@ -824,19 +819,15 @@ func pollJobEnv(env string) app.EnvironmentVarArray {
 	return out
 }
 
-// createSeoSnapshotStorage provisions the per-environment Storage Account + seo-snapshot blob
-// container that holds the weekly SEO prerender snapshot (seo-snapshot.json), and grants the CI
-// OIDC identity Storage Blob Data Contributor so the weekly seo-refresh job can write it and
-// every build can read it (epic tc-w5w9 / GH #598). It also provisions the share-cards container
-// for the public share-page OG images and grants the API's user-assigned managed identity
+// createBlobStorage provisions the per-environment Storage Account and its share-cards container
+// for the public share-page OG images, and grants the API's user-assigned managed identity
 // (cosmosDataIdentity) Storage Blob Data Contributor so it can cache-once baked cards (#738
-// Slice 3). Returns the account + seo container names so the caller can export them for the
-// workflows to reference.
+// Slice 3). The CI OIDC identity also keeps Storage Blob Data Contributor on the account.
 //
 // This is the project's first Storage Account. It uses the smallest/cheapest profile:
 // StorageV2, Standard_LRS, Hot. Shared-key access is disabled, so all data-plane access is
 // AAD/RBAC only — CI authenticates via OIDC and must use `--auth-mode login` for blob I/O.
-func createSeoSnapshotStorage(ctx *pulumi.Context, env string, resourceGroupName pulumi.StringOutput, ciServicePrincipalID string, cosmosDataIdentityPrincipalID pulumi.StringOutput, tags pulumi.StringMap) (accountName, containerName pulumi.StringOutput, err error) {
+func createBlobStorage(ctx *pulumi.Context, env string, resourceGroupName pulumi.StringOutput, ciServicePrincipalID string, cosmosDataIdentityPrincipalID pulumi.StringOutput, tags pulumi.StringMap) error {
 	// Storage account names are 3-24 chars, lowercase alphanumeric, globally unique. "st" prefix
 	// follows the resource-type naming convention; the hyphens from the usual "-town-crier-"
 	// pattern are dropped because they are invalid in a storage account name.
@@ -863,21 +854,10 @@ func createSeoSnapshotStorage(ctx *pulumi.Context, env string, resourceGroupName
 		// chase a literal value that only matches one stack.
 	}, pulumi.IgnoreChanges([]string{"networkRuleSet.ipRules", "networkRuleSet.virtualNetworkRules"}))
 	if err != nil {
-		return pulumi.StringOutput{}, pulumi.StringOutput{}, err
+		return err
 	}
 
-	container, err := storage.NewBlobContainer(ctx, fmt.Sprintf("seo-snapshot-%s", env), &storage.BlobContainerArgs{
-		AccountName:       account.Name,
-		ResourceGroupName: resourceGroupName,
-		ContainerName:     pulumi.String("seo-snapshot"),
-		PublicAccess:      storage.PublicAccessNone,
-	})
-	if err != nil {
-		return pulumi.StringOutput{}, pulumi.StringOutput{}, err
-	}
-
-	// Second container on the same account: share-cards holds the cache-once baked OG map cards
-	// for the public share page. Same private-access profile as seo-snapshot.
+	// share-cards holds the cache-once baked OG map cards for the public share page.
 	_, err = storage.NewBlobContainer(ctx, fmt.Sprintf("share-cards-%s", env), &storage.BlobContainerArgs{
 		AccountName:       account.Name,
 		ResourceGroupName: resourceGroupName,
@@ -885,7 +865,7 @@ func createSeoSnapshotStorage(ctx *pulumi.Context, env string, resourceGroupName
 		PublicAccess:      storage.PublicAccessNone,
 	})
 	if err != nil {
-		return pulumi.StringOutput{}, pulumi.StringOutput{}, err
+		return err
 	}
 
 	// Built-in role: Storage Blob Data Contributor — data-plane read+write of blobs. Scoped to
@@ -901,7 +881,7 @@ func createSeoSnapshotStorage(ctx *pulumi.Context, env string, resourceGroupName
 		PrincipalType: pulumi.String(string(authorization.PrincipalTypeServicePrincipal)),
 	})
 	if err != nil {
-		return pulumi.StringOutput{}, pulumi.StringOutput{}, err
+		return err
 	}
 
 	// Same built-in role for the API's user-assigned managed identity (cosmosDataIdentity, whose
@@ -916,8 +896,8 @@ func createSeoSnapshotStorage(ctx *pulumi.Context, env string, resourceGroupName
 		PrincipalType: pulumi.String(string(authorization.PrincipalTypeServicePrincipal)),
 	})
 	if err != nil {
-		return pulumi.StringOutput{}, pulumi.StringOutput{}, err
+		return err
 	}
 
-	return account.Name, container.Name, nil
+	return nil
 }

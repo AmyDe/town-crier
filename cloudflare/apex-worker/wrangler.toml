@@ -7,7 +7,6 @@ workers_dev = false
 name = "town-crier-apex-dev"
 workers_dev = false
 routes = [
-  { pattern = "preview-dev.towncrierapp.uk", custom_domain = true },
   { pattern = "dev.towncrierapp.uk/*", zone_name = "towncrierapp.uk" },
 ]
 
@@ -20,7 +19,6 @@ INDEXABLE_HOSTS = ""
 name = "town-crier-apex-prod"
 workers_dev = false
 routes = [
-  { pattern = "preview.towncrierapp.uk", custom_domain = true },
   { pattern = "towncrierapp.uk/*", zone_name = "towncrierapp.uk" },
 ]
 

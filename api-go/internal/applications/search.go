@@ -27,8 +27,7 @@ const (
 )
 
 // searchDefaultLimit and searchMaxLimit bound how many rows the endpoint
-// returns. Unlike the SEO endpoints (recentDefaultLimit/recentMaxLimit), v1 has
-// no cursor: an over-limit match set is truncated and flagged via
+// returns. v1 has no cursor: an over-limit match set is truncated and flagged via
 // SearchResponse.RefineQuery rather than paginated.
 const (
 	searchDefaultLimit = 20
@@ -193,9 +192,7 @@ func parseRequiredCoord(raw string) (float64, bool) {
 
 // resolveAuthorityParam resolves the authority=<id-or-slug> filter to an
 // authority_code (the stringified area id): a numeric value is used directly
-// (matching RecentRoutes/NearRoutes, which never validate a numeric id against
-// the static authorities data either — an id with no applications is just an
-// empty result, not an error); a non-numeric value is resolved as a slug via
+// (an id with no applications is just an empty result, not an error); a non-numeric value is resolved as a slug via
 // resolver.SlugToAreaID, and an unresolvable slug is reported false (-> 400),
 // since a slug that cannot resolve at all is unambiguously a client error.
 func resolveAuthorityParam(raw string, resolver authoritySlugResolver) (string, bool) {

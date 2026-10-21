@@ -178,18 +178,10 @@ func newest(entries []SitemapEntry, kind string) *time.Time {
 }
 
 func (h *handler) serveSitemap(w http.ResponseWriter, r *http.Request) {
-	entries, err := h.store.Sitemap(r.Context())
+	entries, err := rolledUpSitemap(r.Context(), h.store)
 	if err != nil {
 		h.fail(w, r, "read sitemap", err)
 		return
-	}
-	for i := range entries {
-		switch entries[i].Kind {
-		case seocatalog.KindHub:
-			entries[i].Lastmod = newest(entries, "")
-		case seocatalog.KindTowns:
-			entries[i].Lastmod = newest(entries, seocatalog.KindTown)
-		}
 	}
 	body := renderSitemap(entries)
 	w.Header().Set("Content-Type", "application/xml; charset=utf-8")

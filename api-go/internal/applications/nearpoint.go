@@ -66,9 +66,7 @@ type nearPointHandler struct {
 
 // NearPointRoutes registers the public GET /v1/applications/near-point
 // endpoint. It is kept in cmd/api/wiring.go's
-// anonymousPatterns — a DIFFERENT route from the build-key-gated
-// GET /v1/applications/near SEO route (applications.NearRoutes) — and reads
-// only public planning data from Postgres. The resolver populates each
+// anonymousPatterns and reads only public planning data from Postgres. The resolver populates each
 // result's AuthoritySlug, mirroring SearchRoutes, so an
 // anonymously-loaded application can build a share URL or a by-slug detail
 // fetch.

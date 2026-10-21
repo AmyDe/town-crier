@@ -23,7 +23,6 @@ import {
   THEMES,
   emitGoTokens,
   emitSharepageTokensGohtml,
-  emitSeoTokensMjs,
   emitSeopageTokensGohtml,
 } from './generate.mjs';
 
@@ -203,11 +202,9 @@ test('emitSharepageTokensGohtml keeps layout invariants (radius/spacing) on the 
 // SEO-page emitter: api-go/internal/seopage/templates/tokens.gohtml
 // --------------------------------------------------------------------------
 
-test('emitSeopageTokensGohtml carries the exact stylesheet SEO_TOKEN_CSS holds', () => {
+test('emitSeopageTokensGohtml defines the tokenVars block', () => {
   const html = emitSeopageTokensGohtml(tokens);
-  const mjs = emitSeoTokensMjs(tokens);
-  const css = mjs.slice(mjs.indexOf('`') + 1, mjs.lastIndexOf('`'));
-  assert.ok(html.includes(`{{define "tokenVars"}}${css}{{end}}`));
+  assert.ok(html.includes('{{define "tokenVars"}}'));
   assert.match(html, /^\{\{\/\* GENERATED FILE/);
 });
 
@@ -219,8 +216,7 @@ test('--check exits 0 on a clean tree and non-zero once ANY generated file is ta
   // Clean tree first (the committed files must already be in sync).
   execFileSync('node', [GENERATE, '--check'], { stdio: 'pipe' });
 
-  // web(2) + Go(3) + iOS + Android + skill doc = every generated surface.
-  assert.equal(buildOutputs(tokens).length, 8, 'expected web(2) + Go(3) + iOS + Android + skill doc');
+  assert.equal(buildOutputs(tokens).length, 7, 'expected web + Go(3) + iOS + Android + skill doc');
 
   for (const { path } of buildOutputs(tokens)) {
     const original = readFileSync(path, 'utf8');

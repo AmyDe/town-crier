@@ -9,10 +9,7 @@ export const APP_DOWNLOAD_URL =
 
 /**
  * Numeric App Store id for the iOS app — the tail of {@link APP_DOWNLOAD_URL}.
- * Mirrors `scripts/lib/constants.mjs` (the `.mjs` prerender scripts cannot import
- * this TS at runtime); the two are kept in lockstep by the drift-guard test in
- * `src/__tests__/planning-cta-link.test.ts`. Feeds the Apple Smart App Banner
- * meta tag in `index.html` so the id is never hardcoded there.
+ * Feeds the Apple Smart App Banner meta tag in `index.html`.
  */
 export const APPLE_APP_ID = '6764095657';
 
@@ -21,8 +18,7 @@ export const APPLE_APP_ID = '6764095657';
  * campaign when the link ALSO carries the account's provider token — a bare
  * `ct` is silently dropped from App Analytics, which is why the original
  * `ct`-only links never showed up under Campaigns. One static value for the
- * whole developer account; it identifies us, never the visitor. Mirrors
- * `scripts/lib/constants.mjs`, kept in lockstep by the drift-guard test.
+ * whole developer account; it identifies us, never the visitor.
  */
 export const APP_STORE_PROVIDER_TOKEN = '128810278';
 
@@ -34,9 +30,6 @@ export const APP_STORE_PROVIDER_TOKEN = '128810278';
  * media type. Cookieless and aggregate: the tokens are build-time constants,
  * identical for every visitor, so nothing is stored on-device and no visitor
  * is identifiable.
- *
- * `APP_DOWNLOAD_URL` stays campaign-free so the byte-equal lockstep guard with
- * `scripts/lib/constants.mjs` still holds.
  */
 export function appStoreUrl(campaign: string): string {
   return `${APP_DOWNLOAD_URL}?pt=${APP_STORE_PROVIDER_TOKEN}&ct=${encodeURIComponent(campaign)}&mt=8`;
