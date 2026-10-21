@@ -11,6 +11,7 @@ require (
 	github.com/pulumi/pulumi-azure-native-sdk/consumption/v3 v3.16.0
 	github.com/pulumi/pulumi-azure-native-sdk/containerregistry/v3 v3.16.0
 	github.com/pulumi/pulumi-azure-native-sdk/dbforpostgresql/v3 v3.16.0
+	github.com/pulumi/pulumi-azure-native-sdk/logic/v3 v3.16.0
 	github.com/pulumi/pulumi-azure-native-sdk/managedidentity/v3 v3.16.0
 	github.com/pulumi/pulumi-azure-native-sdk/monitor/v3 v3.16.0
 	github.com/pulumi/pulumi-azure-native-sdk/operationalinsights/v3 v3.16.0
@@ -69,7 +70,7 @@ require (
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/kevinburke/ssh_config v1.2.0 // indirect
-	github.com/klauspost/compress v1.18.0 // indirect
+	github.com/klauspost/compress v1.18.7 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.3.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
@@ -91,7 +92,6 @@ require (
 	github.com/pkg/term v1.1.0 // indirect
 	github.com/pulumi/appdash v0.0.0-20231130102222-75f619a67231 // indirect
 	github.com/pulumi/esc v0.24.0 // indirect
-	github.com/pulumi/pulumi-azure-native-sdk/logic/v3 v3.16.0 // indirect
 	github.com/pulumi/pulumi-azure-native-sdk/v3 v3.16.0 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
