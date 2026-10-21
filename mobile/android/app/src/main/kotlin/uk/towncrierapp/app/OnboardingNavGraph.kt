@@ -16,19 +16,15 @@ import uk.towncrierapp.presentation.features.onboarding.OnboardingRoute
 import uk.towncrierapp.presentation.features.onboarding.OnboardingViewModel
 
 /**
- * #783 hasn't shipped the paywall composable yet, so the radius step's
- * "Unlock larger zones" chip is hidden entirely rather than routed to a dead
- * tap target (tc-7ttz). Flip once the paywall exists and wire
- * [OnboardingViewModel.reconcileTierAfterUpgrade] to its dismiss callback.
+ * The paywall composable doesn't exist yet, so the radius step's "Unlock
+ * larger zones" chip is hidden rather than routed to a dead tap target.
  */
 internal const val PAYWALL_AVAILABLE: Boolean = false
 
 /**
- * The onboarding wizard: constructed ONCE per presentation (not scoped to
- * any nav-graph destination, since it's shown outside the NavHost entirely -
- * see [TownCrierApp]) so it survives recomposition for as long as the gate
- * says it's required, matching the "nav-graph-scoped, not screen-scoped"
- * requirement the wizard's iOS counterpart has (tc-7ttz).
+ * The onboarding wizard: constructed once per presentation, outside the
+ * NavHost (see [TownCrierApp]), so it survives recomposition for as long as
+ * the gate says it's required.
  */
 @Composable
 internal fun OnboardingGate(
@@ -54,8 +50,6 @@ internal fun OnboardingGate(
     OnboardingRoute(
         viewModel = viewModel,
         onOnboardingComplete = onOnboardingComplete,
-        // #783 hasn't shipped - no-op until the paywall exists (GH#1072 Phase
-        // 5, tc-v6fo0.5), mirrors PAYWALL_AVAILABLE above.
         onUpgradeRequired = {},
     )
 }

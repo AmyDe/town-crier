@@ -1,4 +1,4 @@
-/// Persists the device-local anonymous browse session (GH#868 Phase 3): the
+/// Persists the device-local anonymous browse session: the
 /// postcode/coordinate a pre-signup user entered, so a relaunch with no
 /// authenticated session returns straight to the anonymous map, and so a
 /// successful sign-up can hand the location to the onboarding wizard.

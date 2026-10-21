@@ -27,17 +27,14 @@ public class DataStoreOnboardingRepository(
             .first()
 
     @Suppress("SwallowedException")
-    // Best-effort fire-and-forget preference write (tc-l31ve, module-wide
-    // convention): a disk-IO failure here is rare and recoverable per
-    // DataStore's own edit() contract, and no caller handles a thrown
-    // exception from this method — so it's swallowed rather than propagated.
+    // Best-effort write: no caller handles a thrown IOException, so it's swallowed.
     override suspend fun setOnboardingComplete(complete: Boolean) {
         try {
             dataStore.edit { preferences -> preferences[IS_ONBOARDING_COMPLETE_KEY] = complete }
         } catch (e: CancellationException) {
             throw e
         } catch (e: IOException) {
-            // Swallowed: see class-level rationale above.
+            // Swallowed: see the rationale above.
         }
     }
 }

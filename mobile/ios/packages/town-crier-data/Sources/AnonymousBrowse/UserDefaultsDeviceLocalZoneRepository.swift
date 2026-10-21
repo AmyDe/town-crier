@@ -2,7 +2,7 @@ import Foundation
 import TownCrierDomain
 
 /// Persists device-local (pre-signup) zones to UserDefaults as a JSON-encoded
-/// array (GH#879 Phase 4). Device-local, like
+/// array. Device-local, like
 /// ``UserDefaultsAnonymousBrowseStateRepository`` — reinstalling the app
 /// resets it.
 ///
@@ -14,7 +14,7 @@ import TownCrierDomain
 /// `AnonymousBrowseState` itself is left untouched —
 /// `AppCoordinator+Onboarding`'s post-signup prefill still reads it.
 ///
-/// Trim (GH#888): every ``loadAll()`` call also idempotently enforces the
+/// Trim: every ``loadAll()`` call also idempotently enforces the
 /// cap dropping from 3 to 1 — if more than one zone is stored (a device that
 /// installed a Phase 4/5 TestFlight build before this change), it keeps the
 /// ACTIVE zone (falling back to the first if none is active), persists the

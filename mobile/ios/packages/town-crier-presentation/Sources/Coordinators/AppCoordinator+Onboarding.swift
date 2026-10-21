@@ -7,7 +7,7 @@ import TownCrierDomain
 /// rather than a device-local latch, so it survives reinstall and works across
 /// devices. ``AppCoordinator/determineOnboarding()`` resolves this after
 /// profile-ensure completes; the third `undetermined` case keeps the wizard
-/// from flashing while watch zones are still loading (tc-w3cb.1).
+/// from flashing while watch zones are still loading.
 public enum OnboardingPresentation: Equatable, Sendable {
   /// Still resolving — show a neutral loading screen, never the wizard.
   case undetermined
@@ -42,7 +42,7 @@ extension AppCoordinator {
     viewModel.onComplete = { [weak self] _ in
       self?.completeOnboarding()
     }
-    // In-wizard radius upsell (tc-w3cb.3): build the paywall and, on dismiss,
+    // In-wizard radius upsell: build the paywall and, on dismiss,
     // re-resolve the tier so the larger radius unlocks live. resolveSubscriptionTier
     // pushes the new tier back into this same VM instance.
     viewModel.makeUpsellViewModel = { [weak self] in
@@ -106,7 +106,7 @@ extension AppCoordinator {
     do {
       let zones = try await watchZoneRepository.loadAll()
       onboardingPresentation = zones.isEmpty ? .required : .notRequired
-      // Never ask for a review during a first-run onboarding session (GH #628).
+      // Never ask for a review during a first-run onboarding session.
       if zones.isEmpty {
         reviewPromptTracker?.suppressThisSession()
       }

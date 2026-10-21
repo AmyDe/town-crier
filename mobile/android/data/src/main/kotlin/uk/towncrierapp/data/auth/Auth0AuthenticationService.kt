@@ -86,9 +86,8 @@ public class Auth0AuthenticationService(
                 throw e.cause ?: DomainError.SessionExpired
             }
         if (!JwtClaims.audienceMatches(credentials.accessToken, config.audience)) {
-            // Stored token targets a different API audience (env flip, #680) —
-            // still un-expired, but the new API would 401 it. Wipe and force a
-            // fresh login rather than hand back a token that can't work.
+            // Stored token targets a different API audience (env flip): still
+            // un-expired, but the new API would 401 it, so wipe and force a fresh login.
             credentialsStore.clearCredentials()
             sessionCache.clear()
             throw DomainError.SessionExpired
@@ -104,14 +103,9 @@ public class Auth0AuthenticationService(
     }
 
     @Suppress("SwallowedException")
-    // Any credentials-store failure here degrades to "signed out" (matches
-    // iOS's blanket catch in the equivalent slow path) — the specific
-    // failure reason doesn't change the outcome.
     private suspend fun loadFromStore(): AuthSession? {
-        // hasValidCredentials() on the real SDK already folds in refresh-token
-        // renewability — an expired access token with a valid, non-expired
-        // refresh token reports true here (tc-funq), so this does not need a
-        // separate canRenew() check the way the iOS port does.
+        // hasValidCredentials() already folds in refresh-token renewability, so
+        // no separate canRenew() check is needed.
         if (!credentialsStore.hasValidCredentials()) return null
         val credentials =
             try {
@@ -121,7 +115,7 @@ public class Auth0AuthenticationService(
             }
         if (!JwtClaims.audienceMatches(credentials.accessToken, config.audience)) {
             // Fails open elsewhere (see JwtClaims.audienceMatches); a genuine
-            // mismatch here means the token is unusable — discard it (#680).
+            // mismatch here means the token is unusable, so discard it.
             credentialsStore.clearCredentials()
             return null
         }

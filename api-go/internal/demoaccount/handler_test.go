@@ -194,8 +194,7 @@ func TestGetDemoAccount_UsesBoundedFetch(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status: got %d, want 200", rec.Code)
 	}
-	// The demo path must use the bounded page-one fetch (limit 500, no cursor),
-	// never the removed unbounded drain (tc-fm8f).
+	// The demo path must use the bounded page-one fetch (limit 500, no cursor).
 	if a.lastLimit != 500 {
 		t.Errorf("demo fetch limit: got %d, want 500", a.lastLimit)
 	}

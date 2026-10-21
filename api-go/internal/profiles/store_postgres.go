@@ -286,8 +286,7 @@ func (s *PostgresStore) Save(ctx context.Context, p *UserProfile) error {
 const pgDeleteUserQuery = "DELETE FROM users WHERE user_id = $1"
 
 // Delete removes the profile document. Zero rows affected surfaces as
-// ErrNotFound, matching the Cosmos store's contract (callers may treat a
-// missing profile as tolerable or fatal depending on context).
+// ErrNotFound.
 func (s *PostgresStore) Delete(ctx context.Context, userID string) error {
 	tag, err := s.db.Exec(ctx, pgDeleteUserQuery, userID)
 	if err != nil {

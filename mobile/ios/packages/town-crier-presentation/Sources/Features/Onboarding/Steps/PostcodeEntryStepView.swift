@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Postcode entry step. The user enters any UK postcode they want to watch, not
-/// only their home address (tc-rae0).
+/// only their home address.
 struct PostcodeEntryStepView: View {
   /// User-facing copy, kept in one place so it can be unit-tested.
   enum Copy {

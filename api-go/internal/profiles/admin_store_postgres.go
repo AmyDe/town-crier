@@ -105,10 +105,8 @@ func (s *PostgresAdminStore) ByDigestDay(ctx context.Context, day time.Weekday) 
 // Dormant returns every profile last active strictly before cutoff. The filter
 // runs server-side on last_active_at_epoch (the numeric Unix-millisecond
 // mirror) which sorts unambiguously — the Go-side LastActiveAt.Before(cutoff)
-// check below is the final authority and remains the same as the Cosmos store
-// (it guards against any residual clock drift or NULL epoch). Mirrors
-// AdminStore.Dormant exactly, including the server-side epoch pre-filter and
-// the Go-side strictly-before gate.
+// check below is the final authority (it guards against any residual clock
+// drift or NULL epoch).
 func (s *PostgresAdminStore) Dormant(ctx context.Context, cutoff time.Time) ([]*UserProfile, error) {
 	rows, err := s.db.Query(ctx,
 		pgAdminSelectCols+"WHERE last_active_at_epoch < $1",
@@ -131,7 +129,7 @@ func (s *PostgresAdminStore) Dormant(ctx context.Context, cutoff time.Time) ([]*
 
 // LapsedPaid returns every profile whose stored tier is paid but whose
 // entitlement has lapsed at now — i.e. EffectiveTier(now) has collapsed to
-// Free. Mirrors AdminStore.LapsedPaid exactly: load paid-tier candidates
+// Free. It loads paid-tier candidates
 // server-side (WHERE tier != 'Free'), then filter in Go with the domain rule
 // so the expiry/grace-period logic is never re-expressed in SQL.
 func (s *PostgresAdminStore) LapsedPaid(ctx context.Context, now time.Time) ([]*UserProfile, error) {
@@ -231,13 +229,11 @@ func (s *PostgresAdminStore) UserStats(ctx context.Context, now time.Time) (User
 	cutoff7d := now.Add(-7 * 24 * time.Hour)
 	cutoff30d := now.Add(-30 * 24 * time.Hour)
 
-	stats := UserStats{ByTier: map[string]int{"Free": 0, "Personal": 0, "Pro": 0}}
-
 	scalarRows, err := s.db.Query(ctx, pgUserStatsScalarQuery, cutoff24h, cutoff7d, cutoff30d)
 	if err != nil {
 		return UserStats{}, fmt.Errorf("query user stats: %w", err)
 	}
-	scalar, err := pgx.CollectExactlyOneRow(scalarRows, func(row pgx.CollectableRow) (UserStats, error) {
+	stats, err := pgx.CollectExactlyOneRow(scalarRows, func(row pgx.CollectableRow) (UserStats, error) {
 		var us UserStats
 		if scanErr := row.Scan(
 			&us.Total,
@@ -252,8 +248,7 @@ func (s *PostgresAdminStore) UserStats(ctx context.Context, now time.Time) (User
 	if err != nil {
 		return UserStats{}, fmt.Errorf("scan user stats: %w", err)
 	}
-	scalar.ByTier = stats.ByTier
-	stats = scalar
+	stats.ByTier = map[string]int{"Free": 0, "Personal": 0, "Pro": 0}
 
 	tierRows, err := s.db.Query(ctx, pgUserStatsTierQuery)
 	if err != nil {
@@ -303,8 +298,7 @@ func (s *PostgresAdminStore) mostRecentSignup(ctx context.Context) (*RecentSignu
 	return &r, nil
 }
 
-// Save upserts the profile (same SQL as PostgresStore.Save). Used by the
-// subscription sweep and admin grant endpoint as the write-back path.
+// Save upserts the profile (same SQL as PostgresStore.Save).
 func (s *PostgresAdminStore) Save(ctx context.Context, p *UserProfile) error {
 	zonePrefText, err := marshalZonePrefs(p.ZonePreferences)
 	if err != nil {
@@ -367,7 +361,7 @@ func decodeListCursor(token string) (listCursor, error) {
 // list — optionally filtered by a case-insensitive email substring. An empty
 // continuationToken starts from the first page; a non-empty token resumes after
 // the (created_at, user_id) pair of the previous page's last row via a compound
-// keyset guard. Mirrors AdminStore.List's contract (Page + opaque token).
+// keyset guard.
 func (s *PostgresAdminStore) List(ctx context.Context, emailSearch string, pageSize int, continuationToken string) (Page, error) {
 	var cursor listCursor
 	hasCursor := continuationToken != ""

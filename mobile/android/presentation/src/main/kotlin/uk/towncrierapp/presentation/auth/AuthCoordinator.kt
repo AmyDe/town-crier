@@ -73,7 +73,7 @@ public class AuthCoordinator(
         _onboardingPresentation.value = resolveOnboardingPresentation()
     }
 
-    /** Forces the gate to `NotRequired` once the wizard itself has finished (tc-7ttz) - completion is best-effort, so this doesn't re-check the server. */
+    /** Forces the gate to `NotRequired` once the wizard itself has finished - completion is best-effort, so this doesn't re-check the server. */
     public fun onOnboardingCompleted() {
         _onboardingPresentation.value = OnboardingPresentation.NotRequired
     }

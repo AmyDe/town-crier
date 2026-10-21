@@ -6,7 +6,7 @@ public enum OnboardingStep: CaseIterable, Equatable, Sendable {
   case welcome
   case postcodeEntry
   case radiusPicker
-  /// Custom-shape boundary drawing (GH#1031, tc-6he3x.10). Reached only via
+  /// Custom-shape boundary drawing. Reached only via
   /// ``OnboardingViewModel/reconcileTierAfterCustomShapeUpgrade()`` after a
   /// successful in-wizard purchase from the radius step's custom-shape
   /// upsell — never part of the default welcome → postcode → radius →
@@ -23,7 +23,7 @@ public final class OnboardingViewModel: ObservableObject, ErrorHandlingViewModel
   @Published public private(set) var isLoading = false
   @Published public internal(set) var error: DomainError?
   private var validatedPostcode: Postcode?
-  /// Set by ``prefill(name:coordinate:radiusMetres:)`` (GH#879 Phase 5): a
+  /// Set by ``prefill(name:coordinate:radiusMetres:)``: a
   /// device-local zone's name is free text the user chose (or the postcode
   /// it was seeded from), not necessarily a valid ``Postcode`` — so this
   /// carries the name straight through to the zone ``confirmRadius()``
@@ -39,15 +39,15 @@ public final class OnboardingViewModel: ObservableObject, ErrorHandlingViewModel
   /// resolves, e.g. after an in-wizard purchase). It is `@Published` so the
   /// radius step can unlock the larger paid range reactively *without* the
   /// wizard being rebuilt — a `.id(tier)` rebuild would discard the in-progress
-  /// postcode/geocode, which must survive the upgrade round-trip (tc-w3cb.3).
+  /// postcode/geocode, which must survive the upgrade round-trip.
   @Published public internal(set) var subscriptionTier: SubscriptionTier
 
-  /// Drives the in-wizard subscription paywall (tc-w3cb.3). Presented as a sheet
+  /// Drives the in-wizard subscription paywall. Presented as a sheet
   /// *over* the wizard so the StateObject — and the in-progress postcode/geocode
   /// — survives the purchase round-trip.
   @Published public var isRadiusUpsellPresented = false
 
-  /// Circle (the default) vs. custom polygon shape (GH#1031). Mirrors
+  /// Circle (the default) vs. custom polygon shape. Mirrors
   /// `WatchZoneEditorViewModel.shapeMode`: stays `.circle` for the whole
   /// default flow, and is only ever set to `.custom` by
   /// ``reconcileTierAfterCustomShapeUpgrade()`` when a mid-flow purchase
@@ -63,7 +63,7 @@ public final class OnboardingViewModel: ObservableObject, ErrorHandlingViewModel
   /// needs to render it.
   @Published public private(set) var boundaryVertices: [Coordinate] = []
 
-  /// Drives the in-wizard custom-shape upsell paywall (GH#1031, tc-6he3x.10),
+  /// Drives the in-wizard custom-shape upsell paywall,
   /// presented from the radius step alongside (but distinct from)
   /// ``isRadiusUpsellPresented``. Also a sheet *over* the wizard so the
   /// in-progress postcode/geocode survives the purchase round-trip.
@@ -132,7 +132,7 @@ public final class OnboardingViewModel: ObservableObject, ErrorHandlingViewModel
       currentStep = .radiusPicker
     case .notificationPermission:
       // Which step precedes notification depends on which shape the zone
-      // was actually built from (tc-6he3x.10) — `shapeMode` is the source of
+      // was actually built from — `shapeMode` is the source of
       // truth for that, since it's only ever `.custom` after a genuine
       // mid-flow tier change routed here via ``boundaryDrawing``.
       currentStep = shapeMode == .custom ? .boundaryDrawing : .radiusPicker
@@ -159,7 +159,7 @@ public final class OnboardingViewModel: ObservableObject, ErrorHandlingViewModel
   }
 
   /// Seeds the wizard's zone name/coordinate/radius from an already-created
-  /// device-local zone (GH#879 Phase 5) and jumps straight to the radius
+  /// device-local zone and jumps straight to the radius
   /// step, mirroring ``prefill(postcode:coordinate:radiusMetres:)`` but for a
   /// zone whose name is arbitrary user text rather than a validated
   /// postcode. `radiusMetres` is clamped the same way.
@@ -200,7 +200,7 @@ public final class OnboardingViewModel: ObservableObject, ErrorHandlingViewModel
   /// is bounded at this so a free user cannot pick a zone larger than their
   /// tier allows — replacing the old discrete picker that wrongly offered 5 km
   /// to free accounts (cap 2 km). Shared source of truth with the editor via
-  /// ``WatchZoneLimits`` (tc-w3cb.2).
+  /// ``WatchZoneLimits``.
   public var maxRadiusMetres: Double {
     WatchZoneLimits(tier: subscriptionTier).maxRadiusMetres
   }
@@ -213,8 +213,8 @@ public final class OnboardingViewModel: ObservableObject, ErrorHandlingViewModel
 
   /// Whether the user's tier delivers instant alerts (push and instant email).
   /// Free accounts receive only the weekly email digest, so the notification
-  /// step adapts its copy — and shows a light upgrade nudge — accordingly
-  /// (tc-w3cb.4). Same entitlement the editor's instant-alert toggles gate on.
+  /// step adapts its copy — and shows a light upgrade nudge — accordingly.
+  /// Same entitlement the editor's instant-alert toggles gate on.
   public var deliversInstantAlerts: Bool {
     EntitlementMap.hasEntitlement(.statusChangeAlerts, for: subscriptionTier)
   }
@@ -231,8 +231,8 @@ public final class OnboardingViewModel: ObservableObject, ErrorHandlingViewModel
     await onUpgradeFlowCompleted?()
   }
 
-  /// Whether to surface the "this zone may produce lots of notifications" callout
-  /// (tc-1zb7). Triggered just above the free tier's 2 km cap so only paid tiers
+  /// Whether to surface the "this zone may produce lots of notifications" callout.
+  /// Triggered just above the free tier's 2 km cap so only paid tiers
   /// see it — see `LargeRadiusWarningView` for the threshold rationale.
   public var showsLargeRadiusWarning: Bool {
     selectedRadiusMetres >= LargeRadiusWarning.thresholdMetres
@@ -340,7 +340,7 @@ public final class OnboardingViewModel: ObservableObject, ErrorHandlingViewModel
   /// tier via the same ``onUpgradeFlowCompleted`` hook as
   /// ``reconcileTierAfterUpgrade()``, then swaps `.radiusPicker` for
   /// `.boundaryDrawing` in place if the purchase unlocked custom shapes —
-  /// preserving the already-entered postcode/geocode (tc-w3cb.3).
+  /// preserving the already-entered postcode/geocode.
   public func reconcileTierAfterCustomShapeUpgrade() async {
     await onUpgradeFlowCompleted?()
     if currentStep == .radiusPicker, canDrawCustomShape {

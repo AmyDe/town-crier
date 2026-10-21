@@ -26,20 +26,13 @@ const jwksCacheTTL = 15 * time.Minute
 // when validating exp/nbf.
 const allowedClockSkew = 30 * time.Second
 
-// underlyingValidator is the slice of the library *validator.Validator the
-// adapter calls. Keeping it as an interface lets the deny-all path hold a nil
-// implementation without a type switch at the call site.
-type underlyingValidator interface {
-	ValidateToken(ctx context.Context, token string) (any, error)
-}
-
 // Auth0Validator adapts the auth0 go-jwt-middleware validator to the
 // consumer-side tokenValidator interface, returning the JWT subject on success.
 // It validates iss/aud/exp/nbf and verifies signatures against the issuer's
 // JWKS (cached, background-refreshed). When constructed without Auth0 config it
 // becomes a deny-all validator.
 type Auth0Validator struct {
-	inner underlyingValidator
+	inner *validator.Validator
 }
 
 // NewAuth0Validator builds a validator for the given Auth0 domain and API

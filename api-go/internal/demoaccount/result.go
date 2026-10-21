@@ -33,8 +33,6 @@ type demoApplicationResult struct {
 	AppState    *string `json:"appState"`
 }
 
-// applicationResultOf maps a domain snapshot to its demo wire projection
-// (uid, name, address, description, appType, appState).
 func applicationResultOf(a applications.PlanningApplication) demoApplicationResult {
 	return demoApplicationResult{
 		UID:         a.UID,

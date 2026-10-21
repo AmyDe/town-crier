@@ -1,7 +1,7 @@
 import SwiftUI
 import TownCrierDomain
 
-/// Custom-shape boundary drawing step (GH#1031, tc-6he3x.10) — reached only
+/// Custom-shape boundary drawing step — reached only
 /// after a mid-flow purchase from the radius step's custom-shape upsell
 /// (``OnboardingViewModel/reconcileTierAfterCustomShapeUpgrade()``).
 ///

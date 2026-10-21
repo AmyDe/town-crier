@@ -46,7 +46,6 @@ export function useOnboarding(port: OnboardingPort) {
     setStep('confirm');
   }, []);
 
-  // Leaving Free while on the radius step jumps to the drawing step.
   const upgradeTier = useCallback((newTier: SubscriptionTier) => {
     setTier(newTier);
     if (newTier !== 'Free') {
