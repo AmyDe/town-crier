@@ -346,13 +346,7 @@ func parseWeekday(name string) (time.Weekday, error) {
 // takes its default (pushEnabled true, digestDay Monday, email/saved flags true),
 // so a partial body never silently zeroes an unspecified preference.
 func (req updateRequest) toPreferences() NotificationPreferences {
-	prefs := NotificationPreferences{
-		PushEnabled:        true,
-		DigestDay:          time.Monday,
-		EmailDigestEnabled: true,
-		SavedDecisionPush:  true,
-		SavedDecisionEmail: true,
-	}
+	prefs := DefaultPreferences()
 	if req.PushEnabled != nil {
 		prefs.PushEnabled = *req.PushEnabled
 	}
