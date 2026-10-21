@@ -1,8 +1,6 @@
 // Package profiles owns the user-profile feature: the domain model, the Postgres
 // store, the /v1/me HTTP handlers, and the Auth0 Management (M2M) client used to
-// keep Auth0's subscription_tier metadata in sync. It follows idiomatic Go: a
-// plain struct validated at construction, a consumer-side store interface, and
-// hand-written test fakes.
+// keep Auth0's subscription_tier metadata in sync.
 package profiles
 
 import (
@@ -155,9 +153,7 @@ func DefaultPreferences() NotificationPreferences {
 	}
 }
 
-// ZonePreferences captures per-watch-zone notification settings exported in the
-// GDPR data dump. Watch zones themselves arrive in a later iteration; this type
-// exists so the export contract can render the zone-preferences map.
+// ZonePreferences captures per-watch-zone notification settings.
 type ZonePreferences struct {
 	NewApplicationPush  bool
 	NewApplicationEmail bool
@@ -245,7 +241,7 @@ func (p *UserProfile) UpdatePreferences(prefs NotificationPreferences) {
 }
 
 // EffectiveTier returns the tier the user is actually entitled to at now,
-// applying ADR 0010's lazy expiry rule: a paid tier whose SubscriptionExpiry has
+// applying the lazy expiry rule: a paid tier whose SubscriptionExpiry has
 // passed — with no grace period, or a grace period that has also passed —
 // collapses to Free regardless of the stored Tier. Free and any paid tier still
 // within its window (including a live grace period and the far-future admin
@@ -254,8 +250,7 @@ func (p *UserProfile) UpdatePreferences(prefs NotificationPreferences) {
 //
 // Every entitlement gate reads this, never the raw stored Tier, so an offer-code
 // grant that has run out — or an App Store sub past expiry whose webhook never
-// arrived — is treated as Free everywhere without mutating the stored document
-// (the daily sweep, Phase 2, reverts the stored state separately).
+// arrived — is treated as Free everywhere without mutating the stored document.
 func (p *UserProfile) EffectiveTier(now time.Time) SubscriptionTier {
 	return max(p.subscriptionTier(now), p.LifetimeTier)
 }

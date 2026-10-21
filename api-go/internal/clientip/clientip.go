@@ -41,11 +41,6 @@ import (
 //
 // Source: https://www.cloudflare.com/ips-v4 and https://www.cloudflare.com/ips-v6
 // Snapshot fetched: 2026-06-19.
-//
-// MustParsePrefix is the idiomatic stdlib way to parse compile-time-constant
-// prefixes; a parse failure here is a programmer error in this very list, caught
-// the first time the package is loaded (including by tests), never in a live
-// request.
 var cloudflareRanges = []netip.Prefix{
 	// IPv4 (https://www.cloudflare.com/ips-v4)
 	netip.MustParsePrefix("173.245.48.0/20"),

@@ -78,10 +78,9 @@ func spanAttr(span sdktrace.ReadOnlySpan, key attribute.Key) (attribute.Value, b
 	return attribute.Value{}, false
 }
 
-// TestRequireAuth_StampsEnduserIDOnSuccessfulAuth pins tc-p7az9: a
-// successfully authenticated request must carry the Auth0 subject as
+// A successfully authenticated request must carry the Auth0 subject as
 // enduser.id on the live request span, so the Daily Active Users dashboard
-// tile (tc-gha6l) can chart true active users from Azure Monitor telemetry.
+// tile can chart true active users from Azure Monitor telemetry.
 func TestRequireAuth_StampsEnduserIDOnSuccessfulAuth(t *testing.T) {
 	t.Parallel()
 

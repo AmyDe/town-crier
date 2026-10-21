@@ -329,12 +329,8 @@ func TestPostgresAdminStore_GetByEmail(t *testing.T) {
 	}
 }
 
-// TestPostgresAdminStore_GetByEmail_DuplicateEmailPicksNewest verifies GetByEmail
-// is deterministic when two rows share an email — e.g. an account deleted and
-// recreated, where the old row was never cleaned up (tc-i0t8e). Without an
-// ORDER BY, Postgres can return either row nondeterministically, and which one
-// it returns can change between calls. The fix orders by created_at DESC so the
-// most-recently-created row (the live account) always wins.
+// When two rows share an email (an account deleted and recreated), GetByEmail
+// must deterministically return the most recently created row.
 func TestPostgresAdminStore_GetByEmail_DuplicateEmailPicksNewest(t *testing.T) {
 	store, admin := newUserPGStore(t)
 	ctx := context.Background()
@@ -361,13 +357,8 @@ func TestPostgresAdminStore_GetByEmail_DuplicateEmailPicksNewest(t *testing.T) {
 	}
 }
 
-// TestPostgresAdminStore_GetByEmail_TiedCreatedAtPicksDeterministically verifies
-// GetByEmail stays deterministic across repeated calls even when two duplicate
-// rows share the exact same created_at — the case left open by ordering on
-// created_at alone (tc-i0t8e review follow-up). This is not hypothetical: the
-// 0016 migration backfilled every pre-existing row with the same migration-run
-// timestamp, so two old duplicate rows can tie. user_id is the tiebreak, so the
-// query result must stay pinned to the same row across repeated calls.
+// Duplicate rows can share created_at (the 0016 migration backfilled one
+// timestamp), so user_id breaks the tie and the result must stay pinned.
 func TestPostgresAdminStore_GetByEmail_TiedCreatedAtPicksDeterministically(t *testing.T) {
 	pool := pgtest.New(t)
 	pgtest.Truncate(t, pool, "users")

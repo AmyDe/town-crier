@@ -25,9 +25,7 @@ type ChildDeleter interface {
 // RedemptionAnonymiser scrubs the redeemer back-reference from every offer code
 // the user redeemed (UK GDPR Art. 17), without deleting the code document — the
 // code belongs to the admin campaign and its consumed state must survive so it
-// can't be re-redeemed. The offercodes.CosmosStore satisfies it directly. Unlike
-// the per-user child containers, the OfferCodes container is keyed by code, not
-// by user, so this step is a cross-partition scrub rather than a delete.
+// can't be re-redeemed.
 type RedemptionAnonymiser interface {
 	AnonymiseRedemptionsByUserID(ctx context.Context, userID string) error
 }

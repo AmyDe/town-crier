@@ -52,9 +52,6 @@ func RequireAuth(v TokenValidator, mux routeMatcher, anonymousPatterns map[strin
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, pattern := mux.Handler(r)
 
-		// No pattern matched (unknown path, wrong method, or a constrained route
-		// that did not match): deny — no endpoint selected means the fallback
-		// policy kicks in.
 		if pattern == "" {
 			Challenge(w)
 			return
