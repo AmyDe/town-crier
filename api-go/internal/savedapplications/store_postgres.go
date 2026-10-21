@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -88,11 +89,26 @@ func (s *PostgresStore) Exists(ctx context.Context, userID, applicationUID strin
 
 const pgDeleteSavedAppQuery = "DELETE FROM saved_applications WHERE user_id = $1 AND application_uid = $2"
 
+const pgDeleteCollapsedSavedAppQuery = "DELETE FROM saved_applications WHERE user_id = $1 AND application_uid LIKE '%//%'" +
+	" AND regexp_replace(application_uid, '/{2,}', '/', 'g') = $2"
+
 // Delete removes the saved application. A missing row is not an error: the DELETE
 // endpoint is idempotent (always returns 204).
+//
+// The edge merges runs of slashes in request paths, so a stored uid containing
+// "//" arrives collapsed. When the exact delete removes nothing and the uid
+// contains "/" but no "//", rows of this user whose stored uid matches once
+// slash runs are collapsed are removed.
 func (s *PostgresStore) Delete(ctx context.Context, userID, applicationUID string) error {
-	if _, err := s.db.Exec(ctx, pgDeleteSavedAppQuery, userID, applicationUID); err != nil {
+	tag, err := s.db.Exec(ctx, pgDeleteSavedAppQuery, userID, applicationUID)
+	if err != nil {
 		return fmt.Errorf("delete saved application %q: %w", applicationUID, err)
+	}
+	if tag.RowsAffected() > 0 || !strings.Contains(applicationUID, "/") || strings.Contains(applicationUID, "//") {
+		return nil
+	}
+	if _, err := s.db.Exec(ctx, pgDeleteCollapsedSavedAppQuery, userID, applicationUID); err != nil {
+		return fmt.Errorf("delete saved application %q by collapsed uid: %w", applicationUID, err)
 	}
 	return nil
 }

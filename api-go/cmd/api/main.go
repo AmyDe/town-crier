@@ -103,7 +103,7 @@ func main() {
 	stateStore := notificationstate.NewPostgresStore(pool)
 	notifStore := notifications.NewPostgresStore(pool)
 	watchZoneStore := watchzones.NewPostgresStore(pool)
-	appStore := applications.NewPostgresStore(pool)
+	appStore := applications.NewPostgresStore(pool).WithLogger(logger)
 	savedStore := savedapplications.NewPostgresStore(pool)
 	offerStore := offercodes.NewPostgresStore(pool, logger)
 	appleNotifStore := subscriptions.NewPostgresNotificationStore(pool, time.Now)

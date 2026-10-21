@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -65,12 +67,19 @@ var (
 //   - location is a geography(Point,4326) served by one GiST index, so the radius
 //     reads use ST_DWithin and the nearest-first read uses the KNN <-> operator.
 type PostgresStore struct {
-	db querier
+	db     querier
+	logger *slog.Logger
 }
 
 // NewPostgresStore returns a store over the given pgx pool (or any querier).
 func NewPostgresStore(db querier) *PostgresStore {
-	return &PostgresStore{db: db}
+	return &PostgresStore{db: db, logger: slog.New(slog.DiscardHandler)}
+}
+
+// WithLogger sets the logger used for store warnings and returns the store.
+func (s *PostgresStore) WithLogger(logger *slog.Logger) *PostgresStore {
+	s.logger = logger
+	return s
 }
 
 // appColumns is the read projection. Its order MUST match appScanDest. ST_Y is the
@@ -189,17 +198,62 @@ func nilIfEmptyOtherFields(fields map[string]any) map[string]any {
 const getByAuthorityAndNameQuery = "SELECT " + appColumns +
 	" FROM applications WHERE authority_code = $1 AND planit_name = $2"
 
+// The planit_name LIKE predicate must stay in the query text so the planner can
+// use the partial applications_collapsed_slash_name index.
+const getByCollapsedNameQuery = "SELECT " + appColumns +
+	" FROM applications WHERE authority_code = $1 AND planit_name LIKE '%//%'" +
+	" AND regexp_replace(planit_name, '/{2,}', '/', 'g') = $2 LIMIT 2"
+
 // GetByAuthorityAndName point-reads by (authority_code, planit_name). The boolean
 // reports presence; a miss is a normal 404 for the caller, not an error.
+//
+// The edge merges runs of slashes in request paths, so a stored name containing
+// "//" arrives collapsed. On an exact miss, when name contains "/" but no "//",
+// the lookup falls back to the stored name with slash runs collapsed. Exactly
+// one match is returned; an ambiguous match (two or more) is reported as not
+// found and logged.
 func (s *PostgresStore) GetByAuthorityAndName(ctx context.Context, authorityCode, name string) (PlanningApplication, bool, error) {
 	a, err := scanApp(s.db.QueryRow(ctx, getByAuthorityAndNameQuery, authorityCode, name))
 	if errors.Is(err, pgx.ErrNoRows) {
+		if strings.Contains(name, "/") && !strings.Contains(name, "//") {
+			return s.getByCollapsedName(ctx, authorityCode, name)
+		}
 		return PlanningApplication{}, false, nil
 	}
 	if err != nil {
 		return PlanningApplication{}, false, fmt.Errorf("read application %q/%q: %w", authorityCode, name, err)
 	}
 	return a, true, nil
+}
+
+func (s *PostgresStore) getByCollapsedName(ctx context.Context, authorityCode, name string) (PlanningApplication, bool, error) {
+	rows, err := s.db.Query(ctx, getByCollapsedNameQuery, authorityCode, name)
+	if err != nil {
+		return PlanningApplication{}, false, fmt.Errorf("read application %q/%q by collapsed name: %w", authorityCode, name, err)
+	}
+	defer rows.Close()
+
+	var matches []PlanningApplication
+	for rows.Next() {
+		a, err := scanApp(rows)
+		if err != nil {
+			return PlanningApplication{}, false, fmt.Errorf("scan application %q/%q by collapsed name: %w", authorityCode, name, err)
+		}
+		matches = append(matches, a)
+	}
+	if err := rows.Err(); err != nil {
+		return PlanningApplication{}, false, fmt.Errorf("read application %q/%q by collapsed name: %w", authorityCode, name, err)
+	}
+	switch len(matches) {
+	case 0:
+		return PlanningApplication{}, false, nil
+	case 1:
+		return matches[0], true, nil
+	default:
+		s.logger.WarnContext(ctx, "ambiguous collapsed application name",
+			"authorityCode", authorityCode, "name", name)
+		return PlanningApplication{}, false, nil
+	}
 }
 
 // fullAppColumns is appColumns plus the seven silent-field columns (GH#935,

@@ -148,6 +148,30 @@ func TestSavedPostgresStore_Delete(t *testing.T) {
 	}
 }
 
+func TestSavedPostgresStore_Delete_CollapsedSlashUID(t *testing.T) {
+	ctx := context.Background()
+	store := newSavedPGStore(t)
+
+	app := pgApp("Bromley/23/00178//CON6", 299)
+	for _, user := range []string{"auth0|u1", "auth0|u2"} {
+		if err := store.Save(ctx, pgSavedApp(t, user, app, time.Now())); err != nil {
+			t.Fatalf("Save %s: %v", user, err)
+		}
+	}
+
+	if err := store.Delete(ctx, "auth0|u1", "299/Bromley/23/00178/CON6"); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+
+	uid := "299/Bromley/23/00178//CON6"
+	if exists, err := store.Exists(ctx, "auth0|u1", uid); err != nil || exists {
+		t.Errorf("u1 Exists after collapsed delete: got (%v, %v), want (false, nil)", exists, err)
+	}
+	if exists, err := store.Exists(ctx, "auth0|u2", uid); err != nil || !exists {
+		t.Errorf("u2 Exists after u1 delete: got (%v, %v), want (true, nil)", exists, err)
+	}
+}
+
 // TestSavedPostgresStore_GetByUserID_OrderedAndScoped returns a user's records in
 // saved_at order and excludes other users' records.
 func TestSavedPostgresStore_GetByUserID_OrderedAndScoped(t *testing.T) {
