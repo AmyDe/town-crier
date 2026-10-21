@@ -1,7 +1,3 @@
-// SettingsNavGraph.kt is the bead-mandated file name for every
-// settings-area nav destination + composable (mirrors WatchZoneNavGraph.kt /
-// ApplicationNavGraph.kt) — several top-level declarations below, not a
-// single one, same pattern as its siblings.
 @file:Suppress("MatchingDeclarationName")
 
 package uk.towncrierapp.app
@@ -76,9 +72,8 @@ internal fun SettingsDestinationContent(
                             signOutSupport =
                                 SettingsSignOutSupport(
                                     deviceTokenRepository = appGraph.deviceTokenRepository,
-                                    // Resets the shell's own auth state WITHOUT a second
-                                    // AuthenticationService.logout() call — see
-                                    // LoginViewModel.markSignedOut's doc (tc-4jjw).
+                                    // Resets the shell's own auth state without a second
+                                    // AuthenticationService.logout() call.
                                     onSignedOut = loginViewModel::markSignedOut,
                                 ),
                         )

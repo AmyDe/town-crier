@@ -11,8 +11,7 @@ import uk.towncrierapp.domain.settings.AppearancePreference
 import uk.towncrierapp.domain.settings.AppearanceStore
 import java.io.IOException
 
-// Key name reused verbatim from iOS's local `appearanceMode` (epic #770
-// pre-resolved decision) — cross-platform naming consistency.
+// Key name matches iOS's local `appearanceMode` for cross-platform consistency.
 private val APPEARANCE_MODE_KEY = stringPreferencesKey("appearanceMode")
 
 /** DataStore Preferences-backed [AppearanceStore]. Port of iOS's `UserDefaults`-backed `appearanceMode` latch. */
@@ -25,17 +24,14 @@ public class DataStoreAppearanceStore(
             .first()
 
     @Suppress("SwallowedException")
-    // Best-effort fire-and-forget preference write (tc-l31ve, module-wide
-    // convention): a disk-IO failure here is rare and recoverable per
-    // DataStore's own edit() contract, and no caller handles a thrown
-    // exception from this method — so it's swallowed rather than propagated.
+    // Best-effort write: no caller handles a thrown IOException, so it's swallowed.
     override suspend fun write(preference: AppearancePreference) {
         try {
             dataStore.edit { preferences -> preferences[APPEARANCE_MODE_KEY] = preference.wireValue }
         } catch (e: CancellationException) {
             throw e
         } catch (e: IOException) {
-            // Swallowed: see class-level rationale above.
+            // Swallowed: see the rationale above.
         }
     }
 }

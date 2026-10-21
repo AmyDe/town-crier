@@ -5,12 +5,11 @@ public interface UserProfileRepository {
     /**
      * Ensures the server profile exists (creates it on first call, returns
      * the existing one otherwise — the server-side handler is idempotent)
-     * and returns it. Called on every signed-in transition, before tier
-     * resolution (tc-a6it / #549 ordering). NOTE: the wire response for this
+     * and returns it. NOTE: the wire response for this
      * endpoint carries only `userId`/`pushEnabled`/`tier` — the returned
      * [ServerProfile]'s notification-preference fields are the server's
      * defaults, not necessarily this user's actual saved values; use
-     * [fetchProfile] to read the real preferences (#778).
+     * [fetchProfile] to read the real preferences.
      */
     public suspend fun ensureProfile(): ServerProfile
 
@@ -20,7 +19,7 @@ public interface UserProfileRepository {
     /**
      * Replaces ALL FIVE notification preferences in one call (`PATCH /v1/me`)
      * — the server treats them as a set, so every setter round-trips every
-     * field, never a partial update (epic #770 pre-resolved decision).
+     * field, never a partial update.
      */
     public suspend fun updatePreferences(preferences: UserPreferences): ServerProfile
 
