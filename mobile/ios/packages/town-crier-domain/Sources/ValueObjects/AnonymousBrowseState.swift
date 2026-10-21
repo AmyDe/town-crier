@@ -2,7 +2,7 @@ import Foundation
 
 /// A snapshot of an anonymous (pre-signup) browsing session: the postcode the
 /// user entered before creating an account, its resolved coordinate, and when
-/// it was captured (GH#868 Phase 3).
+/// it was captured.
 ///
 /// Persisted locally via ``AnonymousBrowseStateRepository`` so a relaunch with
 /// no authenticated session routes straight back to the anonymous map instead

@@ -1,24 +1,10 @@
 import Foundation
 import TownCrierDomain
 
-/// Thread-safe in-memory cache for the current Auth0 session.
-///
-/// `Auth0AuthenticationService.currentSession()` was hitting
-/// `SimpleKeychain.data(forKey:)` -> `SecItemCopyMatching` -> securityd on
-/// every call, via `CredentialsManager.canRenew()` / `hasValid()` /
-/// `credentials()`. Concurrent foreground bursts (e.g. a push tap arriving
-/// while `LoginViewModel.checkExistingSession` and
-/// `AppCoordinator.resolveSubscriptionTier` are already in flight) caused
-/// four-way contention on securityd's connection pool, adding tens to
-/// hundreds of milliseconds to cold-launch latency and amplifying the
-/// resumption gap that drove the tc-cbmk notification-tap crash.
-///
-/// This cache holds the most recent valid `AuthSession` in memory. When the
-/// session's access token has at least `leadTime` seconds before
-/// `expiresAt`, callers get the cached value without touching the keychain.
+/// Thread-safe in-memory cache for the current Auth0 session, so most calls
+/// skip the keychain (concurrent securityd reads contend and slow cold launch).
 /// Concurrent callers on a cold cache share a single in-flight load via
-/// `currentOrLoad`, so a four-way burst issues at most one
-/// `SecItemCopyMatching` (tc-3d7b).
+/// `currentOrLoad`.
 actor SessionCache {
   private var cached: AuthSession?
   private var inFlight: Task<AuthSession?, Never>?

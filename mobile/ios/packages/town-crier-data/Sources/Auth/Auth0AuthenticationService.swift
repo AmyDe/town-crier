@@ -23,9 +23,6 @@ public final class Auth0AuthenticationService: TownCrierDomain.AuthenticationSer
   @unchecked Sendable {
   private let config: Auth0Config
   private let credentialsManager: CredentialsManager
-  /// In-memory session cache that lets a foreground burst share a single
-  /// keychain read. See `SessionCache` for the contention rationale
-  /// (tc-3d7b).
   private let sessionCache = SessionCache()
 
   public init(config: Auth0Config) {
@@ -78,9 +75,8 @@ public final class Auth0AuthenticationService: TownCrierDomain.AuthenticationSer
         accessToken: credentials.accessToken, expected: config.audience
       ) else {
         // The stored token was minted for a different API audience (a
-        // prod-build -> dev-build flip, #660). It is still un-expired, so
-        // handing it back would 401 against the new API. Wipe it and force
-        // a fresh login instead (tc-iuvu).
+        // prod-build -> dev-build flip). It is still un-expired, so handing it
+        // back would 401 against the new API. Wipe it and force a fresh login.
         _ = credentialsManager.clear()
         await sessionCache.clear()
         throw DomainError.sessionExpired
@@ -110,20 +106,15 @@ public final class Auth0AuthenticationService: TownCrierDomain.AuthenticationSer
   }
 
   public func currentSession() async -> AuthSession? {
-    // Fast path: in-memory cache. Most foreground bursts hit this and skip
-    // securityd entirely (tc-3d7b).
     if let cached = await sessionCache.current() {
       return cached
     }
 
-    // Slow path: consult the keychain. `currentOrLoad` deduplicates
-    // concurrent callers so a four-way burst with a cold cache still
-    // issues at most one `SecItemCopyMatching`.
     return await sessionCache.currentOrLoad { [credentialsManager, config] in
       // `hasValid()` only checks access-token expiry. Per Auth0 SDK docs,
       // apps using refresh tokens must also consult `canRenew()` at
       // startup — otherwise an expired access token forces a fresh login
-      // even though the refresh token is still valid (tc-funq).
+      // even though the refresh token is still valid.
       guard credentialsManager.canRenew() || credentialsManager.hasValid() else {
         return nil
       }
@@ -132,9 +123,9 @@ public final class Auth0AuthenticationService: TownCrierDomain.AuthenticationSer
         guard Self.audienceMatches(
           accessToken: credentials.accessToken, expected: config.audience
         ) else {
-          // Stored token targets a different API audience (env flip, #660).
+          // Stored token targets a different API audience (env flip).
           // Discard it; returning nil also nulls the session cache via
-          // `currentOrLoad`, so the next call re-authenticates (tc-iuvu).
+          // `currentOrLoad`, so the next call re-authenticates.
           _ = credentialsManager.clear()
           return nil
         }

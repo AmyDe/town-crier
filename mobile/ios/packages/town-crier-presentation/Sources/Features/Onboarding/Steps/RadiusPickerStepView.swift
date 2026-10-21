@@ -4,9 +4,9 @@ import SwiftUI
 ///
 /// Uses the same `Slider` paradigm as `WatchZoneEditorView`, bounded at the
 /// tier's maximum radius so a free user cannot exceed their 2 km cap by
-/// construction (tc-w3cb.2).
+/// construction.
 ///
-/// Wrapped in a `ScrollView` (tc-7se1w.4): this step can stack the radius
+/// Wrapped in a `ScrollView`: this step can stack the radius
 /// control, the larger-radius upsell chip, the custom-shape card, and the
 /// large-radius warning all at once, and `OnboardingView` gives the step
 /// the full height below the step indicator rather than centring it — so on
@@ -44,7 +44,7 @@ struct RadiusPickerStepView: View {
           }
         } else {
           // Re-entry point for a user whose tier already allows custom shapes
-          // (tc-6he3x.10) — without this, backing out of the drawing step once
+          // — without this, backing out of the drawing step once
           // would strand an already-paying user on a circle for the rest of
           // onboarding, since the upsell card above only shows pre-purchase.
           CustomShapeAvailableCard {

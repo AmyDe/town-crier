@@ -2,7 +2,7 @@ import Foundation
 import TownCrierDomain
 
 /// Persists the anonymous browse session to UserDefaults as a single
-/// JSON-encoded blob (GH#868 Phase 3). Device-local, like
+/// JSON-encoded blob. Device-local, like
 /// ``UserDefaultsOnboardingRepository`` — reinstalling the app resets it.
 public final class UserDefaultsAnonymousBrowseStateRepository: AnonymousBrowseStateRepository,
   @unchecked Sendable {
