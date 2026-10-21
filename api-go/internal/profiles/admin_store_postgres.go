@@ -231,13 +231,11 @@ func (s *PostgresAdminStore) UserStats(ctx context.Context, now time.Time) (User
 	cutoff7d := now.Add(-7 * 24 * time.Hour)
 	cutoff30d := now.Add(-30 * 24 * time.Hour)
 
-	stats := UserStats{ByTier: map[string]int{"Free": 0, "Personal": 0, "Pro": 0}}
-
 	scalarRows, err := s.db.Query(ctx, pgUserStatsScalarQuery, cutoff24h, cutoff7d, cutoff30d)
 	if err != nil {
 		return UserStats{}, fmt.Errorf("query user stats: %w", err)
 	}
-	scalar, err := pgx.CollectExactlyOneRow(scalarRows, func(row pgx.CollectableRow) (UserStats, error) {
+	stats, err := pgx.CollectExactlyOneRow(scalarRows, func(row pgx.CollectableRow) (UserStats, error) {
 		var us UserStats
 		if scanErr := row.Scan(
 			&us.Total,
@@ -252,8 +250,7 @@ func (s *PostgresAdminStore) UserStats(ctx context.Context, now time.Time) (User
 	if err != nil {
 		return UserStats{}, fmt.Errorf("scan user stats: %w", err)
 	}
-	scalar.ByTier = stats.ByTier
-	stats = scalar
+	stats.ByTier = map[string]int{"Free": 0, "Personal": 0, "Pro": 0}
 
 	tierRows, err := s.db.Query(ctx, pgUserStatsTierQuery)
 	if err != nil {
