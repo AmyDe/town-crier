@@ -1,4 +1,4 @@
-let pendingReturnTo: string | undefined = undefined;
+let pendingReturnTo: string | undefined;
 
 export function captureAuth0RedirectReturnTo(value: string | undefined): void {
   pendingReturnTo = value;

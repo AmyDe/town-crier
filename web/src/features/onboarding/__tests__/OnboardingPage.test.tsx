@@ -174,7 +174,6 @@ describe('OnboardingPage', () => {
     expect(
       screen.getByRole('heading', { name: /draw any shape/i }),
     ).toBeInTheDocument();
-    // The upsell links out to the App Store, tagged for install attribution.
     const cta = screen.getByRole('link', { name: /upgrade/i });
     expect(cta).toHaveAttribute('href', appStoreUrl('web-onboarding-custom-shape'));
     expect(cta).toHaveAttribute('target', '_blank');
