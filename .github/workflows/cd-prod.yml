@@ -213,7 +213,7 @@ jobs:
 
       - uses: ./.github/actions/deploy-worker-jobs
         with:
-          jobs: poll digest digest-hourly dormant-cleanup subscription-sweep pg-purge seo-catalog
+          jobs: poll digest digest-hourly dormant-cleanup subscription-sweep pg-purge seo-catalog appstore-reconcile
           env-suffix: prod
           resource-group: ${{ needs.infra.outputs.resource-group }}
           image: ${{ steps.resolve-image.outputs.image }}
