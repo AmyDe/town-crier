@@ -6,6 +6,16 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+)
+
+const (
+	cacheAttr  = "sharecard.cache"
+	busyRetry  = "120"
+	renderWait = 5 * time.Second
 )
 
 // imageStore caches baked share-card PNGs by area-scoped key; the handler
@@ -21,6 +31,9 @@ type imageHandler struct {
 	tiles    tileClient
 	cache    imageStore // may be nil: degrade to regenerate-on-every-request
 	logger   *slog.Logger
+
+	renderSlot chan struct{}
+	renderWait time.Duration
 }
 
 // ImageRoutes registers the anonymous og:image route. The {ref...} wildcard MUST
@@ -34,15 +47,25 @@ type imageHandler struct {
 // interface (not a typed-nil pointer) so the handler's nil-check disables caching
 // cleanly.
 func ImageRoutes(mux *http.ServeMux, store appStore, resolver slugResolver, tiles tileClient, cache imageStore, logger *slog.Logger) {
-	h := &imageHandler{store: store, resolver: resolver, tiles: tiles, cache: cache, logger: logger}
+	h := newImageHandler(store, resolver, tiles, cache, logger, renderWait)
 	mux.HandleFunc("GET /og/{authoritySlug}/{ref...}", h.serve)
+}
+
+func newImageHandler(store appStore, resolver slugResolver, tiles tileClient, cache imageStore, logger *slog.Logger, wait time.Duration) *imageHandler {
+	return &imageHandler{
+		store: store, resolver: resolver, tiles: tiles, cache: cache, logger: logger,
+		renderSlot: make(chan struct{}, 1),
+		renderWait: wait,
+	}
 }
 
 // serve resolves the slug, point-reads the application, then serves the baked
 // card — from the cache when present, otherwise generating it (map or fallback)
 // and caching it. An unknown slug/ref or a non-.png request is a no-store 404
 // (never a 500); a store error is a bodyless 500 (the envelope is backfilled by
-// middleware).
+// middleware). Cache hits never wait; a miss renders under a one-per-replica
+// slot (OSM tile policy) and answers 503 + Retry-After when the slot is not free
+// within renderWait.
 func (h *imageHandler) serve(w http.ResponseWriter, r *http.Request) {
 	slug := r.PathValue("authoritySlug")
 	ref := r.PathValue("ref")
@@ -76,7 +99,27 @@ func (h *imageHandler) serve(w http.ResponseWriter, r *http.Request) {
 	// same area share one baked card, and a slug rename never orphans it.
 	key := strconv.Itoa(areaID) + "/" + ref + ".png"
 
+	span := trace.SpanFromContext(r.Context())
+
 	if cached, ok := h.readCache(r.Context(), key); ok {
+		span.SetAttributes(attribute.String(cacheAttr, "hit"))
+		h.writePNG(r.Context(), w, cached)
+		return
+	}
+
+	if !h.acquire(r) {
+		span.SetAttributes(attribute.String(cacheAttr, "busy"))
+		h.logger.InfoContext(r.Context(), "share card render busy", "key", key)
+		w.Header().Set("Retry-After", busyRetry)
+		w.Header().Set("Cache-Control", "no-store")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	defer func() { <-h.renderSlot }()
+
+	// Another request may have rendered this key while we queued for the slot.
+	if cached, ok := h.readCache(r.Context(), key); ok {
+		span.SetAttributes(attribute.String(cacheAttr, "hit"))
 		h.writePNG(r.Context(), w, cached)
 		return
 	}
@@ -88,7 +131,23 @@ func (h *imageHandler) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.writeCache(r.Context(), key, png)
+	span.SetAttributes(attribute.String(cacheAttr, "miss"))
 	h.writePNG(r.Context(), w, png)
+}
+
+// acquire takes the render slot, giving up after renderWait or when the request
+// context ends.
+func (h *imageHandler) acquire(r *http.Request) bool {
+	timer := time.NewTimer(h.renderWait)
+	defer timer.Stop()
+	select {
+	case h.renderSlot <- struct{}{}:
+		return true
+	case <-timer.C:
+		return false
+	case <-r.Context().Done():
+		return false
+	}
 }
 
 // readCache returns the cached card; a nil cache or a read error means regenerate.

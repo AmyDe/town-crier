@@ -336,6 +336,26 @@ func TestRouter_AnonymousRoutesServedWithoutToken(t *testing.T) {
 	}
 }
 
+func TestRouter_RobotsTxtAnonymous(t *testing.T) {
+	t.Parallel()
+
+	rec := serveReq(t, newTestHandler(t), http.MethodGet, "/robots.txt", "", "")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (anonymous)", rec.Code)
+	}
+	if got := rec.Header().Get("Content-Type"); got != "text/plain; charset=utf-8" {
+		t.Errorf("Content-Type = %q", got)
+	}
+	if got := rec.Header().Get("Cache-Control"); got != "public, max-age=86400" {
+		t.Errorf("Cache-Control = %q", got)
+	}
+	want := "User-agent: Twitterbot\nUser-agent: facebookexternalhit\nUser-agent: LinkedInBot\nUser-agent: Slackbot\nUser-agent: Discordbot\nUser-agent: WhatsApp\nUser-agent: TelegramBot\nAllow: /\n\nUser-agent: *\nDisallow: /og/\n"
+	if got := rec.Body.String(); got != want {
+		t.Errorf("body = %q, want %q", got, want)
+	}
+}
+
 // TestRouter_SharePageAndBySlugAnonymous_ByIdStaysAuthed is the end-to-end wiring
 // guard for the share surface (#738 Slice 1). It boots the FULL router with a
 // store that returns a real Croydon application, then proves:

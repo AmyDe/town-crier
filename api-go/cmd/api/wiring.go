@@ -58,6 +58,8 @@ var anonymousPatterns = map[string]struct{}{
 	"GET /planning":           {},
 	"GET /planning/{path...}": {},
 	"GET /sitemap.xml":        {},
+	// Crawler policy for the API and share hosts (keeps generic crawlers off /og/).
+	"GET /robots.txt": {},
 	// The demo-account endpoint is anonymous so Apple's App Store reviewer can
 	// reach a fully-provisioned Pro account without a token (no bearer required).
 	"GET /v1/demo-account": {},
@@ -334,6 +336,7 @@ func newRouter(
 		}
 		watchzones.Routes(mux, watchZoneStore, logger, zoneOpts...)
 	}
+	sharepage.RobotsRoutes(mux)
 	if appStore != nil {
 		// Refresh-on-tap heals a saved row's snapshot when the user views an app
 		// they've saved; it needs the saved store. Pass a genuine nil interface
