@@ -356,6 +356,83 @@ func TestRouter_RobotsTxtAnonymous(t *testing.T) {
 	}
 }
 
+// slotHoldingLogHandler blocks the request that logs the cacheless re-read,
+// which the og:image handler does only while it holds the render slot, so the
+// full router can be driven into the busy path without a production seam.
+type slotHoldingLogHandler struct {
+	mu      sync.Mutex
+	seen    int
+	held    chan struct{}
+	release chan struct{}
+}
+
+func (h *slotHoldingLogHandler) Enabled(context.Context, slog.Level) bool { return true }
+func (h *slotHoldingLogHandler) WithAttrs([]slog.Attr) slog.Handler       { return h }
+func (h *slotHoldingLogHandler) WithGroup(string) slog.Handler            { return h }
+
+func (h *slotHoldingLogHandler) Handle(_ context.Context, r slog.Record) error {
+	if r.Message != "share card store unwired; regenerating on demand" {
+		return nil
+	}
+	h.mu.Lock()
+	h.seen++
+	second := h.seen == 2
+	h.mu.Unlock()
+	if second {
+		close(h.held)
+		<-h.release
+	}
+	return nil
+}
+
+func TestRouter_ShareCardBusy_Returns429ThroughFullChain(t *testing.T) {
+	t.Parallel()
+
+	logs := &slotHoldingLogHandler{held: make(chan struct{}), release: make(chan struct{})}
+	app := applications.PlanningApplication{Name: "23/03456/FUL", UID: "croydon-23-03456-FUL", AreaName: "Croydon", AreaID: 301}
+	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, foundAppStore{app: app}, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "", nil, nil, "", nil, nil, nil, 60, 60, pollingAdminDeps{}, nil, nil, slog.New(logs))
+	const path = "/og/croydon/23/03456/FUL.png"
+
+	first := make(chan *httptest.ResponseRecorder, 1)
+	go func() { first <- serveReq(t, h, http.MethodGet, path, "", "") }()
+	select {
+	case <-logs.held:
+	case <-time.After(10 * time.Second):
+		t.Fatal("first request never took the render slot")
+	}
+
+	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	defer cancel()
+	busy := httptest.NewRecorder()
+	h.ServeHTTP(busy, httptest.NewRequestWithContext(ctx, http.MethodGet, path, nil))
+	close(logs.release)
+
+	if busy.Code != http.StatusTooManyRequests {
+		t.Fatalf("busy status = %d, want 429", busy.Code)
+	}
+	if got := busy.Header().Get("Retry-After"); got != "120" {
+		t.Errorf("Retry-After = %q, want 120", got)
+	}
+	if got := busy.Header().Get("Cache-Control"); got != "no-store" {
+		t.Errorf("Cache-Control = %q, want no-store", got)
+	}
+	if got := busy.Header().Get("Content-Type"); got != "application/json" {
+		t.Errorf("Content-Type = %q, want application/json", got)
+	}
+	if got, want := busy.Body.String(), `{"Status":429,"Title":"Error","Detail":null}`; got != want {
+		t.Errorf("body = %q, want %q", got, want)
+	}
+
+	select {
+	case rec := <-first:
+		if rec.Code != http.StatusOK {
+			t.Errorf("slot holder status = %d, want 200", rec.Code)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("slot holder never finished")
+	}
+}
+
 // TestRouter_SharePageAndBySlugAnonymous_ByIdStaysAuthed is the end-to-end wiring
 // guard for the share surface (#738 Slice 1). It boots the FULL router with a
 // store that returns a real Croydon application, then proves:

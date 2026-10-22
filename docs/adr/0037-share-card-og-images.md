@@ -69,7 +69,7 @@ literal text after it).
   pages (ADR 0050) link every listed application to its share page, so crawlers
   request cards for applications nobody has shared, and each new path is a
   fresh render of about 20 OSM tiles. Each API replica now renders at most one
-  card at a time (a miss waits up to 5 s for the slot, then gets a `503` with
+  card at a time (a miss waits up to 5 s for the slot, then gets a `429` with
   `Retry-After: 120`), and `GET /robots.txt` on the API and share hosts keeps
   generic crawlers off `/og/` while link-preview bots keep access
   ([#1273](https://github.com/AmyDe/town-crier/issues/1273)).

@@ -439,7 +439,7 @@ func serveSpanned(t *testing.T, mux *http.ServeMux) (*httptest.ResponseRecorder,
 	return rec, ""
 }
 
-func TestImageServe_SlotHeld_Returns503WithoutFetching(t *testing.T) {
+func TestImageServe_SlotHeld_Returns429WithoutFetching(t *testing.T) {
 	t.Parallel()
 	tiles := newGatedTiles()
 	cache := &scriptedCache{results: []bool{false}}
@@ -448,8 +448,8 @@ func TestImageServe_SlotHeld_Returns503WithoutFetching(t *testing.T) {
 
 	rec, attr := serveSpanned(t, mux)
 
-	if rec.Code != http.StatusServiceUnavailable {
-		t.Fatalf("status = %d, want 503", rec.Code)
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want 429", rec.Code)
 	}
 	if got := rec.Header().Get("Retry-After"); got != "120" {
 		t.Errorf("Retry-After = %q, want 120", got)
@@ -485,8 +485,8 @@ func TestImageServe_SlotHeldContextCancelled_ReturnsWithoutWaiting(t *testing.T)
 
 	select {
 	case rec := <-done:
-		if rec.Code != http.StatusServiceUnavailable {
-			t.Errorf("status = %d, want 503", rec.Code)
+		if rec.Code != http.StatusTooManyRequests {
+			t.Errorf("status = %d, want 429", rec.Code)
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("handler did not return after context cancel")

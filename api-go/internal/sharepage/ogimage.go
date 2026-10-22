@@ -64,7 +64,7 @@ func newImageHandler(store appStore, resolver slugResolver, tiles tileClient, ca
 // and caching it. An unknown slug/ref or a non-.png request is a no-store 404
 // (never a 500); a store error is a bodyless 500 (the envelope is backfilled by
 // middleware). Cache hits never wait; a miss renders under a one-per-replica
-// slot (OSM tile policy) and answers 503 + Retry-After when the slot is not free
+// slot (OSM tile policy) and answers 429 + Retry-After when the slot is not free
 // within renderWait.
 func (h *imageHandler) serve(w http.ResponseWriter, r *http.Request) {
 	slug := r.PathValue("authoritySlug")
@@ -112,7 +112,7 @@ func (h *imageHandler) serve(w http.ResponseWriter, r *http.Request) {
 		h.logger.InfoContext(r.Context(), "share card render busy", "key", key)
 		w.Header().Set("Retry-After", busyRetry)
 		w.Header().Set("Cache-Control", "no-store")
-		w.WriteHeader(http.StatusServiceUnavailable)
+		w.WriteHeader(http.StatusTooManyRequests)
 		return
 	}
 	defer func() { <-h.renderSlot }()
