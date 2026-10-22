@@ -7,8 +7,6 @@ import (
 	"testing"
 )
 
-// fakePlanItMetrics records the http-error calls the client makes. It satisfies
-// the planit package's consumer-side httpErrorRecorder interface.
 type fakePlanItMetrics struct {
 	statuses    []int
 	authorities []int

@@ -14,12 +14,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
-// recordSingleSpan swaps in an in-memory SDK TracerProvider for the duration
-// of run, restoring the previous global provider on cleanup, and returns the
-// single span recorded. Deliberately not t.Parallel(): mutating the global
-// TracerProvider is safe only while no sibling test's body is concurrently
-// executing (the existing middleware span tests use the same non-parallel
-// convention).
+// recordSingleSpan is deliberately not parallel: it swaps the global TracerProvider.
 func recordSingleSpan(t *testing.T, run func()) sdktrace.ReadOnlySpan {
 	t.Helper()
 
@@ -41,8 +36,6 @@ func recordSingleSpan(t *testing.T, run func()) sdktrace.ReadOnlySpan {
 	return spans[0]
 }
 
-// attrBool returns the bool value of the named attribute on the span and
-// whether it was present.
 func attrBool(span sdktrace.ReadOnlySpan, key string) (bool, bool) {
 	for _, kv := range span.Attributes() {
 		if string(kv.Key) == key {
@@ -52,8 +45,6 @@ func attrBool(span sdktrace.ReadOnlySpan, key string) (bool, bool) {
 	return false, false
 }
 
-// attrInt returns the int64 value of the named attribute on the span and
-// whether it was present.
 func attrInt(span sdktrace.ReadOnlySpan, key string) (int64, bool) {
 	for _, kv := range span.Attributes() {
 		if string(kv.Key) == key {
@@ -63,8 +54,6 @@ func attrInt(span sdktrace.ReadOnlySpan, key string) (int64, bool) {
 	return 0, false
 }
 
-// attrFloat64 returns the float64 value of the named attribute on the span
-// and whether it was present.
 func attrFloat64(span sdktrace.ReadOnlySpan, key string) (float64, bool) {
 	for _, kv := range span.Attributes() {
 		if string(kv.Key) == key {
@@ -74,8 +63,6 @@ func attrFloat64(span sdktrace.ReadOnlySpan, key string) (float64, bool) {
 	return 0, false
 }
 
-// fakeDigester is a hand-written double for the digestRunner the dispatcher
-// invokes. It records which cycle ran and can be primed with an error.
 type fakeDigester struct {
 	weeklyCalls int
 	hourlyCalls int
@@ -93,8 +80,6 @@ func (f *fakeDigester) RunHourly(context.Context) error {
 	return f.hourlyErr
 }
 
-// fakeDormant is a hand-written double for the DormantRunner the dispatcher
-// invokes. It records the call and can be primed with a deleted count or error.
 type fakeDormant struct {
 	calls   int
 	deleted int
@@ -106,8 +91,6 @@ func (f *fakeDormant) Run(context.Context) (int, error) {
 	return f.deleted, f.err
 }
 
-// fakeSweep is a hand-written double for the SweepRunner the dispatcher invokes.
-// It records the call and can be primed with a downgraded count or error.
 type fakeSweep struct {
 	calls      int
 	downgraded int
@@ -119,8 +102,6 @@ func (f *fakeSweep) Run(context.Context) (int, error) {
 	return f.downgraded, f.err
 }
 
-// fakePurge is a hand-written double for the PurgeRunner the dispatcher invokes.
-// It records the call and can be primed with purge counts or an error.
 type fakePurge struct {
 	calls         int
 	notifsPurged  int
@@ -133,9 +114,6 @@ func (f *fakePurge) Run(context.Context) (int, int, error) {
 	return f.notifsPurged, f.devicesPurged, f.err
 }
 
-// fakeAppStoreReconcile is a hand-written double for the AppStoreReconcileRunner
-// the dispatcher invokes. It records the call and can be primed with
-// scanned/gap/applied counts or an error.
 type fakeAppStoreReconcile struct {
 	calls   int
 	scanned int
@@ -196,8 +174,6 @@ func TestRun_HourlyDigestModeRunsHourlyAndExitsZero(t *testing.T) {
 
 func TestRun_DigestModeWithoutHandlerExitsOne(t *testing.T) {
 	t.Parallel()
-	// A job missing Cosmos/ACS config leaves the digester nil; the mode must
-	// refuse to run rather than nil-panic.
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, nil))
 
@@ -237,8 +213,6 @@ func TestRun_DormantCleanupRunsAndExitsZero(t *testing.T) {
 
 func TestRun_DormantCleanupWithoutHandlerExitsOne(t *testing.T) {
 	t.Parallel()
-	// A job missing Cosmos config leaves the dormant runner nil; the mode must
-	// refuse to run rather than nil-panic.
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, nil))
 
@@ -278,8 +252,6 @@ func TestRun_SubscriptionSweepRunsAndExitsZero(t *testing.T) {
 
 func TestRun_SubscriptionSweepWithoutHandlerExitsOne(t *testing.T) {
 	t.Parallel()
-	// A job missing Cosmos config leaves the sweep runner nil; the mode must
-	// refuse to run rather than nil-panic.
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, nil))
 
@@ -319,8 +291,6 @@ func TestRun_PgPurgeRunsAndExitsZero(t *testing.T) {
 
 func TestRun_PgPurgeWithNilRunnerExitsZero(t *testing.T) {
 	t.Parallel()
-	// When no purge runner is configured the purger is nil; pg-purge must exit 0
-	// (not 1) — an unconfigured pg-purge is a deliberate safe no-op.
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, nil))
 
@@ -373,10 +343,6 @@ func TestRun_AppStoreReconcileRunsAndExitsZero(t *testing.T) {
 	}
 }
 
-// TestRun_AppStoreReconcileWithNilRunnerExitsZero pins the deliberate
-// deviation from runSweep/runDormant (nil = fatal): appstore-reconcile is a
-// genuinely optional feature during rollout, so unconfigured App Store Server
-// API key material must log and exit 0, not crash-loop the job.
 func TestRun_AppStoreReconcileWithNilRunnerExitsZero(t *testing.T) {
 	t.Parallel()
 	var buf bytes.Buffer
@@ -404,9 +370,6 @@ func TestRun_AppStoreReconcileCycleErrorExitsOne(t *testing.T) {
 	}
 }
 
-// TestRun_AppStoreReconcileStampsSpanAttributes proves the scanned/gaps/applied
-// counts land on the "App Store Reconcile Cycle" span so they're queryable in
-// App Insights.
 func TestRun_AppStoreReconcileStampsSpanAttributes(t *testing.T) {
 	r := &fakeAppStoreReconcile{scanned: 7, gaps: 3, applied: 2}
 	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
@@ -432,9 +395,6 @@ func TestRun_AppStoreReconcileStampsSpanAttributes(t *testing.T) {
 	}
 }
 
-// TestRun_AppStoreReconcileErrorRecordsSpanError proves a runner error is
-// recorded on the "App Store Reconcile Cycle" span (in addition to the exit
-// code), mirroring every other cycle's error-recording behaviour.
 func TestRun_AppStoreReconcileErrorRecordsSpanError(t *testing.T) {
 	r := &fakeAppStoreReconcile{err: errors.New("apple unreachable")}
 	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))

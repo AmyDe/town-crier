@@ -56,11 +56,6 @@ func TestFetchWindowPage_ParsesRecordsAndTotal(t *testing.T) {
 	}
 }
 
-// TestFetchWindowPage_TruncatedPageWithTotal_HasMorePagesTrue pins the
-// truncation-safety acceptance criterion: a response truncated well under the
-// nominal page size (e.g. by PlanIt's 1MB body cap) must still report
-// HasMorePages=true whenever from+len(records) < total, and From must echo the
-// response's own from (falling back to startIndex only when absent).
 func TestFetchWindowPage_TruncatedPageWithTotal_HasMorePagesTrue(t *testing.T) {
 	t.Parallel()
 	var sb strings.Builder
@@ -93,9 +88,6 @@ func TestFetchWindowPage_TruncatedPageWithTotal_HasMorePagesTrue(t *testing.T) {
 	}
 }
 
-// TestFetchWindowPage_MissingTotalFallsBackToLengthHeuristic covers a
-// response that omits total entirely: HasMorePages must fall back to the
-// page-size length heuristic (>= the 300 page size).
 func TestFetchWindowPage_MissingTotalFallsBackToLengthHeuristic(t *testing.T) {
 	t.Parallel()
 	var sb strings.Builder
@@ -125,10 +117,6 @@ func TestFetchWindowPage_MissingTotalFallsBackToLengthHeuristic(t *testing.T) {
 	}
 }
 
-// TestFetchWindowPage_ZeroRecordsWithMoreRemaining_ReturnsError pins the
-// zero-progress guard: PlanIt reporting total > from while returning zero
-// records this fetch must error rather than let a resuming caller livelock at
-// the same index forever.
 func TestFetchWindowPage_ZeroRecordsWithMoreRemaining_ReturnsError(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -143,9 +131,6 @@ func TestFetchWindowPage_ZeroRecordsWithMoreRemaining_ReturnsError(t *testing.T)
 	}
 }
 
-// TestFetchWindowPage_ZeroRecordsAtTotalIsNotAnError covers the normal
-// natural end: zero records with from == total (nothing remains) must NOT
-// trip the zero-progress guard.
 func TestFetchWindowPage_ZeroRecordsAtTotalIsNotAnError(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -208,8 +193,6 @@ func TestFetchWindowPage_429WithoutHeaderHasNilRetryAfter(t *testing.T) {
 	}
 }
 
-// TestClassifyCapturesErrorBody pins that PlanIt's 400 body, which carries the
-// failure reason, is surfaced on the returned *HTTPError.
 func TestClassifyCapturesErrorBody(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -237,8 +220,6 @@ func TestClassifyCapturesErrorBody(t *testing.T) {
 	}
 }
 
-// TestClassify429DoesNotCaptureBody pins that a 429 with a body still yields a
-// *RateLimitError and never an *HTTPError.
 func TestClassify429DoesNotCaptureBody(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -264,9 +245,6 @@ func TestClassify429DoesNotCaptureBody(t *testing.T) {
 	}
 }
 
-// TestClassifyTruncatesLongErrorBody pins the 512-byte bound on a captured
-// error body, so a hostile or broken upstream cannot balloon the eventual
-// OTel span attribute.
 func TestClassifyTruncatesLongErrorBody(t *testing.T) {
 	t.Parallel()
 	longBody := strings.Repeat("x", 1000)
@@ -299,7 +277,6 @@ func TestNewClient_RejectsNonHTTPSAndEmptyBaseURL(t *testing.T) {
 	if _, err := NewClient(Options{BaseURL: "http://planit.example.com"}); err == nil {
 		t.Error("non-HTTPS, non-localhost base URL should error")
 	}
-	// Localhost http is permitted for tests.
 	if _, err := NewClient(Options{BaseURL: "http://127.0.0.1:8080"}); err != nil {
 		t.Errorf("localhost http should be permitted: %v", err)
 	}

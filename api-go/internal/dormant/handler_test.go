@@ -12,8 +12,6 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 )
 
-// --- hand-written fakes -----------------------------------------------------
-
 type fakeFinder struct {
 	dormant   []*profiles.UserProfile
 	err       error
@@ -25,14 +23,8 @@ func (f *fakeFinder) Dormant(_ context.Context, cutoff time.Time) ([]*profiles.U
 	return f.dormant, f.err
 }
 
-// cascadeRecorder satisfies every erasure interface a child + profile delete
-// needs: erasure.ChildDeleter (DeleteAllByUserID) is wired to all five child
-// slots, erasure.RedemptionAnonymiser (AnonymiseRedemptionsByUserID) handles the
-// offer-code scrub, erasure.ProfileDeleter (Delete) handles the profile step, and
-// it counts how many cascade steps ran per user. Since all five children share
-// DeleteAllByUserID, the test asserts the count of child invocations per account
-// rather than distinct labels — the per-container ORDER assertion now lives in
-// erasure's own test.
+// cascadeRecorder fills every erasure slot and counts child calls per user; the
+// five children share DeleteAllByUserID, so tests assert counts, not order.
 type cascadeRecorder struct {
 	childCalls map[string]int   // child DeleteAllByUserID calls per user id
 	offerCodes map[string]int   // AnonymiseRedemptionsByUserID calls per user id
@@ -51,9 +43,7 @@ func newCascadeRecorder() *cascadeRecorder {
 }
 
 func (c *cascadeRecorder) DeleteAllByUserID(_ context.Context, userID string) error {
-	// The first child call per user is the notifications step; injecting notifErr
-	// here models a child-container failure aborting the cascade before later
-	// children, the profile, and Auth0 run.
+	// The first child call per user is the notifications step.
 	first := c.childCalls[userID] == 0
 	c.childCalls[userID]++
 	if first && c.notifErr != nil {
@@ -108,8 +98,6 @@ func newHandler(finder Finder, cascade *cascadeRecorder, auth0 erasure.Auth0Dele
 	}
 	return New(finder, deleters, slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil)), func() time.Time { return now })
 }
-
-// --- tests ------------------------------------------------------------------
 
 func TestHandler_Run_CutoffIs12MonthsBeforeNow(t *testing.T) {
 	t.Parallel()

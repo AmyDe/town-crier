@@ -33,9 +33,6 @@ func attr(attrs []attribute.KeyValue, key string) (attribute.Value, bool) {
 	return attribute.Value{}, false
 }
 
-// TestFetchWindowPage_EmitsClientSpan asserts a PlanIt fetch produces a
-// client span named "PlanIt search" carrying the upstream host as server.address
-// so it surfaces in AppDependencies as a meaningful HTTP dependency.
 func TestFetchWindowPage_EmitsClientSpan(t *testing.T) {
 	t.Parallel()
 
