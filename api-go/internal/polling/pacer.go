@@ -120,7 +120,7 @@ type Pacer struct {
 	sleep func(ctx context.Context, d time.Duration) error
 }
 
-// NewPacer wires a Pacer. now and sleep are injected so tests control time.
+// NewPacer wires a Pacer.
 func NewPacer(log planItCallLog, cfg PacerConfig, now func() time.Time, sleep func(ctx context.Context, d time.Duration) error) *Pacer {
 	return &Pacer{log: log, cfg: cfg, now: now, sleep: sleep}
 }
@@ -239,8 +239,7 @@ func (p *Pacer) try(ctx context.Context, work planit.Work, windowDay time.Time, 
 
 	row := PlanItCall{At: at, Work: string(work), PageIndex: pageIndex}
 	if !windowDay.IsZero() {
-		wd := windowDay
-		row.WindowDay = &wd
+		row.WindowDay = &windowDay
 	}
 	id, err := tx.Insert(ctx, row)
 	if err != nil {

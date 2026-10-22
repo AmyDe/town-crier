@@ -10,9 +10,6 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/pgpurge"
 )
 
-// fakePurger is a hand-written double for either notifPurger or devicePurger.
-// It records the cutoff time it received and can be primed with a row count or
-// an error.
 type fakePurger struct {
 	calls      int
 	lastCutoff time.Time
@@ -26,7 +23,6 @@ func (f *fakePurger) PurgeOlderThan(_ context.Context, cutoff time.Time) (int64,
 	return f.rowsResult, f.err
 }
 
-// fixedClock returns a time.Time that never changes, for deterministic tests.
 func fixedClock(t time.Time) func() time.Time { return func() time.Time { return t } }
 
 var testNow = time.Date(2026, 6, 27, 12, 0, 0, 0, time.UTC)

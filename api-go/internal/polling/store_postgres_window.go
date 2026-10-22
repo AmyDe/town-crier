@@ -51,7 +51,7 @@ func (s *PostgresWindowStore) Load(ctx context.Context, from, to time.Time) ([]W
 		if axis == "decided" {
 			w.Axis = planit.AxisDecided
 		}
-		w.Day = time.Date(w.Day.Year(), w.Day.Month(), w.Day.Day(), 0, 0, 0, 0, time.UTC)
+		w.Day = dateOnly(w.Day)
 		out = append(out, w)
 	}
 	if err := rows.Err(); err != nil {

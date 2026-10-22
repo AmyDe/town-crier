@@ -32,7 +32,7 @@ type Handler struct {
 	now      func() time.Time
 }
 
-// New builds a dormant-cleanup handler. now is injected so tests pin the cutoff.
+// New builds a dormant-cleanup handler.
 func New(finder Finder, deleters erasure.Deleters, logger *slog.Logger, now func() time.Time) *Handler {
 	return &Handler{finder: finder, deleters: deleters, logger: logger, now: now}
 }

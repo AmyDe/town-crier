@@ -25,11 +25,7 @@ func ParseRetryAfter(header string, now time.Time) (time.Duration, bool) {
 	}
 
 	if target, err := http1123(header); err == nil {
-		delta := target.Sub(now)
-		if delta < 0 {
-			return 0, true
-		}
-		return delta, true
+		return max(target.Sub(now), 0), true
 	}
 
 	return 0, false

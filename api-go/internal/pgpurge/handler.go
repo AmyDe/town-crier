@@ -42,7 +42,7 @@ type Handler struct {
 }
 
 // New wires the purge handler. notifRetention and deviceRetention are the
-// look-back windows; now is injected so tests can pin the clock.
+// look-back windows.
 func New(
 	notifs notifPurger,
 	devices devicePurger,

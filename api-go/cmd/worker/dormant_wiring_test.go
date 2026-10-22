@@ -13,11 +13,8 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 )
 
-// recordingQuerier is a hand-written profiles.querier double. Its Query records
-// the call and returns a sentinel error so the caller's Dormant scan surfaces
-// it; Exec/QueryRow panic so any unintended use is caught. Returning (nil,
-// sentinel) avoids implementing the full pgx.Rows interface — the dormant
-// finder's error path is all this test needs.
+// recordingQuerier's Query returns a sentinel error so the Dormant scan surfaces
+// it without a pgx.Rows implementation; Exec and QueryRow panic on unintended use.
 type recordingQuerier struct {
 	queryCalls int
 	lastSQL    string

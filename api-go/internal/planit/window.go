@@ -109,17 +109,16 @@ func (c *Client) FetchWindowPage(ctx context.Context, q WindowQuery) (FetchPageR
 }
 
 func (c *Client) buildWindowPath(q WindowQuery) string {
-	const layout = "2006-01-02"
 	var filter string
 	switch {
 	case q.DifferentStart != nil && q.Axis == AxisDecided:
-		filter = fmt.Sprintf("different_start=%s&decided_start=%s", q.DifferentStart.UTC().Format(layout), q.From.UTC().Format(layout))
+		filter = fmt.Sprintf("different_start=%s&decided_start=%s", q.DifferentStart.UTC().Format(time.DateOnly), q.From.UTC().Format(time.DateOnly))
 	case q.DifferentStart != nil:
-		filter = fmt.Sprintf("different_start=%s&start_date=%s", q.DifferentStart.UTC().Format(layout), q.From.UTC().Format(layout))
+		filter = fmt.Sprintf("different_start=%s&start_date=%s", q.DifferentStart.UTC().Format(time.DateOnly), q.From.UTC().Format(time.DateOnly))
 	case q.Axis == AxisDecided:
-		filter = fmt.Sprintf("decided_start=%s&decided_end=%s", q.From.UTC().Format(layout), q.To.UTC().Format(layout))
+		filter = fmt.Sprintf("decided_start=%s&decided_end=%s", q.From.UTC().Format(time.DateOnly), q.To.UTC().Format(time.DateOnly))
 	default:
-		filter = fmt.Sprintf("start_date=%s&end_date=%s", q.From.UTC().Format(layout), q.To.UTC().Format(layout))
+		filter = fmt.Sprintf("start_date=%s&end_date=%s", q.From.UTC().Format(time.DateOnly), q.To.UTC().Format(time.DateOnly))
 	}
 	path := fmt.Sprintf("/api/applics/json?%s&sort=last_different&pg_sz=%d&index=%d&select=%s&compress=on",
 		filter, nationalPageSize, q.Index, selectParam(ingestSelectFields))
@@ -156,7 +155,7 @@ func withSpanAttrs(ctx context.Context, attrs []attribute.KeyValue) context.Cont
 func windowSpanAttrs(q WindowQuery) []attribute.KeyValue {
 	attrs := []attribute.KeyValue{attribute.String("planit.work", string(q.Work))}
 	if q.Work == WorkWindowStart || q.Work == WorkWindowDecided {
-		attrs = append(attrs, attribute.String("planit.window_day", q.From.UTC().Format("2006-01-02")))
+		attrs = append(attrs, attribute.String("planit.window_day", q.From.UTC().Format(time.DateOnly)))
 	}
 	return attrs
 }

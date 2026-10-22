@@ -37,7 +37,7 @@ type PostgresLeaseStore struct {
 	holderID string
 }
 
-// NewPostgresLeaseStore wires the store. now is injected so tests pin the clock.
+// NewPostgresLeaseStore wires the store.
 // Each instance generates a fresh random holder id.
 func NewPostgresLeaseStore(db querier, now func() time.Time) *PostgresLeaseStore {
 	return &PostgresLeaseStore{

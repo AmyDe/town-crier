@@ -10,83 +10,37 @@ import (
 	"go.opentelemetry.io/otel/codes"
 )
 
-// tracerName labels the worker's OpenTelemetry spans.
 const tracerName = "github.com/AmyDe/town-crier/api-go/internal/worker"
 
-// digestBudget is the soft self-cancel for a single digest / hourly-digest run.
-// A digest cycle fans out across many users' Cosmos reads and email/push sends;
-// 10 minutes is generous while still bounded well under the Container Apps
-// replicaTimeout so the process exits cleanly and flushes telemetry.
-const digestBudget = 10 * time.Minute
+// cycleBudget is the soft self-cancel for one worker cycle, bounded well under
+// the Container Apps replicaTimeout so the process exits cleanly and flushes telemetry.
+const cycleBudget = 10 * time.Minute
 
-// dormantBudget is the soft self-cancel for a single dormant-cleanup run. The
-// cycle scans all profiles cross-partition then runs a per-account erasure
-// cascade for the (small) dormant set; 10 minutes is generous while still bounded
-// well under the Container Apps replicaTimeout so the process exits cleanly and
-// flushes telemetry.
-const dormantBudget = 10 * time.Minute
-
-// sweepBudget is the soft self-cancel for a single subscription-sweep run. The
-// cycle scans all profiles cross-partition then downgrades the (small) lapsed-paid
-// set with a Cosmos upsert and an Auth0 PATCH each; 10 minutes is generous while
-// still bounded well under the Container Apps replicaTimeout so the process exits
-// cleanly and flushes telemetry.
-const sweepBudget = 10 * time.Minute
-
-// purgeBudget is the soft self-cancel for a single pg-purge run. A DELETE
-// WHERE created_at < cutoff on two tables is fast even at scale; 10 minutes is
-// generous while still bounded well under the Container Apps replicaTimeout so
-// the process exits cleanly and flushes telemetry.
-const purgeBudget = 10 * time.Minute
-
-// reconcileBudget is the soft self-cancel for a single appstore-reconcile run.
-// The cycle is one paginated App Store Server API call plus, in apply mode, a
-// handful of NotificationProcessor.Process calls for the (small) gap set; 10
-// minutes is generous while still bounded well under the Container Apps
-// replicaTimeout so the process exits cleanly and flushes telemetry.
-const reconcileBudget = 10 * time.Minute
-
-// seoBudget is the soft self-cancel for a seo-catalog run, kept
-// under the job's 1,800 s replicaTimeout so the process exits cleanly and
-// flushes telemetry.
+// seoBudget stays under the seo-catalog job's 1,800 s replicaTimeout.
 const seoBudget = 28 * time.Minute
 
-// DigestRunner is the consumer-side slice of the digest handler the dispatcher
-// invokes. *digest.Handler satisfies it; the worker depends only on these two
-// methods so it need not know the handler's internals. It is exported so main()
-// can hold a genuinely nil interface value when the job has no digest config —
-// passing a typed-nil *digest.Handler would defeat the nil guard below.
+// DigestRunner is the digest handler as the dispatcher sees it. It is exported
+// so main() can pass a genuinely nil interface; a typed-nil *digest.Handler
+// would defeat the nil guard.
 type DigestRunner interface {
 	RunWeekly(ctx context.Context) error
 	RunHourly(ctx context.Context) error
 }
 
-// DormantRunner is the consumer-side slice of the dormant-cleanup handler the
-// dispatcher invokes. *dormant.Handler satisfies it; Run returns the number of
-// accounts erased so the dispatcher can record it as a telemetry tag. It is
-// exported so main() can hold a genuinely nil interface value when the job has no
-// Cosmos config — passing a typed-nil *dormant.Handler would defeat the nil guard.
+// DormantRunner is exported for the same typed-nil reason as DigestRunner.
+// Run returns the number of accounts erased.
 type DormantRunner interface {
 	Run(ctx context.Context) (int, error)
 }
 
-// SweepRunner is the consumer-side slice of the subscription-sweep handler the
-// dispatcher invokes. *subscriptionsweep.Handler satisfies it; Run returns the
-// number of profiles downgraded so the dispatcher can record it as a telemetry
-// tag. It is exported so main() can hold a genuinely nil interface value when the
-// job has no Cosmos config — passing a typed-nil *subscriptionsweep.Handler would
-// defeat the nil guard.
+// SweepRunner is exported for the same typed-nil reason as DigestRunner.
+// Run returns the number of profiles downgraded.
 type SweepRunner interface {
 	Run(ctx context.Context) (int, error)
 }
 
-// PurgeRunner is the consumer-side slice of the pg-purge handler the dispatcher
-// invokes. *pgpurge.Handler satisfies it; Run returns the number of notification
-// rows and device-registration rows deleted so the dispatcher can record them as
-// telemetry tags. It is exported so main() can hold a genuinely nil interface
-// value when no purge runner is configured — the nil runner causes dispatch to
-// log and exit 0 (an unconfigured pg-purge is a deliberate no-op, not a
-// deployment error).
+// PurgeRunner's Run returns the notification and device-registration rows
+// deleted. A nil runner is a deliberate no-op: dispatch logs and exits 0.
 type PurgeRunner interface {
 	Run(ctx context.Context) (notifsPurged int, devicesPurged int, err error)
 }
@@ -99,16 +53,9 @@ type PollRunner interface {
 	Run(ctx context.Context) error
 }
 
-// AppStoreReconcileRunner is the consumer-side slice of the appstore-reconcile
-// handler the dispatcher invokes. *appstorereconcile.Handler satisfies it;
-// Run returns the scanned/gap/applied counts so the dispatcher can record
-// them as telemetry tags. It is exported so main() can hold a genuinely nil
-// interface value when the job is missing its App Store Server API key
-// material — passing a typed-nil *appstorereconcile.Handler would defeat the
-// nil guard below. Unlike SweepRunner/DormantRunner (nil = fatal), a nil
-// AppStoreReconcileRunner is a deliberate, non-fatal no-op: this feature is
-// genuinely optional during rollout, and unconfigured key material must not
-// crash-loop the job.
+// AppStoreReconcileRunner's Run returns the scanned, gap and applied counts.
+// Unlike SweepRunner and DormantRunner, a nil runner is a deliberate non-fatal
+// no-op: unconfigured App Store key material must not crash-loop the job.
 type AppStoreReconcileRunner interface {
 	Run(ctx context.Context) (scanned, gaps, applied int, err error)
 }
@@ -126,15 +73,12 @@ type IndexNowSubmitter interface {
 	SubmitIndexNow(ctx context.Context) (submitted, skipped int, err error)
 }
 
-// Run dispatches on WORKER_MODE and returns the process exit code. It is the
-// testable core of cmd/worker/main.go. An unset or unknown mode is a deployment
+// Run dispatches on WORKER_MODE and returns the process exit code. An unset or unknown mode is a deployment
 // accident and fails fast. Optional runners (purger, reconciler) may be nil:
 // pg-purge and appstore-reconcile then log and exit 0; the others exit 1.
 func Run(ctx context.Context, mode string, digester DigestRunner, dormant DormantRunner, poller PollRunner, sweeper SweepRunner, purger PurgeRunner, reconciler AppStoreReconcileRunner, seoCataloger SEOCatalogRunner, logger *slog.Logger) int {
 	switch mode {
 	case "":
-		// WORKER_MODE is always set by infra; an unset value is a deployment
-		// accident — fail fast rather than silently no-op.
 		logger.ErrorContext(ctx, "WORKER_MODE is unset; refusing to run")
 		return 1
 
@@ -183,11 +127,8 @@ func runPoll(ctx context.Context, poller PollRunner, logger *slog.Logger) int {
 	return 0
 }
 
-// runDigest executes one digest cycle (weekly or hourly) under a soft self-cancel
-// budget, inside a telemetry span ("Digest Cycle" / "Hourly Digest Cycle") so
-// existing App Insights queries keep working. A nil digester (job missing
-// Cosmos/ACS config) is an exit-1 condition; a cycle error is recorded on the
-// span and also exits 1 so the job surfaces the failure.
+// runDigest keeps the span names "Digest Cycle" and "Hourly Digest Cycle" so
+// existing App Insights queries keep working.
 func runDigest(ctx context.Context, spanName string, digester DigestRunner, run func(DigestRunner, context.Context) error, logger *slog.Logger) int {
 	tracer := otel.Tracer(tracerName)
 	ctx, span := tracer.Start(ctx, spanName)
@@ -198,7 +139,7 @@ func runDigest(ctx context.Context, spanName string, digester DigestRunner, run 
 		return 1
 	}
 
-	cycleCtx, cancel := context.WithTimeout(ctx, digestBudget)
+	cycleCtx, cancel := context.WithTimeout(ctx, cycleBudget)
 	defer cancel()
 
 	if err := run(digester, cycleCtx); err != nil {
@@ -210,12 +151,8 @@ func runDigest(ctx context.Context, spanName string, digester DigestRunner, run 
 	return 0
 }
 
-// runDormant executes one dormant-cleanup cycle under a soft self-cancel budget,
-// inside a telemetry span named "Dormant Cleanup Cycle" (so existing App Insights
-// queries keep working). It records the number of erased accounts as the
-// dormant_cleanup.deleted_count tag. A nil runner (job missing Cosmos config) is
-// an exit-1 condition; a cycle error is recorded on the span and also exits 1 so
-// the job surfaces the failure.
+// runDormant keeps the span name "Dormant Cleanup Cycle" so existing App
+// Insights queries keep working.
 func runDormant(ctx context.Context, runner DormantRunner, logger *slog.Logger) int {
 	tracer := otel.Tracer(tracerName)
 	ctx, span := tracer.Start(ctx, "Dormant Cleanup Cycle")
@@ -226,7 +163,7 @@ func runDormant(ctx context.Context, runner DormantRunner, logger *slog.Logger) 
 		return 1
 	}
 
-	cycleCtx, cancel := context.WithTimeout(ctx, dormantBudget)
+	cycleCtx, cancel := context.WithTimeout(ctx, cycleBudget)
 	defer cancel()
 
 	deleted, err := runner.Run(cycleCtx)
@@ -240,11 +177,6 @@ func runDormant(ctx context.Context, runner DormantRunner, logger *slog.Logger) 
 	return 0
 }
 
-// runSweep executes one subscription-sweep cycle under a soft self-cancel budget,
-// inside a telemetry span named "Subscription Sweep Cycle". It records the number
-// of downgraded profiles as the subscription_sweep.downgraded_count tag. A nil
-// runner (job missing Cosmos config) is an exit-1 condition; a cycle error is
-// recorded on the span and also exits 1 so the job surfaces the failure.
 func runSweep(ctx context.Context, runner SweepRunner, logger *slog.Logger) int {
 	tracer := otel.Tracer(tracerName)
 	ctx, span := tracer.Start(ctx, "Subscription Sweep Cycle")
@@ -255,7 +187,7 @@ func runSweep(ctx context.Context, runner SweepRunner, logger *slog.Logger) int 
 		return 1
 	}
 
-	cycleCtx, cancel := context.WithTimeout(ctx, sweepBudget)
+	cycleCtx, cancel := context.WithTimeout(ctx, cycleBudget)
 	defer cancel()
 
 	downgraded, err := runner.Run(cycleCtx)
@@ -269,11 +201,7 @@ func runSweep(ctx context.Context, runner SweepRunner, logger *slog.Logger) int 
 	return 0
 }
 
-// runPurge executes one pg-purge cycle under a soft self-cancel budget, inside a
-// telemetry span named "Postgres Purge Cycle". It tags the span with the count of
-// notification and device-registration rows deleted. A nil runner exits 0 with a
-// log — an unconfigured pg-purge is a deliberate no-op, not a deployment error.
-// A non-nil runner error exits 1 so the job surfaces the failure.
+// runPurge treats a nil runner as a deliberate no-op (exit 0), not a deployment error.
 func runPurge(ctx context.Context, runner PurgeRunner, logger *slog.Logger) int {
 	tracer := otel.Tracer(tracerName)
 	ctx, span := tracer.Start(ctx, "Postgres Purge Cycle")
@@ -284,7 +212,7 @@ func runPurge(ctx context.Context, runner PurgeRunner, logger *slog.Logger) int 
 		return 0
 	}
 
-	cycleCtx, cancel := context.WithTimeout(ctx, purgeBudget)
+	cycleCtx, cancel := context.WithTimeout(ctx, cycleBudget)
 	defer cancel()
 
 	notifsPurged, devicesPurged, err := runner.Run(cycleCtx)
@@ -304,15 +232,8 @@ func runPurge(ctx context.Context, runner PurgeRunner, logger *slog.Logger) int 
 	return 0
 }
 
-// runAppStoreReconcile executes one appstore-reconcile cycle under a soft
-// self-cancel budget, inside a telemetry span named "App Store Reconcile
-// Cycle". It tags the span with the scanned/gap/applied counts. Unlike
-// runSweep/runDormant (nil runner = fatal), a nil runner here logs and exits 0
-// — mirroring runPurge's "backend doesn't apply here" pattern — because this
-// is a genuinely optional feature during rollout: unconfigured App Store
-// Server API key material must not crash-loop the job. A non-nil runner error
-// (Apple unreachable, retries exhausted) exits 1 so the job surfaces the
-// failure.
+// runAppStoreReconcile treats a nil runner as a deliberate no-op (exit 0):
+// unconfigured App Store key material must not crash-loop the job.
 func runAppStoreReconcile(ctx context.Context, runner AppStoreReconcileRunner, logger *slog.Logger) int {
 	tracer := otel.Tracer(tracerName)
 	ctx, span := tracer.Start(ctx, "App Store Reconcile Cycle")
@@ -323,7 +244,7 @@ func runAppStoreReconcile(ctx context.Context, runner AppStoreReconcileRunner, l
 		return 0
 	}
 
-	cycleCtx, cancel := context.WithTimeout(ctx, reconcileBudget)
+	cycleCtx, cancel := context.WithTimeout(ctx, cycleBudget)
 	defer cancel()
 
 	scanned, gaps, applied, err := runner.Run(cycleCtx)
@@ -343,11 +264,8 @@ func runAppStoreReconcile(ctx context.Context, runner AppStoreReconcileRunner, l
 	return 0
 }
 
-// runSEOCatalog executes one seo-catalog run under a soft self-cancel budget,
-// inside a telemetry span named "SEO Catalog Rebuild". A nil runner or a run
-// error exits 1. When the runner implements IndexNowSubmitter it is called after
-// a successful rebuild; its failure is logged and exits 1 without undoing the
-// catalog, so the job execution shows red and the next run resubmits.
+// runSEOCatalog calls IndexNowSubmitter after a successful rebuild; its failure
+// exits 1 without undoing the catalog, so the job shows red and the next run resubmits.
 func runSEOCatalog(ctx context.Context, runner SEOCatalogRunner, logger *slog.Logger) int {
 	tracer := otel.Tracer(tracerName)
 	ctx, span := tracer.Start(ctx, "SEO Catalog Rebuild")
