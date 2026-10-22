@@ -370,7 +370,7 @@ func windowStateFor(state WindowPlanState, item *PlannedWork) WindowState {
 // has completed since the night began.
 func alertBandComplete(state WindowPlanState, now time.Time) bool {
 	local := now.In(budgetLocation)
-	if local.Hour() >= dayStartHour && local.Hour() < dayEndHour {
+	if isDay(local) {
 		return false
 	}
 	return unverifiedWindows(state.Windows, now) == 0

@@ -239,8 +239,7 @@ func (p *Pacer) try(ctx context.Context, work planit.Work, windowDay time.Time, 
 
 	row := PlanItCall{At: at, Work: string(work), PageIndex: pageIndex}
 	if !windowDay.IsZero() {
-		wd := windowDay
-		row.WindowDay = &wd
+		row.WindowDay = &windowDay
 	}
 	id, err := tx.Insert(ctx, row)
 	if err != nil {

@@ -125,7 +125,7 @@ func ComputeHealth(in HealthInputs, now time.Time) Health {
 // just ended is the one to verify.
 func alertBandUnverified(windows []WindowState, now time.Time) bool {
 	local := now.In(budgetLocation)
-	if local.Hour() < dayStartHour || local.Hour() >= dayEndHour {
+	if !isDay(local) {
 		return false
 	}
 	return unverifiedWindows(windows, now) > 0
@@ -134,10 +134,7 @@ func alertBandUnverified(windows []WindowState, now time.Time) bool {
 func unverifiedWindows(windows []WindowState, now time.Time) int {
 	nightStart, _ := BudgetDay(now)
 	today := dateOnly(now.In(budgetLocation))
-	byRef := make(map[WindowRef]WindowState, len(windows))
-	for _, w := range windows {
-		byRef[WindowRef{Axis: w.Axis, Day: w.Day}] = w
-	}
+	byRef := windowsByRef(windows)
 	n := 0
 	for age := 0; age <= alertBandMaxAge; age++ {
 		for _, axis := range [...]planit.Axis{planit.AxisStart, planit.AxisDecided} {

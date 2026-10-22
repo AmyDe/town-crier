@@ -85,7 +85,7 @@ func NextWindowWork(cfg WindowPlanConfig, state WindowPlanState, now time.Time, 
 	local := now.In(budgetLocation)
 	today := dateOnly(local)
 
-	if local.Hour() >= dayStartHour && local.Hour() < dayEndHour {
+	if isDay(local) {
 		return nextDelta(cfg, state, local, today)
 	}
 
@@ -94,10 +94,7 @@ func NextWindowWork(cfg WindowPlanConfig, state WindowPlanState, now time.Time, 
 	}
 
 	nightStart, _ := BudgetDay(now)
-	byRef := make(map[WindowRef]WindowState, len(state.Windows))
-	for _, w := range state.Windows {
-		byRef[WindowRef{Axis: w.Axis, Day: w.Day}] = w
-	}
+	byRef := windowsByRef(state.Windows)
 	axes := [...]planit.Axis{planit.AxisStart, planit.AxisDecided}
 
 	for age := 0; age <= alertBandMaxAge; age++ {
@@ -120,6 +117,19 @@ func NextWindowWork(cfg WindowPlanConfig, state WindowPlanState, now time.Time, 
 		}
 	}
 	return nil
+}
+
+func isDay(local time.Time) bool {
+	h := local.Hour()
+	return h >= dayStartHour && h < dayEndHour
+}
+
+func windowsByRef(windows []WindowState) map[WindowRef]WindowState {
+	byRef := make(map[WindowRef]WindowState, len(windows))
+	for _, w := range windows {
+		byRef[WindowRef{Axis: w.Axis, Day: w.Day}] = w
+	}
+	return byRef
 }
 
 func nextDelta(cfg WindowPlanConfig, state WindowPlanState, local, today time.Time) *PlannedWork {

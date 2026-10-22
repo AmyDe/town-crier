@@ -153,8 +153,7 @@ func (o *RunObserver) DispatchPending(ctx context.Context) {
 
 // WindowShort records a failed completeness check.
 func (o *RunObserver) WindowShort(ctx context.Context, ref WindowRef, distinct, total int) {
-	day := ref.Day
-	o.record(ctx, PollEvent{Kind: EventWindowShort, Axis: ref.Axis, Day: &day, Detail: total - distinct})
+	o.record(ctx, PollEvent{Kind: EventWindowShort, Axis: ref.Axis, Day: &ref.Day, Detail: total - distinct})
 }
 
 // FullReadComplete runs the delta cross-check for the window and, in dev,
@@ -176,8 +175,7 @@ func (o *RunObserver) FullReadComplete(ctx context.Context, ref WindowRef, start
 		o.mu.Unlock()
 		o.log.ErrorContext(ctx, "poll.window_missed",
 			slog.String("axis", axisName(ref.Axis)), slog.String("day", ref.Day.Format(time.DateOnly)), slog.Int("missed", missed))
-		day := ref.Day
-		o.record(ctx, PollEvent{Kind: EventWindowMissed, Axis: ref.Axis, Day: &day, Detail: missed})
+		o.record(ctx, PollEvent{Kind: EventWindowMissed, Axis: ref.Axis, Day: &ref.Day, Detail: missed})
 	}
 	if o.members != nil {
 		keys := make([]AppKey, 0, len(read))
