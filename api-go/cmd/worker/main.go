@@ -2,9 +2,7 @@
 // Container Apps Jobs. One process per job: WORKER_MODE selects the mode,
 // the process runs it once, flushes telemetry, and exits with a status code.
 //
-// poll, digest, hourly-digest, dormant-cleanup, subscription-sweep, pg-purge,
-// appstore-reconcile and seo-catalog are implemented. Every store is backed by
-// Postgres + PostGIS (the single datastore); the shared pool is built once at
+// Every store is backed by Postgres + PostGIS; the shared pool is built once at
 // boot and a pool failure is fatal.
 package main
 
@@ -51,8 +49,7 @@ import (
 )
 
 // stores holds every Postgres store the worker's modes use, built once from the
-// shared pool at boot. Every field is always populated — Postgres is the only
-// datastore.
+// shared pool at boot.
 type stores struct {
 	app          *applications.PostgresStore
 	zone         *watchzones.PostgresStore
@@ -177,11 +174,9 @@ func run() int {
 	return worker.Run(ctx, mode, digester, dormantRunner, poller, sweepRunner, purger, reconciler, seoCataloger, logger)
 }
 
-// buildNotifyFanOut constructs the decision-dispatch, zone-enqueue and
-// push-coalescer collaborators the poll runner's event dispatcher needs.
-// registry is wired onto the APNs/FCM push senders; WithMetrics on the
-// enqueuer and decision dispatcher is left to the caller. st may be nil in
-// tests: the store fields are extracted under a nil guard.
+// buildNotifyFanOut returns the collaborators the poll runner's event
+// dispatcher needs. WithMetrics on the enqueuer and decision dispatcher is left
+// to the caller; st may be nil in tests.
 func buildNotifyFanOut(cfg platform.Config, registry *metrics.Registry, zoneStore watchzones.Store, st *stores, logger *slog.Logger) (*notifydispatch.DecisionDispatcher, *notifydispatch.Enqueuer, *notifydispatch.PushCoalescer) {
 	var (
 		notifStore     *notifications.PostgresStore
@@ -213,20 +208,16 @@ func buildNotifyFanOut(cfg platform.Config, registry *metrics.Registry, zoneStor
 	return dispatcher, enqueuer, coalescer
 }
 
-// buildDigester constructs the digest handler, wiring the per-feature Postgres
-// stores and the email/push senders (real when their credentials are present,
-// NoOp otherwise so a job without ACS/APNs boots cleanly).
+// buildDigester wires the digest handler; senders fall back to NoOp when their
+// credentials are absent so the job still boots.
 func buildDigester(cfg platform.Config, registry *metrics.Registry, st *stores, logger *slog.Logger) *digest.Handler {
-	// digestProfiles combines the cross-user admin selector (ByDigestDay) and the
-	// point-read store (Get).
 	profileStore := digestProfiles{
 		admin: st.profileAdmin,
 		point: st.profile,
 	}
 
-	// Wrapped in InstrumentedSender so every digest email gets exactly one
-	// "Email send" span (tagged email.kind) distinct from the underlying "ACS
-	// email send" HTTP client spans (tc-3jx8d).
+	// InstrumentedSender gives each digest email one "Email send" span, distinct
+	// from the underlying "ACS email send" HTTP client spans.
 	emailSender := acsemail.NewInstrumentedSender(buildEmailSender(cfg, logger))
 	dispatcher := buildPlatformDispatcher(cfg, registry, logger)
 
@@ -243,10 +234,8 @@ func buildDigester(cfg platform.Config, registry *metrics.Registry, st *stores, 
 	)
 }
 
-// digestProfiles adapts the two profile stores the digest handler needs — the
-// cross-user digest-day selector (AdminProfileStore) and the per-user point read
-// (Store) — into the single consumer-side profile interface the handler depends
-// on.
+// digestProfiles combines the cross-user digest-day selector and the per-user
+// read into the digest handler's single profile interface.
 type digestProfiles struct {
 	admin profiles.AdminProfileStore
 	point profiles.Store
@@ -260,15 +249,8 @@ func (p digestProfiles) Get(ctx context.Context, userID string) (*profiles.UserP
 	return p.point.Get(ctx, userID)
 }
 
-// buildDormant constructs the dormant-cleanup handler, wiring the dormant-account
-// finder, the per-feature Postgres erasure stores (GDPR cascade completeness is a
-// hard requirement), and the Auth0 M2M deleter (real when its credentials are
-// present, NoOp otherwise so a job without Auth0 M2M config still erases data).
 func buildDormant(cfg platform.Config, st *stores, logger *slog.Logger) *dormant.Handler {
-	// Every erasure.Deleters member is the Postgres store: a Postgres row must never
-	// be missed by the GDPR cascade. Notifications uses the Postgres store directly
-	// (which has DeleteAllByUserID) — so the same store serves both the fan-out path
-	// and erasure.
+	// Every deleter must be the Postgres store: the GDPR cascade must not miss a row.
 	deleters := erasure.Deleters{
 		Notifications:       st.notification,
 		WatchZones:          st.zone,
@@ -281,41 +263,20 @@ func buildDormant(cfg platform.Config, st *stores, logger *slog.Logger) *dormant
 		ProfileAbsent:       func(e error) bool { return errors.Is(e, profiles.ErrNotFound) },
 	}
 
-	// The FINDER (dormant-account scan) uses the same Postgres admin store as every
-	// deleter and as buildSweep's finder.
-	finder := st.profileAdmin
-	return dormant.New(finder, deleters, logger, time.Now)
+	return dormant.New(st.profileAdmin, deleters, logger, time.Now)
 }
 
-// buildAuth0Deleter returns the real Auth0 Management (M2M) client when the M2M
-// credentials are configured, else a no-op so a job without Auth0 M2M config
-// still erases the stored data.
+// buildAuth0Deleter returns a no-op when Auth0 M2M is unconfigured, so the
+// stored data is still erased.
 func buildAuth0Deleter(cfg platform.Config, logger *slog.Logger) erasure.Auth0Deleter {
 	if !cfg.Auth0M2MConfigured() {
 		logger.Info("auth0 m2m unconfigured; dormant cleanup will skip Auth0 user deletion (NoOp)")
 		return profiles.NoOpAuth0Client{}
 	}
-	// Wrap the transport so Auth0 token/DELETE calls emit OTel client spans
-	// (Type=HTTP in AppDependencies) named "Auth0 token"; the host lands in
-	// server.address.
-	auth0HTTP := platform.WrapHTTPClient(
-		&http.Client{Timeout: 30 * time.Second},
-		func(string, *http.Request) string { return "Auth0 token" },
-	)
-	return profiles.NewAuth0Client(
-		auth0HTTP,
-		"https://"+cfg.Auth0Domain,
-		cfg.Auth0M2MClientID,
-		cfg.Auth0M2MClientSecret,
-	)
+	return newAuth0Client(cfg)
 }
 
-// buildSweep constructs the subscription-sweep runner, wiring the lapsed-paid
-// finder and profile saver (both the Postgres admin store) and the Auth0 M2M
-// syncer (real when its credentials are present, NoOp otherwise so a job without
-// Auth0 M2M config still reverts the stored tier).
 func buildSweep(cfg platform.Config, st *stores, logger *slog.Logger) sweepRunner {
-	// adminStore backs LapsedPaid (Finder), Save (Saver) and the webhook totals.
 	adminStore := st.profileAdmin
 	webhooks, err := subscriptionevents.ParseWebhooks(cfg.SubscriptionWebhooks.Expose())
 	if err != nil {
@@ -327,19 +288,20 @@ func buildSweep(cfg platform.Config, st *stores, logger *slog.Logger) sweepRunne
 	return sweepRunner{cycle: handler, notifier: notifier}
 }
 
-// buildAuth0Syncer returns the real Auth0 Management (M2M) client when the M2M
-// credentials are configured, else a no-op so a job without Auth0 M2M config still
-// reverts the stored tier. The read path (EffectiveTier) already treats a lapsed
-// user as Free everywhere, so the Auth0 subscription_tier metadata the sweep keeps
-// in step is informational, not load-bearing.
+// buildAuth0Syncer returns a no-op when Auth0 M2M is unconfigured, so the stored
+// tier is still reverted. The Auth0 tier metadata is informational: EffectiveTier
+// already treats a lapsed user as Free.
 func buildAuth0Syncer(cfg platform.Config, logger *slog.Logger) subscriptionsweep.Auth0Syncer {
 	if !cfg.Auth0M2MConfigured() {
 		logger.Info("auth0 m2m unconfigured; subscription sweep will skip Auth0 tier sync (NoOp)")
 		return profiles.NoOpAuth0Client{}
 	}
-	// Wrap the transport so Auth0 token/PATCH calls emit OTel client spans
-	// (Type=HTTP in AppDependencies) named "Auth0 token"; the host lands in
-	// server.address.
+	return newAuth0Client(cfg)
+}
+
+// newAuth0Client builds the Auth0 Management (M2M) client. The static span name
+// "Auth0 token" keeps cardinality low; the host lands in server.address.
+func newAuth0Client(cfg platform.Config) *profiles.Auth0Client {
 	auth0HTTP := platform.WrapHTTPClient(
 		&http.Client{Timeout: 30 * time.Second},
 		func(string, *http.Request) string { return "Auth0 token" },
@@ -352,19 +314,11 @@ func buildAuth0Syncer(cfg platform.Config, logger *slog.Logger) subscriptionswee
 	)
 }
 
-// buildAppStoreReconcile constructs the appstore-reconcile handler: the App
-// Store Server API client (JWT-authed via the .p8 signing key), the same
-// subscriptions.JWSVerifier and subscriptions.NotificationProcessor the live
-// POST /v1/webhooks/appstore handler uses (so a recovered notification can
-// never double-apply against a concurrent live delivery), and the Postgres
-// idempotency store built into st.appleNotif.
-//
-// It returns nil — logged, not fatal — when APPSTORE_RECONCILE_ENABLED is
-// unset or the key material fails to parse, following the same
-// "unconfigured optional job" posture: this feature is
-// genuinely optional during rollout (tc-97k35.6, GH#1011), so a malformed or
-// absent key must not crash-loop the job's OTHER modes (digest,
-// dormant-cleanup, etc.) that share this process.
+// buildAppStoreReconcile reuses the live webhook's JWSVerifier and
+// NotificationProcessor so a recovered notification cannot double-apply against
+// a concurrent live delivery. It returns nil, logged and not fatal, when the job
+// is disabled or the key material fails to parse, so the other modes sharing
+// this process cannot crash-loop.
 func buildAppStoreReconcile(cfg platform.Config, st *stores, logger *slog.Logger) *appstorereconcile.Handler {
 	if !cfg.AppStoreReconcileEnabled {
 		logger.Info("appstore-reconcile unconfigured (APPSTORE_RECONCILE_ENABLED unset); appstore-reconcile mode will refuse to run")
@@ -394,13 +348,9 @@ func buildAppStoreReconcile(cfg platform.Config, st *stores, logger *slog.Logger
 		return nil
 	}
 
-	// adminStore backs profileByTxn (GetByOriginalTransactionID + Save), the
-	// same store the live webhook path uses to locate a subscriber
-	// cross-partition.
-	adminStore := st.profileAdmin
 	processor := subscriptions.NewNotificationProcessor(
 		jwsVerifier,
-		adminStore,
+		st.profileAdmin,
 		buildAuth0Syncer(cfg, logger),
 		st.appleNotif,
 		cfg.AppleEnvironments,
@@ -412,8 +362,7 @@ func buildAppStoreReconcile(cfg platform.Config, st *stores, logger *slog.Logger
 	return appstorereconcile.New(apiClient, jwsVerifier, st.appleNotif, processor, lookback, cfg.AppStoreReconcileApplyEnabled, logger, time.Now)
 }
 
-// buildEmailSender returns the real ACS email sender when a connection string is
-// configured, else a NoOp so a job without ACS credentials boots cleanly.
+// buildEmailSender returns a NoOp when no ACS connection string is set.
 func buildEmailSender(cfg platform.Config, logger *slog.Logger) acsemail.EmailSender {
 	conn := cfg.ACSConnectionString.Expose()
 	if conn == "" {
@@ -428,10 +377,7 @@ func buildEmailSender(cfg platform.Config, logger *slog.Logger) acsemail.EmailSe
 	return client
 }
 
-// buildPushSender returns the real APNs sender when APNs is enabled, else a NoOp
-// so a job without a .p8 auth key boots cleanly. registry wires
-// towncrier.push.delivery_failed (tc-97k35.4) onto the real client; a nil
-// registry is a safe no-op (matches every other WithMetrics call site).
+// buildPushSender returns a NoOp when APNs is disabled. A nil registry is a safe no-op.
 func buildPushSender(cfg platform.Config, registry *metrics.Registry, logger *slog.Logger) apns.PushSender {
 	if !cfg.APNsEnabled {
 		logger.Info("apns disabled; digest pushes disabled (NoOp sender)")
@@ -452,10 +398,7 @@ func buildPushSender(cfg platform.Config, registry *metrics.Registry, logger *sl
 	return client.WithMetrics(registry)
 }
 
-// buildFCMSender returns the real FCM sender when FCM is enabled, else a NoOp so
-// a job without a service-account key boots cleanly (the mirror of
-// buildPushSender for Android delivery). registry wires
-// towncrier.push.delivery_failed (tc-97k35.4) onto the real client.
+// buildFCMSender returns a NoOp when FCM is disabled.
 func buildFCMSender(cfg platform.Config, registry *metrics.Registry, logger *slog.Logger) fcm.PushSender {
 	if !cfg.FCMEnabled {
 		logger.Info("fcm disabled; android pushes disabled (NoOp sender)")
@@ -474,11 +417,8 @@ func buildFCMSender(cfg platform.Config, registry *metrics.Registry, logger *slo
 	return client.WithMetrics(registry)
 }
 
-// buildPlatformDispatcher wires the platform-aware push dispatcher over the APNs
-// (iOS) and FCM (Android) senders. Both send sites — the poll-cycle coalescer
-// and the weekly-digest handler — swap their single push sender for this one
-// dispatcher, which splits a recipient's tokens by platform and prunes the union
-// of tokens either sender reports invalid.
+// buildPlatformDispatcher splits a recipient's tokens by platform across the
+// APNs and FCM senders and prunes tokens either reports invalid.
 func buildPlatformDispatcher(cfg platform.Config, registry *metrics.Registry, logger *slog.Logger) *notifydispatch.PlatformDispatcher {
 	return notifydispatch.NewPlatformDispatcher(
 		buildPushSender(cfg, registry, logger),
