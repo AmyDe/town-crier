@@ -4,12 +4,20 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"image"
 	"image/color"
+	"image/draw"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
+
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
 )
@@ -314,5 +322,275 @@ func TestImageServe_StoreError_Returns500(t *testing.T) {
 	}
 	if tiles.calls != 0 {
 		t.Errorf("tile fetches = %d, want 0 when the store errors", tiles.calls)
+	}
+}
+
+const ogPath = "/og/croydon/23/03456/FUL.png"
+
+// gatedTiles counts fetches and the maximum number in flight. The first Fetch
+// signals entered and blocks until release is closed.
+type gatedTiles struct {
+	calls    atomic.Int32
+	inFlight atomic.Int32
+	maxSeen  atomic.Int32
+	entered  chan struct{}
+	release  chan struct{}
+	once     sync.Once
+}
+
+func newGatedTiles() *gatedTiles {
+	return &gatedTiles{entered: make(chan struct{}), release: make(chan struct{})}
+}
+
+func (g *gatedTiles) Fetch(ctx context.Context, _, _, _ int) (image.Image, error) {
+	g.calls.Add(1)
+	n := g.inFlight.Add(1)
+	defer g.inFlight.Add(-1)
+	for {
+		m := g.maxSeen.Load()
+		if n <= m || g.maxSeen.CompareAndSwap(m, n) {
+			break
+		}
+	}
+	g.once.Do(func() {
+		close(g.entered)
+		select {
+		case <-g.release:
+		case <-ctx.Done():
+		}
+	})
+	img := image.NewRGBA(image.Rect(0, 0, tileSize, tileSize))
+	draw.Draw(img, img.Bounds(), image.NewUniform(color.RGBA{R: 0x88, G: 0xCC, B: 0xFF, A: 0xFF}), image.Point{}, draw.Src)
+	return img, nil
+}
+
+// scriptedCache returns the scripted Get results in order (the last repeats),
+// counts Puts, and signals each Get on gets.
+type scriptedCache struct {
+	results []bool
+	png     []byte
+	gets    atomic.Int32
+	puts    atomic.Int32
+	getSig  chan struct{}
+}
+
+func (c *scriptedCache) Get(_ context.Context, _ string) ([]byte, bool, error) {
+	i := int(c.gets.Add(1)) - 1
+	if c.getSig != nil {
+		c.getSig <- struct{}{}
+	}
+	if i >= len(c.results) {
+		i = len(c.results) - 1
+	}
+	if c.results[i] {
+		return c.png, true, nil
+	}
+	return nil, false, nil
+}
+
+func (c *scriptedCache) Put(_ context.Context, _ string, _ []byte) error {
+	c.puts.Add(1)
+	return nil
+}
+
+// staticStore is a concurrency-safe appStore returning one application.
+type staticStore struct {
+	app applications.PlanningApplication
+}
+
+func (s staticStore) GetByAuthorityAndName(context.Context, string, string) (applications.PlanningApplication, bool, error) {
+	return s.app, true, nil
+}
+
+func newLimitedHandler(t *testing.T, tiles tileClient, cache imageStore, wait time.Duration) (*imageHandler, *http.ServeMux) {
+	t.Helper()
+	h := newImageHandler(
+		staticStore{app: coordApp(t)},
+		&fakeResolver{slugs: map[string]int{"croydon": 165}},
+		tiles, cache, slog.New(slog.DiscardHandler), wait,
+	)
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /og/{authoritySlug}/{ref...}", h.serve)
+	return h, mux
+}
+
+// serveSpanned serves path under a recording request span and returns the
+// recorder plus the sharecard.cache attribute ("" when unset).
+func serveSpanned(t *testing.T, mux *http.ServeMux) (*httptest.ResponseRecorder, string) {
+	t.Helper()
+	sr := tracetest.NewSpanRecorder()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sr))
+	t.Cleanup(func() { _ = tp.Shutdown(context.WithoutCancel(t.Context())) })
+	spanCtx, span := tp.Tracer("test").Start(t.Context(), "request")
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequestWithContext(spanCtx, http.MethodGet, ogPath, nil))
+	span.End()
+
+	ended := sr.Ended()
+	if len(ended) != 1 {
+		t.Fatalf("recorded spans = %d, want 1", len(ended))
+	}
+	for _, kv := range ended[0].Attributes() {
+		if string(kv.Key) == "sharecard.cache" {
+			return rec, kv.Value.AsString()
+		}
+	}
+	return rec, ""
+}
+
+func TestImageServe_SlotHeld_Returns429WithoutFetching(t *testing.T) {
+	t.Parallel()
+	tiles := newGatedTiles()
+	cache := &scriptedCache{results: []bool{false}}
+	h, mux := newLimitedHandler(t, tiles, cache, 20*time.Millisecond)
+	h.renderSlot <- struct{}{}
+
+	rec, attr := serveSpanned(t, mux)
+
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want 429", rec.Code)
+	}
+	if got := rec.Header().Get("Retry-After"); got != "120" {
+		t.Errorf("Retry-After = %q, want 120", got)
+	}
+	if got := rec.Header().Get("Cache-Control"); got != "no-store" {
+		t.Errorf("Cache-Control = %q, want no-store", got)
+	}
+	if rec.Body.Len() != 0 {
+		t.Errorf("body length = %d, want 0", rec.Body.Len())
+	}
+	if n := tiles.calls.Load(); n != 0 {
+		t.Errorf("tile fetches = %d, want 0", n)
+	}
+	if attr != "busy" {
+		t.Errorf("sharecard.cache = %q, want busy", attr)
+	}
+}
+
+func TestImageServe_SlotHeldContextCancelled_ReturnsWithoutWaiting(t *testing.T) {
+	t.Parallel()
+	tiles := newGatedTiles()
+	h, mux := newLimitedHandler(t, tiles, &scriptedCache{results: []bool{false}}, time.Hour)
+	h.renderSlot <- struct{}{}
+	ctx, cancel := context.WithCancel(t.Context())
+
+	done := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, httptest.NewRequestWithContext(ctx, http.MethodGet, ogPath, nil))
+		done <- rec
+	}()
+	cancel()
+
+	select {
+	case rec := <-done:
+		if rec.Code != http.StatusTooManyRequests {
+			t.Errorf("status = %d, want 429", rec.Code)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("handler did not return after context cancel")
+	}
+	if n := tiles.calls.Load(); n != 0 {
+		t.Errorf("tile fetches = %d, want 0", n)
+	}
+}
+
+func TestImageServe_SlotHeldCacheHit_ServesImmediately(t *testing.T) {
+	t.Parallel()
+	want := []byte("cached-png")
+	cache := &scriptedCache{results: []bool{true}, png: want}
+	tiles := newGatedTiles()
+	h, mux := newLimitedHandler(t, tiles, cache, time.Hour)
+	h.renderSlot <- struct{}{}
+
+	rec, attr := serveSpanned(t, mux)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if !bytes.Equal(rec.Body.Bytes(), want) {
+		t.Error("body is not the cached PNG")
+	}
+	if attr != "hit" {
+		t.Errorf("sharecard.cache = %q, want hit", attr)
+	}
+}
+
+func TestImageServe_MissThenHitOnReread_ServesCachedWithoutRendering(t *testing.T) {
+	t.Parallel()
+	want := []byte("cached-png")
+	cache := &scriptedCache{results: []bool{false, true}, png: want}
+	tiles := newGatedTiles()
+	_, mux := newLimitedHandler(t, tiles, cache, time.Second)
+
+	rec, attr := serveSpanned(t, mux)
+
+	if rec.Code != http.StatusOK || !bytes.Equal(rec.Body.Bytes(), want) {
+		t.Fatalf("status = %d, body = %q; want 200 with cached bytes", rec.Code, rec.Body.String())
+	}
+	if n := tiles.calls.Load(); n != 0 {
+		t.Errorf("tile fetches = %d, want 0", n)
+	}
+	if n := cache.puts.Load(); n != 0 {
+		t.Errorf("cache writes = %d, want 0", n)
+	}
+	if attr != "hit" {
+		t.Errorf("sharecard.cache = %q, want hit", attr)
+	}
+}
+
+func TestImageServe_FreeSlotMiss_RendersOnceAndReleasesSlot(t *testing.T) {
+	t.Parallel()
+	tiles := newGatedTiles()
+	close(tiles.release)
+	cache := &scriptedCache{results: []bool{false}}
+	h, mux := newLimitedHandler(t, tiles, cache, time.Second)
+
+	rec, attr := serveSpanned(t, mux)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if tiles.calls.Load() < 1 {
+		t.Error("expected tile fetches for a render")
+	}
+	if n := cache.puts.Load(); n != 1 {
+		t.Errorf("cache writes = %d, want 1", n)
+	}
+	if attr != "miss" {
+		t.Errorf("sharecard.cache = %q, want miss", attr)
+	}
+	select {
+	case h.renderSlot <- struct{}{}:
+	default:
+		t.Fatal("render slot still held after the request")
+	}
+}
+
+func TestImageServe_ConcurrentMisses_NeverRenderInParallel(t *testing.T) {
+	t.Parallel()
+	tiles := newGatedTiles()
+	cache := &scriptedCache{results: []bool{false}, getSig: make(chan struct{}, 8)}
+	_, mux := newLimitedHandler(t, tiles, cache, 30*time.Second)
+
+	var wg sync.WaitGroup
+	for range 2 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			mux.ServeHTTP(httptest.NewRecorder(), httptest.NewRequestWithContext(t.Context(), http.MethodGet, ogPath, nil))
+		}()
+	}
+
+	<-tiles.entered
+	<-cache.getSig // first request's first read
+	<-cache.getSig // first request's re-read after acquire
+	<-cache.getSig // second request's first read, now queued for the slot
+	close(tiles.release)
+	wg.Wait()
+
+	if got := tiles.maxSeen.Load(); got != 1 {
+		t.Errorf("max concurrent Fetch = %d, want 1", got)
 	}
 }
