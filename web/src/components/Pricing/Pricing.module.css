@@ -27,7 +27,6 @@
   }
 }
 
-/* Filed-notice card: 1px border + 2px top rule, like ApplicationCard. */
 .card {
   background: var(--tc-surface);
   border: 1px solid var(--tc-border);
@@ -38,11 +37,7 @@
   position: relative;
 }
 
-/*
- * Paid-tier upsell — the ONLY filled-amber container anywhere is its CTA
- * button below; the card itself stays on surface tokens, just with a
- * heavier amber border replacing the neutral top rule.
- */
+/* The only filled-amber container is the CTA button; the card keeps surface tokens with a heavier amber border. */
 .recommended {
   border: 1.5px solid var(--tc-amber);
 }

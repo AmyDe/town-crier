@@ -12,7 +12,6 @@
   margin-bottom: var(--tc-space-xl);
 }
 
-/* Ledger rows: a flat list separated by hairline rules, not boxed cards. */
 .list {
   max-width: 720px;
   margin: 0 auto;
@@ -40,7 +39,6 @@
   list-style: none;
 }
 
-/* Hide default browser marker */
 .summary::-webkit-details-marker {
   display: none;
 }
@@ -50,7 +48,6 @@
   content: '';
 }
 
-/* Custom +/− marker */
 .summary::after {
   content: '+';
   flex-shrink: 0;

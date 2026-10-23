@@ -1,8 +1,4 @@
-/*
- * "Filed notice" card (Public Notice component language). The 2px top rule
- * is the unread signal: text-primary when read, amber when unread (replaces
- * the former leading dot — .cardUnread/.cardRead toggle the rule colour).
- */
+/* The 2px top rule is the unread signal: text-primary when read, amber when unread. */
 .card {
   display: block;
   position: relative;
@@ -21,11 +17,7 @@
   border-top-color: var(--tc-amber);
 }
 
-/*
- * Read-state knob — unread rows render at full saturation; read rows recede
- * slightly via card opacity. The top rule above is the canonical read/unread
- * affordance.
- */
+/* Read rows recede via opacity; the top rule is the canonical read/unread signal. */
 .cardRead {
   opacity: 0.7;
 }
@@ -39,7 +31,6 @@
   outline-offset: 2px;
 }
 
-/* ---------- Mono document-header strip: ref left, distance/date right ---------- */
 .docHeader {
   display: flex;
   align-items: baseline;
@@ -79,7 +70,6 @@
   margin: 0;
 }
 
-/* ---------- Status stamp: outlined, uppercase, icon + label always ---------- */
 .statusBadge {
   display: inline-flex;
   align-items: center;

@@ -5,8 +5,6 @@
   background-color: var(--tc-background);
 }
 
-/* Masthead double rule — a 2.5px heavy rule over a 1px hairline, replacing a
-   plain single border-bottom (Public Notice component language). */
 .ruleHeavy {
   height: 2.5px;
   background-color: var(--tc-text-primary);
@@ -135,7 +133,6 @@
   background-color: color-mix(in srgb, var(--tc-text-secondary) 10%, transparent);
 }
 
-/* Tablet and above: show links inline, hide hamburger */
 @media (min-width: 640px) {
   .links {
     display: flex;

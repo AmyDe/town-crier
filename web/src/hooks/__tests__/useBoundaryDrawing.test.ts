@@ -3,9 +3,7 @@ import { describe, it, expect } from 'vitest';
 import { useBoundaryDrawing } from '../useBoundaryDrawing';
 import type { WatchZoneBoundary } from '../../domain/types';
 
-// Local closed-square boundary literal — deliberately not shared with
-// WatchZones' `fixtures/watch-zone.fixtures.ts` (this hook lives under
-// `hooks/`, which must not depend on a feature-private fixture).
+// Local literal: hooks/ must not depend on a feature-private fixture.
 function aWatchZoneBoundary(overrides?: Partial<WatchZoneBoundary>): WatchZoneBoundary {
   return {
     type: 'Polygon',

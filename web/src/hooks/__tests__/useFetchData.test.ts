@@ -63,14 +63,11 @@ describe('useFetchData', () => {
 
     unmount();
 
-    // Resolve after unmount — state should not update
     resolvePromise!('late data');
 
-    // Give microtasks a chance to flush
     await new Promise((r) => setTimeout(r, 50));
 
-    // After unmount, the last captured state should still show isLoading: true
-    // (no state update occurred)
+    // No state update occurs after unmount.
     expect(result.current.isLoading).toBe(true);
     expect(result.current.data).toBeNull();
   });
@@ -113,12 +110,10 @@ describe('useFetchData', () => {
       useFetchData(fetcher, [], { enabled: false }),
     );
 
-    // Should not be loading and should not have fetched
     expect(result.current.isLoading).toBe(false);
     expect(result.current.data).toBeNull();
     expect(result.current.error).toBeNull();
 
-    // Give time for any async work to complete
     await new Promise((r) => setTimeout(r, 50));
 
     expect(callCount).toBe(0);

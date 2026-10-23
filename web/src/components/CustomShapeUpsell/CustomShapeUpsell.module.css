@@ -16,7 +16,6 @@
   height: auto;
 }
 
-/* The circle represents the old, fixed-radius zone: a plain, muted outline. */
 .circleOutline {
   fill: none;
   stroke: var(--tc-text-tertiary);
@@ -24,8 +23,6 @@
   stroke-dasharray: 6 6;
 }
 
-/* The irregular polygon represents the new custom-shape zone: drawn in the
-   brand accent so it reads as the thing being promoted. */
 .polygonShape {
   fill: var(--tc-amber-muted);
   stroke: var(--tc-amber);
