@@ -36,7 +36,7 @@ func newRouterWithAnonLimit(t *testing.T, logger *slog.Logger, anonBurst, anonRe
 
 // TestRouter_AnonRateLimitAppliesToAnonymousRoutes proves AnonRateLimit is
 // actually wired into the production dispatch chain (not just unit tested in
-// isolation, GH#868 Phase 1): with a tiny per-router budget, a real anonymous
+// isolation): with a tiny per-router budget, a real anonymous
 // route throttles once that budget is exhausted.
 func TestRouter_AnonRateLimitAppliesToAnonymousRoutes(t *testing.T) {
 	t.Parallel()

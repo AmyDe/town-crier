@@ -5,9 +5,8 @@ import 'leaflet/dist/leaflet.css';
 import { OSM_ATTRIBUTION, OSM_TILE_URL } from '../osmTiles';
 import styles from './ConfirmMap.module.css';
 
-// Leaflet SVG layers accept raw colour values, not CSS custom properties —
-// this hex MUST be kept in sync BY HAND with --tc-amber in tokens.css (dark
-// theme value, #E9A620 / rgb(233, 166, 32)) whenever the palette changes.
+// Leaflet SVG layers need raw colour values, not CSS custom properties: keep in
+// sync by hand with --tc-amber (dark theme) in tokens.css.
 const CIRCLE_OPTIONS = {
   color: 'rgba(233, 166, 32, 0.8)',
   fillColor: 'rgb(233, 166, 32)',

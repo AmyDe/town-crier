@@ -1,5 +1,3 @@
-/* StatsBar — Three key stats in a horizontal row with top/bottom borders */
-
 .container {
   border-top: 1px solid var(--tc-border);
   border-bottom: 1px solid var(--tc-border);
@@ -38,7 +36,6 @@
   color: var(--tc-text-secondary);
 }
 
-/* Mobile: tighter gap, smaller value font */
 @media (max-width: 639px) {
   .row {
     gap: var(--tc-space-md);

@@ -14,8 +14,8 @@ import (
 
 // healthCheckPaths are the liveness/readiness probe paths Container Apps hits
 // continuously. They are exempt from anonymous rate limiting: they carry no
-// user data, are not part of the scraping surface this middleware defends
-// (GH#868 Phase 1), and metering them would only spend budget a genuine
+// user data, are not part of the scraping surface this middleware defends,
+// and metering them would only spend budget a genuine
 // anonymous caller could otherwise use. This is the chosen convention for the
 // ACA-probe exemption; keep it in lockstep with internal/health's registered
 // paths.
@@ -29,7 +29,7 @@ var healthCheckPaths = map[string]struct{}{
 // with no authenticated subject (auth.Subject(ctx) == ""). Authenticated
 // traffic passes straight through untouched: it is metered by the sibling
 // per-subject RateLimit instead, and this middleware never inspects or
-// affects it (GH#868 Phase 1). A point+radius public endpoint is a
+// affects it. A point+radius public endpoint is a
 // whole-table scraping target and drives unmetered load onto PlanIt (our
 // free, single-operator upstream) if left uncapped, hence this second
 // limiter.
@@ -37,7 +37,7 @@ var healthCheckPaths = map[string]struct{}{
 // burst is the bucket's capacity: the number of requests an IP can make in
 // an instantaneous burst before it starts drawing on the steady refill rate
 // carried by store (see NewAnonRateLimitStore). This replaced a flat
-// fixed-window counter (tc-vwobf): a real anonymous session panning the map
+// fixed-window counter: a real anonymous session panning the map
 // fans a single pan/zoom settle event out across several endpoints
 // (GET /v1/applications/clusters, GET /v1/me/watch-zones/{id}/applications/
 // clusters, GET /v1/applications/near-point, ...) even though both clients
@@ -62,7 +62,7 @@ var healthCheckPaths = map[string]struct{}{
 // above, evaluated only for otherwise-anonymous requests: when it returns
 // true the request passes straight through untouched, exactly like
 // authenticated traffic. nil means no additional exemption. The motivating
-// case (GH#872 collateral, tc-zod82) is the SEO endpoints served to the
+// case is the SEO endpoints served to the
 // Cloudflare Worker (internal/seopage): they authenticate via the X-Build-Key
 // header checked inside the handler, not via Auth0, so auth.Subject is always
 // empty for them and the Worker's traffic would be metered as anonymous.
@@ -127,8 +127,7 @@ type anonBucket struct {
 // value, so it works directly as a map key with no string conversion (and
 // therefore no temptation to log it).
 //
-// Eviction is mandatory from day one (regression guard for GH#518, where a
-// per-subject map once grew unbounded because keys were never reclaimed): the
+// Eviction is mandatory, or the per-IP map grows unbounded: the
 // token-bucket analogue of "all timestamps aged out of the window" is "the
 // bucket has refilled all the way back to capacity" — that state carries no
 // information beyond "no entry", so once a check computes a fully-refilled
@@ -184,8 +183,7 @@ func (s *anonRateLimitStore) checkAndIncrement(addr netip.Addr, burst int) rateL
 
 	// A bucket back at full capacity carries no information beyond "no
 	// entry" — reclaim it now rather than leave a stale full bucket sitting
-	// in the map forever (GH#518 regression guard, token-bucket analogue of
-	// the sliding-window's "all timestamps aged out" eviction).
+	// in the map forever.
 	if tokens >= capacity {
 		delete(s.buckets, addr)
 	}

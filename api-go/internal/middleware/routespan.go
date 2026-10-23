@@ -74,7 +74,7 @@ func RouteSpan(matcher routeMatcher) func(http.Handler) http.Handler {
 			// semconv). Azure Monitor maps AppRequests.ResultCode from the LEGACY
 			// http.status_code, NOT the stable http.response.status_code, so without the
 			// legacy attribute ResultCode shows only the bare span StatusCode (0/2) and
-			// 4xx/5xx alerts keyed on ResultCode never fire (tc-oml9). Do not "clean up"
+			// 4xx/5xx alerts keyed on ResultCode never fire. Do not "clean up"
 			// this apparent duplication — both keys are load-bearing.
 			span.SetAttributes(
 				semconv.HTTPResponseStatusCode(sw.status),

@@ -62,8 +62,8 @@ func TestLoadConfig_Auth0(t *testing.T) {
 }
 
 func TestLoadConfig_Auth0DefaultsEmpty(t *testing.T) {
-	// The dev Go app ships without Auth0 env vars until infra wires them
-	// (GH#418, it3+). Absent config must load cleanly (empty strings), letting
+	// The dev Go app ships without Auth0 env vars until infra wires them.
+	// Absent config must load cleanly (empty strings), letting
 	// the validator become deny-all rather than failing startup.
 	t.Setenv("AUTH0_DOMAIN", "")
 	t.Setenv("AUTH0_AUDIENCE", "")

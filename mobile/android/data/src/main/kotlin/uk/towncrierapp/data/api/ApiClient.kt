@@ -25,18 +25,14 @@ internal data class PagedResult<T>(
 private class UnauthorizedException : Exception()
 
 /**
- * Hand-rolled API client — 1:1 port of iOS `URLSessionAPIClient` behaviour
- * (epic #770 "API contract essentials"; no Retrofit). Every request:
+ * Hand-rolled API client (no Retrofit) matching iOS `URLSessionAPIClient`
+ * behaviour. Every request:
  * requires a session first (else [DomainError.SessionExpired], no network
  * call); attaches `Authorization: Bearer`, `Accept: application/json`
  * always, `Content-Type: application/json` only with a body; on 401,
  * refreshes the session once and retries once; 403 is sniffed for an
  * `insufficient_entitlement` body; 404 and other >=400 map to their
- * `DomainError` cases; nothing else retries. Request building and status
- * mapping are top-level functions in this file, not members — they need
- * none of this class's mutable/session state, only [baseUrl]/[json] passed
- * explicitly, which keeps this class's own responsibility to session +
- * retry orchestration.
+ * `DomainError` cases; nothing else retries.
  */
 public class ApiClient(
     private val baseUrl: String,
@@ -75,15 +71,13 @@ public class ApiClient(
     /**
      * Runs [action] with [initialAccessToken]; on a 401, refreshes the
      * session exactly once and retries [action] exactly once with the
-     * refreshed token — the epic's whole retry-policy contract ("no other
-     * retries") lives in this one place so [performRequest] and
-     * [requestBytes] don't each carry their own copy of it.
+     * refreshed token. The whole retry policy lives here, shared by
+     * [performRequest] and [requestBytes].
      */
     @Suppress("SwallowedException", "TooGenericExceptionCaught")
-    // The three deliberately-generic catches below ARE the policy table this
-    // function exists to centralise (epic #770: 401 -> refresh-once-retry-
-    // once; IOException -> NetworkUnavailable; anything else -> SessionExpired
-    // with no further retry) — narrowing them would make the policy incomplete.
+    // The deliberately generic catches below are the policy (401 -> refresh and
+    // retry once; IOException -> NetworkUnavailable; anything else ->
+    // SessionExpired); narrowing them would make the policy incomplete.
     private suspend fun <T> withRetryOn401(
         initialAccessToken: String,
         action: suspend (accessToken: String) -> T,
@@ -101,8 +95,7 @@ public class ApiClient(
             } catch (e2: IOException) {
                 throw DomainError.NetworkUnavailable
             } catch (e2: UnauthorizedException) {
-                // The retry itself got another 401 — stop here rather than loop; the
-                // session is unusable either way (epic #770: "no other retries").
+                // The retry itself got another 401: stop here rather than loop.
                 throw DomainError.SessionExpired
             }
         } catch (e: IOException) {
@@ -118,11 +111,9 @@ public class ApiClient(
     }
 
     /**
-     * Refreshes the session, normalising every failure per the epic's
-     * retry-policy contract: [IOException] -> [DomainError.NetworkUnavailable],
-     * anything else -> [DomainError.SessionExpired]. The final catch is
-     * deliberately generic — it's the policy's "anything else" case, not an
-     * oversight — so narrowing it further isn't possible while staying correct.
+     * Refreshes the session: [IOException] -> [DomainError.NetworkUnavailable],
+     * anything else -> [DomainError.SessionExpired]. The final catch is the
+     * policy's deliberately generic "anything else" case.
      */
     @Suppress("SwallowedException", "TooGenericExceptionCaught")
     private suspend fun refreshOrThrow(): AuthSession =
@@ -184,7 +175,7 @@ private inline fun log(
 // OkHttpClient executes the request, so the media type set here — not the
 // explicit header() call below — is what actually reaches the wire. Bare
 // "application/json" keeps both the wire value and the (BridgeInterceptor-
-// free) FakeHttpTransport-observed value equal to the epic's exact contract.
+// free) FakeHttpTransport-observed value equal to the contract.
 private val jsonMediaType = "application/json".toMediaType()
 private val emptyBody: RequestBody = ByteArray(0).toRequestBody(null)
 
@@ -230,9 +221,8 @@ private fun buildRequest(
     return builder.build()
 }
 
-// A status-code-to-error dispatcher inherently branches once per HTTP status
-// bucket (epic #770's exact contract: 401/403/404/other-4xx-5xx) — that IS
-// the function, not a complexity smell to fix by merging branches.
+// One branch per HTTP status bucket (401/403/404/other) is the contract, not a
+// complexity smell to fix by merging branches.
 @Suppress("ThrowsCount")
 private fun mapHttpStatus(
     json: Json,

@@ -1,15 +1,10 @@
 import SwiftUI
 
 /// In-context callout shown on the onboarding radius step once the user's
-/// tier already allows drawing a custom-shape (polygon) zone (GH#1031,
-/// tc-7se1w.4). Replaces a plain "Draw a custom shape instead" text link
-/// that carried no explanation of what the capability actually does — a
-/// paying user deserves the same clear introduction to the feature that
-/// ``CustomShapeUpsellCard`` gives a Free-tier user pre-purchase, just
-/// without the paywall framing. Shares that card's layout (the same
-/// ``CustomShapeUpsellGraphic``, title, and caption) so the two read as one
-/// consistent component with different copy for different entitlement
-/// states, not two unrelated pieces of UI.
+/// tier already allows drawing a custom-shape (polygon) zone. Shares
+/// ``CustomShapeUpsellCard``'s layout (the same ``CustomShapeUpsellGraphic``,
+/// title, and caption) with copy for a paying user, without the paywall
+/// framing.
 public struct CustomShapeAvailableCard: View {
   /// User-facing copy, kept in one place so it can be unit-tested and reused.
   enum Copy {

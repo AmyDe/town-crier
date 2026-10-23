@@ -1,9 +1,3 @@
-/* ==========================================================================
-   Hero Section
-   Landing page hero — full-viewport intro with headline, subheading,
-   CTA button, and scroll indicator.
-   ========================================================================== */
-
 .hero {
   display: flex;
   flex-direction: column;
@@ -110,7 +104,6 @@
   }
 }
 
-/* ---------- Responsive: mobile ---------- */
 @media (max-width: 639px) {
   .headline {
     font-size: 2rem;

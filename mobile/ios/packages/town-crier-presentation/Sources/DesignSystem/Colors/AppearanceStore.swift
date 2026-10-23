@@ -1,8 +1,8 @@
 import Foundation
 
 /// Single live source of truth for the user's appearance preference
-/// (System/Light/Dark/OLED Dark), persisted to UserDefaults under the same
-/// `"appearanceMode"` key `SettingsViewModel` has always used (GH#878).
+/// (System/Light/Dark/OLED Dark), persisted to UserDefaults under the
+/// `"appearanceMode"` key.
 ///
 /// Owned once at the composition root (`TownCrierApp.swift`) and injected
 /// into both `SettingsViewModel` (Settings picker) and the anonymous

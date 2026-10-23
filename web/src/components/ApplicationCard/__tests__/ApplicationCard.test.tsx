@@ -231,9 +231,6 @@ describe('ApplicationCard — open callback', () => {
 });
 
 describe('ApplicationCard — unread top rule', () => {
-  // Public Notice filed-notice spec: the 2px top rule is the unread signal
-  // now (replaces the former leading dot) — text-primary when read, amber
-  // when unread. Reuses the same latestUnreadEvent signal the dot used to.
   it('applies the amber top-rule modifier class when latestUnreadEvent is non-null', () => {
     const app = undecidedApplication({
       latestUnreadEvent: {

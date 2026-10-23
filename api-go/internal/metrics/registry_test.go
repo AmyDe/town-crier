@@ -86,7 +86,7 @@ func TestRegistry_NilIsNoOp(t *testing.T) {
 	reg.PushDeliveryFailed(ctx, "apns")
 }
 
-// TestRegistry_PushDeliveryFailedTagsPlatform pins tc-97k35.4: the counter must
+// TestRegistry_PushDeliveryFailedTagsPlatform pins that the counter must
 // carry the platform tag ("apns" | "fcm") so a dashboard/alert can distinguish
 // which sender is failing, mirroring PlanItHTTPError's status-code tag.
 func TestRegistry_PushDeliveryFailedTagsPlatform(t *testing.T) {

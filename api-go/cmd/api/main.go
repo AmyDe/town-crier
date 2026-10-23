@@ -36,7 +36,7 @@ import (
 )
 
 // shareCardsContainer is the Blob container the baked share-card PNGs are cached
-// in (#738 Slice 3 / ADR 0037). Fixed by the infra contract.
+// in. Fixed by the infra contract (ADR 0037).
 const shareCardsContainer = "share-cards"
 
 func main() {
@@ -49,7 +49,7 @@ func main() {
 	// AND the otelslog bridge. The bridge targets the GLOBAL LoggerProvider, which
 	// is the no-op provider until SetupTelemetry (called next) installs an SDK one;
 	// the global provider's delegation upgrades this logger in place, so building
-	// it before SetupTelemetry is correct (tc-8x8g / ADR 0027).
+	// it before SetupTelemetry is correct (ADR 0027).
 	logger := platform.NewOTelLogger(os.Stdout, cfg.LogLevel)
 
 	// SetupTelemetry self-disables when OTEL_EXPORTER_OTLP_ENDPOINT is unset, so
@@ -71,10 +71,10 @@ func main() {
 	// The business-metric registry is built from the global MeterProvider that
 	// SetupTelemetry just installed (a no-op provider when telemetry is disabled,
 	// so the instruments record nothing locally). It is passed to newRouter for the
-	// watch-zone lifecycle counters (tc-21np).
+	// watch-zone lifecycle counters.
 	registry := metrics.New(otel.Meter(metrics.MeterName))
 
-	// Strictly non-fatal passwordless-connectivity probe (tc-vnna / #653). When the
+	// Strictly non-fatal passwordless-connectivity probe. When the
 	// API is configured for Azure managed-identity Postgres auth, prove from the
 	// logs that we can connect with an Entra token and no stored password. It runs
 	// in its own short-lived, self-terminating goroutine so it never blocks boot,
@@ -108,8 +108,8 @@ func main() {
 	offerStore := offercodes.NewPostgresStore(pool, logger)
 	appleNotifStore := subscriptions.NewPostgresNotificationStore(pool, time.Now)
 
-	// The share-card cache is the Azure share-cards Blob container (#738 Slice 3,
-	// ADR 0037), authenticated by the pinned managed identity. It is optional: when
+	// The share-card cache is the Azure share-cards Blob container (ADR
+	// 0037), authenticated by the pinned managed identity. It is optional: when
 	// SHARE_CARDS_BLOB_URL is unset the store stays a nil pointer and the og:image
 	// handler regenerates on every request, so the API boots without the env var.
 	// Keep it a *blobstore.Store (not the interface) so newRouter can pass a genuine
@@ -123,11 +123,10 @@ func main() {
 	}
 
 	// cascade bundles the per-store deleters DELETE /v1/me runs for a complete GDPR
-	// erasure (bead tc-qkf2). The notification store satisfies erasure.ChildDeleter
+	// erasure. The notification store satisfies erasure.ChildDeleter
 	// (DeleteAllByUserID) directly; the other stores satisfy erasure.ChildDeleter or
 	// erasure.RedemptionAnonymiser on their exported Store interface. The watch-zone
-	// deleter and the export reader bind to the same watch-zone store the routes use
-	// (bead tc-s8g1).
+	// deleter and the export reader bind to the same watch-zone store the routes use.
 	cascadeWatchZoneDeleter, exportWatchZoneReader := gdprWatchZoneWiring(watchZoneStore)
 	cascade := profiles.CascadeDeleters{
 		Notifications:       notifStore,
@@ -139,7 +138,7 @@ func main() {
 	}
 
 	// exportReaders bundles the per-collection readers GET /v1/me/data uses to
-	// source the GDPR export's child collections (bead tc-lllv). The adapters
+	// source the GDPR export's child collections. The adapters
 	// (export_adapters.go) map store records to profiles-local export row types,
 	// keeping store -> row mapping out of profiles.
 	exportReaders := profiles.ExportReaders{
@@ -226,7 +225,7 @@ func main() {
 
 // probePostgresManagedIdentity opens the managed-identity Postgres pool, runs a
 // single SELECT current_user, and logs who we connected as. It exists solely to
-// make the "API connects passwordless" milestone (#653) provable from logs and is
+// make the "API connects passwordless" milestone provable from logs and is
 // strictly non-fatal: every failure is a Warn and never affects the running API.
 // The goroutine self-terminates within its own bounded timeout, so it owns its
 // lifetime and leaks nothing.

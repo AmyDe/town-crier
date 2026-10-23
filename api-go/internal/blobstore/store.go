@@ -1,5 +1,5 @@
 // Package blobstore is a thin, consumer-facing wrapper over the official azblob
-// SDK for the Town Crier share-card cache (#738 Slice 3, ADR 0037). It exposes
+// SDK for the Town Crier share-card cache (ADR 0037). It exposes
 // only the Get/Put a keyed-PNG object cache needs and never leaks SDK types past
 // its methods. Authentication is the pinned user-assigned managed identity
 // (AZURE_CLIENT_ID); there is no shared-key / connection-string path, mirroring

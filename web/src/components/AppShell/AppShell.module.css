@@ -3,7 +3,6 @@
   min-height: 100vh;
 }
 
-/* ---------- Sidebar container ---------- */
 .sidebarContainer {
   display: none;
   position: fixed;
@@ -24,7 +23,6 @@
   }
 }
 
-/* ---------- Overlay (mobile only) ---------- */
 .overlay {
   position: fixed;
   inset: 0;
@@ -38,7 +36,6 @@
   }
 }
 
-/* ---------- Main content area ---------- */
 .main {
   flex: 1;
   display: flex;
@@ -53,7 +50,6 @@
   }
 }
 
-/* ---------- Mobile header ---------- */
 .mobileHeader {
   display: flex;
   align-items: center;
@@ -89,7 +85,6 @@
   color: var(--tc-text-primary);
 }
 
-/* ---------- Content ---------- */
 .content {
   flex: 1;
   padding: var(--tc-space-md);

@@ -37,7 +37,7 @@ func (f *fakeWatchZoneStore) FindZonesContaining(_ context.Context, _, _ float64
 
 // TestWatchZoneExportReader_ReadsThroughStoreInterface proves the export adapter
 // is backed by the consumer-side watchzones.Store interface, so GET /v1/me/data
-// exports a user's watch zones (bead tc-s8g1). The fake is a plain
+// exports a user's watch zones. The fake is a plain
 // watchzones.Store, which the adapter must accept and read through.
 func TestWatchZoneExportReader_ReadsThroughStoreInterface(t *testing.T) {
 	t.Parallel()
@@ -69,7 +69,7 @@ func TestWatchZoneExportReader_ReadsThroughStoreInterface(t *testing.T) {
 
 // TestWatchZoneExportReader_IncludesBoundaryForCustomShapeZones proves the
 // GDPR export carries a custom-shape zone's boundary as a GeoJSON Polygon
-// (tc-6he3x.4) and leaves it null for a plain circle zone.
+// and leaves it null for a plain circle zone.
 func TestWatchZoneExportReader_IncludesBoundaryForCustomShapeZones(t *testing.T) {
 	t.Parallel()
 

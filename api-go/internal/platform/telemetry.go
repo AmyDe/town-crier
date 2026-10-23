@@ -1,23 +1,7 @@
-// telemetry.go wires OpenTelemetry tracing and logging for the Go API. The
-// go-coding-standards skill favours a minimal dependency tree, but GH#418 (Go
-// API it10) and ADR 0027 mandate OpenTelemetry so the Go app emits OTLP traces
-// AND logs to the Azure Container Apps managed-environment OTel agent, which
-// forwards them to Application Insights.
-//
-// tc-8x8g adds the logs pipeline: the four new deps below
-// (otelslog / otlploggrpc / sdk/log / log/global, pinned to the otel v1.44.0
-// release line) bridge slog records to OTel logs so they land in App Insights
-// AppTraces. Without them the Go API emitted zero AppTraces and AppExceptions,
-// leaving 500s undiagnosable.
-//
-// tc-21np adds the metrics pipeline: an otlpmetricgrpc exporter behind an SDK
-// MeterProvider (PeriodicReader), installed as the global meter provider, plus
-// Go runtime metrics via contrib/instrumentation/runtime. This restores the
-// towncrier.* business metrics (defined in internal/metrics) and runtime /
-// http.client metrics. There is NO direct
-// Azure Monitor exporter — like traces and logs, metrics export OTLP/gRPC to the
-// ACA managed-environment OTel agent, which forwards them to App Insights
-// AppMetrics.
+// telemetry.go wires OpenTelemetry traces, logs and metrics for the Go API
+// (ADR 0027). All three export OTLP/gRPC to the Container Apps managed-environment
+// OTel agent, which forwards them to Application Insights; there is no direct
+// Azure Monitor exporter.
 package platform
 
 import (
@@ -69,7 +53,7 @@ func deploymentEnvironment(postgresDB string) string {
 // AppRoleName); it deliberately keeps the current town-crier-{api,worker}-go
 // role names so existing Go-role dashboards keep matching. deployment.environment
 // is added from the POSTGRES_DB name so prod and dev signal separate as a
-// dimension instead of commingling under one role (tc-yqyh); it is omitted
+// dimension instead of commingling under one role; it is omitted
 // entirely when the environment can't be derived (local dev, tests). WithFromEnv
 // is applied last so an infra-injected OTEL_RESOURCE_ATTRIBUTES (e.g.
 // deployment.environment=prod) can override these explicit values without a code
@@ -165,7 +149,7 @@ func SetupTelemetry(ctx context.Context, logger *slog.Logger) (func(context.Cont
 	otel.SetMeterProvider(mp)
 
 	// Start Go runtime metrics (GC, goroutines, memory) against the new provider.
-	// http.client metrics come from the otelhttp transport (tc-166z) using this
+	// http.client metrics come from the otelhttp transport using this
 	// same global MeterProvider; the towncrier.* business metrics come from
 	// internal/metrics built on otel.Meter("towncrier"). A runtime.Start failure
 	// is non-fatal — runtime metrics are a nice-to-have, not worth aborting the

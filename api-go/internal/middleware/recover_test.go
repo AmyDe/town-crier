@@ -52,7 +52,7 @@ func (s *logSpy) attrString(key string) string {
 	return ""
 }
 
-// TestRecover_PanicBecomes500WithGenericDetail pins the security fix (GH#516):
+// TestRecover_PanicBecomes500WithGenericDetail pins the security fix:
 // a panic in a downstream handler must produce a 500 whose Detail is the
 // generic constant panicDetail — never the runtime/internal panic text.
 // Recover runs INSIDE ErrorBody so the envelope is written by the same backfill

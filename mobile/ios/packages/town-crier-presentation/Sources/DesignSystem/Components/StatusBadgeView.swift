@@ -4,7 +4,7 @@ import TownCrierDomain
 /// A compact "stamp" badge showing the icon, label, and color for a planning
 /// application status.
 ///
-/// Public Notice (GH#857): status indicators read as an official stamp
+/// Status indicators read as an official stamp
 /// rather than a filled pill — uppercase kerned text, a 1.5pt outline in
 /// `status.displayColor`, and no fill. The SF Symbol icon is always paired
 /// with the text label (never colour alone) for colour-blind accessibility.

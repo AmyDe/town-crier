@@ -5,7 +5,7 @@ import "testing"
 // TestLoadConfig_ShareCardsBlobURL pins that the share-card blob account URL is
 // read from SHARE_CARDS_BLOB_URL (the exact name infra emits) and defaults to
 // empty — empty means the cache is unwired and the og:image handler regenerates
-// on demand (#738 Slice 3).
+// on demand.
 func TestLoadConfig_ShareCardsBlobURL(t *testing.T) {
 	t.Run("set", func(t *testing.T) {
 		const want = "https://sttowncrierdev.blob.core.windows.net"

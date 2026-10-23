@@ -2,7 +2,7 @@ import SwiftUI
 
 /// A compact badge indicating that a feature requires a subscription upgrade.
 ///
-/// Public Notice (GH#857): an upsell surface, styled with `tcAmber` — an
+/// An upsell surface, styled with `tcAmber` — an
 /// uppercase kerned label, 1.5pt amber outline, no fill. `tcAmber` is the
 /// only accent this badge carries; it is never a filled container (amber
 /// rationing rule — filled amber is reserved for the CTA button on the

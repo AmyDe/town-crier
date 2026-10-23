@@ -1,10 +1,8 @@
 import styles from './LargeRadiusWarning.module.css';
 
 /**
- * Radius (in metres) at or above which the LargeRadiusWarning callout is
- * shown. Mirrors the iOS sibling (tc-1zb7) — 2 km is the upper edge of the
- * "small zone" range we recommend, so any selection at or above warrants the
- * heads-up.
+ * Radius (in metres) at or above which the callout shows; 2 km is the upper
+ * edge of the recommended "small zone" range.
  */
 export const LARGE_RADIUS_THRESHOLD_METRES = 2000;
 

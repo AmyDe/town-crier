@@ -50,8 +50,7 @@ var anonymousPatterns = map[string]struct{}{
 	"GET /v1/legal/{documentType}": {},
 	// The watch-zone filter catalog is static, non-user-specific content (the
 	// seven pre-canned filters' display copy) that iOS reads before creating an
-	// account, so it is anonymous to Auth0, mirroring the legal endpoint above
-	// (GH#1104, tc-m8j90.1).
+	// account, so it is anonymous to Auth0, mirroring the legal endpoint above.
 	"GET /v1/watch-zones/filter-catalog": {},
 	// The live SEO pages and sitemap are anonymous to Auth0; the dedicated
 	// X-Build-Key gate inside the handler is their authentication (ADR 0050).
@@ -76,51 +75,51 @@ var anonymousPatterns = map[string]struct{}{
 	// so it is anonymous to Auth0; the signed JWS is its authentication. (The
 	// sibling POST /v1/subscriptions/verify is authed and absent here.)
 	"POST /v1/webhooks/appstore": {},
-	// The public applications-near-a-point endpoint (GH#868 Phase 2) is anonymous
+	// The public applications-near-a-point endpoint is anonymous
 	// to Auth0: it backs the iOS anonymous browse map, letting a fresh install
 	// see real applications near a point before creating an account. It is
-	// metered solely by the per-IP AnonRateLimit (GH#868 Phase 1) plus its own
+	// metered solely by the per-IP AnonRateLimit plus its own
 	// radius/limit clamps (a point+radius read is a far more attractive
 	// whole-table scraping target than the text search below).
 	"GET /v1/applications/near-point": {},
-	// The anonymous clusters endpoint (GH#924 Phase 1) is anonymous to Auth0: it
+	// The anonymous clusters endpoint is anonymous to Auth0: it
 	// backs the iOS anonymous browse map with the same PostGIS grid-aggregated
-	// clusters the authed watch-zone map renders (applications.FindClustersInZone,
-	// issue #698), so a fresh install sees the fully clustered set across its
+	// clusters the authed watch-zone map renders (applications.FindClustersInZone),
+	// so a fresh install sees the fully clustered set across its
 	// radius circle instead of a client-side cluster over the near-point route's
 	// truncated 200-row page. Grid aggregates are LESS granular than near-point's
 	// raw rows, so this is no new scraping surface; it is metered solely by the
-	// per-IP AnonRateLimit (GH#868 Phase 1) plus its own radius clamp, identical
+	// per-IP AnonRateLimit plus its own radius clamp, identical
 	// to near-point's.
 	"GET /v1/applications/clusters": {},
 	// The by-slug application read is anonymous (public planning data only, no
 	// user/subscriber data, no refresh-on-tap): it resolves an authority slug to
 	// its area id and point-reads the application, feeding the public share page
-	// and iOS inbound deep-link resolution (#738). The sibling by-id read stays
+	// and iOS inbound deep-link resolution. The sibling by-id read stays
 	// authed (absent from this map).
 	"GET /v1/applications/by-slug/{authoritySlug}/{ref...}": {},
-	// The anonymous application search (#821 Phase 3, tc-geq7h.3) reads only
+	// The anonymous application search reads only
 	// public planning data (reference/address/description match, Postgres only —
 	// PlanIt is never touched): a resident finding an application to share needs
 	// no token, mirroring the by-slug read above.
 	"GET /v1/applications/search": {},
 	// The public share page is anonymous (public planning data only; no user data,
 	// no cookies, no client-IP logging): a server-rendered HTML page for a single
-	// application, the tracer surface of the shareable-page epic (#738).
+	// application, the tracer surface of the shareable-page epic.
 	"GET /a/{authoritySlug}/{ref...}": {},
 	// The public og:image card is anonymous (public planning data only; no user
 	// data/cookies/IP-logging): a baked OSM map of the site served as the share
-	// page's unfurl image (#738 Slice 2). The ".png" suffix is enforced in the
+	// page's unfurl image. The ".png" suffix is enforced in the
 	// handler, so the registered pattern is suffix-free.
 	"GET /og/{authoritySlug}/{ref...}": {},
 	// The Apple App Site Association document is anonymous: Apple's daemon fetches
 	// it without a bearer token to associate the share host with the iOS app for
-	// Universal Links (#738 Slice 3). Content-Type is application/json and the path
+	// Universal Links. Content-Type is application/json and the path
 	// carries no ".json" extension.
 	"GET /.well-known/apple-app-site-association": {},
 	// The Android Digital Asset Links document is anonymous: Android's package
 	// manager fetches it without a bearer token to verify the app's autoVerify
-	// intent filter for App Links (GH#782), mirroring the AASA entry above.
+	// intent filter for App Links, mirroring the AASA entry above.
 	"GET /.well-known/assetlinks.json": {},
 }
 
@@ -203,20 +202,19 @@ type adminUserStore interface {
 //	    the 401s and 500s produced further in.
 //	  - SecurityHeaders sits just inside CORS so X-Content-Type-Options: nosniff
 //	    is set on every response, including the error-body envelopes and
-//	    panic-recovery 500s produced further in (GH#521).
+//	    panic-recovery 500s produced further in.
 //	  - ErrorBody backfills the PascalCase envelope onto any bodyless >= 400.
 //	  - Recover converts a handler panic into a 500 + Detail, which ErrorBody
 //	    then renders — the Go equivalent of ErrorResponseMiddleware's try/catch.
 //	  - RequireAuth applies the Auth0 bearer + fallback-deny policy, then
 //	    dispatches through AnonRateLimit, rate limiting and activity recording.
-//	  - AnonRateLimit (GH#868 Phase 1) is a no-op for authenticated requests (it
+//	  - AnonRateLimit is a no-op for authenticated requests (it
 //	    only meters when auth.Subject is empty) and, unlike RateLimit/
 //	    RecordActivity below, it always wraps dispatch regardless of whether the
 //	    profile store is wired — a store-less boot must not leave anonymous
 //	    routes completely unmetered. GET /health and GET /v1/health are exempt
 //	    (ACA probes; see middleware.AnonRateLimit's doc for the convention), as
-//	    is any request bearing a valid X-Build-Key (GH#872 collateral,
-//	    tc-zod82): the build-key SEO endpoints authenticate inside the handler
+//	    is any request bearing a valid X-Build-Key: the build-key SEO endpoints authenticate inside the handler
 //	    rather than via Auth0, so without this exemption the Worker's requests
 //	    would be metered as anonymous.
 //	  - RateLimit/RecordActivity are no-ops for anonymous routes (no subject),
@@ -268,16 +266,16 @@ func newRouter(
 	// The filter catalog is static Go-literal content with no store dependency
 	// (see filter.go), so it is registered unconditionally, outside the
 	// watchZoneStore-guarded block below, mirroring legal.Routes immediately
-	// above (GH#1104, tc-m8j90.1).
+	// above.
 	watchzones.CatalogRoutes(mux, logger)
 	authorities.Routes(mux, logger)
 	api.Routes(mux, logger)
-	// The Apple App Site Association document (#738 Slice 3) is stateless and needs
+	// The Apple App Site Association document is stateless and needs
 	// no store, so it is registered unconditionally on the share host. The App ID
 	// is composed from the canonical team + bundle constants (fixed contract), not
 	// runtime config.
 	aasa.Routes(mux, platform.AppleUniversalLinkAppID(), logger)
-	// The Android Digital Asset Links document (GH#782) is stateless and needs
+	// The Android Digital Asset Links document is stateless and needs
 	// no store, so it is registered unconditionally on the share host, mirroring
 	// AASA above. The package/fingerprint contract is composed from fixed
 	// constants (not runtime config): see assetlinks.DefaultPackages.
@@ -295,8 +293,7 @@ func newRouter(
 			middleware.RecordActivity(profiles.NewActivityRecorder(store), time.Now, logger)(mux),
 		)
 	}
-	// AnonRateLimit (GH#868 Phase 1, reworked to a token bucket tc-vwobf)
-	// always wraps whatever dispatch chain was built above — unlike
+	// AnonRateLimit always wraps whatever dispatch chain was built above — unlike
 	// RateLimit/RecordActivity, it needs no profile store, so it must not be
 	// skipped on a store-less boot: that would leave every anonymous route (a
 	// scraping target for a future public geo endpoint, and load that
@@ -305,8 +302,7 @@ func newRouter(
 	// RateLimit it wraps.
 	//
 	// The exemption predicate recognises a valid X-Build-Key via
-	// applications.BuildKeyMatches (GH#872 collateral, tc-zod82): the build-key
-	// SEO endpoints (internal/seopage) authenticate inside the handler rather
+	// applications.BuildKeyMatches: the build-key SEO endpoints (internal/seopage) authenticate inside the handler rather
 	// than via Auth0, so without this exemption the Worker's traffic is wrongly
 	// metered as anonymous. A missing or wrong key still exempts nothing,
 	// preserving the anti-scraping posture for everyone else.
@@ -326,7 +322,7 @@ func newRouter(
 		// *profiles.PostgresStore would wrap into a non-nil interface and defeat the
 		// handler's nil-check (the same typed-nil gotcha guarded for the saved
 		// store above). The list/patch handlers read the same store to compute
-		// each zone's derived "paused" field (GH#889): a downgrade that leaves a
+		// each zone's derived "paused" field: a downgrade that leaves a
 		// user over their new tier's watch-zone limit pauses the over-quota zones
 		// in API responses without deleting or mutating them.
 		zoneOpts := []watchzones.Option{watchzones.WithMetricsRecorder(registry)}
@@ -347,35 +343,33 @@ func newRouter(
 		} else {
 			applications.Routes(mux, appStore, nil, authorities.NewLookup(), logger)
 		}
-		// The anonymous application search (#821 Phase 3, tc-geq7h.3) reads from the
-		// same store; it needs no build key since it is the public-facing endpoint the
-		// /search web page (tc-geq7h.4) calls directly from a visitor's browser. It is
+		// The anonymous application search reads from the same store; it needs no build key since it is the public-facing endpoint the
+		// /search web page calls directly from a visitor's browser. It is
 		// anonymous to Auth0 (see anonymousPatterns) and, like every other anonymous
-		// route, metered by the per-IP AnonRateLimit (GH#868 Phase 1, above): the
+		// route, metered by the per-IP AnonRateLimit (above): the
 		// per-subject RateLimit no-ops on a request with no subject, but
 		// AnonRateLimit does not — it is the scheme that actually covers this route.
 		applications.SearchRoutes(mux, appStore, authorities.NewLookup(), logger)
-		// The public applications-near-a-point endpoint (GH#868 Phase 2; GH#879
-		// Phase 1 added the authority-slug resolver so each result carries
-		// authoritySlug, mirroring SearchRoutes) reads from the same store. It is
+		// The public applications-near-a-point endpoint reads from the same store
+		// and, like SearchRoutes, resolves each result's authoritySlug. It is
 		// anonymous to Auth0 (see anonymousPatterns) and, like every other anonymous route,
-		// metered by the per-IP AnonRateLimit (GH#868 Phase 1) plus its own
+		// metered by the per-IP AnonRateLimit plus its own
 		// radius/limit clamps.
 		applications.NearPointRoutes(mux, appStore, authorities.NewLookup(), logger)
-		// The public anonymous clusters endpoint (GH#924 Phase 1) reads from the same
+		// The public anonymous clusters endpoint reads from the same
 		// store: it calls the same FindClustersInZone grid-aggregation primitive as
 		// the authed watch-zone clusters route (watchzones.NearbyRoutes above), with
 		// the centre/radius/viewport supplied by the caller instead of a stored zone.
 		// It is anonymous to Auth0 (see anonymousPatterns) and, like every other
-		// anonymous route, metered by the per-IP AnonRateLimit (GH#868 Phase 1) plus
+		// anonymous route, metered by the per-IP AnonRateLimit plus
 		// its own radius clamp (identical to near-point's).
 		applications.ClustersRoutes(mux, appStore, authorities.NewLookup(), logger)
-		// The public share page (#738): an anonymous, server-rendered HTML page for a
+		// The public share page: an anonymous, server-rendered HTML page for a
 		// single application at GET /a/{authoritySlug}/{ref...}. It point-reads the
 		// same applications store and resolves the authority slug via the static
 		// authority lookup; it reads no user data and emits only public planning data.
 		sharepage.Routes(mux, appStore, authorities.NewLookup(), logger)
-		// The og:image map card (#738 Slice 2/3): an anonymous GET /og/{slug}/{ref}.png
+		// The og:image map card: an anonymous GET /og/{slug}/{ref}.png
 		// serving a baked OSM map of the site as the share page's unfurl image. It
 		// reuses the same applications store + authority lookup and the real OSM tile
 		// client. The cache is the Azure share-cards Blob container (ADR 0037); it is
@@ -399,7 +393,7 @@ func newRouter(
 		// Watch-zone create (returns nearby applications) + the per-zone
 		// applications list. Create enforces the tier's zone quota atomically via
 		// CAS on the profile counter (WithProfileCAS) — this is the only create
-		// path, so concurrent creates can never exceed the tier limit (F5/#515).
+		// path, so concurrent creates can never exceed the tier limit.
 		// store is non-nil here (guarded above), so no typed-nil concern. The
 		// applications list augments each row with its latest unread notification
 		// (read_at IS NULL, ADR 0035).
@@ -451,7 +445,7 @@ func newRouter(
 		),
 	)
 	// RouteSpan names the request span after the matched route and records the
-	// HTTP status code on it (tc-r8eo). It must run inside the otelhttp span — so
+	// HTTP status code on it. It must run inside the otelhttp span — so
 	// the span it decorates is the request span — yet outermost among our own
 	// middleware so it observes the final status. It resolves the pattern from the
 	// mux directly (the same lookup RequireAuth uses), which is why it takes mux

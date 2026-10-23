@@ -58,8 +58,7 @@ describe('ConfirmMap', () => {
     );
 
     expect(lastCirclePathOptions).not.toBeNull();
-    // v2 amber (#E9A620) — Leaflet SVG layers can't consume CSS custom
-    // properties, so this is kept in sync with tokens.css by hand.
+    // Raw amber from tokens.css; Leaflet SVG layers cannot use CSS custom properties.
     expect(lastCirclePathOptions!.color).toContain('233, 166, 32');
     expect(lastCirclePathOptions!.fillColor).toContain('233, 166, 32');
     expect(lastCirclePathOptions!.fillOpacity).toBeLessThanOrEqual(0.15);

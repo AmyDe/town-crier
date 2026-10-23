@@ -15,7 +15,7 @@ import (
 
 // gdprWatchZoneWiring binds the GDPR erasure cascade (DELETE /v1/me) and the data
 // export (GET /v1/me/data) to the SAME watch-zone store the routes use, so a
-// user's watch zones are erased and exported (bead tc-s8g1). watchzones.Store
+// user's watch zones are erased and exported. watchzones.Store
 // satisfies erasure.ChildDeleter directly (it exposes DeleteAllByUserID), so the
 // cascade needs no adapter; only the export needs the watchZoneExportReader row
 // mapping.
@@ -41,7 +41,7 @@ func gdprWatchZoneWiring(store watchzones.Store) (erasure.ChildDeleter, profiles
 
 // watchZoneExportReader adapts the watch-zone store to profiles.WatchZoneReader.
 // It holds the consumer-side watchzones.Store interface so GET /v1/me/data exports
-// a user's watch zones (bead tc-s8g1).
+// a user's watch zones.
 type watchZoneExportReader struct{ store watchzones.Store }
 
 func (r watchZoneExportReader) WatchZonesByUser(ctx context.Context, userID string) ([]profiles.ExportedWatchZone, error) {
@@ -65,7 +65,7 @@ func (r watchZoneExportReader) WatchZonesByUser(ctx context.Context, userID stri
 }
 
 // exportedBoundaryOf converts a watch zone's domain Boundary to its GDPR
-// export wire representation (tc-6he3x.4), or nil for a circle zone (nil or
+// export wire representation, or nil for a circle zone (nil or
 // empty Boundary) -- matching a null "boundary" field on the exported row.
 func exportedBoundaryOf(b watchzones.Boundary) *profiles.ExportedBoundary {
 	if len(b) == 0 {

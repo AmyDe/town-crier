@@ -164,7 +164,7 @@ func (f foundAppStore) Search(context.Context, string, string, float64, float64,
 
 // FindNearbyPage unconditionally returns the fixture application, ignoring the
 // lat/lng/radius/limit/cursor args — this fake exists only to give the
-// anonymous near-point route's end-to-end wiring test (GH#868 Phase 2) a real
+// anonymous near-point route's end-to-end wiring test a real
 // record to render and serialise.
 func (f foundAppStore) FindNearbyPage(context.Context, float64, float64, float64, int, string) ([]applications.PlanningApplication, string, error) {
 	return []applications.PlanningApplication{f.app}, "", nil
@@ -173,7 +173,7 @@ func (f foundAppStore) FindNearbyPage(context.Context, float64, float64, float64
 // FindClustersInZone unconditionally returns one single-member cluster carrying
 // the fixture application's identity, ignoring the query args — this fake
 // exists only to give the anonymous clusters route's end-to-end wiring test
-// (GH#924 Phase 1) a real record to render, serialise, and slug-enrich.
+// a real record to render, serialise, and slug-enrich.
 func (f foundAppStore) FindClustersInZone(context.Context, applications.ClusterQuery) ([]applications.Cluster, error) {
 	return []applications.Cluster{
 		{
@@ -323,7 +323,7 @@ func TestRouter_AnonymousRoutesServedWithoutToken(t *testing.T) {
 		{"/v1/legal/unknown", http.StatusNotFound}, // anonymous route, bodyless 404 backfilled
 		// newTestHandler boots with a nil watchZoneStore; the filter catalog must
 		// still serve because it is registered outside the watchZoneStore-guarded
-		// block (GH#1104, tc-m8j90.1).
+		// block.
 		{"/v1/watch-zones/filter-catalog", http.StatusOK},
 	} {
 		t.Run(tc.path, func(t *testing.T) {
@@ -434,7 +434,7 @@ func TestRouter_ShareCardBusy_Returns429ThroughFullChain(t *testing.T) {
 }
 
 // TestRouter_SharePageAndBySlugAnonymous_ByIdStaysAuthed is the end-to-end wiring
-// guard for the share surface (#738 Slice 1). It boots the FULL router with a
+// guard for the share surface. It boots the FULL router with a
 // store that returns a real Croydon application, then proves:
 //
 //   - GET /a/{slug}/{ref}                       -> 200 text/html, no token
@@ -509,7 +509,7 @@ func TestRouter_SharePageAndBySlugAnonymous_ByIdStaysAuthed(t *testing.T) {
 }
 
 // TestRouter_ApplicationSearchAnonymous is the end-to-end wiring guard for the
-// anonymous application search endpoint (#821 Phase 3, tc-geq7h.3): it boots the
+// anonymous application search endpoint: it boots the
 // FULL router with a store that returns a real Croydon application, then proves
 // GET /v1/applications/search serves anonymously (no token, 200 application/json)
 // and its response carries the fields a client needs to build a share URL
@@ -546,12 +546,12 @@ func TestRouter_ApplicationSearchAnonymous(t *testing.T) {
 }
 
 // TestRouter_NearPointAnonymous is the end-to-end wiring guard for the public
-// applications-near-a-point endpoint (GH#868 Phase 2): it boots the FULL
+// applications-near-a-point endpoint: it boots the FULL
 // router with a store that returns a real application, then proves
 // GET /v1/applications/near-point serves anonymously (no token, 200
 // application/json) with a bare-array body — the same raw-domain wire shape
 // (NearbyResult) the authed nearby page emits, plus a resolved authoritySlug
-// (GH#879 Phase 1) so an anonymously-loaded application can build a share URL
+// so an anonymously-loaded application can build a share URL
 // or a by-slug detail fetch. The pattern string match is a drift guard: a
 // rename here without updating anonymousPatterns would silently 401 the
 // route.
@@ -593,8 +593,8 @@ func TestRouter_NearPointAnonymous(t *testing.T) {
 }
 
 // GET /v1/applications/clusters serves anonymously (no token, 200
-// application/json) with a bare-array body of PostGIS grid-aggregated clusters
-// (GH#924 Phase 1), each member identity carrying a resolved authoritySlug so
+// application/json) with a bare-array body of PostGIS grid-aggregated clusters,
+// each member identity carrying a resolved authoritySlug so
 // the anonymous map can point-read a tapped pin by slug, mirroring
 // TestRouter_NearPointAnonymous. The pattern string match is a drift guard: a
 // rename here without updating anonymousPatterns would silently 401 the route.
@@ -652,7 +652,7 @@ func TestRouter_FallbackDeny(t *testing.T) {
 		{"me without token", http.MethodGet, "/v1/me"},
 		{"root", http.MethodGet, "/"},
 		{"unknown path", http.MethodGet, "/v1/nope"},
-		// Authorities routes are authed (GH#418): no token -> 401.
+		// Authorities routes are authed: no token -> 401.
 		{"authorities list without token", http.MethodGet, "/v1/authorities"},
 		{"authority by id without token", http.MethodGet, "/v1/authorities/384"},
 		{"non-int authority id", http.MethodGet, "/v1/authorities/abc"},
@@ -753,8 +753,7 @@ func TestRouter_AuthenticatedPipeline(t *testing.T) {
 		t.Errorf("GET /v1/me/saved-applications body = %s, want []", got)
 	}
 
-	// application-authorities was removed with authority_id (bd tc-9nbs4.2,
-	// GH#1076 Phase 1). A regression check that the route is genuinely gone: with
+	// application-authorities was removed with authority_id. A regression check that the route is genuinely gone: with
 	// no pattern left to match, auth.RequireAuth's deny-by-default policy
 	// (internal/auth/middleware.go) rejects the request with 401 before the mux
 	// ever gets a chance to 404 it -- a valid bearer token no longer helps, since
@@ -764,7 +763,7 @@ func TestRouter_AuthenticatedPipeline(t *testing.T) {
 		t.Fatalf("GET /v1/me/application-authorities status = %d, want 401 (route removed)", rec.Code)
 	}
 
-	// Authorities routes are authed (GH#418): a valid token reaches the handlers,
+	// Authorities routes are authed: a valid token reaches the handlers,
 	// which are backed by embedded reference data (independent of the stores).
 	rec = serveReq(t, h, http.MethodGet, "/v1/authorities", "", "Bearer tok")
 	if rec.Code != http.StatusOK {

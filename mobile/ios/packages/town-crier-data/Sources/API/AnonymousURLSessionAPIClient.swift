@@ -1,8 +1,8 @@
 import Foundation
 import TownCrierDomain
 
-/// Foundation HTTP client for the anonymous (pre-signup) browse surface
-/// (GH#868 Phase 3): the same decode / error-mapping / paged-request shape as
+/// Foundation HTTP client for the anonymous (pre-signup) browse surface:
+/// the same decode / error-mapping / paged-request shape as
 /// ``URLSessionAPIClient``, but with no `AuthenticationService`, no
 /// `Authorization` header, and no 401 token-refresh recovery — there is no
 /// session to refresh. A missing/failed request surfaces a domain error

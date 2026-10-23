@@ -4,7 +4,7 @@ import (
 	"net/http"
 )
 
-// CORS applies the API's CORS policy (GH#418): origins from configuration, any
+// CORS applies the API's CORS policy: origins from configuration, any
 // header and any method allowed. Headers are emitted only when an Origin header
 // is present and matches a configured origin; mismatched or absent origins pass
 // through with no CORS headers (the request is still served — the browser, not
@@ -35,7 +35,7 @@ func CORS(allowedOrigins []string) func(http.Handler) http.Handler {
 			// CORS-decorated response to a request from a different origin.
 			w.Header().Add("Vary", "Origin")
 			// Expose X-Next-Cursor so a browser fetch() can read the keyset
-			// pagination cursor cross-origin (GH#711). Set on the matched-origin
+			// pagination cursor cross-origin. Set on the matched-origin
 			// branch before the preflight check so it applies to both the 204
 			// preflight and the normal pass-through response.
 			w.Header().Set("Access-Control-Expose-Headers", "X-Next-Cursor")
