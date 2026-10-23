@@ -11,7 +11,7 @@ import kotlin.coroutines.resumeWithException
 
 /**
  * Production [HttpTransport]: bridges OkHttp's [Call.Factory] to a suspend
- * call (android-coding-standards: data-access.md). OkHttp is pinned to the
+ * call. OkHttp is pinned to the
  * 4.x line here (the 5.x "okhttp-android" variant declares a compileSdk-36
  * floor this project doesn't meet), so the official `okhttp-coroutines`
  * artifact (5.x-only) isn't available — this is that same bridge, hand-
@@ -28,7 +28,7 @@ public class OkHttpTransport(
 @Suppress("RedundantSuspendModifier")
 // False positive: this is the textbook suspendCancellableCoroutine bridge —
 // detekt 1.23.8's type-resolution against Kotlin 2.4.0 doesn't recognise it
-// as a suspending call (tracked: tc side-quest bead).
+// as a suspending call.
 private suspend fun Call.await(): Response =
     suspendCancellableCoroutine { continuation ->
         enqueue(

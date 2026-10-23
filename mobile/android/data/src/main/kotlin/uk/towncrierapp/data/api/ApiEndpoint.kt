@@ -4,8 +4,6 @@ package uk.towncrierapp.data.api
  * Describes a request `ApiClient` should make: method, path, an optional
  * already-JSON-encoded [body] (`null` means no request body at all — e.g.
  * `POST /v1/me` — not an empty string), and optional query parameters.
- * `internal`: only `:data`'s own repository implementations construct these
- * (port of iOS `APIEndpoint`).
  */
 internal data class ApiEndpoint(
     val method: String,
