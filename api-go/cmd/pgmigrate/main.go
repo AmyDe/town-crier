@@ -6,7 +6,7 @@
 // The app role (towncrier_api) is DML-only by design and cannot run DDL, so the
 // migrations must be applied by a privileged principal — the Entra admin = repo
 // owner account, the same principal that ran cmd/pgbootstrap. Running them as
-// the owner makes the owner the table owner, which is what the #653 bootstrap's
+// the owner makes the owner the table owner, which is what the bootstrap's
 // ALTER DEFAULT PRIVILEGES relies on to auto-grant towncrier_api DML on the
 // newly created tables.
 //

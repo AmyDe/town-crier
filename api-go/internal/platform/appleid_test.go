@@ -3,7 +3,7 @@ package platform
 import "testing"
 
 // TestAppleUniversalLinkAppID pins the composed Apple App ID served in the AASA
-// document (#738, Slice 3). It is a fixed contract shared with the iOS
+// document. It is a fixed contract shared with the iOS
 // entitlement and the web AASA, so the exact value must not drift.
 func TestAppleUniversalLinkAppID(t *testing.T) {
 	t.Parallel()

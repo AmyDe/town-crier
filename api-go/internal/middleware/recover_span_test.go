@@ -27,7 +27,7 @@ func spanStarter(next http.Handler) http.Handler {
 	})
 }
 
-// TestRecover_PanicRecordsSpanException pins tc-8x8g: a panic in a handler must
+// TestRecover_PanicRecordsSpanException pins that a panic in a handler must
 // record an exception event on the active request span and set Error status, so
 // it surfaces in App Insights AppExceptions and the request shows as failed.
 func TestRecover_PanicRecordsSpanException(t *testing.T) {

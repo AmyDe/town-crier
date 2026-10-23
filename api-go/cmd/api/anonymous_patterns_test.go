@@ -3,7 +3,7 @@ package main
 import "testing"
 
 // TestAnonymousPatterns_IncludesBySlugApplicationRead pins the anonymity of the
-// public by-slug application read (#738). The middleware keys on the exact
+// public by-slug application read. The middleware keys on the exact
 // registered pattern string, so this must match the route wired in applications
 // byte-for-byte. The sibling by-id read stays authed (absent from the map).
 func TestAnonymousPatterns_IncludesBySlugApplicationRead(t *testing.T) {
@@ -21,7 +21,7 @@ func TestAnonymousPatterns_IncludesBySlugApplicationRead(t *testing.T) {
 }
 
 // TestAnonymousPatterns_IncludesApplicationSearch pins the anonymity of the
-// public application search endpoint (#821 Phase 3, tc-geq7h.3): a resident
+// public application search endpoint: a resident
 // searching by reference/address/description needs no token, mirroring the
 // by-slug application read. The middleware keys on the exact registered
 // pattern string, so this must match the route wired in applications
@@ -36,7 +36,7 @@ func TestAnonymousPatterns_IncludesApplicationSearch(t *testing.T) {
 }
 
 // TestAnonymousPatterns_IncludesNearPoint pins the anonymity of the public
-// applications-near-a-point endpoint (GH#868 Phase 2): a resident browsing the
+// applications-near-a-point endpoint: a resident browsing the
 // map before creating an account needs no token. The middleware keys on the
 // exact registered pattern string, so this must match the route wired in
 // applications byte-for-byte.
@@ -50,7 +50,7 @@ func TestAnonymousPatterns_IncludesNearPoint(t *testing.T) {
 }
 
 // TestAnonymousPatterns_IncludesClusters pins the anonymity of the public
-// anonymous clusters endpoint (GH#924 Phase 1): a resident browsing the map
+// anonymous clusters endpoint: a resident browsing the map
 // before creating an account sees the fully clustered set, mirroring
 // TestAnonymousPatterns_IncludesNearPoint. The middleware keys on the exact
 // registered pattern string, so this must match the route wired in
@@ -65,7 +65,7 @@ func TestAnonymousPatterns_IncludesClusters(t *testing.T) {
 }
 
 // TestAnonymousPatterns_IncludesSharePage pins the anonymity of the public
-// server-rendered share page (#738). The auth middleware keys on the exact
+// server-rendered share page. The auth middleware keys on the exact
 // registered pattern string, so this must match the route wired in sharepage
 // byte-for-byte.
 func TestAnonymousPatterns_IncludesSharePage(t *testing.T) {
@@ -78,7 +78,7 @@ func TestAnonymousPatterns_IncludesSharePage(t *testing.T) {
 }
 
 // TestAnonymousPatterns_IncludesShareCardImage pins the anonymity of the public
-// og:image map-card route (#738 Slice 2). The ".png" suffix is enforced inside
+// og:image map-card route. The ".png" suffix is enforced inside
 // the handler, not in the mux pattern (the {ref...} wildcard must be final), so
 // the registered pattern is suffix-free and must match this byte-for-byte.
 func TestAnonymousPatterns_IncludesShareCardImage(t *testing.T) {
@@ -91,7 +91,7 @@ func TestAnonymousPatterns_IncludesShareCardImage(t *testing.T) {
 }
 
 // TestAnonymousPatterns_IncludesAASA pins the anonymity of the Apple App Site
-// Association document served on the share host (#738 Slice 3). Apple's daemon
+// Association document served on the share host. Apple's daemon
 // fetches it without a bearer token, so the exact extensionless well-known path
 // must be present in the map; the auth middleware keys on the registered pattern
 // string byte-for-byte.
@@ -105,7 +105,7 @@ func TestAnonymousPatterns_IncludesAASA(t *testing.T) {
 }
 
 // TestAnonymousPatterns_IncludesAssetLinks pins the anonymity of the Android
-// Digital Asset Links document served on the share host (GH#782). Android's
+// Digital Asset Links document served on the share host. Android's
 // package manager fetches it without a bearer token to verify the app's
 // autoVerify intent filter, mirroring the AASA entry above; the auth
 // middleware keys on the registered pattern string byte-for-byte.
@@ -119,7 +119,7 @@ func TestAnonymousPatterns_IncludesAssetLinks(t *testing.T) {
 }
 
 // TestAnonymousPatterns_IncludesFilterCatalog pins the anonymity of the
-// watch-zone filter catalog (GH#1104, tc-m8j90.1): static, non-user-specific
+// watch-zone filter catalog: static, non-user-specific
 // display copy for the seven pre-canned filters, readable before a client has
 // created an account, mirroring the legal document endpoint. The auth
 // middleware keys on the registered pattern string byte-for-byte.

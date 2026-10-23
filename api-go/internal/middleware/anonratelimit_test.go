@@ -137,7 +137,7 @@ func TestAnonRateLimit_AuthenticatedRequestPassesThrough(t *testing.T) {
 }
 
 // TestAnonRateLimit_ExemptPredicatePassesThroughUnmetered is the acceptance
-// test for the build-key exemption (GH#872 collateral, tc-zod82): a request
+// test for the build-key exemption: a request
 // the exempt predicate recognises must pass straight through even when the
 // per-IP budget is exhausted, with no X-RateLimit headers set and no budget
 // consumed — exactly like authenticated (Auth0-subject) traffic above.
@@ -240,7 +240,7 @@ func TestAnonRateLimit_DifferentIPsHaveIndependentBudgets(t *testing.T) {
 }
 
 // TestAnonRateLimit_UnresolvableIPsShareOneConservativeBucket pins the spec
-// decision for the "unresolvable client IP" case (issue #868 Phase 1):
+// decision for the "unresolvable client IP" case:
 // clientip.FromRequest returns the invalid zero netip.Addr only when
 // RemoteAddr itself cannot be parsed (see the clientip package doc), and the
 // zero value is identical for every such request regardless of the literal
@@ -420,8 +420,8 @@ func (s *anonRateLimitStore) tokensFor(addr netip.Addr) float64 {
 	return s.buckets[addr].tokens
 }
 
-// TestAnonRateLimitStore_EvictsIdleIPKey is the GH#518 regression guard for the
-// per-IP store, ported to token-bucket semantics: once an IP's bucket has
+// TestAnonRateLimitStore_EvictsIdleIPKey is the eviction regression guard for the
+// per-IP store: once an IP's bucket has
 // fully refilled (idle long enough that it holds no information beyond "no
 // entry"), the next checkAndIncrement call for that IP must reclaim the map
 // key (delete) rather than leave a stale full bucket sitting in memory

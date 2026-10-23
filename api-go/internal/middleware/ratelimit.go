@@ -133,7 +133,7 @@ func (s *rateLimitStore) checkAndIncrement(userID string, limit int) rateLimitRe
 	// slice's backing array (kept := times[:0]); the map header is only updated
 	// when we reassign it. When everything aged out, reclaim the key (delete)
 	// rather than leaving an empty entry — this keeps the map sized to currently
-	// active users (OWASP API4 / GH#518). When some timestamps survive, write the
+	// active users (OWASP API4). When some timestamps survive, write the
 	// compacted slice back so its length matches kept; otherwise the stored
 	// header would keep its old length with a stale tail and the next call would
 	// re-count those tail entries.

@@ -8,7 +8,7 @@
 // connection password via pgx BeforeConnect), while any other value keeps the
 // password/trust path untouched. No store reads are wired onto Postgres yet —
 // Cosmos remains the live datastore; this is the MI-auth connection layer
-// (#653) the later wiring phases build on.
+// the later wiring phases build on.
 package postgres
 
 import (

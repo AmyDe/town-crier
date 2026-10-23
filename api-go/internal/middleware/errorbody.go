@@ -1,4 +1,4 @@
-// Package middleware holds the cross-cutting http.Handler wrappers (GH#418).
+// Package middleware holds the cross-cutting http.Handler wrappers.
 // Composition is plain func(http.Handler) http.Handler, chained by hand in
 // cmd/api/main.go.
 package middleware
@@ -44,7 +44,7 @@ func SetDetail(ctx context.Context, detail string) {
 }
 
 // ErrorBody backfills any response with status >= 400 that would otherwise be
-// sent with an empty body (GH#418): it adds the PascalCase JSON envelope
+// sent with an empty body: it adds the PascalCase JSON envelope
 // {"Status":<n>,"Title":"<reason>","Detail":null} with Content-Type exactly
 // "application/json" (no charset on this path, unlike handler-written bodies).
 // Responses that already carry a body pass through untouched.

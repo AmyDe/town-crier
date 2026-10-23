@@ -9,7 +9,7 @@ import (
 // TestGDPRWatchZoneWiring_BindsBothPaths proves the GDPR erasure cascade
 // (DELETE /v1/me) and the data export (GET /v1/me/data) are both bound to the
 // SAME watch-zone store the routes use, so an account deletion or export covers a
-// user's watch zones rather than silently missing them (bead tc-s8g1). A genuine
+// user's watch zones rather than silently missing them. A genuine
 // nil store yields genuine nil wiring so the cascade/export guards leave the GDPR
 // paths unbuilt rather than holding a nil deleter the cascade would dereference.
 func TestGDPRWatchZoneWiring_BindsBothPaths(t *testing.T) {

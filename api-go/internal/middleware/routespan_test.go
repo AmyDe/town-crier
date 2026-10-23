@@ -82,7 +82,7 @@ func serveRouteSpanChain(t *testing.T, pattern, path string, status int) sdktrac
 	return spans[0]
 }
 
-// TestRouteSpan_NamesSpanAfterMatchedRoute pins tc-r8eo: a matched route makes
+// TestRouteSpan_NamesSpanAfterMatchedRoute pins that a matched route makes
 // the request span Name the route pattern (e.g. "GET /v1/health") and carries
 // the http.route attribute, so Azure Monitor's AppRequests.Name shows the
 // endpoint rather than the bare verb.

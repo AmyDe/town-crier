@@ -27,7 +27,7 @@ type Config struct {
 	LogLevel slog.Level
 
 	// Auth0Domain and Auth0Audience configure JWT validation. They are absent
-	// on the dev Go app until infra wires them (GH#418, it3+); an empty value is
+	// on the dev Go app until infra wires them; an empty value is
 	// valid and yields a deny-all validator rather than a startup failure.
 	Auth0Domain   string
 	Auth0Audience string
@@ -37,32 +37,13 @@ type Config struct {
 	CorsAllowedOrigins []string
 
 	// AnonRateLimitBurst and AnonRateLimitRefillPerMinute configure the per-IP
-	// anonymous token-bucket rate limiter (middleware.AnonRateLimit, GH#868
-	// Phase 1, reworked tc-vwobf), keyed on the client IP resolved via
-	// internal/clientip: AnonRateLimitBurst is the bucket capacity (how many
-	// requests an IP can make back-to-back before it starts drawing on the
-	// steady refill rate), AnonRateLimitRefillPerMinute is that steady rate.
+	// anonymous token-bucket rate limiter (middleware.AnonRateLimit), keyed on
+	// the client IP resolved via internal/clientip: AnonRateLimitBurst is the
+	// bucket capacity, AnonRateLimitRefillPerMinute the steady refill rate.
 	// Loaded from ANON_RATE_LIMIT_BURST / ANON_RATE_LIMIT_REFILL_PER_MINUTE.
-	//
-	// tc-vwobf: the previous flat 60-requests-per-60-second sliding window
-	// throttled ordinary anonymous map browsing — panning the map fans a
-	// single pan/zoom settle event out across several endpoints
-	// (GET /v1/applications/clusters, GET /v1/me/watch-zones/{id}/
-	// applications/clusters, GET /v1/applications/near-point, ...) even
-	// though both clients already debounce pan/zoom at ~250ms client-side, so
-	// a real session hit 41+ 429s in 9 minutes with no scraping involved.
-	//
-	// Defaults: burst 120, refill 60/minute (1 token/second).
-	//   - Burst=120 is double the old flat budget: generous enough to absorb
-	//     a single active map session's fan-out — several endpoints firing
-	//     roughly every 250ms while the user is actively panning — as one
-	//     instantaneous burst, without needing to wait on the refill rate at
-	//     all for a normal browsing session.
-	//   - Refill=60/minute exactly matches the old default's long-run rate
-	//     (60 requests / 60 seconds), so sustained/scraping-shaped load past
-	//     the initial burst is capped at the same steady-state rate as
-	//     before; only the front-loaded tolerance changed, not the ceiling on
-	//     continuous abuse.
+	// Defaults: burst 120, refill 60/minute. The burst absorbs one map
+	// session's pan/zoom fan-out across several endpoints; the refill caps
+	// sustained scraping-shaped load.
 	AnonRateLimitBurst           int
 	AnonRateLimitRefillPerMinute int
 
@@ -79,7 +60,7 @@ type Config struct {
 	Auth0M2MClientSecret SecretString
 
 	// ShareCardsBlobURL is the Azure Blob account URL the baked share-card PNGs
-	// are cached in (the share-cards container, #738 Slice 3 / ADR 0037), e.g.
+	// are cached in (the share-cards container, ADR 0037), e.g.
 	// https://sttowncrierdev.blob.core.windows.net. Loaded from
 	// SHARE_CARDS_BLOB_URL (the exact name infra emits). Empty means the cache is
 	// unwired — so the API boots normally and the og:image handler regenerates on demand.
@@ -113,7 +94,7 @@ type Config struct {
 	// must carry (the /v1/subscriptions/verify bundle check). It defaults to the
 	// canonical uk.towncrierapp.mobile — the value the iOS app is built under and
 	// App Store Connect issues transactions for. The legacy API defaulted to
-	// the wrong uk.co.towncrier.ios; that bug is not carried over (tc-7g3i.12).
+	// the wrong uk.co.towncrier.ios; that bug is not carried over.
 	AppleBundleID string
 
 	// AppleEnvironments is the allowlist of StoreKit transaction environments
@@ -126,8 +107,7 @@ type Config struct {
 	// testing phase. Matching is case-insensitive at use-time.
 	AppleEnvironments []string
 
-	// AppStoreReconcile* configure the WORKER_MODE=appstore-reconcile job (GH
-	// #1011, tc-97k35.6): a periodic poll of Apple's Get Notification History
+	// AppStoreReconcile* configure the WORKER_MODE=appstore-reconcile job: a periodic poll of Apple's Get Notification History
 	// API that detects (and, once soaked, recovers) a missed ASSN webhook
 	// delivery. AppStoreReconcileEnabled gates whether the job's App Store
 	// Server API client is constructed at all; when false (or when the key
@@ -142,8 +122,7 @@ type Config struct {
 	// bundle-id config: the client reuses AppleBundleID above.
 	// AppStoreReconcileApplyEnabled gates whether a detected gap is actually
 	// replayed through the NotificationProcessor; it defaults to false
-	// (observe-only) and this bead never flips it — a later, separate
-	// decision does. AppStoreReconcileLookbackHours sizes the
+	// (observe-only). AppStoreReconcileLookbackHours sizes the
 	// [now-lookback, now) scan window each cycle (default 30, a few hours of
 	// slack over a daily cadence).
 	AppStoreReconcileEnabled       bool
@@ -155,14 +134,13 @@ type Config struct {
 	AppStoreReconcileLookbackHours int
 
 	// APNs* configure the direct APNs HTTP/2 push client the digest worker modes
-	// use to deliver instant and digest alerts (epic tc-wad3, enabler tc-qlqn).
+	// use to deliver instant and digest alerts.
 	// APNsEnabled gates whether the real sender is constructed; when false the
 	// worker wires a NoOp sender so a job without a .p8 auth key boots cleanly.
 	// APNsAuthKey is the PEM contents of the .p8 auth key (the apns-auth-key
 	// secret, ADR 0026); APNsKeyID and APNsTeamID default to Apple's issued
 	// identifiers; APNsBundleID is sent as the apns-topic header; APNsUseSandbox
-	// routes to the APNs sandbox for TestFlight/dev builds. The infra bead tc-uzm1
-	// wires these env vars additively onto the digest jobs.
+	// routes to the APNs sandbox for TestFlight/dev builds.
 	APNsEnabled    bool
 	APNsAuthKey    SecretString
 	APNsKeyID      string
@@ -171,7 +149,7 @@ type Config struct {
 	APNsUseSandbox bool
 
 	// FCM* configure the direct FCM HTTP v1 push client the worker modes use to
-	// deliver instant and digest alerts to Android devices (GH#780), the mirror of
+	// deliver instant and digest alerts to Android devices, the mirror of
 	// the APNs client for iOS. FCMEnabled gates whether the real sender is
 	// constructed; when false the worker wires a NoOp sender so a job without a
 	// service-account key boots cleanly. FCMProjectID is the Firebase/GCP project
@@ -180,18 +158,15 @@ type Config struct {
 	// carrying the RSA private key, client email, and token URI the JWT-bearer OAuth
 	// exchange uses — the mirror of how APNsAuthKey carries the .p8. FCM has no
 	// sandbox concept (dev and prod share one Firebase project), so there is no
-	// FCM_USE_SANDBOX. A separate infra bead wires these env vars additively onto
-	// the push-sending worker jobs (poll, digest, hourly-digest).
+	// FCM_USE_SANDBOX.
 	FCMEnabled            bool
 	FCMProjectID          string
 	FCMServiceAccountJSON SecretString
 
 	// ACSConnectionString is the Azure Communication Services connection string
 	// (endpoint=...;accesskey=...) the digest worker modes use to send email via
-	// the ACS Email REST client (epic tc-wad3, enabler tc-qyf5). It carries the
-	// HMAC-SHA256 access key, so it is a SecretString. Empty means the worker
-	// wires a NoOp email sender. The infra bead tc-uzm1 wires the
-	// acs-connection-string secret to this env var.
+	// the ACS Email REST client. It carries the HMAC-SHA256 access key, so it is
+	// a SecretString. Empty means the worker wires a NoOp email sender.
 	ACSConnectionString SecretString
 
 	// NotificationsRetentionDays is the number of days to keep Notifications rows
@@ -241,7 +216,7 @@ type Config struct {
 const defaultPlanItBaseURL = "https://www.planit.org.uk/"
 
 // defaultAPNsKeyID and defaultAPNsTeamID are the identifiers Apple issued for
-// the Town Crier app's .p8 auth key (epic tc-wad3 notes). Defaulting them keeps
+// the Town Crier app's .p8 auth key. Defaulting them keeps
 // the digest jobs working with only the auth-key secret wired.
 const (
 	defaultAPNsKeyID  = "L2J5PQASN5"
