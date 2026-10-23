@@ -3,7 +3,7 @@ import SwiftUI
 
 /// Decorative onboarding graphic contrasting the default **circle** watch
 /// zone with a **custom shape** (polygon) watch zone, to visually explain the
-/// paid "draw a custom shape instead of a circle" entitlement (GH#1031).
+/// paid "draw a custom shape instead of a circle" entitlement.
 ///
 /// Drawn entirely in code with SwiftUI `Path`, never a raster asset — ADR
 /// 0040 single-sources design tokens, and a bitmap can't follow the
@@ -13,9 +13,6 @@ import SwiftUI
 /// interactive emphasis. Purely presentational: no ViewModel, no external
 /// state — every color and spacing value comes from a design token, so the
 /// graphic needs no wiring to render correctly in any theme.
-///
-/// Not yet wired into any screen — that's a separate bead (onboarding step
-/// placement).
 public struct CustomShapeUpsellGraphic: View {
   private static let tileSize: CGFloat = 96
 

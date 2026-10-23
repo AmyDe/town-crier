@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The Public Notice "filed-notice" card treatment (GH#857): `tcSurface`
+/// The Public Notice "filed-notice" card treatment: `tcSurface`
 /// background, a 1px `tcBorder` outline, and a 2pt top rule — `tcTextPrimary`
 /// normally, `tcAmber` when the card represents unread content (wired to the
 /// existing per-application read-state signal, ADR 0035). Applied to the

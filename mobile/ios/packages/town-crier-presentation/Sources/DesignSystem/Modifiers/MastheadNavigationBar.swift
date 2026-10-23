@@ -1,16 +1,12 @@
 import SwiftUI
 
 /// Suppresses the system navigation bar's own rendered title text on
-/// masthead screens (Applications, Saved, Watch Zones — GH#912 Phase 1),
+/// masthead screens (Applications, Saved, Watch Zones),
 /// while keeping `.navigationTitle` wired so VoiceOver still announces the
 /// screen and any screen pushed on top still gets a correctly labelled back
 /// button.
 ///
-/// `MastheadView`'s doc comment records the original intent: the masthead
-/// row is the sole *visible* title, with the system title kept only for
-/// VoiceOver/back-button correctness. That suppression was never wired up,
-/// so Applications and Watch Zones rendered both titles and Saved never grew
-/// a masthead at all. `.inline` plus an empty `.principal` toolbar item
+/// `.inline` plus an empty `.principal` toolbar item
 /// removes the rendered bar text without touching the underlying
 /// `navigationItem.title` that VoiceOver and the back button read from.
 private struct MastheadNavigationBarModifier: ViewModifier {

@@ -34,8 +34,7 @@ public final class URLSessionAPIClient: Sendable {
   /// Performs a request and returns the decoded body alongside the opaque
   /// `X-Next-Cursor` continuation token from the response headers — `nil` when
   /// the header is absent (i.e. the last page). Auth, 401 token refresh, and
-  /// HTTP status mapping are identical to ``request(_:)``. Used by the watch-zone
-  /// applications list to page the full set via infinite scroll (GH#682).
+  /// HTTP status mapping are identical to ``request(_:)``.
   public func requestPaged<T: Decodable & Sendable>(
     _ endpoint: APIEndpoint
   ) async throws -> (value: T, nextCursor: String?) {
@@ -254,8 +253,8 @@ public final class URLSessionAPIClient: Sendable {
 
   /// Maps a watch-zone `400` — a custom-shape boundary whose enclosing
   /// radius exceeds the server's ceiling, or an unrecognised pre-canned
-  /// filter key (GH#1098). Any other error code, or a decode failure, falls
-  /// back to the generic `serverError` unchanged (GH#1085).
+  /// filter key. Any other error code, or a decode failure, falls back to the
+  /// generic `serverError` unchanged.
   private func mapBadRequest(data: Data) throws {
     if let body = try? decoder.decode(ErrorCodeBody.self, from: data) {
       if body.error == "boundary_too_large" {

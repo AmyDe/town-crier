@@ -3,7 +3,7 @@ import TownCrierDomain
 
 /// A "stamp" rendering of a planning application's status.
 ///
-/// Public Notice (GH#857): the pill follows the design language's stamp
+/// The pill follows the design language's stamp
 /// specification (uppercase kerned label, 1.5pt outline in `status.displayColor`,
 /// no fill, paired SF Symbol icon for colour-blind accessibility) and
 /// delegates all label / icon / colour decisions to ``ApplicationStatus``

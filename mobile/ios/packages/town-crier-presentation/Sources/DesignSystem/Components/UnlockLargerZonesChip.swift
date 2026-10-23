@@ -1,8 +1,7 @@
 import SwiftUI
 
 /// In-context upsell affordance surfaced beneath the radius slider when the
-/// user's tier caps their watch zones below the full set of paid benefits
-/// (tc-w3cb.3, tc-42gc).
+/// user's tier caps their watch zones below the full set of paid benefits.
 ///
 /// This is the "safe fallback" interaction from the design: a capped slider plus
 /// an explicit tappable chip, rather than a drag-past-the-cap gesture. Tapping it

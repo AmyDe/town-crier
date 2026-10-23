@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The Public Notice masthead (GH#857): a small-caps wordmark title set over
+/// The Public Notice masthead: a small-caps wordmark title set over
 /// a double rule, echoing a printed notice's banner. Used on top-level
 /// screen titles — Applications, Saved, and Watch Zones.
 ///
@@ -8,8 +8,8 @@ import SwiftUI
 /// it composes with the existing `List`-based screens without disturbing
 /// their `.navigationTitle` (still present for VoiceOver/back-button
 /// correctness). The system nav bar's own rendered title text is separately
-/// suppressed on each of those screens via `View.mastheadNavigationBar()`
-/// (GH#912 Phase 1), so this masthead row is the single VISIBLE title.
+/// suppressed on each of those screens via `View.mastheadNavigationBar()`,
+/// so this masthead row is the single VISIBLE title.
 public struct MastheadView: View {
   public let title: String
 

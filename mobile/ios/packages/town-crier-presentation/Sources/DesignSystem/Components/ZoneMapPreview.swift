@@ -4,7 +4,7 @@ import TownCrierDomain
 
 /// A non-interactive map preview showing a zone's shape around a centre
 /// coordinate: a circle by default, or a custom-drawn polygon outline when
-/// `boundaryVertices` describes one (tc-7se1w.1).
+/// `boundaryVertices` describes one.
 ///
 /// Size is controlled externally via SwiftUI `.frame()` modifiers.
 /// The `strokeWidth` parameter allows callers to adjust border

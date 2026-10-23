@@ -2,10 +2,8 @@ import Foundation
 
 /// Corner radius tokens for the Town Crier design language.
 ///
-/// Public Notice (GH#857) sharpens the previous 8/12/16 rounded-shape scale
-/// to 3/6/12 — crisper, closer to a printed notice than a rounded app icon.
 /// `Capsule()` stays reserved for filter-chip components
-/// (``CapsuleChipView``); status indicators moved to the stamp treatment
+/// (``CapsuleChipView``); status indicators use the stamp treatment
 /// (see ``StatusBadgeView``, ``ApplicationStatusPill``).
 public enum TCCornerRadius {
   /// 3pt — Small elements: badges, chips, input fields.
