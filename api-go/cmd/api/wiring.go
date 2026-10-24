@@ -14,7 +14,6 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
 	"github.com/AmyDe/town-crier/api-go/internal/authorities"
 	"github.com/AmyDe/town-crier/api-go/internal/blobstore"
-	"github.com/AmyDe/town-crier/api-go/internal/demoaccount"
 	"github.com/AmyDe/town-crier/api-go/internal/designations"
 	"github.com/AmyDe/town-crier/api-go/internal/devicetokens"
 	"github.com/AmyDe/town-crier/api-go/internal/geocoding"
@@ -59,9 +58,6 @@ var anonymousPatterns = map[string]struct{}{
 	"GET /sitemap.xml":        {},
 	// Crawler policy for the API and share hosts (keeps generic crawlers off /og/).
 	"GET /robots.txt": {},
-	// The demo-account endpoint is anonymous so Apple's App Store reviewer can
-	// reach a fully-provisioned Pro account without a token (no bearer required).
-	"GET /v1/demo-account": {},
 	// Admin routes are anonymous to Auth0 (no bearer token); they are
 	// authenticated solely by the X-Admin-Key gate inside the handlers.
 	"PUT /v1/admin/subscriptions": {},
@@ -398,13 +394,6 @@ func newRouter(
 		// applications list augments each row with its latest unread notification
 		// (read_at IS NULL, ADR 0035).
 		watchzones.NearbyRoutes(mux, watchZoneStore, store, appStore, notifStore, uuid.NewString, time.Now, logger, watchzones.WithMetricsRecorder(registry), watchzones.WithProfileCAS(store))
-	}
-	if store != nil && watchZoneStore != nil && appStore != nil {
-		// Demo account (anonymous): seeds a Pro profile, a Westminster watch zone,
-		// and five fixed applications on first call, then returns the zone plus
-		// its nearby applications. Needs the profile, watch-zone and application
-		// stores; the spatial lookup hits the applications store's FindNearby.
-		demoaccount.Routes(mux, store, watchZoneStore, appStore, time.Now, logger)
 	}
 	if savedStore != nil && appStore != nil {
 		// The save path looks up the master application record (appStore) to verify
