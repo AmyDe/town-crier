@@ -58,10 +58,8 @@ func (h *handler) listUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Enrich each row with its per-user tallies in one batched lookup per column
-	// after List returns, so the profile query stays purely about profiles. Each
-	// enrichment is keyed on the page's user ids and skipped when its store is
-	// unwired; users absent from a tally default to the map zero value.
+	// Tallies are batched per column after List so the profile query stays about
+	// profiles; an unwired store is skipped and absent users default to zero.
 	counts, err := h.notificationCountsFor(r, page)
 	if err != nil {
 		h.serverError(w, r, "list users: counts", err)

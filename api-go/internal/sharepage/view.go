@@ -8,22 +8,16 @@ import (
 )
 
 const (
-	// shareOrigin is the intended public origin for the share page. Canonical and
-	// og:url point here even though this slice serves on the API/localhost host —
-	// the page moves behind share.towncrierapp.uk in Slice 3 (#738). The canonical
-	// path is always built from the slug + ref, never from the raw request host.
+	// Canonical and og:url are built from shareOrigin plus slug and ref, never
+	// from the request host.
 	shareOrigin = "https://share.towncrierapp.uk"
 
 	// appleAppID is the Town Crier App Store numeric id. It drives the Smart App
 	// Banner meta so iOS Safari offers "Open in app" / "Download".
 	appleAppID = "6764095657"
 
-	// App Store deep link, mirroring the web appStoreUrl('share-page') shape: the
-	// campaign-free base, the provider token, the share-page campaign token, and
-	// mt=8. The provider token (pt) is the App Store Connect account id Apple
-	// requires alongside ct — a bare ct is silently dropped from App Analytics.
-	// It is a build-time constant identifying us, never the visitor; mirrors
-	// APP_STORE_PROVIDER_TOKEN in web/src/config/links.ts.
+	// Mirrors web appStoreUrl('share-page'). Apple silently drops ct from App
+	// Analytics unless the provider token (pt) accompanies it.
 	appStoreBaseURL       = "https://apps.apple.com/gb/app/town-crier-planning-alerts/id" + appleAppID
 	appStoreProviderToken = "128810278"
 	shareCampaignToken    = "share-page"
@@ -136,39 +130,20 @@ func buildPageView(app applications.PlanningApplication, slug, ref string) pageV
 	}
 	if areaName := strings.TrimSpace(app.AreaName); areaName != "" {
 		v.AuthorityName = areaName
-		// Built from the same slug this page itself was resolved by — the share
-		// page and the SEO planning page (internal/seopage) both
-		// slugify the authority name with the same byte-equal-ported Slugify, so
-		// this is the correct authority-page path whenever one has been published
-		// for this authority.
 		v.AuthorityURL = homeURL + "/planning/" + slug
 	}
 	return v
 }
 
-// statusLabels maps a raw PlanIt appState string to the resident-facing label
-// shared across both public surfaces: mirrors STATUS_DISPLAY_LABEL_MAP in
-// web/scripts/lib/format.mjs, so the share pages and the SEO planning pages
-// speak one vocabulary (tc-r4n9 decision 4). A state absent from this map
-// (e.g. "Undecided", "Withdrawn", "Appealed", "Unresolved", "Referred", or any
-// PlanIt string not seen at design time) passes through unchanged in
-// statusChip below — it is real PlanIt data, not wording we invent.
+// statusLabels mirrors STATUS_DISPLAY_LABEL_MAP in web/scripts/lib/format.mjs.
 var statusLabels = map[string]string{
 	"Permitted":  "Granted",
 	"Conditions": "Granted with conditions",
 	"Rejected":   "Refused",
 }
 
-// statusModifiers maps the same raw appState to a broad CSS colour bucket.
-// Deliberately three buckets, not a five-way traffic light: granted (green),
-// refused (red), and neutral for everything else — including "Undecided" and
-// every long-tail state. "Conditions" ("Granted with conditions") is
-// explicitly one of those long-tail states per issue #794 Phase 3 ("fold the
-// long tail: Withdrawn, Unresolved, Granted with conditions, Referred") and
-// per tc-r4n9.2's web-side bucketing, so it is neutral here too, matching the
-// label lookup in statusLabels (which still spells it out in full) but NOT
-// colouring it green like an unconditional grant. Per decision 4, long-tail
-// states are neutral, not individually coloured.
+// statusModifiers deliberately colours "Conditions" neutral, not green,
+// matching the web bucketing of long-tail states.
 var statusModifiers = map[string]string{
 	"Permitted":  "granted",
 	"Conditions": "neutral",
@@ -185,12 +160,8 @@ func statusChip(appState string) (label, modifier string) {
 	return appState, "neutral"
 }
 
-// addressIncludesPostcode reports whether address already ends with postcode,
-// compared case-insensitively after trimming surrounding whitespace from
-// both. PlanIt addresses commonly already carry the postcode as their tail
-// (e.g. "2 High Street, Croydon, CR2 7DY"), so appending it again in the h1
-// would render "... CR2 7DY, CR2 7DY" — the duplication this check guards
-// against (tc-r4n9.6).
+// addressIncludesPostcode guards against rendering the postcode twice, since
+// PlanIt addresses often already end with it.
 func addressIncludesPostcode(address, postcode string) bool {
 	a := strings.TrimSpace(address)
 	p := strings.TrimSpace(postcode)

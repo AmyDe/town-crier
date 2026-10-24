@@ -27,8 +27,7 @@ const (
 var errTileStatus = errors.New("unexpected tile status")
 
 // OSMTileClient fetches OSM raster tiles over HTTPS with an identifying
-// User-Agent, honouring the caller's context. It satisfies the tileClient seam
-// consumed by the map compositor.
+// User-Agent, honouring the caller's context.
 type OSMTileClient struct {
 	http    *http.Client
 	baseURL string

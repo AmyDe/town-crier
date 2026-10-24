@@ -15,10 +15,8 @@ const (
 )
 
 // generateOfferCodesRequest is the POST /v1/admin/offer-codes body.
-// MaxRedemptions is a pointer with omitempty so an unset --max-redemptions
-// flag omits the field entirely, letting the API default it to 1 — an
-// explicit 0 (impossible here since parseStrictInt rejects it before this
-// struct is built) would otherwise be indistinguishable from "not given".
+// MaxRedemptions is omitted when --max-redemptions is unset, so the API
+// defaults it to 1.
 type generateOfferCodesRequest struct {
 	Count          int    `json:"count"`
 	Tier           string `json:"tier"`
@@ -99,19 +97,13 @@ type statsPaying struct {
 	Comped        int `json:"comped"`
 	Lapsed        int `json:"lapsed"`
 	InGrace       int `json:"inGrace"`
-	// AppStoreByTier is a pointer so an older API build that predates the
-	// tier split decodes it as nil, rather than a zeroed-but-present struct
-	// that would silently render a wrong (zero) MRR.
-	AppStoreByTier *statsAppStoreByTier `json:"appStoreByTier"`
-	// AppStoreProAnnual is a pointer for the same reason: nil means an API
-	// build that predates annual Pro, not zero annual payers.
-	AppStoreProAnnual *int `json:"appStoreProAnnual"`
-	// Lifetime is a pointer for the same reason: nil means an API build that
-	// predates lifetime Pro, not zero lifetime holders.
-	Lifetime *int `json:"lifetime"`
-	// InTrial is a pointer for the same reason: nil means an API build that
-	// predates free-trial tracking, not zero trials.
-	InTrial *int `json:"inTrial"`
+	// The remaining fields are pointers: nil means an older API build that
+	// predates the field, not zero, so a missing tier split cannot render a
+	// wrong MRR.
+	AppStoreByTier    *statsAppStoreByTier `json:"appStoreByTier"`
+	AppStoreProAnnual *int                 `json:"appStoreProAnnual"`
+	Lifetime          *int                 `json:"lifetime"`
+	InTrial           *int                 `json:"inTrial"`
 }
 
 // statsAppStoreByTier is an explicit struct (not a map) so the two paid tier

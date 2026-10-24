@@ -20,7 +20,7 @@ func TestMonitorTableCondition_AllowlistsOnlyPersonalDataFreeTables(t *testing.T
 }
 
 // TestSharePageAnalyticsQueries_RetainInvariants pins the substrings in isLikelyBotQuery and
-// sharePageHumanTrafficQuery (tc-kg77x / GH #1020) that the compiler cannot check but a future
+// sharePageHumanTrafficQuery that the compiler cannot check but a future
 // edit could easily break silently: the prod-only filter (dev and prod share one App Insights
 // component), both share-page route prefixes, and the robots.txt AI-crawler allowlist tokens
 // that IsLikelyBot must still treat as bots for volume-counting purposes.

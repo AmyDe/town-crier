@@ -22,8 +22,7 @@ func runStats(ctx context.Context, client *Client, env Env, _ *ParsedArgs) int {
 }
 
 // renderStats writes the aggregate as five labelled groups (Users, Paying,
-// Signups, Activity, Reach). It is deliberately plain admin-tooling text — no
-// product voice — kept compact enough to scan in a terminal.
+// Signups, Activity, Reach).
 func renderStats(out io.Writer, s *statsResponse) {
 	fmt.Fprintln(out, "Users")
 	fmt.Fprintf(out, "  Total: %d\n", s.Users.Total)
@@ -71,8 +70,6 @@ func renderStats(out io.Writer, s *statsResponse) {
 	fmt.Fprintf(out, "  Notifications unread: %d\n", s.Reach.NotificationsUnread)
 }
 
-// mostRecentCell renders the most-recent signup, degrading gracefully: "(none)"
-// for an empty user base (nil) and "(none)" for a withheld email.
 func mostRecentCell(mr *statsMostRecent) string {
 	if mr == nil {
 		return "(none)"

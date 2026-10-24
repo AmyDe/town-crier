@@ -48,7 +48,7 @@ func parseResourceNamesEnv(t *testing.T, path string) map[string]string {
 // .github/config/resource-names.env matches what environment.go's own naming functions
 // produce for the real Pulumi resources — the same functions the resource-creation call
 // sites in environment.go use — so a name changed in one place without the other fails
-// CI (issue #835 slice 6 acceptance criterion).
+// CI.
 func TestResourceNamesEnv_MatchesNamingConventions(t *testing.T) {
 	t.Parallel()
 

@@ -60,7 +60,7 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 	//
 	// RetentionPolicy is Premium-SKU only — Azure rejects any Policies block on Basic
 	// ("Policies are only supported for managed registries in Premium SKU"), so
-	// untagged-manifest cleanup must happen out-of-band. See tc-dq46.
+	// untagged-manifest cleanup must happen out-of-band.
 	containerRegistry, err := containerregistry.NewRegistry(ctx, "acrtowncriershared", &containerregistry.RegistryArgs{
 		RegistryName:      pulumi.String("acrtowncriershared"),
 		ResourceGroupName: resourceGroup.Name,
@@ -254,7 +254,7 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		return err
 	}
 
-	// Move the AppTraces table to the Basic Logs plan. See tc-9ggc.
+	// Move the AppTraces table to the Basic Logs plan.
 	_, err = operationalinsights.NewTable(ctx, "table-apptraces-basic", &operationalinsights.TableArgs{
 		ResourceGroupName: resourceGroup.Name,
 		WorkspaceName:     logAnalytics.Name,
@@ -265,7 +265,7 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		return err
 	}
 
-	// Cap the workspace-based App* tables at the workspace's 30-day retention. See tc-23yb.
+	// Cap the workspace-based App* tables at the workspace's 30-day retention.
 	// AppTraces is omitted (already on Basic = 8 days).
 	appTablesToCapAt30Days := []string{
 		"AppRequests",
@@ -379,7 +379,7 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		},
 		// Enable Entra (AAD) authentication alongside password auth. PasswordAuth stays
 		// Enabled to preserve tcadmin break-glass access through the migration; password-only
-		// mode will be disabled in a later hardening step. See GH #653.
+		// mode will be disabled in a later hardening step.
 		AuthConfig: &dbforpostgresql.AuthConfigArgs{
 			ActiveDirectoryAuth: pulumi.String("Enabled"),
 			PasswordAuth:        pulumi.String("Enabled"),
@@ -496,7 +496,7 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 				ContactEmails: pulumi.StringArray{pulumi.String(alertEmail)},
 				Locale:        consumption.CultureCode_En_Gb,
 			},
-			// Forecast notification (GH #943 Phase 5) — warns ahead of the actual-spend
+			// Forecast notification — warns ahead of the actual-spend
 			// notifications above by firing on Azure's cost *forecast*, not just realised spend.
 			"forecasted_GreaterThan_100_Percent": &consumption.NotificationArgs{
 				Enabled:       pulumi.Bool(true),
@@ -630,7 +630,7 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 	}
 
 	// Custom-domain sender identity for the UK EmailService. Logical name retains the
-	// `-new` suffix from the dual-resource migration (tc-8634, tc-zx5g).
+	// `-new` suffix from the dual-resource migration.
 	towncrierAppDomain, err := communication.NewDomain(ctx, "domain-towncrierapp-uk-new", &communication.DomainArgs{
 		DomainName:        pulumi.String("towncrierapp.uk"),
 		EmailServiceName:  emailServiceUk.Name,
@@ -666,7 +666,7 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 	// etc). The latter includes the recipient's email address in a RecipientId field; that is
 	// an accepted, deliberate tradeoff already discussed, not an oversight — no scrubbing or
 	// extra config gating here. No RetentionPolicy override — inherits the workspace's
-	// existing 30-day default, same as every other table there. See tc-p6af.
+	// existing 30-day default, same as every other table there.
 	_, err = monitor.NewDiagnosticSetting(ctx, "diag-acs-town-crier-uk", &monitor.DiagnosticSettingArgs{
 		Name:        pulumi.String("diag-acs-town-crier-uk"),
 		ResourceUri: communicationServiceUk.ID(),
@@ -686,7 +686,7 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		return err
 	}
 
-	// Authorises the local-part `hello` for sends from towncrierapp.uk. See tc-6tak.
+	// Authorises the local-part `hello` for sends from towncrierapp.uk.
 	_, err = communication.NewSenderUsername(ctx, "sender-hello-towncrier-uk", &communication.SenderUsernameArgs{
 		SenderUsername:    pulumi.String("hello"),
 		DomainName:        towncrierAppDomain.Name,
@@ -699,8 +699,8 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		return err
 	}
 
-	// Alert posture (GH #943, tc-97k35.1). The 2026-07-12 audit found the action group and
-	// PlanIt rule above already ported (tc-ttjor, GH #938) but the rest of the P1+P2 posture
+	// Alert posture. The 2026-07-12 audit found the action group and
+	// PlanIt rule above already ported but the rest of the P1+P2 posture
 	// unimplemented. This codifies the remainder: availability tests, Postgres/job/ACS metric
 	// alerts, API/webhook/APNs/ACS/Auth0 log alerts, job-absence detection, Service Health,
 	// Failure Anomalies. Everything below scopes prod resources via constructed ID strings
@@ -1066,7 +1066,7 @@ expected
 		return err
 	}
 
-	// Share-page bot-filtered volume by slug (tc-kg77x / GH #1020). Analytics-layer only: two
+	// Share-page bot-filtered volume by slug. Analytics-layer only: two
 	// saved KQL functions over existing AppRequests telemetry, no new logging or stored data.
 	if err = createSharePageAnalytics(ctx, resourceGroup, logAnalytics); err != nil {
 		return err
@@ -1125,7 +1125,7 @@ expected
 		return err
 	}
 
-	// Operational Dashboard (tc-rvf1a, extended by tc-gha6l). Rebuilt on telemetry the Go stack
+	// Operational Dashboard. Rebuilt on telemetry the Go stack
 	// actually emits: ACA's managed OpenTelemetry agent forwards only logs+traces for Go
 	// workloads, so every prior tile's customMetrics/AppMetrics query (towncrier.*) had no data
 	// behind it — Go wires no Azure Monitor metrics exporter (same reason the PlanIt
@@ -1241,7 +1241,7 @@ expected
 	ctx.Export("postgresAdminPassword", postgresAdminPassword.Result)
 	ctx.Export("appInsightsId", appInsights.ID())
 	ctx.Export("appInsightsConnectionString", appInsights.ConnectionString)
-	// Action group (tc-ttjor / GH #938 PR3): consumed by the prod env stack's poll-queue-depth
+	// Action group: consumed by the prod env stack's poll-queue-depth
 	// metric alert (infra/environment.go) so both alerts notify the same email receiver.
 	ctx.Export("actionGroupId", actionGroup.ID())
 	ctx.Export("acsConnectionString", pulumi.ToSecret(communication.ListCommunicationServiceKeysOutput(ctx, communication.ListCommunicationServiceKeysOutputArgs{
@@ -1498,8 +1498,8 @@ func createLogAlert(ctx *pulumi.Context, resourceGroup *resources.ResourceGroup,
 	return err
 }
 
-// isLikelyBotQuery is the body of the IsLikelyBot(ua: string): bool saved KQL function
-// (tc-kg77x / GH #1020). Case-insensitive substring/token match against a maintained
+// isLikelyBotQuery is the body of the IsLikelyBot(ua: string): bool saved KQL function.
+// Case-insensitive substring/token match against a maintained
 // bot/crawler UA list. To extend: add a new "|token" alternative to the regex below and
 // re-run `pulumi up` for the shared stack — no other file needs to change. Regex-escape any
 // character that is special in RE2 (e.g. the literal "+" in "\+http"). The regex sits inside a
@@ -1518,8 +1518,8 @@ const isLikelyBotQuery = `// IsLikelyBot(ua: string): bool — see infra/shared.
 // this function is maintained (tc-kg77x / GH #1020).
 tolower(ua) matches regex @"(bot|spider|crawl|slurp|facebookexternalhit|whatsapp|telegrambot|slackbot|discordbot|preview|headless|curl|python-requests|go-http-client|read-aloud|webindexer|\+http|ahrefsbot|semrushbot|mj12bot|dotbot|censys|zgrab|masscan|gptbot|oai-searchbot|chatgpt-user|google-extended|claudebot|claude-user|anthropic-ai|perplexitybot|perplexity-user|ccbot|applebot-extended)"`
 
-// sharePageHumanTrafficQuery is the body of the SharePageHumanTraffic() saved KQL function
-// (tc-kg77x / GH #1020). Combines IsLikelyBot(ua) with a burst/behavioral heuristic to catch
+// sharePageHumanTrafficQuery is the body of the SharePageHumanTraffic() saved KQL function.
+// Combines IsLikelyBot(ua) with a burst/behavioral heuristic to catch
 // browser-spoofed crawlers presenting a generic desktop UA (the GH #1020 investigation found a
 // 2,243-hit cluster on an all-zero-build Chrome UA — real browsers never report an all-zero
 // patch/build number — hitting the same path dozens of times within minutes), then reports the
@@ -1584,7 +1584,7 @@ AppRequests
 | order by Day desc, OrganicHits desc`
 
 // createSharePageAnalytics provisions the two saved KQL functions backing "genuine share-page
-// volume by slug" (tc-kg77x / GH #1020): IsLikelyBot(ua) and SharePageHumanTraffic(), which
+// volume by slug": IsLikelyBot(ua) and SharePageHumanTraffic(), which
 // calls IsLikelyBot — hence the explicit DependsOn below, so a fresh shared-stack apply creates
 // IsLikelyBot first. Analytics-layer only: both read existing AppRequests telemetry
 // (user_agent.original, url.path, TimeGenerated), which is already privacy-clean (client IPs

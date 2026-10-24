@@ -42,10 +42,8 @@ type imageHandler struct {
 // strips it instead. The public URL shape stays /og/{slug}/{ref}.png. Keep the
 // pattern in lockstep with the anonymousPatterns entry in cmd/api/wiring.go.
 //
-// cache may be nil: that is the deliberate degrade-gracefully seam for Slice 2,
-// before the Blob container + managed-identity RBAC exist. Pass a genuine nil
-// interface (not a typed-nil pointer) so the handler's nil-check disables caching
-// cleanly.
+// cache may be nil to disable caching; pass an untyped nil interface, not a
+// typed-nil pointer.
 func ImageRoutes(mux *http.ServeMux, store appStore, resolver slugResolver, tiles tileClient, cache imageStore, logger *slog.Logger) {
 	h := newImageHandler(store, resolver, tiles, cache, logger, renderWait)
 	mux.HandleFunc("GET /og/{authoritySlug}/{ref...}", h.serve)
@@ -153,7 +151,6 @@ func (h *imageHandler) acquire(r *http.Request) bool {
 // readCache returns the cached card; a nil cache or a read error means regenerate.
 func (h *imageHandler) readCache(ctx context.Context, key string) ([]byte, bool) {
 	if h.cache == nil {
-		// Log once per request so an unwired store stays visible.
 		h.logger.InfoContext(ctx, "share card store unwired; regenerating on demand", "key", key)
 		return nil, false
 	}

@@ -4,9 +4,7 @@
 // The page emits ONLY public planning data: it reads no auth or user data, sets
 // no cookies, and logs no client IP. Its identity is the (authority slug, PlanIt
 // ref) pair; the ref is a trailing wildcard because PlanIt case references
-// contain slashes (e.g. "23/03456/FUL"). Rendering uses html/template, whose
-// contextual auto-escaping is a hard requirement here: the application fields
-// come from an external provider and are untrusted.
+// contain slashes (e.g. "23/03456/FUL").
 package sharepage
 
 import (
