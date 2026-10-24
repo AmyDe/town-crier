@@ -121,7 +121,7 @@ const maxRadiusMetres = 10_000
 // The param-less path keeps the 500 default (backward-compat contract). The
 // sort-aware path (?sort=) uses a smaller 150 default for a
 // snappier first paint and infinite-scroll increment. maxNearbyLimit
-// is the shared clamp ceiling for both. The create + demo paths fetch page one only.
+// is the shared clamp ceiling for both. The create path fetches page one only.
 const (
 	defaultNearbyLimit = 500
 	defaultSortedLimit = 150
