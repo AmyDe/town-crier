@@ -27,7 +27,7 @@ type querier interface {
 
 // Store is the full method set the Applications store exposes to its consumers
 // across packages (handler's appStore, watchzones.appFinder's FindNearbyPage, the savedapplications snapshot
-// backfill's GetByUID, demoaccount's Upsert + FindNearbyPage, and the poll
+// backfill's GetByUID, and the poll
 // Upsert). It is the exported consumer-side interface cmd/api's newRouter accepts
 // for the Applications routes. Every narrower per-handler interface is a subset
 // of this set.
