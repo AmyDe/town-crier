@@ -6,7 +6,7 @@ import "fmt"
 // one definition each. These are called both by the real resource-creation sites below
 // and by names_test.go, which asserts .github/config/resource-names.env — the single
 // source of truth consumed by the GitHub Actions workflows — matches what this program
-// actually names each resource (issue #835 slice 6). Do not change the literal formats
+// actually names each resource. Do not change the literal formats
 // without also updating resource-names.env: Pulumi resource identity is keyed off these
 // strings (see main.go), so a format change is a rename, not a refactor.
 

@@ -345,7 +345,7 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 	// Dev-only: Postgres database for town_crier_dev on the shared Flexible Server.
 	// Part of the Cosmos → Postgres + PostGIS migration (memo 0010, epic tc-hpd2 / GH #645).
 	// The password-based connection-string secret is retired; the dev API authenticates via
-	// Entra managed identity using a runtime token (no stored password). See GH #653.
+	// Entra managed identity using a runtime token (no stored password).
 	//
 	// town_crier_prod is intentionally NOT declared here: it was provisioned data-plane
 	// (CREATE DATABASE + role + goose schema; GH #664 Phase C, bead tc-hpd2.3). Bringing it
