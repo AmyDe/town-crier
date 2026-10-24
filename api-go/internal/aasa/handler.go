@@ -25,7 +25,6 @@ const wellKnownPath = "/.well-known/apple-app-site-association"
 // shared link .../a/{slug}/{ref} matches /a/*.
 const pathComponent = "/a/*"
 
-// componentEntry's "/" key is the applinks path-pattern field Apple expects.
 type document struct {
 	Applinks applinks `json:"applinks"`
 }
@@ -40,6 +39,7 @@ type detail struct {
 }
 
 type componentEntry struct {
+	// The "/" key is the applinks path-pattern field Apple expects.
 	Path string `json:"/"`
 }
 
