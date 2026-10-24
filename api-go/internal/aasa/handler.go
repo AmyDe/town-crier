@@ -25,8 +25,6 @@ const wellKnownPath = "/.well-known/apple-app-site-association"
 // shared link .../a/{slug}/{ref} matches /a/*.
 const pathComponent = "/a/*"
 
-// document, applinks, detail and componentEntry model the AASA JSON so it is
-// marshalled from typed data (always valid) rather than string-built. The
 // componentEntry's "/" key is the applinks path-pattern field Apple expects.
 type document struct {
 	Applinks applinks `json:"applinks"`

@@ -38,9 +38,6 @@ type Package struct {
 	Fingerprints []string
 }
 
-// statement, target model the Digital Asset Links JSON so it is marshalled
-// from typed data (always valid) rather than string-built, mirroring
-// internal/aasa's document/applinks/detail/componentEntry types.
 type statement struct {
 	Relation []string `json:"relation"`
 	Target   target   `json:"target"`
@@ -63,7 +60,7 @@ type handler struct {
 // empty or placeholder fingerprint that would fail verification anyway.
 //
 // The document is marshalled once at wiring time so the handler does no
-// per-request work, mirroring internal/aasa's Routes.
+// per-request work.
 func Routes(mux *http.ServeMux, packages []Package, logger *slog.Logger) {
 	statements := make([]statement, 0, len(packages))
 	for _, p := range packages {

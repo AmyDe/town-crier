@@ -19,10 +19,7 @@ import (
 	"golang.org/x/image/math/fixed"
 )
 
-// tileClient is the consumer-side seam over an OSM raster-tile source: the map
-// compositor fetches the tiles overlapping the card window and draws them onto
-// the canvas. *OSMTileClient (tileclient.go) satisfies it in production; tests
-// pass a flat-colour fake. Fetch takes ctx first — it does network I/O.
+// tileClient is the consumer-side seam over an OSM raster-tile source.
 type tileClient interface {
 	Fetch(ctx context.Context, z, x, y int) (image.Image, error)
 }
@@ -40,26 +37,14 @@ const (
 )
 
 var (
-	pinFill = designtokens.AmberDark // amber pin body: brand contrast over any map tile
-	// pinOutline is the paper SurfaceLight rather than a hand-rolled pure
-	// white, so the pin's border consumes the same token as every other
-	// Public Notice surface (tc-fmrx3, #855).
-	pinOutline = designtokens.SurfaceLight
-	// fallbackBg is the v2 paper field (was the flat brand-amber poster) —
-	// the no-map card now reads as a filed notice, not a brand advert.
-	fallbackBg = designtokens.BackgroundLight
-	// fallbackText is the ink wordmark colour on the paper fallbackBg field
-	// (was white-on-amber).
+	pinFill      = designtokens.AmberDark // amber pin body: brand contrast over any map tile
+	pinOutline   = designtokens.SurfaceLight
+	fallbackBg   = designtokens.BackgroundLight
 	fallbackText = designtokens.TextPrimaryLight
-	// mastheadInk is the masthead band's rule + wordmark colour, burned over
-	// the paper mastheadBg strip.
-	mastheadInk = designtokens.TextPrimaryLight
-	// mastheadBg is the paper band colour behind the masthead wordmark.
-	mastheadBg = designtokens.SurfaceLight
-	// textWhite renders the OSM attribution credit: it MUST stay white
-	// regardless of theme/palette changes elsewhere — legibility over the
-	// dark attribShade strip is an OSM-attribution requirement, not a brand
-	// choice, so this is deliberately untouched by the v2 restyle.
+	mastheadInk  = designtokens.TextPrimaryLight
+	mastheadBg   = designtokens.SurfaceLight
+	// textWhite must stay white whatever the palette: legibility of the OSM
+	// credit over attribShade is an attribution requirement, not a brand choice.
 	textWhite = designtokens.White
 	// attribShade is a half-opaque black strip behind the OSM credit so it stays
 	// legible over any tile. color.RGBA is alpha-premultiplied, so a black tint at
@@ -67,27 +52,18 @@ var (
 	attribShade = color.RGBA{R: 0x00, G: 0x00, B: 0x00, A: 0xA0}
 )
 
-// Masthead geometry: the paper band burned across the top of the map card,
-// mirroring the web masthead's double-rule language (SPA Navbar / SEO
-// render-shared.mjs — small-caps wordmark over a heavy rule) in the raster OG
-// image. It overlays the already-composited tiles rather than reserving a gap
-// in the map projection, so mapCard's centring math and OSM tile budget are
-// untouched by its addition.
+// The masthead overlays the composited tiles rather than reserving a gap in
+// the map projection, so mapCard's centring and OSM tile budget are unaffected.
 const (
 	mastheadHeight = 56
 	mastheadRuleH  = 2
 	mastheadFontPx = 22
 
-	// mastheadWordmark is tracked via trackedText before drawing — see its
-	// doc comment for why (no small-caps/letter-spacing support in
-	// golang.org/x/image/font).
 	mastheadWordmark = "TOWN CRIER"
 )
 
-// The Go fonts are embedded, compile-time-constant assets; parsing them can only
-// fail if those bytes are corrupt, which is a build-time programmer error, not a
-// runtime condition — the same category as template.Must in templates.go. Parse
-// once at package init rather than per request.
+// The embedded fonts can only fail to parse if their bytes are corrupt, a
+// programmer error like template.Must, so they are parsed once at init.
 var (
 	regularFont = mustParseFont(goregular.TTF)
 	boldFont    = mustParseFont(gobold.TTF)
@@ -235,17 +211,9 @@ func setPixel(img *image.RGBA, x, y int, col color.RGBA) {
 	}
 }
 
-// trackedText approximates a tracked, small-caps-style wordmark using the
-// embedded (non-small-caps) Go fonts: golang.org/x/image/font has no
-// small-caps glyph substitution or letter-spacing/tracking support, so this
-// inserts a plain ASCII space between the runes of an already-uppercase
-// string. It produces a similarly widely tracked, formal read to the web
-// masthead's `font-variant:small-caps; letter-spacing` treatment (SPA Navbar,
-// SEO render-shared.mjs) without embedding a new font — a deliberate
-// stdlib-only approximation, not the real small-caps feature. A typographic
-// thin space (U+2009) would track more tightly, but neither embedded Go font
-// (goregular/gobold) carries a glyph for it, so it renders as .notdef —
-// the plain ASCII space is a deliberate, font-safe substitute.
+// trackedText approximates letter-spacing, which golang.org/x/image/font lacks,
+// by inserting a space between runes. It uses an ASCII space because neither
+// embedded Go font has a glyph for the thinner U+2009.
 func trackedText(s string) string {
 	runes := []rune(s)
 	out := make([]rune, 0, len(runes)*2)
@@ -258,15 +226,7 @@ func trackedText(s string) string {
 	return string(out)
 }
 
-// drawMasthead burns the Public Notice masthead band across the top of the
-// map card: a paper strip holding the tracked "TOWN CRIER" wordmark, over a
-// 2px ink rule — the same wordmark-over-double-rule language as the web
-// masthead, rendered here with the existing embedded Go fonts (no new font
-// embedding). It draws directly onto the already-composited tile canvas
-// rather than reserving a gap in the map projection, so the map + brass pin
-// stay the hero visual below the strip and mapCard's centring math / OSM
-// tile budget are untouched. Best-effort like drawAttribution: a font-face
-// build failure must not sink the whole card.
+// drawMasthead is best-effort: a font-face build failure must not sink the card.
 func drawMasthead(img *image.RGBA) {
 	draw.Draw(img, image.Rect(0, 0, cardWidth, mastheadHeight), image.NewUniform(mastheadBg), image.Point{}, draw.Src)
 	draw.Draw(img, image.Rect(0, mastheadHeight, cardWidth, mastheadHeight+mastheadRuleH), image.NewUniform(mastheadInk), image.Point{}, draw.Src)
