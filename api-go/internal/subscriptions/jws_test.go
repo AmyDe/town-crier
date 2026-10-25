@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -100,6 +101,45 @@ func TestJWSVerifier_UnsupportedAlgorithm(t *testing.T) {
 	requireJWSError(t, err)
 }
 
+func TestJWSVerifier_RejectsLeafWithoutReceiptMarker(t *testing.T) {
+	t.Parallel()
+	b := newTestJWSBuilderWithOptions(t, chainOptions{omitLeafMarker: true})
+	v := newVerifier(t, b.root)
+
+	_, err := v.VerifyAndDecode(b.sign(t, testPayloadJSON))
+	requireJWSError(t, err)
+}
+
+func TestJWSVerifier_RejectsIntermediateWithoutIntermediateMarker(t *testing.T) {
+	t.Parallel()
+	b := newTestJWSBuilderWithOptions(t, chainOptions{omitIntermediateMarker: true})
+	v := newVerifier(t, b.root)
+
+	_, err := v.VerifyAndDecode(b.sign(t, testPayloadJSON))
+	requireJWSError(t, err)
+}
+
+func TestJWSVerifier_RejectsChainsNotExactlyThreeCertificates(t *testing.T) {
+	t.Parallel()
+	b := newTestJWSBuilder(t, time.Time{}, time.Time{})
+	v := newVerifier(t, b.root)
+
+	tests := []struct {
+		name  string
+		chain []*x509.Certificate
+	}{
+		{"two certificates", []*x509.Certificate{b.leaf, b.intermediate}},
+		{"four certificates", []*x509.Certificate{b.leaf, b.intermediate, b.root, b.root}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := v.VerifyAndDecode(b.signWithChain(t, testPayloadJSON, "ES256", tt.chain))
+			requireJWSError(t, err)
+		})
+	}
+}
+
 func TestLoadAppleRootCertificates(t *testing.T) {
 	t.Parallel()
 	roots, err := LoadAppleRootCertificates()
@@ -142,8 +182,29 @@ type testJWSBuilder struct {
 	leafKey      *ecdsa.PrivateKey
 }
 
+type chainOptions struct {
+	leafNotBefore, leafNotAfter time.Time
+	omitLeafMarker              bool
+	omitIntermediateMarker      bool
+}
+
+var (
+	oidLeafMarker         = asn1.ObjectIdentifier{1, 2, 840, 113635, 100, 6, 11, 1}
+	oidIntermediateMarker = asn1.ObjectIdentifier{1, 2, 840, 113635, 100, 6, 2, 1}
+)
+
+func markerExtension(oid asn1.ObjectIdentifier) []pkix.Extension {
+	return []pkix.Extension{{Id: oid, Value: []byte{0x05, 0x00}}}
+}
+
 func newTestJWSBuilder(t *testing.T, leafNotBefore, leafNotAfter time.Time) *testJWSBuilder {
 	t.Helper()
+	return newTestJWSBuilderWithOptions(t, chainOptions{leafNotBefore: leafNotBefore, leafNotAfter: leafNotAfter})
+}
+
+func newTestJWSBuilderWithOptions(t *testing.T, opts chainOptions) *testJWSBuilder {
+	t.Helper()
+	leafNotBefore, leafNotAfter := opts.leafNotBefore, opts.leafNotAfter
 	now := time.Now()
 	if leafNotBefore.IsZero() {
 		leafNotBefore = now.AddDate(0, 0, -1)
@@ -158,6 +219,9 @@ func newTestJWSBuilder(t *testing.T, leafNotBefore, leafNotAfter time.Time) *tes
 
 	interKey := genKey(t)
 	interTmpl := caTemplate(t, "Test Apple Intermediate CA", now.AddDate(-1, 0, 0), now.AddDate(5, 0, 0))
+	if !opts.omitIntermediateMarker {
+		interTmpl.ExtraExtensions = markerExtension(oidIntermediateMarker)
+	}
 	inter := mkCert(t, interTmpl, root, &interKey.PublicKey, rootKey)
 
 	leafKey := genKey(t)
@@ -166,6 +230,9 @@ func newTestJWSBuilder(t *testing.T, leafNotBefore, leafNotAfter time.Time) *tes
 		Subject:      pkix.Name{CommonName: "Test Apple Leaf"},
 		NotBefore:    leafNotBefore,
 		NotAfter:     leafNotAfter,
+	}
+	if !opts.omitLeafMarker {
+		leafTmpl.ExtraExtensions = markerExtension(oidLeafMarker)
 	}
 	leaf := mkCert(t, leafTmpl, inter, &leafKey.PublicKey, interKey)
 
@@ -179,13 +246,14 @@ func (b *testJWSBuilder) sign(t *testing.T, payloadJSON string) string {
 
 func (b *testJWSBuilder) signWithAlg(t *testing.T, payloadJSON, alg string) string {
 	t.Helper()
-	hdr := jwsHeader{
-		Alg: alg,
-		X5c: []string{
-			base64.StdEncoding.EncodeToString(b.leaf.Raw),
-			base64.StdEncoding.EncodeToString(b.intermediate.Raw),
-			base64.StdEncoding.EncodeToString(b.root.Raw),
-		},
+	return b.signWithChain(t, payloadJSON, alg, []*x509.Certificate{b.leaf, b.intermediate, b.root})
+}
+
+func (b *testJWSBuilder) signWithChain(t *testing.T, payloadJSON, alg string, chain []*x509.Certificate) string {
+	t.Helper()
+	hdr := jwsHeader{Alg: alg}
+	for _, c := range chain {
+		hdr.X5c = append(hdr.X5c, base64.StdEncoding.EncodeToString(c.Raw))
 	}
 	hdrJSON, err := json.Marshal(hdr)
 	if err != nil {

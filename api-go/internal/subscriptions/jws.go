@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	_ "embed"
+	"encoding/asn1"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -139,11 +140,35 @@ func parseCertificateChain(header jwsHeader) ([]*x509.Certificate, error) {
 	return chain, nil
 }
 
-// verifyChainTrust builds the leaf -> ... -> root path against the trusted
-// roots. Intermediates travel in the x5c header, so they are supplied as the
-// intermediate pool. ExtKeyUsageAny is used (no EKU constraint); revocation is
-// not checked.
+var (
+	oidAppleLeafMarker         = asn1.ObjectIdentifier{1, 2, 840, 113635, 100, 6, 11, 1}
+	oidAppleIntermediateMarker = asn1.ObjectIdentifier{1, 2, 840, 113635, 100, 6, 2, 1}
+)
+
+func hasExtension(cert *x509.Certificate, oid asn1.ObjectIdentifier) bool {
+	for _, ext := range cert.Extensions {
+		if ext.Id.Equal(oid) {
+			return true
+		}
+	}
+	return false
+}
+
+// verifyChainTrust requires an x5c chain of exactly leaf, intermediate and
+// root, with Apple's marker extensions on the leaf and intermediate, then builds
+// the path against the trusted roots. ExtKeyUsageAny is used (no EKU
+// constraint); revocation is not checked.
 func (v *JWSVerifier) verifyChainTrust(chain []*x509.Certificate) error {
+	if len(chain) != 3 {
+		return &JWSVerificationError{Message: "The x5c certificate chain must contain exactly three certificates."}
+	}
+	if !hasExtension(chain[0], oidAppleLeafMarker) {
+		return &JWSVerificationError{Message: "The leaf certificate is not an Apple App Store signing certificate."}
+	}
+	if !hasExtension(chain[1], oidAppleIntermediateMarker) {
+		return &JWSVerificationError{Message: "The intermediate certificate is not an Apple App Store signing intermediate."}
+	}
+
 	intermediates := x509.NewCertPool()
 	for _, cert := range chain[1:] {
 		intermediates.AddCert(cert)

@@ -220,20 +220,17 @@ func (e *Enqueuer) Enqueue(ctx context.Context, app applications.PlanningApplica
 		now:         e.now().UTC(),
 	})
 
-	// Instant push is a paid-tier entitlement. Free-tier users — including a paid
-	// tier whose subscription has lapsed (EffectiveTier) — still get the
-	// notification record (picked up by the weekly digest) but no push. PushSent
-	// means "queued", not "delivered": it is set true here, before the coalescer
-	// has attempted any send, and is never reconciled against the actual
-	// delivery outcome (a deliberate choice; see
-	// notifications.DigestNotification.PushSent).
-	if profile.EffectiveTier(e.now()).IsPaid() && profile.Preferences.PushEnabled {
-		n.PushSent = true
-		e.push.Add(zone.UserID, n)
-	}
+	// PushSent means "queued", not "delivered", and is never reconciled with the
+	// send outcome. Free tiers (including a lapsed paid tier) get the record for
+	// the weekly digest but no push.
+	queuePush := profile.EffectiveTier(e.now()).IsPaid() && profile.Preferences.PushEnabled
+	n.PushSent = queuePush
 
 	if err := e.notifications.Create(ctx, n); err != nil {
 		return err
+	}
+	if queuePush {
+		e.push.Add(zone.UserID, n)
 	}
 	if e.metrics != nil {
 		e.metrics.NotificationCreated(ctx, string(n.EventType), n.Sources)

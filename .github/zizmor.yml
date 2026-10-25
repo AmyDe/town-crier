@@ -40,10 +40,10 @@ rules:
     disable: true
 
   # github-env (1 finding, Low confidence): setup-go-infra/action.yml's
-  # `echo "$HOME/.pulumi/bin" >> "$GITHUB_PATH"` — this is GitHub's own
+  # `echo "$RUNNER_TEMP/pulumi" >> "$GITHUB_PATH"` — this is GitHub's own
   # documented mechanism for extending PATH (see "Adding a system path" in
   # GitHub Actions docs), appending a fully static, non-attacker-controllable
-  # string ($HOME is runner-set, not user input). zizmor's own confidence
+  # string ($RUNNER_TEMP is runner-set, not user input). zizmor's own confidence
   # rating agrees (Low). Lives in a composite action this slice doesn't
   # otherwise touch, so — same as template-injection above — the only
   # available waiver mechanism is a config-level disable, not a per-file

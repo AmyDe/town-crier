@@ -52,6 +52,15 @@ func newFakeProfileStore() *fakeProfileStore {
 	return &fakeProfileStore{byID: map[string]*profiles.UserProfile{}}
 }
 
+func (f *fakeProfileStore) RecordActivity(_ context.Context, userID string, at time.Time) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if p, ok := f.byID[userID]; ok {
+		p.LastActiveAt = at
+	}
+	return nil
+}
+
 func (f *fakeProfileStore) Get(_ context.Context, userID string) (*profiles.UserProfile, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -59,13 +68,16 @@ func (f *fakeProfileStore) Get(_ context.Context, userID string) (*profiles.User
 	if !ok {
 		return nil, profiles.ErrNotFound
 	}
-	return p, nil
+	cp := *p
+	return &cp, nil
 }
 
 func (f *fakeProfileStore) Save(_ context.Context, p *profiles.UserProfile) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.byID[p.UserID] = p
+	cp := *p
+	cp.IsNew = false
+	f.byID[p.UserID] = &cp
 	return nil
 }
 
@@ -213,8 +225,11 @@ func (fakeAdminStore) GetByEmail(context.Context, string) (*profiles.UserProfile
 func (fakeAdminStore) GetByOriginalTransactionID(context.Context, string) (*profiles.UserProfile, error) {
 	return nil, profiles.ErrNotFound
 }
-func (fakeAdminStore) ByDigestDay(context.Context, time.Weekday) ([]*profiles.UserProfile, error) {
+func (fakeAdminStore) ByDigestDay(context.Context, time.Weekday, time.Time) ([]*profiles.UserProfile, error) {
 	return nil, nil
+}
+func (fakeAdminStore) MarkWeeklyDigestSent(context.Context, string, time.Time) error {
+	return nil
 }
 func (fakeAdminStore) Dormant(context.Context, time.Time) ([]*profiles.UserProfile, error) {
 	return nil, nil
@@ -248,6 +263,9 @@ func (fakeOfferStore) Get(context.Context, string) (offercodes.OfferCode, error)
 func (fakeOfferStore) Save(context.Context, offercodes.OfferCode) error { return nil }
 func (fakeOfferStore) RedeemWithCAS(context.Context, string, string, time.Time) error {
 	return offercodes.ErrNotFound
+}
+func (fakeOfferStore) RedemptionTime(context.Context, string, string) (time.Time, error) {
+	return time.Time{}, offercodes.ErrNotFound
 }
 func (fakeOfferStore) RedeemedByUserID(context.Context, string) ([]offercodes.RedeemedOfferCode, error) {
 	return nil, nil

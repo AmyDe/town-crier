@@ -67,12 +67,14 @@ struct APINotificationServiceTests {
 
     let removeRequest = try #require(transport.requests.last)
     #expect(removeRequest.httpMethod == "DELETE")
-    #expect(removeRequest.url?.path().contains("stored-token-123") == true)
+    let body = try #require(removeRequest.httpBody)
+    let json = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+    #expect(json?["token"] as? String == "stored-token-123")
   }
 
   // MARK: - Remove Device Token
 
-  @Test("removeDeviceToken sends DELETE /v1/me/device-token/{token}")
+  @Test("removeDeviceToken sends DELETE /v1/me/device-token with token in JSON body")
   func removeDeviceToken_sendsDeleteRequest() async throws {
     let transport = makeTransport()
     // Two responses: register then remove
@@ -86,7 +88,14 @@ struct APINotificationServiceTests {
 
     let request = try #require(transport.requests.last)
     #expect(request.httpMethod == "DELETE")
-    #expect(request.url?.path().contains("v1/me/device-token/token-to-remove") == true)
+    #expect(request.url?.path() == "/v1/me/device-token")
+    #expect(request.url?.query == nil)
+    #expect(request.url?.absoluteString.contains("token-to-remove") == false)
+    #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
+
+    let body = try #require(request.httpBody)
+    let json = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+    #expect(json?["token"] as? String == "token-to-remove")
   }
 
   @Test("removeDeviceToken with no stored token is a no-op")

@@ -320,12 +320,9 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		return err
 	}
 
-	// Azure Database for PostgreSQL — Flexible Server (shared across environments; this single
-	// server hosts both the dev and prod databases long-term). First infra step of the Cosmos →
-	// Postgres + PostGIS migration (memo 0010, epic tc-hpd2 / GH #645). Pre-revenue profile:
-	// Burstable B1ms, single-AZ (HA disabled), public network access (no VNet/delegated subnet),
-	// 7-day non-geo-redundant backups. The dev database, prod database, and the app wiring swap
-	// are handled in later phases — this block provisions only the server itself.
+	// Azure Database for PostgreSQL — Flexible Server, shared by the dev and prod databases.
+	// Burstable B1ms, single-AZ, public network access, 7-day non-geo-redundant backups.
+	// Protect stops Pulumi from deleting or replacing the server, which would drop both databases.
 	//
 	// Admin password is generated and held as a Pulumi secret. OverrideSpecial restricts the
 	// special characters to a URL-safe set so the value drops into a postgres:// connection
@@ -386,7 +383,7 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 			TenantId:            pulumi.String(tenantID),
 		},
 		Tags: tags,
-	})
+	}, pulumi.Protect(true))
 	if err != nil {
 		return err
 	}

@@ -1,5 +1,8 @@
 package uk.towncrierapp.presentation.features.applicationlist
 
+import app.cash.turbine.test
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import uk.towncrierapp.domain.applications.ApplicationFilter
@@ -271,4 +274,70 @@ class ApplicationListViewModelTest {
         assertEquals(1, applicationCacheStore.invalidateAllCallCount)
         assertTrue(applicationRepository.applicationsCalls.size > callsBeforeMarkAllRead)
     }
+
+    @Test
+    fun `a slow first page is ignored after a newer filter selection`() =
+        runTest {
+            val stale = aPlanningApplication()
+            val fresh =
+                aPlanningApplication(
+                    id =
+                        uk.towncrierapp.domain.applications
+                            .aPlanningApplicationId(name = "24/0099"),
+                )
+            val gate = CompletableDeferred<Unit>()
+            val applicationRepository = FakePlanningApplicationRepository()
+            applicationRepository.beforeApplications = { call ->
+                if (call.filter == ApplicationFilter.All) {
+                    gate.await()
+                    applicationRepository.applicationsResult = anApplicationPage(listOf(stale))
+                }
+            }
+            applicationRepository.applicationsResult = anApplicationPage(listOf(fresh))
+            val viewModel = makeSut(applicationRepository = applicationRepository)
+            viewModel.load()
+
+            viewModel.uiState.test {
+                viewModel.selectFilter(ApplicationFilter.Unread)
+                gate.complete(Unit)
+
+                val latest = expectMostRecentItem()
+                assertEquals(listOf(fresh.id), latest.applications.map { it.id })
+                assertFalse(latest.isLoading)
+            }
+        }
+
+    @Test
+    fun `a slow next page is not appended after a filter change`() =
+        runTest {
+            val firstPage = List(20) { aPlanningApplication() }
+            val filtered =
+                aPlanningApplication(
+                    id =
+                        uk.towncrierapp.domain.applications
+                            .aPlanningApplicationId(name = "24/0099"),
+                )
+            val gate = CompletableDeferred<Unit>()
+            val applicationRepository = FakePlanningApplicationRepository()
+            applicationRepository.applicationsResult = anApplicationPage(firstPage, nextCursor = "cursor-2")
+            val viewModel = makeSut(applicationRepository = applicationRepository)
+            viewModel.load()
+            applicationRepository.beforeApplications = { call ->
+                if (call.cursor != null) {
+                    gate.await()
+                    applicationRepository.applicationsResult = anApplicationPage(firstPage.take(1))
+                }
+            }
+
+            viewModel.uiState.test {
+                viewModel.onItemVisible(firstPage.size - 1)
+                applicationRepository.applicationsResult = anApplicationPage(listOf(filtered))
+                viewModel.selectFilter(ApplicationFilter.Unread)
+                gate.complete(Unit)
+
+                val latest = expectMostRecentItem()
+                assertEquals(listOf(filtered.id), latest.applications.map { it.id })
+                assertFalse(latest.isLoadingMore)
+            }
+        }
 }

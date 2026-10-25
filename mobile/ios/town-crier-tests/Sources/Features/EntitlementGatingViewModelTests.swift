@@ -15,6 +15,16 @@ struct EntitlementGatingViewModelTests {
     var entitlementGate: Entitlement?
   }
 
+  @Test func handleError_cancellation_leavesErrorAndGateUnchanged() {
+    let sut = TestGatingViewModel()
+
+    sut.handleError(CancellationError())
+    sut.handleError(URLError(.cancelled))
+
+    #expect(sut.error == nil)
+    #expect(sut.entitlementGate == nil)
+  }
+
   // MARK: - insufficientEntitlement sets entitlementGate
 
   @Test func handleError_insufficientEntitlement_setsEntitlementGate() {

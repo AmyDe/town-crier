@@ -148,13 +148,14 @@ struct CompositeNotificationServiceTests {
     let (sut, _, transport, _) = try makeSUT()
     transport.responses = [try makeResponse(), try makeResponse()]
 
-    // Must register first so there's a stored token to remove
     try await sut.registerDeviceToken("token-to-remove")
     try await sut.removeDeviceToken()
 
     let removeRequest = try #require(transport.requests.last)
     #expect(removeRequest.httpMethod == "DELETE")
-    #expect(removeRequest.url?.path().contains("token-to-remove") == true)
+    let body = try #require(removeRequest.httpBody)
+    let json = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+    #expect(json?["token"] as? String == "token-to-remove")
   }
 
   @Test("removeDeviceToken with no prior registration is a no-op")

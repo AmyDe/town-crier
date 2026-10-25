@@ -12,9 +12,14 @@ import (
 
 const tracerName = "github.com/AmyDe/town-crier/api-go/internal/worker"
 
-// cycleBudget is the soft self-cancel for one worker cycle, bounded well under
-// the Container Apps replicaTimeout so the process exits cleanly and flushes telemetry.
-const cycleBudget = 10 * time.Minute
+// Each budget is the soft self-cancel for one worker cycle and must stay at or
+// below 80% of the job's replicaTimeout in infra/environment.go, so the process
+// exits cleanly and flushes telemetry. cycleBudget covers the 600 s jobs.
+const (
+	cycleBudget        = 8 * time.Minute
+	digestBudget       = 8 * time.Minute
+	hourlyDigestBudget = 4 * time.Minute
+)
 
 // seoBudget stays under the seo-catalog job's 1,800 s replicaTimeout.
 const seoBudget = 28 * time.Minute
@@ -83,10 +88,10 @@ func Run(ctx context.Context, mode string, digester DigestRunner, dormant Dorman
 		return 1
 
 	case "digest":
-		return runDigest(ctx, "Digest Cycle", digester, DigestRunner.RunWeekly, logger)
+		return runDigest(ctx, "Digest Cycle", digestBudget, digester, DigestRunner.RunWeekly, logger)
 
 	case "hourly-digest":
-		return runDigest(ctx, "Hourly Digest Cycle", digester, DigestRunner.RunHourly, logger)
+		return runDigest(ctx, "Hourly Digest Cycle", hourlyDigestBudget, digester, DigestRunner.RunHourly, logger)
 
 	case "dormant-cleanup":
 		return runDormant(ctx, dormant, logger)
@@ -129,7 +134,7 @@ func runPoll(ctx context.Context, poller PollRunner, logger *slog.Logger) int {
 
 // runDigest keeps the span names "Digest Cycle" and "Hourly Digest Cycle" so
 // existing App Insights queries keep working.
-func runDigest(ctx context.Context, spanName string, digester DigestRunner, run func(DigestRunner, context.Context) error, logger *slog.Logger) int {
+func runDigest(ctx context.Context, spanName string, budget time.Duration, digester DigestRunner, run func(DigestRunner, context.Context) error, logger *slog.Logger) int {
 	tracer := otel.Tracer(tracerName)
 	ctx, span := tracer.Start(ctx, spanName)
 	defer span.End()
@@ -139,7 +144,7 @@ func runDigest(ctx context.Context, spanName string, digester DigestRunner, run 
 		return 1
 	}
 
-	cycleCtx, cancel := context.WithTimeout(ctx, cycleBudget)
+	cycleCtx, cancel := context.WithTimeout(ctx, budget)
 	defer cancel()
 
 	if err := run(digester, cycleCtx); err != nil {

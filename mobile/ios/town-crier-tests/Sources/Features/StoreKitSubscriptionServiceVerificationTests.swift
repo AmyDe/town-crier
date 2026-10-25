@@ -7,43 +7,63 @@ import TownCrierDomain
 @Suite("StoreKitSubscriptionService — server verification")
 struct StoreKitSubscriptionServiceVerificationTests {
 
-  @Test("reportPurchase POSTs the signed transaction to the verification service")
-  func reportPurchase_postsSignedTransaction() async throws {
+  @Test("reportThenFinish reports the transaction before finishing it")
+  func reportThenFinish_reportsBeforeFinishing() async throws {
     let verifier = SpySubscriptionVerifier()
-    let sut = StoreKitSubscriptionService(verificationService: verifier)
+    let finish = FinishRecorder(verifier: verifier)
 
-    try await sut.reportPurchase(signedTransaction: "header.payload.signature")
+    try await StoreKitSubscriptionService.reportThenFinish(
+      signedTransaction: "header.payload.signature",
+      verificationService: verifier,
+      finish: finish.finish)
 
     #expect(verifier.verifiedTransactions == ["header.payload.signature"])
+    #expect(finish.finishCount == 1)
+    #expect(finish.reportedBeforeFinish)
   }
 
-  @Test("reportPurchase swallows a transient verification failure so the purchase still succeeds")
-  func reportPurchase_swallowsVerificationFailure() async throws {
+  @Test("reportThenFinish leaves the transaction unfinished when the report fails")
+  func reportThenFinish_transientFailure_doesNotFinish() async throws {
     let verifier = SpySubscriptionVerifier()
     verifier.setVerifyResult(.failure(DomainError.networkUnavailable))
-    let sut = StoreKitSubscriptionService(verificationService: verifier)
+    let finish = FinishRecorder(verifier: verifier)
 
-    try await sut.reportPurchase(signedTransaction: "header.payload.signature")
+    try await StoreKitSubscriptionService.reportThenFinish(
+      signedTransaction: "header.payload.signature",
+      verificationService: verifier,
+      finish: finish.finish)
 
     #expect(verifier.verifiedTransactions == ["header.payload.signature"])
+    #expect(finish.finishCount == 0)
   }
 
-  @Test("reportPurchase is a no-op when no verification service is injected")
-  func reportPurchase_noVerifier_isNoOp() async throws {
-    let sut = StoreKitSubscriptionService()
+  @Test("reportThenFinish finishes immediately when no verification service is injected")
+  func reportThenFinish_noVerifier_finishes() async throws {
+    let finish = FinishRecorder(verifier: SpySubscriptionVerifier())
 
-    try await sut.reportPurchase(signedTransaction: "header.payload.signature")
+    try await StoreKitSubscriptionService.reportThenFinish(
+      signedTransaction: "header.payload.signature",
+      verificationService: nil,
+      finish: finish.finish)
+
+    #expect(finish.finishCount == 1)
   }
 
-  @Test("reportPurchase rethrows transactionAlreadyClaimed (tc-k42ce.2, GH#1165)")
-  func reportPurchase_rethrowsTransactionAlreadyClaimed() async {
+  @Test("reportThenFinish finishes then rethrows transactionAlreadyClaimed")
+  func reportThenFinish_alreadyClaimed_finishesAndRethrows() async {
     let verifier = SpySubscriptionVerifier()
     verifier.setVerifyResult(.failure(DomainError.transactionAlreadyClaimed))
-    let sut = StoreKitSubscriptionService(verificationService: verifier)
+    let finish = FinishRecorder(verifier: verifier)
 
     await #expect(throws: DomainError.transactionAlreadyClaimed) {
-      try await sut.reportPurchase(signedTransaction: "header.payload.signature")
+      try await StoreKitSubscriptionService.reportThenFinish(
+        signedTransaction: "header.payload.signature",
+        verificationService: verifier,
+        finish: finish.finish)
     }
+
+    #expect(finish.finishCount == 1)
+    #expect(finish.reportedBeforeFinish)
   }
 
   // MARK: - Restore
@@ -140,5 +160,27 @@ struct StoreKitSubscriptionServiceVerificationTests {
       signedTransactions: ["jws.one"])
 
     #expect(!claimedByAnotherAccount)
+  }
+}
+
+private final class FinishRecorder: @unchecked Sendable {
+  private let lock = NSLock()
+  private let verifier: SpySubscriptionVerifier
+  private var count = 0
+  private var reportedFirst = true
+
+  init(verifier: SpySubscriptionVerifier) {
+    self.verifier = verifier
+  }
+
+  var finishCount: Int { lock.withLock { count } }
+  var reportedBeforeFinish: Bool { lock.withLock { reportedFirst } }
+
+  @Sendable func finish() async {
+    let reported = !verifier.verifiedTransactions.isEmpty
+    lock.withLock {
+      count += 1
+      if !reported { reportedFirst = false }
+    }
   }
 }

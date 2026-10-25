@@ -112,3 +112,27 @@ func TestPostgresStore_CountActiveSince(t *testing.T) {
 		t.Errorf("count = %d, want 2 (pending + sent inside window)", n)
 	}
 }
+
+func TestPostgresStore_RecordFailureIncrementsAttempts(t *testing.T) {
+	store, pool := newPGStore(t)
+	ctx := context.Background()
+	id := insertEvent(t, pool, "a", KindNewApplication, nil, time.Now())
+	other := insertEvent(t, pool, "b", KindNewApplication, nil, time.Now())
+
+	for want := 1; want <= 3; want++ {
+		got, err := store.RecordFailure(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Fatalf("attempts = %d, want %d", got, want)
+		}
+	}
+	var otherAttempts int
+	if err := pool.QueryRow(ctx, "SELECT attempts FROM application_event WHERE id = $1", other).Scan(&otherAttempts); err != nil {
+		t.Fatal(err)
+	}
+	if otherAttempts != 0 {
+		t.Errorf("other attempts = %d", otherAttempts)
+	}
+}

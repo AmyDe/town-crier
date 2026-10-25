@@ -12,6 +12,7 @@ import (
 
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
 	"github.com/AmyDe/town-crier/api-go/internal/offercodes"
+	"github.com/AmyDe/town-crier/api-go/internal/platform"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 	"github.com/AmyDe/town-crier/api-go/internal/subscriptionevents"
 	"github.com/AmyDe/town-crier/api-go/internal/subscriptions"
@@ -97,6 +98,11 @@ type fakeAdminStore struct {
 	order *[]string
 
 	saveErr error
+
+	// version and beforeSave model the store's optimistic version check.
+	version    int
+	saveCalls  int
+	beforeSave func(f *fakeAdminStore)
 }
 
 func (f *fakeAdminStore) PaidCandidates(_ context.Context) ([]*profiles.UserProfile, error) {
@@ -112,16 +118,27 @@ func (f *fakeAdminStore) GetByEmail(_ context.Context, email string) (*profiles.
 	if !ok {
 		return nil, profiles.ErrNotFound
 	}
-	return p, nil
+	cp := *p
+	cp.Version = f.version
+	return &cp, nil
 }
 
 func (f *fakeAdminStore) Save(_ context.Context, p *profiles.UserProfile) error {
+	f.saveCalls++
 	if f.order != nil {
 		*f.order = append(*f.order, "save")
+	}
+	if f.beforeSave != nil {
+		f.beforeSave(f)
 	}
 	if f.saveErr != nil {
 		return f.saveErr
 	}
+	if p.Version != f.version {
+		return platform.ErrCASPreconditionFailed
+	}
+	f.version++
+	p.Version = f.version
 	f.saved = p
 	return nil
 }
@@ -888,5 +905,45 @@ func TestGrant_DoesNotNotifyWhenSaveFails(t *testing.T) {
 	}
 	if len(spy.calls) != 0 {
 		t.Errorf("calls = %d, want 0", len(spy.calls))
+	}
+}
+
+func TestGrant_RetriesAfterVersionConflict(t *testing.T) {
+	t.Parallel()
+
+	store := &fakeAdminStore{byEmail: map[string]*profiles.UserProfile{"u@example.com": freeProfile(t)}}
+	conflicts := 2
+	store.beforeSave = func(f *fakeAdminStore) {
+		if conflicts > 0 {
+			conflicts--
+			f.version++
+		}
+	}
+	h := newTestHandler(store, &fakeNotifCounts{}, &fakeTierSync{}, &fakeOfferStore{}, &fakeGenerator{}, time.Now())
+
+	rec := serve(t, h.grantSubscription, http.MethodPut, "/v1/admin/subscriptions", `{"email":"u@example.com","tier":"Pro"}`)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	if store.saved == nil || store.saved.Tier != profiles.TierPro {
+		t.Errorf("profile not activated: %+v", store.saved)
+	}
+}
+
+func TestGrant_FailsAfterThreeVersionConflicts(t *testing.T) {
+	t.Parallel()
+
+	store := &fakeAdminStore{byEmail: map[string]*profiles.UserProfile{"u@example.com": freeProfile(t)}}
+	store.beforeSave = func(f *fakeAdminStore) { f.version++ }
+	h := newTestHandler(store, &fakeNotifCounts{}, &fakeTierSync{}, &fakeOfferStore{}, &fakeGenerator{}, time.Now())
+
+	rec := serve(t, h.grantSubscription, http.MethodPut, "/v1/admin/subscriptions", `{"email":"u@example.com","tier":"Pro"}`)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", rec.Code)
+	}
+	if store.saveCalls != 3 {
+		t.Errorf("save calls = %d, want 3", store.saveCalls)
 	}
 }

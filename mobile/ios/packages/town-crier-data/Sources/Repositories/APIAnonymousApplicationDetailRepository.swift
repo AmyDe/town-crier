@@ -33,7 +33,7 @@ public final class APIAnonymousApplicationDetailRepository: AnonymousApplication
     } catch let domainError as DomainError {
       throw domainError
     } catch {
-      throw error.toDomainError()
+      throw error.toThrowableDomainError()
     }
     return dto.toDomain()
   }

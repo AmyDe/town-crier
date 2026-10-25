@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
+	"github.com/AmyDe/town-crier/api-go/internal/platform"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 	"github.com/AmyDe/town-crier/api-go/internal/subscriptionevents"
 )
@@ -84,25 +85,54 @@ func (f *fakeCodeStore) RedeemWithCAS(_ context.Context, canonical, userID strin
 	return nil
 }
 
+func (f *fakeCodeStore) RedemptionTime(_ context.Context, canonical, userID string) (time.Time, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, r := range f.redemptions[canonical] {
+		if r.UserID != nil && *r.UserID == userID && r.RedeemedAt != nil {
+			return *r.RedeemedAt, nil
+		}
+	}
+	return time.Time{}, ErrNotFound
+}
+
+// fakeProfileStore models the store's optimistic version check: Get returns a
+// copy carrying the stored version and Save fails when that version is stale.
 type fakeProfileStore struct {
-	profile *profiles.UserProfile
-	getErr  error
-	saveErr error
-	saved   *profiles.UserProfile
+	profile   *profiles.UserProfile
+	getErr    error
+	saveErr   error
+	saved     *profiles.UserProfile
+	version   int
+	saveCalls int
+	// beforeSave runs at the start of each Save, to simulate a concurrent writer.
+	beforeSave func(f *fakeProfileStore)
 }
 
 func (f *fakeProfileStore) Get(_ context.Context, _ string) (*profiles.UserProfile, error) {
 	if f.getErr != nil {
 		return nil, f.getErr
 	}
-	return f.profile, nil
+	cp := *f.profile
+	cp.Version = f.version
+	return &cp, nil
 }
 
 func (f *fakeProfileStore) Save(_ context.Context, p *profiles.UserProfile) error {
+	f.saveCalls++
+	if f.beforeSave != nil {
+		f.beforeSave(f)
+	}
 	if f.saveErr != nil {
 		return f.saveErr
 	}
+	if p.Version != f.version {
+		return platform.ErrCASPreconditionFailed
+	}
+	f.version++
+	p.Version = f.version
 	f.saved = p
+	*f.profile = *p
 	return nil
 }
 
@@ -110,13 +140,14 @@ type fakeTierSync struct {
 	gotUserID string
 	gotTier   string
 	calls     int
+	err       error
 }
 
 func (f *fakeTierSync) UpdateSubscriptionTier(_ context.Context, userID, tier string) error {
 	f.calls++
 	f.gotUserID = userID
 	f.gotTier = tier
-	return nil
+	return f.err
 }
 
 func freeProfile(t *testing.T) *profiles.UserProfile {
@@ -257,11 +288,9 @@ func TestRedeem_AlreadyRedeemed(t *testing.T) {
 	}
 }
 
-// TestRedeem_AlreadyRedeemedByThisUser is the distinct same-user-twice case:
-// the caller already personally redeemed a multi-use code that still has free
-// slots for other users, so the fast-path IsFullyRedeemed check does not
-// catch it — RedeemWithCAS's ErrAlreadyRedeemedByUser must.
-func TestRedeem_AlreadyRedeemedByThisUser(t *testing.T) {
+// TestRedeem_RepeatBySameUserIsIdempotent covers a user repeating a redeem of
+// a multi-use code: the repeat succeeds with the original expiry.
+func TestRedeem_RepeatBySameUserIsIdempotent(t *testing.T) {
 	t.Parallel()
 
 	codes := seededCodeWithCap(t, 3)
@@ -274,13 +303,12 @@ func TestRedeem_AlreadyRedeemedByThisUser(t *testing.T) {
 		t.Fatalf("first redeem status = %d body = %s", first.Code, first.Body.String())
 	}
 
-	// Same user (auth0|u1), same code, second attempt.
-	second := serveRedeem(t, codes, &fakeProfileStore{profile: freeProfile(t)}, auth0, now, `{"code":"ABCDEFGHJKMN"}`)
-	if second.Code != http.StatusConflict {
+	second := serveRedeem(t, codes, profile, auth0, now.Add(24*time.Hour), `{"code":"ABCDEFGHJKMN"}`)
+	if second.Code != http.StatusOK {
 		t.Fatalf("second redeem status = %d body = %s", second.Code, second.Body.String())
 	}
-	if got := second.Body.String(); got != `{"error":"code_already_redeemed","message":"Offer code 'ABCDEFGHJKMN' has already been redeemed."}` {
-		t.Errorf("body = %s", got)
+	if second.Body.String() != first.Body.String() {
+		t.Errorf("second body = %s, want %s", second.Body.String(), first.Body.String())
 	}
 }
 
@@ -471,5 +499,173 @@ func TestRedeem_DoesNotNotifyWhenSaveFails(t *testing.T) {
 	}
 	if len(spy.calls) != 0 {
 		t.Errorf("calls = %d, want 0", len(spy.calls))
+	}
+}
+
+func TestRedeem_RetriesProfileSaveAfterVersionConflict(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
+	profile := &fakeProfileStore{profile: freeProfile(t)}
+	conflicts := 2
+	profile.beforeSave = func(f *fakeProfileStore) {
+		if conflicts > 0 {
+			conflicts--
+			f.version++
+		}
+	}
+	auth0 := &fakeTierSync{}
+
+	rec := serveRedeem(t, seededCode(t), profile, auth0, now, `{"code":"ABCDEFGHJKMN"}`)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	if profile.saved == nil || profile.saved.Tier != profiles.TierPro {
+		t.Errorf("profile not activated: %+v", profile.saved)
+	}
+	if auth0.calls != 1 {
+		t.Errorf("auth0 calls = %d, want 1", auth0.calls)
+	}
+}
+
+func TestRedeem_FailsAfterThreeProfileVersionConflicts(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
+	profile := &fakeProfileStore{profile: freeProfile(t)}
+	profile.beforeSave = func(f *fakeProfileStore) { f.version++ }
+	auth0 := &fakeTierSync{}
+
+	rec := serveRedeem(t, seededCode(t), profile, auth0, now, `{"code":"ABCDEFGHJKMN"}`)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", rec.Code)
+	}
+	if profile.saveCalls != 3 {
+		t.Errorf("save calls = %d, want 3", profile.saveCalls)
+	}
+	if auth0.calls != 0 {
+		t.Errorf("auth0 calls = %d, want 0", auth0.calls)
+	}
+}
+
+func TestRedeem_RetryAfterSaveFailureGrantsSameExpiry(t *testing.T) {
+	t.Parallel()
+	first := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
+	retry := first.Add(48 * time.Hour)
+	codes := seededCode(t)
+	profile := &fakeProfileStore{profile: freeProfile(t), saveErr: errors.New("db down")}
+	spy := &spyNotifier{}
+	auth0 := &fakeTierSync{}
+
+	rec := serveRedeemNotifying(t, codes, profile, auth0, spy, first, `{"code":"ABCDEFGHJKMN"}`, "auth0|u1")
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("first status = %d", rec.Code)
+	}
+
+	profile.saveErr = nil
+	rec = serveRedeemNotifying(t, codes, profile, auth0, spy, retry, `{"code":"ABCDEFGHJKMN"}`, "auth0|u1")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("retry status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Body.String(); got != `{"tier":"Pro","expiresAt":"2026-07-10T12:00:00+00:00"}` {
+		t.Errorf("body = %s", got)
+	}
+	if profile.saved == nil || profile.saved.Tier != profiles.TierPro {
+		t.Errorf("profile not activated: %+v", profile.saved)
+	}
+	if auth0.calls != 1 || auth0.gotTier != "Pro" {
+		t.Errorf("auth0 sync wrong: %+v", auth0)
+	}
+	if len(spy.calls) != 0 {
+		t.Errorf("notifier calls = %d, want 0", len(spy.calls))
+	}
+}
+
+func TestRedeem_RetryWhenGrantAlreadyAppliedDoesNotExtend(t *testing.T) {
+	t.Parallel()
+	first := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
+	codes := seededCode(t)
+	profile := &fakeProfileStore{profile: freeProfile(t)}
+	auth0 := &fakeTierSync{err: errors.New("auth0 down")}
+
+	rec := serveRedeem(t, codes, profile, auth0, first, `{"code":"ABCDEFGHJKMN"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("first status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	savesAfterFirst := profile.saveCalls
+
+	auth0.err = nil
+	rec = serveRedeem(t, codes, profile, auth0, first.Add(72*time.Hour), `{"code":"ABCDEFGHJKMN"}`)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("retry status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Body.String(); got != `{"tier":"Pro","expiresAt":"2026-07-10T12:00:00+00:00"}` {
+		t.Errorf("body = %s", got)
+	}
+	if profile.saveCalls != savesAfterFirst {
+		t.Errorf("save calls = %d, want %d", profile.saveCalls, savesAfterFirst)
+	}
+	if auth0.calls != 2 || auth0.gotTier != "Pro" {
+		t.Errorf("auth0 sync wrong: %+v", auth0)
+	}
+}
+
+func TestRedeem_Auth0FailureStillSucceeds(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
+	profile := &fakeProfileStore{profile: freeProfile(t)}
+
+	rec := serveRedeem(t, seededCode(t), profile, &fakeTierSync{err: errors.New("auth0 down")}, now, `{"code":"ABCDEFGHJKMN"}`)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Body.String(); got != `{"tier":"Pro","expiresAt":"2026-07-10T12:00:00+00:00"}` {
+		t.Errorf("body = %s", got)
+	}
+	if profile.saved == nil || profile.saved.Tier != profiles.TierPro {
+		t.Errorf("profile not activated: %+v", profile.saved)
+	}
+}
+
+func TestRedeem_OtherUserRetryOfUsedCodeStaysConflict(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
+	codes := seededCode(t)
+	if rec := serveRedeem(t, codes, &fakeProfileStore{profile: freeProfile(t)}, &fakeTierSync{}, now, `{"code":"ABCDEFGHJKMN"}`); rec.Code != http.StatusOK {
+		t.Fatalf("first status = %d", rec.Code)
+	}
+	other := &fakeProfileStore{profile: freeProfile(t)}
+
+	rec := serveRedeemAs(t, codes, other, &fakeTierSync{}, now, `{"code":"ABCDEFGHJKMN"}`, "auth0|u2")
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	if other.saveCalls != 0 {
+		t.Errorf("save calls = %d, want 0", other.saveCalls)
+	}
+}
+
+func TestRedeem_RetryDoesNotShortenLongerExpiry(t *testing.T) {
+	t.Parallel()
+	first := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
+	codes := seededCodeWithCap(t, 3)
+	profile := &fakeProfileStore{profile: freeProfile(t)}
+	if rec := serveRedeem(t, codes, profile, &fakeTierSync{}, first, `{"code":"ABCDEFGHJKMN"}`); rec.Code != http.StatusOK {
+		t.Fatalf("first status = %d", rec.Code)
+	}
+	longer := first.AddDate(1, 0, 0)
+	profile.profile.ActivateSubscription(profiles.TierPro, longer)
+
+	rec := serveRedeem(t, codes, profile, &fakeTierSync{}, first.Add(time.Hour), `{"code":"ABCDEFGHJKMN"}`)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	if got := profile.profile.SubscriptionExpiry; got == nil || !got.Equal(longer) {
+		t.Errorf("expiry = %v, want %v", got, longer)
 	}
 }

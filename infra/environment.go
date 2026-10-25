@@ -360,7 +360,7 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 			ServerName:        postgresServerName,
 			Charset:           pulumi.String("UTF8"),
 			Collation:         pulumi.String("en_US.utf8"),
-		})
+		}, pulumi.Protect(true))
 		if err != nil {
 			return err
 		}

@@ -1,8 +1,8 @@
 # Resolves a cd-prod tag push to an IMMUTABLE DIGEST (registry/repo@sha256:…),
-# never a mutable tag. Prefers the exact tag-SHA image; falls back to the
-# current :latest digest; fails if neither exists. Deploying by digest means
-# a code change always rolls a new revision (digest differs) and an
-# unchanged image is a legitimate no-op — the silent ":latest string ==
+# never a mutable tag. Prefers the exact tag-SHA image; otherwise uses the
+# nearest ancestor commit (within 50) that has an image; fails if none does.
+# Deploying by digest means a code change always rolls a new revision (digest
+# differs) and an unchanged image is a legitimate no-op — the silent ":latest string ==
 # :latest string" no-op that froze prod becomes impossible.
 #
 # Shared by cd-prod.yml's `api` and `worker` jobs (issue #835 slice 5) — the
@@ -31,7 +31,7 @@
 # hasn't been checked out yet, so checkout can't live as this composite's
 # own first step.
 name: Resolve Release Image
-description: Resolve a cd-prod tag push to an immutable ACR image digest, falling back to :latest
+description: Resolve a cd-prod tag push to an immutable ACR image digest, falling back to the nearest ancestor commit with an image
 
 inputs:
   repo-name:
@@ -75,34 +75,9 @@ runs:
     - name: Resolve ${{ inputs.display-name }} image digest
       id: resolve-image
       shell: bash
-      run: |
-        ACR_SERVER="${{ inputs.acr-login-server }}"
-        ACR_NAME="${ACR_SERVER%.azurecr.io}"
-        REPO="${{ inputs.repo-name }}"
-        SHA="${{ steps.resolve.outputs.sha }}"
-
-        digest_for_tag() {
-          az acr repository show \
-            --name "$ACR_NAME" \
-            --image "${REPO}:$1" \
-            --query digest -o tsv 2>/dev/null
-        }
-
-        # `|| true`: GitHub `run:` steps use `bash -e`, so a failed command
-        # substitution aborts the step. Without it, a missing SHA-tagged image
-        # (e.g. a tag whose commit didn't rebuild this image — an iOS-only or
-        # CI-only merge) kills the job before the `latest` fallback can run.
-        DIGEST="$(digest_for_tag "$SHA" || true)"
-        if [ -n "$DIGEST" ]; then
-          echo "Using exact image for SHA $SHA ($DIGEST)"
-        else
-          DIGEST="$(digest_for_tag latest || true)"
-          if [ -n "$DIGEST" ]; then
-            echo "No image for SHA $SHA — falling back to latest ($DIGEST)"
-          else
-            echo "::error::No ${{ inputs.display-name }} image found (tried SHA $SHA and latest)"
-            exit 1
-          fi
-        fi
-
-        echo "image=${ACR_SERVER}/${REPO}@${DIGEST}" >> "$GITHUB_OUTPUT"
+      env:
+        ACR_SERVER: ${{ inputs.acr-login-server }}
+        REPO: ${{ inputs.repo-name }}
+        DISPLAY_NAME: ${{ inputs.display-name }}
+        TAG_SHA: ${{ steps.resolve.outputs.sha }}
+      run: bash "$GITHUB_WORKSPACE/.github/scripts/resolve-ancestor-image.sh"

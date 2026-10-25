@@ -43,6 +43,20 @@ var (
 // a caller that resumes at the same index would loop forever.
 var ErrZeroProgress = errors.New("planit: zero-progress response (0 records, from < total)")
 
+// ResponseError wraps a failure to read or decode a response that PlanIt did
+// send. StatusCode is the HTTP status received, so callers can tell it apart
+// from a transport failure or timeout.
+type ResponseError struct {
+	StatusCode int
+	Err        error
+}
+
+func (e *ResponseError) Error() string {
+	return fmt.Sprintf("planit response (status %d): %v", e.StatusCode, e.Err)
+}
+
+func (e *ResponseError) Unwrap() error { return e.Err }
+
 // RateLimitError is returned when PlanIt responds 429. RetryAfter carries the
 // parsed Retry-After hint, or nil when the header was absent or malformed.
 type RateLimitError struct {
@@ -98,12 +112,27 @@ type Options struct {
 type FetchPageResult struct {
 	// From is the record offset PlanIt's response reports it started at (the
 	// response's own "from" field), falling back to the requested startIndex
-	// when the response omits it. Callers use From + len(Applications) as the
+	// when the response omits it. Callers use From + Read() as the
 	// next fetch's startIndex, so a truncated page still advances correctly.
 	From         int
 	Applications []applications.PlanningApplication
+	// Skipped lists the records of the page that failed to map. They are not
+	// in Applications but PlanIt counted them, so callers must advance by Read.
+	Skipped      []SkippedRecord
 	Total        *int
 	HasMorePages bool
+}
+
+// SkippedRecord identifies a record dropped from a page: its UID and the name
+// of the field that failed to map.
+type SkippedRecord struct {
+	UID   string
+	Field string
+}
+
+// Read is the number of records PlanIt returned on the page, mapped or not.
+func (r FetchPageResult) Read() int {
+	return len(r.Applications) + len(r.Skipped)
 }
 
 // Client is the PlanIt HTTP client. It makes one request per call and never
@@ -158,19 +187,21 @@ func decodePage(resp *http.Response, authorityIDForMetrics, startIndex, pageSize
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
-		return FetchPageResult{}, fmt.Errorf("read planit index %d body: %w", startIndex, err)
+		return FetchPageResult{}, &ResponseError{StatusCode: resp.StatusCode, Err: fmt.Errorf("read planit index %d body: %w", startIndex, err)}
 	}
 
 	var parsed planItResponse
 	if err := json.Unmarshal(body, &parsed); err != nil {
-		return FetchPageResult{}, fmt.Errorf("decode planit index %d: %w", startIndex, err)
+		return FetchPageResult{}, &ResponseError{StatusCode: resp.StatusCode, Err: fmt.Errorf("decode planit index %d: %w", startIndex, err)}
 	}
 
 	apps := make([]applications.PlanningApplication, 0, len(parsed.Records))
+	var skipped []SkippedRecord
 	for _, rec := range parsed.Records {
 		app, err := rec.toDomain()
 		if err != nil {
-			return FetchPageResult{}, fmt.Errorf("map planit record %q: %w", rec.UID, err)
+			skipped = append(skipped, SkippedRecord{UID: rec.UID, Field: failingField(err)})
+			continue
 		}
 		apps = append(apps, app)
 	}
@@ -182,18 +213,20 @@ func decodePage(resp *http.Response, authorityIDForMetrics, startIndex, pageSize
 
 	// No records while from < total would livelock a caller that resumes at the
 	// same index, so it is a hard error.
-	if len(apps) == 0 && parsed.Total != nil && from < *parsed.Total {
-		return FetchPageResult{}, fmt.Errorf("planit fetch (authority %d) at index %d: %w", authorityIDForMetrics, startIndex, ErrZeroProgress)
+	read := len(apps) + len(skipped)
+	if read == 0 && parsed.Total != nil && from < *parsed.Total {
+		return FetchPageResult{}, &ResponseError{StatusCode: resp.StatusCode, Err: fmt.Errorf("planit fetch (authority %d) at index %d: %w", authorityIDForMetrics, startIndex, ErrZeroProgress)}
 	}
 
-	hasMorePages := len(apps) >= pageSize
+	hasMorePages := read >= pageSize
 	if parsed.Total != nil {
-		hasMorePages = from+len(apps) < *parsed.Total
+		hasMorePages = from+read < *parsed.Total
 	}
 
 	return FetchPageResult{
 		From:         from,
 		Applications: apps,
+		Skipped:      skipped,
 		Total:        parsed.Total,
 		HasMorePages: hasMorePages,
 	}, nil
@@ -221,4 +254,12 @@ func classify(resp *http.Response) error {
 // tests without weakening production HTTPS enforcement.
 func isLocalhost(host string) bool {
 	return host == "localhost" || host == "127.0.0.1" || host == "::1"
+}
+
+func failingField(err error) string {
+	var fe *fieldError
+	if errors.As(err, &fe) {
+		return fe.Field
+	}
+	return "unknown"
 }

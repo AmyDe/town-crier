@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -42,31 +43,40 @@ func (h *handler) grantSubscription(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	profile, err := h.profiles.GetByEmail(r.Context(), req.Email)
+	var (
+		profile *profiles.UserProfile
+		before  subscriptionevents.Snapshot
+		stage   string
+	)
+	err = profiles.RetryOnConflict(r.Context(), profiles.DefaultSaveAttempts, func(ctx context.Context) error {
+		stage = "load profile by email"
+		current, err := h.profiles.GetByEmail(ctx, req.Email)
+		if err != nil {
+			return err
+		}
+		before = subscriptionevents.SnapshotOf(current)
+		if tier == profiles.TierFree {
+			current.ExpireSubscription()
+		} else {
+			current.ActivateSubscription(tier, farFutureExpiry)
+		}
+		profile = current
+
+		// Sync Auth0 before writing Postgres: with no transaction, this order means a
+		// failed sync leaves no committed tier change behind.
+		stage = "sync auth0 tier"
+		if err := h.auth0.UpdateSubscriptionTier(ctx, current.UserID, current.Tier.String()); err != nil {
+			return err
+		}
+		stage = "save profile"
+		return h.profiles.Save(ctx, current)
+	})
 	if err != nil {
 		if errors.Is(err, profiles.ErrNotFound) {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		h.serverError(w, r, "load profile by email", err)
-		return
-	}
-
-	before := subscriptionevents.SnapshotOf(profile)
-	if tier == profiles.TierFree {
-		profile.ExpireSubscription()
-	} else {
-		profile.ActivateSubscription(tier, farFutureExpiry)
-	}
-
-	// Sync Auth0 before writing Postgres: with no transaction, this order means a
-	// failed sync leaves no committed tier change behind.
-	if err := h.auth0.UpdateSubscriptionTier(r.Context(), profile.UserID, profile.Tier.String()); err != nil {
-		h.serverError(w, r, "sync auth0 tier", err)
-		return
-	}
-	if err := h.profiles.Save(r.Context(), profile); err != nil {
-		h.serverError(w, r, "save profile", err)
+		h.serverError(w, r, stage, err)
 		return
 	}
 	if h.notifier != nil {

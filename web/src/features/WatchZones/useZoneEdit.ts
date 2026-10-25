@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import type { WatchZoneSummary, UpdateWatchZoneRequest, WatchZoneBoundary } from '../../domain/types';
 import type { WatchZoneRepository } from '../../domain/ports/watch-zone-repository';
 import type { ShapeMode } from './ShapeModeToggle';
-import { extractErrorMessage } from '../../utils/extractErrorMessage';
+import { watchZoneErrorMessage } from './watchZoneErrorMessage';
 
 const MISSING_BOUNDARY_ERROR =
   'Draw a shape with at least 3 points, then close it by clicking the first point again.';
@@ -98,7 +98,7 @@ export function useZoneEdit(
       setIsSaving(false);
     } catch (err: unknown) {
       setIsSaving(false);
-      setError(extractErrorMessage(err));
+      setError(watchZoneErrorMessage(err));
     }
   }, [
     isDirty,

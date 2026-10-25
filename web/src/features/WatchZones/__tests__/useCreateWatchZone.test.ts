@@ -2,6 +2,7 @@ import { renderHook, act } from '@testing-library/react';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useCreateWatchZone } from '../useCreateWatchZone';
 import { SpyWatchZoneRepository } from './spies/spy-watch-zone-repository';
+import { ApiRequestError } from '../../../api/client';
 import { aWatchZone, aWatchZoneBoundary } from './fixtures/watch-zone.fixtures';
 
 describe('useCreateWatchZone', () => {
@@ -81,6 +82,42 @@ describe('useCreateWatchZone', () => {
       radiusMetres: 2000,
     });
     expect(navigatedTo).toBe('/watch-zones');
+  });
+
+  it('shows mapped copy when the server rejects a duplicate zone name', async () => {
+    spy.createError = new ApiRequestError(
+      409,
+      'You already have a watch zone with this name.',
+      'zone_name_taken',
+    );
+    const { result } = renderHook(() => useCreateWatchZone(spy, navigate));
+
+    act(() => {
+      result.current.setGeocode({ latitude: 52.2053, longitude: 0.1218 }, 'CB1 2AD');
+      result.current.setName('Home');
+    });
+    await act(async () => {
+      await result.current.save();
+    });
+
+    expect(result.current.error).toBe(
+      'You already have a watch zone with that name. Pick a different one.',
+    );
+  });
+
+  it('falls back to the server message for an unknown code', async () => {
+    spy.createError = new ApiRequestError(400, 'Something specific.', 'brand_new_code');
+    const { result } = renderHook(() => useCreateWatchZone(spy, navigate));
+
+    act(() => {
+      result.current.setGeocode({ latitude: 52.2053, longitude: 0.1218 }, 'CB1 2AD');
+      result.current.setName('Home');
+    });
+    await act(async () => {
+      await result.current.save();
+    });
+
+    expect(result.current.error).toBe('Something specific.');
   });
 
   it('sets error when save fails', async () => {

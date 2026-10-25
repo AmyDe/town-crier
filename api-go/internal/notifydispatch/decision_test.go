@@ -2,6 +2,7 @@ package notifydispatch
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -396,5 +397,24 @@ func TestDecisionDispatcher_NoCoords_OnlySavedFanOut(t *testing.T) {
 	}
 	if len(notifs.created) != 1 || notifs.created[0].UserID != "auth0|bob" {
 		t.Errorf("expected only the saved holder notified, got %+v", notifs.created)
+	}
+}
+
+func TestDecisionDispatcher_CreateFails_QueuesNoPush(t *testing.T) {
+	t.Parallel()
+	zone := testZoneAt(t, "zone-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+	zones := &fakeZones{zones: []watchzones.WatchZone{zone}}
+	profs := &fakeProfiles{byID: map[string]*profiles.UserProfile{
+		"auth0|alice": proWithZonePrefs(t, true),
+	}}
+	d, notifs, queue := newDecisionHarness(t, zones, &fakeSaved{}, profs)
+	notifs.createErr = errors.New("create failed")
+	app := decisionApp(t, "Permitted", coord(51.5), coord(-0.1))
+
+	if err := d.Dispatch(context.Background(), app); !errors.Is(err, notifs.createErr) {
+		t.Fatalf("Dispatch error: got %v, want %v", err, notifs.createErr)
+	}
+	if len(queue.queued) != 0 {
+		t.Errorf("a failed Create must queue no push, got %d", len(queue.queued))
 	}
 }

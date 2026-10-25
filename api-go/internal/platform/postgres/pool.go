@@ -104,6 +104,13 @@ func WithStatementGuards(statementTimeout, checkInterval time.Duration) PoolOpti
 	}
 }
 
+// WithMaxConns sets the maximum number of connections the pool opens.
+func WithMaxConns(n int32) PoolOption {
+	return func(cfg *pgxpool.Config) {
+		cfg.MaxConns = n
+	}
+}
+
 func applyOptions(cfg *pgxpool.Config, opts []PoolOption) {
 	for _, opt := range opts {
 		opt(cfg)

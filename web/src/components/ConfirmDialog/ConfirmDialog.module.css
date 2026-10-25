@@ -1,21 +1,17 @@
-.overlay {
-  position: fixed;
-  inset: 0;
-  background: var(--tc-overlay);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-  padding: var(--tc-space-md);
-}
-
 .dialog {
   background: var(--tc-surface-elevated);
+  border: none;
+  margin: auto;
   border-radius: var(--tc-radius-lg);
   padding: var(--tc-space-lg);
   max-width: 400px;
-  width: 100%;
+  width: calc(100% - 2 * var(--tc-space-md));
   box-shadow: var(--tc-shadow-elevated);
+  color: var(--tc-text-primary);
+}
+
+.dialog::backdrop {
+  background: var(--tc-overlay);
 }
 
 .title {

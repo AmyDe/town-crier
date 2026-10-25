@@ -150,3 +150,46 @@ func TestHandler_Remove(t *testing.T) {
 		t.Errorf("repeat delete status = %d, want 204", rec.Code)
 	}
 }
+
+func TestHandler_RemoveByBody(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		body       string
+		wantStatus int
+		wantGone   bool
+	}{
+		{"removes registration", `{"token":"tok-1"}`, http.StatusNoContent, true},
+		{"absent token is idempotent", `{"token":"tok-other"}`, http.StatusNoContent, false},
+		{"malformed body", `{`, http.StatusBadRequest, false},
+		{"blank token", `{"token":""}`, http.StatusBadRequest, false},
+		{"oversized body", `{"token":"` + strings.Repeat("a", 2<<20) + `"}`, http.StatusBadRequest, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			store := newFakeRegStore()
+			store.regs["auth0|dev1|tok-1"] = DeviceRegistration{UserID: "auth0|dev1", Token: "tok-1"}
+
+			rec := doReq(t, testMux(t, store, time.Now()), http.MethodDelete, "/v1/me/device-token", tt.body)
+			if rec.Code != tt.wantStatus {
+				t.Fatalf("status = %d, want %d", rec.Code, tt.wantStatus)
+			}
+			if _, present := store.regs["auth0|dev1|tok-1"]; present == tt.wantGone {
+				t.Errorf("registration present = %v, want %v", present, !tt.wantGone)
+			}
+		})
+	}
+}
+
+func TestHandler_RemoveByBody_StoreError(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeRegStore()
+	store.delErr = errors.New("db down")
+	rec := doReq(t, testMux(t, store, time.Now()), http.MethodDelete, "/v1/me/device-token", `{"token":"tok-1"}`)
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", rec.Code)
+	}
+}

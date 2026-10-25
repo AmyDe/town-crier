@@ -10,16 +10,21 @@ import (
 // activity is persisted at most once per 24h to avoid an upsert per request.
 const activityWriteDedupeWindow = 24 * time.Hour
 
+// activityStore is the slice of the profile store the recorder uses.
+type activityStore interface {
+	Get(ctx context.Context, userID string) (*UserProfile, error)
+	RecordActivity(ctx context.Context, userID string, at time.Time) error
+}
+
 // ActivityRecorder updates a profile's LastActiveAt, deduping writes within 24h.
-// It adapts the profile store to the middleware's activityRecorder interface:
-// read the profile, skip when it was active within the window, otherwise advance
-// and save. An unknown user is a no-op (registration is POST /v1/me only).
+// It writes only the activity columns, so it cannot overwrite other fields. An
+// unknown user is a no-op (registration is POST /v1/me only).
 type ActivityRecorder struct {
-	store profileStore
+	store activityStore
 }
 
 // NewActivityRecorder builds the recorder over the given profile store.
-func NewActivityRecorder(store profileStore) *ActivityRecorder {
+func NewActivityRecorder(store activityStore) *ActivityRecorder {
 	return &ActivityRecorder{store: store}
 }
 
@@ -36,8 +41,7 @@ func (r *ActivityRecorder) RecordActivity(ctx context.Context, userID string, no
 	if now.Sub(profile.LastActiveAt) < activityWriteDedupeWindow {
 		return nil
 	}
-	profile.RecordActivity(now)
-	return r.store.Save(ctx, profile)
+	return r.store.RecordActivity(ctx, userID, now)
 }
 
 // TierLookup answers the rate-limiter's paid/free question from the stored

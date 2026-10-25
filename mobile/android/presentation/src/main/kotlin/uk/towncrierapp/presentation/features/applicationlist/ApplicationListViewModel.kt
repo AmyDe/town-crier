@@ -3,6 +3,7 @@ package uk.towncrierapp.presentation.features.applicationlist
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -39,43 +40,56 @@ public class ApplicationListViewModel(
     // fetchFirstPage() directly and are unaffected by this guard, so their
     // explicit refresh behaviour (tc-cnme) is unchanged.
     private var hasLoadedSuccessfully = false
+    private var fetchJob: Job? = null
+    private var loadMoreJob: Job? = null
 
     public fun load() {
         if (hasLoadedSuccessfully) return
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null) }
-            try {
-                val zones = watchZoneRepository.zones()
-                val persistedZoneId = preferencesStore.readLastSelectedZoneId()
-                val selected = zones.firstOrNull { it.id == persistedZoneId }?.id ?: zones.firstOrNull()?.id
-                val sort = preferencesStore.readSort() ?: ApplicationSortOrder.DEFAULT
-                _uiState.update { it.copy(zones = zones, sort = sort, selectedZoneId = selected) }
-                hasLoadedSuccessfully = true
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: DomainError) {
-                _uiState.update { it.copy(isLoading = false, error = e) }
-                return@launch
+        fetchJob?.cancel()
+        fetchJob =
+            viewModelScope.launch {
+                _uiState.update { it.copy(isLoading = true, error = null) }
+                try {
+                    val zones = watchZoneRepository.zones()
+                    val persistedZoneId = preferencesStore.readLastSelectedZoneId()
+                    val selected = zones.firstOrNull { it.id == persistedZoneId }?.id ?: zones.firstOrNull()?.id
+                    val sort = preferencesStore.readSort() ?: ApplicationSortOrder.DEFAULT
+                    _uiState.update { it.copy(zones = zones, sort = sort, selectedZoneId = selected) }
+                    hasLoadedSuccessfully = true
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: DomainError) {
+                    _uiState.update { it.copy(isLoading = false, error = e) }
+                    return@launch
+                }
+                fetchPage()
             }
-            fetchFirstPage()
-        }
     }
 
     public fun selectZone(zoneId: WatchZoneId) {
         viewModelScope.launch { preferencesStore.writeLastSelectedZoneId(zoneId) }
-        _uiState.update { it.copy(selectedZoneId = zoneId, applications = emptyList(), nextCursor = null) }
+        _uiState.update {
+            it.copy(selectedZoneId = zoneId, applications = emptyList(), nextCursor = null, isLoadingMore = false)
+        }
         fetchFirstPage()
     }
 
     public fun selectSort(sort: ApplicationSortOrder) {
         viewModelScope.launch { preferencesStore.writeSort(sort) }
-        _uiState.update { it.copy(sort = sort, applications = emptyList(), nextCursor = null) }
+        _uiState.update { it.copy(sort = sort, applications = emptyList(), nextCursor = null, isLoadingMore = false) }
         fetchFirstPage()
     }
 
     /** Sets the active chip. [ApplicationFilter]'s shape makes status/unread mutual exclusivity automatic — this always replaces the whole filter. */
     public fun selectFilter(filter: ApplicationFilter) {
-        _uiState.update { it.copy(filter = filter, applications = emptyList(), nextCursor = null) }
+        _uiState.update {
+            it.copy(
+                filter = filter,
+                applications = emptyList(),
+                nextCursor = null,
+                isLoadingMore = false,
+            )
+        }
         fetchFirstPage()
     }
 
@@ -129,28 +143,32 @@ public class ApplicationListViewModel(
     }
 
     private fun fetchFirstPage() {
+        fetchJob?.cancel()
+        loadMoreJob?.cancel()
+        fetchJob = viewModelScope.launch { fetchPage() }
+    }
+
+    private suspend fun fetchPage() {
         val zoneId = _uiState.value.selectedZoneId
         if (zoneId == null) {
             _uiState.update { it.copy(isLoading = false) }
             return
         }
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null) }
-            try {
-                val state = _uiState.value
-                val page = applicationRepository.applications(zoneId, state.sort, state.filter)
-                _uiState.update {
-                    it.copy(
-                        applications = page.applications,
-                        nextCursor = page.nextCursor,
-                        isLoading = false,
-                    )
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: DomainError) {
-                _uiState.update { it.copy(isLoading = false, error = e) }
+        _uiState.update { it.copy(isLoading = true, error = null) }
+        try {
+            val state = _uiState.value
+            val page = applicationRepository.applications(zoneId, state.sort, state.filter)
+            _uiState.update {
+                it.copy(
+                    applications = page.applications,
+                    nextCursor = page.nextCursor,
+                    isLoading = false,
+                )
             }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: DomainError) {
+            _uiState.update { it.copy(isLoading = false, error = e) }
         }
     }
 
@@ -158,26 +176,35 @@ public class ApplicationListViewModel(
         val state = _uiState.value
         val zoneId = state.selectedZoneId ?: return
         val cursor = state.nextCursor ?: return
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoadingMore = true) }
-            try {
-                val page = applicationRepository.applications(zoneId, state.sort, state.filter, cursor)
-                _uiState.update {
-                    it.copy(
-                        applications = it.applications + page.applications,
-                        nextCursor = page.nextCursor,
-                        isLoadingMore = false,
-                    )
+        loadMoreJob?.cancel()
+        loadMoreJob =
+            viewModelScope.launch {
+                _uiState.update { it.copy(isLoadingMore = true) }
+                try {
+                    val page = applicationRepository.applications(zoneId, state.sort, state.filter, cursor)
+                    _uiState.update {
+                        if (it.isSameSelection(state)) {
+                            it.copy(
+                                applications = it.applications + page.applications,
+                                nextCursor = page.nextCursor,
+                                isLoadingMore = false,
+                            )
+                        } else {
+                            it
+                        }
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: DomainError) {
+                    _uiState.update { it.copy(isLoadingMore = false, error = e) }
                 }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: DomainError) {
-                _uiState.update { it.copy(isLoadingMore = false, error = e) }
             }
-        }
     }
 
     public companion object {
         public const val PREFETCH_THRESHOLD: Int = 10
     }
 }
+
+private fun ApplicationListUiState.isSameSelection(other: ApplicationListUiState): Boolean =
+    selectedZoneId == other.selectedZoneId && sort == other.sort && filter == other.filter

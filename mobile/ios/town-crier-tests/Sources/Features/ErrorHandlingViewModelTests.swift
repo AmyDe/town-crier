@@ -32,6 +32,24 @@ struct ErrorHandlingViewModelTests {
     #expect(sut.error == .sessionExpired)
   }
 
+  // MARK: - Cancellation
+
+  @Test func handleError_withCancellationError_leavesErrorUnchanged() {
+    let sut = TestViewModel()
+
+    sut.handleError(CancellationError())
+
+    #expect(sut.error == nil)
+  }
+
+  @Test func handleError_withURLErrorCancelled_leavesErrorUnchanged() {
+    let sut = TestViewModel()
+
+    sut.handleError(URLError(.cancelled))
+
+    #expect(sut.error == nil)
+  }
+
   // MARK: - handleError with non-DomainError (default fallback)
 
   @Test func handleError_withGenericError_usesUnexpectedFallback() {

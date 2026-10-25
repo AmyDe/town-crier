@@ -26,13 +26,14 @@ func date(m time.Month, d int) *time.Time {
 }
 
 type fakeStore struct {
-	events []Event
-	status map[int64]string
-	err    error
+	events   []Event
+	status   map[int64]string
+	attempts map[int64]int
+	err      error
 }
 
 func newFakeStore(events ...Event) *fakeStore {
-	s := &fakeStore{events: events, status: map[int64]string{}}
+	s := &fakeStore{events: events, status: map[int64]string{}, attempts: map[int64]int{}}
 	for _, e := range events {
 		s.status[e.ID] = StatusPending
 	}
@@ -64,6 +65,11 @@ func (s *fakeStore) MarkSent(_ context.Context, id int64, _ time.Time) error {
 	return nil
 }
 
+func (s *fakeStore) RecordFailure(_ context.Context, id int64) (int, error) {
+	s.attempts[id]++
+	return s.attempts[id], nil
+}
+
 func (s *fakeStore) CountActiveSince(_ context.Context, since time.Time) (int, error) {
 	n := 0
 	for _, e := range s.events {
@@ -84,9 +90,11 @@ func (a fakeApps) GetByUID(_ context.Context, uid, _ string) (applications.Plann
 }
 
 type fakeFanOut struct {
-	calls []string
-	times []time.Time
-	err   error
+	calls  []string
+	times  []time.Time
+	err    error
+	failOn map[string]error
+	onCall func()
 }
 
 func (f *fakeFanOut) Dispatch(_ context.Context, app applications.PlanningApplication) error {
@@ -97,6 +105,12 @@ func (f *fakeFanOut) Dispatch(_ context.Context, app applications.PlanningApplic
 func (f *fakeFanOut) EnqueueForApplication(_ context.Context, app applications.PlanningApplication, at time.Time) error {
 	f.calls = append(f.calls, "enqueue:"+app.UID)
 	f.times = append(f.times, at)
+	if f.onCall != nil {
+		f.onCall()
+	}
+	if err, ok := f.failOn[app.UID]; ok {
+		return err
+	}
 	return f.err
 }
 
@@ -323,7 +337,7 @@ func TestDispatch_MissingApplicationMarkedStale(t *testing.T) {
 	}
 }
 
-func TestDispatch_FanOutErrorLeavesEventPending(t *testing.T) {
+func TestDispatch_AllEventsFailingReturnsErrorAndKeepsPending(t *testing.T) {
 	t.Parallel()
 	now := at(12, 0)
 	h := newHarness(now, DefaultConfig(), Event{ID: 1, UID: "a", Kind: KindNewApplication, EventDate: date(6, 15), DetectedAt: now})
@@ -332,8 +346,70 @@ func TestDispatch_FanOutErrorLeavesEventPending(t *testing.T) {
 	if _, err := h.d.Dispatch(context.Background()); !errors.Is(err, boom) {
 		t.Fatalf("err = %v", err)
 	}
-	if h.store.status[1] != StatusPending {
-		t.Errorf("status = %s", h.store.status[1])
+	if h.store.status[1] != StatusPending || h.store.attempts[1] != 1 {
+		t.Errorf("status = %s, attempts = %d", h.store.status[1], h.store.attempts[1])
+	}
+}
+
+func TestDispatch_FailingEventDoesNotBlockLaterEvents(t *testing.T) {
+	t.Parallel()
+	now := at(12, 0)
+	h := newHarness(now, DefaultConfig(),
+		Event{ID: 1, UID: "a", Kind: KindNewApplication, EventDate: date(6, 15), DetectedAt: now.Add(-2 * time.Hour)},
+		Event{ID: 2, UID: "b", Kind: KindNewApplication, EventDate: date(6, 15), DetectedAt: now.Add(-time.Hour)})
+	h.fan.failOn = map[string]error{"a": errors.New("boom")}
+	res, err := h.d.Dispatch(context.Background())
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if res.Sent != 1 || res.Failed != 1 {
+		t.Errorf("res = %+v", res)
+	}
+	if h.store.status[1] != StatusPending || h.store.status[2] != StatusSent {
+		t.Errorf("status = %v", h.store.status)
+	}
+	if h.store.attempts[1] != 1 || h.store.attempts[2] != 0 {
+		t.Errorf("attempts = %v", h.store.attempts)
+	}
+}
+
+func TestDispatch_EventAbandonedAfterFiveAttempts(t *testing.T) {
+	t.Parallel()
+	now := at(12, 0)
+	h := newHarness(now, DefaultConfig(), Event{ID: 1, UID: "a", Kind: KindNewApplication, EventDate: date(6, 15), DetectedAt: now})
+	h.fan.err = errors.New("boom")
+	for i := 1; i <= 4; i++ {
+		if _, err := h.d.Dispatch(context.Background()); err == nil {
+			t.Fatalf("run %d: want error", i)
+		}
+		if h.store.status[1] != StatusPending {
+			t.Fatalf("run %d: status = %s", i, h.store.status[1])
+		}
+	}
+	res, _ := h.d.Dispatch(context.Background())
+	if h.store.status[1] != StatusStale || h.store.attempts[1] != 5 {
+		t.Errorf("status = %s, attempts = %d", h.store.status[1], h.store.attempts[1])
+	}
+	if res.Stale != 1 {
+		t.Errorf("Stale = %d", res.Stale)
+	}
+}
+
+func TestDispatch_CancellationStopsLoopWithoutCountingAttempt(t *testing.T) {
+	t.Parallel()
+	now := at(12, 0)
+	h := newHarness(now, DefaultConfig(),
+		Event{ID: 1, UID: "a", Kind: KindNewApplication, EventDate: date(6, 15), DetectedAt: now.Add(-2 * time.Hour)},
+		Event{ID: 2, UID: "b", Kind: KindNewApplication, EventDate: date(6, 15), DetectedAt: now.Add(-time.Hour)})
+	ctx, cancel := context.WithCancel(context.Background())
+	h.fan.onCall = cancel
+	h.fan.failOn = map[string]error{"a": context.Canceled}
+	_, err := h.d.Dispatch(ctx)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v", err)
+	}
+	if len(h.fan.calls) != 1 || h.store.attempts[1] != 0 || h.store.status[1] != StatusPending {
+		t.Errorf("calls = %v, attempts = %v, status = %v", h.fan.calls, h.store.attempts, h.store.status)
 	}
 }
 

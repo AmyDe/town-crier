@@ -31,10 +31,11 @@ type querier interface {
 //   - the profileStore interface in handler.go (Get/Save/Delete)
 //   - the profileCAS interface in watchzones/handler.go (GetWithETag/UpdateZoneCountWithCAS)
 //   - erasure.ProfileDeleter (Delete)
-//   - middleware adapters NewTierLookup/NewActivityRecorder (Get/Save)
+//   - middleware adapters NewTierLookup/NewActivityRecorder (Get/RecordActivity)
 type Store interface {
 	Get(ctx context.Context, userID string) (*UserProfile, error)
 	Save(ctx context.Context, p *UserProfile) error
+	RecordActivity(ctx context.Context, userID string, at time.Time) error
 	Delete(ctx context.Context, userID string) error
 	GetWithETag(ctx context.Context, userID string) (*UserProfile, string, error)
 	UpdateZoneCountWithCAS(ctx context.Context, userID string, p *UserProfile, etag string) error
@@ -46,7 +47,8 @@ type Store interface {
 type AdminProfileStore interface {
 	GetByEmail(ctx context.Context, email string) (*UserProfile, error)
 	GetByOriginalTransactionID(ctx context.Context, originalTransactionID string) (*UserProfile, error)
-	ByDigestDay(ctx context.Context, day time.Weekday) ([]*UserProfile, error)
+	ByDigestDay(ctx context.Context, day time.Weekday, notSentSince time.Time) ([]*UserProfile, error)
+	MarkWeeklyDigestSent(ctx context.Context, userID string, at time.Time) error
 	Dormant(ctx context.Context, cutoff time.Time) ([]*UserProfile, error)
 	LapsedPaid(ctx context.Context, now time.Time) ([]*UserProfile, error)
 	Save(ctx context.Context, p *UserProfile) error
@@ -63,9 +65,9 @@ var (
 // PostgresStore reads and writes user profiles in the Postgres `users` table.
 // Cross-user scans live in PostgresAdminStore.
 //
-// CAS: the version column is a monotonic optimistic-lock counter.
-// UpdateZoneCountWithCAS issues UPDATE ... WHERE user_id=$1 AND version=$n and
-// increments version on success. Zero rows affected → platform.ErrCASPreconditionFailed.
+// CAS: the version column is a monotonic optimistic-lock counter shared by Save
+// and UpdateZoneCountWithCAS. Both issue UPDATE ... WHERE user_id=$1 AND version=$n
+// and increment version on success. Zero rows affected → platform.ErrCASPreconditionFailed.
 type PostgresStore struct {
 	db querier
 }
@@ -171,6 +173,7 @@ func scanUserRow(row rowScanner) (*UserProfile, int, error) {
 		LastActiveAt:                  lastActiveAt,
 		CreatedAt:                     createdAt,
 		WatchZoneCount:                watchZoneCount,
+		Version:                       version,
 	}
 	return p, version, nil
 }
@@ -225,7 +228,7 @@ func (s *PostgresStore) Get(ctx context.Context, userID string) (*UserProfile, e
 	return p, nil
 }
 
-const pgSaveUserQuery = `
+const pgInsertUserQuery = `
 INSERT INTO users (
 	user_id, email, push_enabled, digest_day,
 	email_digest_enabled, saved_decision_push, saved_decision_email, zone_preferences,
@@ -236,32 +239,47 @@ INSERT INTO users (
 ) VALUES (
 	$1, $2, $3, $4, $5, $6, $7, $8::jsonb,
 	$9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 0
-)
-ON CONFLICT (user_id) DO UPDATE SET
-	email                            = EXCLUDED.email,
-	push_enabled                     = EXCLUDED.push_enabled,
-	digest_day                       = EXCLUDED.digest_day,
-	email_digest_enabled             = EXCLUDED.email_digest_enabled,
-	saved_decision_push              = EXCLUDED.saved_decision_push,
-	saved_decision_email             = EXCLUDED.saved_decision_email,
-	zone_preferences                 = EXCLUDED.zone_preferences,
-	tier                             = EXCLUDED.tier,
-	subscription_expiry              = EXCLUDED.subscription_expiry,
-	original_transaction_id          = EXCLUDED.original_transaction_id,
-	grace_period_expiry              = EXCLUDED.grace_period_expiry,
-	lifetime_tier                    = EXCLUDED.lifetime_tier,
-	lifetime_original_transaction_id = EXCLUDED.lifetime_original_transaction_id,
-	lifetime_purchased_at            = EXCLUDED.lifetime_purchased_at,
-	subscription_product_id          = EXCLUDED.subscription_product_id,
-	subscription_in_trial            = EXCLUDED.subscription_in_trial,
-	last_active_at                   = EXCLUDED.last_active_at,
-	last_active_at_epoch             = EXCLUDED.last_active_at_epoch,
-	watch_zone_count                 = EXCLUDED.watch_zone_count`
+)`
 
-// Save upserts the profile. On conflict (existing user) the version column is
-// deliberately NOT updated — only UpdateZoneCountWithCAS advances the version.
-// A new row starts at version 0 (the column default).
-func (s *PostgresStore) Save(ctx context.Context, p *UserProfile) error {
+const pgUpdateUserQuery = `
+UPDATE users SET
+	email                            = $2,
+	push_enabled                     = $3,
+	digest_day                       = $4,
+	email_digest_enabled             = $5,
+	saved_decision_push              = $6,
+	saved_decision_email             = $7,
+	zone_preferences                 = $8::jsonb,
+	tier                             = $9,
+	subscription_expiry              = $10,
+	original_transaction_id          = $11,
+	grace_period_expiry              = $12,
+	lifetime_tier                    = $13,
+	lifetime_original_transaction_id = $14,
+	lifetime_purchased_at            = $15,
+	subscription_product_id          = $16,
+	subscription_in_trial            = $17,
+	last_active_at                   = $18,
+	last_active_at_epoch             = $19,
+	watch_zone_count                 = $20,
+	version                          = users.version + 1
+WHERE user_id = $1 AND version = $21`
+
+const (
+	pgUniqueViolation          = "23505"
+	pgOriginalTransactionIndex = "users_original_transaction_id_unique"
+)
+
+func isClaimedTransaction(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == pgUniqueViolation &&
+		pgErr.ConstraintName == pgOriginalTransactionIndex
+}
+
+// saveProfile inserts a profile built by NewProfile, or updates a loaded one
+// only while its version is unchanged. A lost version check or a colliding
+// insert returns platform.ErrCASPreconditionFailed.
+func saveProfile(ctx context.Context, db querier, p *UserProfile) error {
 	zonePrefText, err := marshalZonePrefs(p.ZonePreferences)
 	if err != nil {
 		return fmt.Errorf("encode zone_preferences for %q: %w", p.UserID, err)
@@ -269,16 +287,63 @@ func (s *PostgresStore) Save(ctx context.Context, p *UserProfile) error {
 	emailDigest := p.Preferences.EmailDigestEnabled
 	savedPush := p.Preferences.SavedDecisionPush
 	savedEmail := p.Preferences.SavedDecisionEmail
-	_, err = s.db.Exec(ctx, pgSaveUserQuery,
+	args := []any{
 		p.UserID, p.Email, p.Preferences.PushEnabled, int(p.Preferences.DigestDay),
 		&emailDigest, &savedPush, &savedEmail, zonePrefText,
 		p.Tier.String(), p.SubscriptionExpiry, p.OriginalTransactionID, p.GracePeriodExpiry,
 		p.LifetimeTier.String(), p.LifetimeOriginalTransactionID, p.LifetimePurchasedAt, p.SubscriptionProductID,
 		p.SubscriptionInTrial,
 		p.LastActiveAt, p.LastActiveAt.UnixMilli(), p.WatchZoneCount,
-	)
+	}
+
+	if p.IsNew {
+		if _, err := db.Exec(ctx, pgInsertUserQuery, args...); err != nil {
+			if isClaimedTransaction(err) {
+				return fmt.Errorf("insert profile %q: %w", p.UserID, ErrTransactionClaimed)
+			}
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == pgUniqueViolation {
+				return fmt.Errorf("insert profile %q: %w", p.UserID, platform.ErrCASPreconditionFailed)
+			}
+			return fmt.Errorf("insert profile %q: %w", p.UserID, err)
+		}
+		p.IsNew = false
+		p.Version = 0
+		return nil
+	}
+
+	tag, err := db.Exec(ctx, pgUpdateUserQuery, append(args, p.Version)...)
 	if err != nil {
-		return fmt.Errorf("upsert profile %q: %w", p.UserID, err)
+		if isClaimedTransaction(err) {
+			return fmt.Errorf("update profile %q: %w", p.UserID, ErrTransactionClaimed)
+		}
+		return fmt.Errorf("update profile %q: %w", p.UserID, err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("update profile %q: %w", p.UserID, platform.ErrCASPreconditionFailed)
+	}
+	p.Version++
+	return nil
+}
+
+// Save inserts a new profile at version 0 or updates a loaded one when its
+// Version still matches the stored row, incrementing the version. A stale
+// Version, a deleted row or an insert that collides with an existing row
+// returns platform.ErrCASPreconditionFailed. An original transaction id owned
+// by another profile returns ErrTransactionClaimed.
+func (s *PostgresStore) Save(ctx context.Context, p *UserProfile) error {
+	return saveProfile(ctx, s.db, p)
+}
+
+const pgRecordActivityQuery = `
+UPDATE users SET last_active_at = $2, last_active_at_epoch = $3
+WHERE user_id = $1`
+
+// RecordActivity sets only the activity columns, leaving every other column and
+// the version untouched. An unknown user is a no-op.
+func (s *PostgresStore) RecordActivity(ctx context.Context, userID string, at time.Time) error {
+	if _, err := s.db.Exec(ctx, pgRecordActivityQuery, userID, at, at.UnixMilli()); err != nil {
+		return fmt.Errorf("record activity for %q: %w", userID, err)
 	}
 	return nil
 }
@@ -374,5 +439,6 @@ func (s *PostgresStore) UpdateZoneCountWithCAS(ctx context.Context, userID strin
 	if tag.RowsAffected() == 0 {
 		return fmt.Errorf("CAS update profile %q: %w", userID, platform.ErrCASPreconditionFailed)
 	}
+	p.Version = expectedVersion + 1
 	return nil
 }

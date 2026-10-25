@@ -29,20 +29,20 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
   private static let logger = Logger(
     subsystem: "uk.towncrierapp", category: "StoreKitSubscriptionService")
 
-  private var transactionListenerTask: Task<Void, Never>?
+  private let transactionListenerTask: Task<Void, Never>
 
   /// Optional: when nil the service relies purely on on-device StoreKit verification.
   private let verificationService: SubscriptionVerificationService?
 
   public init(verificationService: SubscriptionVerificationService? = nil) {
     self.verificationService = verificationService
-    transactionListenerTask = Task.detached { [weak self] in
-      await self?.listenForTransactionUpdates()
+    transactionListenerTask = Task.detached {
+      await Self.listenForTransactionUpdates(verificationService: verificationService)
     }
   }
 
   deinit {
-    transactionListenerTask?.cancel()
+    transactionListenerTask.cancel()
   }
 
   public func availableProducts() async throws -> [SubscriptionProduct] {
@@ -90,9 +90,11 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
 
     switch result {
     case .success(let verification):
-      let transaction = try checkVerification(verification)
-      await transaction.finish()
-      try await reportPurchase(signedTransaction: verification.jwsRepresentation)
+      let transaction = try Self.checkVerification(verification)
+      try await Self.reportThenFinish(
+        signedTransaction: verification.jwsRepresentation,
+        verificationService: verificationService
+      ) { await transaction.finish() }
       return Self.entitlement(from: transaction)
 
     case .userCancelled:
@@ -129,7 +131,7 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
       // Unverified entitlements are sent too: the server is the authority on a restore.
       signedTransactions.append(result.jwsRepresentation)
 
-      if let transaction = try? checkVerification(result) {
+      if let transaction = try? Self.checkVerification(result) {
         let ent = Self.entitlement(from: transaction)
         if ent.isActive {
           latestEntitlement = Self.preferredEntitlement(current: latestEntitlement, candidate: ent)
@@ -162,38 +164,56 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
 
   // MARK: - Transaction listener
 
-  private func listenForTransactionUpdates() async {
+  private static func listenForTransactionUpdates(
+    verificationService: SubscriptionVerificationService?
+  ) async {
     for await result in Transaction.updates {
-      if let transaction = try? checkVerification(result) {
-        await transaction.finish()
+      guard let transaction = try? checkVerification(result) else { continue }
+      do {
+        try await reportThenFinish(
+          signedTransaction: result.jwsRepresentation,
+          verificationService: verificationService
+        ) { await transaction.finish() }
+      } catch {
+        logger.error(
+          "Updated transaction already claimed: \(error.localizedDescription, privacy: .public)")
       }
     }
   }
 
   // MARK: - Server reporting
 
-  /// POSTs an Apple-signed StoreKit 2 JWS transaction to the Town Crier
-  /// backend via the injected ``SubscriptionVerificationService``. A network
-  /// or server failure here is swallowed, since on-device StoreKit
-  /// verification is already the source of truth for local feature gating.
-  /// ``DomainError/transactionAlreadyClaimed`` is rethrown, since that answer
-  /// is definitive rather than transient.
-  func reportPurchase(signedTransaction: String) async throws {
-    guard let verificationService else { return }
+  /// Reports the transaction to the backend, then calls `finish`. `finish` runs
+  /// when the report succeeds, when there is no verification service, or when the
+  /// answer is ``DomainError/transactionAlreadyClaimed`` (which is then rethrown).
+  /// Any other failure is logged and swallowed, and `finish` does not run.
+  static func reportThenFinish(
+    signedTransaction: String,
+    verificationService: SubscriptionVerificationService?,
+    finish: @Sendable () async -> Void
+  ) async throws {
+    guard let verificationService else {
+      await finish()
+      return
+    }
     do {
       _ = try await verificationService.verify(signedTransaction: signedTransaction)
     } catch DomainError.transactionAlreadyClaimed {
+      await finish()
       throw DomainError.transactionAlreadyClaimed
     } catch {
-      Self.logger.error(
+      // Unfinished transactions are redelivered by Transaction.updates, which retries the report.
+      logger.error(
         "Subscription verify POST failed: \(error.localizedDescription, privacy: .public)")
+      return
     }
+    await finish()
   }
 
   /// POSTs the JWS list from `Transaction.currentEntitlements` to the backend
   /// via the injected ``SubscriptionVerificationService`` for re-verification.
   ///
-  /// Unlike ``reportPurchase(signedTransaction:)``, a verification rejection
+  /// Unlike ``reportThenFinish(signedTransaction:verificationService:finish:)``, a verification rejection
   /// (e.g. an HTTP 401 for a tampered JWS) is rethrown so the UI can tell the
   /// user. No-op for an empty list or when no service is injected.
   func reportRestore(signedTransactions: [String]) async throws {
@@ -219,7 +239,7 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
 
   // MARK: - Helpers
 
-  private func checkVerification<T>(
+  private static func checkVerification<T>(
     _ result: VerificationResult<T>
   ) throws -> T {
     switch result {

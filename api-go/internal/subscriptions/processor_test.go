@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/AmyDe/town-crier/api-go/internal/platform"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 )
 
@@ -40,7 +41,7 @@ func newTestProcessorWithLogger(allowedEnvs []string, logger *slog.Logger) *proc
 		idempotency: newFakeIdempotency(),
 		notifier:    &spyNotifier{},
 	}
-	d.processor = NewNotificationProcessor(d.verifier, d.byTxn, d.auth0, d.idempotency, allowedEnvs, d.notifier, logger)
+	d.processor = NewNotificationProcessor(d.verifier, d.byTxn, d.auth0, d.idempotency, testBundleID, allowedEnvs, d.notifier, logger)
 	return d
 }
 
@@ -211,6 +212,43 @@ func TestNotificationProcessor_Process_EnvironmentMismatchIsWasNewFalse(t *testi
 	}
 	if len(d.idempotency.marked) != 1 || d.idempotency.marked[0] != "uuid-env" {
 		t.Errorf("should still mark processed, got %v", d.idempotency.marked)
+	}
+}
+
+func TestNotificationProcessor_Process_OtherBundleIsIgnored(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	d := newTestProcessorWithLogger(testAllowedEnvs, slog.New(slog.NewJSONHandler(&buf, nil)))
+	d.byTxn.profile = freshProfile(t)
+	d.verifier.results["hdr.OUTER.sig"] = notificationJSON("SUBSCRIBED", "uuid-bundle", "INNER_OTHER")
+	d.verifier.results["INNER_OTHER"] = txnJSON(ProductProMonthly, "com.example.other", "orig-1", futureExpiryMs())
+
+	wasNew, err := d.processor.Process(context.Background(), "hdr.OUTER.sig")
+
+	if err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+	if wasNew {
+		t.Error("wasNew = true, want false")
+	}
+	if d.byTxn.saved != nil {
+		t.Error("profile must not be saved")
+	}
+	if len(d.notifier.calls) != 0 {
+		t.Errorf("notifier calls = %d, want 0", len(d.notifier.calls))
+	}
+	if len(d.auth0.tiers) != 0 {
+		t.Error("auth0 must not be called")
+	}
+	if len(d.idempotency.marked) != 1 || d.idempotency.marked[0] != "uuid-bundle" {
+		t.Errorf("marked = %v, want [uuid-bundle]", d.idempotency.marked)
+	}
+	line, ok := findLogLine(decodeJSONLogLines(t, buf.Bytes()), "notification bundle id mismatch")
+	if !ok {
+		t.Fatalf("expected warn log not found: %s", buf.String())
+	}
+	if line["level"] != "WARN" || line["notificationType"] != "SUBSCRIBED" || line["bundleId"] != "com.example.other" {
+		t.Errorf("unexpected log line: %v", line)
 	}
 }
 
@@ -552,5 +590,53 @@ func TestNotificationProcessor_Process_TrialFlag(t *testing.T) {
 				t.Errorf("saved SubscriptionInTrial = %v, want %v", d.byTxn.saved != nil && d.byTxn.saved.SubscriptionInTrial, tt.want)
 			}
 		})
+	}
+}
+
+func TestNotificationProcessor_Process_RetriesSaveAfterVersionConflict(t *testing.T) {
+	t.Parallel()
+	d := newTestProcessor(testAllowedEnvs)
+	d.byTxn.profile = freshProfile(t)
+	conflicts := 2
+	d.byTxn.beforeSave = func() {
+		if conflicts > 0 {
+			conflicts--
+			d.byTxn.concurrentWrite()
+		}
+	}
+	d.verifier.results["hdr.OUTER.sig"] = notificationJSON("SUBSCRIBED", "uuid-1", "INNER")
+	d.verifier.results["INNER"] = txnJSON(ProductProMonthly, testBundleID, "orig-1", futureExpiryMs())
+
+	wasNew, err := d.processor.Process(context.Background(), "hdr.OUTER.sig")
+
+	if err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+	if !wasNew {
+		t.Error("wasNew = false, want true")
+	}
+	if d.byTxn.saved == nil || d.byTxn.saved.Tier != profiles.TierPro {
+		t.Error("profile not activated to Pro")
+	}
+	if len(d.auth0.tiers) != 1 {
+		t.Errorf("auth0 sync = %v, want exactly one call", d.auth0.tiers)
+	}
+}
+
+func TestNotificationProcessor_Process_FailsWithoutMarkingAfterThreeVersionConflicts(t *testing.T) {
+	t.Parallel()
+	d := newTestProcessor(testAllowedEnvs)
+	d.byTxn.profile = freshProfile(t)
+	d.byTxn.beforeSave = d.byTxn.concurrentWrite
+	d.verifier.results["hdr.OUTER.sig"] = notificationJSON("SUBSCRIBED", "uuid-1", "INNER")
+	d.verifier.results["INNER"] = txnJSON(ProductProMonthly, testBundleID, "orig-1", futureExpiryMs())
+
+	_, err := d.processor.Process(context.Background(), "hdr.OUTER.sig")
+
+	if !errors.Is(err, platform.ErrCASPreconditionFailed) {
+		t.Fatalf("Process error = %v, want ErrCASPreconditionFailed", err)
+	}
+	if len(d.idempotency.marked) != 0 {
+		t.Errorf("marked = %v, want none (Apple must retry)", d.idempotency.marked)
 	}
 }

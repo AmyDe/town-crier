@@ -1,8 +1,5 @@
 # Sets up Go (via infra/go.mod), the Pulumi CLI, and caches Go modules for the
-# infra Pulumi program. Centralises the setup used across infra jobs.
-#
-# Third-party actions pinned to commit SHA for supply-chain safety
-# (tj-actions CVE-2025-30066 rationale — issue #835 slice 4).
+# infra Pulumi program. Third-party actions are pinned by commit SHA.
 name: Setup Go & Pulumi for Infra
 description: Install Go, the Pulumi CLI, and cache Go modules for the infra Pulumi program
 
@@ -17,8 +14,17 @@ runs:
 
     - name: Install Pulumi CLI
       shell: bash
-      run: curl -fsSL https://get.pulumi.com | sh
-
-    - name: Add Pulumi to PATH
-      shell: bash
-      run: echo "$HOME/.pulumi/bin" >> "$GITHUB_PATH"
+      env:
+        PULUMI_VERSION: 3.242.0
+        PULUMI_SHA256: 1aa7d15970564be2c04c5872e6041669c03020f279c7197e3a1a1159a73bddf3
+      run: |
+        set -euo pipefail
+        if [ "$RUNNER_OS" != "Linux" ] || [ "$RUNNER_ARCH" != "X64" ]; then
+          echo "::error::Pulumi install supports Linux x64 only (got $RUNNER_OS $RUNNER_ARCH)"
+          exit 1
+        fi
+        curl -fsSL -o "$RUNNER_TEMP/pulumi.tar.gz" \
+          "https://github.com/pulumi/pulumi/releases/download/v${PULUMI_VERSION}/pulumi-v${PULUMI_VERSION}-linux-x64.tar.gz"
+        echo "${PULUMI_SHA256}  $RUNNER_TEMP/pulumi.tar.gz" | sha256sum -c -
+        tar -xzf "$RUNNER_TEMP/pulumi.tar.gz" -C "$RUNNER_TEMP"
+        echo "$RUNNER_TEMP/pulumi" >> "$GITHUB_PATH"

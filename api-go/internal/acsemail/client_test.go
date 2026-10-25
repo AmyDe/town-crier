@@ -3,10 +3,12 @@ package acsemail
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -188,5 +190,138 @@ func TestNoOpSender_SendIsNoError(t *testing.T) {
 	sender := NewNoOpSender()
 	if err := sender.Send(context.Background(), testMessage()); err != nil {
 		t.Fatalf("Send: %v", err)
+	}
+}
+
+var guidPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+
+func TestClient_SendsRepeatabilityHeaders(t *testing.T) {
+	t.Parallel()
+
+	var (
+		mu      sync.Mutex
+		ids     []string
+		firstAt []string
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.ReadAll(r.Body)
+		mu.Lock()
+		ids = append(ids, r.Header.Get("Repeatability-Request-Id"))
+		firstAt = append(firstAt, r.Header.Get("Repeatability-First-Sent"))
+		mu.Unlock()
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(`{"id":"op","status":"Succeeded"}`))
+	}))
+	defer srv.Close()
+
+	client := newTestClient(t, srv)
+	msg := testMessage()
+	msg.RepeatabilityKey = "user-1|hourly:2026-10-24T10"
+	other := msg
+	other.RepeatabilityKey = "user-1|hourly:2026-10-24T11"
+	for _, m := range []Message{msg, msg, other} {
+		if err := client.Send(context.Background(), m); err != nil {
+			t.Fatalf("Send: %v", err)
+		}
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if !guidPattern.MatchString(ids[0]) {
+		t.Fatalf("Repeatability-Request-Id = %q, want lowercase GUID", ids[0])
+	}
+	if ids[0] != ids[1] {
+		t.Errorf("same key gave different ids: %q vs %q", ids[0], ids[1])
+	}
+	if ids[0] == ids[2] {
+		t.Errorf("different keys gave the same id %q", ids[0])
+	}
+	want := time.Unix(1_700_000_000, 0).UTC().Format(http.TimeFormat)
+	if firstAt[0] != want {
+		t.Errorf("Repeatability-First-Sent = %q, want %q", firstAt[0], want)
+	}
+}
+
+func TestClient_OmitsRepeatabilityHeadersWithoutKey(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.ReadAll(r.Body)
+		if r.Header.Get("Repeatability-Request-Id") != "" || r.Header.Get("Repeatability-First-Sent") != "" {
+			http.Error(w, "unexpected repeatability headers", http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(`{"id":"op","status":"Succeeded"}`))
+	}))
+	defer srv.Close()
+
+	if err := newTestClient(t, srv).Send(context.Background(), testMessage()); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+}
+
+func TestClient_AcceptedThenPollTimeoutIsStatusUnknown(t *testing.T) {
+	t.Parallel()
+
+	mux := http.NewServeMux()
+	var srvURL string
+	mux.HandleFunc("POST /emails:send", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.ReadAll(r.Body)
+		w.Header().Set("Operation-Location", srvURL+"/emails/operations/op-4?api-version=2023-03-31")
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(`{"id":"op-4","status":"Running"}`))
+	})
+	mux.HandleFunc("GET /emails/operations/op-4", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"id":"op-4","status":"Running"}`))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	srvURL = srv.URL
+
+	err := newTestClient(t, srv).Send(context.Background(), testMessage())
+	if !errors.Is(err, ErrAcceptedStatusUnknown) {
+		t.Fatalf("err = %v, want ErrAcceptedStatusUnknown", err)
+	}
+	if errors.Is(err, ErrSendFailed) {
+		t.Errorf("status-unknown must not read as ErrSendFailed: %v", err)
+	}
+}
+
+func TestClient_AcceptedThenPollErrorIsStatusUnknown(t *testing.T) {
+	t.Parallel()
+
+	mux := http.NewServeMux()
+	var srvURL string
+	mux.HandleFunc("POST /emails:send", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.ReadAll(r.Body)
+		w.Header().Set("Operation-Location", srvURL+"/emails/operations/op-5?api-version=2023-03-31")
+		w.WriteHeader(http.StatusAccepted)
+	})
+	mux.HandleFunc("GET /emails/operations/op-5", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	srvURL = srv.URL
+
+	err := newTestClient(t, srv).Send(context.Background(), testMessage())
+	if !errors.Is(err, ErrAcceptedStatusUnknown) {
+		t.Fatalf("err = %v, want ErrAcceptedStatusUnknown", err)
+	}
+}
+
+func TestClient_ConflictOnSendIsStatusUnknown(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.ReadAll(r.Body)
+		http.Error(w, "in progress", http.StatusConflict)
+	}))
+	defer srv.Close()
+
+	err := newTestClient(t, srv).Send(context.Background(), testMessage())
+	if !errors.Is(err, ErrAcceptedStatusUnknown) {
+		t.Fatalf("err = %v, want ErrAcceptedStatusUnknown", err)
 	}
 }

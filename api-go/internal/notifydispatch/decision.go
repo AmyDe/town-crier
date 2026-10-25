@@ -161,17 +161,16 @@ func (d *DecisionDispatcher) dispatchForUser(ctx context.Context, app applicatio
 		now:         d.now().UTC(),
 	})
 
-	// PushSent means "queued", not "delivered": it is set true here, before the
-	// coalescer has attempted any send, and is never reconciled against the
-	// actual delivery outcome (a deliberate choice; see
-	// notifications.DigestNotification.PushSent).
-	if d.canPush(profile, m) {
-		n.PushSent = true
-		d.push.Add(userID, n)
-	}
+	// PushSent means "queued", not "delivered", and is never reconciled with the
+	// send outcome.
+	queuePush := d.canPush(profile, m)
+	n.PushSent = queuePush
 
 	if err := d.notifications.Create(ctx, n); err != nil {
 		return err
+	}
+	if queuePush {
+		d.push.Add(userID, n)
 	}
 	if d.metrics != nil {
 		d.metrics.NotificationCreated(ctx, string(n.EventType), n.Sources)

@@ -447,3 +447,68 @@ func TestWindowReader_ProbeAndDeltaSkipFullReadHook(t *testing.T) {
 		}
 	}
 }
+
+func skippedPage(from, valid, skipped, total int) planit.FetchPageResult {
+	p := page(from, valid, total)
+	for i := range skipped {
+		p.Skipped = append(p.Skipped, planit.SkippedRecord{UID: fmt.Sprintf("bad%d", from+i), Field: "start_date"})
+	}
+	p.HasMorePages = from+valid+skipped < total
+	return p
+}
+
+func TestWindowReader_SkippedRecordsDoNotStopWindowFromCompleting(t *testing.T) {
+	t.Parallel()
+	r := newReaderRig(t, map[int]planit.FetchPageResult{
+		0: skippedPage(0, 2, 1, 5),
+		3: skippedPage(3, 2, 0, 5),
+	})
+
+	res := r.reader.ReadWindow(context.Background(), testWindow(), WindowState{})
+
+	if !res.Complete || res.Short || res.Stop != "" {
+		t.Fatalf("result: got %+v, want complete", res)
+	}
+	if len(r.fetch.queries) != 2 || r.fetch.queries[1].Index != 3 {
+		t.Errorf("next index must advance past skipped records: %+v", r.fetch.queries)
+	}
+	if len(r.writer.fulls) != 1 || r.writer.fulls[0].total != 5 {
+		t.Errorf("fulls: got %+v", r.writer.fulls)
+	}
+	logs := r.logs.String()
+	if !strings.Contains(logs, "bad0") || !strings.Contains(logs, "start_date") || !strings.Contains(logs, "level=WARN") {
+		t.Errorf("want one warning with uid and field, got:\n%s", logs)
+	}
+}
+
+func TestWindowReader_AllMalformedPageCompletesAndLogsError(t *testing.T) {
+	t.Parallel()
+	r := newReaderRig(t, map[int]planit.FetchPageResult{
+		0: {From: 0, Skipped: []planit.SkippedRecord{{UID: "bad0", Field: "start_date"}, {UID: "bad1", Field: "decided_date"}}, Total: intPtr(2)},
+	})
+
+	res := r.reader.ReadWindow(context.Background(), testWindow(), WindowState{})
+
+	if !res.Complete {
+		t.Fatalf("result: got %+v, want complete", res)
+	}
+	if !strings.Contains(r.logs.String(), "level=ERROR") {
+		t.Errorf("want error log for an all-malformed page, got:\n%s", r.logs.String())
+	}
+}
+
+func TestWindowReader_ReadDeltaAdvancesPastSkippedRecords(t *testing.T) {
+	t.Parallel()
+	r := newReaderRig(t, map[int]planit.FetchPageResult{
+		0: skippedPage(0, 1, 1, 4),
+		2: skippedPage(2, 2, 0, 4),
+	})
+	w := testWindow()
+	w.MaxPages = 5
+
+	res := r.reader.ReadDelta(context.Background(), w)
+
+	if res.Stop != "" || len(r.fetch.queries) != 2 || r.fetch.queries[1].Index != 2 {
+		t.Errorf("res=%+v queries=%+v", res, r.fetch.queries)
+	}
+}

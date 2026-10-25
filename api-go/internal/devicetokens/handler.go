@@ -24,11 +24,17 @@ type registerRequest struct {
 	Platform string `json:"platform"`
 }
 
-// Routes registers the device-token endpoints on mux. Both are authenticated:
+// removeRequest is the JSON body for DELETE /v1/me/device-token.
+type removeRequest struct {
+	Token string `json:"token"`
+}
+
+// Routes registers the device-token endpoints on mux. All are authenticated:
 // the auth middleware guarantees a subject in context before these run.
 func Routes(mux *http.ServeMux, store registrationStore, now func() time.Time, logger *slog.Logger) {
 	h := handler{store: store, now: now, logger: logger}
 	mux.HandleFunc("PUT /v1/me/device-token", h.register)
+	mux.HandleFunc("DELETE /v1/me/device-token", h.removeByBody)
 	mux.HandleFunc("DELETE /v1/me/device-token/{token}", h.remove)
 }
 
@@ -84,12 +90,26 @@ func (h handler) register(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// remove DELETEs a (user, token) registration. Idempotent: removing an absent
-// token still returns 204.
-func (h handler) remove(w http.ResponseWriter, r *http.Request) {
-	userID := auth.Subject(r.Context())
-	token := r.PathValue("token")
+// removeByBody DELETEs a (user, token) registration named in the JSON body.
+// Idempotent like remove. A malformed body or blank token yields a bodyless 400.
+func (h handler) removeByBody(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	var req removeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Token == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	h.delete(w, r, req.Token)
+}
 
+// remove DELETEs a (user, token) registration named in the path. Idempotent:
+// removing an absent token still returns 204.
+func (h handler) remove(w http.ResponseWriter, r *http.Request) {
+	h.delete(w, r, r.PathValue("token"))
+}
+
+func (h handler) delete(w http.ResponseWriter, r *http.Request, token string) {
+	userID := auth.Subject(r.Context())
 	if err := h.store.Delete(r.Context(), userID, token); err != nil {
 		h.logger.ErrorContext(r.Context(), "delete device token", "error", err)
 		w.WriteHeader(http.StatusInternalServerError)

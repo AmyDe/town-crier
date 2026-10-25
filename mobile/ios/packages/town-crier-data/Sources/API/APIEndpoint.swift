@@ -43,6 +43,10 @@ public struct APIEndpoint: Sendable {
     APIEndpoint(method: .delete, path: path)
   }
 
+  public static func delete(_ path: String, body: some Encodable & Sendable) -> APIEndpoint {
+    APIEndpoint(method: .delete, path: path, body: body)
+  }
+
   public static func patch(_ path: String, body: some Encodable & Sendable) -> APIEndpoint {
     APIEndpoint(method: .patch, path: path, body: body)
   }

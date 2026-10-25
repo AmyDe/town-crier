@@ -549,3 +549,30 @@ func isErr(err, target error) bool {
 	}
 	return err == target || err.Error() == target.Error()
 }
+
+func TestPostgresStore_RedemptionTime_Integration(t *testing.T) {
+	ctx := context.Background()
+	store := newPGStore(t)
+
+	if err := store.Save(ctx, testCodeWithCap(t, "ABCDEFGHJKMN", 3)); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	at := time.Date(2026, 6, 26, 13, 0, 0, 123000000, time.UTC)
+	if err := store.RedeemWithCAS(ctx, "ABCDEFGHJKMN", "auth0|u1", at); err != nil {
+		t.Fatalf("RedeemWithCAS: %v", err)
+	}
+
+	got, err := store.RedemptionTime(ctx, "ABCDEFGHJKMN", "auth0|u1")
+	if err != nil {
+		t.Fatalf("RedemptionTime: %v", err)
+	}
+	if !got.Equal(at) {
+		t.Errorf("RedemptionTime = %v, want %v", got, at)
+	}
+	if _, err := store.RedemptionTime(ctx, "ABCDEFGHJKMN", "auth0|u2"); !isErr(err, ErrNotFound) {
+		t.Errorf("other user: got %v, want ErrNotFound", err)
+	}
+	if _, err := store.RedemptionTime(ctx, "ZZZZZZZZZZZZ", "auth0|u1"); !isErr(err, ErrNotFound) {
+		t.Errorf("unknown code: got %v, want ErrNotFound", err)
+	}
+}

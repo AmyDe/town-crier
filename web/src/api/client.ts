@@ -1,10 +1,12 @@
 export class ApiRequestError extends Error {
   readonly status: number;
+  readonly code: string | undefined;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, code?: string) {
     super(message);
     this.name = 'ApiRequestError';
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -54,15 +56,19 @@ export function createApiClient(
 
     if (!response.ok) {
       let message = `Request failed with status ${response.status}`;
+      let code: string | undefined;
       try {
-        const errorBody = await response.json() as { error?: string };
-        if (errorBody.error) {
+        const errorBody = await response.json() as { error?: string; message?: string };
+        if (errorBody.message) {
+          message = errorBody.message;
+          code = errorBody.error;
+        } else if (errorBody.error) {
           message = errorBody.error;
         }
       } catch {
         // Use default message if body isn't JSON
       }
-      throw new ApiRequestError(response.status, message);
+      throw new ApiRequestError(response.status, message, code);
     }
 
     if (response.status === 204) {

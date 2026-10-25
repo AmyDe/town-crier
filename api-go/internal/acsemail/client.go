@@ -3,6 +3,7 @@ package acsemail
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
@@ -36,6 +38,12 @@ const (
 // poll budget.
 var ErrSendFailed = errors.New("acsemail: send failed")
 
+// ErrAcceptedStatusUnknown reports that ACS accepted the send request (or
+// reported the original request still in progress) but the final operation
+// status could not be read. The email is probably delivered, so callers must
+// not resend it.
+var ErrAcceptedStatusUnknown = errors.New("acsemail: accepted, status unknown")
+
 // Message is the email a caller asks the client to deliver. The HTML body and
 // subject are pre-built by the consumer (the digest worker, tc-34y5).
 type Message struct {
@@ -47,6 +55,10 @@ type Message struct {
 	Subject string
 	// HTMLBody is the rendered HTML email body.
 	HTMLBody string
+	// RepeatabilityKey identifies the logical send. When set, the client derives
+	// a deterministic Repeatability-Request-Id from it so ACS de-duplicates a
+	// repeat of the same send. Empty disables repeatability headers.
+	RepeatabilityKey string
 }
 
 // sendRequest is the ACS Email REST send payload shape.
@@ -123,7 +135,9 @@ func newClientWithCreds(creds credentials, httpClient *http.Client, logger *slog
 
 // Send delivers one message: it POSTs the signed send request, then polls the
 // returned Operation-Location until the operation reaches a terminal state.
-// A non-success terminal state, or exhausting the poll budget, returns an error.
+// A rejected request or a failed terminal state returns an error wrapping
+// ErrSendFailed. When ACS accepted the request but the poll errors or runs out
+// of budget, the error wraps ErrAcceptedStatusUnknown.
 func (c *Client) Send(ctx context.Context, msg Message) error {
 	body, err := json.Marshal(sendRequest{
 		SenderAddress: msg.Sender,
@@ -134,19 +148,42 @@ func (c *Client) Send(ctx context.Context, msg Message) error {
 		return fmt.Errorf("acsemail: marshal send request: %w", err)
 	}
 
-	opLocation, err := c.postSend(ctx, body)
+	var extra http.Header
+	if msg.RepeatabilityKey != "" {
+		extra = http.Header{}
+		extra.Set("Repeatability-Request-Id", repeatabilityID(msg.RepeatabilityKey))
+		extra.Set("Repeatability-First-Sent", c.now().UTC().Format(http.TimeFormat))
+	}
+
+	opLocation, err := c.postSend(ctx, body, extra)
 	if err != nil {
 		return err
 	}
 
-	return c.pollOperation(ctx, opLocation)
+	if err := c.pollOperation(ctx, opLocation); err != nil {
+		if errors.Is(err, ErrSendFailed) {
+			return err
+		}
+		return fmt.Errorf("%w: %w", ErrAcceptedStatusUnknown, err)
+	}
+	return nil
+}
+
+// repeatabilityID derives a canonical lowercase GUID (version 8 layout) from
+// key, so the same key always yields the same ID.
+func repeatabilityID(key string) string {
+	sum := sha256.Sum256([]byte(key))
+	b := sum[:16]
+	b[6] = b[6]&0x0f | 0x80
+	b[8] = b[8]&0x3f | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
 
 // postSend signs and POSTs the email send request, returning the
 // Operation-Location URL to poll for completion.
-func (c *Client) postSend(ctx context.Context, body []byte) (string, error) {
+func (c *Client) postSend(ctx context.Context, body []byte, extra http.Header) (string, error) {
 	endpoint := c.creds.endpoint + sendPath + "?api-version=" + apiVersion
-	resp, err := c.signedRequest(ctx, http.MethodPost, endpoint, body)
+	resp, err := c.signedRequest(ctx, http.MethodPost, endpoint, body, extra)
 	if err != nil {
 		return "", err
 	}
@@ -155,6 +192,9 @@ func (c *Client) postSend(ctx context.Context, body []byte) (string, error) {
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxRespBytes))
 	if err != nil {
 		return "", fmt.Errorf("acsemail: read send response: %w", err)
+	}
+	if resp.StatusCode == http.StatusConflict {
+		return "", fmt.Errorf("acsemail: %w: send returned status 409: %s", ErrAcceptedStatusUnknown, strings.TrimSpace(string(respBody)))
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return "", fmt.Errorf("acsemail: %w: send returned status %d: %s", ErrSendFailed, resp.StatusCode, string(respBody))
@@ -203,12 +243,12 @@ func (c *Client) pollOperation(ctx context.Context, opLocation string) error {
 			return err
 		}
 	}
-	return fmt.Errorf("acsemail: %w: operation did not complete within %d polls", ErrSendFailed, c.maxPolls)
+	return fmt.Errorf("acsemail: operation did not complete within %d polls", c.maxPolls)
 }
 
 // getOperationStatus signs and GETs the operation-status URL.
 func (c *Client) getOperationStatus(ctx context.Context, opLocation string) (operationStatus, error) {
-	resp, err := c.signedRequest(ctx, http.MethodGet, opLocation, nil)
+	resp, err := c.signedRequest(ctx, http.MethodGet, opLocation, nil, nil)
 	if err != nil {
 		return operationStatus{}, err
 	}
@@ -219,7 +259,7 @@ func (c *Client) getOperationStatus(ctx context.Context, opLocation string) (ope
 		return operationStatus{}, fmt.Errorf("acsemail: read operation status: %w", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return operationStatus{}, fmt.Errorf("acsemail: %w: poll returned status %d: %s", ErrSendFailed, resp.StatusCode, string(respBody))
+		return operationStatus{}, fmt.Errorf("acsemail: poll returned status %d: %s", resp.StatusCode, string(respBody))
 	}
 
 	var status operationStatus
@@ -231,8 +271,9 @@ func (c *Client) getOperationStatus(ctx context.Context, opLocation string) (ope
 
 // signedRequest builds, signs, and performs one ACS request. It computes the
 // content hash, sets x-ms-date and x-ms-content-sha256, and attaches the
-// HMAC-SHA256 Authorization header over the request's path and query.
-func (c *Client) signedRequest(ctx context.Context, method, rawURL string, body []byte) (*http.Response, error) {
+// HMAC-SHA256 Authorization header over the request's path and query. extra
+// headers are added verbatim.
+func (c *Client) signedRequest(ctx context.Context, method, rawURL string, body []byte, extra http.Header) (*http.Response, error) {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
 		return nil, fmt.Errorf("acsemail: parse url: %w", err)
@@ -260,6 +301,11 @@ func (c *Client) signedRequest(ctx context.Context, method, rawURL string, body 
 	req.Header.Set("x-ms-date", date)
 	req.Header.Set("x-ms-content-sha256", contentHash)
 	req.Header.Set("Authorization", auth)
+	for name, values := range extra {
+		for _, v := range values {
+			req.Header.Add(name, v)
+		}
+	}
 
 	resp, err := c.http.Do(req)
 	if err != nil {

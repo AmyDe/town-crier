@@ -301,3 +301,53 @@ func TestPostgresStore_UpdateZoneCountWithCAS_WrapsDatabaseError(t *testing.T) {
 		t.Fatalf("UpdateZoneCountWithCAS db error: got %v, want wrapped %v", err, sentinel)
 	}
 }
+
+func TestPostgresStore_Save_ExistingProfileWithNoRowMatchedIsCASFailure(t *testing.T) {
+	t.Parallel()
+	store := newFakePGStore(pgconn.NewCommandTag("UPDATE 0"), nil)
+	p := testProfile("auth0|u1")
+	p.IsNew = false
+	p.Version = 4
+
+	err := store.Save(context.Background(), p)
+	if !errors.Is(err, platform.ErrCASPreconditionFailed) {
+		t.Fatalf("Save: got %v, want ErrCASPreconditionFailed", err)
+	}
+}
+
+func TestPostgresStore_Save_NewProfileCollidingWithExistingRowIsCASFailure(t *testing.T) {
+	t.Parallel()
+	dup := &pgconn.PgError{Code: "23505"}
+	store := newFakePGStore(pgconn.CommandTag{}, dup)
+
+	err := store.Save(context.Background(), testProfile("auth0|u1"))
+	if !errors.Is(err, platform.ErrCASPreconditionFailed) {
+		t.Fatalf("Save: got %v, want ErrCASPreconditionFailed", err)
+	}
+}
+
+func TestPostgresStore_Save_AdvancesLoadedVersion(t *testing.T) {
+	t.Parallel()
+	store := newFakePGStore(pgconn.NewCommandTag("UPDATE 1"), nil)
+	p := testProfile("auth0|u1")
+	p.IsNew = false
+	p.Version = 4
+
+	if err := store.Save(context.Background(), p); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	if p.Version != 5 || p.IsNew {
+		t.Errorf("after save: Version=%d IsNew=%v, want 5/false", p.Version, p.IsNew)
+	}
+}
+
+func TestPostgresStore_RecordActivity_WrapsDatabaseError(t *testing.T) {
+	t.Parallel()
+	sentinel := errors.New("db exploded")
+	store := newFakePGStore(pgconn.CommandTag{}, sentinel)
+
+	err := store.RecordActivity(context.Background(), "auth0|u1", time.Now())
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("RecordActivity: got %v, want wrapped %v", err, sentinel)
+	}
+}

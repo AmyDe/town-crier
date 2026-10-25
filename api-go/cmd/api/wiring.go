@@ -445,7 +445,7 @@ func newRouter(
 	// telemetry is disabled (no OTLP endpoint) the global no-op TracerProvider
 	// makes this produce no-op spans at negligible cost, so the wiring stays
 	// unconditional and every existing httptest assertion is unaffected.
-	instrumented := otelhttp.NewHandler(chain, "town-crier-api-go")
+	instrumented := otelhttp.NewHandler(chain, "town-crier-api-go", otelhttp.WithFilter(middleware.TraceFilter))
 	// StripForwardedFor is the true outermost wrapper, and has to be: otelhttp
 	// reads X-Forwarded-For when it starts the span, so the header must already
 	// be gone by then or the caller's IP lands on the span (and in App Insights).

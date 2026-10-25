@@ -34,9 +34,11 @@ type emailSender interface {
 	Send(ctx context.Context, kind string, msg acsemail.Message) error
 }
 
-// profileReader selects users by digest day (weekly) and reads one user (hourly).
+// profileReader selects users by digest day (weekly), records the weekly send
+// ledger and reads one user (hourly).
 type profileReader interface {
-	ByDigestDay(ctx context.Context, day time.Weekday) ([]*profiles.UserProfile, error)
+	ByDigestDay(ctx context.Context, day time.Weekday, notSentSince time.Time) ([]*profiles.UserProfile, error)
+	MarkWeeklyDigestSent(ctx context.Context, userID string, at time.Time) error
 	Get(ctx context.Context, userID string) (*profiles.UserProfile, error)
 }
 
@@ -112,7 +114,9 @@ func NewHandler(
 }
 
 // RunWeekly generates the weekly digest for every user whose configured digest
-// day is today. For each user it sends a digest email (when email is enabled and
+// day is today and who has not yet received one in the current ISO week (UTC,
+// Monday 00:00 start). The first successful channel stamps the ledger, so a
+// re-run in the same week sends neither channel again. For each user it sends a digest email (when email is enabled and
 // the user has an address) and a digest push (Pro tier only, when push is
 // enabled).
 func (h *Handler) RunWeekly(ctx context.Context) error {
@@ -120,7 +124,7 @@ func (h *Handler) RunWeekly(ctx context.Context) error {
 	today := now.Weekday()
 	since := now.Add(-digestWindow)
 
-	users, err := h.profiles.ByDigestDay(ctx, today)
+	users, err := h.profiles.ByDigestDay(ctx, today, weekStart(now))
 	if err != nil {
 		return err
 	}
@@ -143,16 +147,29 @@ func (h *Handler) RunWeekly(ctx context.Context) error {
 			continue
 		}
 
+		recorded := false
+		record := func() {
+			if recorded {
+				return
+			}
+			recorded = true
+			if err := h.profiles.MarkWeeklyDigestSent(ctx, profile.UserID, now); err != nil {
+				h.logger.ErrorContext(ctx, "weekly digest: record send failed", "user", profile.UserID, "error", err)
+			}
+		}
+
 		if wantsPush {
 			// Dedup before counting so the push count matches the deduped email count.
-			h.sendWeeklyPush(ctx, profile, len(dedupByApplication(notifs)))
+			if h.sendWeeklyPush(ctx, profile, len(dedupByApplication(notifs))) {
+				record()
+			}
 		}
 		if wantsEmail {
 			// The weekly cycle does not track emailSent; sendDigestEmail logs a failed send.
 			// IsPaid, not IsPaidPro, so a Personal subscriber never sees the free-tier notice.
 			showFreeTierNotice := !profile.EffectiveTier(now).IsPaid()
-			if err := h.sendDigestEmail(ctx, emailKindWeekly, profile.UserID, *profile.Email, notifs, showFreeTierNotice); err != nil {
-				continue
+			if err := h.sendDigestEmail(ctx, emailKindWeekly, weeklyCycleKey(now), profile.UserID, *profile.Email, notifs, showFreeTierNotice); err == nil {
+				record()
 			}
 		}
 	}
@@ -161,23 +178,24 @@ func (h *Handler) RunWeekly(ctx context.Context) error {
 
 // sendWeeklyPush builds and sends the weekly digest push across both platforms
 // (APNs for iOS tokens, FCM for Android tokens), then prunes any device tokens
-// either sender reports invalid. A user with no devices is a no-op. The badge is
+// either sender reports invalid. It reports whether a send succeeded; a user
+// with no devices is a no-op that reports false. The badge is
 // the total unread count (read_at IS NULL, ADR 0035), distinct from the digest
 // application count; FCM carries no badge (Android badges are channel-driven).
-func (h *Handler) sendWeeklyPush(ctx context.Context, profile *profiles.UserProfile, applicationCount int) {
+func (h *Handler) sendWeeklyPush(ctx context.Context, profile *profiles.UserProfile, applicationCount int) bool {
 	devices, err := h.devices.ListByUser(ctx, profile.UserID)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "weekly digest: load devices failed", "user", profile.UserID, "error", err)
-		return
+		return false
 	}
 	if len(devices) == 0 {
-		return
+		return false
 	}
 
 	totalUnread, err := h.state.UnreadCount(ctx, profile.UserID)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "weekly digest: unread count failed", "user", profile.UserID, "error", err)
-		return
+		return false
 	}
 
 	var iosTokens, androidTokens []string
@@ -194,7 +212,7 @@ func (h *Handler) sendWeeklyPush(ctx context.Context, profile *profiles.UserProf
 		p, err := buildDigestPayload(applicationCount, totalUnread)
 		if err != nil {
 			h.logger.ErrorContext(ctx, "weekly digest: build apns payload failed", "user", profile.UserID, "error", err)
-			return
+			return false
 		}
 		iosPayload = p
 	}
@@ -202,7 +220,7 @@ func (h *Handler) sendWeeklyPush(ctx context.Context, profile *profiles.UserProf
 		p, err := buildDigestFCMPayload(applicationCount)
 		if err != nil {
 			h.logger.ErrorContext(ctx, "weekly digest: build fcm payload failed", "user", profile.UserID, "error", err)
-			return
+			return false
 		}
 		androidPayload = p
 	}
@@ -210,13 +228,14 @@ func (h *Handler) sendWeeklyPush(ctx context.Context, profile *profiles.UserProf
 	invalid, err := h.dispatcher.Send(ctx, iosTokens, iosPayload, androidTokens, androidPayload)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "weekly digest: push send failed", "user", profile.UserID, "error", err)
-		return
+		return false
 	}
 	for _, token := range invalid {
 		if err := h.devices.Delete(ctx, profile.UserID, token); err != nil {
 			h.logger.WarnContext(ctx, "weekly digest: prune invalid token failed", "user", profile.UserID, "error", err)
 		}
 	}
+	return true
 }
 
 // RunHourly generates the hourly digest email for every paid user with unsent-email
@@ -275,7 +294,7 @@ func (h *Handler) RunHourly(ctx context.Context) error {
 
 		// Flip emailSent only after a successful send, so a failed send leaves the
 		// whole batch unsent for the next cycle to retry.
-		if err := h.sendDigestEmail(ctx, emailKindHourly, userID, *profile.Email, included, false); err != nil {
+		if err := h.sendDigestEmail(ctx, emailKindHourly, hourlyCycleKey(now), userID, *profile.Email, included, false); err != nil {
 			continue
 		}
 
@@ -317,11 +336,32 @@ func markSent(n notifications.DigestNotification) notifications.DigestNotificati
 	return n
 }
 
+// hourlyCycleKey identifies the hourly digest window containing now.
+func hourlyCycleKey(now time.Time) string {
+	return "hourly:" + now.UTC().Truncate(time.Hour).Format("2006-01-02T15")
+}
+
+// weekStart returns Monday 00:00 UTC of the ISO week containing now.
+func weekStart(now time.Time) time.Time {
+	now = now.UTC()
+	offset := (int(now.Weekday()) + 6) % 7
+	day := now.AddDate(0, 0, -offset)
+	return time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, time.UTC)
+}
+
+// weeklyCycleKey identifies the ISO week containing now.
+func weeklyCycleKey(now time.Time) string {
+	year, week := now.UTC().ISOWeek()
+	return fmt.Sprintf("weekly:%d-W%02d", year, week)
+}
+
 // sendDigestEmail dedups notifs per application, groups them by watch zone,
 // renders the email and sends it. Callers pass the pre-dedup slice, so the
-// hourly cycle still marks a suppressed duplicate sent. It logs and returns any
-// failure so the hourly cycle can skip marking emailSent.
-func (h *Handler) sendDigestEmail(ctx context.Context, kind, userID, email string, notifs []notifications.DigestNotification, showFreeTierNotice bool) error {
+// hourly cycle still marks a suppressed duplicate sent. cycleKey plus the user
+// ID form the ACS repeatability key. It logs and returns any definite failure
+// so the hourly cycle can skip marking emailSent. An accepted send whose final
+// status is unknown counts as sent.
+func (h *Handler) sendDigestEmail(ctx context.Context, kind, cycleKey, userID, email string, notifs []notifications.DigestNotification, showFreeTierNotice bool) error {
 	zones, err := h.zones.GetByUserID(ctx, userID)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "digest email: load zones failed", "user", userID, "error", err)
@@ -340,8 +380,14 @@ func (h *Handler) sendDigestEmail(ctx context.Context, kind, userID, email strin
 		Recipient: email,
 		Subject:   buildDigestSubject(total, sections, saved),
 		HTMLBody:  buildDigestHTML(sections, saved, total, showFreeTierNotice),
+
+		RepeatabilityKey: userID + "|" + cycleKey,
 	}
 	if err := h.email.Send(ctx, kind, msg); err != nil {
+		if errors.Is(err, acsemail.ErrAcceptedStatusUnknown) {
+			h.logger.WarnContext(ctx, "digest email: accepted but status unknown, treating as sent", "user", userID, "error", err)
+			return nil
+		}
 		h.logger.ErrorContext(ctx, "digest email: send failed", "user", userID, "error", err)
 		return fmt.Errorf("send digest email to %s: %w", userID, err)
 	}

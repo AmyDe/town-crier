@@ -14,19 +14,29 @@ import (
 	"time"
 
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
+	"github.com/AmyDe/town-crier/api-go/internal/platform"
 )
 
-// fakeStore is a hand-written profile store for handler tests.
+// fakeStore is a hand-written profile store for handler tests. It models the
+// optimistic version check: Get returns a copy carrying the stored version, and
+// Save fails with ErrCASPreconditionFailed when that version is stale.
 type fakeStore struct {
 	byID      map[string]*UserProfile
+	versions  map[string]int
 	saveErr   error
 	getErr    error
 	deleteErr error
 	saved     []*UserProfile
 	deleted   []string
+	activity  []string
+
+	// beforeSave runs at the start of each Save, to simulate a concurrent writer.
+	beforeSave func(f *fakeStore)
 }
 
-func newFakeStore() *fakeStore { return &fakeStore{byID: map[string]*UserProfile{}} }
+func newFakeStore() *fakeStore {
+	return &fakeStore{byID: map[string]*UserProfile{}, versions: map[string]int{}}
+}
 
 func (f *fakeStore) Get(_ context.Context, userID string) (*UserProfile, error) {
 	if f.getErr != nil {
@@ -36,21 +46,61 @@ func (f *fakeStore) Get(_ context.Context, userID string) (*UserProfile, error) 
 	if !ok {
 		return nil, ErrNotFound
 	}
-	return p, nil
+	cp := *p
+	cp.IsNew = false
+	cp.Version = f.versions[userID]
+	return &cp, nil
+}
+
+// concurrentWrite simulates another writer saving the profile since it was read.
+func (f *fakeStore) concurrentWrite(userID string) {
+	f.versions[userID]++
 }
 
 func (f *fakeStore) Save(_ context.Context, p *UserProfile) error {
+	if f.beforeSave != nil {
+		f.beforeSave(f)
+	}
 	if f.saveErr != nil {
 		return f.saveErr
 	}
-	f.byID[p.UserID] = p
-	f.saved = append(f.saved, p)
+	_, exists := f.byID[p.UserID]
+	cp := *p
+	switch {
+	case p.IsNew && exists:
+		return platform.ErrCASPreconditionFailed
+	case p.IsNew:
+		f.versions[p.UserID] = 0
+	case !exists || f.versions[p.UserID] != p.Version:
+		return platform.ErrCASPreconditionFailed
+	default:
+		f.versions[p.UserID]++
+	}
+	cp.IsNew = false
+	cp.Version = f.versions[p.UserID]
+	p.IsNew = false
+	p.Version = cp.Version
+	f.byID[p.UserID] = &cp
+	f.saved = append(f.saved, &cp)
+	return nil
+}
+
+func (f *fakeStore) RecordActivity(_ context.Context, userID string, at time.Time) error {
+	p, ok := f.byID[userID]
+	if !ok {
+		return nil
+	}
+	p.LastActiveAt = at
+	f.activity = append(f.activity, userID)
 	return nil
 }
 
 func (f *fakeStore) Delete(_ context.Context, userID string) error {
 	if f.deleteErr != nil {
 		return f.deleteErr
+	}
+	if _, ok := f.byID[userID]; !ok {
+		return ErrNotFound
 	}
 	delete(f.byID, userID)
 	f.deleted = append(f.deleted, userID)
@@ -525,7 +575,7 @@ func TestHandler_DeleteProfile_Auth0DeletedAfterAllCosmosData(t *testing.T) {
 	}
 }
 
-func TestHandler_DeleteProfile_NotFound(t *testing.T) {
+func TestHandler_DeleteProfile_MissingProfileStillRunsCascadeAndAuth0(t *testing.T) {
 	t.Parallel()
 
 	a0 := newFakeAuth0()
@@ -533,15 +583,47 @@ func TestHandler_DeleteProfile_NotFound(t *testing.T) {
 	h := newTestHandlerCascade(newFakeStore(), a0, recordingCascade(&calls))
 	rec := httptest.NewRecorder()
 	h.delete(rec, withSubject(http.MethodDelete, "/v1/me", "auth0|missing", ""))
-	if rec.Code != http.StatusNotFound {
-		t.Errorf("delete missing: got %d, want 404", rec.Code)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("delete missing: got %d, want 204", rec.Code)
 	}
-	// No cascade and no Auth0 deletion when the profile did not exist.
-	if len(calls) != 0 {
-		t.Errorf("cascade should not run for a missing profile: %v", calls)
+	if rec.Body.Len() != 0 {
+		t.Errorf("204 should be bodyless, got %q", rec.Body.String())
 	}
-	if len(a0.deletedUsers) != 0 {
-		t.Errorf("auth0 delete should not run for a missing profile: %v", a0.deletedUsers)
+	if len(calls) != 6 {
+		t.Errorf("cascade should run for a missing profile: %v", calls)
+	}
+	if len(a0.deletedUsers) != 1 || a0.deletedUsers[0] != "auth0|missing" {
+		t.Errorf("auth0 delete should run for a missing profile: %v", a0.deletedUsers)
+	}
+}
+
+func TestHandler_DeleteProfile_RetryAfterAuth0FailureSucceeds(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStore()
+	existing, _ := NewProfile("auth0|abc", "", time.Now())
+	store.byID["auth0|abc"] = existing
+	a0 := newFakeAuth0()
+	a0.deleteErr = errors.New("auth0 down")
+	h := newTestHandlerCascade(store, a0, recordingCascade(nil))
+
+	rec := httptest.NewRecorder()
+	h.delete(rec, withSubject(http.MethodDelete, "/v1/me", "auth0|abc", ""))
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("first delete: got %d, want 500", rec.Code)
+	}
+	if len(store.deleted) != 1 {
+		t.Fatalf("profile should be gone after the first attempt: %v", store.deleted)
+	}
+
+	a0.deleteErr = nil
+	rec = httptest.NewRecorder()
+	h.delete(rec, withSubject(http.MethodDelete, "/v1/me", "auth0|abc", ""))
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("retry delete: got %d, want 204", rec.Code)
+	}
+	if len(a0.deletedUsers) != 1 || a0.deletedUsers[0] != "auth0|abc" {
+		t.Errorf("auth0 user not deleted on retry: %v", a0.deletedUsers)
 	}
 }
 
@@ -662,5 +744,101 @@ func TestHandler_ExportData_NotFound(t *testing.T) {
 	h.exportData(rec, withSubject(http.MethodGet, "/v1/me/data", "auth0|missing", ""))
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("export missing: got %d, want 404", rec.Code)
+	}
+}
+
+// conflictingWrites makes the next n Saves lose a race: another writer upgrades
+// the stored tier to Pro just before each one.
+func conflictingWrites(store *fakeStore, userID string, n int) {
+	store.beforeSave = func(f *fakeStore) {
+		if n == 0 {
+			return
+		}
+		n--
+		f.byID[userID].Tier = TierPro
+		f.concurrentWrite(userID)
+	}
+}
+
+func TestHandler_PatchProfile_RetriesAfterConflictAndKeepsConcurrentTier(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStore()
+	existing, _ := NewProfile("auth0|abc", "", time.Now())
+	store.byID["auth0|abc"] = existing
+	conflictingWrites(store, "auth0|abc", 2)
+	h := newTestHandler(store, newFakeAuth0())
+
+	rec := httptest.NewRecorder()
+	h.patch(rec, withSubject(http.MethodPatch, "/v1/me", "auth0|abc", `{"pushEnabled":false}`))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch status: got %d, want 200", rec.Code)
+	}
+	got := store.byID["auth0|abc"]
+	if got.Tier != TierPro {
+		t.Errorf("Tier: got %v, want %v (concurrent write must survive)", got.Tier, TierPro)
+	}
+	if got.Preferences.PushEnabled {
+		t.Error("PushEnabled: got true, want false")
+	}
+}
+
+func TestHandler_PatchProfile_GivesUpAfterThreeConflicts(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStore()
+	existing, _ := NewProfile("auth0|abc", "", time.Now())
+	store.byID["auth0|abc"] = existing
+	conflictingWrites(store, "auth0|abc", 3)
+	h := newTestHandler(store, newFakeAuth0())
+
+	rec := httptest.NewRecorder()
+	h.patch(rec, withSubject(http.MethodPatch, "/v1/me", "auth0|abc", `{"pushEnabled":false}`))
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("patch status: got %d, want 500", rec.Code)
+	}
+}
+
+func TestHandler_PutZonePreferences_RetriesAfterConflict(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStore()
+	existing, _ := NewProfile("auth0|abc", "", time.Now())
+	store.byID["auth0|abc"] = existing
+	conflictingWrites(store, "auth0|abc", 1)
+	h := newTestHandler(store, newFakeAuth0())
+
+	req := withSubject(http.MethodPut, "/v1/me/watch-zones/z1/preferences", "auth0|abc", `{"newApplicationPush":false}`)
+	req.SetPathValue("zoneId", "z1")
+	rec := httptest.NewRecorder()
+	h.putZonePreferences(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("put status: got %d, want 200", rec.Code)
+	}
+	if store.byID["auth0|abc"].Tier != TierPro {
+		t.Error("concurrent tier write was overwritten")
+	}
+}
+
+func TestHandler_CreateProfile_RacingFirstSaveReturnsExistingProfile(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStore()
+	raced, _ := NewProfile("auth0|abc", "", time.Now())
+	store.beforeSave = func(f *fakeStore) {
+		if _, ok := f.byID["auth0|abc"]; !ok {
+			f.byID["auth0|abc"] = raced
+		}
+	}
+	h := newTestHandler(store, newFakeAuth0())
+
+	rec := httptest.NewRecorder()
+	h.create(rec, withSubject(http.MethodPost, "/v1/me", "auth0|abc", ""))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create status: got %d, want 200", rec.Code)
 	}
 }

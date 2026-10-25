@@ -1,6 +1,8 @@
 package uk.towncrierapp.data.auth
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -11,6 +13,7 @@ import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 
 /**
@@ -107,6 +110,21 @@ class SessionCacheTest {
 
             gate.complete(Unit)
             assertEquals(first.await(), second.await())
+        }
+
+    @Test
+    fun `a failed load is not kept and the next call runs the loader again`() =
+        runTest {
+            val cache = SessionCache(scope = CoroutineScope(coroutineContext + SupervisorJob()))
+            val clock = clockAt(expiresAt.minusSeconds(120))
+            val loaded = anAuthSession(accessToken = "second-try")
+
+            assertFailsWith<IllegalStateException> {
+                cache.currentOrLoad(clock) { error("credentials store unavailable") }
+            }
+            val result = cache.currentOrLoad(clock) { loaded }
+
+            assertEquals(loaded, result)
         }
 
     @Test

@@ -43,7 +43,7 @@ public final class APIAnonymousApplicationsRepository: AnonymousApplicationsRepo
     } catch let domainError as DomainError {
       throw domainError
     } catch {
-      throw error.toDomainError()
+      throw error.toThrowableDomainError()
     }
     return dtos.map { $0.toDomain() }
   }
@@ -71,7 +71,7 @@ public final class APIAnonymousApplicationsRepository: AnonymousApplicationsRepo
     } catch let domainError as DomainError {
       throw domainError
     } catch {
-      throw error.toDomainError()
+      throw error.toThrowableDomainError()
     }
     return dtos.compactMap { $0.toDomain() }
   }
