@@ -9,7 +9,7 @@ import androidx.navigation.NavHostController
 import uk.towncrierapp.presentation.features.map.MapRoute
 import uk.towncrierapp.presentation.features.map.MapViewModel
 
-/** The Map tab (GH#776) — 4th bottom-nav destination. Full application detail (#775) is an existing destination, so a "View full details" tap navigates straight there. */
+/** The Map tab — 4th bottom-nav destination. Full application detail (#775) is an existing destination, so a "View full details" tap navigates straight there. */
 @Composable
 internal fun MapTab(
     appGraph: AppGraph,

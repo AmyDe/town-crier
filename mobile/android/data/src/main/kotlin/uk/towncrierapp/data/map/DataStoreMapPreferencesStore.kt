@@ -16,7 +16,7 @@ import java.io.IOException
 // "lastSelectedZone.applications" (DataStoreApplicationListPreferencesStore).
 private val LAST_SELECTED_ZONE_KEY = stringPreferencesKey("lastSelectedZone.map")
 
-/** DataStore Preferences-backed [MapPreferencesStore]. Port of iOS's `UserDefaults`-backed equivalent (GH#776). */
+/** DataStore Preferences-backed [MapPreferencesStore]. Port of iOS's `UserDefaults`-backed equivalent. */
 public class DataStoreMapPreferencesStore(
     private val dataStore: DataStore<Preferences>,
 ) : MapPreferencesStore {

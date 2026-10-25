@@ -202,7 +202,7 @@ export function MapPage({ port }: Props) {
             value={selectedZone?.id ?? ''}
             onChange={(e) => handleZoneChange(e.target.value)}
           >
-            {zones.map((zone: WatchZoneSummary) => (
+            {zones.map((zone) => (
               <option key={zone.id} value={zone.id}>
                 {zone.name}
               </option>

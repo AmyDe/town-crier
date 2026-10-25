@@ -29,8 +29,7 @@ type FilterDefinition struct {
 	Description string
 	// Expression is a to_tsquery('english', ...) boolean expression matched
 	// against an application's description via
-	// SELECT to_tsvector('english', $1) @@ to_tsquery('english', $2) — see
-	// applications.PostgresStore.MatchesExpression (later bead). Empty for
+	// SELECT to_tsvector('english', $1) @@ to_tsquery('english', $2). Empty for
 	// FilterKeyFewerNotifications, whose only criterion is the app_type gate
 	// below; every other entry's expression is non-empty.
 	Expression string

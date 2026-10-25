@@ -26,7 +26,7 @@ public data class WatchZoneLimits(
 
     /**
      * Whether this tier can draw a custom-shape (polygon) zone rather than
-     * only a circle (GH#1072 Phase 1). Mirrors the server's
+     * only a circle. Mirrors the server's
      * `SubscriptionTier.AllowsCustomBoundary()` (`t.IsPaid()`) and iOS
      * `WatchZoneLimits.allowsCustomBoundary`.
      */

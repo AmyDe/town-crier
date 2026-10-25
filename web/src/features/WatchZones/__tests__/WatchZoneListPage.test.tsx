@@ -50,7 +50,6 @@ describe('WatchZoneListPage', () => {
 
   it('shows loading state', () => {
     spy.listResult = [];
-    // Don't resolve the promise — stays loading
     spy.list = () => new Promise(() => {});
 
     renderWithRouter(<WatchZoneListPage repository={spy} />);

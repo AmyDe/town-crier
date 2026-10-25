@@ -20,7 +20,7 @@ import uk.towncrierapp.domain.watchzones.ZonePreferencesRepository
  * /v1/me/watch-zones/{zoneId}/preferences`. All four toggles default to
  * `true`; the free-tier downgrade is applied server-side at dispatch time,
  * so the same controls render for every tier — [featureGate] lets the Screen
- * decide whether to lock them. Port of iOS `ZonePreferencesViewModel`.
+ * decide whether to lock them.
  */
 public class ZonePreferencesViewModel(
     private val repository: ZonePreferencesRepository,

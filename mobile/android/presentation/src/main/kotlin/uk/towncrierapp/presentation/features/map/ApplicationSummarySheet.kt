@@ -36,7 +36,7 @@ import java.time.LocalDate
  * The bottom sheet a single-pin (or disambiguation-list-row) tap opens:
  * status badge, save toggle, reference, description, address, received
  * date, and "View full details". Same field set as iOS
- * `ApplicationSummarySheet` (GH#776).
+ * `ApplicationSummarySheet`.
  */
 @Composable
 internal fun ApplicationSummarySheetContent(

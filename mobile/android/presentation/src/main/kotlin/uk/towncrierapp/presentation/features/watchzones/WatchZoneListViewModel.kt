@@ -20,7 +20,7 @@ import uk.towncrierapp.domain.watchzones.WatchZoneRepository
  * is injected at construction time from the session's subscription tier
  * (the NavHost recreates this ViewModel — keyed on tier — whenever it
  * changes, so the badge/upsell state never goes stale; see
- * `WatchZonesRoute`). Port of iOS `WatchZoneListViewModel`.
+ * `WatchZonesRoute`).
  */
 public class WatchZoneListViewModel(
     private val repository: WatchZoneRepository,
@@ -29,7 +29,7 @@ public class WatchZoneListViewModel(
     private val _uiState = MutableStateFlow(WatchZoneListUiState().deriveFromGate())
     public val uiState: StateFlow<WatchZoneListUiState> = _uiState.asStateFlow()
 
-    // Guards against the spurious refetch-on-every-tab-revisit (tc-hlbx) —
+    // Guards against the spurious refetch-on-every-tab-revisit —
     // see SavedListViewModel's matching field doc for the full rationale.
     private var hasLoadedSuccessfully = false
 
@@ -86,8 +86,8 @@ public class WatchZoneListViewModel(
         copy(
             canAddZone = featureGate.canAdd(Quota.WATCH_ZONES, zones.size),
             showUpgradeBadge = featureGate.shouldShowUpgradeBadge(Quota.WATCH_ZONES, zones.size),
-            // Single source of truth for the richer free-tier inline upsell card
-            // (tc-t8hc): true only for a free-tier user pinned at their one-zone
+            // Single source of truth for the richer free-tier inline upsell card:
+            // true only for a free-tier user pinned at their one-zone
             // cap. A Personal user at their finite 3-zone cap also trips
             // showUpgradeBadge, which is why this must not simply piggyback on
             // it — see WatchZoneListViewModelTest.

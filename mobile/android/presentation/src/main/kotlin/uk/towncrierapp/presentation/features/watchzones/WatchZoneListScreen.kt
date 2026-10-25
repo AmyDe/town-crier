@@ -153,8 +153,8 @@ private fun WatchZoneListTopBar(
             if (showUpgradeBadge) {
                 // Not an IconButton: its fixed-size (40dp) content box clips a
                 // wider pill-shaped badge with a text label, squeezing
-                // "Upgrade" into a vertical wrap — verified live on-device
-                // (tc-z95t). A clickable Box lets the badge size itself
+                // "Upgrade" into a vertical wrap — verified live on-device.
+                // A clickable Box lets the badge size itself
                 // naturally while staying tappable.
                 Box(
                     modifier =

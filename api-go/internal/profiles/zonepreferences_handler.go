@@ -10,12 +10,6 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
 )
 
-// Per-zone notification preferences live on the user profile document, so the
-// /v1/me/watch-zones/{zoneId}/preferences endpoints are served here (over the
-// profile store) rather than in the watchzones package. The
-// Get/UpdateZonePreferences handlers are registered alongside the watch-zone
-// routes even though they read and write the user profile document.
-
 // zonePreferencesRequest is the PUT body. The four channel flags are plain
 // bools: an omitted field decodes to false (JSON zero-value decoding for
 // non-nullable bool fields).

@@ -28,7 +28,7 @@ internal fun bubbleLabel(count: Int): String = if (count > BUBBLE_COUNT_CAP) "99
 
 /**
  * Generated, per-status/per-label [BitmapDescriptor]s for map markers — the
- * Android counterpart to iOS's `MKMarkerAnnotationView` tinting (GH#776).
+ * Android counterpart to iOS's `MKMarkerAnnotationView` tinting.
  * Icons are drawn once (a filled circle, white-bordered) and cached for the
  * lifetime of this instance, which callers `remember` for the composition's
  * lifetime (see [rememberMapMarkerIcons]) so re-tapping the map never

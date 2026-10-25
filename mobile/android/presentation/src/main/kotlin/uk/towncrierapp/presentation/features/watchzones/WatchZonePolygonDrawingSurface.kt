@@ -34,7 +34,7 @@ import uk.towncrierapp.presentation.features.map.toCoordinate
 import uk.towncrierapp.presentation.features.map.toLatLng
 
 /**
- * The custom-shape drawing surface (GH#1072 Phase 3): a `GoogleMap` built on
+ * The custom-shape drawing surface: a `GoogleMap` built on
  * the same maps-compose patterns as `features/map/MapScreen.kt` — tap to add
  * a vertex, drag to move one, tap the first vertex to close, undo the last
  * action. Purely a rendering + gesture-routing layer; every rule (minimum 3
@@ -43,7 +43,7 @@ import uk.towncrierapp.presentation.features.map.toLatLng
  * only forwards taps/drags and renders the current state.
  *
  * Takes the drawing fields directly rather than a whole `WatchZoneEditorUiState`
- * (GH#1072 Phase 5, tc-v6fo0.5) so onboarding's `BoundaryDrawingStep` can
+ * so onboarding's `BoundaryDrawingStep` can
  * reuse this exact surface from `OnboardingUiState` without an adapter type.
  */
 @Composable

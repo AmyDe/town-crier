@@ -10,7 +10,7 @@ import kotlin.math.max
  * GH#776). The map sends this with an integer slippy [zoom] so the server
  * returns only the cluster aggregates inside the current view. Edges are
  * decimal degrees: [west]/[east] are longitudes, [south]/[north] are
- * latitudes. Port of iOS `MapViewport`.
+ * latitudes.
  */
 public data class MapViewport(
     public val west: Double,

@@ -1,6 +1,6 @@
 package uk.towncrierapp.domain.watchzones
 
-/** Persists and retrieves the user's watch zones. Port of iOS `WatchZoneRepository`. */
+/** Persists and retrieves the user's watch zones. */
 public interface WatchZoneRepository {
     /** Returns every watch zone belonging to the current user. */
     public suspend fun zones(): List<WatchZone>

@@ -4,7 +4,7 @@ package uk.towncrierapp.domain.watchzones
  * A validated UK postcode, normalised to upper case with surrounding
  * whitespace trimmed. Validity is established once, at [parse] time - every
  * [Postcode] in hand is already known well-formed, so nothing downstream
- * re-checks the format. Port of iOS `Postcode`.
+ * re-checks the format.
  */
 @JvmInline
 public value class Postcode private constructor(

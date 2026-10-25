@@ -55,7 +55,7 @@ import uk.towncrierapp.presentation.features.applicationlist.applicationErrorMes
 
 /**
  * The Map tab: server-side cluster rendering via `GoogleMap`/maps-compose
- * (GH#776) — zone/status chips, status-tinted single pins, amber count
+ * — zone/status chips, status-tinted single pins, amber count
  * bubbles, the zone radius overlay, and the summary/disambiguation bottom
  * sheets. Route + Screen split per compose-ui.md; camera-idle events (a
  * pan/zoom settling) drive [MapViewModel.onCameraIdle]'s debounced refetch.
@@ -172,7 +172,7 @@ private fun ZonePickerRow(
     }
 }
 
-/** `null` represents "All" — the map has no unread filter, only All|Status (GH#776). */
+/** `null` represents "All" — the map has no unread filter, only All|Status. */
 private val STATUS_FILTER_OPTIONS: List<ApplicationStatus?> =
     listOf(
         null,

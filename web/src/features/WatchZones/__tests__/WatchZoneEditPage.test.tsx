@@ -81,7 +81,6 @@ describe('WatchZoneEditPage', () => {
     const nameInput = screen.getByRole('textbox', { name: /zone name/i });
     expect(nameInput).toHaveValue('Home');
 
-    // Wait for preferences to load — each event x channel pair has its own toggle
     const newAppPushCheckbox = await screen.findByRole('checkbox', {
       name: /new applications.*push/i,
     });

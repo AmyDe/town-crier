@@ -17,8 +17,7 @@ export function useWatchZones(repository: WatchZoneRepository) {
       await repository.delete(zoneId);
       refresh();
     } catch (err: unknown) {
-      const message = extractErrorMessage(err);
-      setActionError(message);
+      setActionError(extractErrorMessage(err));
     }
   }, [repository, refresh]);
 

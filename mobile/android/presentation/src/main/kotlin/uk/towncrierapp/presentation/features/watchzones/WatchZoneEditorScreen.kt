@@ -29,13 +29,13 @@ import uk.towncrierapp.presentation.designsystem.TownCrierTheme
  * Create or edit a watch zone: name → postcode lookup (create only) → radius
  * slider → static map placeholder (#776's job, see [ZoneMapPlaceholder]) →
  * gated instant-alert toggles → save. Section composables live in
- * `WatchZoneEditorSections.kt`. Port of iOS `WatchZoneEditorView`.
+ * `WatchZoneEditorSections.kt`.
  * [onSaveSuccess]/[onDismiss]/[onUpgradeRequired] are one-shot navigation
  * reconciliations driven by
  * [WatchZoneEditorUiState.saveCompleted]/`navigateToPaywall` — ViewModels
  * never navigate (compose-ui.md). [onSaveSuccess] is distinct from
  * [onDismiss] (Cancel/back) so the nav layer can signal the zone list to
- * refetch only on an actual save (tc-yg0q) — see `WatchZoneNavGraph.kt`.
+ * refetch only on an actual save — see `WatchZoneNavGraph.kt`.
  */
 @Composable
 public fun WatchZoneEditorRoute(

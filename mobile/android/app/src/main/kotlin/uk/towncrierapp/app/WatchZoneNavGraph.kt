@@ -52,7 +52,7 @@ internal data class ZonePreferencesDestination(
 )
 
 /**
- * Nav-result key (tc-yg0q): [WatchZoneEditorDestinationContent] sets this on
+ * Nav-result key: [WatchZoneEditorDestinationContent] sets this on
  * `previousBackStackEntry`'s `SavedStateHandle` on a successful save so
  * [WatchZonesTab] — which never observes the editor's own state directly,
  * ViewModels/Routes don't navigate — knows to call
@@ -93,7 +93,7 @@ private fun WatchZoneEditorDestination.toEditingZone(): WatchZone? {
  * badge/upsell state never goes stale after a tier change (tc-ujct parity).
  * [backStackEntry] is this destination's own back-stack entry — its
  * `SavedStateHandle` is where a successful zone edit/create leaves the
- * [ZONE_SAVED_RESULT_KEY] result (tc-yg0q) telling this tab to
+ * [ZONE_SAVED_RESULT_KEY] result telling this tab to
  * [WatchZoneListViewModel.reload], bypassing the tc-hlbx load-once guard
  * for that one explicit "something changed" signal — a plain tab revisit
  * with no such signal still does not refetch.
@@ -161,7 +161,7 @@ internal fun WatchZoneEditorDestinationContent(
                             appGraph.watchZoneRepository,
                             subscriptionTier,
                             editingZone,
-                            // Closes the #774/#775 cache-invalidation loop (tc-cnme):
+                            // Closes the #774/#775 cache-invalidation loop:
                             // a successful edit-save invalidates this zone's
                             // applications cache entry.
                             appGraph.applicationCacheStore,
