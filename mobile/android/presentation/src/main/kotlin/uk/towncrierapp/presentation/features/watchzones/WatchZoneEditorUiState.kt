@@ -33,7 +33,7 @@ public data class WatchZoneEditorUiState(
     val isSaveEnabled: Boolean = false,
     val saveCompleted: Boolean = false,
     val navigateToPaywall: Boolean = false,
-    // GH#1072 Phase 3 (tc-v6fo0.3): custom-shape (polygon) drawing.
+    // Custom-shape (polygon) drawing.
     // [allowsCustomBoundary] mirrors WatchZoneLimits.allowsCustomBoundary for
     // this editor's tier — the Screen never offers [WatchZoneShapeMode.CUSTOM]
     // when it's false (Free tier sees the upsell instead, never a hidden

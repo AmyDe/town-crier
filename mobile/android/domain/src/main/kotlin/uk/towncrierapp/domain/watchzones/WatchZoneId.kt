@@ -1,6 +1,6 @@
 package uk.towncrierapp.domain.watchzones
 
-/** Unique identifier for a [WatchZone]. Port of iOS `WatchZoneId`. */
+/** Unique identifier for a [WatchZone]. */
 @JvmInline
 public value class WatchZoneId(
     public val value: String,

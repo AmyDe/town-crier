@@ -6,7 +6,7 @@ import uk.towncrierapp.domain.watchzones.WatchZoneBoundaryResult
 
 /**
  * The shape-mode/polygon-drawing fields shared by the watch-zone editor and
- * onboarding's custom-shape drawing step (GH#1072 Phase 5, tc-v6fo0.5).
+ * onboarding's custom-shape drawing step.
  * [applyShapeEvent] and its private `with*` helpers are the SINGLE
  * implementation of the vertex-add/move/close/undo rules (3-50 vertices,
  * [WatchZoneBoundary.of] validation) — both [WatchZoneEditorUiState] and

@@ -30,7 +30,6 @@ private const val EARTH_RADIUS_METRES = 6_371_000.0
  * values rather than two [Coordinate]s so a derived, not-yet-validated point
  * — e.g. [WatchZoneBoundary.enclosingRadiusMetres]'s centroid — doesn't need
  * to round-trip it through [Coordinate]'s `init` just to measure a distance.
- * Port of iOS `Coordinate.haversineMetres`.
  */
 internal fun haversineMetres(
     latitude1: Double,

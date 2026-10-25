@@ -8,10 +8,10 @@ import uk.towncrierapp.domain.map.MapViewport
 import uk.towncrierapp.domain.watchzones.WatchZone
 
 /**
- * `MapScreen` state. Port of iOS `MapViewModel`'s published state (GH#776).
+ * `MapScreen` state. Port of iOS `MapViewModel`'s published state.
  *
  * [stackedApplications] is non-null only while the disambiguation list for an
- * unsplittable cluster (GH#722) is showing — the summary sheet
+ * unsplittable cluster is showing — the summary sheet
  * ([selectedApplication]) and the list are never both open (setting one
  * clears the other, see [MapViewModel]). [pendingCameraTarget] is a one-shot
  * effect the Screen reconciles by moving the `GoogleMap` camera and calling

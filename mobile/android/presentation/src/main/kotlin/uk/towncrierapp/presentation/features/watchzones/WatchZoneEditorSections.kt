@@ -141,7 +141,7 @@ private fun radiusSliderSteps(
 private const val RADIUS_STEP_METRES = 100f
 
 /**
- * Circle/Custom-shape segmented toggle (GH#1072 Phase 3). Only rendered by
+ * Circle/Custom-shape segmented toggle. Only rendered by
  * `WatchZoneEditorScreen` when [WatchZoneEditorUiState.allowsCustomBoundary]
  * is true — a Free-tier user never sees this control, so there is no
  * hidden/disabled path to custom-shape mode for them (see

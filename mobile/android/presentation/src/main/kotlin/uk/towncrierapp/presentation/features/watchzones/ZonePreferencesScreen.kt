@@ -34,9 +34,8 @@ import uk.towncrierapp.presentation.designsystem.components.GatedToggle
 /**
  * Per-zone notification preferences: four toggles (push/email ×
  * new-application/decision) grouped under two sections. Locked for Free —
- * the server never delivers instant alerts to free accounts (tc-bd6i); the
+ * the server never delivers instant alerts to free accounts; the
  * same controls render for every tier, gated by [FeatureGate].
- * Port of iOS `ZonePreferencesView`.
  */
 @Composable
 public fun ZonePreferencesRoute(
@@ -79,7 +78,7 @@ internal fun ZonePreferencesScreen(
     modifier: Modifier = Modifier,
 ) {
     // These toggles are gated on the same paid-only entitlement as the editor's
-    // instant-alert toggles (tc-bd6i) — any paid entitlement distinguishes
+    // instant-alert toggles — any paid entitlement distinguishes
     // free (locked) from paid (open), since they all travel together.
     val isUnlocked = state.featureGate.hasEntitlement(Entitlement.STATUS_CHANGE_ALERTS)
 

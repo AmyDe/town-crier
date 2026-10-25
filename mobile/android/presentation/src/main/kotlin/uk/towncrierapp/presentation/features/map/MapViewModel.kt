@@ -31,7 +31,7 @@ import uk.towncrierapp.domain.watchzones.WatchZoneRepository
  * Drives the Map tab: server-side cluster rendering for the current
  * viewport, debounced camera-idle refetch, zone/status filtering, and tap
  * routing (single pin -> summary, splittable bubble -> client zoom-in,
- * stacked cell -> disambiguation list). Port of iOS `MapViewModel` (GH#776).
+ * stacked cell -> disambiguation list).
  *
  * The point-read helpers behind [onClusterTapped] ([pointReadOrNull],
  * [pointReadAllOrNull]) and the zone-resolution helper behind [load]

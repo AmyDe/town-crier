@@ -5,7 +5,7 @@ import uk.towncrierapp.domain.watchzones.Coordinate
 /**
  * Every shape-mode/polygon-drawing interaction the editor screen can raise,
  * routed through the single [WatchZoneEditorViewModel.onShapeEvent] entry
- * point (GH#1072 Phase 3). One dispatch method rather than five separate
+ * point. One dispatch method rather than five separate
  * ones keeps the ViewModel under detekt's per-class function budget without
  * losing call-site clarity — each event still names exactly what happened.
  */

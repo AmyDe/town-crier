@@ -8,7 +8,7 @@ import uk.towncrierapp.domain.watchzones.PostcodeGeocoder
 
 /**
  * `PostcodeGeocoder` over the Town Crier API's `GET /v1/geocode/{postcode}`.
- * Port of iOS `APIPostcodeGeocoder`. The postcode is passed through as a
+ * The postcode is passed through as a
  * single path segment (it may contain an internal space, e.g. "SW1A 1AA") —
  * [ApiEndpoint]/`ApiClient` percent-encodes it via OkHttp's `addPathSegment`.
  */

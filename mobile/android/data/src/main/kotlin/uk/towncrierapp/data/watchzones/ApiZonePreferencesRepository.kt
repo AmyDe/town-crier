@@ -8,7 +8,7 @@ import uk.towncrierapp.domain.watchzones.WatchZoneId
 import uk.towncrierapp.domain.watchzones.ZoneNotificationPreferences
 import uk.towncrierapp.domain.watchzones.ZonePreferencesRepository
 
-/** `ZonePreferencesRepository` over the Town Crier API. Port of iOS `APIZonePreferencesRepository`. */
+/** `ZonePreferencesRepository` over the Town Crier API. */
 public class ApiZonePreferencesRepository(
     private val apiClient: ApiClient,
     private val json: Json = Json { ignoreUnknownKeys = true },
