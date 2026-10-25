@@ -21,9 +21,8 @@ export function useZonePreferences(repository: WatchZoneRepository, zoneId: stri
       refresh();
       setIsSaving(false);
     } catch (err: unknown) {
-      const message = extractErrorMessage(err);
       setIsSaving(false);
-      setActionError(message);
+      setActionError(extractErrorMessage(err));
     }
   }, [repository, zoneId, refresh]);
 
