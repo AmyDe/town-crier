@@ -125,8 +125,9 @@ func NewDispatcher(store eventStore, apps applicationLoader, decision decisionDi
 // Dispatch processes pending events once. Events stay pending during quiet
 // hours. A failing event does not stop later events: it is logged, its attempt
 // count is incremented and it is retried by the next call until MaxAttempts,
-// when it is marked stale. Dispatch returns an error only when every attempted
-// event failed, or when ctx is cancelled (which is not counted as an attempt).
+// when it is marked stale. When every attempted event fails, no attempt is
+// counted and Dispatch returns an error; the age limit still bounds such events.
+// A cancelled ctx is returned as an error and is not counted as an attempt.
 func (d *Dispatcher) Dispatch(ctx context.Context) (Result, error) {
 	now := d.now()
 	local := now.In(d.london)
@@ -175,6 +176,11 @@ func (d *Dispatcher) Dispatch(ctx context.Context) (Result, error) {
 
 	attempted := 0
 	var lastErr error
+	type failure struct {
+		event Event
+		err   error
+	}
+	var failures []failure
 	for _, e := range live {
 		if err := ctx.Err(); err != nil {
 			return res, err
@@ -186,11 +192,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context) (Result, error) {
 				return res, ctxErr
 			}
 			lastErr = err
-			if abandoned, ferr := d.recordFailure(ctx, e, err, now); ferr != nil {
-				lastErr = ferr
-			} else if abandoned {
-				res.Stale++
-			}
+			failures = append(failures, failure{e, err})
 			res.Failed++
 			continue
 		}
@@ -201,8 +203,17 @@ func (d *Dispatcher) Dispatch(ctx context.Context) (Result, error) {
 			res.Stale++
 		}
 	}
+	// When every attempted event fails the cause is systemic, so no attempt is
+	// counted: a short outage must not exhaust MaxAttempts for every event.
 	if attempted > 0 && res.Failed == attempted {
 		return res, fmt.Errorf("all %d attempted events failed: %w", attempted, lastErr)
+	}
+	for _, f := range failures {
+		if abandoned, err := d.recordFailure(ctx, f.event, f.err, now); err != nil {
+			d.logger.ErrorContext(ctx, "appevents: record failure", "eventId", f.event.ID, "error", err)
+		} else if abandoned {
+			res.Stale++
+		}
 	}
 	return res, nil
 }

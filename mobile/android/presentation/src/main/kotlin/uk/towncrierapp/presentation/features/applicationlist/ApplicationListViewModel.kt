@@ -40,13 +40,14 @@ public class ApplicationListViewModel(
     // fetchFirstPage() directly and are unaffected by this guard, so their
     // explicit refresh behaviour (tc-cnme) is unchanged.
     private var hasLoadedSuccessfully = false
+    private var loadJob: Job? = null
     private var fetchJob: Job? = null
     private var loadMoreJob: Job? = null
 
     public fun load() {
         if (hasLoadedSuccessfully) return
-        fetchJob?.cancel()
-        fetchJob =
+        loadJob?.cancel()
+        loadJob =
             viewModelScope.launch {
                 _uiState.update { it.copy(isLoading = true, error = null) }
                 try {
@@ -62,7 +63,7 @@ public class ApplicationListViewModel(
                     _uiState.update { it.copy(isLoading = false, error = e) }
                     return@launch
                 }
-                fetchPage()
+                fetchFirstPage()
             }
     }
 

@@ -64,8 +64,15 @@ runs:
         fi
         MODE=$(az containerapp show --name "$APP" --resource-group "$RG" \
           --query "properties.configuration.activeRevisionsMode" -o tsv)
-        IMAGE=$(az containerapp show --name "$APP" --resource-group "$RG" \
-          --query "properties.template.containers[0].image" -o tsv)
+        # The serving revision's image, not the template's: after a failed deploy
+        # the template can hold the bad image.
+        if [ -n "$REV" ]; then
+          IMAGE=$(az containerapp revision show --name "$APP" --resource-group "$RG" \
+            --revision "$REV" --query "properties.template.containers[0].image" -o tsv)
+        else
+          IMAGE=$(az containerapp show --name "$APP" --resource-group "$RG" \
+            --query "properties.template.containers[0].image" -o tsv)
+        fi
         URL="$HEALTH_URL_INPUT"
         if [ -z "$URL" ]; then
           DOMAIN=$(az containerapp show --name "$APP" --resource-group "$RG" \
@@ -86,6 +93,7 @@ runs:
         APP: ${{ inputs.app-name }}
         RG: ${{ inputs.resource-group }}
         IMAGE: ${{ inputs.image }}
+        MODE: ${{ steps.old-revision.outputs.mode }}
         RUN_ID: ${{ github.run_id }}
         RUN_ATTEMPT: ${{ github.run_attempt }}
       run: |
@@ -99,6 +107,12 @@ runs:
           --resource-group "$RG" \
           --image "$IMAGE" \
           --revision-suffix "$SUFFIX"
+        # A rollback pins traffic to a fixed revision. Route to the latest ready
+        # revision again, or the health gate would GET the pinned old revision.
+        if [ "${MODE,,}" = "multiple" ]; then
+          az containerapp ingress traffic set --name "$APP" --resource-group "$RG" \
+            --revision-weight latest=100
+        fi
         echo "revision=${APP}--${SUFFIX}" >> "$GITHUB_OUTPUT"
 
     - name: Verify new revision runs the deployed image

@@ -37,6 +37,39 @@ struct StoreKitSubscriptionServiceVerificationTests {
     #expect(finish.finishCount == 0)
   }
 
+  @Test("reportThenFinish finishes a transaction the server rejects as a bad request")
+  func reportThenFinish_badRequest_finishes() async throws {
+    let verifier = SpySubscriptionVerifier()
+    verifier.setVerifyResult(
+      .failure(APIError.serverError(statusCode: 400, message: "invalid_transaction_payload")))
+    let finish = FinishRecorder(verifier: verifier)
+
+    try await StoreKitSubscriptionService.reportThenFinish(
+      signedTransaction: "header.payload.signature",
+      verificationService: verifier,
+      finish: finish.finish)
+
+    #expect(finish.finishCount == 1)
+  }
+
+  @Test("reportThenFinish leaves the transaction unfinished on a 5xx or a 401")
+  func reportThenFinish_serverErrorOrUnauthorized_doesNotFinish() async throws {
+    for error: any Error in [
+      APIError.serverError(statusCode: 503, message: nil), APIError.unauthorized,
+    ] {
+      let verifier = SpySubscriptionVerifier()
+      verifier.setVerifyResult(.failure(error))
+      let finish = FinishRecorder(verifier: verifier)
+
+      try await StoreKitSubscriptionService.reportThenFinish(
+        signedTransaction: "header.payload.signature",
+        verificationService: verifier,
+        finish: finish.finish)
+
+      #expect(finish.finishCount == 0)
+    }
+  }
+
   @Test("reportThenFinish finishes immediately when no verification service is injected")
   func reportThenFinish_noVerifier_finishes() async throws {
     let finish = FinishRecorder(verifier: SpySubscriptionVerifier())

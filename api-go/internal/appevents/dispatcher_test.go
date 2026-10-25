@@ -346,8 +346,27 @@ func TestDispatch_AllEventsFailingReturnsErrorAndKeepsPending(t *testing.T) {
 	if _, err := h.d.Dispatch(context.Background()); !errors.Is(err, boom) {
 		t.Fatalf("err = %v", err)
 	}
-	if h.store.status[1] != StatusPending || h.store.attempts[1] != 1 {
-		t.Errorf("status = %s, attempts = %d", h.store.status[1], h.store.attempts[1])
+	if h.store.status[1] != StatusPending || h.store.attempts[1] != 0 {
+		t.Errorf("status = %s, attempts = %d; a call where every event fails is systemic and not counted", h.store.status[1], h.store.attempts[1])
+	}
+}
+
+func TestDispatch_SystemicOutageDoesNotAbandonEvents(t *testing.T) {
+	t.Parallel()
+	now := at(12, 0)
+	h := newHarness(now, DefaultConfig(),
+		Event{ID: 1, UID: "a", Kind: KindNewApplication, EventDate: date(6, 15), DetectedAt: now.Add(-time.Hour)},
+		Event{ID: 2, UID: "b", Kind: KindNewApplication, EventDate: date(6, 15), DetectedAt: now})
+	h.fan.err = errors.New("db down")
+	for i := 1; i <= MaxAttempts+2; i++ {
+		if _, err := h.d.Dispatch(context.Background()); err == nil {
+			t.Fatalf("run %d: want error", i)
+		}
+	}
+	h.fan.err = nil
+	res, err := h.d.Dispatch(context.Background())
+	if err != nil || res.Sent != 2 {
+		t.Fatalf("res = %+v, err = %v; want both events sent after recovery", res, err)
 	}
 }
 
@@ -376,16 +395,24 @@ func TestDispatch_FailingEventDoesNotBlockLaterEvents(t *testing.T) {
 func TestDispatch_EventAbandonedAfterFiveAttempts(t *testing.T) {
 	t.Parallel()
 	now := at(12, 0)
-	h := newHarness(now, DefaultConfig(), Event{ID: 1, UID: "a", Kind: KindNewApplication, EventDate: date(6, 15), DetectedAt: now})
-	h.fan.err = errors.New("boom")
+	h := newHarness(now, DefaultConfig(),
+		Event{ID: 1, UID: "a", Kind: KindNewApplication, EventDate: date(6, 15), DetectedAt: now},
+		Event{ID: 100, UID: "ok", Kind: KindNewApplication, EventDate: date(6, 15), DetectedAt: now})
+	h.fan.failOn = map[string]error{"a": errors.New("boom")}
+	healthy := func(id int64) {
+		h.store.events = append(h.store.events, Event{ID: id, UID: "ok", Kind: KindNewApplication, EventDate: date(6, 15), DetectedAt: now})
+		h.store.status[id] = StatusPending
+	}
 	for i := 1; i <= 4; i++ {
-		if _, err := h.d.Dispatch(context.Background()); err == nil {
-			t.Fatalf("run %d: want error", i)
+		healthy(int64(100 + i))
+		if _, err := h.d.Dispatch(context.Background()); err != nil {
+			t.Fatalf("run %d: err = %v", i, err)
 		}
 		if h.store.status[1] != StatusPending {
 			t.Fatalf("run %d: status = %s", i, h.store.status[1])
 		}
 	}
+	healthy(105)
 	res, _ := h.d.Dispatch(context.Background())
 	if h.store.status[1] != StatusStale || h.store.attempts[1] != 5 {
 		t.Errorf("status = %s, attempts = %d", h.store.status[1], h.store.attempts[1])

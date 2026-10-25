@@ -184,8 +184,9 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
   // MARK: - Server reporting
 
   /// Reports the transaction to the backend, then calls `finish`. `finish` runs
-  /// when the report succeeds, when there is no verification service, or when the
-  /// answer is ``DomainError/transactionAlreadyClaimed`` (which is then rethrown).
+  /// when the report succeeds, when there is no verification service, when the
+  /// server rejects the payload with a 400, or when the answer is
+  /// ``DomainError/transactionAlreadyClaimed`` (which is then rethrown).
   /// Any other failure is logged and swallowed, and `finish` does not run.
   static func reportThenFinish(
     signedTransaction: String,
@@ -201,6 +202,9 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
     } catch DomainError.transactionAlreadyClaimed {
       await finish()
       throw DomainError.transactionAlreadyClaimed
+    } catch APIError.serverError(statusCode: 400, _) {
+      // A 401 is not finished here: after a token refresh it cannot be told apart from an expired session.
+      logger.error("Subscription verify POST rejected the payload, finishing the transaction")
     } catch {
       // Unfinished transactions are redelivered by Transaction.updates, which retries the report.
       logger.error(

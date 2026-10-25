@@ -669,3 +669,50 @@ func TestRedeem_RetryDoesNotShortenLongerExpiry(t *testing.T) {
 		t.Errorf("expiry = %v, want %v", got, longer)
 	}
 }
+
+func TestRedeem_ReplayAfterGrantLapsedIsConflict(t *testing.T) {
+	t.Parallel()
+	first := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
+	codes := seededCode(t)
+	profile := &fakeProfileStore{profile: freeProfile(t)}
+	if rec := serveRedeem(t, codes, profile, &fakeTierSync{}, first, `{"code":"ABCDEFGHJKMN"}`); rec.Code != http.StatusOK {
+		t.Fatalf("first status = %d", rec.Code)
+	}
+	savesAfterFirst := profile.saveCalls
+	auth0 := &fakeTierSync{}
+
+	rec := serveRedeem(t, codes, profile, auth0, first.AddDate(0, 0, 31), `{"code":"ABCDEFGHJKMN"}`)
+
+	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "code_already_redeemed") {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	if profile.saveCalls != savesAfterFirst || auth0.calls != 0 {
+		t.Errorf("save calls = %d (want %d), auth0 calls = %d (want 0)", profile.saveCalls, savesAfterFirst, auth0.calls)
+	}
+}
+
+func TestRedeem_ReplayByOtherPaidSubscriberDoesNotUpgrade(t *testing.T) {
+	t.Parallel()
+	first := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
+	codes := seededCode(t)
+	profile := &fakeProfileStore{profile: freeProfile(t)}
+	if rec := serveRedeem(t, codes, profile, &fakeTierSync{}, first, `{"code":"ABCDEFGHJKMN"}`); rec.Code != http.StatusOK {
+		t.Fatalf("first status = %d", rec.Code)
+	}
+	appStoreExpiry := first.AddDate(1, 0, 0)
+	profile.profile.ActivateSubscription(profiles.TierPersonal, appStoreExpiry)
+	savesBeforeReplay := profile.saveCalls
+	auth0 := &fakeTierSync{}
+
+	rec := serveRedeem(t, codes, profile, auth0, first.Add(24*time.Hour), `{"code":"ABCDEFGHJKMN"}`)
+
+	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "code_already_redeemed") {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	if profile.profile.Tier != profiles.TierPersonal || !profile.profile.SubscriptionExpiry.Equal(appStoreExpiry) {
+		t.Errorf("profile = %v until %v, want Personal until %v", profile.profile.Tier, profile.profile.SubscriptionExpiry, appStoreExpiry)
+	}
+	if profile.saveCalls != savesBeforeReplay || auth0.calls != 0 {
+		t.Errorf("save calls = %d (want %d), auth0 calls = %d (want 0)", profile.saveCalls, savesBeforeReplay, auth0.calls)
+	}
+}

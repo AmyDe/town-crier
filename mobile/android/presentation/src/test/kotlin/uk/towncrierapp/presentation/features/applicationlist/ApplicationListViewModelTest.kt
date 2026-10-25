@@ -342,6 +342,30 @@ class ApplicationListViewModelTest {
         }
 
     @Test
+    fun `selecting a sort while zones are still loading does not cancel the load`() {
+        val zone = aWatchZone()
+        val zonesGate = CompletableDeferred<Unit>()
+        val watchZoneRepository = FakeWatchZoneRepository(mutableListOf(zone))
+        watchZoneRepository.beforeZones = { zonesGate.await() }
+        val application = aPlanningApplication()
+        val applicationRepository =
+            FakePlanningApplicationRepository().apply { applicationsResult = anApplicationPage(listOf(application)) }
+        val viewModel =
+            makeSut(applicationRepository = applicationRepository, watchZoneRepository = watchZoneRepository)
+        viewModel.load()
+
+        viewModel.selectSort(ApplicationSortOrder.NEWEST)
+        zonesGate.complete(Unit)
+
+        val state = viewModel.uiState.value
+        assertEquals(listOf(zone), state.zones)
+        assertEquals(zone.id, state.selectedZoneId)
+        assertEquals(listOf(application.id), state.applications.map { it.id })
+        assertEquals(ApplicationSortOrder.NEWEST, applicationRepository.applicationsCalls.last().sort)
+        assertFalse(state.isLoading)
+    }
+
+    @Test
     fun `markAllRead during a slow next page leaves pagination usable`() {
         val firstPage = List(20) { aPlanningApplication() }
         val neverReturns = CompletableDeferred<Unit>()

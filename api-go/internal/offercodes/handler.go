@@ -18,6 +18,8 @@ import (
 
 const maxBodyBytes = 1 << 20
 
+var errGrantNotHealable = errors.New("offer-code grant cannot be re-applied")
+
 // codeStore is the consumer-side offer-code store the redeem handler needs.
 type codeStore interface {
 	Get(ctx context.Context, canonical string) (OfferCode, error)
@@ -202,9 +204,15 @@ func (h *handler) redeem(w http.ResponseWriter, r *http.Request) {
 
 // heal re-applies a grant the caller already redeemed, for a retry after a
 // partial failure. The expiry derives from the original redemption time, and
-// the profile is never shortened or downgraded. No notification is sent.
+// the profile is never shortened or downgraded. A lapsed grant, or a caller
+// now on another paid plan, gets code_already_redeemed. No notification is sent.
 func (h *handler) heal(w http.ResponseWriter, r *http.Request, userID string, code OfferCode, redeemedAt time.Time) {
 	expiry := redeemedAt.AddDate(0, 0, code.DurationDays)
+	now := h.now().Truncate(time.Microsecond)
+	if !expiry.After(now) {
+		h.writeError(r, w, http.StatusConflict, "code_already_redeemed", "Offer code '"+code.Code+"' has already been redeemed.")
+		return
+	}
 	var profile *profiles.UserProfile
 	err := profiles.RetryOnConflict(r.Context(), profiles.DefaultSaveAttempts, func(ctx context.Context) error {
 		current, err := h.profiles.Get(ctx, userID)
@@ -212,16 +220,19 @@ func (h *handler) heal(w http.ResponseWriter, r *http.Request, userID string, co
 			return err
 		}
 		profile = current
-		granted := expiry
-		if current.SubscriptionExpiry != nil && current.SubscriptionExpiry.After(granted) {
-			granted = *current.SubscriptionExpiry
-		}
 		if current.Tier > code.Tier || (current.Tier == code.Tier && current.SubscriptionExpiry != nil && !current.SubscriptionExpiry.Before(expiry)) {
 			return nil
 		}
-		current.ActivateSubscription(code.Tier, granted)
+		if current.EffectiveTier(now).IsPaid() {
+			return errGrantNotHealable
+		}
+		current.ActivateSubscription(code.Tier, expiry)
 		return h.profiles.Save(ctx, current)
 	})
+	if errors.Is(err, errGrantNotHealable) {
+		h.writeError(r, w, http.StatusConflict, "code_already_redeemed", "Offer code '"+code.Code+"' has already been redeemed.")
+		return
+	}
 	if err != nil {
 		h.serverError(w, r, "save profile", err)
 		return

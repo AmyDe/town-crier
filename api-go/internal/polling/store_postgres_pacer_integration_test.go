@@ -186,7 +186,7 @@ func TestPostgresPlanItCallStore_HourlyCapWaitsAnHourAfterTheOldestCall(t *testi
 	}
 }
 
-func TestPostgresPlanItCallStore_ReadFailureStoresStatus200AndOutcome(t *testing.T) {
+func TestPostgresPlanItCallStore_ReadFailureStoresStatus200AndOutcomeAndBacksOff(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2026, 6, 10, 20, 0, 0, 0, londonTZ)
 	p, store, _ := newPGPacer(t, now, 300)
@@ -202,7 +202,7 @@ func TestPostgresPlanItCallStore_ReadFailureStoresStatus200AndOutcome(t *testing
 		t.Fatalf("row = status %v outcome %q", got.Status, got.Outcome)
 	}
 	st, err := p.Backoff(ctx, now)
-	if err != nil || st.Active {
-		t.Fatalf("Backoff = %+v, %v; want inactive", st, err)
+	if err != nil || !st.Active || st.Reason != "read_failed" || !st.Until.Equal(got.At.Add(30*time.Minute)) {
+		t.Fatalf("Backoff = %+v, %v; want active 30m read_failed", st, err)
 	}
 }

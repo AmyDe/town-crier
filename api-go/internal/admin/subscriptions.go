@@ -46,10 +46,8 @@ func (h *handler) grantSubscription(w http.ResponseWriter, r *http.Request) {
 	var (
 		profile *profiles.UserProfile
 		before  subscriptionevents.Snapshot
-		stage   string
 	)
 	err = profiles.RetryOnConflict(r.Context(), profiles.DefaultSaveAttempts, func(ctx context.Context) error {
-		stage = "load profile by email"
 		current, err := h.profiles.GetByEmail(ctx, req.Email)
 		if err != nil {
 			return err
@@ -61,14 +59,6 @@ func (h *handler) grantSubscription(w http.ResponseWriter, r *http.Request) {
 			current.ActivateSubscription(tier, farFutureExpiry)
 		}
 		profile = current
-
-		// Sync Auth0 before writing Postgres: with no transaction, this order means a
-		// failed sync leaves no committed tier change behind.
-		stage = "sync auth0 tier"
-		if err := h.auth0.UpdateSubscriptionTier(ctx, current.UserID, current.Tier.String()); err != nil {
-			return err
-		}
-		stage = "save profile"
 		return h.profiles.Save(ctx, current)
 	})
 	if err != nil {
@@ -76,11 +66,17 @@ func (h *handler) grantSubscription(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		h.serverError(w, r, stage, err)
+		h.serverError(w, r, "save profile", err)
 		return
 	}
 	if h.notifier != nil {
 		h.notifier.Changed(r.Context(), before, subscriptionevents.SnapshotOf(profile), subscriptionevents.SourceAdmin)
+	}
+	// Postgres is the authority. A failed sync is a 500 so the admin re-sends
+	// the same grant, which is idempotent.
+	if err := h.auth0.UpdateSubscriptionTier(r.Context(), profile.UserID, profile.Tier.String()); err != nil {
+		h.serverError(w, r, "sync auth0 tier", err)
+		return
 	}
 
 	h.writeJSON(r, w, grantResult{UserID: profile.UserID, Email: profile.Email, Tier: profile.Tier.String()})

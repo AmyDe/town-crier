@@ -1,5 +1,8 @@
 # Redeploys the API and worker images tagged release-<tag> to production, with the same health checks as a release.
 # Database schema changes are not rolled back, and no migration or Pulumi step runs.
+# Dispatch it only while cd-prod is idle. It shares the cd-prod concurrency group so
+# two prod deploys never overlap, and GitHub keeps one pending run per group, so a
+# queued rollback is cancelled if a release tag is pushed before it starts.
 #
 # Requires repo-level secrets: AZURE_CLIENT_ID, AZURE_TENANT_ID,
 # AZURE_SUBSCRIPTION_ID, ACR_LOGIN_SERVER.

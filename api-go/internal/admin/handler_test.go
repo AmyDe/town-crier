@@ -94,7 +94,7 @@ type fakeAdminStore struct {
 
 	// order, when non-nil, has "save" appended on every Save call — shared with
 	// a fakeTierSync's order slice so a test can assert call ordering between
-	// the two collaborators (see TestGrant_Auth0FailureLeavesProfileUnsaved).
+	// the two collaborators (see TestGrant_Auth0SyncsOnceAfterSaveAndFailureIs500).
 	order *[]string
 
 	saveErr error
@@ -308,7 +308,7 @@ func TestGrant_FreeExpiresSubscription(t *testing.T) {
 	}
 }
 
-func TestGrant_Auth0FailureLeavesProfileUnsaved(t *testing.T) {
+func TestGrant_Auth0SyncsOnceAfterSaveAndFailureIs500(t *testing.T) {
 	t.Parallel()
 
 	var order []string
@@ -321,11 +321,33 @@ func TestGrant_Auth0FailureLeavesProfileUnsaved(t *testing.T) {
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500", rec.Code)
 	}
-	if store.saved != nil {
-		t.Errorf("profile saved despite auth0 sync failure: %+v", store.saved)
+	if store.saved == nil || store.saved.Tier != profiles.TierPro {
+		t.Errorf("profile not saved before the auth0 sync: %+v", store.saved)
 	}
-	if len(order) != 1 || order[0] != "auth0" {
-		t.Errorf("call order = %v, want [auth0] (save must never run after a failed sync)", order)
+	if len(order) != 2 || order[0] != "save" || order[1] != "auth0" {
+		t.Errorf("call order = %v, want [save auth0]", order)
+	}
+}
+
+func TestGrant_Auth0NotSyncedWhenEverySaveConflicts(t *testing.T) {
+	t.Parallel()
+
+	var order []string
+	store := &fakeAdminStore{
+		byEmail: map[string]*profiles.UserProfile{"u@example.com": freeProfile(t)},
+		order:   &order,
+		saveErr: platform.ErrCASPreconditionFailed,
+	}
+	auth0 := &fakeTierSync{order: &order}
+	h := newTestHandler(store, &fakeNotifCounts{}, auth0, &fakeOfferStore{}, &fakeGenerator{}, time.Now())
+
+	rec := serve(t, h.grantSubscription, http.MethodPut, "/v1/admin/subscriptions", `{"email":"u@example.com","tier":"Pro"}`)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", rec.Code)
+	}
+	if auth0.calls != 0 {
+		t.Errorf("auth0 calls = %d, want 0 when no save committed", auth0.calls)
 	}
 }
 
