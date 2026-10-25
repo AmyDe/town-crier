@@ -457,13 +457,12 @@ func (z WatchZone) WithUpdates(u ZoneUpdate) (WatchZone, error) {
 	}
 
 	if u.FilterKey != nil {
-		if *u.FilterKey == "" {
-			// Explicit clear: revert to unfiltered. No validation needed —
-			// "" is always a valid target, unlike a set.
+		switch {
+		case *u.FilterKey == "":
 			updated.FilterKey = ""
-		} else if !IsValidFilterKey(*u.FilterKey) {
+		case !IsValidFilterKey(*u.FilterKey):
 			return WatchZone{}, fmt.Errorf("%w: %q", ErrUnknownFilterKey, *u.FilterKey)
-		} else {
+		default:
 			updated.FilterKey = FilterKey(*u.FilterKey)
 		}
 	}
