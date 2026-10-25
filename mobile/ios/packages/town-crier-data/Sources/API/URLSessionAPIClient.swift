@@ -70,6 +70,8 @@ public final class URLSessionAPIClient: Sendable {
       let refreshed: AuthSession
       do {
         refreshed = try await authService.refreshSession()
+      } catch where error.isCancellation {
+        throw error
       } catch let urlError as URLError {
         #if DEBUG
           Self.logger.error("✗ Token refresh failed (network): \(urlError.localizedDescription)")
@@ -83,12 +85,16 @@ public final class URLSessionAPIClient: Sendable {
       }
       do {
         return try await executeRequest(endpoint, accessToken: refreshed.accessToken)
+      } catch where error.isCancellation {
+        throw error
       } catch let urlError as URLError {
         #if DEBUG
           Self.logger.error("✗ Retry URLError (network): \(urlError.localizedDescription)")
         #endif
         throw DomainError.networkUnavailable
       }
+    } catch where error.isCancellation {
+      throw error
     } catch let urlError as URLError {
       #if DEBUG
         Self.logger.error("✗ URLError (network): \(urlError.localizedDescription)")
@@ -112,6 +118,8 @@ public final class URLSessionAPIClient: Sendable {
       let refreshed: AuthSession
       do {
         refreshed = try await authService.refreshSession()
+      } catch where error.isCancellation {
+        throw error
       } catch is URLError {
         throw DomainError.networkUnavailable
       } catch {
@@ -119,9 +127,13 @@ public final class URLSessionAPIClient: Sendable {
       }
       do {
         return try await executeRequestData(endpoint, accessToken: refreshed.accessToken)
+      } catch where error.isCancellation {
+        throw error
       } catch is URLError {
         throw DomainError.networkUnavailable
       }
+    } catch where error.isCancellation {
+      throw error
     } catch is URLError {
       throw DomainError.networkUnavailable
     }

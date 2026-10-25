@@ -2,9 +2,11 @@ package uk.towncrierapp.data.auth
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import uk.towncrierapp.domain.auth.AuthSession
 import java.time.Clock
 
@@ -53,11 +55,19 @@ public class SessionCache(
                 validOrNull(clock)?.let { return it }
                 inFlight ?: scope.async { loader() }.also { inFlight = it }
             }
-        val result = deferred.await()
-        mutex.withLock {
-            if (inFlight === deferred) {
-                cached = result
-                inFlight = null
+        var result: AuthSession? = null
+        var succeeded = false
+        try {
+            result = deferred.await()
+            succeeded = true
+        } finally {
+            withContext(NonCancellable) {
+                mutex.withLock {
+                    if (inFlight === deferred) {
+                        if (succeeded) cached = result
+                        inFlight = null
+                    }
+                }
             }
         }
         return result

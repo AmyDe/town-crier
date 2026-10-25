@@ -13,3 +13,11 @@ describe('ConfirmDialog.module.css (token consumption)', () => {
     expect(block).toContain('color: var(--tc-text-on-accent)');
   });
 });
+
+describe('ConfirmDialog.module.css (centring)', () => {
+  it('sets margin: auto on the dialog so the modal stays centred after a global reset', () => {
+    const css = readFileSync(cssPath, 'utf-8');
+    const block = css.match(/\.dialog\s*\{[^}]*\}/s)?.[0] ?? '';
+    expect(block).toContain('margin: auto');
+  });
+});

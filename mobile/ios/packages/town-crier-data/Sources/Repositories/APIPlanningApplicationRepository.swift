@@ -19,7 +19,7 @@ public final class APIPlanningApplicationRepository: PlanningApplicationReposito
     } catch let domainError as DomainError {
       throw domainError
     } catch {
-      throw error.toDomainError()
+      throw error.toThrowableDomainError()
     }
     return dtos.map { $0.toDomain() }
   }
@@ -58,7 +58,7 @@ public final class APIPlanningApplicationRepository: PlanningApplicationReposito
     } catch let domainError as DomainError {
       throw domainError
     } catch {
-      throw error.toDomainError()
+      throw error.toThrowableDomainError()
     }
 
     return ApplicationPage(
@@ -91,7 +91,7 @@ public final class APIPlanningApplicationRepository: PlanningApplicationReposito
     } catch let domainError as DomainError {
       throw domainError
     } catch {
-      throw error.toDomainError()
+      throw error.toThrowableDomainError()
     }
     return dtos.compactMap { $0.toDomain() }
   }
@@ -119,7 +119,7 @@ public final class APIPlanningApplicationRepository: PlanningApplicationReposito
     } catch let domainError as DomainError {
       throw domainError
     } catch {
-      throw error.toDomainError()
+      throw error.toThrowableDomainError()
     }
     return dto.toDomain()
   }
@@ -142,7 +142,7 @@ public final class APIPlanningApplicationRepository: PlanningApplicationReposito
     } catch let domainError as DomainError {
       throw domainError
     } catch {
-      throw error.toDomainError()
+      throw error.toThrowableDomainError()
     }
     return dto.toDomain()
   }

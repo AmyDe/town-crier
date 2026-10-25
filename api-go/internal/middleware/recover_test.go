@@ -183,3 +183,25 @@ func serveChainWithLogger(t *testing.T, logger *slog.Logger, next http.HandlerFu
 	}
 	return resp.StatusCode, resp.Header.Get("Content-Type"), string(raw)
 }
+
+func TestRecover_LogRedactsLegacyTokenPath(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct{ name, path, want string }{
+		{"legacy token path", "/v1/me/device-token/secret-token", "/v1/me/device-token/{redacted}"},
+		{"other path", "/v1/me/profile", "/v1/me/profile"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			spy := &logSpy{}
+			h := Recover(slog.New(spy))(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+				panic("boom")
+			}))
+			h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequestWithContext(t.Context(), http.MethodDelete, tt.path, nil))
+			if got := spy.attrString("path"); got != tt.want {
+				t.Errorf("logged path = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

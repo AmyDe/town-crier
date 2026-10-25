@@ -1,6 +1,7 @@
 package profiles
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -79,21 +80,22 @@ func (h *handler) putZonePreferences(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	profile, err := h.store.Get(r.Context(), subject)
+	// zonePreferencesRequest and ZonePreferences are field-identical; the request
+	// type exists only to carry the JSON tags, so a direct conversion is exact.
+	prefs := ZonePreferences(req)
+	err := RetryOnConflict(r.Context(), DefaultSaveAttempts, func(ctx context.Context) error {
+		profile, err := h.store.Get(ctx, subject)
+		if err != nil {
+			return err
+		}
+		profile.SetZonePreferences(zoneID, prefs)
+		return h.store.Save(ctx, profile)
+	})
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		h.serverError(w, r, "load profile", err)
-		return
-	}
-
-	// zonePreferencesRequest and ZonePreferences are field-identical; the request
-	// type exists only to carry the JSON tags, so a direct conversion is exact.
-	prefs := ZonePreferences(req)
-	profile.SetZonePreferences(zoneID, prefs)
-	if err := h.store.Save(r.Context(), profile); err != nil {
 		h.serverError(w, r, "save profile", err)
 		return
 	}

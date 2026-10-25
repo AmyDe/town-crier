@@ -16,7 +16,7 @@ public final class APIUserProfileRepository: UserProfileRepository, Sendable {
     } catch let domainError as DomainError {
       throw domainError
     } catch {
-      throw error.toDomainError()
+      throw error.toThrowableDomainError()
     }
   }
 
@@ -29,7 +29,7 @@ public final class APIUserProfileRepository: UserProfileRepository, Sendable {
     } catch let domainError as DomainError {
       throw domainError
     } catch {
-      throw error.toDomainError()
+      throw error.toThrowableDomainError()
     }
   }
 
@@ -55,7 +55,7 @@ public final class APIUserProfileRepository: UserProfileRepository, Sendable {
     } catch let domainError as DomainError {
       throw domainError
     } catch {
-      throw error.toDomainError()
+      throw error.toThrowableDomainError()
     }
   }
 
@@ -65,7 +65,7 @@ public final class APIUserProfileRepository: UserProfileRepository, Sendable {
     } catch let domainError as DomainError {
       throw domainError
     } catch {
-      throw error.toDomainError()
+      throw error.toThrowableDomainError()
     }
   }
 
@@ -77,7 +77,7 @@ public final class APIUserProfileRepository: UserProfileRepository, Sendable {
     } catch let domainError as DomainError {
       throw domainError
     } catch {
-      throw error.toDomainError()
+      throw error.toThrowableDomainError()
     }
   }
 }

@@ -26,7 +26,7 @@ public final class APISavedApplicationRepository: SavedApplicationRepository, Se
     } catch let domainError as DomainError {
       throw domainError
     } catch {
-      throw error.toDomainError()
+      throw error.toThrowableDomainError()
     }
   }
 
@@ -38,7 +38,7 @@ public final class APISavedApplicationRepository: SavedApplicationRepository, Se
     } catch let domainError as DomainError {
       throw domainError
     } catch {
-      throw error.toDomainError()
+      throw error.toThrowableDomainError()
     }
   }
 
@@ -51,7 +51,7 @@ public final class APISavedApplicationRepository: SavedApplicationRepository, Se
     } catch let domainError as DomainError {
       throw domainError
     } catch {
-      throw error.toDomainError()
+      throw error.toThrowableDomainError()
     }
     return dtos.map { $0.toDomain() }
   }

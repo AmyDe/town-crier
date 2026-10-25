@@ -30,6 +30,8 @@ public final class APIWatchZoneRepository: WatchZoneRepository, Sendable {
       let _: EmptyResponse = try await apiClient.request(.post("/v1/me/watch-zones", body: body))
     } catch let domainError as DomainError {
       throw Self.normalisingCreateQuota(domainError)
+    } catch where error.isCancellation {
+      throw error
     } catch {
       throw Self.normalisingCreateQuota(error.toDomainError())
     }
@@ -69,7 +71,7 @@ public final class APIWatchZoneRepository: WatchZoneRepository, Sendable {
     } catch let domainError as DomainError {
       throw domainError
     } catch {
-      throw error.toDomainError()
+      throw error.toThrowableDomainError()
     }
   }
 
@@ -80,7 +82,7 @@ public final class APIWatchZoneRepository: WatchZoneRepository, Sendable {
     } catch let domainError as DomainError {
       throw domainError
     } catch {
-      throw error.toDomainError()
+      throw error.toThrowableDomainError()
     }
     return result.zones.compactMap { dto in
       do {
@@ -107,7 +109,7 @@ public final class APIWatchZoneRepository: WatchZoneRepository, Sendable {
     } catch let domainError as DomainError {
       throw domainError
     } catch {
-      throw error.toDomainError()
+      throw error.toThrowableDomainError()
     }
   }
 
@@ -124,7 +126,7 @@ public final class APIWatchZoneRepository: WatchZoneRepository, Sendable {
     } catch let domainError as DomainError {
       throw domainError
     } catch {
-      throw error.toDomainError()
+      throw error.toThrowableDomainError()
     }
     return result.filters.map { $0.toDomain() }
   }

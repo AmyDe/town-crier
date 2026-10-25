@@ -91,7 +91,11 @@ func main() {
 	// Build the shared Postgres pool unconditionally — Postgres + PostGIS is the
 	// only datastore. The pool is fatal if it cannot be built: the API cannot serve
 	// any store-backed route without it.
-	pool, perr := postgres.NewPoolFromEnv(context.Background())
+	poolOpts, oerr := apiPoolOptions(os.Getenv)
+	if oerr != nil {
+		log.Fatalf("postgres: pool options: %v", oerr)
+	}
+	pool, perr := postgres.NewPoolFromEnv(context.Background(), poolOpts...)
 	if perr != nil {
 		log.Fatalf("postgres: build pool: %v", perr)
 	}

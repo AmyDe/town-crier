@@ -22,7 +22,7 @@ inputs:
     description: Azure resource group
     required: true
   image:
-    description: Full image reference including tag
+    description: Full image reference, digest ref or tag ref
     required: true
 
 runs:
@@ -30,12 +30,27 @@ runs:
   steps:
     - name: Deploy worker image to all jobs
       shell: bash
+      env:
+        JOBS: ${{ inputs.jobs }}
+        SUFFIX: ${{ inputs.env-suffix }}
+        RG: ${{ inputs.resource-group }}
+        IMAGE: ${{ inputs.image }}
       run: |
-        for JOB in ${{ inputs.jobs }}; do
-          echo "::group::Deploying to job-tc-${JOB}-${{ inputs.env-suffix }}"
+        set -euo pipefail
+        for JOB in $JOBS; do
+          echo "::group::Deploying to job-tc-${JOB}-${SUFFIX}"
           az containerapp job update \
-            --name "job-tc-${JOB}-${{ inputs.env-suffix }}" \
-            --resource-group "${{ inputs.resource-group }}" \
-            --image "${{ inputs.image }}"
+            --name "job-tc-${JOB}-${SUFFIX}" \
+            --resource-group "$RG" \
+            --image "$IMAGE"
           echo "::endgroup::"
         done
+
+    - name: Verify jobs run the deployed image
+      shell: bash
+      env:
+        JOBS: ${{ inputs.jobs }}
+        SUFFIX: ${{ inputs.env-suffix }}
+        RG: ${{ inputs.resource-group }}
+        IMAGE: ${{ inputs.image }}
+      run: bash "$GITHUB_WORKSPACE/.github/scripts/assert-job-digest.sh"

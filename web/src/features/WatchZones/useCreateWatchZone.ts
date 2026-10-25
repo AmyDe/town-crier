@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import type { GeocodeResult, WatchZoneBoundary } from '../../domain/types';
 import type { WatchZoneRepository } from '../../domain/ports/watch-zone-repository';
 import type { ShapeMode } from './ShapeModeToggle';
-import { extractErrorMessage } from '../../utils/extractErrorMessage';
+import { watchZoneErrorMessage } from './watchZoneErrorMessage';
 
 type CreateStep = 'postcode' | 'details' | 'confirm';
 
@@ -94,7 +94,7 @@ export function useCreateWatchZone(
         });
         navigate('/watch-zones');
       } catch (err: unknown) {
-        const message = extractErrorMessage(err);
+        const message = watchZoneErrorMessage(err);
         setState(prev => ({ ...prev, isSaving: false, error: message }));
       }
     },

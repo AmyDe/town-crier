@@ -17,6 +17,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
+	"github.com/AmyDe/town-crier/api-go/internal/platform"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 )
 
@@ -49,7 +50,41 @@ func (f *fakeVerifier) VerifyAndDecode(signed string) (string, error) {
 	return "", &JWSVerificationError{Message: "unmapped test jws"}
 }
 
+// versionedProfile models the store's optimistic version check for one profile.
+type versionedProfile struct {
+	version int
+	// beforeSave runs at the start of each Save, to simulate a concurrent writer
+	// (call concurrentWrite from it).
+	beforeSave func()
+	saveCalls  int
+}
+
+func (v *versionedProfile) concurrentWrite() { v.version++ }
+
+func (v *versionedProfile) load(p *profiles.UserProfile) *profiles.UserProfile {
+	if p == nil {
+		return nil
+	}
+	cp := *p
+	cp.Version = v.version
+	return &cp
+}
+
+func (v *versionedProfile) check(p *profiles.UserProfile) error {
+	v.saveCalls++
+	if v.beforeSave != nil {
+		v.beforeSave()
+	}
+	if p.Version != v.version {
+		return platform.ErrCASPreconditionFailed
+	}
+	v.version++
+	p.Version = v.version
+	return nil
+}
+
 type fakeProfileByUser struct {
+	versionedProfile
 	profile *profiles.UserProfile
 	getErr  error
 	saveErr error
@@ -60,18 +95,25 @@ func (f *fakeProfileByUser) Get(context.Context, string) (*profiles.UserProfile,
 	if f.getErr != nil {
 		return nil, f.getErr
 	}
-	return f.profile, nil
+	return f.load(f.profile), nil
 }
 
 func (f *fakeProfileByUser) Save(_ context.Context, p *profiles.UserProfile) error {
 	if f.saveErr != nil {
 		return f.saveErr
 	}
+	if err := f.check(p); err != nil {
+		return err
+	}
 	f.saved = p
+	if f.profile != nil {
+		*f.profile = *p
+	}
 	return nil
 }
 
 type fakeProfileByTxn struct {
+	versionedProfile
 	// profile is returned for all txn lookups when profilesByTxnID is nil.
 	profile *profiles.UserProfile
 	// profilesByTxnID maps originalTransactionID to a profile, supporting
@@ -84,21 +126,32 @@ type fakeProfileByTxn struct {
 func (f *fakeProfileByTxn) GetByOriginalTransactionID(_ context.Context, txnID string) (*profiles.UserProfile, error) {
 	if f.profilesByTxnID != nil {
 		if p, ok := f.profilesByTxnID[txnID]; ok {
-			return p, nil
+			return f.load(p), nil
 		}
 		return nil, profiles.ErrNotFound
 	}
 	if f.profile == nil {
 		return nil, profiles.ErrNotFound
 	}
-	return f.profile, nil
+	return f.load(f.profile), nil
 }
 
 func (f *fakeProfileByTxn) Save(_ context.Context, p *profiles.UserProfile) error {
 	if f.saveErr != nil {
 		return f.saveErr
 	}
+	if err := f.check(p); err != nil {
+		return err
+	}
 	f.saved = p
+	if f.profile != nil {
+		*f.profile = *p
+	}
+	for _, stored := range f.profilesByTxnID {
+		if stored.UserID == p.UserID {
+			*stored = *p
+		}
+	}
 	return nil
 }
 
@@ -408,6 +461,23 @@ func TestVerify_LifetimeOwnedByAnotherUserConflicts(t *testing.T) {
 	}
 	if d.byUser.saved != nil {
 		t.Error("caller profile must not be saved on conflict")
+	}
+}
+
+func TestVerify_SaveReportsClaimedTransactionConflicts(t *testing.T) {
+	t.Parallel()
+	d := newTestDeps()
+	d.byUser.profile = freshProfile(t)
+	d.byUser.saveErr = fmt.Errorf("save: %w", profiles.ErrTransactionClaimed)
+	d.verifier.results["SUB"] = lifetimeTxnJSON(ProductProLifetime, "life-raced", 0)
+
+	rec := d.serve(t, "/v1/subscriptions/verify", `{"signedTransaction":"SUB"}`, true)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409 (body=%s)", rec.Code, rec.Body.String())
+	}
+	if got := decodeError(t, rec).Error; got != "transaction_already_claimed" {
+		t.Errorf("error = %q, want transaction_already_claimed", got)
 	}
 }
 
@@ -1388,5 +1458,51 @@ func TestVerify_HigherTierPaidWinsOverLowerTierTrial(t *testing.T) {
 	}
 	if d.byUser.saved == nil || d.byUser.saved.SubscriptionInTrial {
 		t.Error("SubscriptionInTrial = true, want false (higher paid tier wins)")
+	}
+}
+
+func TestVerify_RetriesSaveAfterVersionConflict(t *testing.T) {
+	t.Parallel()
+	d := newTestDeps()
+	d.byUser.profile = freshProfile(t)
+	conflicts := 2
+	d.byUser.beforeSave = func() {
+		if conflicts > 0 {
+			conflicts--
+			d.byUser.concurrentWrite()
+		}
+	}
+	d.verifier.results["JWS_PRO"] = txnJSON(ProductProMonthly, testBundleID, "orig-1", futureExpiryMs())
+
+	rec := d.serve(t, "/v1/subscriptions/verify", `{"signedTransaction":"JWS_PRO"}`, true)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	if d.byUser.saved == nil || d.byUser.saved.Tier != profiles.TierPro {
+		t.Error("profile not saved as Pro")
+	}
+	if len(d.auth0.tiers) != 1 {
+		t.Errorf("auth0 sync = %v, want exactly one call", d.auth0.tiers)
+	}
+}
+
+func TestVerify_FailsAfterThreeVersionConflicts(t *testing.T) {
+	t.Parallel()
+	d := newTestDeps()
+	d.byUser.profile = freshProfile(t)
+	d.byUser.beforeSave = d.byUser.concurrentWrite
+	d.verifier.results["JWS_PRO"] = txnJSON(ProductProMonthly, testBundleID, "orig-1", futureExpiryMs())
+
+	rec := d.serve(t, "/v1/subscriptions/verify", `{"signedTransaction":"JWS_PRO"}`, true)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", rec.Code)
+	}
+	if d.byUser.saveCalls != 3 {
+		t.Errorf("save calls = %d, want 3", d.byUser.saveCalls)
+	}
+	if len(d.auth0.tiers) != 0 {
+		t.Errorf("auth0 sync = %v, want none", d.auth0.tiers)
 	}
 }

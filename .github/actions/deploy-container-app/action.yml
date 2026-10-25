@@ -1,20 +1,22 @@
-# Deploys a new image to an Azure Container App, verifies the now-active
-# revision actually runs that image (by digest), then deactivates the
-# previously-active revision to keep the revision list clean.
+# Deploys a new image to an Azure Container App, verifies the new revision
+# runs that image (by digest), waits for it to be healthy, then deactivates the
+# previously-active revision.
 #
 # A unique --revision-suffix (run id + attempt) is passed so a fresh revision
-# always rolls — even when the image digest is unchanged — which sidesteps the
-# silent ":latest == :latest" no-op that froze prod (tc-rh4w). The verify step
-# then fails the build if the active revision does NOT run the deployed digest,
-# so a stale/no-op deploy can never report green again.
+# always rolls, even when the image digest is unchanged, which sidesteps the
+# silent ":latest == :latest" no-op. Callers may pass a digest ref
+# (registry/repo@sha256:...) or a tag ref (registry/repo:tag); verification
+# normalises both to a digest.
 #
-# Callers may pass the image as a digest ref (registry/repo@sha256:…, as
-# cd-prod does) or a tag ref (registry/repo:tag, as cd-dev does). Verification
-# normalises both to a digest before comparing.
+# The health gate polls the new revision and then GETs the app's public custom
+# domain, because the *.azurecontainerapps.io origin only admits Cloudflare. If
+# the gate fails the previous revision is restored (traffic shift in Multiple
+# mode, previous image redeploy in Single mode) and is never deactivated.
 #
-# Assumes azure/login has already been called in an earlier step.
+# Assumes azure/login has already been called in an earlier step and that the
+# repository is checked out.
 name: Deploy Container App
-description: Update a Container App with a new image, verify it took, and deactivate the old revision
+description: Update a Container App, verify and health-check the new revision, roll back on failure, then deactivate the old revision
 
 inputs:
   app-name:
@@ -29,6 +31,12 @@ inputs:
       preferred) or tag ref (myregistry.azurecr.io/app:sha). Verification
       normalises either form to a digest.
     required: true
+  health-url:
+    description: >-
+      URL to GET after the revision is ready. Defaults to
+      https://<first custom domain>/health read from the app.
+    required: false
+    default: ''
 
 outputs:
   old-revision:
@@ -38,41 +46,85 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: Get current active revision
+    - name: Record current state
       id: old-revision
       shell: bash
+      env:
+        APP: ${{ inputs.app-name }}
+        RG: ${{ inputs.resource-group }}
+        HEALTH_URL_INPUT: ${{ inputs.health-url }}
       run: |
+        set -euo pipefail
         REV=$(az containerapp ingress traffic show \
-          --name "${{ inputs.app-name }}" \
-          --resource-group "${{ inputs.resource-group }}" \
+          --name "$APP" --resource-group "$RG" \
           --query "[?weight==\`100\`].revisionName | [0]" -o tsv)
-        echo "revision=$REV" >> "$GITHUB_OUTPUT"
+        if [ -z "$REV" ]; then
+          REV=$(az containerapp show --name "$APP" --resource-group "$RG" \
+            --query "properties.latestReadyRevisionName" -o tsv)
+        fi
+        MODE=$(az containerapp show --name "$APP" --resource-group "$RG" \
+          --query "properties.configuration.activeRevisionsMode" -o tsv)
+        # The serving revision's image, not the template's: after a failed deploy
+        # the template can hold the bad image.
+        if [ -n "$REV" ]; then
+          IMAGE=$(az containerapp revision show --name "$APP" --resource-group "$RG" \
+            --revision "$REV" --query "properties.template.containers[0].image" -o tsv)
+        else
+          IMAGE=$(az containerapp show --name "$APP" --resource-group "$RG" \
+            --query "properties.template.containers[0].image" -o tsv)
+        fi
+        URL="$HEALTH_URL_INPUT"
+        if [ -z "$URL" ]; then
+          DOMAIN=$(az containerapp show --name "$APP" --resource-group "$RG" \
+            --query "properties.configuration.ingress.customDomains[0].name" -o tsv)
+          [ -n "$DOMAIN" ] && URL="https://${DOMAIN}/health"
+        fi
+        {
+          echo "revision=$REV"
+          echo "mode=$MODE"
+          echo "image=$IMAGE"
+          echo "health-url=$URL"
+        } >> "$GITHUB_OUTPUT"
 
     - name: Deploy new image
+      id: deploy
       shell: bash
+      env:
+        APP: ${{ inputs.app-name }}
+        RG: ${{ inputs.resource-group }}
+        IMAGE: ${{ inputs.image }}
+        MODE: ${{ steps.old-revision.outputs.mode }}
+        RUN_ID: ${{ github.run_id }}
+        RUN_ATTEMPT: ${{ github.run_attempt }}
       run: |
         set -euo pipefail
-        # Force a unique revision per run-attempt so a new revision always rolls
-        # (belt-and-braces on top of digest deploys). ACA suffix rules: lowercase
-        # [a-z0-9-], start alphabetic; the leading 'r' guarantees that and the
-        # run id/attempt are numeric. <app>--<suffix> stays well under 64 chars.
-        SUFFIX="r${{ github.run_id }}-${{ github.run_attempt }}"
+        # ACA suffix rules: lowercase [a-z0-9-], start alphabetic; the leading
+        # 'r' guarantees that and the run id/attempt are numeric.
+        SUFFIX="r${RUN_ID}-${RUN_ATTEMPT}"
         SUFFIX="$(printf '%s' "$SUFFIX" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9-' '-')"
         az containerapp update \
-          --name "${{ inputs.app-name }}" \
-          --resource-group "${{ inputs.resource-group }}" \
-          --image "${{ inputs.image }}" \
+          --name "$APP" \
+          --resource-group "$RG" \
+          --image "$IMAGE" \
           --revision-suffix "$SUFFIX"
+        # A rollback pins traffic to a fixed revision. Route to the latest ready
+        # revision again, or the health gate would GET the pinned old revision.
+        if [ "${MODE,,}" = "multiple" ]; then
+          az containerapp ingress traffic set --name "$APP" --resource-group "$RG" \
+            --revision-weight latest=100
+        fi
+        echo "revision=${APP}--${SUFFIX}" >> "$GITHUB_OUTPUT"
 
-    - name: Verify active revision runs the deployed image
+    - name: Verify new revision runs the deployed image
       shell: bash
+      env:
+        APP: ${{ inputs.app-name }}
+        RG: ${{ inputs.resource-group }}
+        WANT_REF: ${{ inputs.image }}
+        NEW_REVISION: ${{ steps.deploy.outputs.revision }}
       run: |
         set -euo pipefail
-        APP="${{ inputs.app-name }}"
-        RG="${{ inputs.resource-group }}"
-        WANT_REF="${{ inputs.image }}"
 
-        # Resolve any image ref (digest form or tag form) to its sha256 digest.
         # A digest ref is returned as-is; a tag ref is resolved against ACR.
         digest_of() {
           local ref="$1" server registry repo_ref
@@ -94,22 +146,17 @@ runs:
 
         WANT_DIGEST="$(digest_of "$WANT_REF")"
 
-        LATEST_REV="$(az containerapp show \
-          --name "$APP" \
-          --resource-group "$RG" \
-          --query "properties.latestRevisionName" -o tsv)"
-
         RUNNING_REF="$(az containerapp revision show \
           --name "$APP" \
           --resource-group "$RG" \
-          --revision "$LATEST_REV" \
+          --revision "$NEW_REVISION" \
           --query "properties.template.containers[0].image" -o tsv)"
 
         GOT_DIGEST="$(digest_of "$RUNNING_REF")"
 
         echo "Deployed image  : $WANT_REF"
         echo "Wanted digest   : $WANT_DIGEST"
-        echo "Latest revision : $LATEST_REV"
+        echo "New revision    : $NEW_REVISION"
         echo "Running image   : $RUNNING_REF"
         echo "Running digest  : $GOT_DIGEST"
 
@@ -119,17 +166,45 @@ runs:
         fi
 
         if [ "$WANT_DIGEST" != "$GOT_DIGEST" ]; then
-          echo "::error::Deploy did not take: active revision $LATEST_REV runs $GOT_DIGEST but we deployed $WANT_DIGEST"
+          echo "::error::Deploy did not take: revision $NEW_REVISION runs $GOT_DIGEST but we deployed $WANT_DIGEST"
           exit 1
         fi
 
-        echo "Verified: active revision $LATEST_REV runs the deployed digest."
+        echo "Verified: revision $NEW_REVISION runs the deployed digest."
+
+    - name: Wait for healthy revision
+      id: health
+      shell: bash
+      env:
+        MODE_ARG: check
+        APP: ${{ inputs.app-name }}
+        RG: ${{ inputs.resource-group }}
+        NEW_REVISION: ${{ steps.deploy.outputs.revision }}
+        HEALTH_URL: ${{ steps.old-revision.outputs.health-url }}
+        TIMEOUT_SECONDS: '300'
+      run: bash "$GITHUB_WORKSPACE/.github/scripts/revision-health-gate.sh"
+
+    - name: Restore previous revision
+      if: failure() && steps.deploy.outcome == 'success'
+      shell: bash
+      env:
+        MODE_ARG: rollback
+        APP: ${{ inputs.app-name }}
+        RG: ${{ inputs.resource-group }}
+        REVISION_MODE: ${{ steps.old-revision.outputs.mode }}
+        PREVIOUS_REVISION: ${{ steps.old-revision.outputs.revision }}
+        PREVIOUS_IMAGE: ${{ steps.old-revision.outputs.image }}
+      run: bash "$GITHUB_WORKSPACE/.github/scripts/revision-health-gate.sh"
 
     - name: Deactivate old revision
-      if: steps.old-revision.outputs.revision != ''
+      if: steps.old-revision.outputs.revision != '' && steps.old-revision.outputs.revision != steps.deploy.outputs.revision
       shell: bash
+      env:
+        APP: ${{ inputs.app-name }}
+        RG: ${{ inputs.resource-group }}
+        OLD_REVISION: ${{ steps.old-revision.outputs.revision }}
       run: |
         az containerapp revision deactivate \
-          --name "${{ inputs.app-name }}" \
-          --resource-group "${{ inputs.resource-group }}" \
-          --revision "${{ steps.old-revision.outputs.revision }}" || true
+          --name "$APP" \
+          --resource-group "$RG" \
+          --revision "$OLD_REVISION" || true

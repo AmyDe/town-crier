@@ -88,10 +88,13 @@ func (s *PostgresAdminStore) GetByOriginalTransactionID(ctx context.Context, ori
 	return profiles[0], nil
 }
 
-// ByDigestDay returns every profile whose configured digest day matches day.
-// The digest day is stored as the int weekday value (Sunday=0 … Saturday=6).
-func (s *PostgresAdminStore) ByDigestDay(ctx context.Context, day time.Weekday) ([]*UserProfile, error) {
-	rows, err := s.db.Query(ctx, pgAdminSelectCols+"WHERE digest_day = $1", int(day))
+// ByDigestDay returns every profile whose configured digest day matches day
+// and whose weekly digest ledger is unset or older than notSentSince. The digest
+// day is stored as the int weekday value (Sunday=0 … Saturday=6).
+func (s *PostgresAdminStore) ByDigestDay(ctx context.Context, day time.Weekday, notSentSince time.Time) ([]*UserProfile, error) {
+	rows, err := s.db.Query(ctx,
+		pgAdminSelectCols+"WHERE digest_day = $1 AND (last_weekly_digest_at IS NULL OR last_weekly_digest_at < $2)",
+		int(day), notSentSince)
 	if err != nil {
 		return nil, fmt.Errorf("query profiles by digest day: %w", err)
 	}
@@ -100,6 +103,20 @@ func (s *PostgresAdminStore) ByDigestDay(ctx context.Context, day time.Weekday) 
 		return nil, fmt.Errorf("decode profiles by digest day: %w", err)
 	}
 	return profiles, nil
+}
+
+// MarkWeeklyDigestSent records that the weekly digest reached userID at the
+// given time. The column-scoped update leaves version and every other column
+// untouched. It returns ErrNotFound when no such user exists.
+func (s *PostgresAdminStore) MarkWeeklyDigestSent(ctx context.Context, userID string, at time.Time) error {
+	tag, err := s.db.Exec(ctx, "UPDATE users SET last_weekly_digest_at = $2 WHERE user_id = $1", userID, at)
+	if err != nil {
+		return fmt.Errorf("mark weekly digest sent: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // Dormant returns every profile last active strictly before cutoff. The filter
@@ -298,27 +315,9 @@ func (s *PostgresAdminStore) mostRecentSignup(ctx context.Context) (*RecentSignu
 	return &r, nil
 }
 
-// Save upserts the profile (same SQL as PostgresStore.Save).
+// Save has the same version-checked semantics as PostgresStore.Save.
 func (s *PostgresAdminStore) Save(ctx context.Context, p *UserProfile) error {
-	zonePrefText, err := marshalZonePrefs(p.ZonePreferences)
-	if err != nil {
-		return fmt.Errorf("encode zone_preferences for %q: %w", p.UserID, err)
-	}
-	emailDigest := p.Preferences.EmailDigestEnabled
-	savedPush := p.Preferences.SavedDecisionPush
-	savedEmail := p.Preferences.SavedDecisionEmail
-	_, err = s.db.Exec(ctx, pgSaveUserQuery,
-		p.UserID, p.Email, p.Preferences.PushEnabled, int(p.Preferences.DigestDay),
-		&emailDigest, &savedPush, &savedEmail, zonePrefText,
-		p.Tier.String(), p.SubscriptionExpiry, p.OriginalTransactionID, p.GracePeriodExpiry,
-		p.LifetimeTier.String(), p.LifetimeOriginalTransactionID, p.LifetimePurchasedAt, p.SubscriptionProductID,
-		p.SubscriptionInTrial,
-		p.LastActiveAt, p.LastActiveAt.UnixMilli(), p.WatchZoneCount,
-	)
-	if err != nil {
-		return fmt.Errorf("upsert profile %q (admin): %w", p.UserID, err)
-	}
-	return nil
+	return saveProfile(ctx, s.db, p)
 }
 
 // listCursor is the keyset pagination cursor for List. It carries the

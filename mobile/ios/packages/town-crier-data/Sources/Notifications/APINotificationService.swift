@@ -20,7 +20,8 @@ public actor APINotificationService {
 
   public func removeDeviceToken() async throws {
     guard let token = storedToken else { return }
-    let _: EmptyResponse = try await apiClient.request(.delete("v1/me/device-token/\(token)"))
+    let body = RemoveDeviceTokenBody(token: token)
+    let _: EmptyResponse = try await apiClient.request(.delete("v1/me/device-token", body: body))
     storedToken = nil
   }
 }
@@ -28,4 +29,8 @@ public actor APINotificationService {
 private struct RegisterDeviceTokenBody: Encodable, Sendable {
   let token: String
   let platform: String
+}
+
+private struct RemoveDeviceTokenBody: Encodable, Sendable {
+  let token: String
 }

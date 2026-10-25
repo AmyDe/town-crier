@@ -2,6 +2,7 @@ package notifydispatch
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"strconv"
 	"testing"
@@ -797,5 +798,20 @@ func TestEnqueuer_UnrecognisedFilterKeyFailsOpen(t *testing.T) {
 	}
 	if len(gotMatcher.calls) != 0 {
 		t.Errorf("unrecognised FilterKey must never consult the matcher, got %d calls", len(gotMatcher.calls))
+	}
+}
+
+func TestEnqueuer_CreateFails_QueuesNoPush(t *testing.T) {
+	t.Parallel()
+	enq, notifs, queue := newEnqueuerHarness(t, profiles.TierPro)
+	notifs.createErr = errors.New("create failed")
+	app := testApplication(t, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
+	zone := testZoneAt(t, "zone-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+
+	if err := enq.Enqueue(context.Background(), app, zone); !errors.Is(err, notifs.createErr) {
+		t.Fatalf("Enqueue error: got %v, want %v", err, notifs.createErr)
+	}
+	if len(queue.queued) != 0 {
+		t.Errorf("a failed Create must queue no push, got %d", len(queue.queued))
 	}
 }

@@ -241,8 +241,12 @@ type digestProfiles struct {
 	point profiles.Store
 }
 
-func (p digestProfiles) ByDigestDay(ctx context.Context, day time.Weekday) ([]*profiles.UserProfile, error) {
-	return p.admin.ByDigestDay(ctx, day)
+func (p digestProfiles) ByDigestDay(ctx context.Context, day time.Weekday, notSentSince time.Time) ([]*profiles.UserProfile, error) {
+	return p.admin.ByDigestDay(ctx, day, notSentSince)
+}
+
+func (p digestProfiles) MarkWeeklyDigestSent(ctx context.Context, userID string, at time.Time) error {
+	return p.admin.MarkWeeklyDigestSent(ctx, userID, at)
 }
 
 func (p digestProfiles) Get(ctx context.Context, userID string) (*profiles.UserProfile, error) {
@@ -353,6 +357,7 @@ func buildAppStoreReconcile(cfg platform.Config, st *stores, logger *slog.Logger
 		st.profileAdmin,
 		buildAuth0Syncer(cfg, logger),
 		st.appleNotif,
+		cfg.AppleBundleID,
 		cfg.AppleEnvironments,
 		nil,
 		logger,

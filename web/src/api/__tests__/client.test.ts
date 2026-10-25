@@ -79,6 +79,30 @@ describe('createApiClient — getWithHeaders', () => {
     ).rejects.toMatchObject({ status: 400, message: 'bad cursor' });
   });
 
+  it('carries the code and the prose message when the body has both', async () => {
+    const spy = new SpyFetch();
+    spy.response = new Response(
+      JSON.stringify({ error: 'zone_name_taken', message: 'You already have a watch zone with this name.' }),
+      { status: 409 },
+    );
+
+    await expect(clientWith(spy).post('/v1/me/watch-zones', {})).rejects.toMatchObject({
+      status: 409,
+      code: 'zone_name_taken',
+      message: 'You already have a watch zone with this name.',
+    });
+  });
+
+  it('leaves the code undefined when the body has only error', async () => {
+    const spy = new SpyFetch();
+    spy.response = new Response(JSON.stringify({ error: 'bad cursor' }), { status: 400 });
+
+    const err = await clientWith(spy).get('/v1/x').catch((e: unknown) => e);
+
+    expect(err).toMatchObject({ status: 400, message: 'bad cursor' });
+    expect((err as { code?: string }).code).toBeUndefined();
+  });
+
   it('leaves get() returning the bare parsed body (unchanged contract)', async () => {
     const spy = new SpyFetch();
     spy.response = new Response(JSON.stringify({ ok: true }), {

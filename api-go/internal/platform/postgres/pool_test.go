@@ -236,3 +236,15 @@ func TestNewPoolFromEnv_AppliesOptionsOnBothAuthPaths(t *testing.T) {
 		})
 	}
 }
+
+func TestWithMaxConns_SetsPoolSize(t *testing.T) {
+	t.Parallel()
+	cfg, err := pgxpool.ParseConfig("postgres://u@localhost:5432/db?sslmode=disable")
+	if err != nil {
+		t.Fatalf("ParseConfig() error = %v", err)
+	}
+	WithMaxConns(17)(cfg)
+	if cfg.MaxConns != 17 {
+		t.Errorf("MaxConns = %d, want 17", cfg.MaxConns)
+	}
+}

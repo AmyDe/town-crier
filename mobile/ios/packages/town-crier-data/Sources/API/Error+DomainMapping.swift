@@ -26,4 +26,10 @@ extension Error {
     }
     return .unexpected(localizedDescription)
   }
+
+  /// The error a repository should throw: cancellation unchanged, anything
+  /// else mapped through ``toDomainError()``.
+  func toThrowableDomainError() -> any Error {
+    isCancellation ? self : toDomainError()
+  }
 }

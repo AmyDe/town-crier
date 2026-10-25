@@ -89,40 +89,45 @@ type profileResult struct {
 func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 	claims := auth.ClaimsFrom(r.Context())
 
-	existing, err := h.store.Get(r.Context(), claims.Subject)
-	switch {
-	case err == nil:
-		if existing.Email == nil && strings.TrimSpace(claims.Email) != "" {
-			existing.BackfillEmail(claims.Email)
-			if err := h.store.Save(r.Context(), existing); err != nil {
-				h.serverError(w, r, "backfill email", err)
-				return
+	var profile *UserProfile
+	existed := false
+	err := RetryOnConflict(r.Context(), DefaultSaveAttempts, func(ctx context.Context) error {
+		existed = false
+		existing, err := h.store.Get(ctx, claims.Subject)
+		switch {
+		case err == nil:
+			if existing.Email == nil && strings.TrimSpace(claims.Email) != "" {
+				existing.BackfillEmail(claims.Email)
+				if err := h.store.Save(ctx, existing); err != nil {
+					return fmt.Errorf("backfill email: %w", err)
+				}
 			}
+			profile = existing
+			existed = true
+			return nil
+		case errors.Is(err, ErrNotFound):
+		default:
+			return fmt.Errorf("load profile: %w", err)
 		}
-		h.tryBackfillAuth0Tier(r.Context(), existing, claims.SubscriptionTier)
-		h.writeJSON(w, r, createResult{
-			UserID:      existing.UserID,
-			PushEnabled: existing.Preferences.PushEnabled,
-			Tier:        existing.EffectiveTier(h.now()).String(),
-		})
-		return
-	case errors.Is(err, ErrNotFound):
-		// fall through to registration
-	default:
-		h.serverError(w, r, "load profile", err)
-		return
-	}
 
-	profile, err := NewProfile(claims.Subject, claims.Email, h.now())
+		fresh, err := NewProfile(claims.Subject, claims.Email, h.now())
+		if err != nil {
+			return fmt.Errorf("register profile: %w", err)
+		}
+		if err := h.store.Save(ctx, fresh); err != nil {
+			return fmt.Errorf("save profile: %w", err)
+		}
+		profile = fresh
+		return nil
+	})
 	if err != nil {
-		h.serverError(w, r, "register profile", err)
-		return
-	}
-	if err := h.store.Save(r.Context(), profile); err != nil {
-		h.serverError(w, r, "save profile", err)
+		h.serverError(w, r, "create profile", err)
 		return
 	}
 
+	if existed {
+		h.tryBackfillAuth0Tier(r.Context(), profile, claims.SubscriptionTier)
+	}
 	h.writeJSON(w, r, createResult{
 		UserID:      profile.UserID,
 		PushEnabled: profile.Preferences.PushEnabled,
@@ -170,38 +175,33 @@ func (h *handler) patch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	profile, err := h.store.Get(r.Context(), subject)
+	var profile *UserProfile
+	err := RetryOnConflict(r.Context(), DefaultSaveAttempts, func(ctx context.Context) error {
+		p, err := h.store.Get(ctx, subject)
+		if err != nil {
+			return err
+		}
+		p.UpdatePreferences(req.toPreferences())
+		profile = p
+		return h.store.Save(ctx, p)
+	})
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		h.serverError(w, r, "load profile", err)
-		return
-	}
-
-	profile.UpdatePreferences(req.toPreferences())
-	if err := h.store.Save(r.Context(), profile); err != nil {
 		h.serverError(w, r, "save profile", err)
 		return
 	}
 	h.writeJSON(w, r, profileResultFrom(profile, h.now()))
 }
 
-// delete implements DELETE /v1/me as a complete UK GDPR Art. 17 erasure. A
-// missing profile is a 404 before any cascade runs; erasure.Cascade owns the
-// ordering and idempotency contract.
+// delete implements DELETE /v1/me as a complete UK GDPR Art. 17 erasure. The
+// cascade always runs, so a repeat call finishes an erasure that failed after
+// the profile was removed; erasure.Cascade owns the ordering and idempotency
+// contract.
 func (h *handler) delete(w http.ResponseWriter, r *http.Request) {
 	subject := auth.Subject(r.Context())
-
-	if _, err := h.store.Get(r.Context(), subject); err != nil {
-		if errors.Is(err, ErrNotFound) {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-		h.serverError(w, r, "load profile", err)
-		return
-	}
 
 	deleters := erasure.Deleters{
 		Notifications:       h.cascade.Notifications,

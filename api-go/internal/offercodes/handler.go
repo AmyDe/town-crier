@@ -18,6 +18,8 @@ import (
 
 const maxBodyBytes = 1 << 20
 
+var errGrantNotHealable = errors.New("offer-code grant cannot be re-applied")
+
 // codeStore is the consumer-side offer-code store the redeem handler needs.
 type codeStore interface {
 	Get(ctx context.Context, canonical string) (OfferCode, error)
@@ -27,6 +29,9 @@ type codeStore interface {
 	// redemption slot is already consumed, or ErrAlreadyRedeemedByUser if
 	// userID has already personally redeemed this code.
 	RedeemWithCAS(ctx context.Context, canonical, userID string, now time.Time) error
+	// RedemptionTime returns when userID redeemed the code, or ErrNotFound if
+	// userID has no redemption of it.
+	RedemptionTime(ctx context.Context, canonical, userID string) (time.Time, error)
 }
 
 // profileStore is the consumer-side profile store: the redeem path loads the
@@ -80,10 +85,9 @@ type apiErrorResponse struct {
 
 // redeem implements POST /v1/offer-codes/redeem: malformed code -> 400
 // invalid_code_format, unknown code -> 404 invalid_code, already-claimed (by
-// anyone, or a second time by the same caller) -> 409 code_already_redeemed,
-// caller already paid -> 409 already_subscribed. Clients cannot and do not
-// need to tell "code fully consumed by others" apart from "you already
-// redeemed this code".
+// by another user) -> 409 code_already_redeemed, caller already paid -> 409
+// already_subscribed. A caller who already redeemed the code gets the original
+// grant re-applied idempotently and the same success response.
 func (h *handler) redeem(w http.ResponseWriter, r *http.Request) {
 	userID := auth.Subject(r.Context())
 
@@ -105,7 +109,6 @@ func (h *handler) redeem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fast-path check; RedeemWithCAS below is the authoritative atomic enforcement.
 	code, err := h.codes.Get(r.Context(), canonical)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
@@ -115,6 +118,17 @@ func (h *handler) redeem(w http.ResponseWriter, r *http.Request) {
 		h.serverError(w, r, "load offer code", err)
 		return
 	}
+
+	redeemedAt, err := h.codes.RedemptionTime(r.Context(), canonical, userID)
+	switch {
+	case err == nil:
+		h.heal(w, r, userID, code, redeemedAt)
+		return
+	case !errors.Is(err, ErrNotFound):
+		h.serverError(w, r, "load redemption time", err)
+		return
+	}
+
 	if code.IsFullyRedeemed() {
 		h.writeError(r, w, http.StatusConflict, "code_already_redeemed", "Offer code '"+canonical+"' has already been redeemed.")
 		return
@@ -126,7 +140,7 @@ func (h *handler) redeem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	now := h.now()
+	now := h.now().Truncate(time.Microsecond)
 
 	// Gate on the effective tier, not the stored one: a lapsed paid grant is
 	// entitled to Free and may redeem a new code.
@@ -141,7 +155,15 @@ func (h *handler) redeem(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(redeemErr, ErrNotFound):
 		h.writeError(r, w, http.StatusNotFound, "invalid_code", "Offer code '"+canonical+"' was not found.")
 		return
-	case errors.Is(redeemErr, ErrAlreadyRedeemed), errors.Is(redeemErr, ErrAlreadyRedeemedByUser):
+	case errors.Is(redeemErr, ErrAlreadyRedeemedByUser):
+		at, err := h.codes.RedemptionTime(r.Context(), canonical, userID)
+		if err != nil {
+			h.serverError(w, r, "load redemption time", err)
+			return
+		}
+		h.heal(w, r, userID, code, at)
+		return
+	case errors.Is(redeemErr, ErrAlreadyRedeemed):
 		h.writeError(r, w, http.StatusConflict, "code_already_redeemed", "Offer code '"+canonical+"' has already been redeemed.")
 		return
 	default:
@@ -157,22 +179,79 @@ func (h *handler) redeem(w http.ResponseWriter, r *http.Request) {
 	}
 
 	expiry := now.AddDate(0, 0, code.DurationDays)
-	before := subscriptionevents.SnapshotOf(profile)
-	profile.ActivateSubscription(code.Tier, expiry)
-
-	if err := h.profiles.Save(r.Context(), profile); err != nil {
+	var before subscriptionevents.Snapshot
+	err = profiles.RetryOnConflict(r.Context(), profiles.DefaultSaveAttempts, func(ctx context.Context) error {
+		current, err := h.profiles.Get(ctx, userID)
+		if err != nil {
+			return err
+		}
+		before = subscriptionevents.SnapshotOf(current)
+		current.ActivateSubscription(code.Tier, expiry)
+		profile = current
+		return h.profiles.Save(ctx, current)
+	})
+	if err != nil {
 		h.serverError(w, r, "save profile", err)
 		return
 	}
 	if h.notifier != nil {
 		h.notifier.Changed(r.Context(), before, subscriptionevents.SnapshotOf(profile), subscriptionevents.SourceOfferCode)
 	}
-	if err := h.auth0.UpdateSubscriptionTier(r.Context(), profile.UserID, profile.Tier.String()); err != nil {
-		h.serverError(w, r, "sync auth0 tier", err)
-		return
-	}
+	h.syncAuth0(r.Context(), profile)
 
 	h.writeJSON(r, w, redeemResponse{Tier: profile.Tier.String(), ExpiresAt: platform.DotNetTime(*profile.SubscriptionExpiry)})
+}
+
+// heal re-applies a grant the caller already redeemed, for a retry after a
+// partial failure. The expiry derives from the original redemption time, and
+// the profile is never shortened or downgraded. A lapsed grant, or a caller
+// now on another paid plan, gets code_already_redeemed. No notification is sent.
+func (h *handler) heal(w http.ResponseWriter, r *http.Request, userID string, code OfferCode, redeemedAt time.Time) {
+	expiry := redeemedAt.AddDate(0, 0, code.DurationDays)
+	now := h.now().Truncate(time.Microsecond)
+	if !expiry.After(now) {
+		h.writeError(r, w, http.StatusConflict, "code_already_redeemed", "Offer code '"+code.Code+"' has already been redeemed.")
+		return
+	}
+	var profile *profiles.UserProfile
+	err := profiles.RetryOnConflict(r.Context(), profiles.DefaultSaveAttempts, func(ctx context.Context) error {
+		current, err := h.profiles.Get(ctx, userID)
+		if err != nil {
+			return err
+		}
+		profile = current
+		if current.Tier > code.Tier || (current.Tier == code.Tier && current.SubscriptionExpiry != nil && !current.SubscriptionExpiry.Before(expiry)) {
+			return nil
+		}
+		if current.EffectiveTier(now).IsPaid() {
+			return errGrantNotHealable
+		}
+		current.ActivateSubscription(code.Tier, expiry)
+		return h.profiles.Save(ctx, current)
+	})
+	if errors.Is(err, errGrantNotHealable) {
+		h.writeError(r, w, http.StatusConflict, "code_already_redeemed", "Offer code '"+code.Code+"' has already been redeemed.")
+		return
+	}
+	if err != nil {
+		h.serverError(w, r, "save profile", err)
+		return
+	}
+	h.syncAuth0(r.Context(), profile)
+
+	respExpiry := expiry
+	if profile.SubscriptionExpiry != nil {
+		respExpiry = *profile.SubscriptionExpiry
+	}
+	h.writeJSON(r, w, redeemResponse{Tier: profile.Tier.String(), ExpiresAt: platform.DotNetTime(respExpiry)})
+}
+
+// syncAuth0 pushes the tier to Auth0. The database is the authority, so a
+// failure is logged and does not fail the request.
+func (h *handler) syncAuth0(ctx context.Context, p *profiles.UserProfile) {
+	if err := h.auth0.UpdateSubscriptionTier(ctx, p.UserID, p.Tier.String()); err != nil {
+		h.logger.WarnContext(ctx, "offer-code auth0 tier sync failed", "error", err)
+	}
 }
 
 func (h *handler) writeJSON(r *http.Request, w http.ResponseWriter, v any) {

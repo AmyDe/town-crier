@@ -188,6 +188,7 @@ func (r *WindowReader) ReadWindow(ctx context.Context, w PlannedWork, state Wind
 	}
 	seen := map[AppKey]struct{}{}
 	addSeen(seen, first)
+	skipped := len(first.Skipped)
 	now := r.now()
 	if first.Total != nil && state.LastTotal != nil && *state.LastTotal == *first.Total && state.LastFullReadAt != nil &&
 		now.Sub(*state.LastFullReadAt) < r.cfg.FullReadMaxAge {
@@ -198,8 +199,8 @@ func (r *WindowReader) ReadWindow(ctx context.Context, w PlannedWork, state Wind
 	}
 
 	cur := first
-	for cur.HasMorePages && len(cur.Applications) > 0 {
-		q.Index = cur.From + len(cur.Applications)
+	for cur.HasMorePages && cur.Read() > 0 {
+		q.Index = cur.From + cur.Read()
 		cur, err = r.fetch.FetchPage(ctx, q)
 		if err != nil {
 			return stopped(pages, err)
@@ -209,6 +210,7 @@ func (r *WindowReader) ReadWindow(ctx context.Context, w PlannedWork, state Wind
 			return stopped(pages, err)
 		}
 		addSeen(seen, cur)
+		skipped += len(cur.Skipped)
 	}
 
 	// Without PlanIt's total there is nothing to check completeness against,
@@ -217,7 +219,7 @@ func (r *WindowReader) ReadWindow(ctx context.Context, w PlannedWork, state Wind
 	if first.Total != nil {
 		total = *first.Total
 	}
-	if len(seen) < total {
+	if len(seen)+skipped < total {
 		r.recordShort(ref, now)
 		if r.hooks != nil {
 			r.hooks.WindowShort(ctx, ref, len(seen), total)
@@ -251,13 +253,13 @@ func (r *WindowReader) ReadDelta(ctx context.Context, w PlannedWork) WindowReadR
 		if err := r.ingestPage(ctx, q, res); err != nil {
 			return stopped(pages, err)
 		}
-		if !res.HasMorePages || len(res.Applications) == 0 {
+		if !res.HasMorePages || res.Read() == 0 {
 			return WindowReadResult{Pages: pages}
 		}
 		if pages >= w.MaxPages {
 			return WindowReadResult{Pages: pages, Capped: true}
 		}
-		q.Index = res.From + len(res.Applications)
+		q.Index = res.From + res.Read()
 	}
 }
 
@@ -288,6 +290,7 @@ func (r *WindowReader) ingestPage(ctx context.Context, q planit.WindowQuery, p p
 	if r.hooks != nil {
 		r.hooks.PageFetched(ctx, q, p)
 	}
+	r.logSkipped(ctx, q, p)
 	for _, app := range p.Applications {
 		if err := r.ingest.Ingest(ctx, app); err != nil {
 			return fmt.Errorf("ingest %s: %w", app.UID, err)
@@ -299,6 +302,16 @@ func (r *WindowReader) ingestPage(ctx context.Context, q planit.WindowQuery, p p
 		}
 	}
 	return nil
+}
+
+func (r *WindowReader) logSkipped(ctx context.Context, q planit.WindowQuery, p planit.FetchPageResult) {
+	for _, s := range p.Skipped {
+		r.log.WarnContext(ctx, "poll.record_skipped", slog.String("uid", s.UID), slog.String("field", s.Field))
+	}
+	if len(p.Skipped) > 0 && len(p.Applications) == 0 {
+		r.log.ErrorContext(ctx, "poll.page_all_records_skipped",
+			slog.Int("index", q.Index), slog.Int("skipped", len(p.Skipped)))
+	}
 }
 
 func addSeen(seen map[AppKey]struct{}, p planit.FetchPageResult) {

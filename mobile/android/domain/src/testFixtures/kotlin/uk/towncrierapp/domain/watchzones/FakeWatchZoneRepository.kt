@@ -12,12 +12,14 @@ public class FakeWatchZoneRepository(
     public var deleteFailWith: DomainError? = null
 
     public var zonesCallCount: Int = 0
+    public var beforeZones: suspend () -> Unit = {}
     public val createCalls: MutableList<WatchZone> = mutableListOf()
     public val updateCalls: MutableList<WatchZone> = mutableListOf()
     public val deleteCalls: MutableList<WatchZoneId> = mutableListOf()
 
     override suspend fun zones(): List<WatchZone> {
         zonesCallCount++
+        beforeZones()
         zonesFailWith?.let { throw it }
         return stored.toList()
     }

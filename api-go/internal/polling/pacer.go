@@ -27,7 +27,11 @@ const (
 	backoffForbidden        = 24 * time.Hour
 	backoffTransient        = 30 * time.Minute
 	statusAborted           = 0
-	settleTimeout           = 5 * time.Second
+
+	// OutcomeReadFailed marks a call whose HTTP response arrived but whose body
+	// could not be read or decoded, or made no progress.
+	OutcomeReadFailed = "read_failed"
+	settleTimeout     = 5 * time.Second
 )
 
 var budgetLocation = mustLoadLocation("Europe/London")
@@ -56,6 +60,7 @@ func BudgetDay(t time.Time) (start, end time.Time) {
 
 // PlanItCall is one row of the append-only planit_call log. Status is nil for
 // a timeout or transport error and 0 when the caller aborted the request.
+// Outcome is empty unless the call needs a label beyond its status.
 type PlanItCall struct {
 	ID         int64
 	At         time.Time
@@ -65,6 +70,7 @@ type PlanItCall struct {
 	Status     *int
 	Total      *int
 	RetryAfter *time.Duration
+	Outcome    string
 }
 
 // CallResult is the outcome recorded on a planit_call row after the request.
@@ -72,6 +78,7 @@ type CallResult struct {
 	Status     *int
 	Total      *int
 	RetryAfter *time.Duration
+	Outcome    string
 }
 
 // planItCallTx is one serialised pacing decision. Begin takes the advisory lock;
@@ -293,6 +300,8 @@ func backoffFor(latest *PlanItCall, now time.Time) BackoffState {
 	var wait time.Duration
 	var reason string
 	switch s := latest.Status; {
+	case latest.Outcome == OutcomeReadFailed:
+		wait, reason = backoffTransient, "read_failed"
 	case s == nil:
 		wait, reason = backoffTransient, "timeout"
 	case *s == 429:
@@ -315,6 +324,7 @@ func resultFor(res planit.FetchPageResult, err error) CallResult {
 	var rl *planit.RateLimitError
 	var forbidden *planit.ForbiddenError
 	var httpErr *planit.HTTPError
+	var respErr *planit.ResponseError
 	switch {
 	case err == nil:
 		return CallResult{Status: intPtr(200), Total: res.Total}
@@ -324,6 +334,8 @@ func resultFor(res planit.FetchPageResult, err error) CallResult {
 		return CallResult{Status: intPtr(403)}
 	case errors.As(err, &httpErr):
 		return CallResult{Status: intPtr(httpErr.StatusCode)}
+	case errors.As(err, &respErr):
+		return CallResult{Status: intPtr(respErr.StatusCode), Outcome: OutcomeReadFailed}
 	default:
 		return CallResult{}
 	}

@@ -50,6 +50,8 @@ public final class AnonymousURLSessionAPIClient: Sendable {
     let response: URLResponse
     do {
       (data, response) = try await transport.data(for: urlRequest)
+    } catch where error.isCancellation {
+      throw error
     } catch is URLError {
       throw DomainError.networkUnavailable
     }

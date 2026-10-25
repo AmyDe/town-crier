@@ -12,7 +12,7 @@ import TownCrierDomain
 /// ```
 ///
 /// When the caught error is already a `DomainError`, it is assigned directly.
-/// Otherwise, the `fallback` closure wraps the localised description into
+/// Cancellation is ignored. Otherwise, the `fallback` closure wraps the localised description into
 /// the appropriate `DomainError` case (defaulting to `.unexpected`).
 @MainActor
 protocol ErrorHandlingViewModel: AnyObject {
@@ -24,6 +24,7 @@ extension ErrorHandlingViewModel {
     _ error: Error,
     fallback: (String) -> DomainError = { .unexpected($0) }
   ) {
+    if error.isCancellation { return }
     if let domainError = error as? DomainError {
       self.error = domainError
     } else {

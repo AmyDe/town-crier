@@ -39,7 +39,7 @@ func Recover(logger *slog.Logger) func(http.Handler) http.Handler {
 				}
 				err := panicError(rec)
 				logger.ErrorContext(ctx, "recovered from panic",
-					"method", r.Method, "path", r.URL.Path, "error", err)
+					"method", r.Method, "path", RedactPath(r.URL.Path), "error", err)
 				span := trace.SpanFromContext(ctx)
 				span.RecordError(err)
 				span.SetStatus(codes.Error, err.Error())

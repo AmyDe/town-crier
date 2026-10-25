@@ -594,7 +594,7 @@ func TestPostgresAdminStore_ByDigestDay(t *testing.T) {
 		t.Fatalf("Save Tuesday: %v", err)
 	}
 
-	monProfiles, err := admin.ByDigestDay(ctx, time.Monday)
+	monProfiles, err := admin.ByDigestDay(ctx, time.Monday, time.Time{})
 	if err != nil {
 		t.Fatalf("ByDigestDay Monday: %v", err)
 	}
@@ -602,7 +602,7 @@ func TestPostgresAdminStore_ByDigestDay(t *testing.T) {
 		t.Errorf("ByDigestDay Monday: got %d, want 2", len(monProfiles))
 	}
 
-	tueProfiles, err := admin.ByDigestDay(ctx, time.Tuesday)
+	tueProfiles, err := admin.ByDigestDay(ctx, time.Tuesday, time.Time{})
 	if err != nil {
 		t.Fatalf("ByDigestDay Tuesday: %v", err)
 	}
@@ -965,5 +965,262 @@ func TestPostgresStore_SubscriptionInTrialRoundTrip(t *testing.T) {
 	}
 	if got.SubscriptionInTrial {
 		t.Error("after CAS update SubscriptionInTrial = true, want false")
+	}
+}
+
+func TestPostgresStore_Save_StaleProfileFailsAfterConcurrentWrite(t *testing.T) {
+	store, _ := newUserPGStore(t)
+	ctx := context.Background()
+
+	if err := store.Save(ctx, pgProfile(t, "auth0|ver1", "ver1@example.com")); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	stale, err := store.Get(ctx, "auth0|ver1")
+	if err != nil {
+		t.Fatalf("Get stale: %v", err)
+	}
+	fresh, err := store.Get(ctx, "auth0|ver1")
+	if err != nil {
+		t.Fatalf("Get fresh: %v", err)
+	}
+	fresh.ActivateSubscription(TierPro, time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC))
+	if err := store.Save(ctx, fresh); err != nil {
+		t.Fatalf("Save fresh: %v", err)
+	}
+
+	stale.UpdatePreferences(NotificationPreferences{PushEnabled: false})
+	err = store.Save(ctx, stale)
+	if !errors.Is(err, platform.ErrCASPreconditionFailed) {
+		t.Fatalf("Save stale: got %v, want ErrCASPreconditionFailed", err)
+	}
+
+	got, err := store.Get(ctx, "auth0|ver1")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Tier != TierPro {
+		t.Errorf("Tier: got %v, want %v", got.Tier, TierPro)
+	}
+	if got.Version != 1 {
+		t.Errorf("Version: got %d, want 1", got.Version)
+	}
+}
+
+func TestPostgresStore_Save_SecondInsertOfSameUserFails(t *testing.T) {
+	store, _ := newUserPGStore(t)
+	ctx := context.Background()
+
+	if err := store.Save(ctx, pgProfile(t, "auth0|dup1", "a@example.com")); err != nil {
+		t.Fatalf("Save first: %v", err)
+	}
+	err := store.Save(ctx, pgProfile(t, "auth0|dup1", "b@example.com"))
+	if !errors.Is(err, platform.ErrCASPreconditionFailed) {
+		t.Fatalf("Save second insert: got %v, want ErrCASPreconditionFailed", err)
+	}
+	got, err := store.Get(ctx, "auth0|dup1")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Email == nil || *got.Email != "a@example.com" {
+		t.Errorf("Email: got %v, want a@example.com", got.Email)
+	}
+}
+
+func TestPostgresStore_Save_UpdateAndCASShareVersionCounter(t *testing.T) {
+	store, _ := newUserPGStore(t)
+	ctx := context.Background()
+
+	if err := store.Save(ctx, pgProfile(t, "auth0|ver2", "ver2@example.com")); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	p, etag, err := store.GetWithETag(ctx, "auth0|ver2")
+	if err != nil || p == nil {
+		t.Fatalf("GetWithETag: %v", err)
+	}
+	one := 1
+	p.WatchZoneCount = &one
+	if err := store.UpdateZoneCountWithCAS(ctx, p.UserID, p, etag); err != nil {
+		t.Fatalf("UpdateZoneCountWithCAS: %v", err)
+	}
+	loaded, err := store.Get(ctx, "auth0|ver2")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if loaded.Version != 1 {
+		t.Fatalf("Version after CAS: got %d, want 1", loaded.Version)
+	}
+	if err := store.Save(ctx, loaded); err != nil {
+		t.Fatalf("Save after CAS: %v", err)
+	}
+	if loaded.Version != 2 {
+		t.Errorf("Version after Save: got %d, want 2", loaded.Version)
+	}
+	if err := store.UpdateZoneCountWithCAS(ctx, p.UserID, p, etag); !errors.Is(err, platform.ErrCASPreconditionFailed) {
+		t.Errorf("CAS with stale etag: got %v, want ErrCASPreconditionFailed", err)
+	}
+}
+
+func TestPostgresStore_RecordActivity_ChangesOnlyActivityColumns(t *testing.T) {
+	store, _ := newUserPGStore(t)
+	ctx := context.Background()
+
+	p := pgProfile(t, "auth0|act1", "act1@example.com")
+	p.ActivateSubscription(TierPro, time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC))
+	if err := store.Save(ctx, p); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	at := time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC)
+	if err := store.RecordActivity(ctx, p.UserID, at); err != nil {
+		t.Fatalf("RecordActivity: %v", err)
+	}
+
+	got, err := store.Get(ctx, p.UserID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if !got.LastActiveAt.Equal(at) {
+		t.Errorf("LastActiveAt: got %v, want %v", got.LastActiveAt, at)
+	}
+	if got.Tier != TierPro {
+		t.Errorf("Tier: got %v, want %v", got.Tier, TierPro)
+	}
+	if got.Version != 0 {
+		t.Errorf("Version: got %d, want 0", got.Version)
+	}
+}
+
+func TestPostgresStore_RecordActivity_UnknownUserIsNoOp(t *testing.T) {
+	store, _ := newUserPGStore(t)
+	if err := store.RecordActivity(context.Background(), "auth0|nobody", time.Now()); err != nil {
+		t.Fatalf("RecordActivity: %v", err)
+	}
+}
+
+func TestPostgresStore_Save_InsertWithClaimedTransactionID(t *testing.T) {
+	store, _ := newUserPGStore(t)
+	ctx := context.Background()
+
+	first := pgProfile(t, "auth0|owner", "owner@example.com")
+	first.LinkOriginalTransactionID("txn-shared")
+	if err := store.Save(ctx, first); err != nil {
+		t.Fatalf("Save first: %v", err)
+	}
+
+	second := pgProfile(t, "auth0|other", "other@example.com")
+	second.LinkOriginalTransactionID("txn-shared")
+	err := store.Save(ctx, second)
+
+	if !errors.Is(err, ErrTransactionClaimed) {
+		t.Fatalf("Save err = %v, want ErrTransactionClaimed", err)
+	}
+	if errors.Is(err, platform.ErrCASPreconditionFailed) {
+		t.Error("claimed transaction must not look like a version conflict")
+	}
+}
+
+func TestPostgresStore_Save_UpdateWithClaimedTransactionID(t *testing.T) {
+	store, _ := newUserPGStore(t)
+	ctx := context.Background()
+
+	first := pgProfile(t, "auth0|owner", "owner@example.com")
+	first.LinkOriginalTransactionID("txn-shared")
+	if err := store.Save(ctx, first); err != nil {
+		t.Fatalf("Save first: %v", err)
+	}
+	second := pgProfile(t, "auth0|other", "other@example.com")
+	if err := store.Save(ctx, second); err != nil {
+		t.Fatalf("Save second: %v", err)
+	}
+
+	loaded, err := store.Get(ctx, second.UserID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	loaded.LinkOriginalTransactionID("txn-shared")
+	err = store.Save(ctx, loaded)
+
+	if !errors.Is(err, ErrTransactionClaimed) {
+		t.Fatalf("Save err = %v, want ErrTransactionClaimed", err)
+	}
+	if errors.Is(err, platform.ErrCASPreconditionFailed) {
+		t.Error("claimed transaction must not look like a version conflict")
+	}
+}
+
+func TestPostgresStore_Save_ManyProfilesWithoutTransactionID(t *testing.T) {
+	store, _ := newUserPGStore(t)
+	ctx := context.Background()
+
+	for _, id := range []string{"auth0|a", "auth0|b"} {
+		if err := store.Save(ctx, pgProfile(t, id, id+"@example.com")); err != nil {
+			t.Fatalf("Save %s: %v", id, err)
+		}
+	}
+}
+
+func TestPostgresAdminStore_MarkWeeklyDigestSent_FiltersByDigestDay(t *testing.T) {
+	store, admin := newUserPGStore(t)
+	ctx := context.Background()
+
+	for _, id := range []string{"auth0|wd-a", "auth0|wd-b", "auth0|wd-c"} {
+		p := pgProfile(t, id, id+"@example.com")
+		p.Preferences.DigestDay = time.Monday
+		if err := store.Save(ctx, p); err != nil {
+			t.Fatalf("Save %s: %v", id, err)
+		}
+	}
+	cycleStart := time.Date(2026, 6, 22, 0, 0, 0, 0, time.UTC)
+
+	if err := admin.MarkWeeklyDigestSent(ctx, "auth0|wd-a", cycleStart.Add(time.Hour)); err != nil {
+		t.Fatalf("MarkWeeklyDigestSent current: %v", err)
+	}
+	if err := admin.MarkWeeklyDigestSent(ctx, "auth0|wd-b", cycleStart.Add(-time.Hour)); err != nil {
+		t.Fatalf("MarkWeeklyDigestSent earlier: %v", err)
+	}
+
+	got, err := admin.ByDigestDay(ctx, time.Monday, cycleStart)
+	if err != nil {
+		t.Fatalf("ByDigestDay: %v", err)
+	}
+	ids := map[string]bool{}
+	for _, p := range got {
+		ids[p.UserID] = true
+	}
+	if len(got) != 2 || ids["auth0|wd-a"] || !ids["auth0|wd-b"] || !ids["auth0|wd-c"] {
+		t.Errorf("ByDigestDay returned %v, want wd-b and wd-c only", ids)
+	}
+}
+
+func TestPostgresAdminStore_MarkWeeklyDigestSent_LeavesProfileUntouched(t *testing.T) {
+	store, admin := newUserPGStore(t)
+	ctx := context.Background()
+
+	p := pgProfile(t, "auth0|wd-v", "wdv@example.com")
+	if err := store.Save(ctx, p); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	before, err := store.Get(ctx, p.UserID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if err := admin.MarkWeeklyDigestSent(ctx, p.UserID, time.Now()); err != nil {
+		t.Fatalf("MarkWeeklyDigestSent: %v", err)
+	}
+	after, err := store.Get(ctx, p.UserID)
+	if err != nil {
+		t.Fatalf("Get after: %v", err)
+	}
+	assertProfileEqual(t, after, before)
+	if err := store.Save(ctx, after); err != nil {
+		t.Fatalf("Save after mark: %v", err)
+	}
+}
+
+func TestPostgresAdminStore_MarkWeeklyDigestSent_UnknownUser(t *testing.T) {
+	_, admin := newUserPGStore(t)
+	err := admin.MarkWeeklyDigestSent(context.Background(), "auth0|nobody", time.Now())
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("got %v, want ErrNotFound", err)
 	}
 }

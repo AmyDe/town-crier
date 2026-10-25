@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"testing"
@@ -28,13 +29,33 @@ type fakeProfiles struct {
 	byDay    map[time.Weekday][]*profiles.UserProfile
 	byID     map[string]*profiles.UserProfile
 	byDayErr error
+	markErr  error
+	ledger   map[string]time.Time
 }
 
-func (f *fakeProfiles) ByDigestDay(_ context.Context, day time.Weekday) ([]*profiles.UserProfile, error) {
+func (f *fakeProfiles) ByDigestDay(_ context.Context, day time.Weekday, notSentSince time.Time) ([]*profiles.UserProfile, error) {
 	if f.byDayErr != nil {
 		return nil, f.byDayErr
 	}
-	return f.byDay[day], nil
+	var out []*profiles.UserProfile
+	for _, p := range f.byDay[day] {
+		if at, ok := f.ledger[p.UserID]; ok && !at.Before(notSentSince) {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out, nil
+}
+
+func (f *fakeProfiles) MarkWeeklyDigestSent(_ context.Context, userID string, at time.Time) error {
+	if f.markErr != nil {
+		return f.markErr
+	}
+	if f.ledger == nil {
+		f.ledger = map[string]time.Time{}
+	}
+	f.ledger[userID] = at
+	return nil
 }
 
 func (f *fakeProfiles) Get(_ context.Context, userID string) (*profiles.UserProfile, error) {
@@ -956,5 +977,158 @@ func TestRunHourly_DistinctApplicationsStillBothRenderAndBothMarkSent(t *testing
 	}
 	if len(fn.marked) != 2 {
 		t.Errorf("marked email-sent: got %v, want both distinct records marked", fn.marked)
+	}
+}
+
+func TestRunHourly_AcceptedStatusUnknownMarksSent(t *testing.T) {
+	t.Parallel()
+	prefs := profiles.DefaultPreferences()
+	prefs.EmailDigestEnabled = true
+	p := mkProfile(t, profiles.TierPro, prefs)
+
+	n1 := zoneNotif("uid-A", "zone-1")
+	fp := &fakeProfiles{byID: map[string]*profiles.UserProfile{"user-1": p}}
+	fn := &fakeNotifications{
+		unsentUserIDs: []string{"user-1"},
+		unsentByUser:  map[string][]notifications.DigestNotification{"user-1": {n1}},
+	}
+	fz := &fakeZones{byUser: map[string][]watchzones.WatchZone{
+		"user-1": {mkZone(t, "zone-1", "Home", true)},
+	}}
+	email := &spyEmail{sendErr: fmt.Errorf("send: %w", acsemail.ErrAcceptedStatusUnknown)}
+	h := newHandler(fp, fn, fz, &fakeState{}, &fakeDevices{}, email, &spyPush{})
+
+	if err := h.RunHourly(context.Background()); err != nil {
+		t.Fatalf("RunHourly: %v", err)
+	}
+	if len(fn.marked) != 1 {
+		t.Errorf("accepted-status-unknown must mark sent: got %v", fn.marked)
+	}
+}
+
+func TestRunHourly_SetsRepeatabilityKeyPerUserAndHour(t *testing.T) {
+	t.Parallel()
+	prefs := profiles.DefaultPreferences()
+	prefs.EmailDigestEnabled = true
+	p := mkProfile(t, profiles.TierPro, prefs)
+
+	fp := &fakeProfiles{byID: map[string]*profiles.UserProfile{"user-1": p}}
+	fn := &fakeNotifications{
+		unsentUserIDs: []string{"user-1"},
+		unsentByUser:  map[string][]notifications.DigestNotification{"user-1": {zoneNotif("uid-A", "zone-1")}},
+	}
+	fz := &fakeZones{byUser: map[string][]watchzones.WatchZone{
+		"user-1": {mkZone(t, "zone-1", "Home", true)},
+	}}
+	email := &spyEmail{}
+	h := newHandler(fp, fn, fz, &fakeState{}, &fakeDevices{}, email, &spyPush{})
+
+	if err := h.RunHourly(context.Background()); err != nil {
+		t.Fatalf("RunHourly: %v", err)
+	}
+	if got, want := email.sent[0].RepeatabilityKey, "user-1|hourly:2026-02-04T09"; got != want {
+		t.Errorf("hourly key = %q, want %q", got, want)
+	}
+}
+
+func TestRunWeekly_SetsDistinctWeeklyRepeatabilityKey(t *testing.T) {
+	t.Parallel()
+	prefs := profiles.DefaultPreferences()
+	prefs.EmailDigestEnabled = true
+	prefs.PushEnabled = false
+	p := mkProfile(t, profiles.TierFree, prefs)
+
+	fp := &fakeProfiles{byDay: map[time.Weekday][]*profiles.UserProfile{time.Wednesday: {p}}}
+	fn := &fakeNotifications{sinceByUser: map[string][]notifications.DigestNotification{
+		"user-1": {zoneNotif("uid-A", "zone-1")},
+	}}
+	fz := &fakeZones{byUser: map[string][]watchzones.WatchZone{
+		"user-1": {mkZone(t, "zone-1", "Home", true)},
+	}}
+	email := &spyEmail{}
+	h := newHandler(fp, fn, fz, &fakeState{}, &fakeDevices{}, email, &spyPush{})
+
+	if err := h.RunWeekly(context.Background()); err != nil {
+		t.Fatalf("RunWeekly: %v", err)
+	}
+	if got, want := email.sent[0].RepeatabilityKey, "user-1|weekly:2026-W06"; got != want {
+		t.Errorf("weekly key = %q, want %q", got, want)
+	}
+}
+
+func TestRunWeekly_RerunInSameCycleSendsNothingTwice(t *testing.T) {
+	t.Parallel()
+	prefs := profiles.DefaultPreferences()
+	prefs.EmailDigestEnabled = true
+	prefs.PushEnabled = true
+	p := mkProfile(t, profiles.TierPro, prefs)
+
+	fp := &fakeProfiles{byDay: map[time.Weekday][]*profiles.UserProfile{time.Wednesday: {p}}}
+	fn := &fakeNotifications{sinceByUser: map[string][]notifications.DigestNotification{
+		"user-1": {zoneNotif("uid-A", "zone-1")},
+	}}
+	fz := &fakeZones{byUser: map[string][]watchzones.WatchZone{"user-1": {mkZone(t, "zone-1", "Home", true)}}}
+	devices := &fakeDevices{byUser: map[string][]devicetokens.DeviceRegistration{
+		"user-1": {{UserID: "user-1", Token: "tok-1", Platform: devicetokens.PlatformIos}},
+	}}
+	email := &spyEmail{}
+	push := &spyPush{}
+	h := newHandler(fp, fn, fz, &fakeState{}, devices, email, push)
+
+	for range 2 {
+		if err := h.RunWeekly(context.Background()); err != nil {
+			t.Fatalf("RunWeekly: %v", err)
+		}
+	}
+	if len(email.sent) != 1 || push.calls != 1 {
+		t.Errorf("emails/pushes after re-run: got %d/%d, want 1/1", len(email.sent), push.calls)
+	}
+}
+
+func TestRunWeekly_FailedEmailDoesNotRecordSend(t *testing.T) {
+	t.Parallel()
+	prefs := profiles.DefaultPreferences()
+	prefs.EmailDigestEnabled = true
+	prefs.PushEnabled = false
+	p := mkProfile(t, profiles.TierFree, prefs)
+
+	fp := &fakeProfiles{byDay: map[time.Weekday][]*profiles.UserProfile{time.Wednesday: {p}}}
+	fn := &fakeNotifications{sinceByUser: map[string][]notifications.DigestNotification{
+		"user-1": {zoneNotif("uid-A", "zone-1")},
+	}}
+	email := &spyEmail{sendErr: errors.New("boom")}
+	h := newHandler(fp, fn, &fakeZones{}, &fakeState{}, &fakeDevices{}, email, &spyPush{})
+
+	if err := h.RunWeekly(context.Background()); err != nil {
+		t.Fatalf("RunWeekly: %v", err)
+	}
+	if _, ok := fp.ledger["user-1"]; ok {
+		t.Error("ledger set after a failed send")
+	}
+}
+
+func TestRunWeekly_LedgerFromEarlierCycleDoesNotSkip(t *testing.T) {
+	t.Parallel()
+	prefs := profiles.DefaultPreferences()
+	prefs.EmailDigestEnabled = true
+	prefs.PushEnabled = false
+	p := mkProfile(t, profiles.TierFree, prefs)
+
+	// Sunday of the previous ISO week; the pinned now is Wednesday 2026-02-04.
+	fp := &fakeProfiles{
+		byDay:  map[time.Weekday][]*profiles.UserProfile{time.Wednesday: {p}},
+		ledger: map[string]time.Time{"user-1": time.Date(2026, 2, 1, 23, 59, 0, 0, time.UTC)},
+	}
+	fn := &fakeNotifications{sinceByUser: map[string][]notifications.DigestNotification{
+		"user-1": {zoneNotif("uid-A", "zone-1")},
+	}}
+	email := &spyEmail{}
+	h := newHandler(fp, fn, &fakeZones{}, &fakeState{}, &fakeDevices{}, email, &spyPush{})
+
+	if err := h.RunWeekly(context.Background()); err != nil {
+		t.Fatalf("RunWeekly: %v", err)
+	}
+	if len(email.sent) != 1 {
+		t.Errorf("emails sent: got %d, want 1", len(email.sent))
 	}
 }

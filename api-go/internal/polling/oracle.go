@@ -130,20 +130,20 @@ func (o *Oracle) wideRead(ctx context.Context, axis planit.Axis, from, to time.T
 		}
 		pages++
 		res.Pages++
-		res.WideRecords += len(p.Applications)
+		res.WideRecords += p.Read()
 		for _, app := range p.Applications {
 			if d := axisDate(app, axis); d != nil {
 				wide[AppKey{UID: app.UID, AreaID: app.AreaID}] = dateOnly(*d)
 			}
 		}
-		if !p.HasMorePages || len(p.Applications) == 0 {
+		if !p.HasMorePages || p.Read() == 0 {
 			return wide, nil
 		}
 		if pages >= oracleMaxPages {
 			res.Stop = StopError
 			return nil, fmt.Errorf("oracle wide read: more than %d pages", oracleMaxPages)
 		}
-		q.Index = p.From + len(p.Applications)
+		q.Index = p.From + p.Read()
 	}
 }
 

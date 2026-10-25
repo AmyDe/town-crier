@@ -131,6 +131,7 @@ func (t *fakePlanItCallTx) Finish(_ context.Context, id int64, r CallResult) err
 			t.log.rows[i].Status = r.Status
 			t.log.rows[i].Total = r.Total
 			t.log.rows[i].RetryAfter = r.RetryAfter
+			t.log.rows[i].Outcome = r.Outcome
 		}
 	}
 	return nil
@@ -402,6 +403,32 @@ func TestPacer_Do_BackoffFromLatestRow(t *testing.T) {
 	}
 }
 
+func TestPacer_Backoff_ReadFailureAfter200BacksOffLikeTimeout(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 6, 10, 20, 0, 0, 0, londonTZ)
+	at := now.Add(-time.Second)
+	p, log := newTestPacer(t, now, 300)
+	log.rows = append(log.rows, PlanItCall{ID: 1, Work: "window_start", At: at, Status: intp(200), Outcome: OutcomeReadFailed})
+	st, err := p.Backoff(context.Background(), now)
+	if err != nil {
+		t.Fatalf("Backoff: %v", err)
+	}
+	if !st.Active || !st.Until.Equal(at.Add(30*time.Minute)) || st.Reason != "read_failed" {
+		t.Fatalf("Backoff = %+v; want active 30m read_failed", st)
+	}
+}
+
+func TestPacer_Backoff_ReadFailureExpiresAfter30m(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 6, 10, 20, 0, 0, 0, londonTZ)
+	p, log := newTestPacer(t, now, 300)
+	log.rows = append(log.rows, PlanItCall{ID: 1, Work: "window_start", At: now.Add(-31 * time.Minute), Status: intp(200), Outcome: OutcomeReadFailed})
+	st, err := p.Backoff(context.Background(), now)
+	if err != nil || st.Active {
+		t.Fatalf("Backoff = %+v, %v; want inactive", st, err)
+	}
+}
+
 func TestPacer_Do_BackoffExpiresAndNonBackoffStatusesPass(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 6, 10, 20, 0, 0, 0, londonTZ)
@@ -436,13 +463,16 @@ func TestPacer_Do_MapsResultsIntoRow(t *testing.T) {
 		err        error
 		wantStatus *int
 		wantRetry  *time.Duration
+		wantOut    string
 	}{
-		{"429 with retry-after", &planit.RateLimitError{RetryAfter: d(90 * time.Second)}, intp(429), d(90 * time.Second)},
-		{"429 without retry-after", &planit.RateLimitError{}, intp(429), nil},
-		{"403", &planit.ForbiddenError{}, intp(403), nil},
-		{"timeout", planitTimeout(), nil, nil},
-		{"503", &planit.HTTPError{StatusCode: 503}, intp(503), nil},
-		{"transport error", errors.New("dial tcp: refused"), nil, nil},
+		{"429 with retry-after", &planit.RateLimitError{RetryAfter: d(90 * time.Second)}, intp(429), d(90 * time.Second), ""},
+		{"429 without retry-after", &planit.RateLimitError{}, intp(429), nil, ""},
+		{"403", &planit.ForbiddenError{}, intp(403), nil, ""},
+		{"timeout", planitTimeout(), nil, nil, ""},
+		{"503", &planit.HTTPError{StatusCode: 503}, intp(503), nil, ""},
+		{"transport error", errors.New("dial tcp: refused"), nil, nil, ""},
+		{"decode failure after 200", &planit.ResponseError{StatusCode: 200, Err: errors.New("bad json")}, intp(200), nil, OutcomeReadFailed},
+		{"zero progress after 200", &planit.ResponseError{StatusCode: 200, Err: planit.ErrZeroProgress}, intp(200), nil, OutcomeReadFailed},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -460,6 +490,9 @@ func TestPacer_Do_MapsResultsIntoRow(t *testing.T) {
 			}
 			if (r.RetryAfter == nil) != (tc.wantRetry == nil) || (r.RetryAfter != nil && *r.RetryAfter != *tc.wantRetry) {
 				t.Fatalf("retry_after = %v, want %v", r.RetryAfter, tc.wantRetry)
+			}
+			if r.Outcome != tc.wantOut {
+				t.Fatalf("outcome = %q, want %q", r.Outcome, tc.wantOut)
 			}
 		})
 	}

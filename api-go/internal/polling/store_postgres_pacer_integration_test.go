@@ -185,3 +185,24 @@ func TestPostgresPlanItCallStore_HourlyCapWaitsAnHourAfterTheOldestCall(t *testi
 		t.Fatalf("3rd call at %s, want %s", got.At, want)
 	}
 }
+
+func TestPostgresPlanItCallStore_ReadFailureStoresStatus200AndOutcomeAndBacksOff(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 6, 10, 20, 0, 0, 0, londonTZ)
+	p, store, _ := newPGPacer(t, now, 300)
+
+	_, _ = p.Do(ctx, planit.WorkWindowStart, time.Time{}, 0, func(context.Context) (planit.FetchPageResult, error) {
+		return planit.FetchPageResult{}, &planit.ResponseError{StatusCode: 200, Err: errors.New("bad json")}
+	})
+	got, err := store.Latest(ctx)
+	if err != nil || got == nil {
+		t.Fatalf("Latest = %v, %v", got, err)
+	}
+	if got.Status == nil || *got.Status != 200 || got.Outcome != OutcomeReadFailed {
+		t.Fatalf("row = status %v outcome %q", got.Status, got.Outcome)
+	}
+	st, err := p.Backoff(ctx, now)
+	if err != nil || !st.Active || st.Reason != "read_failed" || !st.Until.Equal(got.At.Add(30*time.Minute)) {
+		t.Fatalf("Backoff = %+v, %v; want active 30m read_failed", st, err)
+	}
+}

@@ -129,7 +129,7 @@ func Routes(mux *http.ServeMux, verifier jwsVerifier, profilesByUser profileByUs
 		now:                 now,
 		logger:              logger,
 		notifier:            notifier,
-		processor:           NewNotificationProcessor(verifier, profilesByTxn, auth0, idempotency, allowedEnvironments, notifier, logger),
+		processor:           NewNotificationProcessor(verifier, profilesByTxn, auth0, idempotency, bundleID, allowedEnvironments, notifier, logger),
 	}
 	mux.HandleFunc("POST /v1/subscriptions/verify", h.verify)
 	mux.HandleFunc("POST /v1/webhooks/appstore", h.webhook)
@@ -215,6 +215,19 @@ type lifetimeCandidate struct {
 // syncs Auth0. It never revokes a lifetime grant: the JWS list is
 // client-supplied, so a missing transaction is not proof of a refund.
 func (h *handler) runVerify(ctx context.Context, userID string, signedTransactions []string) (verifyResponse, error) {
+	var resp verifyResponse
+	err := profiles.RetryOnConflict(ctx, profiles.DefaultSaveAttempts, func(ctx context.Context) error {
+		var err error
+		resp, err = h.verifyOnce(ctx, userID, signedTransactions)
+		return err
+	})
+	return resp, err
+}
+
+// verifyOnce is one load-modify-save pass of runVerify. Only the profile save
+// can report a version conflict, and it runs before any Auth0 or notifier side
+// effect, so a conflicting pass leaves nothing to undo.
+func (h *handler) verifyOnce(ctx context.Context, userID string, signedTransactions []string) (verifyResponse, error) {
 	profile, err := h.profilesByUser.Get(ctx, userID)
 	if err != nil {
 		if errors.Is(err, profiles.ErrNotFound) {
@@ -294,6 +307,9 @@ func (h *handler) runVerify(ctx context.Context, userID string, signedTransactio
 	}
 
 	if err := h.profilesByUser.Save(ctx, profile); err != nil {
+		if errors.Is(err, profiles.ErrTransactionClaimed) {
+			return verifyResponse{}, &conflictError{}
+		}
 		return verifyResponse{}, fmt.Errorf("save profile %q: %w", userID, err)
 	}
 	if h.notifier != nil {

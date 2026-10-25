@@ -14,7 +14,7 @@ import (
 // decisions across every poller process.
 const planItCallLockKey int64 = 0x7063616c6c // "pcall"
 
-const planItCallColumns = `id, at, work, window_day, page_index, status, total, EXTRACT(EPOCH FROM retry_after)::float8`
+const planItCallColumns = `id, at, work, window_day, page_index, status, total, EXTRACT(EPOCH FROM retry_after)::float8, outcome`
 
 var _ planItCallLog = (*PostgresPlanItCallStore)(nil)
 
@@ -59,14 +59,18 @@ func latestPlanItCall(ctx context.Context, q planItCallQueryer) (*PlanItCall, er
 	var (
 		c       PlanItCall
 		retrySy *float64
+		outcome *string
 	)
 	err := q.QueryRow(ctx, "SELECT "+planItCallColumns+" FROM planit_call ORDER BY at DESC, id DESC LIMIT 1").
-		Scan(&c.ID, &c.At, &c.Work, &c.WindowDay, &c.PageIndex, &c.Status, &c.Total, &retrySy)
+		Scan(&c.ID, &c.At, &c.Work, &c.WindowDay, &c.PageIndex, &c.Status, &c.Total, &retrySy, &outcome)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil //nolint:nilnil // an empty log is a valid state, not an error
 	}
 	if err != nil {
 		return nil, fmt.Errorf("select latest planit_call: %w", err)
+	}
+	if outcome != nil {
+		c.Outcome = *outcome
 	}
 	if retrySy != nil {
 		d := time.Duration(*retrySy * float64(time.Second))
@@ -124,9 +128,13 @@ func (t *postgresPlanItCallTx) Finish(ctx context.Context, id int64, r CallResul
 		v := r.RetryAfter.Seconds()
 		retrySecs = &v
 	}
+	var outcome *string
+	if r.Outcome != "" {
+		outcome = &r.Outcome
+	}
 	_, err := t.tx.Exec(ctx,
-		"UPDATE planit_call SET status = $2, total = $3, retry_after = make_interval(secs => $4) WHERE id = $1",
-		id, r.Status, r.Total, retrySecs)
+		"UPDATE planit_call SET status = $2, total = $3, retry_after = make_interval(secs => $4), outcome = $5 WHERE id = $1",
+		id, r.Status, r.Total, retrySecs, outcome)
 	if err != nil {
 		return fmt.Errorf("update planit_call: %w", err)
 	}

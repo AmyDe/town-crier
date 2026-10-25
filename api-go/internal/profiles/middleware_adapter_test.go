@@ -21,8 +21,8 @@ func TestActivityRecorder_DedupesWithin24h(t *testing.T) {
 	if err := rec.RecordActivity(context.Background(), "auth0|abc", base.Add(time.Hour)); err != nil {
 		t.Fatalf("RecordActivity: %v", err)
 	}
-	if len(store.saved) != 0 {
-		t.Errorf("activity within 24h should not save, got %d saves", len(store.saved))
+	if len(store.activity) != 0 {
+		t.Errorf("activity within 24h should not write, got %d writes", len(store.activity))
 	}
 
 	// Beyond 24h, it saves and advances LastActiveAt.
@@ -30,8 +30,8 @@ func TestActivityRecorder_DedupesWithin24h(t *testing.T) {
 	if err := rec.RecordActivity(context.Background(), "auth0|abc", later); err != nil {
 		t.Fatalf("RecordActivity: %v", err)
 	}
-	if len(store.saved) != 1 {
-		t.Fatalf("activity beyond 24h should save once, got %d", len(store.saved))
+	if len(store.activity) != 1 || len(store.saved) != 0 {
+		t.Fatalf("activity beyond 24h should write once without Save, got %d writes, %d saves", len(store.activity), len(store.saved))
 	}
 	if !store.byID["auth0|abc"].LastActiveAt.Equal(later) {
 		t.Errorf("LastActiveAt not advanced: got %v, want %v", store.byID["auth0|abc"].LastActiveAt, later)

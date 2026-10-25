@@ -5,10 +5,12 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -266,7 +268,7 @@ func (c *Client) do(ctx context.Context, token string, payload json.RawMessage) 
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return apnsResponse{}, fmt.Errorf("apns: request: %w", err)
+		return apnsResponse{}, fmt.Errorf("apns: request: %w", redactTransportError(err, token))
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -290,6 +292,34 @@ func parseReason(body []byte) string {
 	}
 	return parsed.Reason
 }
+
+// redactTransportError rebuilds the *url.Error that http.Client.Do returns so
+// its URL carries the redacted device token. The inner error is kept, so
+// errors.Is and Timeout() classification still work; any remaining raw token in
+// the text of a non-URL error is masked by wrapping it.
+func redactTransportError(err error, token string) error {
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) {
+		err = &url.Error{
+			Op:  urlErr.Op,
+			URL: strings.ReplaceAll(urlErr.URL, token, redactToken(token)),
+			Err: urlErr.Err,
+		}
+	}
+	if token != "" && strings.Contains(err.Error(), token) {
+		return maskedError{err: err, msg: strings.ReplaceAll(err.Error(), token, redactToken(token))}
+	}
+	return err
+}
+
+// maskedError reports msg as its text while keeping err in the unwrap chain.
+type maskedError struct {
+	err error
+	msg string
+}
+
+func (m maskedError) Error() string { return m.msg }
+func (m maskedError) Unwrap() error { return m.err }
 
 // redactToken keeps only an 8-character prefix so device tokens — which identify
 // a user's device — never land in logs in full.

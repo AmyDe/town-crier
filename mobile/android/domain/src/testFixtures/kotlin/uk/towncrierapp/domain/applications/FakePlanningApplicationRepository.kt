@@ -27,6 +27,9 @@ public class FakePlanningApplicationRepository : PlanningApplicationRepository {
     public var applicationsFailWith: DomainError? = null
     public val applicationsCalls: MutableList<ApplicationsCall> = mutableListOf()
 
+    /** Runs after a call is recorded and before [applicationsResult] is read, so a test can hold a call in flight. */
+    public var beforeApplications: suspend (ApplicationsCall) -> Unit = {}
+
     public var detailResult: PlanningApplication = aPlanningApplication()
     public var detailFailWith: DomainError? = null
     public val detailCalls: MutableList<Pair<String, String>> = mutableListOf()
@@ -61,7 +64,9 @@ public class FakePlanningApplicationRepository : PlanningApplicationRepository {
         filter: ApplicationFilter,
         cursor: String?,
     ): ApplicationPage {
-        applicationsCalls += ApplicationsCall(zoneId, sort, filter, cursor)
+        val call = ApplicationsCall(zoneId, sort, filter, cursor)
+        applicationsCalls += call
+        beforeApplications(call)
         applicationsFailWith?.let { throw it }
         return applicationsResult
     }

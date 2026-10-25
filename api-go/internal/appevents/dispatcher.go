@@ -69,13 +69,26 @@ type Result struct {
 	Surge bool
 	Sent  int
 	Stale int
+	// Failed counts events whose fan-out failed in this call and stay pending.
+	Failed int
 }
+
+// An event is abandoned as stale once it has failed at least MaxAttempts times
+// and its first failure is at least MinFailureWindow old, so a short outage
+// cannot exhaust the attempts of every pending event.
+const (
+	MaxAttempts      = 5
+	MinFailureWindow = 2 * time.Hour
+)
 
 type eventStore interface {
 	// Pending returns pending events, oldest detected_at first.
 	Pending(ctx context.Context) ([]Event, error)
 	MarkStale(ctx context.Context, ids []int64, at time.Time) error
 	MarkSent(ctx context.Context, id int64, at time.Time) error
+	// RecordFailure increments the event's attempt count, sets its first
+	// failure time to at if unset, and returns both.
+	RecordFailure(ctx context.Context, id int64, at time.Time) (int, time.Time, error)
 	// CountActiveSince counts non-stale events detected at or after since.
 	CountActiveSince(ctx context.Context, since time.Time) (int, error)
 }
@@ -115,7 +128,11 @@ func NewDispatcher(store eventStore, apps applicationLoader, decision decisionDi
 }
 
 // Dispatch processes pending events once. Events stay pending during quiet
-// hours and when a fan-out fails, so the next call retries them.
+// hours. A failing event does not stop later events: it is logged, its attempt
+// count is incremented and it is retried by the next call until it is
+// abandoned (see MaxAttempts). Dispatch returns an error only when every
+// attempted event failed, or when ctx is cancelled (which is not counted as an
+// attempt).
 func (d *Dispatcher) Dispatch(ctx context.Context) (Result, error) {
 	now := d.now()
 	local := now.In(d.london)
@@ -162,28 +179,76 @@ func (d *Dispatcher) Dispatch(ctx context.Context) (Result, error) {
 		return res, nil
 	}
 
+	attempted := 0
+	var lastErr error
 	for _, e := range live {
-		app, found, err := d.apps.GetByUID(ctx, e.UID, e.AuthorityCode)
-		if err != nil {
-			return res, fmt.Errorf("load application %q: %w", e.UID, err)
+		if err := ctx.Err(); err != nil {
+			return res, err
 		}
-		if !found {
-			d.logger.ErrorContext(ctx, "appevents: application missing, marking event stale", "uid", e.UID, "authorityCode", e.AuthorityCode, "eventId", e.ID)
-			if err := d.markStale(ctx, []int64{e.ID}, now); err != nil {
-				return res, err
+		attempted++
+		sent, stale, err := d.process(ctx, e, now)
+		if err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return res, ctxErr
 			}
-			res.Stale++
+			lastErr = err
+			if abandoned, ferr := d.recordFailure(ctx, e, err, now); ferr != nil {
+				d.logger.ErrorContext(ctx, "appevents: record failure", "eventId", e.ID, "error", ferr)
+				lastErr = ferr
+			} else if abandoned {
+				res.Stale++
+			}
+			res.Failed++
 			continue
 		}
-		if err := d.fanOut(ctx, e, app); err != nil {
-			return res, fmt.Errorf("fan out event %d: %w", e.ID, err)
+		if sent {
+			res.Sent++
 		}
-		if err := d.store.MarkSent(ctx, e.ID, d.now()); err != nil {
-			return res, fmt.Errorf("mark event %d sent: %w", e.ID, err)
+		if stale {
+			res.Stale++
 		}
-		res.Sent++
+	}
+	if attempted > 0 && res.Failed == attempted {
+		return res, fmt.Errorf("all %d attempted events failed: %w", attempted, lastErr)
 	}
 	return res, nil
+}
+
+func (d *Dispatcher) process(ctx context.Context, e Event, now time.Time) (sent, stale bool, err error) {
+	app, found, err := d.apps.GetByUID(ctx, e.UID, e.AuthorityCode)
+	if err != nil {
+		return false, false, fmt.Errorf("load application %q: %w", e.UID, err)
+	}
+	if !found {
+		d.logger.ErrorContext(ctx, "appevents: application missing, marking event stale", "uid", e.UID, "authorityCode", e.AuthorityCode, "eventId", e.ID)
+		if err := d.markStale(ctx, []int64{e.ID}, now); err != nil {
+			return false, false, err
+		}
+		return false, true, nil
+	}
+	if err := d.fanOut(ctx, e, app); err != nil {
+		return false, false, fmt.Errorf("fan out event %d: %w", e.ID, err)
+	}
+	if err := d.store.MarkSent(ctx, e.ID, d.now()); err != nil {
+		return false, false, fmt.Errorf("mark event %d sent: %w", e.ID, err)
+	}
+	return true, false, nil
+}
+
+func (d *Dispatcher) recordFailure(ctx context.Context, e Event, cause error, now time.Time) (abandoned bool, err error) {
+	attempts, firstFailedAt, err := d.store.RecordFailure(ctx, e.ID, now)
+	if err != nil {
+		return false, fmt.Errorf("record event %d failure: %w", e.ID, err)
+	}
+	d.logger.WarnContext(ctx, "appevents: event failed", "eventId", e.ID, "kind", e.Kind, "attempts", attempts, "error", cause)
+	if attempts < MaxAttempts || now.Sub(firstFailedAt) < MinFailureWindow {
+		return false, nil
+	}
+	if err := d.markStale(ctx, []int64{e.ID}, now); err != nil {
+		return false, err
+	}
+	d.logger.ErrorContext(ctx, "appevents: event abandoned after max attempts", "eventId", e.ID, "kind", e.Kind, "attempts", attempts)
+	return true, nil
 }
 
 // Flush sends the coalesced pushes queued by Dispatch: at most one per

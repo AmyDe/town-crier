@@ -25,18 +25,20 @@ type NotificationProcessor struct {
 	profilesByTxn       profileByTxn
 	auth0               tierSync
 	idempotency         idempotencyStore
+	bundleID            string
 	allowedEnvironments []string
 	notifier            subscriptionNotifier
 	logger              *slog.Logger
 }
 
 // NewNotificationProcessor builds a processor over the given collaborators.
-func NewNotificationProcessor(verifier jwsVerifier, profilesByTxn profileByTxn, auth0 tierSync, idempotency idempotencyStore, allowedEnvironments []string, notifier subscriptionNotifier, logger *slog.Logger) *NotificationProcessor {
+func NewNotificationProcessor(verifier jwsVerifier, profilesByTxn profileByTxn, auth0 tierSync, idempotency idempotencyStore, bundleID string, allowedEnvironments []string, notifier subscriptionNotifier, logger *slog.Logger) *NotificationProcessor {
 	return &NotificationProcessor{
 		verifier:            verifier,
 		profilesByTxn:       profilesByTxn,
 		auth0:               auth0,
 		idempotency:         idempotency,
+		bundleID:            bundleID,
 		allowedEnvironments: allowedEnvironments,
 		notifier:            notifier,
 		logger:              logger,
@@ -48,8 +50,8 @@ func NewNotificationProcessor(verifier jwsVerifier, profilesByTxn profileByTxn, 
 // lifecycle event, and records the notification as processed.
 // wasNew reports whether this call actually mutated the profile — false for an
 // already-processed duplicate, an unknown subscriber, an environment mismatch,
-// or a no-change event (e.g. a downgrade DID_CHANGE_RENEWAL_PREF). It is
-// informational only; callers must not use it to decide whether to retry.
+// a bundle ID mismatch, or a no-change event (e.g. a downgrade
+// DID_CHANGE_RENEWAL_PREF). It is informational only; callers must not use it to decide whether to retry.
 func (p *NotificationProcessor) Process(ctx context.Context, signedPayload string) (bool, error) {
 	outerJSON, err := p.verifier.VerifyAndDecode(signedPayload)
 	if err != nil {
@@ -85,41 +87,23 @@ func (p *NotificationProcessor) Process(ctx context.Context, signedPayload strin
 		return false, err
 	}
 
-	profile, err := p.profilesByTxn.GetByOriginalTransactionID(ctx, txn.OriginalTransactionID)
-	switch {
-	case errors.Is(err, profiles.ErrNotFound):
-		profile = nil
-	case err != nil:
-		return false, fmt.Errorf("locate subscriber: %w", err)
+	if txn.BundleID != p.bundleID {
+		p.logger.WarnContext(ctx, "notification bundle id mismatch",
+			"notificationType", notification.NotificationType, "bundleId", txn.BundleID)
+		if err := p.idempotency.MarkProcessed(ctx, notification.NotificationUUID); err != nil {
+			return false, fmt.Errorf("mark notification processed: %w", err)
+		}
+		return false, nil
 	}
 
-	// An environment mismatch is swallowed: the notification is still marked
-	// processed so Apple does not retry, but the profile is not mutated.
 	wasNew := false
-	if profile != nil && envAllowed(txn.Environment, p.allowedEnvironments) {
-		before := subscriptionevents.SnapshotOf(profile)
-		changed, err := applyNotification(profile, notification, txn)
-		if err != nil {
-			return false, err
-		}
-		if changed {
-			if err := p.profilesByTxn.Save(ctx, profile); err != nil {
-				return false, fmt.Errorf("save profile %q: %w", profile.UserID, err)
-			}
-			if p.notifier != nil {
-				p.notifier.Changed(ctx, before, subscriptionevents.SnapshotOf(profile), subscriptionevents.SourceAppStore)
-			}
-			if err := p.auth0.UpdateSubscriptionTier(ctx, profile.UserID, profile.Tier.String()); err != nil {
-				if !errors.Is(err, profiles.ErrAuth0UserNotFound) {
-					return false, fmt.Errorf("sync auth0 tier %q: %w", profile.UserID, err)
-				}
-				// The Postgres profile is already saved and is the source of
-				// truth, so a user deleted from Auth0 out of band must not fail
-				// the notification.
-				p.logger.WarnContext(ctx, "auth0 user missing for subscription profile")
-			}
-			wasNew = true
-		}
+	err = profiles.RetryOnConflict(ctx, profiles.DefaultSaveAttempts, func(ctx context.Context) error {
+		var err error
+		wasNew, err = p.applyToSubscriber(ctx, notification, txn)
+		return err
+	})
+	if err != nil {
+		return false, err
 	}
 
 	if err := p.idempotency.MarkProcessed(ctx, notification.NotificationUUID); err != nil {
@@ -191,4 +175,47 @@ func applyLifetimeNotification(profile *profiles.UserProfile, notification Decod
 	default:
 		return false, nil
 	}
+}
+
+// applyToSubscriber is one load-modify-save pass for a notification. Only the
+// profile save can report a version conflict, and it runs before any notifier or
+// Auth0 side effect, so a conflicting pass leaves nothing to undo.
+func (p *NotificationProcessor) applyToSubscriber(ctx context.Context, notification DecodedNotification, txn DecodedTransaction) (bool, error) {
+	profile, err := p.profilesByTxn.GetByOriginalTransactionID(ctx, txn.OriginalTransactionID)
+	switch {
+	case errors.Is(err, profiles.ErrNotFound):
+		profile = nil
+	case err != nil:
+		return false, fmt.Errorf("locate subscriber: %w", err)
+	}
+
+	// An environment mismatch is swallowed: the notification is still marked
+	// processed so Apple does not retry, but the profile is not mutated.
+	wasNew := false
+	if profile != nil && envAllowed(txn.Environment, p.allowedEnvironments) {
+		before := subscriptionevents.SnapshotOf(profile)
+		changed, err := applyNotification(profile, notification, txn)
+		if err != nil {
+			return false, err
+		}
+		if changed {
+			if err := p.profilesByTxn.Save(ctx, profile); err != nil {
+				return false, fmt.Errorf("save profile %q: %w", profile.UserID, err)
+			}
+			if p.notifier != nil {
+				p.notifier.Changed(ctx, before, subscriptionevents.SnapshotOf(profile), subscriptionevents.SourceAppStore)
+			}
+			if err := p.auth0.UpdateSubscriptionTier(ctx, profile.UserID, profile.Tier.String()); err != nil {
+				if !errors.Is(err, profiles.ErrAuth0UserNotFound) {
+					return false, fmt.Errorf("sync auth0 tier %q: %w", profile.UserID, err)
+				}
+				// The Postgres profile is already saved and is the source of
+				// truth, so a user deleted from Auth0 out of band must not fail
+				// the notification.
+				p.logger.WarnContext(ctx, "auth0 user missing for subscription profile")
+			}
+			wasNew = true
+		}
+	}
+	return wasNew, nil
 }

@@ -101,27 +101,37 @@ func parsePlanItInstantLenient(value *string) *time.Time {
 	return &t
 }
 
+// fieldError names the PlanIt field that failed to map.
+type fieldError struct {
+	Field string
+	Err   error
+}
+
+func (e *fieldError) Error() string { return e.Field + ": " + e.Err.Error() }
+
+func (e *fieldError) Unwrap() error { return e.Err }
+
 // toDomain maps a PlanIt record to an applications.PlanningApplication
 // (location_x is longitude, location_y latitude). An empty last_different maps
 // to the zero time; a malformed one is an error.
 func (r planItRecord) toDomain() (applications.PlanningApplication, error) {
 	startDate, err := parseDateOnly(r.StartDate)
 	if err != nil {
-		return applications.PlanningApplication{}, fmt.Errorf("start_date: %w", err)
+		return applications.PlanningApplication{}, &fieldError{Field: "start_date", Err: err}
 	}
 	decidedDate, err := parseDateOnly(r.DecidedDate)
 	if err != nil {
-		return applications.PlanningApplication{}, fmt.Errorf("decided_date: %w", err)
+		return applications.PlanningApplication{}, &fieldError{Field: "decided_date", Err: err}
 	}
 	consultedDate, err := parseDateOnly(r.ConsultedDate)
 	if err != nil {
-		return applications.PlanningApplication{}, fmt.Errorf("consulted_date: %w", err)
+		return applications.PlanningApplication{}, &fieldError{Field: "consulted_date", Err: err}
 	}
 	var lastDifferent time.Time
 	if r.LastDifferent != "" {
 		lastDifferent, err = parsePlanItInstant(r.LastDifferent)
 		if err != nil {
-			return applications.PlanningApplication{}, fmt.Errorf("last_different %q: %w", r.LastDifferent, err)
+			return applications.PlanningApplication{}, &fieldError{Field: "last_different", Err: err}
 		}
 	}
 

@@ -44,6 +44,21 @@ func (s *PostgresStore) MarkSent(ctx context.Context, id int64, at time.Time) er
 	return s.setStatus(ctx, StatusSent, []int64{id}, at)
 }
 
+// RecordFailure increments the event's attempt count, sets its first failure
+// time to at if unset, and returns both.
+func (s *PostgresStore) RecordFailure(ctx context.Context, id int64, at time.Time) (int, time.Time, error) {
+	var attempts int
+	var firstFailedAt time.Time
+	err := s.pool.QueryRow(ctx,
+		`UPDATE application_event
+		 SET attempts = attempts + 1, first_failed_at = COALESCE(first_failed_at, $2)
+		 WHERE id = $1 RETURNING attempts, first_failed_at`, id, at).Scan(&attempts, &firstFailedAt)
+	if err != nil {
+		return 0, time.Time{}, fmt.Errorf("record failure for event %d: %w", id, err)
+	}
+	return attempts, firstFailedAt, nil
+}
+
 // MarkStale retires events that must not alert.
 func (s *PostgresStore) MarkStale(ctx context.Context, ids []int64, at time.Time) error {
 	return s.setStatus(ctx, StatusStale, ids, at)

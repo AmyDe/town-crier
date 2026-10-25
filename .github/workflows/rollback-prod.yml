@@ -1,0 +1,130 @@
+# Redeploys the API and worker images tagged release-<tag> to production, with the same health checks as a release.
+# Database schema changes are not rolled back, and no migration or Pulumi step runs.
+# Dispatch it only while cd-prod is idle. It shares the cd-prod concurrency group so
+# two prod deploys never overlap, and GitHub keeps one pending run per group, so a
+# queued rollback is cancelled if a release tag is pushed before it starts.
+#
+# Requires repo-level secrets: AZURE_CLIENT_ID, AZURE_TENANT_ID,
+# AZURE_SUBSCRIPTION_ID, ACR_LOGIN_SERVER.
+# Requires GitHub Environment: production.
+
+name: Rollback Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to roll back to (for example v1.2.3)"
+        type: string
+        required: true
+
+concurrency:
+  group: cd-prod
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  resolve:
+    name: Resolve release images
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      api-image: ${{ steps.images.outputs.api-image }}
+      worker-image: ${{ steps.images.outputs.worker-image }}
+      resource-group: ${{ steps.group.outputs.resource-group }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - name: Load resource names
+        run: cat .github/config/resource-names.env >> "$GITHUB_ENV"
+
+      - uses: ./.github/actions/azure-login
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Resolve release digests
+        id: images
+        env:
+          TAG: ${{ inputs.tag }}
+          ACR_SERVER: ${{ secrets.ACR_LOGIN_SERVER }}
+          REPO_API: ${{ env.IMAGE_REPO_API }}
+          REPO_WORKER: ${{ env.IMAGE_REPO_WORKER }}
+        run: bash .github/scripts/resolve-release-images.sh
+
+      - name: Find resource group
+        id: group
+        env:
+          APP: ${{ env.CONTAINER_APP_API_PROD }}
+        run: |
+          set -euo pipefail
+          RG="$(az containerapp list --query "[?name=='${APP}'].resourceGroup | [0]" -o tsv)"
+          if [ -z "$RG" ]; then
+            echo "::error::Container app ${APP} not found"
+            exit 1
+          fi
+          echo "resource-group=${RG}" >> "$GITHUB_OUTPUT"
+
+  api-go:
+    name: Roll back Go API
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - name: Load resource names
+        run: cat .github/config/resource-names.env >> "$GITHUB_ENV"
+
+      - uses: ./.github/actions/azure-login
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: ./.github/actions/deploy-container-app
+        with:
+          app-name: ${{ env.CONTAINER_APP_API_PROD }}
+          resource-group: ${{ needs.resolve.outputs.resource-group }}
+          image: ${{ needs.resolve.outputs.api-image }}
+
+  worker:
+    name: Roll back worker
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/azure-login
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: ./.github/actions/deploy-worker-jobs
+        with:
+          jobs: poll digest digest-hourly dormant-cleanup subscription-sweep pg-purge seo-catalog appstore-reconcile
+          env-suffix: prod
+          resource-group: ${{ needs.resolve.outputs.resource-group }}
+          image: ${{ needs.resolve.outputs.worker-image }}

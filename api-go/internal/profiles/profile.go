@@ -14,6 +14,11 @@ import (
 // errors.Is to translate it to a 404 response.
 var ErrNotFound = errors.New("user profile not found")
 
+// ErrTransactionClaimed is returned by Save when the profile's original
+// transaction id already belongs to another profile. It is not a version
+// conflict and must not be retried.
+var ErrTransactionClaimed = errors.New("original transaction id already claimed")
+
 // Page is one page of the admin user list: the profiles on this page plus the
 // continuation token for the next page (empty when exhausted).
 type Page struct {
@@ -197,6 +202,11 @@ type UserProfile struct {
 	// a legacy profile written before this field existed; the create path
 	// initialises it on first use by reading the live zone count (lazy-init).
 	WatchZoneCount *int
+	// Version is the optimistic-lock counter read with the profile. Save updates
+	// only while the stored version still equals it.
+	Version int
+	// IsNew marks a profile that has never been stored. Only NewProfile sets it.
+	IsNew bool
 }
 
 // NewProfile registers a fresh profile with default preferences and the Free
@@ -214,6 +224,7 @@ func NewProfile(userID, email string, now time.Time) (*UserProfile, error) {
 		Tier:            TierFree,
 		LastActiveAt:    now,
 		CreatedAt:       now,
+		IsNew:           true,
 	}, nil
 }
 

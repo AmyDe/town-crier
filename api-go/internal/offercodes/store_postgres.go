@@ -48,6 +48,7 @@ type Store interface {
 	Get(ctx context.Context, canonical string) (OfferCode, error)
 	Save(ctx context.Context, c OfferCode) error
 	RedeemWithCAS(ctx context.Context, canonical, userID string, now time.Time) error
+	RedemptionTime(ctx context.Context, canonical, userID string) (time.Time, error)
 	RedeemedByUserID(ctx context.Context, userID string) ([]RedeemedOfferCode, error)
 	AnonymiseRedemptionsByUserID(ctx context.Context, userID string) error
 }
@@ -249,6 +250,24 @@ func (s *PostgresStore) RedeemWithCAS(ctx context.Context, canonical, userID str
 		return fmt.Errorf("check offer code %q existence: %w", canonical, checkErr)
 	}
 	return ErrAlreadyRedeemed
+}
+
+const pgRedemptionTimeQuery = `
+SELECT redeemed_at FROM offer_code_redemptions
+WHERE code = $1 AND user_id = $2 AND redeemed_at IS NOT NULL`
+
+// RedemptionTime returns when userID redeemed the code. ErrNotFound means the
+// user has no redemption of this code (or it was anonymised).
+func (s *PostgresStore) RedemptionTime(ctx context.Context, canonical, userID string) (time.Time, error) {
+	var at time.Time
+	err := s.db.QueryRow(ctx, pgRedemptionTimeQuery, canonical, userID).Scan(&at)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return time.Time{}, ErrNotFound
+	}
+	if err != nil {
+		return time.Time{}, fmt.Errorf("read redemption time for %q: %w", canonical, err)
+	}
+	return at, nil
 }
 
 func hasPgCode(err error, code string) bool {

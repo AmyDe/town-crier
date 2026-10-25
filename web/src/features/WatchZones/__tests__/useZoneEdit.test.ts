@@ -2,6 +2,7 @@ import { renderHook, act } from '@testing-library/react';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useZoneEdit } from '../useZoneEdit';
 import { SpyWatchZoneRepository } from './spies/spy-watch-zone-repository';
+import { ApiRequestError } from '../../../api/client';
 import { aWatchZone, aWatchZoneBoundary } from './fixtures/watch-zone.fixtures';
 
 describe('useZoneEdit', () => {
@@ -82,6 +83,27 @@ describe('useZoneEdit', () => {
     expect(spy.updateZoneCalls).toHaveLength(1);
     expect(spy.updateZoneCalls[0]?.zoneId).toBe(zone.id);
     expect(spy.updateZoneCalls[0]?.data).toEqual({ name: 'Office' });
+  });
+
+  it('shows mapped copy when the server rejects a duplicate zone name', async () => {
+    const zone = aWatchZone({ name: 'Home' });
+    spy.updateZoneError = new ApiRequestError(
+      409,
+      'You already have a watch zone with this name.',
+      'zone_name_taken',
+    );
+    const { result } = renderHook(() => useZoneEdit(spy, zone));
+
+    act(() => {
+      result.current.setName('Office');
+    });
+    await act(async () => {
+      await result.current.save();
+    });
+
+    expect(result.current.error).toBe(
+      'You already have a watch zone with that name. Pick a different one.',
+    );
   });
 
   it('sends only changed fields in the patch', async () => {

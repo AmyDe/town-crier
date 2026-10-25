@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -284,4 +285,110 @@ func TestNewClient_RejectsNonHTTPSAndEmptyBaseURL(t *testing.T) {
 
 func testQuery(index int) WindowQuery {
 	return WindowQuery{Work: WorkWindowStart, Axis: AxisStart, From: day(time.January, 1), To: day(time.January, 1), Index: index}
+}
+
+func TestFetchWindowPage_SkipsRecordThatFailsToMap(t *testing.T) {
+	t.Parallel()
+	body := `{"total":3,"from":0,"records":[
+		{"name":"a","uid":"good-1","area_id":1,"start_date":"2026-06-01"},
+		{"name":"b","uid":"bad-1","area_id":1,"start_date":"not-a-date"},
+		{"name":"c","uid":"good-2","area_id":1,"start_date":"2026-06-02"}
+	]}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+	c := newWindowClient(t, srv.URL, nil)
+
+	res, err := c.FetchWindowPage(context.Background(), testQuery(0))
+	if err != nil {
+		t.Fatalf("FetchWindowPage: %v", err)
+	}
+	if len(res.Applications) != 2 || res.Applications[0].UID != "good-1" || res.Applications[1].UID != "good-2" {
+		t.Fatalf("applications: got %+v", res.Applications)
+	}
+	if len(res.Skipped) != 1 || res.Skipped[0].UID != "bad-1" || res.Skipped[0].Field != "start_date" {
+		t.Fatalf("skipped: got %+v", res.Skipped)
+	}
+	if res.HasMorePages {
+		t.Error("HasMorePages: skipped records must count as read, so total 3 is reached")
+	}
+}
+
+func TestFetchWindowPage_SkippedRecordsCountTowardsFullPageWithoutTotal(t *testing.T) {
+	t.Parallel()
+	var recs []string
+	recs = append(recs, `{"uid":"bad-1","area_id":1,"decided_date":"x"}`)
+	for i := 1; i < nationalPageSize; i++ {
+		recs = append(recs, `{"uid":"u`+strconv.Itoa(i)+`","area_id":1}`)
+	}
+	body := `{"from":0,"records":[` + strings.Join(recs, ",") + `]}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+	c := newWindowClient(t, srv.URL, nil)
+
+	res, err := c.FetchWindowPage(context.Background(), testQuery(0))
+	if err != nil {
+		t.Fatalf("FetchWindowPage: %v", err)
+	}
+	if !res.HasMorePages {
+		t.Error("HasMorePages: a page of pg_sz raw records must look full")
+	}
+}
+
+func TestFetchWindowPage_AllRecordsMalformedIsASuccessfulPage(t *testing.T) {
+	t.Parallel()
+	body := `{"total":2,"from":0,"records":[
+		{"uid":"bad-1","area_id":1,"start_date":"x"},
+		{"uid":"bad-2","area_id":1,"consulted_date":"y"}
+	]}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+	c := newWindowClient(t, srv.URL, nil)
+
+	res, err := c.FetchWindowPage(context.Background(), testQuery(0))
+	if err != nil {
+		t.Fatalf("FetchWindowPage: %v", err)
+	}
+	if len(res.Applications) != 0 || len(res.Skipped) != 2 || res.HasMorePages {
+		t.Errorf("got apps=%d skipped=%d more=%v", len(res.Applications), len(res.Skipped), res.HasMorePages)
+	}
+}
+
+func TestFetchWindowPage_BodyFailuresCarryTheResponseStatus(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		body     string
+		wantSent error
+	}{
+		{"malformed json", `{"records": [`, nil},
+		{"zero progress", `{"total":500,"from":200,"records":[]}`, ErrZeroProgress},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			t.Cleanup(srv.Close)
+
+			c := newWindowClient(t, srv.URL, nil)
+			_, err := c.FetchWindowPage(context.Background(), testQuery(200))
+			var re *ResponseError
+			if !errors.As(err, &re) || re.StatusCode != http.StatusOK {
+				t.Fatalf("err = %v, want *ResponseError with status 200", err)
+			}
+			if tc.wantSent != nil && !errors.Is(err, tc.wantSent) {
+				t.Fatalf("err = %v, want it to match %v", err, tc.wantSent)
+			}
+			if errors.Is(err, ErrTimeout) {
+				t.Fatalf("err = %v, must not match ErrTimeout", err)
+			}
+		})
+	}
 }
