@@ -193,6 +193,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context) (Result, error) {
 			}
 			lastErr = err
 			if abandoned, ferr := d.recordFailure(ctx, e, err, now); ferr != nil {
+				d.logger.ErrorContext(ctx, "appevents: record failure", "eventId", e.ID, "error", ferr)
 				lastErr = ferr
 			} else if abandoned {
 				res.Stale++
