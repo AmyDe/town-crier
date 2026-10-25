@@ -340,4 +340,26 @@ class ApplicationListViewModelTest {
                 assertFalse(latest.isLoadingMore)
             }
         }
+
+    @Test
+    fun `markAllRead during a slow next page leaves pagination usable`() {
+        val firstPage = List(20) { aPlanningApplication() }
+        val neverReturns = CompletableDeferred<Unit>()
+        val applicationRepository = FakePlanningApplicationRepository()
+        applicationRepository.applicationsResult = anApplicationPage(firstPage, nextCursor = "cursor-2")
+        val viewModel = makeSut(applicationRepository = applicationRepository)
+        viewModel.load()
+        applicationRepository.beforeApplications = { call ->
+            if (call.cursor != null) neverReturns.await()
+        }
+        viewModel.onItemVisible(firstPage.size - 1)
+        assertTrue(viewModel.uiState.value.isLoadingMore)
+
+        viewModel.markAllRead()
+
+        assertFalse(viewModel.uiState.value.isLoadingMore)
+        val callsAfterRefetch = applicationRepository.applicationsCalls.size
+        viewModel.onItemVisible(firstPage.size - 1)
+        assertEquals(callsAfterRefetch + 1, applicationRepository.applicationsCalls.size)
+    }
 }

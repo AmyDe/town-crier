@@ -68,28 +68,19 @@ public class ApplicationListViewModel(
 
     public fun selectZone(zoneId: WatchZoneId) {
         viewModelScope.launch { preferencesStore.writeLastSelectedZoneId(zoneId) }
-        _uiState.update {
-            it.copy(selectedZoneId = zoneId, applications = emptyList(), nextCursor = null, isLoadingMore = false)
-        }
+        _uiState.update { it.copy(selectedZoneId = zoneId, applications = emptyList(), nextCursor = null) }
         fetchFirstPage()
     }
 
     public fun selectSort(sort: ApplicationSortOrder) {
         viewModelScope.launch { preferencesStore.writeSort(sort) }
-        _uiState.update { it.copy(sort = sort, applications = emptyList(), nextCursor = null, isLoadingMore = false) }
+        _uiState.update { it.copy(sort = sort, applications = emptyList(), nextCursor = null) }
         fetchFirstPage()
     }
 
     /** Sets the active chip. [ApplicationFilter]'s shape makes status/unread mutual exclusivity automatic — this always replaces the whole filter. */
     public fun selectFilter(filter: ApplicationFilter) {
-        _uiState.update {
-            it.copy(
-                filter = filter,
-                applications = emptyList(),
-                nextCursor = null,
-                isLoadingMore = false,
-            )
-        }
+        _uiState.update { it.copy(filter = filter, applications = emptyList(), nextCursor = null) }
         fetchFirstPage()
     }
 
@@ -145,6 +136,7 @@ public class ApplicationListViewModel(
     private fun fetchFirstPage() {
         fetchJob?.cancel()
         loadMoreJob?.cancel()
+        _uiState.update { it.copy(isLoadingMore = false) }
         fetchJob = viewModelScope.launch { fetchPage() }
     }
 

@@ -403,11 +403,26 @@ func TestPacer_Do_BackoffFromLatestRow(t *testing.T) {
 	}
 }
 
-func TestPacer_Do_ReadFailureAfter200DoesNotBackOff(t *testing.T) {
+func TestPacer_Backoff_ReadFailureAfter200BacksOffLikeTimeout(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 6, 10, 20, 0, 0, 0, londonTZ)
+	at := now.Add(-time.Second)
+	p, log := newTestPacer(t, now, 300)
+	log.rows = append(log.rows, PlanItCall{ID: 1, Work: "window_start", At: at, Status: intp(200), Outcome: OutcomeReadFailed})
+	st, err := p.Backoff(context.Background(), now)
+	if err != nil {
+		t.Fatalf("Backoff: %v", err)
+	}
+	if !st.Active || !st.Until.Equal(at.Add(30*time.Minute)) || st.Reason != "read_failed" {
+		t.Fatalf("Backoff = %+v; want active 30m read_failed", st)
+	}
+}
+
+func TestPacer_Backoff_ReadFailureExpiresAfter30m(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 6, 10, 20, 0, 0, 0, londonTZ)
 	p, log := newTestPacer(t, now, 300)
-	log.rows = append(log.rows, PlanItCall{ID: 1, Work: "window_start", At: now.Add(-time.Second), Status: intp(200), Outcome: OutcomeReadFailed})
+	log.rows = append(log.rows, PlanItCall{ID: 1, Work: "window_start", At: now.Add(-31 * time.Minute), Status: intp(200), Outcome: OutcomeReadFailed})
 	st, err := p.Backoff(context.Background(), now)
 	if err != nil || st.Active {
 		t.Fatalf("Backoff = %+v, %v; want inactive", st, err)

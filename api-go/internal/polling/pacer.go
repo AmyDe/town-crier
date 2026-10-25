@@ -300,6 +300,8 @@ func backoffFor(latest *PlanItCall, now time.Time) BackoffState {
 	var wait time.Duration
 	var reason string
 	switch s := latest.Status; {
+	case latest.Outcome == OutcomeReadFailed:
+		wait, reason = backoffTransient, "read_failed"
 	case s == nil:
 		wait, reason = backoffTransient, "timeout"
 	case *s == 429:
