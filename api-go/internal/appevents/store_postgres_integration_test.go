@@ -113,19 +113,20 @@ func TestPostgresStore_CountActiveSince(t *testing.T) {
 	}
 }
 
-func TestPostgresStore_RecordFailureIncrementsAttempts(t *testing.T) {
+func TestPostgresStore_RecordFailureIncrementsAttemptsAndKeepsFirstFailure(t *testing.T) {
 	store, pool := newPGStore(t)
 	ctx := context.Background()
 	id := insertEvent(t, pool, "a", KindNewApplication, nil, time.Now())
 	other := insertEvent(t, pool, "b", KindNewApplication, nil, time.Now())
+	first := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
 
 	for want := 1; want <= 3; want++ {
-		got, err := store.RecordFailure(ctx, id)
+		got, firstFailedAt, err := store.RecordFailure(ctx, id, first.Add(time.Duration(want-1)*time.Hour))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got != want {
-			t.Fatalf("attempts = %d, want %d", got, want)
+		if got != want || !firstFailedAt.Equal(first) {
+			t.Fatalf("attempts = %d, first failure = %v; want %d, %v", got, firstFailedAt, want, first)
 		}
 	}
 	var otherAttempts int
