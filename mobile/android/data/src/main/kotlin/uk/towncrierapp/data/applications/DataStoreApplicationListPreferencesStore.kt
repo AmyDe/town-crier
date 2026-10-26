@@ -12,9 +12,6 @@ import uk.towncrierapp.domain.applications.ApplicationSortOrder
 import uk.towncrierapp.domain.watchzones.WatchZoneId
 import java.io.IOException
 
-// Key names reused verbatim from iOS UserDefaults (epic #770 pre-resolved
-// decision) — cross-platform naming consistency, even though nothing else
-// reads these keys cross-platform.
 private val APPLICATIONS_LIST_SORT_KEY = stringPreferencesKey("applicationsListSort")
 private val LAST_SELECTED_ZONE_KEY = stringPreferencesKey("lastSelectedZone.applications")
 
@@ -28,8 +25,7 @@ public class DataStoreApplicationListPreferencesStore(
             .first()
 
     @Suppress("SwallowedException")
-    // Best-effort fire-and-forget preference write (tc-l31ve, module-wide
-    // convention): a disk-IO failure here is rare and recoverable per
+    // Best-effort fire-and-forget preference write: a disk-IO failure here is rare and recoverable per
     // DataStore's own edit() contract, and no caller handles a thrown
     // exception from this method — so it's swallowed rather than propagated.
     override suspend fun writeSort(sort: ApplicationSortOrder) {
@@ -48,8 +44,6 @@ public class DataStoreApplicationListPreferencesStore(
             .first()
 
     @Suppress("SwallowedException")
-    // Best-effort fire-and-forget preference write (tc-l31ve, module-wide
-    // convention): see writeSort's rationale comment above.
     override suspend fun writeLastSelectedZoneId(zoneId: WatchZoneId) {
         try {
             dataStore.edit { preferences -> preferences[LAST_SELECTED_ZONE_KEY] = zoneId.value }

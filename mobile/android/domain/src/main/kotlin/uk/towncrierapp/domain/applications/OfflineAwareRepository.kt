@@ -11,15 +11,15 @@ import java.time.Duration
 /**
  * A 900s TTL read-through cache in front of [remote]'s first-page (param-less,
  * `cursor == null`) fetch, keyed by [WatchZoneId] alone — regardless of which
- * [ApplicationSortOrder]/[ApplicationFilter] produced it (epic #770 parity: the
+ * [ApplicationSortOrder]/[ApplicationFilter] produced it: the
  * cache is "the last known good snapshot for this zone", not sort/filter-
- * aware). A non-null `cursor` (a pagination continuation) always bypasses the
+ * aware. A non-null `cursor` (a pagination continuation) always bypasses the
  * cache entirely, going straight to [remote].
  *
  * Failure handling: ANY [DomainError] from [remote] (not just
  * [DomainError.NetworkUnavailable]) falls back to a cached entry when one
  * exists, however stale — this is deliberately broader than "network errors
- * only", matching iOS `OfflineAwareRepository`. With no cached entry to fall
+ * only". With no cached entry to fall
  * back to, the original error propagates unchanged (so a genuine offline
  * failure surfaces as [DomainError.NetworkUnavailable], not something
  * misleading). [detail] is a plain, uncached pass-through — only the zone

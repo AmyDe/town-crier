@@ -19,9 +19,7 @@ import kotlin.test.assertNull
 
 /**
  * The `applicationsListSort` / `lastSelectedZone.applications` DataStore
- * latches — key names reused verbatim from iOS (epic #770 pre-resolved
- * decision). Port of the DataStore latch pattern established by
- * `DataStoreSubscriptionTierCacheTest` (GH#775).
+ * latches.
  */
 class DataStoreApplicationListPreferencesStoreTest {
     private fun aDataStore(directory: File) =
@@ -100,7 +98,7 @@ class DataStoreApplicationListPreferencesStoreTest {
         }
 }
 
-/** A [DataStore] whose `updateData` (and so `edit { }`) always throws [exception] — proves write methods guard against it (tc-l31ve). */
+/** A [DataStore] whose `updateData` (and so `edit { }`) always throws [exception] — proves write methods guard against it. */
 private class ThrowingDataStore(
     private val exception: Throwable,
 ) : DataStore<Preferences> {

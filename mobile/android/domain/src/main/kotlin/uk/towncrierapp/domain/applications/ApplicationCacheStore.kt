@@ -15,8 +15,7 @@ public data class CachedApplicationPage(
  * decorator, which is what makes "stale but still servable offline" and
  * "fresh enough to skip the network" two different questions the store
  * doesn't need to answer). [invalidate]/[invalidateAll] are the explicit hooks
- * a watch-zone edit (tc-cnme) or a mark-all-read fires. Port of iOS
- * `ApplicationCacheStore`.
+ * a watch-zone edit or a mark-all-read fires.
  */
 public interface ApplicationCacheStore {
     public suspend fun get(zoneId: WatchZoneId): CachedApplicationPage?

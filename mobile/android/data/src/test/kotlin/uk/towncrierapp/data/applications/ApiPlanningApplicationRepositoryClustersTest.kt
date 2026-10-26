@@ -15,7 +15,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * `GET /v1/me/watch-zones/{zoneId}/applications/clusters` (GH#698, GH#776):
+ * `GET /v1/me/watch-zones/{zoneId}/applications/clusters`:
  * bbox/zoom/status query building and DTO->domain mapping of the three
  * cluster shapes (single/splittable/stacked). Server contract per
  * `api-go/internal/applications/zoneclusters.go`'s `Cluster`.

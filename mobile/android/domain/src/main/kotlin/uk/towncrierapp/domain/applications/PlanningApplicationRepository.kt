@@ -6,7 +6,7 @@ import uk.towncrierapp.domain.watchzones.WatchZoneId
 
 /**
  * Browses a zone's planning applications and fetches a single application's
- * detail. Port of iOS `ApplicationRepository`.
+ * detail.
  */
 public interface PlanningApplicationRepository {
     /**
@@ -30,7 +30,7 @@ public interface PlanningApplicationRepository {
 
     /**
      * Anonymous by-slug detail fetch, used to resolve an inbound public share
-     * link (`/a/{authoritySlug}/{ref...}`, GH#782). The server route itself
+     * link (`/a/{authoritySlug}/{ref...}`). The server route itself
      * requires no auth, but Android only ever calls it once the user is
      * signed in (no signed-out detail view day-1 — see `PendingLinkHolder`).
      * [authoritySlug] is the API-emitted slug and [ref] is the application's
@@ -43,7 +43,7 @@ public interface PlanningApplicationRepository {
 
     /**
      * The server-side grid-aggregated cluster cells for [zoneId]'s current
-     * map viewport at [zoom] (GH#698, GH#776). [status] filters on the raw
+     * map viewport at [zoom]. [status] filters on the raw
      * `app_state` value; `null` means no filter — the map has NO unread
      * filter, unlike [applications]'s [ApplicationFilter].
      */

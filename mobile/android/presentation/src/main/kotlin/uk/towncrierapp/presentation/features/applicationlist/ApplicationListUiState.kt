@@ -10,7 +10,7 @@ import uk.towncrierapp.domain.watchzones.WatchZoneId
 /**
  * `ApplicationListScreen` state. [unreadCount] is CLIENT-derived from
  * currently-loaded [applications] (never a server `totalUnreadCount` — that
- * field drives the OS badge only, #777 D7). [hasMore] is a page's
+ * field drives the OS badge only). [hasMore] is a page's
  * `nextCursor != null`. [availableSorts] hides
  * [ApplicationSortOrder.DISTANCE] whenever no zone is active (nothing to be
  * distant from).

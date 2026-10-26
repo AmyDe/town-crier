@@ -8,8 +8,7 @@ import java.time.OffsetDateTime
  * a row "unread" throughout `:presentation` (the client-derived unread count
  * and the unread dot both key off this, never `totalUnreadCount`). [type] is
  * kept as the raw server string (`"NewApplication"` / `"DecisionUpdate"`) —
- * deliberately not modelled as a closed set, matching iOS. Port of iOS
- * `LatestUnreadEvent` (GH#775).
+ * deliberately not modelled as a closed set.
  */
 public data class LatestUnreadEvent(
     public val type: String,

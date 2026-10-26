@@ -15,8 +15,7 @@ import kotlin.test.assertTrue
 
 /**
  * The 900s TTL cache decorator over [PlanningApplicationRepository]'s
- * first-page (param-less) fetch, keyed by zone id only. Port of iOS
- * `OfflineAwareRepository` (GH#775).
+ * first-page (param-less) fetch, keyed by zone id only.
  */
 class OfflineAwareRepositoryTest {
     private val zoneId = WatchZoneId("wz-1")

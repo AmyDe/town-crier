@@ -20,11 +20,8 @@ import uk.towncrierapp.presentation.designsystem.noticeCard
 
 /**
  * The detail screen's address/reference/authority/received-date card, styled
- * as a Public Notice "filed notice" ([noticeCard], epic #848 R5). Split into
- * its own file to keep `ApplicationDetailScreen.kt` under detekt's per-file
- * function budget. Reference and received-date use [TownCrierTheme.mono] —
+ * as a Public Notice "filed notice" ([noticeCard]). Reference and received-date use [TownCrierTheme.mono] —
  * the two metadata fields the mono role targets — the rest stay body text.
- * Port of iOS `ApplicationDetailView.detailCard`.
  */
 @Composable
 internal fun FieldsCard(

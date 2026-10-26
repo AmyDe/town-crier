@@ -36,8 +36,8 @@ public class FakePlanningApplicationRepository : PlanningApplicationRepository {
 
     /**
      * Per-[PlanningApplicationId.value] overrides for [detail] — used by
-     * concurrent-fan-out tests (e.g. a stacked map cluster's point-reads,
-     * GH#776) that need distinct results/failures per id rather than one
+     * concurrent-fan-out tests (e.g. a stacked map cluster's point-reads)
+     * that need distinct results/failures per id rather than one
      * global [detailResult]/[detailFailWith]. A key present in
      * [detailFailFor] takes priority over one present in [detailResults];
      * either falls back to the global fields when the id isn't listed.
