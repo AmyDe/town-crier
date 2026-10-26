@@ -15,12 +15,19 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/acsemail"
 	"github.com/AmyDe/town-crier/api-go/internal/devicetokens"
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
+	"github.com/AmyDe/town-crier/api-go/internal/platform"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
 )
 
 // digestWindow is the 7-day look-back the weekly digest gathers notifications over.
 const digestWindow = 7 * 24 * time.Hour
+
+// Weekly sends stay under the ACS quota of 30/min and 100 per rolling 60 min, shared with the hourly digest.
+const (
+	weeklyEmailCapPerRun = 60
+	weeklyEmailGap       = 3 * time.Second
+)
 
 // email.kind values stamped on the "Email send" wrapper span, distinguishing the
 // two digest cycles that share sendDigestEmail.
@@ -84,6 +91,7 @@ type Handler struct {
 	dispatcher    pushDispatcher
 	logger        *slog.Logger
 	now           func() time.Time
+	emailGap      time.Duration
 }
 
 // NewHandler wires the digest handler. now is injected so tests can pin the
@@ -110,6 +118,7 @@ func NewHandler(
 		dispatcher:    dispatcher,
 		logger:        logger,
 		now:           now,
+		emailGap:      weeklyEmailGap,
 	}
 }
 
@@ -129,7 +138,8 @@ func (h *Handler) RunWeekly(ctx context.Context) error {
 		return err
 	}
 
-	for _, profile := range users {
+	emailsAttempted := 0
+	for i, profile := range users {
 		// The weekly push is Pro-only; a lapsed paid tier (EffectiveTier) reads as
 		// Free and gets the email but no push.
 		wantsPush := profile.EffectiveTier(now).IsPaidPro() && profile.Preferences.PushEnabled
@@ -145,6 +155,12 @@ func (h *Handler) RunWeekly(ctx context.Context) error {
 		}
 		if len(notifs) == 0 {
 			continue
+		}
+
+		if wantsEmail && emailsAttempted >= weeklyEmailCapPerRun {
+			h.logger.InfoContext(ctx, "weekly digest: per-run email cap reached, deferring remaining users",
+				"cap", weeklyEmailCapPerRun, "deferred", len(users)-i)
+			break
 		}
 
 		recorded := false
@@ -168,7 +184,18 @@ func (h *Handler) RunWeekly(ctx context.Context) error {
 			// The weekly cycle does not track emailSent; sendDigestEmail logs a failed send.
 			// IsPaid, not IsPaidPro, so a Personal subscriber never sees the free-tier notice.
 			showFreeTierNotice := !profile.EffectiveTier(now).IsPaid()
-			if err := h.sendDigestEmail(ctx, emailKindWeekly, weeklyCycleKey(now), profile.UserID, *profile.Email, notifs, showFreeTierNotice); err == nil {
+			if emailsAttempted > 0 {
+				if err := platform.Sleep(ctx, h.emailGap); err != nil {
+					return err
+				}
+			}
+			emailsAttempted++
+			err := h.sendDigestEmail(ctx, emailKindWeekly, weeklyCycleKey(now), profile.UserID, *profile.Email, notifs, showFreeTierNotice)
+			if errors.Is(err, acsemail.ErrRateLimited) {
+				h.logger.WarnContext(ctx, "weekly digest: ACS rate limited, stopping run", "user", profile.UserID)
+				break
+			}
+			if err == nil {
 				record()
 			}
 		}
