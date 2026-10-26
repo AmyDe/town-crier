@@ -509,7 +509,7 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 		return err
 	}
 
-	if err = createWorkerJob(ctx, ec, "digest", "0 7 * * *", 600, "digest"); err != nil {
+	if err = createWorkerJob(ctx, ec, "digest", "0 7-20 * * *", 600, "digest"); err != nil {
 		return err
 	}
 	if err = createWorkerJob(ctx, ec, "digest-hourly", "0 * * * *", 300, "hourly-digest"); err != nil {
