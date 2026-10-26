@@ -93,7 +93,7 @@ func (s *PostgresAdminStore) GetByOriginalTransactionID(ctx context.Context, ori
 // day is stored as the int weekday value (Sunday=0 … Saturday=6).
 func (s *PostgresAdminStore) ByDigestDay(ctx context.Context, day time.Weekday, notSentSince time.Time) ([]*UserProfile, error) {
 	rows, err := s.db.Query(ctx,
-		pgAdminSelectCols+"WHERE digest_day = $1 AND (last_weekly_digest_at IS NULL OR last_weekly_digest_at < $2)",
+		pgAdminSelectCols+"WHERE digest_day = $1 AND (last_weekly_digest_at IS NULL OR last_weekly_digest_at < $2) ORDER BY user_id",
 		int(day), notSentSince)
 	if err != nil {
 		return nil, fmt.Errorf("query profiles by digest day: %w", err)
