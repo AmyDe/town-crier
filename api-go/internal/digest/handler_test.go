@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -1305,5 +1306,32 @@ func TestRunWeekly_PacesBetweenEmails(t *testing.T) {
 	}
 	if len(email.sent) != 1 {
 		t.Errorf("sends = %d, want 1", len(email.sent))
+	}
+}
+
+func TestRunWeekly_GapCountsFromPreviousSendStart(t *testing.T) {
+	t.Parallel()
+	fx := newWeeklyFixture(t, 3, 0, false)
+	clock := time.Date(2026, 10, 26, 9, 0, 0, 0, time.UTC)
+	email := &funcEmail{fn: func(int) error {
+		clock = clock.Add(2 * time.Second)
+		return nil
+	}}
+	h := fx.handler(email, &spyPush{})
+	h.emailGap = 3 * time.Second
+	h.clock = func() time.Time { return clock }
+	var slept []time.Duration
+	h.sleep = func(_ context.Context, d time.Duration) error {
+		slept = append(slept, d)
+		clock = clock.Add(d)
+		return nil
+	}
+
+	if err := h.RunWeekly(context.Background()); err != nil {
+		t.Fatalf("RunWeekly: %v", err)
+	}
+	want := []time.Duration{time.Second, time.Second}
+	if !slices.Equal(slept, want) {
+		t.Errorf("sleeps = %v, want %v", slept, want)
 	}
 }

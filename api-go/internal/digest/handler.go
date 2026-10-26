@@ -24,8 +24,10 @@ import (
 const digestWindow = 7 * 24 * time.Hour
 
 // Weekly sends stay under the ACS quota of 30/min and 100 per rolling 60 min, shared with the hourly digest.
+// The cap also leaves margin in the 8-minute digest budget: a send with its status polls takes about 4.5 s,
+// and one throttled poll can add 30 s.
 const (
-	weeklyEmailCapPerRun = 60
+	weeklyEmailCapPerRun = 40
 	weeklyEmailGap       = 3 * time.Second
 )
 
@@ -92,6 +94,8 @@ type Handler struct {
 	logger        *slog.Logger
 	now           func() time.Time
 	emailGap      time.Duration
+	clock         func() time.Time
+	sleep         func(ctx context.Context, d time.Duration) error
 }
 
 // NewHandler wires the digest handler. now is injected so tests can pin the
@@ -119,6 +123,8 @@ func NewHandler(
 		logger:        logger,
 		now:           now,
 		emailGap:      weeklyEmailGap,
+		clock:         time.Now,
+		sleep:         platform.Sleep,
 	}
 }
 
@@ -139,6 +145,7 @@ func (h *Handler) RunWeekly(ctx context.Context) error {
 	}
 
 	emailsAttempted := 0
+	var lastEmailStart time.Time
 	for i, profile := range users {
 		// The weekly push is Pro-only; a lapsed paid tier (EffectiveTier) reads as
 		// Free and gets the email but no push.
@@ -185,10 +192,13 @@ func (h *Handler) RunWeekly(ctx context.Context) error {
 			// IsPaid, not IsPaidPro, so a Personal subscriber never sees the free-tier notice.
 			showFreeTierNotice := !profile.EffectiveTier(now).IsPaid()
 			if emailsAttempted > 0 {
-				if err := platform.Sleep(ctx, h.emailGap); err != nil {
-					return err
+				if wait := h.emailGap - h.clock().Sub(lastEmailStart); wait > 0 {
+					if err := h.sleep(ctx, wait); err != nil {
+						return err
+					}
 				}
 			}
+			lastEmailStart = h.clock()
 			emailsAttempted++
 			err := h.sendDigestEmail(ctx, emailKindWeekly, weeklyCycleKey(now), profile.UserID, *profile.Email, notifs, showFreeTierNotice)
 			if errors.Is(err, acsemail.ErrRateLimited) {
