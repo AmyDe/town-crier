@@ -404,7 +404,7 @@ func TestClustersHandler_StoreErrorIs500(t *testing.T) {
 // TestClustersHandler_ContextCanceled_NoServerErrorNoErrorLog proves a client
 // disconnect (context.Canceled from the store, wrapped as a real caller would
 // wrap it) is NOT treated as a server fault: no 500 is written and no
-// error-level log line is emitted (tc-ftccw). A disconnected caller is
+// error-level log line is emitted. A disconnected caller is
 // already gone, so nothing meaningfully needs to be sent back.
 func TestClustersHandler_ContextCanceled_NoServerErrorNoErrorLog(t *testing.T) {
 	t.Parallel()

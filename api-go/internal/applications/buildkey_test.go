@@ -7,8 +7,7 @@ import (
 	"testing"
 )
 
-// TestBuildKeyMatches covers the exported matcher directly (GH#872 collateral,
-// tc-zod82): it backs the SEO handlers and the anonymous-rate-limit
+// TestBuildKeyMatches covers the exported matcher directly: it backs the SEO handlers and the anonymous-rate-limit
 // exemption predicate wired in cmd/api/wiring.go, so its empty-key behaviour
 // must hold independent of either caller.
 func TestBuildKeyMatches(t *testing.T) {

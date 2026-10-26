@@ -4,8 +4,7 @@ import (
 	"testing"
 )
 
-// TestGridDegreesForZoom pins the zoom -> grid-cell-size lookup this package
-// now owns (moved from watchzones, GH#924): each cell halves per zoom level
+// TestGridDegreesForZoom pins the zoom -> grid-cell-size lookup: each cell halves per zoom level
 // (baseGridDegrees / 2^z), and a zoom outside [0, maxZoom] is rejected.
 func TestGridDegreesForZoom(t *testing.T) {
 	t.Parallel()

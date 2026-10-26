@@ -15,7 +15,7 @@ import (
 // searchApp builds a baseline application for the search suite: a distinct uid
 // from name (mirroring pgApp), plus an authority-scoped area id. It has no
 // coordinates — callers place it with at() (store_postgres_test.go), since
-// GH#863 made location mandatory for every match tier (a nearest-first search
+// location is mandatory for every match tier (a nearest-first search
 // has no meaning for an application PlanIt never geocoded).
 func searchApp(name, uid string, areaID int) PlanningApplication {
 	a := pgApp(name, areaID)
@@ -45,8 +45,7 @@ func TestPostgresStore_Search_ReferenceTierExactAndPrefix(t *testing.T) {
 		if refine {
 			t.Error("refine: got true, want false")
 		}
-		// Reference must stay planit_name (Name), never uid — a real regression
-		// once (tc-geq7h.3); the fixture's uid ("24/0099/FUL") differs from its
+		// Reference must stay planit_name (Name), never uid; the fixture's uid ("24/0099/FUL") differs from its
 		// name ("24/0099") specifically to catch it.
 		if len(apps) != 1 || apps[0].Name != target.Name {
 			t.Fatalf("got %+v, want exactly [%s]", apps, target.Name)
@@ -79,8 +78,8 @@ func TestPostgresStore_Search_ReferenceTierExactAndPrefix(t *testing.T) {
 
 // TestPostgresStore_Search_ReferenceTierCrossesAuthorities proves a bare
 // reference legitimately returns rows from MULTIPLE authorities when no
-// authority filter is given (application_uid is only unique within a council —
-// tc-geq7h.3), and that the authority filter scopes it down to one.
+// authority filter is given (application_uid is only unique within a council),
+// and that the authority filter scopes it down to one.
 func TestPostgresStore_Search_ReferenceTierCrossesAuthorities(t *testing.T) {
 	store := newAppPGStore(t)
 	ctx := context.Background()
@@ -314,7 +313,7 @@ func tieName(i int) string {
 }
 
 // TestPostgresStore_Search_LimitAndRefineFlag proves an over-limit match set is
-// truncated to limit and reports refine=true (v1 has no cursor — tc-geq7h.3),
+// truncated to limit and reports refine=true (v1 has no cursor),
 // while an exactly-at-limit set reports refine=false.
 func TestPostgresStore_Search_LimitAndRefineFlag(t *testing.T) {
 	store := newAppPGStore(t)
