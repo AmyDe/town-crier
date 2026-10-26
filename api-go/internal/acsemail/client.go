@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -31,12 +32,30 @@ const (
 	// defaultMaxPolls bounds how many times the send operation is polled before
 	// giving up (≈ defaultMaxPolls × defaultPollInterval of wall time).
 	defaultMaxPolls = 30
+	// maxPollRetryAfter caps how long a throttled status poll waits, whatever
+	// Retry-After asks for.
+	maxPollRetryAfter = 30 * time.Second
 )
 
 // ErrSendFailed reports that ACS accepted the request but the email operation
 // finished in a non-success terminal state, or never reached success within the
 // poll budget.
 var ErrSendFailed = errors.New("acsemail: send failed")
+
+// ErrRateLimited reports that ACS rejected the send request with HTTP 429; the
+// email was not accepted. Errors wrapping it also wrap ErrSendFailed.
+var ErrRateLimited = errors.New("acsemail: rate limited")
+
+// throttledError is a 429 on an operation-status poll, carrying how long to
+// wait before polling again.
+type throttledError struct {
+	wait time.Duration
+	body string
+}
+
+func (e *throttledError) Error() string {
+	return "acsemail: poll returned status 429: " + e.body
+}
 
 // ErrAcceptedStatusUnknown reports that ACS accepted the send request (or
 // reported the original request still in progress) but the final operation
@@ -196,6 +215,9 @@ func (c *Client) postSend(ctx context.Context, body []byte, extra http.Header) (
 	if resp.StatusCode == http.StatusConflict {
 		return "", fmt.Errorf("acsemail: %w: send returned status 409: %s", ErrAcceptedStatusUnknown, strings.TrimSpace(string(respBody)))
 	}
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return "", fmt.Errorf("acsemail: %w: %w: send returned status 429: %s", ErrSendFailed, ErrRateLimited, strings.TrimSpace(string(respBody)))
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return "", fmt.Errorf("acsemail: %w: send returned status %d: %s", ErrSendFailed, resp.StatusCode, string(respBody))
 	}
@@ -224,6 +246,13 @@ func (c *Client) pollOperation(ctx context.Context, opLocation string) error {
 	for range c.maxPolls {
 		status, err := c.getOperationStatus(ctx, opLocation)
 		if err != nil {
+			var throttled *throttledError
+			if errors.As(err, &throttled) {
+				if err := platform.Sleep(ctx, throttled.wait); err != nil {
+					return err
+				}
+				continue
+			}
 			return err
 		}
 
@@ -258,6 +287,12 @@ func (c *Client) getOperationStatus(ctx context.Context, opLocation string) (ope
 	if err != nil {
 		return operationStatus{}, fmt.Errorf("acsemail: read operation status: %w", err)
 	}
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return operationStatus{}, &throttledError{
+			wait: throttleWait(resp.Header.Get("Retry-After"), c.pollInterval),
+			body: string(respBody),
+		}
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return operationStatus{}, fmt.Errorf("acsemail: poll returned status %d: %s", resp.StatusCode, string(respBody))
 	}
@@ -267,6 +302,18 @@ func (c *Client) getOperationStatus(ctx context.Context, opLocation string) (ope
 		return operationStatus{}, fmt.Errorf("acsemail: decode operation status: %w", err)
 	}
 	return status, nil
+}
+
+// throttleWait turns a Retry-After header into a poll wait. Only delta-seconds
+// is understood; an absent, malformed or negative value falls back to fallback.
+// The result never exceeds maxPollRetryAfter.
+func throttleWait(retryAfter string, fallback time.Duration) time.Duration {
+	wait := fallback
+	if secs, err := strconv.Atoi(retryAfter); err == nil && secs >= 0 {
+		// Clamp before multiplying so a huge value cannot overflow Duration.
+		wait = time.Duration(min(secs, int(maxPollRetryAfter/time.Second))) * time.Second
+	}
+	return min(wait, maxPollRetryAfter)
 }
 
 // signedRequest builds, signs, and performs one ACS request. It computes the

@@ -325,3 +325,144 @@ func TestClient_ConflictOnSendIsStatusUnknown(t *testing.T) {
 		t.Fatalf("err = %v, want ErrAcceptedStatusUnknown", err)
 	}
 }
+
+// pollServer serves a 202 POST and delegates each status GET to poll (1-based
+// call number). It returns the server and a pointer to the GET count.
+func pollServer(t *testing.T, poll func(n int, w http.ResponseWriter)) (*httptest.Server, *int) {
+	t.Helper()
+	var mu sync.Mutex
+	gets := 0
+	mux := http.NewServeMux()
+	var srvURL string
+	mux.HandleFunc("POST /emails:send", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.ReadAll(r.Body)
+		w.Header().Set("Operation-Location", srvURL+"/emails/operations/op?api-version=2023-03-31")
+		w.WriteHeader(http.StatusAccepted)
+	})
+	mux.HandleFunc("GET /emails/operations/op", func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		gets++
+		n := gets
+		mu.Unlock()
+		poll(n, w)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	srvURL = srv.URL
+	return srv, &gets
+}
+
+func TestSend_PollThrottledThenSucceeds(t *testing.T) {
+	t.Parallel()
+	srv, gets := pollServer(t, func(n int, w http.ResponseWriter) {
+		if n == 1 {
+			w.Header().Set("Retry-After", "0")
+			http.Error(w, "slow down", http.StatusTooManyRequests)
+			return
+		}
+		_, _ = w.Write([]byte(`{"id":"op","status":"Succeeded"}`))
+	})
+
+	if err := newTestClient(t, srv).Send(context.Background(), testMessage()); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if *gets != 2 {
+		t.Errorf("GETs = %d, want 2", *gets)
+	}
+}
+
+func TestSend_PollThrottledWithoutRetryAfterUsesPollInterval(t *testing.T) {
+	t.Parallel()
+	srv, _ := pollServer(t, func(n int, w http.ResponseWriter) {
+		if n == 1 {
+			http.Error(w, "slow down", http.StatusTooManyRequests)
+			return
+		}
+		_, _ = w.Write([]byte(`{"id":"op","status":"Succeeded"}`))
+	})
+
+	if err := newTestClient(t, srv).Send(context.Background(), testMessage()); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+}
+
+func TestSend_PollThrottledUntilBudgetExhausted(t *testing.T) {
+	t.Parallel()
+	srv, gets := pollServer(t, func(_ int, w http.ResponseWriter) {
+		http.Error(w, "slow down", http.StatusTooManyRequests)
+	})
+	client := newTestClient(t, srv)
+
+	err := client.Send(context.Background(), testMessage())
+	if !errors.Is(err, ErrAcceptedStatusUnknown) {
+		t.Fatalf("err = %v, want ErrAcceptedStatusUnknown", err)
+	}
+	if *gets != client.maxPolls {
+		t.Errorf("GETs = %d, want %d", *gets, client.maxPolls)
+	}
+}
+
+func TestSend_PollNon429ErrorStillFailsFast(t *testing.T) {
+	t.Parallel()
+	srv, gets := pollServer(t, func(_ int, w http.ResponseWriter) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	})
+
+	err := newTestClient(t, srv).Send(context.Background(), testMessage())
+	if !errors.Is(err, ErrAcceptedStatusUnknown) {
+		t.Fatalf("err = %v, want ErrAcceptedStatusUnknown", err)
+	}
+	if *gets != 1 {
+		t.Errorf("GETs = %d, want 1", *gets)
+	}
+}
+
+func TestSend_Post429IsRateLimited(t *testing.T) {
+	t.Parallel()
+	var gets int
+	var mu sync.Mutex
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.ReadAll(r.Body)
+		if r.Method == http.MethodGet {
+			mu.Lock()
+			gets++
+			mu.Unlock()
+		}
+		http.Error(w, "quota", http.StatusTooManyRequests)
+	}))
+	defer srv.Close()
+
+	err := newTestClient(t, srv).Send(context.Background(), testMessage())
+	if !errors.Is(err, ErrRateLimited) {
+		t.Errorf("err = %v, want ErrRateLimited", err)
+	}
+	if !errors.Is(err, ErrSendFailed) {
+		t.Errorf("err = %v, want ErrSendFailed", err)
+	}
+	if gets != 0 {
+		t.Errorf("GETs = %d, want 0", gets)
+	}
+}
+
+func TestThrottleWait(t *testing.T) {
+	t.Parallel()
+	const interval = 2 * time.Second
+	tests := []struct {
+		header string
+		want   time.Duration
+	}{
+		{"5", 5 * time.Second},
+		{"120", maxPollRetryAfter},
+		{"", interval},
+		{"abc", interval},
+		{"-1", interval},
+	}
+	for _, tt := range tests {
+		t.Run("header="+tt.header, func(t *testing.T) {
+			t.Parallel()
+			if got := throttleWait(tt.header, interval); got != tt.want {
+				t.Errorf("throttleWait(%q) = %v, want %v", tt.header, got, tt.want)
+			}
+		})
+	}
+}

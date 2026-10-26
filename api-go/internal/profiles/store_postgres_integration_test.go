@@ -1224,3 +1224,30 @@ func TestPostgresAdminStore_MarkWeeklyDigestSent_UnknownUser(t *testing.T) {
 		t.Errorf("got %v, want ErrNotFound", err)
 	}
 }
+
+func TestPostgresAdminStore_ByDigestDay_OrdersByUserID(t *testing.T) {
+	store, admin := newUserPGStore(t)
+	ctx := context.Background()
+
+	for _, id := range []string{"auth0|ord-c", "auth0|ord-a", "auth0|ord-d", "auth0|ord-b"} {
+		p := pgProfile(t, id, id+"@example.com")
+		p.Preferences.DigestDay = time.Monday
+		if err := store.Save(ctx, p); err != nil {
+			t.Fatalf("Save %s: %v", id, err)
+		}
+	}
+
+	got, err := admin.ByDigestDay(ctx, time.Monday, time.Time{})
+	if err != nil {
+		t.Fatalf("ByDigestDay: %v", err)
+	}
+	want := []string{"auth0|ord-a", "auth0|ord-b", "auth0|ord-c", "auth0|ord-d"}
+	if len(got) != len(want) {
+		t.Fatalf("ByDigestDay returned %d profiles, want %d", len(got), len(want))
+	}
+	for i, p := range got {
+		if p.UserID != want[i] {
+			t.Errorf("position %d = %q, want %q", i, p.UserID, want[i])
+		}
+	}
+}

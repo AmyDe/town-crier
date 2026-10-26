@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -1130,5 +1131,207 @@ func TestRunWeekly_LedgerFromEarlierCycleDoesNotSkip(t *testing.T) {
 	}
 	if len(email.sent) != 1 {
 		t.Errorf("emails sent: got %d, want 1", len(email.sent))
+	}
+}
+
+// ---- weekly batching tests ----
+
+type funcEmail struct {
+	sent []acsemail.Message
+	fn   func(n int) error
+}
+
+func (f *funcEmail) Send(_ context.Context, _ string, msg acsemail.Message) error {
+	f.sent = append(f.sent, msg)
+	if f.fn == nil {
+		return nil
+	}
+	return f.fn(len(f.sent))
+}
+
+type weeklyFixture struct {
+	profiles *fakeProfiles
+	notifs   *fakeNotifications
+	devices  *fakeDevices
+	users    []*profiles.UserProfile
+}
+
+// newWeeklyFixture builds emailUsers email-only free users followed by
+// pushUsers push-only Pro users, with the push-only users first when pushFirst.
+func newWeeklyFixture(t *testing.T, emailUsers, pushUsers int, pushFirst bool) *weeklyFixture {
+	t.Helper()
+	fx := &weeklyFixture{
+		profiles: &fakeProfiles{byDay: map[time.Weekday][]*profiles.UserProfile{}},
+		notifs:   &fakeNotifications{sinceByUser: map[string][]notifications.DigestNotification{}},
+		devices:  &fakeDevices{byUser: map[string][]devicetokens.DeviceRegistration{}},
+	}
+	add := func(id string, tier profiles.SubscriptionTier, emailOn, pushOn bool) {
+		p, err := profiles.NewProfile(id, id+"@example.com", time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+		if err != nil {
+			t.Fatalf("NewProfile: %v", err)
+		}
+		p.Tier = tier
+		p.Preferences = profiles.DefaultPreferences()
+		p.Preferences.EmailDigestEnabled = emailOn
+		p.Preferences.PushEnabled = pushOn
+		fx.users = append(fx.users, p)
+		fx.profiles.byDay[time.Wednesday] = append(fx.profiles.byDay[time.Wednesday], p)
+		fx.notifs.sinceByUser[id] = []notifications.DigestNotification{zoneNotif("uid-"+id, "zone-1")}
+		if pushOn {
+			fx.devices.byUser[id] = []devicetokens.DeviceRegistration{{UserID: id, Token: "tok-" + id, Platform: devicetokens.PlatformIos}}
+		}
+	}
+	addPush := func() {
+		for i := range pushUsers {
+			add(fmt.Sprintf("push-%03d", i), profiles.TierPro, false, true)
+		}
+	}
+	if pushFirst {
+		addPush()
+	}
+	for i := range emailUsers {
+		add(fmt.Sprintf("mail-%03d", i), profiles.TierFree, true, false)
+	}
+	if !pushFirst {
+		addPush()
+	}
+	return fx
+}
+
+func (fx *weeklyFixture) handler(email emailSender, push *spyPush) *Handler {
+	h := newHandler(fx.profiles, fx.notifs, &fakeZones{}, &fakeState{}, fx.devices, email, push)
+	h.emailGap = 0
+	return h
+}
+
+func TestRunWeekly_StopsAtPerRunEmailCap(t *testing.T) {
+	t.Parallel()
+	fx := newWeeklyFixture(t, weeklyEmailCapPerRun+1, 0, false)
+	email := &funcEmail{}
+
+	if err := fx.handler(email, &spyPush{}).RunWeekly(context.Background()); err != nil {
+		t.Fatalf("RunWeekly: %v", err)
+	}
+	if len(email.sent) != weeklyEmailCapPerRun {
+		t.Errorf("sends = %d, want %d", len(email.sent), weeklyEmailCapPerRun)
+	}
+	last := fx.users[weeklyEmailCapPerRun].UserID
+	if _, ok := fx.profiles.ledger[last]; ok {
+		t.Errorf("deferred user %s was stamped", last)
+	}
+}
+
+func TestRunWeekly_SecondRunSendsDeferredUsers(t *testing.T) {
+	t.Parallel()
+	fx := newWeeklyFixture(t, weeklyEmailCapPerRun+1, 0, false)
+	email := &funcEmail{}
+	h := fx.handler(email, &spyPush{})
+
+	for range 2 {
+		if err := h.RunWeekly(context.Background()); err != nil {
+			t.Fatalf("RunWeekly: %v", err)
+		}
+	}
+	if len(email.sent) != weeklyEmailCapPerRun+1 {
+		t.Fatalf("sends = %d, want %d", len(email.sent), weeklyEmailCapPerRun+1)
+	}
+	seen := map[string]bool{}
+	for _, m := range email.sent {
+		if seen[m.Recipient] {
+			t.Errorf("%s emailed twice", m.Recipient)
+		}
+		seen[m.Recipient] = true
+	}
+}
+
+func TestRunWeekly_StopsOnRateLimited(t *testing.T) {
+	t.Parallel()
+	fx := newWeeklyFixture(t, 6, 0, false)
+	email := &funcEmail{fn: func(n int) error {
+		if n == 3 {
+			return fmt.Errorf("send: %w: %w", acsemail.ErrSendFailed, acsemail.ErrRateLimited)
+		}
+		return nil
+	}}
+
+	if err := fx.handler(email, &spyPush{}).RunWeekly(context.Background()); err != nil {
+		t.Fatalf("RunWeekly: %v", err)
+	}
+	if len(email.sent) != 3 {
+		t.Errorf("sends = %d, want 3", len(email.sent))
+	}
+	for i, u := range fx.users {
+		_, stamped := fx.profiles.ledger[u.UserID]
+		if want := i < 2; stamped != want {
+			t.Errorf("user %d stamped = %v, want %v", i, stamped, want)
+		}
+	}
+}
+
+func TestRunWeekly_PushOnlyUsersDoNotCountTowardsCap(t *testing.T) {
+	t.Parallel()
+	const pushUsers = 5
+	fx := newWeeklyFixture(t, weeklyEmailCapPerRun+1, pushUsers, true)
+	email := &funcEmail{}
+	push := &spyPush{}
+
+	if err := fx.handler(email, push).RunWeekly(context.Background()); err != nil {
+		t.Fatalf("RunWeekly: %v", err)
+	}
+	if push.calls != pushUsers {
+		t.Errorf("pushes = %d, want %d", push.calls, pushUsers)
+	}
+	if len(email.sent) != weeklyEmailCapPerRun {
+		t.Errorf("sends = %d, want %d", len(email.sent), weeklyEmailCapPerRun)
+	}
+}
+
+func TestRunWeekly_PacesBetweenEmails(t *testing.T) {
+	t.Parallel()
+	fx := newWeeklyFixture(t, 5, 0, false)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	email := &funcEmail{fn: func(n int) error {
+		if n == 1 {
+			cancel()
+		}
+		return nil
+	}}
+	h := fx.handler(email, &spyPush{})
+	h.emailGap = time.Hour
+
+	err := h.RunWeekly(ctx)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", err)
+	}
+	if len(email.sent) != 1 {
+		t.Errorf("sends = %d, want 1", len(email.sent))
+	}
+}
+
+func TestRunWeekly_GapCountsFromPreviousSendStart(t *testing.T) {
+	t.Parallel()
+	fx := newWeeklyFixture(t, 3, 0, false)
+	clock := time.Date(2026, 10, 26, 9, 0, 0, 0, time.UTC)
+	email := &funcEmail{fn: func(int) error {
+		clock = clock.Add(2 * time.Second)
+		return nil
+	}}
+	h := fx.handler(email, &spyPush{})
+	h.emailGap = 3 * time.Second
+	h.clock = func() time.Time { return clock }
+	var slept []time.Duration
+	h.sleep = func(_ context.Context, d time.Duration) error {
+		slept = append(slept, d)
+		clock = clock.Add(d)
+		return nil
+	}
+
+	if err := h.RunWeekly(context.Background()); err != nil {
+		t.Fatalf("RunWeekly: %v", err)
+	}
+	want := []time.Duration{time.Second, time.Second}
+	if !slices.Equal(slept, want) {
+		t.Errorf("sleeps = %v, want %v", slept, want)
 	}
 }

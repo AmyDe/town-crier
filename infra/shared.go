@@ -949,13 +949,13 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 	}
 
 	const acsEmailSendFailuresQuery = `AppDependencies
-| where Name == "ACS email send"
+| where Name == "Email send"
 | where tostring(Properties["deployment.environment"]) == "prod"
 | where Success == false`
 	if err = createLogAlert(ctx, resourceGroup, logAnalytics.ID(), actionGroup, tags, logAlertSpec{
 		name:        "alert-acs-email-send-failures-prod",
 		displayName: "ACS email send failures (prod)",
-		description: "More than 2 prod ACS email send calls failed in the last hour.",
+		description: "More than 2 prod digest emails failed in the last hour.",
 		severity:    2,
 		window:      "PT1H",
 		freq:        "PT15M",
