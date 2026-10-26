@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router';
 import type { WatchZoneSummary, ApplicationStatus, ApplicationsSort } from '../../domain/types';
 import type { ApplicationsBrowsePort } from '../../domain/ports/applications-browse-port';
 import type { NotificationStateRepository } from '../../domain/ports/notification-state-repository';
-import { useApplications } from './useApplications';
+import { isApplicationsSort, useApplications } from './useApplications';
 import { ApplicationCard } from '../../components/ApplicationCard/ApplicationCard';
 import { EmptyState } from '../../components/EmptyState/EmptyState';
 import { useFetchData } from '../../hooks/useFetchData';
@@ -236,15 +236,5 @@ export function ApplicationsPage({
         </>
       )}
     </div>
-  );
-}
-
-function isApplicationsSort(value: string): value is ApplicationsSort {
-  return (
-    value === 'recent-activity' ||
-    value === 'newest' ||
-    value === 'oldest' ||
-    value === 'status' ||
-    value === 'distance'
   );
 }

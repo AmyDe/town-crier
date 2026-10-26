@@ -1,7 +1,7 @@
 const SHARE_ORIGIN = 'https://share.towncrierapp.uk';
 
 /**
- * Builds the public share-page URL for a search result (#821 Phase 4). The
+ * Builds the public share-page URL for a search result. The
  * result's `reference` is already the correct path segment — the anonymous
  * search API returns `planit_name`, not `uid`, specifically so this link
  * resolves (see api-go SearchResult doc comment).
