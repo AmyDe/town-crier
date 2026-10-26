@@ -24,7 +24,7 @@ extension ApplicationListViewModel {
     applications[index] = applications[index].withLatestUnreadEvent(nil)
     // Also push the OS app-icon badge, mirroring `markAllRead()`'s clear —
     // otherwise the badge only catches up on the next foreground sync, i.e.
-    // after a relaunch (tc-4x8e0).
+    // after a relaunch.
     globalUnreadCount = max(0, globalUnreadCount - 1)
     badgeSetter?.setBadge(globalUnreadCount)
     pendingMarkRead = Task { [weak self] in

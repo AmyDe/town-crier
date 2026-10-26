@@ -110,7 +110,7 @@ public final class APIPlanningApplicationRepository: PlanningApplicationReposito
       // `authorityCode` is `authority` (areaId as decimal string); `name` is the
       // PlanIt case reference. The greedy `{**name}` segment preserves slashes in
       // the reference (e.g. "22/1234/FUL"). This is a single-partition point read
-      // (~1 RU) replacing the old cross-partition uid scan (tc-dzwo.1).
+      // (~1 RU) replacing the old cross-partition uid scan.
       dto = try await apiClient.request(
         .get("/v1/applications/\(id.authority)/\(id.name)")
       )
@@ -131,7 +131,7 @@ public final class APIPlanningApplicationRepository: PlanningApplicationReposito
       // Anonymous public read: /v1/applications/by-slug/{authoritySlug}/{**ref}.
       // The greedy `{**ref}` segment preserves slashes in the full area-prefixed
       // PlanIt name, so `ref` interpolates raw exactly like `id.name` does in the
-      // by-id read above (GH #738 Slice 4).
+      // by-id read above.
       dto = try await apiClient.request(
         .get("/v1/applications/by-slug/\(authoritySlug)/\(ref)")
       )
@@ -150,15 +150,15 @@ public final class APIPlanningApplicationRepository: PlanningApplicationReposito
 
 // MARK: - Cluster DTO
 
-/// Wire shape for one cell of the map clusters endpoint (GH#698). A `count > 1`
+/// Wire shape for one cell of the map clusters endpoint. A `count > 1`
 /// cell has a null `applicationId` and a multi-status `statusCounts`; a
 /// `count == 1` cell carries the lone application's `{authority, name}` and a
 /// single-entry `statusCounts`.
 ///
 /// An *unsplittable* multi-member cell — members coincident or closer than the
 /// finest grid cell, so zoom can never separate them — additionally carries
-/// `applicationIds`, the capped list of its members' `{authority, name}` ids
-/// (GH#722). It is omitted/null for every splittable cell, so `members` defaults
+/// `applicationIds`, the capped list of its members' `{authority, name}` ids.
+/// It is omitted/null for every splittable cell, so `members` defaults
 /// to empty and existing behaviour is unchanged.
 struct MapClusterDTO: Decodable, Sendable {
   let latitude: Double
@@ -219,7 +219,7 @@ struct PlanningApplicationDTO: Decodable, Sendable {
   let latestUnreadEvent: LatestUnreadEventDTO?
   /// URL-safe authority slug for the public share URL. Present on the by-id
   /// detail read and the anonymous by-slug read; absent (`omitempty`) on the
-  /// list/zone endpoints, so it decodes as optional (GH #738 Slice 4).
+  /// list/zone endpoints, so it decodes as optional.
   let authoritySlug: String?
 
   func toDomain() -> PlanningApplication {
@@ -290,7 +290,7 @@ struct PlanningApplicationDTO: Decodable, Sendable {
 }
 
 /// Wire shape for the per-row `latestUnreadEvent` descriptor returned by the
-/// per-zone applications endpoint (tc-1nsa.3). Older API builds may omit the
+/// per-zone applications endpoint. Older API builds may omit the
 /// field entirely; absence and explicit `null` both decode to `nil` on the
 /// domain entity. Spec: `docs/specs/notifications-unread-watermark.md`.
 struct LatestUnreadEventDTO: Decodable, Sendable {

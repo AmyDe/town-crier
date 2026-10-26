@@ -1,7 +1,7 @@
 import Foundation
 import TownCrierDomain
 
-/// Drives the anonymous (pre-signup) Applications tab (GH#879 Phase 3): a
+/// Drives the anonymous (pre-signup) Applications tab: a
 /// single page of planning applications, reusing the same
 /// ``ApplicationListRow`` the authenticated Applications tab uses. No
 /// sort/filter chips — matching the pre-resolved v1 scope decision (parity
@@ -55,12 +55,12 @@ public final class AnonymousApplicationListViewModel: ObservableObject, ErrorHan
   /// row's `PlanningApplication` came from this same `fetchNearby` response.
   public var onShowApplicationDetail: ((PlanningApplication) -> Void)?
 
-  /// Fired whenever the zone picker's selection changes (GH#879 Phase 4), so
+  /// Fired whenever the zone picker's selection changes, so
   /// the coordinator can re-centre the Map tab to match.
   public var onActiveZoneChanged: ((DeviceLocalZone) -> Void)?
 
-  /// Fired when the user confirms the "Add area" chip's sign-up CTA
-  /// (GH#888). Wired by the coordinator to the same single sign-up/sign-in
+  /// Fired when the user confirms the "Add area" chip's sign-up CTA.
+  /// Wired by the coordinator to the same single sign-up/sign-in
   /// entry point every anonymous CTA uses.
   public var onRequestSignUp: (() -> Void)?
 
@@ -68,7 +68,7 @@ public final class AnonymousApplicationListViewModel: ObservableObject, ErrorHan
     applications.isEmpty && error == nil && !isLoading
   }
 
-  /// True when the zone chip row should render (GH#888): unlike the authed
+  /// True when the zone chip row should render: unlike the authed
   /// `ApplicationListViewModel.showZonePicker`, a single zone IS shown —
   /// it's paired with a trailing "Add area" chip, so even one zone is a
   /// meaningful row (the chip and the CTA, not a choice between zones).
@@ -142,7 +142,7 @@ public final class AnonymousApplicationListViewModel: ObservableObject, ErrorHan
     onShowApplicationDetail?(application)
   }
 
-  /// The trailing "Add area" chip (GH#888) — the on-device cap is one zone,
+  /// The trailing "Add area" chip — the on-device cap is one zone,
   /// so adding another always routes to the sign-up CTA rather than opening
   /// a device-local editor.
   public func requestAddArea() {

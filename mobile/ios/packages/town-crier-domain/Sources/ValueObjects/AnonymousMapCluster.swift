@@ -1,5 +1,5 @@
 /// A server-computed aggregate of planning applications for one grid cell of
-/// the anonymous (pre-signup) map (GH#924 Phase 2) — the anonymous mirror of
+/// the anonymous (pre-signup) map — the anonymous mirror of
 /// ``MapCluster``, backed by the public `GET /v1/applications/clusters`
 /// endpoint rather than the authed per-zone clusters endpoint.
 ///

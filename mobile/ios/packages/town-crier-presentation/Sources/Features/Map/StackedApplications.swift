@@ -2,7 +2,7 @@ import TownCrierDomain
 
 /// The applications stacked at one unsplittable map cell, wrapped as an
 /// `Identifiable` value so it can drive a `.sheet(item:)` for the
-/// disambiguation list (GH#722). `id` is the source cluster's id, so
+/// disambiguation list. `id` is the source cluster's id, so
 /// re-tapping the same stacked cell re-presents the same list rather than a
 /// spurious second sheet.
 ///

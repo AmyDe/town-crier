@@ -1,5 +1,5 @@
 /// Port for anonymous (no-account, no-session) planning application detail
-/// reads (GH#879 Phase 2): the public by-slug share endpoint, with no
+/// reads: the public by-slug share endpoint, with no
 /// `AuthenticationService` requirement. A distinct protocol from
 /// ``PlanningApplicationRepository`` — rather than making that repository's
 /// `fetchApplication(bySlug:ref:)` do double duty — so the anonymous detail

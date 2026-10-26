@@ -1,7 +1,7 @@
 import Foundation
 import TownCrierDomain
 
-/// Infinite-scroll pagination for the watch-zone list (GH#682). Split out of
+/// Infinite-scroll pagination for the watch-zone list. Split out of
 /// `ApplicationListViewModel` to keep that file under SwiftLint's `file_length`
 /// ceiling. Every UI sort is server-driven now — distance/newest/oldest
 /// (slice 1), status (slice 2) and recent-activity (slice 3, #692) — so the
@@ -58,8 +58,8 @@ extension ApplicationListViewModel {
     await loadNextPage()
   }
 
-  /// Reacts to a sort change from the toolbar. Every sort is server-driven now
-  /// (GH#682 slice 3), so any change to a different sort reloads from page 1 with
+  /// Reacts to a sort change from the toolbar. Every sort is server-driven now,
+  /// so any change to a different sort reloads from page 1 with
   /// a fresh cursor and re-pages in the new order; the cursor and `loadedSort`
   /// reset happen inside the reload. The `!newIsServer && !oldWasServer` branch
   /// is dormant defensive plumbing for a hypothetical future client-only sort.
@@ -75,7 +75,7 @@ extension ApplicationListViewModel {
   }
 
   /// Reacts to a filter change from the chip group (status chip or Unread
-  /// toggle). The selected filter drives the server query now (GH#682 slice 4),
+  /// toggle). The selected filter drives the server query now,
   /// not a client-side post-filter, so a change reloads from page 1 with a fresh
   /// cursor and re-pages under the new filter — the same mechanism as a sort
   /// change. A no-op when the active filter has not actually changed.

@@ -3,12 +3,12 @@ import Foundation
 import TownCrierDomain
 
 /// ViewModel driving the per-zone planning-application list. Status filtering
-/// is free for all subscription tiers (tc-acf0); cross-zone Saved listing now
+/// is free for all subscription tiers; cross-zone Saved listing now
 /// lives in `SavedApplicationListViewModel`.
 ///
-/// Owns the unread-watermark plumbing (tc-1nsa.8) when a
+/// Owns the unread-watermark plumbing when a
 /// ``NotificationStateRepository`` is injected: derives the per-zone unread
-/// count client-side from each row's `latestUnreadEvent` (tc-e9ox), exposes
+/// count client-side from each row's `latestUnreadEvent`, exposes
 /// the five sort modes (all server-driven and paged since GH#682 slice 3),
 /// drives the Mark-All-Read toolbar action, and supplies an Unread filter
 /// that mirrors the web bead's single-select status-chip group. Ordering is
@@ -42,12 +42,11 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
   /// the loaded `applications` array so the chip auto-tracks zone switches
   /// and Mark-All-Read refetches without an extra round-trip. Replaces the
   /// previous `notification-state.totalUnreadCount` (global event count)
-  /// wiring so the chip aligns with what each zone actually shows
-  /// (GH#380 / tc-e9ox).
+  /// wiring so the chip aligns with what each zone actually shows.
   public var unreadCount: Int {
     applications.filter { $0.latestUnreadEvent != nil }.count
   }
-  /// The single server filter derived from the chip group (GH#682 slice 4). The
+  /// The single server filter derived from the chip group. The
   /// Unread toggle and the status chips are mutually exclusive (enforced by the
   /// `didSet`s above and the server's 400 on both), so they collapse to exactly
   /// one ``ApplicationFilter`` case. This is the value sent as `?status=`/
@@ -75,9 +74,9 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
   let offlineRepository: OfflineAwareRepository?
   private let watchZoneRepository: WatchZoneRepository?
   // Internal (not `private`) so the `+GlobalUnread` extension file can drive
-  // `refreshGlobalUnread()` (tc-c5m1).
+  // `refreshGlobalUnread()`.
   let notificationStateRepository: NotificationStateRepository?
-  // Internal (not `private`): `+TapToRead` also pushes decrements here (tc-c5m1, tc-4x8e0).
+  // Internal (not `private`): `+TapToRead` also pushes decrements here.
   let badgeSetter: BadgeSetting?
   var zone: WatchZone?
   /// Re-entrancy guard for ``loadApplications()``. A single user action can
@@ -85,13 +84,13 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
   /// scenePhase change, or the view re-appearing — and each unguarded call
   /// previously spawned a duplicate fetch. SRE telemetry caught the same
   /// request firing 3-6 times within seconds, all cancelled (HTTP 499). While
-  /// one load is in flight, further calls short-circuit (bd tc-eum5).
+  /// one load is in flight, further calls short-circuit.
   private var isLoadInFlight = false
   /// Continuation token for the next server page, or `nil` when no more pages
   /// exist (the last page omits `X-Next-Cursor`) or the active sort is
   /// client-side. Reset to `nil` on every fresh first-page load and on any sort
-  /// change so a stale cursor can never page a differently-ordered set
-  /// (GH#682 slice 1). Internal so the `+Pagination` extension can drive it.
+  /// change so a stale cursor can never page a differently-ordered set.
+  /// Internal so the `+Pagination` extension can drive it.
   var nextCursor: String?
   /// The sort the currently-loaded `applications` were fetched under. Lets a
   /// sort change decide whether a refetch is needed (server sorts and any
@@ -106,7 +105,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
   /// so an in-flight first-page load never blocks (or is blocked by) appends.
   var isPageLoadInFlight = false
   /// Server page size requested for the infinite-scroll path. Matches the API's
-  /// sorted-path default (GH#682); the server clamps anything larger.
+  /// sorted-path default; the server clamps anything larger.
   static let pageSize = 150
   /// Trigger the next-page fetch once the appearing row is within this many rows
   /// of the end of the loaded set, so the next page lands before the user hits
@@ -131,7 +130,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
   /// True when the zone picker should render — i.e. the user has more than one
   /// real watch zone to choose between. Single-zone users have no meaningful
   /// choice; the synthetic 'All' chip that previously kept the picker visible
-  /// at one zone was retired alongside the dedicated Saved tab (tc-acf0).
+  /// at one zone was retired alongside the dedicated Saved tab.
   public var showZonePicker: Bool {
     zones.count > 1
   }
@@ -146,13 +145,13 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
   /// Refreshed best-effort per ``loadApplications()`` call, zone-independent.
   /// Internal (not `private(set)`) so the `+GlobalUnread` extension file can
   /// mutate it; still read-only outside the presentation module (no `public`
-  /// modifier) (tc-c5m1, GH#793).
+  /// modifier).
   @Published var globalUnreadCount = 0
 
   /// True when the global unread count is non-zero. Gates the Mark-All-Read
   /// button; deliberately decoupled from `hasUnread` (the per-zone chip) so
   /// the button stays reachable even when the active zone has no unread rows
-  /// of its own (tc-c5m1, GH#793).
+  /// of its own.
   public var hasClearableUnread: Bool {
     globalUnreadCount > 0
   }
@@ -161,7 +160,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
   /// is only meaningful relative to a chosen zone, so it's filtered out
   /// when no zone is active (multi-zone "all"-style surfaces or the
   /// transient state before the first zone is loaded). Mirrors the web
-  /// sibling's picker filtering (tc-mso6 / tc-ge7j).
+  /// sibling's picker filtering.
   public var availableSortOptions: [ApplicationsSort] {
     let active = selectedZone ?? zone
     return ApplicationsSort.allCases.filter { mode in
@@ -170,7 +169,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
   }
 
   /// The rows to render. Ordering **and** filtering are owned entirely by the
-  /// server now: every sort is paged via `?sort=` (GH#682 slice 3) and the
+  /// server now: every sort is paged via `?sort=` and the
   /// status/unread filter is applied server-side via `?status=`/`?unread=`
   /// (slice 4). The loaded `applications` are therefore the authoritative,
   /// already-filtered, already-ordered set — rendered verbatim with no local
@@ -268,7 +267,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
 
   public func loadApplications() async {
     // Drop re-entrant calls while a load is already running so a single user
-    // action issues at most one fetch for the active zone (bd tc-eum5). The
+    // action issues at most one fetch for the active zone. The
     // flag is read and set synchronously before any `await`, so a second call
     // scheduled on the same actor sees it set and returns immediately.
     guard !isLoadInFlight else { return }
@@ -278,7 +277,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     isLoading = true
     error = nil
     // Zone-independent, so it runs even when the no-active-zone branch below
-    // returns early (tc-c5m1, GH#793).
+    // returns early.
     await refreshGlobalUnread()
     do {
       if let watchZoneRepository {
@@ -342,13 +341,13 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
   /// invalidated before the refetch — mark-all-read is a global mutation
   /// and a TTL-fresh per-zone cache hit would otherwise keep returning
   /// rows with the old `latestUnreadEvent`, leaving the `Unread (N)` chip
-  /// stuck on the prior count (tc-e3bu).
+  /// stuck on the prior count.
   public func markAllRead() async {
     guard let notificationStateRepository else { return }
     do {
       try await notificationStateRepository.markAllRead()
       // Clear immediately on success only — a false zero on failure would
-      // revert on the next foreground sync (tc-c5m1, GH#793).
+      // revert on the next foreground sync.
       globalUnreadCount = 0
       badgeSetter?.setBadge(0)
     } catch {

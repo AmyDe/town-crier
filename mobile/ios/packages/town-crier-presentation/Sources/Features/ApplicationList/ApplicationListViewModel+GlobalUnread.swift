@@ -1,7 +1,7 @@
 import Foundation
 
 /// Best-effort refresh of the global unread count that gates the
-/// Mark-All-Read toolbar button (tc-c5m1, GH#793). Split out of
+/// Mark-All-Read toolbar button. Split out of
 /// `ApplicationListViewModel` to keep that file under SwiftLint's
 /// `file_length` ceiling.
 extension ApplicationListViewModel {

@@ -2,7 +2,7 @@ import Foundation
 import TownCrierDomain
 
 /// Fetches a single planning application by its public share identity with no
-/// account or session (GH#879 Phase 2), backed by the public
+/// account or session, backed by the public
 /// `GET /v1/applications/by-slug/{authoritySlug}/{ref...}` endpoint via
 /// ``AnonymousURLSessionAPIClient``. Reuses ``PlanningApplicationDTO`` and its
 /// `toDomain()` mapping — the wire shape is identical to the authed by-slug

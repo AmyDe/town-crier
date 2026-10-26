@@ -1,8 +1,8 @@
 import Foundation
 import TownCrierDomain
 
-/// Fetches planning applications near a point with no account or session
-/// (GH#868 Phase 3), backed by the public `GET /v1/applications/near-point`
+/// Fetches planning applications near a point with no account or session,
+/// backed by the public `GET /v1/applications/near-point`
 /// endpoint via ``AnonymousURLSessionAPIClient``.
 ///
 /// `NearbyResult` (the endpoint's wire shape) is field-for-field identical to
