@@ -310,7 +310,8 @@ func (c *Client) getOperationStatus(ctx context.Context, opLocation string) (ope
 func throttleWait(retryAfter string, fallback time.Duration) time.Duration {
 	wait := fallback
 	if secs, err := strconv.Atoi(retryAfter); err == nil && secs >= 0 {
-		wait = time.Duration(secs) * time.Second
+		// Clamp before multiplying so a huge value cannot overflow Duration.
+		wait = time.Duration(min(secs, int(maxPollRetryAfter/time.Second))) * time.Second
 	}
 	return min(wait, maxPollRetryAfter)
 }
