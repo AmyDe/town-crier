@@ -1,6 +1,4 @@
-/// Port for managing the user's saved (bookmarked) planning applications.
-///
-/// Available to all tiers -- no entitlement gating.
+/// Manages the user's saved applications. Not tier-gated.
 public protocol SavedApplicationRepository: Sendable {
   func save(application: PlanningApplication) async throws
   func remove(applicationUid: String) async throws

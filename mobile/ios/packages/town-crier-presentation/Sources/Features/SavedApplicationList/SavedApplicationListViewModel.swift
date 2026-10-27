@@ -2,10 +2,8 @@ import Combine
 import Foundation
 import TownCrierDomain
 
-/// ViewModel for the dedicated Saved tab: a flat, cross-zone feed of the
-/// user's bookmarked planning applications, sorted by `savedAt` descending.
-/// Saves without a denormalised `application` payload are dropped. The status
-/// filter is free for every subscription tier.
+/// Saved applications sorted by `savedAt` descending. Saves without a
+/// denormalised `application` payload are dropped.
 @MainActor
 public final class SavedApplicationListViewModel: ObservableObject, ErrorHandlingViewModel {
   @Published private(set) var applications: [PlanningApplication] = []
@@ -55,7 +53,6 @@ public final class SavedApplicationListViewModel: ObservableObject, ErrorHandlin
     onApplicationSelected?(id)
   }
 
-  /// Selects an application using the row's full payload.
   public func selectApplication(_ application: PlanningApplication) {
     onApplicationSelectedWithPayload?(application)
   }

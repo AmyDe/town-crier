@@ -1,15 +1,9 @@
 import Foundation
 import TownCrierDomain
 
-/// Manages saved (bookmarked) planning applications via the Town Crier API.
-///
-/// Wires:
-/// - `PUT /v1/me/saved-applications/{uid}` (save, no body, 204)
-/// - `DELETE /v1/me/saved-applications/{uid}` (remove, 204)
-/// - `GET /v1/me/saved-applications` (load all)
-///
-/// The `{uid}` path parameter uses a greedy match on the API because PlanIt UIDs
-/// contain slashes. The UID is passed as-is in the path.
+/// Saved applications via `PUT`/`DELETE /v1/me/saved-applications/{uid}` and
+/// `GET /v1/me/saved-applications`. PlanIt UIDs contain slashes and are passed
+/// as-is in the path; the API matches `{uid}` greedily.
 public final class APISavedApplicationRepository: SavedApplicationRepository, Sendable {
   private let apiClient: URLSessionAPIClient
 
@@ -57,8 +51,7 @@ public final class APISavedApplicationRepository: SavedApplicationRepository, Se
   }
 }
 
-/// Body of `PUT /v1/me/saved-applications/{uid}`. Field names mirror the API's
-/// save request exactly so the default `JSONEncoder` output matches.
+/// Body of `PUT /v1/me/saved-applications/{uid}`; field names are the wire names.
 struct SaveApplicationRequestDTO: Encodable, Sendable {
   let name: String
   let uid: String

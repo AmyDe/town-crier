@@ -1,9 +1,7 @@
 import Foundation
 import TownCrierDomain
 
-/// Test double for `SavedApplicationRepository` that suspends `loadAll()` until
-/// `resume(with:)` is called. Used to assert in-flight loading state on
-/// `ApplicationListViewModel` and `MapViewModel`.
+/// Suspends `loadAll()` until `resume(with:)` is called.
 final class ControllableSavedApplicationRepository: SavedApplicationRepository, @unchecked Sendable {
   private var continuation: CheckedContinuation<[SavedApplication], Error>?
   private var pendingCallSignal: CheckedContinuation<Void, Never>?
@@ -41,7 +39,6 @@ final class ControllableSavedApplicationRepository: SavedApplicationRepository, 
     }
   }
 
-  /// Completes the in-flight `loadAll()` call with the given result.
   func resume(with result: Result<[SavedApplication], Error>) {
     lock.lock()
     let cont = continuation

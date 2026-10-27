@@ -4,9 +4,6 @@ import TownCrierDomain
 
 @testable import TownCrierPresentation
 
-/// Tests for the dedicated Saved tab view model — a flat, cross-zone list of
-/// the user's bookmarked applications, sorted most-recently-saved first, with
-/// a status filter that is free for all subscription tiers.
 @Suite("SavedApplicationListViewModel")
 @MainActor
 struct SavedApplicationListViewModelTests {
@@ -46,8 +43,7 @@ struct SavedApplicationListViewModelTests {
   }
 
   @Test func loadAll_dropsSavedEntriesWithoutDenormalisedPayload() async throws {
-    // Legacy saves predate the denormalised payload — they have a uid but no
-    // PlanningApplication. They should not appear in the cross-zone list.
+    // Legacy saves have a uid but no application payload.
     let withPayload = SavedApplication.fixture(uid: "APP-A")
     let withoutPayload = SavedApplication(
       applicationUid: "APP-LEGACY",
