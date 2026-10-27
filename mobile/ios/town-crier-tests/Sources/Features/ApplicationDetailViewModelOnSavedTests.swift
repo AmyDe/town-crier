@@ -4,8 +4,6 @@ import TownCrierDomain
 
 @testable import TownCrierPresentation
 
-/// Verifies `onSaved` fires only on a successful false→true save, never on
-/// unsave or failure.
 @Suite("ApplicationDetailViewModel — onSaved")
 @MainActor
 struct ApplicationDetailViewModelOnSavedTests {

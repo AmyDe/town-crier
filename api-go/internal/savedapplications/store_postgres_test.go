@@ -12,9 +12,6 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
 )
 
-// fakeSavedQuerier is a hand-written fake of the querier interface used by
-// unit tests of PostgresStore (savedapplications). It stores canned responses for
-// each method; tests set whichever fields they exercise.
 type fakeSavedQuerier struct {
 	execErr   error
 	queryErr  error
@@ -83,7 +80,6 @@ func (r *intSavedRow) Scan(dest ...any) error {
 	return nil
 }
 
-// emptySavedRows is a pgx.Rows with no data and no error.
 type emptySavedRows struct{}
 
 func (r *emptySavedRows) Close()                                       {}
@@ -96,12 +92,10 @@ func (r *emptySavedRows) Values() ([]any, error)                       { return 
 func (r *emptySavedRows) RawValues() [][]byte                          { return nil }
 func (r *emptySavedRows) Conn() *pgx.Conn                              { return nil }
 
-// errSavedRow is a pgx.Row whose Scan always returns the stored error.
 type errSavedRow struct{ err error }
 
 func (r *errSavedRow) Scan(_ ...any) error { return r.err }
 
-// newTestApp builds a minimal PlanningApplication for fixture use.
 func newTestApp() applications.PlanningApplication {
 	return applications.PlanningApplication{
 		Name:          "24/00001/FUL",
@@ -114,7 +108,6 @@ func newTestApp() applications.PlanningApplication {
 	}
 }
 
-// TestSavedPostgresStore_Save_PropagatesExecError surfaces an Exec failure.
 func TestSavedPostgresStore_Save_PropagatesExecError(t *testing.T) {
 	t.Parallel()
 
@@ -129,8 +122,6 @@ func TestSavedPostgresStore_Save_PropagatesExecError(t *testing.T) {
 	}
 }
 
-// TestSavedPostgresStore_Exists_FalseOnNoRows returns false when QueryRow.Scan
-// returns pgx.ErrNoRows (the row does not exist).
 func TestSavedPostgresStore_Exists_FalseOnNoRows(t *testing.T) {
 	t.Parallel()
 
@@ -146,7 +137,6 @@ func TestSavedPostgresStore_Exists_FalseOnNoRows(t *testing.T) {
 	}
 }
 
-// TestSavedPostgresStore_Exists_DBError surfaces a non-ErrNoRows scan error.
 func TestSavedPostgresStore_Exists_DBError(t *testing.T) {
 	t.Parallel()
 
@@ -159,7 +149,6 @@ func TestSavedPostgresStore_Exists_DBError(t *testing.T) {
 	}
 }
 
-// TestSavedPostgresStore_Delete_PropagatesExecError surfaces an Exec failure.
 func TestSavedPostgresStore_Delete_PropagatesExecError(t *testing.T) {
 	t.Parallel()
 
@@ -172,8 +161,6 @@ func TestSavedPostgresStore_Delete_PropagatesExecError(t *testing.T) {
 	}
 }
 
-// TestSavedPostgresStore_GetByUserID_EmptyReturnsNil returns nil (not an empty
-// slice) when the user has no saved applications.
 func TestSavedPostgresStore_GetByUserID_EmptyReturnsNil(t *testing.T) {
 	t.Parallel()
 
@@ -189,7 +176,6 @@ func TestSavedPostgresStore_GetByUserID_EmptyReturnsNil(t *testing.T) {
 	}
 }
 
-// TestSavedPostgresStore_GetByUserID_QueryError surfaces a Query failure.
 func TestSavedPostgresStore_GetByUserID_QueryError(t *testing.T) {
 	t.Parallel()
 
@@ -202,8 +188,6 @@ func TestSavedPostgresStore_GetByUserID_QueryError(t *testing.T) {
 	}
 }
 
-// TestSavedPostgresStore_UserIDsForApplication_EmptyReturnsNil returns nil when
-// no users have saved the application.
 func TestSavedPostgresStore_UserIDsForApplication_EmptyReturnsNil(t *testing.T) {
 	t.Parallel()
 
@@ -219,7 +203,6 @@ func TestSavedPostgresStore_UserIDsForApplication_EmptyReturnsNil(t *testing.T) 
 	}
 }
 
-// TestSavedPostgresStore_UserIDsForApplication_QueryError surfaces a Query failure.
 func TestSavedPostgresStore_UserIDsForApplication_QueryError(t *testing.T) {
 	t.Parallel()
 
@@ -232,7 +215,6 @@ func TestSavedPostgresStore_UserIDsForApplication_QueryError(t *testing.T) {
 	}
 }
 
-// TestSavedPostgresStore_DeleteAllByUserID_PropagatesExecError surfaces an Exec failure.
 func TestSavedPostgresStore_DeleteAllByUserID_PropagatesExecError(t *testing.T) {
 	t.Parallel()
 
@@ -245,10 +227,6 @@ func TestSavedPostgresStore_DeleteAllByUserID_PropagatesExecError(t *testing.T) 
 	}
 }
 
-// --- CountsByUsers ---
-
-// TestSavedPostgresStore_CountsByUsers_Empty short-circuits an empty user set
-// with no query and an empty, non-nil map.
 func TestSavedPostgresStore_CountsByUsers_Empty(t *testing.T) {
 	t.Parallel()
 	fq := &fakeSavedQuerier{}
@@ -266,7 +244,6 @@ func TestSavedPostgresStore_CountsByUsers_Empty(t *testing.T) {
 	}
 }
 
-// TestSavedPostgresStore_CountsByUsers_PropagatesQueryError wraps a Query error.
 func TestSavedPostgresStore_CountsByUsers_PropagatesQueryError(t *testing.T) {
 	t.Parallel()
 	boom := errors.New("counts boom")
@@ -278,8 +255,6 @@ func TestSavedPostgresStore_CountsByUsers_PropagatesQueryError(t *testing.T) {
 	}
 }
 
-// TestSavedPostgresStore_CountsByUsers_MapsPerUser maps one count per user; a
-// user absent from the grouped result is omitted (defaults to 0 at the call site).
 func TestSavedPostgresStore_CountsByUsers_MapsPerUser(t *testing.T) {
 	t.Parallel()
 	fq := &fakeSavedQuerier{queryRows: &countSavedRows{rows: [][2]any{
@@ -303,9 +278,6 @@ func TestSavedPostgresStore_CountsByUsers_MapsPerUser(t *testing.T) {
 	}
 }
 
-// --- Count ---
-
-// TestSavedPostgresStore_Count_ReturnsTotal returns the scalar count(*).
 func TestSavedPostgresStore_Count_ReturnsTotal(t *testing.T) {
 	t.Parallel()
 	fq := &fakeSavedQuerier{countRow: &intSavedRow{n: 42}}
@@ -320,7 +292,6 @@ func TestSavedPostgresStore_Count_ReturnsTotal(t *testing.T) {
 	}
 }
 
-// TestSavedPostgresStore_Count_PropagatesError wraps a scan error.
 func TestSavedPostgresStore_Count_PropagatesError(t *testing.T) {
 	t.Parallel()
 	boom := errors.New("count boom")

@@ -1,7 +1,7 @@
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
 import { useSavedApplications } from '../useSavedApplications';
-import { SpySavedApplicationRepository } from '../../Applications/__tests__/spies/spy-saved-application-repository';
+import { SpySavedApplicationRepository } from '../../ApplicationDetail/__tests__/spies/spy-saved-application-repository';
 import {
   savedUndecidedApplication,
   savedPermittedApplication,

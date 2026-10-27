@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -21,8 +20,7 @@ type querier interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
-// Store is the full saved-application method set *PostgresStore satisfies and the
-// exported consumer-side interface the handlers and wiring depend on.
+// Store is the saved-application method set implemented by *PostgresStore.
 type Store interface {
 	Save(ctx context.Context, sa SavedApplication) error
 	Exists(ctx context.Context, userID, applicationUID string) (bool, error)
@@ -58,9 +56,8 @@ ON CONFLICT (user_id, application_uid) DO UPDATE SET
 func (s *PostgresStore) Save(ctx context.Context, sa SavedApplication) error {
 	var snapshotJSON []byte
 	if sa.Application != nil {
-		doc := applications.NewSnapshotDocument(*sa.Application)
 		var err error
-		snapshotJSON, err = json.Marshal(doc)
+		snapshotJSON, err = json.Marshal(applications.NewSnapshotDocument(*sa.Application))
 		if err != nil {
 			return fmt.Errorf("encode snapshot for %q: %w", sa.ApplicationUID, err)
 		}
@@ -140,25 +137,16 @@ func (s *PostgresStore) GetByUserID(ctx context.Context, userID string) ([]Saved
 
 func scanSavedApp(row pgx.Row) (SavedApplication, error) {
 	var (
-		userID         string
-		applicationUID string
-		authorityID    int
-		savedAt        time.Time
-		snapshotJSON   []byte
+		sa           SavedApplication
+		snapshotJSON []byte
 	)
-	if err := row.Scan(&userID, &applicationUID, &authorityID, &savedAt, &snapshotJSON); err != nil {
+	if err := row.Scan(&sa.UserID, &sa.ApplicationUID, &sa.AuthorityID, &sa.SavedAt, &snapshotJSON); err != nil {
 		return SavedApplication{}, err
-	}
-	sa := SavedApplication{
-		UserID:         userID,
-		ApplicationUID: applicationUID,
-		AuthorityID:    authorityID,
-		SavedAt:        savedAt,
 	}
 	if len(snapshotJSON) > 0 {
 		var doc applications.SnapshotDocument
 		if err := json.Unmarshal(snapshotJSON, &doc); err != nil {
-			return SavedApplication{}, fmt.Errorf("decode snapshot for %q: %w", applicationUID, err)
+			return SavedApplication{}, fmt.Errorf("decode snapshot for %q: %w", sa.ApplicationUID, err)
 		}
 		app := doc.ToDomain()
 		sa.Application = &app
@@ -172,8 +160,7 @@ const pgUserIDsForApplicationQuery = "SELECT DISTINCT user_id FROM saved_applica
 	"WHERE application_uid = $1 AND authority_id = $2"
 
 // UserIDsForApplication returns every distinct user id that has saved the given
-// (applicationUID, authorityID). It backs the poll-path decision-event fan-out to
-// bookmark holders.
+// (applicationUID, authorityID).
 func (s *PostgresStore) UserIDsForApplication(ctx context.Context, applicationUID string, authorityID int) ([]string, error) {
 	rows, err := s.db.Query(ctx, pgUserIDsForApplicationQuery, applicationUID, authorityID)
 	if err != nil {
@@ -231,8 +218,7 @@ func (s *PostgresStore) CountsByUsers(ctx context.Context, userIDs []string) (ma
 
 const pgSavedCountQuery = "SELECT count(*) FROM saved_applications"
 
-// Count returns the global number of saved applications across all users — the
-// admin stats "reach" total.
+// Count returns the global number of saved applications across all users.
 func (s *PostgresStore) Count(ctx context.Context) (int, error) {
 	var total int
 	if err := s.db.QueryRow(ctx, pgSavedCountQuery).Scan(&total); err != nil {
@@ -243,8 +229,7 @@ func (s *PostgresStore) Count(ctx context.Context) (int, error) {
 
 const pgDeleteAllSavedAppsQuery = "DELETE FROM saved_applications WHERE user_id = $1"
 
-// DeleteAllByUserID removes every saved application for the user. Used by the
-// GDPR erasure cascade (dormant cleanup and DELETE /v1/me).
+// DeleteAllByUserID removes every saved application for the user.
 func (s *PostgresStore) DeleteAllByUserID(ctx context.Context, userID string) error {
 	if _, err := s.db.Exec(ctx, pgDeleteAllSavedAppsQuery, userID); err != nil {
 		return fmt.Errorf("delete all saved applications for %q: %w", userID, err)

@@ -8,11 +8,14 @@ export function ConnectedSavedApplicationsPage() {
   const client = useApiClient();
 
   const savedRepository: SavedApplicationRepository = useMemo(
-    () => ({
-      listSaved: () => savedApplicationsApi(client).list(),
-      save: (application) => savedApplicationsApi(client).save(application),
-      remove: (uid) => savedApplicationsApi(client).remove(uid),
-    }),
+    () => {
+      const api = savedApplicationsApi(client);
+      return {
+        listSaved: () => api.list(),
+        save: (application) => api.save(application),
+        remove: (uid) => api.remove(uid),
+      };
+    },
     [client],
   );
 

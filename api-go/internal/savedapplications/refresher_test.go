@@ -120,6 +120,4 @@ func TestSnapshotRefresher_PropagatesStoreErrors(t *testing.T) {
 	}
 }
 
-// Compile-time assertion that *PostgresStore satisfies the refresher's consumer
-// interface, so the production wiring in wiring.go stays valid.
 var _ snapshotStore = (*PostgresStore)(nil)

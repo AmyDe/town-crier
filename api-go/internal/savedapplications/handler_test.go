@@ -77,14 +77,12 @@ func TestHandler_Save_LooksUpMasterAndWritesBookmark(t *testing.T) {
 	t.Parallel()
 	store := &fakeSavedStore{exists: false}
 	app := testApp(t)
-	// The master record is present in the applications store.
 	apps := &fakeApps{byAuthorityAndName: map[string]applications.PlanningApplication{"471/24/0123/FUL": app}}
 	rec := doReq(t, testMux(t, store, apps), http.MethodPut, "/v1/me/saved-applications/whatever-path-uid", validSaveBody)
 
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("status: got %d, want 204 (body %s)", rec.Code, rec.Body)
 	}
-	// Per-user bookmark written with canonical uid from the master record.
 	if len(store.saved) != 1 || store.saved[0].ApplicationUID != "471/24/0123/FUL" {
 		t.Errorf("saved row not keyed on canonical uid: %+v", store.saved)
 	}
@@ -212,8 +210,6 @@ func TestHandler_List_BackfillsNilSnapshotFromMaster(t *testing.T) {
 
 func TestHandler_List_SkipsRowWhenMasterGone(t *testing.T) {
 	t.Parallel()
-	// Nil-snapshot row whose master planning application no longer exists is
-	// excluded rather than failing the whole list.
 	legacy := SavedApplication{UserID: user, ApplicationUID: "gone", AuthorityID: 471, Application: nil}
 	store := &fakeSavedStore{rows: []SavedApplication{legacy}}
 	rec := doReq(t, testMux(t, store, &fakeApps{}), http.MethodGet, "/v1/me/saved-applications", "")
@@ -240,7 +236,6 @@ func TestHandler_List_ReKeysLegacyUidToCanonical(t *testing.T) {
 	if len(got) != 1 || got[0]["applicationUid"] != "471/24/0123/FUL" {
 		t.Fatalf("legacy uid not re-keyed to canonical: %+v", got)
 	}
-	// Canonical doc written, legacy doc deleted.
 	if len(store.saved) != 1 || store.saved[0].ApplicationUID != "471/24/0123/FUL" {
 		t.Errorf("canonical doc not written: %+v", store.saved)
 	}
@@ -267,7 +262,6 @@ func TestHandler_List_DedupsLegacyAndCanonicalPair(t *testing.T) {
 	if len(got) != 1 || got[0]["applicationUid"] != "471/24/0123/FUL" {
 		t.Fatalf("legacy+canonical pair must collapse to one row: %+v", got)
 	}
-	// Canonical already existed, so re-key only drops the legacy duplicate.
 	if len(store.deletedUID) != 1 || store.deletedUID[0] != "ABC-1" {
 		t.Errorf("legacy duplicate not dropped: %+v", store.deletedUID)
 	}
@@ -276,14 +270,12 @@ func TestHandler_List_DedupsLegacyAndCanonicalPair(t *testing.T) {
 func TestSave_DoesNotWriteMasterRecordForUnknownApplication(t *testing.T) {
 	t.Parallel()
 	store := &fakeSavedStore{}
-	// The apps store has no record matching the body's (areaId, name).
 	apps := &fakeApps{}
 	rec := doReq(t, testMux(t, store, apps), http.MethodPut, "/v1/me/saved-applications/unknown", validSaveBody)
 
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status: got %d, want 404", rec.Code)
 	}
-	// No per-user bookmark written.
 	if len(store.saved) != 0 {
 		t.Errorf("must not write bookmark for unknown application: %+v", store.saved)
 	}
@@ -321,7 +313,6 @@ func TestSave_RejectsForgedApplication(t *testing.T) {
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status: got %d, want 404 — forged application must be rejected", rec.Code)
 	}
-	// No per-user bookmark written either.
 	if len(store.saved) != 0 {
 		t.Errorf("must not write bookmark for forged application: %+v", store.saved)
 	}

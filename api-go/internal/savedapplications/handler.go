@@ -31,7 +31,6 @@ type savedStore interface {
 	GetByUserID(ctx context.Context, userID string) ([]SavedApplication, error)
 }
 
-// appStore holds the planning-application lookups the saved handler needs.
 type appStore interface {
 	GetByAuthorityAndName(ctx context.Context, authorityCode, name string) (applications.PlanningApplication, bool, error)
 	GetByUID(ctx context.Context, uid, authorityCode string) (applications.PlanningApplication, bool, error)
@@ -77,13 +76,6 @@ type saveRequest struct {
 	LastDifferent platform.DotNetTime `json:"lastDifferent"`
 }
 
-// save implements PUT /v1/me/saved-applications/{**uid}. The body must carry a
-// non-blank uid and name. The handler looks up the canonical master record in
-// the Applications container by (areaId, name); if absent it returns 404 rather
-// than creating a record from untrusted client data — the poller is the sole
-// writer of the shared Applications container. When found, the per-user bookmark
-// is written against the canonical master record (idempotent: skipped when the
-// bookmark already exists).
 func (h *handler) save(w http.ResponseWriter, r *http.Request) {
 	userID := auth.Subject(r.Context())
 
@@ -124,8 +116,6 @@ func (h *handler) save(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// delete implements DELETE /v1/me/saved-applications/{**uid}. The delete is
-// idempotent — a missing record still returns 204.
 func (h *handler) delete(w http.ResponseWriter, r *http.Request) {
 	userID := auth.Subject(r.Context())
 	applicationUID := r.PathValue("applicationUid")
@@ -137,17 +127,14 @@ func (h *handler) delete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// savedEntry is the per-row wire shape: { applicationUid, savedAt, application }.
 type savedEntry struct {
 	ApplicationUID string              `json:"applicationUid"`
 	SavedAt        platform.DotNetTime `json:"savedAt"`
 	Application    applications.Result `json:"application"`
 }
 
-// list implements GET /v1/me/saved-applications, returning a JSON array of the
-// user's saved applications rendered from their embedded snapshots. Legacy rows
-// are lazily migrated on read: snapshot backfill, re-key to the canonical uid,
-// and dedup of a legacy+canonical pair.
+// list lazily migrates legacy rows on read: snapshot backfill, re-key to the
+// canonical uid, and dedup of a legacy+canonical pair.
 func (h *handler) list(w http.ResponseWriter, r *http.Request) {
 	userID := auth.Subject(r.Context())
 
@@ -166,7 +153,6 @@ func (h *handler) list(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !ok {
-			// Master record gone — exclude rather than failing the whole list.
 			continue
 		}
 
@@ -193,15 +179,14 @@ func (h *handler) list(w http.ResponseWriter, r *http.Request) {
 }
 
 // isLegacyKeyed reports whether a row is keyed on a legacy bare-ref uid rather
-// than the canonical {areaId}/{name} uid. Only decidable once the snapshot is
-// embedded — the canonical uid is derived from the snapshot.
+// than the canonical {areaId}/{name} uid.
 func isLegacyKeyed(record SavedApplication) bool {
 	return record.Application != nil && record.ApplicationUID != record.Application.CanonicalUID()
 }
 
 // hydrate backfills the embedded snapshot for rows persisted without one and
 // rewrites them in place. The bool is false when the master planning
-// application is gone. The row's existing ApplicationUID is preserved.
+// application is gone.
 func (h *handler) hydrate(ctx context.Context, record SavedApplication) (SavedApplication, bool, error) {
 	if record.Application != nil {
 		return record, true, nil
@@ -216,11 +201,11 @@ func (h *handler) hydrate(ctx context.Context, record SavedApplication) (SavedAp
 		return SavedApplication{}, false, nil
 	}
 
-	refreshed := record.withEmbeddedSnapshot(fetched)
-	if err := h.store.Save(ctx, refreshed); err != nil {
+	record.Application = &fetched
+	if err := h.store.Save(ctx, record); err != nil {
 		return SavedApplication{}, false, err
 	}
-	return refreshed, true, nil
+	return record, true, nil
 }
 
 // reKeyToCanonical re-keys a legacy-format saved row to the canonical
@@ -247,7 +232,6 @@ func (h *handler) reKeyToCanonical(ctx context.Context, legacy SavedApplication)
 	return canonical, nil
 }
 
-// apiErrorResponse is the error envelope: { error, message:null }.
 type apiErrorResponse struct {
 	Error   string  `json:"error"`
 	Message *string `json:"message"`
