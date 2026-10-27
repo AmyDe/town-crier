@@ -12,9 +12,8 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/platform/postgres/pgtest"
 )
 
-// newSavedPGStore returns a Postgres-backed saved-application store over a
-// truncated database. Integration tests are NOT parallel: they share the
-// docker-compose DB and the pgtest advisory lock serialises them.
+// Integration tests are NOT parallel: they share the docker-compose DB and the
+// pgtest advisory lock serialises them.
 func newSavedPGStore(t *testing.T) *PostgresStore {
 	t.Helper()
 	pool := pgtest.New(t)
@@ -22,7 +21,6 @@ func newSavedPGStore(t *testing.T) *PostgresStore {
 	return NewPostgresStore(pool)
 }
 
-// pgApp builds a minimal PlanningApplication fixture.
 func pgApp(name string, areaID int) applications.PlanningApplication {
 	return applications.PlanningApplication{
 		Name:          name,
@@ -35,7 +33,6 @@ func pgApp(name string, areaID int) applications.PlanningApplication {
 	}
 }
 
-// pgSavedApp is a convenience constructor for test fixtures.
 func pgSavedApp(t *testing.T, userID string, app applications.PlanningApplication, savedAt time.Time) SavedApplication {
 	t.Helper()
 	return NewSavedApplication(userID, app, savedAt)
@@ -70,8 +67,6 @@ func assertSavedAppEqual(t *testing.T, got, want SavedApplication) {
 	}
 }
 
-// TestSavedPostgresStore_SaveGetByUserID round-trips a saved application through
-// Save and GetByUserID, including the embedded snapshot.
 func TestSavedPostgresStore_SaveGetByUserID(t *testing.T) {
 	ctx := context.Background()
 	store := newSavedPGStore(t)
@@ -94,7 +89,6 @@ func TestSavedPostgresStore_SaveGetByUserID(t *testing.T) {
 	assertSavedAppEqual(t, got[0], want)
 }
 
-// TestSavedPostgresStore_Exists reports true after a save and false before.
 func TestSavedPostgresStore_Exists(t *testing.T) {
 	ctx := context.Background()
 	store := newSavedPGStore(t)
@@ -123,7 +117,6 @@ func TestSavedPostgresStore_Exists(t *testing.T) {
 	}
 }
 
-// TestSavedPostgresStore_Delete removes a record; a second delete is idempotent.
 func TestSavedPostgresStore_Delete(t *testing.T) {
 	ctx := context.Background()
 	store := newSavedPGStore(t)
@@ -172,8 +165,6 @@ func TestSavedPostgresStore_Delete_CollapsedSlashUID(t *testing.T) {
 	}
 }
 
-// TestSavedPostgresStore_GetByUserID_OrderedAndScoped returns a user's records in
-// saved_at order and excludes other users' records.
 func TestSavedPostgresStore_GetByUserID_OrderedAndScoped(t *testing.T) {
 	ctx := context.Background()
 	store := newSavedPGStore(t)
@@ -206,8 +197,6 @@ func TestSavedPostgresStore_GetByUserID_OrderedAndScoped(t *testing.T) {
 	}
 }
 
-// TestSavedPostgresStore_Save_Upsert verifies that re-saving the same
-// (user_id, application_uid) updates the existing row (snapshot + authority_id).
 func TestSavedPostgresStore_Save_Upsert(t *testing.T) {
 	ctx := context.Background()
 	store := newSavedPGStore(t)
@@ -236,8 +225,6 @@ func TestSavedPostgresStore_Save_Upsert(t *testing.T) {
 	assertSavedAppEqual(t, got[0], updated)
 }
 
-// TestSavedPostgresStore_UserIDsForApplication returns the distinct user ids that
-// have saved the given (applicationUID, authorityID), scoped by authority.
 func TestSavedPostgresStore_UserIDsForApplication(t *testing.T) {
 	ctx := context.Background()
 	store := newSavedPGStore(t)
@@ -274,8 +261,6 @@ func TestSavedPostgresStore_UserIDsForApplication(t *testing.T) {
 	}
 }
 
-// TestSavedPostgresStore_UserIDsForApplication_EmptyForMismatch returns an empty
-// result when the authority does not match any saved row.
 func TestSavedPostgresStore_UserIDsForApplication_EmptyForMismatch(t *testing.T) {
 	ctx := context.Background()
 	store := newSavedPGStore(t)
@@ -295,8 +280,6 @@ func TestSavedPostgresStore_UserIDsForApplication_EmptyForMismatch(t *testing.T)
 	}
 }
 
-// TestSavedPostgresStore_DeleteAllByUserID clears one user's records and leaves
-// other users' records intact.
 func TestSavedPostgresStore_DeleteAllByUserID(t *testing.T) {
 	ctx := context.Background()
 	store := newSavedPGStore(t)
@@ -331,9 +314,6 @@ func TestSavedPostgresStore_DeleteAllByUserID(t *testing.T) {
 	}
 }
 
-// TestSavedPostgresStore_CountsByUsers_Integration tallies each user's saved
-// applications in one grouped query. A user with no rows is absent from the map
-// (defaults to 0 at the call site); a user outside the requested set is excluded.
 func TestSavedPostgresStore_CountsByUsers_Integration(t *testing.T) {
 	ctx := context.Background()
 	store := newSavedPGStore(t)
@@ -369,8 +349,6 @@ func TestSavedPostgresStore_CountsByUsers_Integration(t *testing.T) {
 	}
 }
 
-// TestSavedPostgresStore_Count_Integration returns the global count(*) across all
-// users' saved applications.
 func TestSavedPostgresStore_Count_Integration(t *testing.T) {
 	ctx := context.Background()
 	store := newSavedPGStore(t)
@@ -399,8 +377,6 @@ func TestSavedPostgresStore_Count_Integration(t *testing.T) {
 	}
 }
 
-// TestSavedPostgresStore_NilSnapshot stores a record with no snapshot (nil
-// Application) and confirms the round-trip returns nil Application.
 func TestSavedPostgresStore_NilSnapshot(t *testing.T) {
 	ctx := context.Background()
 	store := newSavedPGStore(t)
