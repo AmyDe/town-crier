@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { describe, it, expect } from 'vitest';
 import { SavedApplicationsPage } from '../SavedApplicationsPage';
-import { SpySavedApplicationRepository } from '../../Applications/__tests__/spies/spy-saved-application-repository';
+import { SpySavedApplicationRepository } from '../../ApplicationDetail/__tests__/spies/spy-saved-application-repository';
 import {
   savedUndecidedApplication,
   savedPermittedApplication,
