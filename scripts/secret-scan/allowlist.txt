@@ -110,3 +110,8 @@ a04f7aad6275b9a3  # mobile/ios/town-crier-tests/Sources/Fixtures/AuthSession+Fix
 fdf0d44ffacfe6cf  # infra/environment.go:203 secret-assignment: Pulumi config key name, not a value
 369b0ef10938a0ae  # infra/environment.go:405 secret-assignment: Container App secret reference name
 c126dc47ce22eb61  # infra/environment.go:755 secret-assignment: Container App secret reference name
+0876279b6b582c32  # .github/actions/setup-go-infra/action.yml:19 high-entropy-token: Pulumi CLI release SHA-256 checksum
+94ea229b75a8c7b8  # api-go/internal/apns/transport_error_test.go:23 secret-assignment: fake token used only in a log-redaction test
+d245395ea7be4c95  # api-go/internal/devicetokens/handler_test.go:164 secret-assignment: fake device token in test fixture
+037193be1e396ab2  # api-go/internal/middleware/legacypath.go:11 secret-assignment: URL path segment constant
+53ec839a8d7553a1  # mobile/android/data/src/test/kotlin/uk/towncrierapp/data/auth/SessionCacheTest.kt:120 secret-assignment: fake access token in test
