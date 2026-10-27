@@ -26,7 +26,6 @@ import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** Port of the iOS `ApplicationListViewModel*Tests` suites (GH#775). */
 @ExtendWith(MainDispatcherExtension::class)
 class ApplicationListViewModelTest {
     private fun makeSut(

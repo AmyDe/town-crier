@@ -25,7 +25,7 @@ import java.time.LocalDate
 
 /**
  * `PlanningApplicationRepository` over the Town Crier API. Always sends
- * `sort` (epic #770: Android never exercises the legacy param-less path) and
+ * `sort` and
  * `limit=`[PAGE_SIZE]; `status`/`unread` are mutually exclusive by
  * [ApplicationFilter]'s shape, not a runtime check. Continuation is the
  * opaque `X-Next-Cursor` response header via [ApiClient.requestPaged].
@@ -99,8 +99,6 @@ public class ApiPlanningApplicationRepository(
         public const val PAGE_SIZE: Int = 150
     }
 }
-
-// MARK: - DTOs
 
 @Serializable
 internal data class LatestUnreadEventDto(
@@ -198,8 +196,6 @@ internal fun ApplicationDetailDto.toDomain(): PlanningApplication {
     )
 }
 
-// ── Map clusters (GH#698, GH#776) ──
-
 @Serializable
 internal data class MapClusterApplicationIdDto(
     val authority: String,
@@ -209,7 +205,7 @@ internal data class MapClusterApplicationIdDto(
 // Server contract: api-go/internal/applications/zoneclusters.go's Cluster.
 // applicationId is `null` for every count>1 cell; applicationIds is OMITTED
 // (defaults to empty here) for every splittable cell — only an unsplittable
-// "stacked" cell carries it (GH#722).
+// "stacked" cell carries it.
 @Serializable
 internal data class MapClusterDto(
     val latitude: Double,

@@ -17,14 +17,18 @@ const APPLICATIONS_SORT_VALUES: readonly ApplicationsSort[] = [
   'distance',
 ];
 
+export function isApplicationsSort(value: string): value is ApplicationsSort {
+  return (APPLICATIONS_SORT_VALUES as readonly string[]).includes(value);
+}
+
 const SORT_STORAGE_KEY = 'applicationsListSort';
 const DEFAULT_SORT: ApplicationsSort = 'recent-activity';
 
 function readPersistedSort(): ApplicationsSort {
   try {
     const raw = window.localStorage.getItem(SORT_STORAGE_KEY);
-    if (raw !== null && (APPLICATIONS_SORT_VALUES as readonly string[]).includes(raw)) {
-      return raw as ApplicationsSort;
+    if (raw !== null && isApplicationsSort(raw)) {
+      return raw;
     }
   } catch {
     // localStorage may throw in private browsing — fall through to default

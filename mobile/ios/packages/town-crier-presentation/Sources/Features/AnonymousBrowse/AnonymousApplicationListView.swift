@@ -1,7 +1,7 @@
 import SwiftUI
 import TownCrierDomain
 
-/// The anonymous (pre-signup) Applications tab (GH#879 Phase 3): a single
+/// The anonymous (pre-signup) Applications tab: a single
 /// nearest-first page of planning applications, reusing the same
 /// ``ApplicationListRow`` the authenticated Applications tab uses. No
 /// sort/filter chips (pre-resolved: v1 is nearest-first only).

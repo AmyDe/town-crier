@@ -2,10 +2,10 @@ import SwiftUI
 import TownCrierDomain
 
 /// A reduced-feature bottom sheet showing a preview of a tapped pin on the
-/// anonymous map (GH#868 Phase 3). Unlike the authenticated
+/// anonymous map. Unlike the authenticated
 /// `ApplicationSummarySheet`, there is no save affordance — saving requires
 /// an account — but "View full details" presents the full detail screen with
-/// no sign-up gate (GH#879 Phase 2): the anonymous map already holds the full
+/// no sign-up gate: the anonymous map already holds the full
 /// `PlanningApplication`, so no network call is needed either.
 struct AnonymousApplicationSummaryView: View {
   let application: PlanningApplication
@@ -48,7 +48,7 @@ struct AnonymousApplicationSummaryView: View {
       }
       .foregroundStyle(Color.tcTextSecondary)
 
-      // Stamp status (GH#857) — the same `StatusBadgeView` the R4 restyle
+      // Stamp status — the same `StatusBadgeView` the R4 restyle
       // built, never a forked copy.
       StatusBadgeView(status: application.status)
 

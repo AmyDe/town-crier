@@ -33,12 +33,11 @@ import java.time.OffsetDateTime
 
 /**
  * A single applications-list row, styled as a Public Notice "filed notice"
- * card ([noticeCard], epic #848 R5): a mono document-header strip (reference
+ * card ([noticeCard]): a mono document-header strip (reference
  * left, received date right), status stamp, address/description, and an 8dp
  * leading unread dot in `tcAmber` when [PlanningApplication.latestUnreadEvent]
  * is present — the card's top rule doubles as the same unread signal
- * ([noticeCard]'s `isNew`), mirroring iOS `ApplicationListRow`'s dot +
- * `noticeCardStyle` combination. Status is never color-alone: [StatusBadge]
+ * ([noticeCard]'s `isNew`). Status is never color-alone: [StatusBadge]
  * always pairs its color with an icon and label too.
  */
 @Composable

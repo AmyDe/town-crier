@@ -17,7 +17,7 @@ public protocol AnonymousApplicationsRepository: Sendable {
 
   /// Fetches the server-computed cluster aggregates for the anonymous map's
   /// visible viewport within `radiusMetres` of (`latitude`, `longitude`) at a
-  /// given slippy zoom (GH#924 Phase 2) — the anonymous mirror of
+  /// given slippy zoom — the anonymous mirror of
   /// `PlanningApplicationRepository.fetchClusters`, backed by the public
   /// `GET /v1/applications/clusters` endpoint. The map renders these
   /// aggregates across the whole radius circle instead of a truncated

@@ -7,8 +7,7 @@ import (
 )
 
 // Result is the wire shape of a planning application returned by the API.
-// Coordinates are flat (the GeoJSON projection is a Cosmos storage concern
-// only). latestUnreadEvent is always null on these endpoints; a nil
+// latestUnreadEvent is always null on these endpoints; a nil
 // json.RawMessage marshals to explicit JSON null.
 type Result struct {
 	Name              string              `json:"name"`
@@ -30,11 +29,9 @@ type Result struct {
 	Link              *string             `json:"link"`
 	LastDifferent     platform.DotNetTime `json:"lastDifferent"`
 	LatestUnreadEvent json.RawMessage     `json:"latestUnreadEvent"`
-	// AuthoritySlug is the URL slug of the application's authority, emitted by the
-	// single-application detail (by-id) and by-slug handlers so clients can build
-	// share URLs (#738). It is DELIBERATELY omitempty and NOT set by ResultOf: the
-	// savedapplications and watchzones responses that embed Result via ResultOf
-	// leave it "" and so stay byte-identical on the wire.
+	// AuthoritySlug is emitted only by the by-id and by-slug handlers. It is
+	// omitempty and not set by ResultOf, so the savedapplications and watchzones
+	// responses that embed Result stay byte-identical on the wire.
 	AuthoritySlug string `json:"authoritySlug,omitempty"`
 }
 
@@ -87,14 +84,9 @@ type NearbyResult struct {
 	URL           *string             `json:"url"`
 	Link          *string             `json:"link"`
 	LastDifferent platform.DotNetTime `json:"lastDifferent"`
-	// AuthoritySlug is the URL slug of the application's authority, emitted ONLY
-	// by the public near-point endpoint (internal/applications/nearpoint.go,
-	// GH#879 Phase 1) so an anonymously-loaded application can build a share URL
-	// or a by-slug detail fetch. It is DELIBERATELY omitempty and NOT set by
-	// NearbyResultOf: the watch-zone create response
-	// (watchzones.handler.create -> createResult.NearbyApplications), which also
-	// embeds NearbyResult via NearbyResultOf, leaves it "" and so stays
-	// byte-identical on the wire — mirroring Result.AuthoritySlug/ResultOf above.
+	// AuthoritySlug is emitted only by the public near-point endpoint. It is
+	// omitempty and not set by NearbyResultOf, so the watch-zone create response,
+	// which also embeds NearbyResult, stays byte-identical on the wire.
 	AuthoritySlug string `json:"authoritySlug,omitempty"`
 }
 

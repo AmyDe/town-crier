@@ -144,7 +144,7 @@ private fun ApplicationDetailTopBar(
             // Share is hidden entirely when the slug is unknown (list-payload-only
             // state, before the by-id refresh completes) OR when ShareUrl.build
             // still declines the pair (e.g. an empty ref) — never a disabled/dead
-            // button (GH#782 port of iOS `ShareURL.build`'s nullability contract).
+            // button.
             val shareUrl = authoritySlug?.let { slug -> ShareUrl.build(authoritySlug = slug, ref = applicationName) }
             if (shareUrl != null) {
                 IconButton(onClick = { onShareClick(shareUrl) }) {

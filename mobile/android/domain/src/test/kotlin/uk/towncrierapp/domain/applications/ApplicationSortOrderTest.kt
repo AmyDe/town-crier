@@ -3,7 +3,7 @@ package uk.towncrierapp.domain.applications
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 
-/** Wire-value round trip and the client-side default (GH#775: server default `distance` is NOT the client default). */
+/** Wire-value round trip and the client-side default (server default `distance` is NOT the client default). */
 class ApplicationSortOrderTest {
     @Test
     fun `wireValue matches the server's five sort tokens`() {

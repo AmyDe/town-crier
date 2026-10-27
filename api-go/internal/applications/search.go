@@ -119,7 +119,7 @@ func (h *searchHandler) search(w http.ResponseWriter, r *http.Request) {
 
 	results := make([]SearchResult, 0, len(apps))
 	for _, a := range apps {
-		results = append(results, SearchResultOf(a, h.authoritySlug(r.Context(), a)))
+		results = append(results, SearchResultOf(a, resolveAuthoritySlugFor(r.Context(), h.resolver, h.logger, "search authority slug", a)))
 	}
 
 	writeJSON(w, r, h.logger, SearchResponse{
@@ -127,12 +127,6 @@ func (h *searchHandler) search(w http.ResponseWriter, r *http.Request) {
 		Results:     results,
 		RefineQuery: refine,
 	})
-}
-
-// authoritySlug returns the URL slug for the application's authority. See
-// resolveAuthoritySlugFor (respond.go) for the round-trip/fallback behaviour.
-func (h *searchHandler) authoritySlug(ctx context.Context, app PlanningApplication) string {
-	return resolveAuthoritySlugFor(ctx, h.resolver, h.logger, "search authority slug", app)
 }
 
 // validSearchQuery reports whether q is non-empty, no longer than

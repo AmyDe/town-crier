@@ -32,7 +32,7 @@ struct ApplicationListRow: View {
 
       VStack(alignment: .leading, spacing: TCSpacing.small) {
         // Mono header strip: the planning reference as a monospaced
-        // metadata line, ahead of the status/date row (GH#857).
+        // metadata line, ahead of the status/date row.
         Text(application.reference.value)
           .font(TCTypography.mono)
           .foregroundStyle(Color.tcTextSecondary)

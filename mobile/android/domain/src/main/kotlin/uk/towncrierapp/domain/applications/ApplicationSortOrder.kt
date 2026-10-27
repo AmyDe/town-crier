@@ -2,12 +2,11 @@ package uk.towncrierapp.domain.applications
 
 /**
  * The five server-supported sort orders for `GET
- * /v1/me/watch-zones/{zoneId}/applications`. Android always sends one (never
- * exercises the legacy param-less path — epic #770 pre-resolved decision).
+ * /v1/me/watch-zones/{zoneId}/applications`. Android always sends one.
  * [DEFAULT] is the CLIENT default (`recent-activity`); the server's own
  * default (`distance`) is deliberately not the client default, and
  * `distance` itself is hidden from the sort picker whenever no zone is
- * active. Port of iOS `ApplicationSortOrder`.
+ * active.
  */
 public enum class ApplicationSortOrder(
     public val wireValue: String,

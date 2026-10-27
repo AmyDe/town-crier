@@ -37,7 +37,7 @@ public final class ApplicationDetailViewModel: ObservableObject {
   public var statusLabel: String { application.status.displayLabel }
   public var statusIcon: String { application.status.displayIcon }
 
-  /// Canonical public share URL for this application (GH #738 Slice 4), built
+  /// Canonical public share URL for this application, built
   /// from the API-supplied `authoritySlug` and the full PlanIt ref. `nil` when
   /// the authority carries no slug (e.g. the cached list payload before
   /// ``refresh()`` refetches by-id), so the view never offers a broken,
@@ -71,9 +71,9 @@ public final class ApplicationDetailViewModel: ObservableObject {
   public var onOpenPortal: ((URL) -> Void)?
   public var onDismiss: (() -> Void)?
   /// Fired only on a successful false→true save (never on unsave or failure).
-  /// Drives the review-prompt `savedApplication` signal (GH #628).
+  /// Drives the review-prompt `savedApplication` signal.
   public var onSaved: (() -> Void)?
-  /// Fired by the anonymous sign-up CTA (GH#879 Phase 2), in place of the
+  /// Fired by the anonymous sign-up CTA, in place of the
   /// Save affordance. Wired by the coordinator to the app's single Auth0
   /// entry point, the same one every other sign-up/sign-in surface uses.
   public var onRequestSignUp: (() -> Void)?
@@ -84,7 +84,7 @@ public final class ApplicationDetailViewModel: ObservableObject {
   }
 
   /// Whether the anonymous sign-up CTA should replace the Save affordance
-  /// (GH#879 Phase 2) — true exactly when this view model was built for the
+  /// — true exactly when this view model was built for the
   /// anonymous detail path (an ``AnonymousApplicationDetailRepository`` was
   /// injected instead of the authed save/refresh repositories).
   public var showsSignUpCTA: Bool {
@@ -101,7 +101,7 @@ public final class ApplicationDetailViewModel: ObservableObject {
 
   private let savedApplicationRepository: SavedApplicationRepository?
   private let planningApplicationRepository: PlanningApplicationRepository?
-  /// The anonymous (no-session) by-slug refresh path (GH#879 Phase 2).
+  /// The anonymous (no-session) by-slug refresh path.
   /// Mutually driving with `planningApplicationRepository` in ``refresh()``:
   /// when present, it takes precedence — a view model is only ever built for
   /// one path or the other by the coordinator's factory.
@@ -195,7 +195,7 @@ public final class ApplicationDetailViewModel: ObservableObject {
     onDismiss?()
   }
 
-  /// Invokes the anonymous sign-up CTA (GH#879 Phase 2).
+  /// Invokes the anonymous sign-up CTA.
   public func requestSignUp() {
     onRequestSignUp?()
   }

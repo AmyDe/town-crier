@@ -16,7 +16,6 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** Port of iOS `ApplicationDetailViewModelTests` (GH#775). */
 @ExtendWith(MainDispatcherExtension::class)
 class ApplicationDetailViewModelTest {
     @Test
@@ -157,8 +156,6 @@ class ApplicationDetailViewModelTest {
         assertEquals(DomainError.NetworkUnavailable, viewModel.uiState.value.error)
     }
 
-    // region onSaved — the review-prompt savedApplication signal call site (GH #628 / tc-4jjw)
-
     @Test
     fun `toggleSave fires onSaved on a successful false-to-true save`() {
         var onSavedCallCount = 0
@@ -213,6 +210,4 @@ class ApplicationDetailViewModelTest {
 
         assertEquals(0, onSavedCallCount)
     }
-
-    // endregion
 }

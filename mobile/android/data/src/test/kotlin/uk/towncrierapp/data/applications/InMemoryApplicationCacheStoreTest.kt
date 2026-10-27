@@ -9,7 +9,7 @@ import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
-/** Plain keyed storage, no TTL logic of its own (see `OfflineAwareRepository` for that policy). Port of iOS `InMemoryApplicationCacheStore` (GH#775). */
+/** Plain keyed storage, no TTL logic of its own (see `OfflineAwareRepository` for that policy). */
 class InMemoryApplicationCacheStoreTest {
     @Test
     fun `get returns null when nothing has been cached for a zone`() =

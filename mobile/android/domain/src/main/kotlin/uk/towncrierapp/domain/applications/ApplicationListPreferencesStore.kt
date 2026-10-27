@@ -3,7 +3,7 @@ package uk.towncrierapp.domain.applications
 import uk.towncrierapp.domain.watchzones.WatchZoneId
 
 /**
- * The two applications-list device latches (epic #770 iOS-key parity):
+ * The two applications-list device latches:
  * `applicationsListSort` and `lastSelectedZone.applications`. A one-shot
  * suspend read/write, not a `Flow` — this is the cold-start restore value,
  * not something the UI observes live (mirrors

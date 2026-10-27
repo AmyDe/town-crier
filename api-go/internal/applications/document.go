@@ -7,9 +7,8 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
 )
 
-// geoJSONPoint is the Cosmos GeoJSON projection of an application's coordinates:
-// a Point with [longitude, latitude] order (GeoJSON convention), matching what
-// Cosmos expects for ST_DISTANCE spatial queries.
+// geoJSONPoint is the GeoJSON projection of an application's coordinates: a
+// Point with [longitude, latitude] order (GeoJSON convention).
 type geoJSONPoint struct {
 	Type        string    `json:"type"`
 	Coordinates []float64 `json:"coordinates"`

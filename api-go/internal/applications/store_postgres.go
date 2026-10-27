@@ -332,11 +332,7 @@ const pgRecentByAuthorityQuery = "SELECT " + appColumns +
 // RecentByAuthority returns up to cap most-recently-active applications in the
 // authority, ordered by RecentRealDateOrder. It backs the live SEO authority page.
 func (s *PostgresStore) RecentByAuthority(ctx context.Context, authorityCode string, cap int) ([]PlanningApplication, error) {
-	rows, err := s.db.Query(ctx, pgRecentByAuthorityQuery, authorityCode, cap)
-	if err != nil {
-		return nil, fmt.Errorf("recent applications for authority %q: %w", authorityCode, err)
-	}
-	apps, err := pgx.CollectRows(rows, scanAppRow)
+	apps, err := s.queryApps(ctx, pgRecentByAuthorityQuery, authorityCode, cap)
 	if err != nil {
 		return nil, fmt.Errorf("recent applications for authority %q: %w", authorityCode, err)
 	}

@@ -11,17 +11,16 @@ import TownCrierDomain
 /// single-`List` architecture avoids that regardless of title mode, and the
 /// screen now renders `.inline` with the system title suppressed — see
 /// `mastheadNavigationBar()` — so the `MastheadView` row is the single
-/// visible title (GH#912 Phase 1).
+/// visible title.
 ///
-/// The unread-watermark UI (tc-1nsa.8) layers on:
+/// The unread-watermark UI layers on:
 /// - an Unread filter chip (visible only when `hasUnread`) that mirrors the
 ///   web bead's single-select behaviour with the existing status chips,
 /// - a sort menu in the toolbar with the four sort modes from the spec,
 /// - a Mark-All-Read toolbar action, visible whenever the app-icon badge has
 ///   something to clear (`hasClearableUnread`, the GLOBAL unread count) —
 ///   deliberately decoupled from the per-zone `hasUnread` chip so the badge
-///   stays reachable even when the active zone has no unread rows of its own
-///   (tc-c5m1, GH#793).
+///   stays reachable even when the active zone has no unread rows of its own.
 public struct ApplicationListView: View {
   @StateObject private var viewModel: ApplicationListViewModel
 
@@ -208,7 +207,7 @@ public struct ApplicationListView: View {
           }
           .onAppear {
             // Infinite scroll: nearing the end pulls the next server page when
-            // the active sort is server-driven (GH#682). A no-op otherwise.
+            // the active sort is server-driven. A no-op otherwise.
             Task { await viewModel.onRowAppear(application) }
           }
       }

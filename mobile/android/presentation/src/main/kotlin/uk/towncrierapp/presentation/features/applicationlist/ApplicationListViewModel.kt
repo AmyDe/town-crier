@@ -34,11 +34,8 @@ public class ApplicationListViewModel(
     private val _uiState = MutableStateFlow(ApplicationListUiState())
     public val uiState: StateFlow<ApplicationListUiState> = _uiState.asStateFlow()
 
-    // Guards against the spurious refetch-on-every-tab-revisit (tc-hlbx) —
-    // see SavedListViewModel's matching field doc for the full rationale.
-    // markAllRead()/selectZone()/selectSort()/selectFilter() call
-    // fetchFirstPage() directly and are unaffected by this guard, so their
-    // explicit refresh behaviour (tc-cnme) is unchanged.
+    // Guards against a refetch on every tab revisit. markAllRead()/selectZone()/
+    // selectSort()/selectFilter() call fetchFirstPage() directly and bypass it.
     private var hasLoadedSuccessfully = false
     private var loadJob: Job? = null
     private var fetchJob: Job? = null

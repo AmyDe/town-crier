@@ -67,7 +67,7 @@ public struct ApplicationDetailView: View {
       // Stale-while-revalidate: the sheet was presented synchronously from
       // the cached row payload, so refresh now to pick up any newer
       // server-side state and to fire `TryRefreshSavedSnapshotAsync` on the
-      // backend (bd tc-sslz, tc-udby).
+      // backend.
       await viewModel.refresh()
     }
     .toolbar {
@@ -83,7 +83,7 @@ public struct ApplicationDetailView: View {
         }
       }
       // Present the standard iOS share sheet with the canonical public share
-      // link (GH #738 Slice 4). Gated on a non-nil `shareURL` so a slug-less
+      // link. Gated on a non-nil `shareURL` so a slug-less
       // (broken) link is never offered — the button appears once `refresh()`
       // has refetched the by-id payload that carries `authoritySlug`.
       if viewModel.shareURL != nil {
@@ -107,7 +107,7 @@ public struct ApplicationDetailView: View {
       detailRow(icon: "mappin.and.ellipse", label: "Address", value: viewModel.address)
       Divider().foregroundStyle(Color.tcBorder)
       // The planning reference is the card's mono header-strip metadata
-      // (GH#857) — every other row stays plain body text.
+      // — every other row stays plain body text.
       detailRow(
         icon: "doc.text",
         label: "Reference",
@@ -153,7 +153,7 @@ public struct ApplicationDetailView: View {
   private var portalButton: some View {
     PrimaryButton {
       // Notify the view model so the coordinator can record the portal-tap
-      // review signal (GH #628); the in-app Safari sheet still presents below.
+      // review signal; the in-app Safari sheet still presents below.
       viewModel.openPortal()
       showingSafari = true
     } label: {

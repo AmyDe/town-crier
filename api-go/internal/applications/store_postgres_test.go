@@ -317,7 +317,7 @@ func TestPostgresStore_GetByUID(t *testing.T) {
 }
 
 // TestPostgresStore_GetByUID_ExplainUsesAuthorityUIDIndex proves the
-// applications_authority_uid composite index (tc-v6f4m; migrations/
+// applications_authority_uid composite index (migrations/
 // 0027_applications_authority_uid_index.sql) serves GetByUID's
 // "authority_code = $1 AND uid = $2" predicate. GetByUID sits on the hot path
 // of every application ingest (the national delta lanes and the Lane D
@@ -397,9 +397,8 @@ func TestPostgresStore_GetByUID_ExplainUsesAuthorityUIDIndex(t *testing.T) {
 	}
 }
 
-// TestPostgresStore_Upsert_GetByUID_RoundTripsFullFields is the GH#935
-// pgtest acceptance criterion: Upsert -> GetByUID round-trips all seven new
-// silent fields — the jsonb other_fields map, altid in its raw-JSON array
+// TestPostgresStore_Upsert_GetByUID_RoundTripsFullFields proves Upsert ->
+// GetByUID round-trips all seven silent fields — the jsonb other_fields map, altid in its raw-JSON array
 // form, and the two bookkeeping timestamps.
 func TestPostgresStore_Upsert_GetByUID_RoundTripsFullFields(t *testing.T) {
 	ctx := context.Background()

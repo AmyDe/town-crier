@@ -98,8 +98,7 @@ func TestClustersHandler_Integration_GridAggregation(t *testing.T) {
 // always below FinestGridDegrees, regardless of the request's own zoom), so
 // the cell carries the full member list, slug-enriched by the anonymous
 // handler — mirroring TestFindClustersInZone_CoincidentApplications_ReturnsMemberList's
-// first subtest, through the HTTP handler, with the GH#924 slug enrichment
-// layered on top.
+// first subtest, through the HTTP handler, with slug enrichment layered on top.
 func TestClustersHandler_Integration_StackedCoalescing(t *testing.T) {
 	// Not run with t.Parallel(): newAppPGStore's pgtest.New holds a
 	// process-wide advisory lock for the test's duration (see pgtest.New).

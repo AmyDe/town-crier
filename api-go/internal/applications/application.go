@@ -14,8 +14,7 @@ import (
 )
 
 // PlanningApplication is the planning-application snapshot. Nullable fields are
-// pointers so an absent value serialises as JSON null. Coordinates are carried
-// flat here; the Cosmos document projects them into a GeoJSON point.
+// pointers so an absent value serialises as JSON null.
 type PlanningApplication struct {
 	Name          string
 	UID           string
@@ -36,11 +35,10 @@ type PlanningApplication struct {
 	Link          *string
 	LastDifferent time.Time
 
-	// The fields below are the PlanIt full-field widening (GH#935): every
-	// remaining top-level core field plus other_fields, minus the three
-	// DP-restricted keys. All are silent — see HasSameSilentFieldsAs — so a
-	// change in only these fields updates the stored row without triggering
-	// notification fan-out (ADR 0021, the reindex-flood guard).
+	// The fields below are every remaining top-level PlanIt core field plus
+	// other_fields, minus the three DP-restricted keys. All are silent (see
+	// HasSameSilentFieldsAs): a change in only these updates the stored row
+	// without notification fan-out (ADR 0021, the reindex-flood guard).
 	Reference    *string    // PlanIt's own "reference" field (distinct from Name/UID)
 	Altid        []byte     // raw JSON: PlanIt's altid may be a string OR an array depending on scraper
 	AssociatedID []byte     // raw JSON: same string-or-array shape as Altid
@@ -70,23 +68,22 @@ func (a PlanningApplication) HasSameBusinessFieldsAs(other PlanningApplication) 
 		a.AreaName == other.AreaName &&
 		a.AreaID == other.AreaID &&
 		a.Address == other.Address &&
-		eqStrPtr(a.Postcode, other.Postcode) &&
+		eqPtr(a.Postcode, other.Postcode) &&
 		a.Description == other.Description &&
-		eqStrPtr(a.AppType, other.AppType) &&
-		eqStrPtr(a.AppState, other.AppState) &&
-		eqStrPtr(a.AppSize, other.AppSize) &&
+		eqPtr(a.AppType, other.AppType) &&
+		eqPtr(a.AppState, other.AppState) &&
+		eqPtr(a.AppSize, other.AppSize) &&
 		eqTimePtr(a.StartDate, other.StartDate) &&
 		eqTimePtr(a.DecidedDate, other.DecidedDate) &&
 		eqTimePtr(a.ConsultedDate, other.ConsultedDate) &&
-		eqFloatPtr(a.Longitude, other.Longitude) &&
-		eqFloatPtr(a.Latitude, other.Latitude) &&
-		eqStrPtr(a.URL, other.URL) &&
-		eqStrPtr(a.Link, other.Link)
+		eqPtr(a.Longitude, other.Longitude) &&
+		eqPtr(a.Latitude, other.Latitude) &&
+		eqPtr(a.URL, other.URL) &&
+		eqPtr(a.Link, other.Link)
 }
 
-// HasSameSilentFieldsAs reports whether every silent field (the PlanIt
-// full-field widening, GH#935) matches other: Reference, Altid, AssociatedID,
-// ScraperName, and OtherFields. LastChanged and LastScraped are deliberately
+// HasSameSilentFieldsAs reports whether every silent field matches other:
+// Reference, Altid, AssociatedID, ScraperName, and OtherFields. LastChanged and LastScraped are deliberately
 // EXCLUDED — they are bookkeeping, alongside LastDifferent, and bump on
 // effectively every PlanIt re-emission; including them here would make every
 // PlanIt bulk re-index a row write, defeating the reindex-flood guard the
@@ -94,32 +91,20 @@ func (a PlanningApplication) HasSameBusinessFieldsAs(other PlanningApplication) 
 // HasSameBusinessFieldsAs, to classify a change as silent (upsert, no
 // notification fan-out) vs bookkeeping-only (no write at all).
 func (a PlanningApplication) HasSameSilentFieldsAs(other PlanningApplication) bool {
-	return eqStrPtr(a.Reference, other.Reference) &&
+	return eqPtr(a.Reference, other.Reference) &&
 		eqRawJSON(a.Altid, other.Altid) &&
 		eqRawJSON(a.AssociatedID, other.AssociatedID) &&
-		eqStrPtr(a.ScraperName, other.ScraperName) &&
+		eqPtr(a.ScraperName, other.ScraperName) &&
 		eqOtherFields(a.OtherFields, other.OtherFields)
 }
 
 // eqRawJSON reports whether two raw-JSON byte slices represent the same JSON
-// value, treating nil and empty as equal (an absent Altid/AssociatedID either
-// way). This MUST be a semantic comparison, not bytes.Equal: PlanIt's API
-// returns pretty-printed JSON, which json.RawMessage preserves verbatim, while
-// Postgres jsonb canonicalises text on storage (e.g. reformatting
-// ["a","b"] to ["a", "b"]). A byte comparison between a freshly-parsed
-// incoming value and the same value read back from Postgres would therefore
-// find them unequal on every re-fetch for any record with an array-valued
-// altid/associated_id — permanently defeating the silent-change
-// write-suppression guard for that subset of records, which is exactly the
-// reindex-storm write amplification the three-bucket ingester design exists
-// to prevent. Do not "simplify" this back to bytes.Equal.
-//
-// Comparison unmarshals both sides then re-marshals: encoding/json's output
-// is deterministic (sorted map keys, canonical number formatting), so two
-// byte slices are compared after passing through the same normalisation on
-// both sides. Unparseable JSON on either side (never expected in practice —
-// both sides always originate from a prior successful json.Unmarshal) is
-// treated as not-equal, the safe direction — mirrors eqOtherFields.
+// value, treating nil and empty as equal. It must not be bytes.Equal: PlanIt's
+// pretty-printed JSON is kept verbatim while Postgres jsonb reformats it, so a
+// byte comparison would find array-valued altid/associated_id unequal on every
+// re-fetch and defeat the silent-change write suppression. Both sides are
+// normalised by unmarshal and re-marshal; unparseable JSON is treated as
+// not-equal.
 func eqRawJSON(a, b []byte) bool {
 	if len(a) == 0 && len(b) == 0 {
 		return true
@@ -140,13 +125,9 @@ func eqRawJSON(a, b []byte) bool {
 }
 
 // eqOtherFields reports whether two other_fields maps are equal, treating nil
-// and empty as equal. Comparison is via canonical json.Marshal bytes: Go
-// marshals map keys in sorted order, so two maps with the same entries in a
-// different insertion order produce identical bytes. A marshal failure (never
-// expected: these maps are always sourced from a prior JSON unmarshal, whose
-// output types always re-marshal cleanly) is treated as not-equal — the safe
-// direction, since it only ever causes one extra harmless silent-field upsert
-// rather than masking a real change.
+// and empty as equal. json.Marshal sorts map keys, so insertion order is
+// irrelevant; a marshal failure is treated as not-equal, which costs at most one
+// extra silent-field upsert rather than masking a real change.
 func eqOtherFields(a, b map[string]any) bool {
 	if len(a) == 0 && len(b) == 0 {
 		return true
@@ -159,17 +140,9 @@ func eqOtherFields(a, b map[string]any) bool {
 	return bytes.Equal(aBytes, bBytes)
 }
 
-// eqStrPtr reports whether two optional strings are equal (both nil, or both
-// set to the same value).
-func eqStrPtr(a, b *string) bool {
-	if a == nil || b == nil {
-		return a == b
-	}
-	return *a == *b
-}
-
-// eqFloatPtr reports whether two optional floats are equal.
-func eqFloatPtr(a, b *float64) bool {
+// eqPtr reports whether two optional values are equal (both nil, or both set
+// to the same value).
+func eqPtr[T comparable](a, b *T) bool {
 	if a == nil || b == nil {
 		return a == b
 	}

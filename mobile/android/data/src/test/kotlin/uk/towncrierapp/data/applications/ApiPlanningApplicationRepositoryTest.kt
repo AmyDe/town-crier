@@ -20,8 +20,7 @@ import kotlin.test.assertTrue
  * `X-Next-Cursor`, the always-sent `sort` (never the legacy param-less path),
  * `status`/`unread` mutual exclusivity (guaranteed by [ApplicationFilter]'s
  * shape, exercised here at the query-building boundary), and DTO->domain
- * mapping including `statusHistory` synthesis. Port of the iOS
- * `APIApplicationRepositoryTests` suites (GH#775).
+ * mapping including `statusHistory` synthesis.
  */
 class ApiPlanningApplicationRepositoryTest {
     private val zoneId = WatchZoneId("wz-1")
@@ -337,8 +336,6 @@ class ApiPlanningApplicationRepositoryTest {
                     .contains("sort"),
             )
         }
-
-    // ── detailBySlug (GH#782: resolves an inbound public share link) ──
 
     @Test
     fun `detailBySlug GETs the anonymous by-slug endpoint, decoding the authoritySlug`() =

@@ -97,9 +97,8 @@ func TestScanClusterRow_Members(t *testing.T) {
 }
 
 // TestPlanningApplicationID_AuthoritySlugJSONShape pins the wire contract for
-// the GH#924 AuthoritySlug addition: omitted when empty (byte-identical to the
-// pre-GH#924 authed zone-clusters response, which never populates it) and
-// present when the anonymous handler has set it.
+// AuthoritySlug: omitted when empty (the authed zone-clusters response never
+// populates it) and present when the anonymous handler has set it.
 func TestPlanningApplicationID_AuthoritySlugJSONShape(t *testing.T) {
 	t.Parallel()
 

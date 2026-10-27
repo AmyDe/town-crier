@@ -7,7 +7,7 @@ import kotlin.test.assertEquals
  * Canonical `"authority/name"` encoding/decoding. [PlanningApplicationId.parse]
  * splits on the FIRST `/` only, because [PlanningApplicationId.name] (the
  * PlanIt case reference) routinely contains further slashes itself, e.g.
- * `"24/0001"` (GH#775).
+ * `"24/0001"`.
  */
 class PlanningApplicationIdTest {
     @Test

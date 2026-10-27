@@ -9,7 +9,7 @@ import kotlin.test.assertTrue
 /**
  * PlanIt `app_state` raw-value decode, incl. the `unknown` fallback for any
  * genuinely unrecognised value, and the [isDecided] classification that
- * drives `statusHistory` synthesis (GH#775).
+ * drives `statusHistory` synthesis.
  */
 class ApplicationStatusTest {
     @Test
