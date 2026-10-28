@@ -171,7 +171,18 @@ func run() int {
 		seoCataloger = newSEOCatalogRunner(seoCatalogRunner{seo}, platform.CurrentDeploymentEnvironment(), buildIndexNow(pool, logger))
 	}
 
-	return worker.Run(ctx, mode, digester, dormantRunner, poller, sweepRunner, purger, reconciler, seoCataloger, logger)
+	// Built only for its own mode so missing backup config fails only that job.
+	var backuper worker.BackupRunner
+	if mode == "pg-backup" {
+		b, err := buildBackup(os.Getenv, pool, logger)
+		if err != nil {
+			logger.Error("build backup", "error", err)
+			return 1
+		}
+		backuper = b
+	}
+
+	return worker.Run(ctx, mode, digester, dormantRunner, poller, sweepRunner, purger, reconciler, seoCataloger, backuper, logger)
 }
 
 // buildNotifyFanOut returns the collaborators the poll runner's event

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/AmyDe/town-crier/api-go/internal/pgbackup"
 	"strings"
 	"testing"
 )
@@ -202,4 +203,64 @@ func stripSQLComments(sql string) string {
 		b.WriteString("\n")
 	}
 	return b.String()
+}
+
+// --- Phase 2 backup variant ---
+
+func TestBuildBackupGrantsSQL_SelectsExactlyTheBackupTables(t *testing.T) {
+	t.Parallel()
+	sql, err := buildBackupGrantsSQL(validParams())
+	if err != nil {
+		t.Fatalf("buildBackupGrantsSQL() error = %v", err)
+	}
+	exec := stripSQLComments(sql)
+
+	granted := map[string]bool{}
+	for _, line := range strings.Split(exec, "\n") {
+		line = strings.TrimSpace(line)
+		if rest, ok := strings.CutPrefix(line, "GRANT SELECT ON "); ok {
+			table, _, _ := strings.Cut(rest, " TO ")
+			granted[table] = true
+		}
+	}
+	want := make([]string, 0, 1+len(pgbackup.Tables))
+	want = append(want, "goose_db_version")
+	for _, tb := range pgbackup.Tables {
+		want = append(want, tb.Name)
+	}
+	for _, w := range want {
+		if !granted[w] {
+			t.Errorf("missing GRANT SELECT ON %s\n---\n%s", w, sql)
+		}
+		delete(granted, w)
+	}
+	for extra := range granted {
+		t.Errorf("unexpected GRANT SELECT ON %s", extra)
+	}
+	if !strings.Contains(exec, "GRANT USAGE ON SCHEMA public TO towncrier_api") {
+		t.Errorf("missing schema usage grant\n---\n%s", sql)
+	}
+}
+
+func TestBuildBackupGrantsSQL_GrantsNoWriteOrDefaultPrivileges(t *testing.T) {
+	t.Parallel()
+	sql, err := buildBackupGrantsSQL(validParams())
+	if err != nil {
+		t.Fatalf("buildBackupGrantsSQL() error = %v", err)
+	}
+	upper := strings.ToUpper(stripSQLComments(sql))
+	for _, bad := range []string{"INSERT", "UPDATE", "DELETE", "TRUNCATE", "SEQUENCE", "ALTER DEFAULT PRIVILEGES", "ALL TABLES", "WITH GRANT OPTION"} {
+		if strings.Contains(upper, bad) {
+			t.Errorf("backup grants must not contain %q\n---\n%s", bad, sql)
+		}
+	}
+}
+
+func TestBuildBackupGrantsSQL_RejectsInvalidRole(t *testing.T) {
+	t.Parallel()
+	p := validParams()
+	p.Role = "bad; DROP"
+	if _, err := buildBackupGrantsSQL(p); err == nil {
+		t.Fatal("expected a validation error")
+	}
 }

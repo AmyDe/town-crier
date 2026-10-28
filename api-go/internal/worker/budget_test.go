@@ -47,26 +47,26 @@ func TestRun_CycleBudgetsStayUnderReplicaTimeouts(t *testing.T) {
 		run  func(rec *deadlineRecorder) int
 	}{
 		{"hourly-digest", 4 * time.Minute, func(r *deadlineRecorder) int {
-			return Run(context.Background(), "hourly-digest", r, nil, nil, nil, nil, nil, nil, logger)
+			return Run(context.Background(), "hourly-digest", r, nil, nil, nil, nil, nil, nil, nil, logger)
 		}},
 		{"digest", 8 * time.Minute, func(r *deadlineRecorder) int {
-			return Run(context.Background(), "digest", r, nil, nil, nil, nil, nil, nil, logger)
+			return Run(context.Background(), "digest", r, nil, nil, nil, nil, nil, nil, nil, logger)
 		}},
 		{"dormant-cleanup", 8 * time.Minute, func(r *deadlineRecorder) int {
-			return Run(context.Background(), "dormant-cleanup", nil, r, nil, nil, nil, nil, nil, logger)
+			return Run(context.Background(), "dormant-cleanup", nil, r, nil, nil, nil, nil, nil, nil, logger)
 		}},
 		{"subscription-sweep", 8 * time.Minute, func(r *deadlineRecorder) int {
-			return Run(context.Background(), "subscription-sweep", nil, nil, nil, r, nil, nil, nil, logger)
+			return Run(context.Background(), "subscription-sweep", nil, nil, nil, r, nil, nil, nil, nil, logger)
 		}},
 		{"pg-purge", 8 * time.Minute, func(r *deadlineRecorder) int {
 			p := &deadlinePurge{}
-			code := Run(context.Background(), "pg-purge", nil, nil, nil, nil, p, nil, nil, logger)
+			code := Run(context.Background(), "pg-purge", nil, nil, nil, nil, p, nil, nil, nil, logger)
 			r.remaining = p.remaining
 			return code
 		}},
 		{"appstore-reconcile", 8 * time.Minute, func(r *deadlineRecorder) int {
 			p := &deadlineReconcile{}
-			code := Run(context.Background(), "appstore-reconcile", nil, nil, nil, nil, nil, p, nil, logger)
+			code := Run(context.Background(), "appstore-reconcile", nil, nil, nil, nil, nil, p, nil, nil, logger)
 			r.remaining = p.remaining
 			return code
 		}},
