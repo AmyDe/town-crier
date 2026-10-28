@@ -95,4 +95,20 @@ struct SettingsViewModelAccountDeletionTests {
 
     #expect(sut.error == .networkUnavailable)
   }
+
+  @Test func confirmDeleteAccount_authDeleteAccountThrows_stillSignsOut() async {
+    var logoutCalled = false
+    let (sut, authSpy, _, _) = makeSUT()
+    sut.onLogout = { logoutCalled = true }
+    await sut.load()
+    authSpy.deleteAccountResult = .failure(DomainError.logoutFailed("cancelled"))
+    sut.requestAccountDeletion()
+
+    await sut.confirmDeleteAccount()
+
+    #expect(authSpy.deleteAccountCallCount == 1)
+    #expect(logoutCalled, "user must be routed to signed-out after server delete")
+    #expect(sut.userEmail == nil)
+    #expect(sut.error == nil)
+  }
 }
