@@ -653,8 +653,6 @@ func contains(haystack, needle string) bool {
 	return strings.Contains(haystack, needle)
 }
 
-// ---- duplicate-card dedup tests (tc-txkm1) ----
-
 func TestRunHourly_DuplicateNewApplicationAndDecisionUpdate_RendersOnceAndMarksBothSent(t *testing.T) {
 	t.Parallel()
 	// Root cause: the poll cycle can dispatch BOTH a NewApplication and a
@@ -786,8 +784,6 @@ func TestRunWeekly_DuplicatePairCollapsesPushCountToUniqueApplications(t *testin
 	}
 }
 
-// ---- free-tier account-status line (tc-m1pb5) ----
-
 const freeTierNoticeSnippet = "free weekly digest"
 
 func TestRunWeekly_FreeTierEmailIncludesFreeTierNotice(t *testing.T) {
@@ -817,8 +813,8 @@ func TestRunWeekly_FreeTierEmailIncludesFreeTierNotice(t *testing.T) {
 	}
 }
 
-// TestRunWeekly_PersonalTierEmailExcludesFreeTierNotice guards the exact
-// regression this bead exists to prevent: Personal is a real, paid,
+// TestRunWeekly_PersonalTierEmailExcludesFreeTierNotice guards against showing
+// the free-tier notice to Personal subscribers: Personal is a real, paid,
 // purchasable tier (uk.towncrierapp.personal.monthly). Deriving the notice
 // from IsPaidPro() (Pro-only) instead of IsPaid() (any paid tier) would show
 // paying Personal subscribers "You're on the free weekly digest.", which

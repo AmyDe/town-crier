@@ -102,7 +102,7 @@ func (s *PostgresStore) Delete(ctx context.Context, userID, token string) error 
 const pgListByUserQuery = "SELECT user_id, token, platform, registered_at " +
 	"FROM device_registrations WHERE user_id = $1 ORDER BY registered_at"
 
-// ListByUser returns every registration in the user's partition, ordered by
+// ListByUser returns every registration for the user, ordered by
 // registered_at. Used by the GDPR data-export path.
 func (s *PostgresStore) ListByUser(ctx context.Context, userID string) ([]DeviceRegistration, error) {
 	rows, err := s.db.Query(ctx, pgListByUserQuery, userID)

@@ -13,9 +13,8 @@ import (
 )
 
 // fakeZones serves the cross-partition zone-containment lookup. Matching is
-// purely geographic (tc-b179): the lookup no longer takes an authority, so the
-// fake returns its zones regardless of which authority the app is tagged with.
-// GetByUserID (GH#889) filters zones by owner, mirroring the real store's
+// purely geographic, so the fake returns its zones regardless of which
+// authority the app is tagged with. GetByUserID filters zones by owner, mirroring the real store's
 // per-user scoping, and records whether it was called so tests can assert the
 // unlimited-tier fast path skips it.
 type fakeZones struct {
@@ -150,7 +149,7 @@ func TestDecisionDispatcher_ZoneMatch_CreatesDecisionRecordAndQueuesPush(t *test
 func TestDecisionDispatcher_ZoneMatch_PolygonZone_CreatesDecisionRecord(t *testing.T) {
 	t.Parallel()
 	// A custom-shape (polygon) zone that FindZonesContaining returns must fan
-	// out through the decision path exactly like a circle zone (tc-6he3x.6):
+	// out through the decision path exactly like a circle zone:
 	// Dispatch never branches on shape.
 	// proWithZonePrefs hardcodes its opt-in against zone id "zone-1" (matching
 	// every other test in this file), so the polygon fixture reuses that id.
@@ -183,8 +182,7 @@ func TestDecisionDispatcher_ZoneMatch_PolygonZone_CreatesDecisionRecord(t *testi
 
 func TestDecisionDispatcher_Dispatch_MatchesZoneRegardlessOfAuthority(t *testing.T) {
 	t.Parallel()
-	// Decision fan-out is now boundary-agnostic (tc-b179): the zone lookup is purely
-	// geographic, so a zone whose circle contains the application is matched even
+	// The zone lookup is purely geographic, so a zone whose circle contains the application is matched even
 	// when the application is tagged a neighbouring authority. The fake returns the
 	// zone for the app's coordinates; the dispatcher must dispatch to its owner.
 	zone := testZoneAt(t, "zone-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))

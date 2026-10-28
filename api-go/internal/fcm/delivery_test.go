@@ -46,12 +46,12 @@ func recordDeliverySpans(t *testing.T, run func()) []sdktrace.ReadOnlySpan {
 	return rec.Ended()
 }
 
-// TestClient_Send_RecordsDeliveryFailureSpanAndMetric pins tc-97k35.4: a
+// TestClient_Send_RecordsDeliveryFailureSpanAndMetric asserts that a
 // genuine per-device delivery failure (here, the OAuth token endpoint is
 // unreachable, so sendOne never even gets to send the FCM request) must
 // produce an "FCM delivery" span with Error status plus a
 // towncrier.push.delivery_failed(platform=fcm) count — not just the
-// "fcm send failed" slog line, which is all today's code emits.
+// "fcm send failed" slog line.
 func TestClient_Send_RecordsDeliveryFailureSpanAndMetric(t *testing.T) {
 	fcmSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
