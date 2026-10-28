@@ -92,9 +92,9 @@ func NewClient(opts Options, logger *slog.Logger, now func() time.Time) (*Client
 
 	// APNs requires HTTP/2; an explicit h2 transport guarantees the protocol
 	// rather than relying on net/http's opportunistic h2 upgrade. TLS 1.2 is the
-	// floor.
-	transport := &http2.Transport{
-		TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12},
+	// floor. http2.Transport is deprecated upstream but is the only way to force h2.
+	transport := &http2.Transport{ //nolint:staticcheck // forced h2 for APNs
+		TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12}, //nolint:staticcheck // same
 	}
 	httpClient := tracedPushClient(transport)
 	return newClientWithBaseURL(opts, opts.baseURL(), httpClient, logger, now)
