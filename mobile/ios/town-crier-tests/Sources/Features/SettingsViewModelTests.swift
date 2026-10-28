@@ -319,16 +319,16 @@ struct SettingsViewModelTests {
   }
 
   @Test func confirmDeleteAccount_clearsSessionAndNotifies() async {
-    var logoutCalled = false
+    var deletedCalled = false
     let (sut, _, _, _, _, _) = makeSUT()
-    sut.onLogout = { logoutCalled = true }
+    sut.onAccountDeleted = { deletedCalled = true }
     await sut.load()
     sut.requestAccountDeletion()
 
     await sut.confirmDeleteAccount()
 
     #expect(sut.userEmail == nil)
-    #expect(logoutCalled)
+    #expect(deletedCalled)
   }
 
   @Test func cancelDeletion_dismissesConfirmation() {

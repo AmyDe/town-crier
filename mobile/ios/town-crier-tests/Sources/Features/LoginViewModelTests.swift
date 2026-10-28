@@ -123,6 +123,19 @@ struct LoginViewModelTests {
     #expect(sut.error == .logoutFailed("network"))
   }
 
+  @Test func endSession_clearsSessionWithoutCallingAuthService() async {
+    let (sut, spy) = makeSUT()
+    spy.loginResult = .success(.valid)
+    await sut.login()
+    spy.logoutResult = .failure(DomainError.logoutFailed("cancelled"))
+
+    sut.endSession()
+
+    #expect(!sut.isAuthenticated)
+    #expect(spy.logoutCallCount == 0)
+    #expect(sut.error == nil)
+  }
+
   // MARK: - Check existing session
 
   @Test func checkExistingSession_setsSession_whenAvailable() async {

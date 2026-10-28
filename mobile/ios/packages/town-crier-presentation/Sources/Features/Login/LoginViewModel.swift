@@ -48,6 +48,13 @@ public final class LoginViewModel: ObservableObject, ErrorHandlingViewModel {
     }
   }
 
+  /// Drops the in-memory session without calling the auth service. Use only when
+  /// the stored credentials are already cleared, as after account deletion.
+  public func endSession() {
+    error = nil
+    session = nil
+  }
+
   /// Checks for an existing stored session and refreshes if expired.
   public func checkExistingSession() async {
     guard let existing = await authService.currentSession() else {

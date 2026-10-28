@@ -72,9 +72,9 @@ struct SettingsViewModelAccountDeletionTests {
   }
 
   @Test func confirmDeleteAccount_serverDeleteFails_preservesSessionAndDoesNotNotify() async {
-    var logoutCalled = false
+    var deletedCalled = false
     let (sut, _, profileSpy, _) = makeSUT()
-    sut.onLogout = { logoutCalled = true }
+    sut.onAccountDeleted = { deletedCalled = true }
     await sut.load()
     #expect(sut.userEmail != nil)
     profileSpy.deleteResult = .failure(DomainError.networkUnavailable)
@@ -83,7 +83,7 @@ struct SettingsViewModelAccountDeletionTests {
     await sut.confirmDeleteAccount()
 
     #expect(sut.userEmail != nil, "session must remain so the user can retry")
-    #expect(!logoutCalled, "coordinator must not be notified when server delete fails")
+    #expect(!deletedCalled, "coordinator must not be notified when server delete fails")
   }
 
   @Test func confirmDeleteAccount_serverDeleteFails_setsError() async {
@@ -97,8 +97,10 @@ struct SettingsViewModelAccountDeletionTests {
   }
 
   @Test func confirmDeleteAccount_authDeleteAccountThrows_stillSignsOut() async {
+    var deletedCalled = false
     var logoutCalled = false
     let (sut, authSpy, _, _) = makeSUT()
+    sut.onAccountDeleted = { deletedCalled = true }
     sut.onLogout = { logoutCalled = true }
     await sut.load()
     authSpy.deleteAccountResult = .failure(DomainError.logoutFailed("cancelled"))
@@ -107,7 +109,8 @@ struct SettingsViewModelAccountDeletionTests {
     await sut.confirmDeleteAccount()
 
     #expect(authSpy.deleteAccountCallCount == 1)
-    #expect(logoutCalled, "user must be routed to signed-out after server delete")
+    #expect(deletedCalled, "user must be routed to signed-out after server delete")
+    #expect(!logoutCalled, "deletion must not start a second Auth0 sign-out")
     #expect(sut.userEmail == nil)
     #expect(sut.error == nil)
   }

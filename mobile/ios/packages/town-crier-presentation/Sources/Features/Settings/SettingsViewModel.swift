@@ -30,6 +30,11 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
 
   public var onLogout: (() -> Void)?
 
+  /// Fired after the server account is erased and local credentials are cleared.
+  /// Auth0 sign-out was already attempted, so the handler must end the session
+  /// locally and must not present Auth0 again.
+  public var onAccountDeleted: (() -> Void)?
+
   /// Alias kept for source compatibility — the key itself now lives on
   /// ``AppearanceStore``, the single live source of truth shared with the
   /// anonymous welcome screen's appearance control (GH#878).
@@ -154,7 +159,7 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
       try? await notificationService.removeDeviceToken()
       try? await authService.deleteAccount()
       clearSession()
-      onLogout?()
+      onAccountDeleted?()
     } catch {
       handleError(error)
     }
