@@ -1,7 +1,7 @@
 {
   "documentType": "privacy",
   "title": "Privacy Policy",
-  "lastUpdated": "2026-10-19",
+  "lastUpdated": "2026-10-28",
   "sections": [
     {
       "heading": "Who We Are",
@@ -37,7 +37,7 @@
     },
     {
       "heading": "How Long We Keep It",
-      "body": "Your notifications and decision alerts are automatically deleted after 90 days. We remove iOS push tokens when Apple tells us they're no longer valid, or 180 days after your device last registered. Everything else (your account, watch zones, saved applications, preferences, and subscription status) is kept for as long as your account stays active. If you don't use Town Crier for 12 months, we automatically delete your whole account and everything in it, including your sign-in record, so we don't hold your data for longer than we need to (UK GDPR Article 5(1)(e)). Server logs and telemetry, which can include your account ID, are deleted after 30 days. So are email delivery logs, which record the address each email went to. Backups are kept for 7 days. You can also delete your account at any time from the app settings, which removes your profile, preferences, watch zones, notifications, saved applications, and device registrations from our systems."
+      "body": "Your notifications and decision alerts are automatically deleted after 90 days. We remove iOS push tokens when Apple tells us they're no longer valid, or 180 days after your device last registered. Everything else (your account, watch zones, saved applications, preferences, and subscription status) is kept for as long as your account stays active. If you don't use Town Crier for 12 months, we automatically delete your whole account and everything in it, including your sign-in record, so we don't hold your data for longer than we need to (UK GDPR Article 5(1)(e)). Server logs and telemetry, which can include your account ID, are deleted after 30 days. So are email delivery logs, which record the address each email went to. Backups are kept for up to 35 days, then deleted automatically. You can also delete your account at any time from the app settings, which removes your profile, preferences, watch zones, notifications, saved applications, and device registrations from our systems."
     },
     {
       "heading": "Your Rights Under UK GDPR",
