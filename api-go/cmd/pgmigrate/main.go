@@ -96,11 +96,21 @@ func run(args []string) int {
 	}
 
 	dsn := migrateDSN(*host, *db, *adminUser, *sslMode, tok.Token)
-	if err := postgres.Migrate(ctx, dsn); err != nil {
+	if err := retryOnLock(ctx, sleepCtx, func(ctx context.Context) error { return postgres.Migrate(ctx, dsn) }); err != nil {
 		fmt.Fprintf(os.Stderr, "pgmigrate: migrate %q: %v\n", *db, err)
 		return 1
 	}
 	fmt.Printf("pgmigrate: migrations applied to %q on %s\n", *db, *host)
+
+	invalid, err := postgres.InvalidIndexes(ctx, dsn)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "pgmigrate: check invalid indexes on %q: %v\n", *db, err)
+		return 1
+	}
+	if err := invalidIndexError(invalid); err != nil {
+		fmt.Fprintf(os.Stderr, "pgmigrate: %q: %v\n", *db, err)
+		return 1
+	}
 
 	// Immediately re-grant the DML-only app role on everything the migrations
 	// just created, on the same privileged identity (the token already in dsn).

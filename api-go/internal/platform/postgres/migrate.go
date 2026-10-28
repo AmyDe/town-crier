@@ -126,7 +126,10 @@ func nextLockTimeout(ctx context.Context, db *sql.DB, fsys fs.FS, dir string, lt
 		if m == nil {
 			continue
 		}
-		v, _ := strconv.ParseInt(m[1], 10, 64)
+		v, parseErr := strconv.ParseInt(m[1], 10, 64)
+		if parseErr != nil {
+			return 0, false, fmt.Errorf("parse migration version %s: %w", e.Name(), parseErr)
+		}
 		if v > current && (nextName == "" || v < nextVersion) {
 			nextVersion, nextName = v, e.Name()
 		}
@@ -146,12 +149,16 @@ func nextLockTimeout(ctx context.Context, db *sql.DB, fsys fs.FS, dir string, lt
 
 // InvalidIndexes lists indexes in the database at dsn that a failed CONCURRENTLY
 // build left INVALID.
-func InvalidIndexes(ctx context.Context, dsn string) ([]string, error) {
+func InvalidIndexes(ctx context.Context, dsn string) (names []string, err error) {
 	conn, err := pgx.Connect(ctx, dsn)
 	if err != nil {
 		return nil, fmt.Errorf("connect: %w", err)
 	}
-	defer func() { _ = conn.Close(ctx) }()
+	defer func() {
+		if cerr := conn.Close(ctx); cerr != nil && err == nil {
+			err = fmt.Errorf("close connection: %w", cerr)
+		}
+	}()
 
 	rows, err := conn.Query(ctx, `SELECT n.nspname || '.' || c.relname
 FROM pg_index i
@@ -162,7 +169,7 @@ ORDER BY 1`)
 	if err != nil {
 		return nil, fmt.Errorf("query invalid indexes: %w", err)
 	}
-	names, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	names, err = pgx.CollectRows(rows, pgx.RowTo[string])
 	if err != nil {
 		return nil, fmt.Errorf("scan invalid indexes: %w", err)
 	}
