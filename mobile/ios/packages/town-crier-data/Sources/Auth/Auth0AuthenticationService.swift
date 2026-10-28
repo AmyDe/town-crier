@@ -96,10 +96,10 @@ public final class Auth0AuthenticationService: TownCrierDomain.AuthenticationSer
   }
 
   public func deleteAccount() async throws {
+    _ = credentialsManager.clear()
+    await sessionCache.clear()
     do {
       try await Auth0.webAuth(clientId: config.clientId, domain: config.domain).clearSession()
-      _ = credentialsManager.clear()
-      await sessionCache.clear()
     } catch {
       throw DomainError.logoutFailed(error.localizedDescription)
     }

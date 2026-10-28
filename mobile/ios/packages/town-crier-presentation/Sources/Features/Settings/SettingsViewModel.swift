@@ -147,12 +147,12 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
     isShowingDeleteConfirmation = false
     error = nil
     do {
-      // UK GDPR Art. 17: server-side erasure must succeed BEFORE we drop the
-      // local credentials. If we clear the keychain first and DELETE /v1/me
-      // fails, the user's server data is orphaned and they can never retry.
+      // UK GDPR Art. 17: server erasure must succeed before local credentials
+      // are dropped. After it succeeds, local cleanup failures are ignored
+      // because the account no longer exists and the user must be signed out.
       try await userProfileRepository.delete()
       try? await notificationService.removeDeviceToken()
-      try await authService.deleteAccount()
+      try? await authService.deleteAccount()
       clearSession()
       onLogout?()
     } catch {
