@@ -24,11 +24,14 @@
 // least-privilege reader role, e.g. a dev-only job reading prod
 // (docs/adr/0038-dev-seed-least-privilege-prod-read.md).
 //
+// -backup selects grants_backup.sql: SELECT on the tables the pg-backup worker
+// exports and nothing else.
+//
 // Usage:
 //
 //	pgbootstrap -host <fqdn> -admin-user <aad-admin-upn> \
 //	    [-admin-db postgres] [-db town_crier_dev] \
-//	    -mi-oid <managed-identity-object-id> [-role towncrier_api] [-readonly]
+//	    -mi-oid <managed-identity-object-id> [-role towncrier_api] [-readonly | -backup]
 //	pgbootstrap -host <fqdn> -admin-user <aad-admin-upn> -db town_crier_dev -verify
 //
 // -verify connects to the app DB (as the admin) and prints SELECT current_user so
@@ -70,6 +73,12 @@ var grantsSQLTemplate string
 //
 //go:embed grants_readonly.sql
 var grantsReadonlySQLTemplate string
+
+// grantsBackupSQLTemplate is the backup variant of the Phase 2 SQL (app DB):
+// SELECT-only on the tables the pg-backup job exports. Selected with -backup.
+//
+//go:embed grants_backup.sql
+var grantsBackupSQLTemplate string
 
 // identifierPattern matches a safe, unquoted SQL identifier (role / database
 // name). OID values must be a UUID. Both are validated before being templated
@@ -119,6 +128,12 @@ func buildGrantsSQL(p bootstrapParams, readonly bool) (string, error) {
 	return renderTemplate("grants", grantsSQLTemplate, p)
 }
 
+// buildBackupGrantsSQL validates identifiers and renders the backup variant of
+// the Phase 2 template.
+func buildBackupGrantsSQL(p bootstrapParams) (string, error) {
+	return renderTemplate("grants_backup", grantsBackupSQLTemplate, p)
+}
+
 // renderTemplate validates p and renders the named SQL template. It is the
 // shared implementation for buildPrincipalSQL and buildGrantsSQL so that
 // validation and rendering are never accidentally skipped in one phase.
@@ -154,8 +169,14 @@ func run(args []string) int {
 		timeout   = fs.Duration("timeout", 30*time.Second, "overall timeout")
 		verify    = fs.Bool("verify", false, "connect to the app DB and print SELECT current_user, then exit (no bootstrap)")
 		readonly  = fs.Bool("readonly", false, "grant SELECT-only access (grants_readonly.sql) instead of full DML (grants.sql) in Phase 2")
+		backup    = fs.Bool("backup", false, "grant SELECT on the backup tables only (grants_backup.sql) in Phase 2")
 	)
 	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+
+	if *readonly && *backup {
+		fmt.Fprintln(os.Stderr, "pgbootstrap: -readonly and -backup are mutually exclusive")
 		return 2
 	}
 
@@ -222,7 +243,12 @@ func run(args []string) int {
 	// Phase 2: grant on the app database (full DML, or SELECT-only when
 	// -readonly is set). Roles are cluster-global, so the role created in
 	// Phase 1 is visible here immediately.
-	grantsSQL, err := buildGrantsSQL(params, *readonly)
+	var grantsSQL string
+	if *backup {
+		grantsSQL, err = buildBackupGrantsSQL(params)
+	} else {
+		grantsSQL, err = buildGrantsSQL(params, *readonly)
+	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "pgbootstrap: %v\n", err)
 		return 2
@@ -231,9 +257,12 @@ func run(args []string) int {
 		fmt.Fprintf(os.Stderr, "pgbootstrap: phase 2 (grants): %v\n", err)
 		return 1
 	}
-	if *readonly {
+	switch {
+	case *backup:
+		fmt.Printf("pgbootstrap: phase 2 complete — backup (SELECT) grants applied on %q\n", *db)
+	case *readonly:
 		fmt.Printf("pgbootstrap: phase 2 complete — read-only (SELECT) grants applied on %q\n", *db)
-	} else {
+	default:
 		fmt.Printf("pgbootstrap: phase 2 complete — DML grants applied on %q\n", *db)
 	}
 
