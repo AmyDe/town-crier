@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
+	"sync"
 	"testing"
 	"time"
 
@@ -726,5 +727,54 @@ func TestRunner_SpanCarriesRetryAfterOnRateLimit(t *testing.T) {
 	}
 	if v, ok := attrValue(span, "poll.retry_after_seconds"); !ok || v.AsInt64() != 2820 {
 		t.Fatalf("retry_after_seconds = %v (present %v), want 2820", v, ok)
+	}
+}
+
+type blockingDispatcher struct{}
+
+func (blockingDispatcher) DispatchPending(ctx context.Context) { <-ctx.Done() }
+
+type recordingHandler struct {
+	mu   sync.Mutex
+	msgs []string
+}
+
+func (h *recordingHandler) Enabled(context.Context, slog.Level) bool { return true }
+func (h *recordingHandler) Handle(_ context.Context, r slog.Record) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.msgs = append(h.msgs, r.Message)
+	return nil
+}
+func (h *recordingHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
+func (h *recordingHandler) WithGroup(string) slog.Handler      { return h }
+
+func TestRunner_BlockedDispatchIsBoundedAndLogged(t *testing.T) {
+	t.Parallel()
+	r := newRunnerRig(t, londonAt(6, 10, 20, 0), nil)
+	r.sw.onChecks = 0
+	h := &recordingHandler{}
+	r.runner.d.Log = slog.New(h)
+	r.runner.d.Dispatch = blockingDispatcher{}
+	r.runner.cfg.EndOfRunTimeout = 50 * time.Millisecond
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = r.runner.Run(context.Background())
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("run did not return within the end-of-run bound")
+	}
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if !slices.Contains(h.msgs, "poll.end_of_run_timeout") {
+		t.Fatalf("messages = %v, want poll.end_of_run_timeout", h.msgs)
+	}
+	if r.flusher.flush != 1 {
+		t.Fatalf("flush = %d, want 1", r.flusher.flush)
 	}
 }

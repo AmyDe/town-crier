@@ -20,9 +20,13 @@ const (
 	// A stop signal leaves the container about 30 s before it is killed, so the
 	// work after a cancelled run is bounded to fit inside that grace period.
 	cancelledFlushTimeout = 10 * time.Second
-	leaseReleaseTimeout   = 5 * time.Second
-	runSpanName           = "PlanIt poll run"
-	tracerName            = "github.com/AmyDe/town-crier/api-go/internal/polling"
+	// endOfRunTimeout bounds the dispatch and push flush after a run that was not
+	// cancelled. The 55-minute run budget plus this bound must leave headroom
+	// under the 3600 s replica timeout for health and lease release.
+	endOfRunTimeout     = 2 * time.Minute
+	leaseReleaseTimeout = 5 * time.Second
+	runSpanName         = "PlanIt poll run"
+	tracerName          = "github.com/AmyDe/town-crier/api-go/internal/polling"
 )
 
 // OracleOutcome is what one oracle pass reports: Stop is set when a PlanIt
@@ -88,6 +92,9 @@ type RunnerConfig struct {
 	Plan          WindowPlanConfig
 	RunBudget     time.Duration
 	OracleEnabled bool
+	// EndOfRunTimeout bounds the end-of-run dispatch and flush; zero means the
+	// default of five minutes.
+	EndOfRunTimeout time.Duration
 }
 
 // RunnerDeps are the collaborators of a Runner. Push and Oracle may be nil.
@@ -165,20 +172,29 @@ func (r *Runner) Run(ctx context.Context) (RunResult, error) {
 		span.RecordError(err)
 	}
 
-	flushCtx := context.WithoutCancel(ctx)
-	if res.Stop == StopCancelled {
-		r.d.Log.InfoContext(flushCtx, "poll.cancelled", slog.Int("pages", res.Pages))
-		var cancel context.CancelFunc
-		flushCtx, cancel = context.WithTimeout(flushCtx, cancelledFlushTimeout)
-		defer cancel()
-	} else {
+	baseCtx := context.WithoutCancel(ctx)
+	bound := r.cfg.EndOfRunTimeout
+	if bound <= 0 {
+		bound = endOfRunTimeout
+	}
+	cancelled := res.Stop == StopCancelled
+	if cancelled {
+		r.d.Log.InfoContext(baseCtx, "poll.cancelled", slog.Int("pages", res.Pages))
+		bound = cancelledFlushTimeout
+	}
+	flushCtx, cancel := context.WithTimeout(baseCtx, bound)
+	defer cancel()
+	if !cancelled {
 		r.d.Dispatch.DispatchPending(flushCtx)
 	}
 	if ferr := r.d.Flusher.Flush(flushCtx); ferr != nil {
-		r.d.Log.WarnContext(flushCtx, "poll.flush_failed", slog.Any("error", ferr))
+		r.d.Log.WarnContext(baseCtx, "poll.flush_failed", slog.Any("error", ferr))
 	}
-	if res.Stop != StopDisabled && res.Stop != StopCancelled {
-		res.Health = r.health(flushCtx, res.Counts)
+	if errors.Is(flushCtx.Err(), context.DeadlineExceeded) && !cancelled {
+		r.d.Log.WarnContext(baseCtx, "poll.end_of_run_timeout", slog.Duration("bound", bound))
+	}
+	if res.Stop != StopDisabled && !cancelled {
+		res.Health = r.health(baseCtx, res.Counts)
 	}
 	r.setSpanAttrs(span, res)
 	return res, err
