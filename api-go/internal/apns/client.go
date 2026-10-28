@@ -90,14 +90,19 @@ func NewClient(opts Options, logger *slog.Logger, now func() time.Time) (*Client
 		return nil, err
 	}
 
-	// APNs requires HTTP/2; an explicit h2 transport guarantees the protocol
-	// rather than relying on net/http's opportunistic h2 upgrade. TLS 1.2 is the
-	// floor.
-	transport := &http2.Transport{
-		TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12},
-	}
-	httpClient := tracedPushClient(transport)
+	httpClient := tracedPushClient(newTransport())
 	return newClientWithBaseURL(opts, opts.baseURL(), httpClient, logger, now)
+}
+
+// newTransport returns an HTTP/2-only transport (APNs requires h2) with a TLS
+// 1.2 floor. The idle read and ping timeouts make a silently dead connection
+// fail fast so the next send redials.
+func newTransport() *http2.Transport {
+	return &http2.Transport{
+		TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12},
+		ReadIdleTimeout: 30 * time.Second,
+		PingTimeout:     15 * time.Second,
+	}
 }
 
 // tracedPushClient applies the redaction-then-tracing chain NewClient uses, so
@@ -157,18 +162,9 @@ func (c *Client) Send(ctx context.Context, tokens []string, payload json.RawMess
 	return invalid, nil
 }
 
-// sendOneTraced wraps sendOne in an "APNs delivery" span — distinct from the
-// transport-level "APNs push" HTTP client spans platform.WrapHTTPClient
-// attaches to each individual request/retry — so a genuine per-device
-// delivery failure is visible as a single dependency with Error status even
-// when the failure happened before any HTTP request was made (e.g. a JWT
-// signing failure). On failure it also records
-// towncrier.push.delivery_failed (platform=apns) so the same failure is
-// queryable/alertable through AppMetrics, not just the "apns send failed"
-// slog line Send still emits. A routine permanently-invalid-token rejection
-// (rejected=true, err=nil) is expected churn the caller prunes, not a
-// failure — it is deliberately left off both the span's error status and the
-// counter.
+// sendOneTraced wraps sendOne in an "APNs delivery" span and records
+// towncrier.push.delivery_failed on failure. A permanently-invalid-token
+// rejection (rejected=true, err=nil) is expected churn and is not a failure.
 func (c *Client) sendOneTraced(ctx context.Context, token string, payload json.RawMessage) (rejected bool, err error) {
 	ctx, span := otel.Tracer(tracerName).Start(ctx, "APNs delivery")
 	defer span.End()
