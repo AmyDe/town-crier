@@ -2,6 +2,7 @@ package apns
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -233,5 +234,19 @@ func TestNoOpSender_SendReturnsNoInvalidTokens(t *testing.T) {
 	}
 	if len(invalid) != 0 {
 		t.Fatalf("invalid = %v, want none", invalid)
+	}
+}
+
+func TestNewTransport_DetectsDeadConnections(t *testing.T) {
+	t.Parallel()
+	tr := newTransport()
+	if tr.ReadIdleTimeout != 30*time.Second {
+		t.Errorf("ReadIdleTimeout = %v, want 30s", tr.ReadIdleTimeout)
+	}
+	if tr.PingTimeout != 15*time.Second {
+		t.Errorf("PingTimeout = %v, want 15s", tr.PingTimeout)
+	}
+	if tr.TLSClientConfig == nil || tr.TLSClientConfig.MinVersion != tls.VersionTLS12 {
+		t.Errorf("TLS floor is not 1.2")
 	}
 }
