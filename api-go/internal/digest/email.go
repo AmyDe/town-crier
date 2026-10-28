@@ -17,9 +17,8 @@ const senderAddress = "hello@towncrierapp.uk"
 // Email-safe font stacks: email clients cannot fetch the brand's self-hosted
 // webfonts.
 const (
-	headlineFontStack = bodyFontStack
-	bodyFontStack     = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif"
-	monoFontStack     = "'Courier New', monospace"
+	bodyFontStack = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif"
+	monoFontStack = "'Courier New', monospace"
 )
 
 // pageTemplate is the outer page shell. It is light-only by design: email-client
@@ -150,21 +149,17 @@ func buildDigestSubject(totalCount int, sections []watchZoneDigest, saved []noti
 func buildDigestHTML(zoneSections []watchZoneDigest, savedApplications []notifications.DigestNotification, totalCount int, showFreeTierNotice bool) string {
 	var zoneBlocks strings.Builder
 	for _, section := range zoneSections {
-		var cards strings.Builder
-		for _, n := range section.notifications {
-			cards.WriteString(buildNotificationCard(n))
-		}
 		fmt.Fprintf(&zoneBlocks, sectionHeaderTemplate, designtokens.TextSecondaryLightHex, "📍", html.EscapeString(section.name))
-		zoneBlocks.WriteString(cards.String())
+		for _, n := range section.notifications {
+			zoneBlocks.WriteString(buildNotificationCard(n))
+		}
 	}
 
 	if len(savedApplications) > 0 {
-		var savedCards strings.Builder
-		for _, n := range savedApplications {
-			savedCards.WriteString(buildNotificationCard(n))
-		}
 		fmt.Fprintf(&zoneBlocks, sectionHeaderTemplate, designtokens.TextSecondaryLightHex, "★", "Saved Applications")
-		zoneBlocks.WriteString(savedCards.String())
+		for _, n := range savedApplications {
+			zoneBlocks.WriteString(buildNotificationCard(n))
+		}
 	}
 
 	plural := "s"
@@ -246,7 +241,7 @@ func buildNotificationCard(n notifications.DigestNotification) string {
 		monoFontStack, designtokens.TextSecondaryLightHex, n.CreatedAt.Format("2 Jan 2006"))
 
 	headline := fmt.Sprintf(`%s<div style="font-family:%s;font-weight:700;color:%s;font-size:15px;">%s%s</div>%s`,
-		openLink, headlineFontStack, designtokens.TextPrimaryLightHex, addressLine, savedIndicator, closeLink)
+		openLink, bodyFontStack, designtokens.TextPrimaryLightHex, addressLine, savedIndicator, closeLink)
 
 	typeLine := fmt.Sprintf(`%s<div style="color:%s;font-size:13px;margin-top:4px;">%s</div>%s`,
 		openLink, designtokens.TextSecondaryLightHex, html.EscapeString(appType), closeLink)

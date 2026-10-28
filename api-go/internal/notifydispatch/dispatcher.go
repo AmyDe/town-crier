@@ -41,12 +41,9 @@ func (d *PlatformDispatcher) Send(
 	iosTokens []string, iosPayload json.RawMessage,
 	androidTokens []string, androidPayload json.RawMessage,
 ) ([]string, error) {
-	invalid := make([]string, 0)
+	var invalid []string
 	invalid = d.deliver(ctx, "apns", d.apns, iosTokens, iosPayload, invalid)
 	invalid = d.deliver(ctx, "fcm", d.fcm, androidTokens, androidPayload, invalid)
-	if len(invalid) == 0 {
-		return nil, nil
-	}
 	return invalid, nil
 }
 

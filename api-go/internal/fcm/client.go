@@ -114,11 +114,7 @@ func newClientWithBaseURL(opts Options, baseURL string, httpClient *http.Client,
 // an error — one bad device must not abort the rest. payload is the FCM v1
 // "message" object WITHOUT the token; Send injects each token itself.
 func (c *Client) Send(ctx context.Context, tokens []string, payload json.RawMessage) ([]string, error) {
-	if len(tokens) == 0 {
-		return nil, nil
-	}
-
-	invalid := make([]string, 0, len(tokens))
+	var invalid []string
 	for _, token := range tokens {
 		rejected, err := c.sendOneTraced(ctx, token, payload)
 		if err != nil {
@@ -128,9 +124,6 @@ func (c *Client) Send(ctx context.Context, tokens []string, payload json.RawMess
 		if rejected {
 			invalid = append(invalid, token)
 		}
-	}
-	if len(invalid) == 0 {
-		return nil, nil
 	}
 	return invalid, nil
 }
@@ -162,9 +155,8 @@ func (c *Client) sendOneTraced(ctx context.Context, token string, payload json.R
 }
 
 // sendOne posts payload to a single device token, returning rejected=true when
-// FCM reports the token is permanently invalid. There is no retry loop day-1
-// (parity with the epic's APNs-parity scope): a transient 5xx/429 is logged and
-// skipped, the token left for the next cycle.
+// FCM reports the token is permanently invalid. There is no retry loop: a
+// transient 5xx/429 is logged and skipped, the token left for the next cycle.
 func (c *Client) sendOne(ctx context.Context, token string, payload json.RawMessage) (rejected bool, err error) {
 	bearer, err := c.tokens.current(ctx)
 	if err != nil {
