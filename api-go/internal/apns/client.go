@@ -136,11 +136,7 @@ func newClientWithBaseURL(opts Options, baseURL string, httpClient *http.Client,
 // an error — one bad device must not abort the rest. The payload is the
 // caller-built APNs JSON body (the {"aps":...} document).
 func (c *Client) Send(ctx context.Context, tokens []string, payload json.RawMessage) ([]string, error) {
-	if len(tokens) == 0 {
-		return nil, nil
-	}
-
-	invalid := make([]string, 0, len(tokens))
+	var invalid []string
 	for _, token := range tokens {
 		rejected, err := c.sendOneTraced(ctx, token, payload)
 		if err != nil {
@@ -150,9 +146,6 @@ func (c *Client) Send(ctx context.Context, tokens []string, payload json.RawMess
 		if rejected {
 			invalid = append(invalid, token)
 		}
-	}
-	if len(invalid) == 0 {
-		return nil, nil
 	}
 	return invalid, nil
 }

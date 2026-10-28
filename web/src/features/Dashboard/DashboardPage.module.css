@@ -22,7 +22,6 @@
   margin-bottom: var(--tc-space-xl);
 }
 
-/* Watch zone cards */
 .zonesGrid {
   display: grid;
   grid-template-columns: 1fr;
@@ -62,7 +61,6 @@
   margin: 0;
 }
 
-/* Recent applications */
 .applicationsList {
   display: grid;
   grid-template-columns: 1fr;
@@ -78,7 +76,6 @@
   }
 }
 
-/* Quick links */
 .quickLinks {
   display: flex;
   gap: var(--tc-space-md);
@@ -110,7 +107,6 @@
   outline-offset: 2px;
 }
 
-/* Loading / Error */
 .loading {
   text-align: center;
   padding: var(--tc-space-xxl) var(--tc-space-md);

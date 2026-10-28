@@ -53,8 +53,8 @@ type DeviceRegistration struct {
 	RegisteredAt time.Time
 }
 
-// NewRegistration builds a registration, rejecting a blank user id or token —
-// rejects a blank (whitespace-only) user id or token.
+// NewRegistration builds a registration, rejecting a blank (whitespace-only)
+// user id or token.
 func NewRegistration(userID, token string, platform DevicePlatform, now time.Time) (DeviceRegistration, error) {
 	if strings.TrimSpace(userID) == "" {
 		return DeviceRegistration{}, errors.New("user id is required")

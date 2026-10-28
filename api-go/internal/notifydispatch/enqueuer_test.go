@@ -82,7 +82,7 @@ func (f *fakePushQueue) Add(userID string, n notifications.DigestNotification) {
 }
 
 // fakeDescriptionMatcher is a hand-written double for the enqueuer's
-// consumer-side descriptionMatcher interface (GH#1090, epic tc-w825j): it
+// consumer-side descriptionMatcher interface: it
 // records every MatchesExpression call so a test can assert both the
 // returned verdict and — for the app_type-excluded case — that the matcher
 // was never reached at all (the cheap in-memory gate must run first).
@@ -233,11 +233,10 @@ func TestEnqueuer_EnqueueForApplication_FansOutToContainingZones(t *testing.T) {
 
 func TestEnqueuer_EnqueueForApplication_MatchesCrossBorderNeighbourAuthorityZone(t *testing.T) {
 	t.Parallel()
-	// Boundary-agnostic matching (tc-b179 / tc-w11n): a zone pinned to authority 449
-	// (Adur & Worthing) must receive a NewApplication for an in-circle application
-	// tagged authority 246 (Arun) on the other side of the border. The store no
-	// longer scopes the lookup by authority, so the fake returns the 449 zone for
-	// the 246 app. The CreatedAt.After(detectedAt) skip rule is UNCHANGED: a
+	// Matching is boundary-agnostic: a zone pinned to authority 449 (Adur &
+	// Worthing) must receive a NewApplication for an in-circle application tagged
+	// authority 246 (Arun) on the other side of the border, so the fake returns
+	// the 449 zone for the 246 app. The CreatedAt.After(detectedAt) skip rule is UNCHANGED: a
 	// second 449 zone created after the application last changed is still skipped.
 	lastDifferent := time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC)
 	eligible, err := watchzones.NewWatchZone("zone-449", "auth0|alice", "Border", 50.81, -0.42, 2000,
@@ -585,7 +584,7 @@ func TestEnqueuer_LapsedPaidTier_RankedAgainstFreeLimit(t *testing.T) {
 func TestEnqueuer_EnqueueForApplication_FansOutToContainingPolygonZone(t *testing.T) {
 	t.Parallel()
 	// A custom-shape (polygon) zone that FindZonesContaining returns must fan
-	// out exactly like a circle zone (tc-6he3x.6): the fan-out loop is
+	// out exactly like a circle zone: the fan-out loop is
 	// shape-agnostic, so it must not require a circle's radius/lat/lng.
 	zone := testPolygonZoneAt(t, "zone-polygon-1", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
 	zones := &fakeZones{zones: []watchzones.WatchZone{zone}}
@@ -606,7 +605,7 @@ func TestEnqueuer_EnqueueForApplication_FansOutToContainingPolygonZone(t *testin
 func TestEnqueuer_PausedPolygonZone_NoFanOutAndZoneUnchanged(t *testing.T) {
 	t.Parallel()
 	// Free tier (limit 1) with 3 polygon zones ranked oldest-first: rank 2
-	// (zone-polygon-2) is paused per the existing GH#889 ranking, exactly as a
+	// (zone-polygon-2) is paused per the oldest-first ranking, exactly as a
 	// circle zone would be. Per the epic's "Quota / downgrade" section, a
 	// downgraded polygon zone must pause, never convert to a circle or get
 	// deleted — assert the fake store's copy is untouched afterward.
@@ -666,8 +665,7 @@ func TestEnqueuer_UnknownProfile_NoRecord(t *testing.T) {
 }
 
 // filteredZoneAt returns a "zone-1"/"auth0|alice" zone identical to
-// testZoneAt but carrying key — GH#1090's watch-zone filters, epic
-// tc-w825j, bead tc-w825j.5.
+// testZoneAt but carrying key.
 func filteredZoneAt(t *testing.T, createdAt time.Time, key watchzones.FilterKey) watchzones.WatchZone {
 	t.Helper()
 	z := testZoneAt(t, "zone-1", "auth0|alice", createdAt)
@@ -678,7 +676,7 @@ func filteredZoneAt(t *testing.T, createdAt time.Time, key watchzones.FilterKey)
 func TestEnqueuer_UnfilteredZone_UnaffectedByMatcher(t *testing.T) {
 	t.Parallel()
 	// FilterKey == "" (the zero value / unfiltered case): the matcher must
-	// never be consulted, and behaviour is exactly as before this bead.
+	// never be consulted and no filtering applies.
 	matcher := &fakeDescriptionMatcher{matches: false} // would reject if ever called
 	zone := testZoneAt(t, "zone-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
 	zones := &fakeZones{zones: []watchzones.WatchZone{zone}}

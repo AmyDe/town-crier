@@ -10,8 +10,8 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
 )
 
-// TestEnqueuer_CreatedRecordIsDigestReadable is the cross-package proof for bead
-// tc-uc2p: a notification the poll-path enqueuer creates lands in the
+// TestEnqueuer_CreatedRecordIsDigestReadable proves that a
+// notification the poll-path enqueuer creates lands in the
 // Notifications store in the exact shape the digest worker reads. The single
 // Postgres store serves both the enqueuer's Create and the digest's ByUserSince,
 // so capturing the created DigestNotification and asserting its fields proves the

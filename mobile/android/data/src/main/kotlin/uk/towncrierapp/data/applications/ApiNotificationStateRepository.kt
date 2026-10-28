@@ -11,8 +11,7 @@ import uk.towncrierapp.domain.applications.PlanningApplicationId
 
 /**
  * `NotificationStateRepository` over the Town Crier API (ADR 0035). [markRead]
- * batches at [MARK_READ_BATCH_SIZE] ids per request. The legacy `/advance`
- * endpoint is deliberately not implemented.
+ * batches at [MARK_READ_BATCH_SIZE] ids per request.
  */
 public class ApiNotificationStateRepository(
     private val apiClient: ApiClient,

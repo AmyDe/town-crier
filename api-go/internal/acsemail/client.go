@@ -64,7 +64,7 @@ func (e *throttledError) Error() string {
 var ErrAcceptedStatusUnknown = errors.New("acsemail: accepted, status unknown")
 
 // Message is the email a caller asks the client to deliver. The HTML body and
-// subject are pre-built by the consumer (the digest worker, tc-34y5).
+// subject are pre-built by the caller.
 type Message struct {
 	// Sender is the verified ACS sender address (e.g. hello@towncrierapp.uk).
 	Sender string

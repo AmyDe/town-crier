@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Final onboarding step. Tier-aware and honest about what the user's plan
-/// actually delivers (tc-w3cb.4):
+/// actually delivers:
 ///
 /// - Paid tiers get instant alerts, so this asks to enable notifications.
 /// - Free accounts get a weekly email digest only (no instant push), so the
@@ -27,7 +27,6 @@ struct NotificationPermissionStepView: View {
     .padding(TCSpacing.extraLarge)
   }
 
-  /// Paid tiers: instant alerts are delivered, so offer to enable notifications.
   @ViewBuilder
   private var instantAlertsContent: some View {
     Image(systemName: "bell.badge")

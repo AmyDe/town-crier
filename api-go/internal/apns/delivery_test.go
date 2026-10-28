@@ -48,12 +48,12 @@ func recordDeliverySpans(t *testing.T, run func()) []sdktrace.ReadOnlySpan {
 	return rec.Ended()
 }
 
-// TestClient_Send_RecordsDeliveryFailureSpanAndMetric pins tc-97k35.4: a
+// TestClient_Send_RecordsDeliveryFailureSpanAndMetric asserts that a
 // genuine per-device delivery failure (here, the APNs host is unreachable, so
 // sendOne exhausts its retries before ever getting a response) must produce
 // an "APNs delivery" span with Error status plus a
 // towncrier.push.delivery_failed(platform=apns) count — not just the
-// "apns send failed" slog line, which is all today's code emits.
+// "apns send failed" slog line.
 func TestClient_Send_RecordsDeliveryFailureSpanAndMetric(t *testing.T) {
 	pemBytes, _ := newTestKeyPEM(t)
 	opts := Options{
