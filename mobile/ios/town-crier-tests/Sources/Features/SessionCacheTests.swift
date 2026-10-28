@@ -183,6 +183,51 @@ struct SessionCacheTests {
     #expect(result == reloaded)
     #expect(await counter.invocations == 1)
   }
+  @Test func clear_duringInFlightLoad_doesNotRestoreSession() async {
+    let sut = SessionCache(leadTime: 60, now: fixedClock)
+    let gate = LoaderGate()
+    let loaded = makeSession(expiresIn: 300)
+
+    let load = Task {
+      await sut.currentOrLoad {
+        await gate.wait()
+        return loaded
+      }
+    }
+    await gate.waitUntilLoaderStarted()
+
+    await sut.clear()
+    await gate.release()
+    _ = await load.value
+
+    #expect(await sut.current() == nil)
+  }
+}
+
+private actor LoaderGate {
+  private var started = false
+  private var released = false
+  private var startWaiters: [CheckedContinuation<Void, Never>] = []
+  private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
+
+  func wait() async {
+    started = true
+    startWaiters.forEach { $0.resume() }
+    startWaiters = []
+    if released { return }
+    await withCheckedContinuation { releaseWaiters.append($0) }
+  }
+
+  func waitUntilLoaderStarted() async {
+    if started { return }
+    await withCheckedContinuation { startWaiters.append($0) }
+  }
+
+  func release() {
+    released = true
+    releaseWaiters.forEach { $0.resume() }
+    releaseWaiters = []
+  }
 }
 
 private actor CallCounter {
