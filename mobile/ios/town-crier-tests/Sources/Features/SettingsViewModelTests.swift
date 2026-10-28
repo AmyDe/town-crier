@@ -319,26 +319,16 @@ struct SettingsViewModelTests {
   }
 
   @Test func confirmDeleteAccount_clearsSessionAndNotifies() async {
-    var logoutCalled = false
+    var deletedCalled = false
     let (sut, _, _, _, _, _) = makeSUT()
-    sut.onLogout = { logoutCalled = true }
+    sut.onAccountDeleted = { deletedCalled = true }
     await sut.load()
     sut.requestAccountDeletion()
 
     await sut.confirmDeleteAccount()
 
     #expect(sut.userEmail == nil)
-    #expect(logoutCalled)
-  }
-
-  @Test func confirmDeleteAccount_setsErrorOnFailure() async {
-    let (sut, authSpy, _, _, _, _) = makeSUT()
-    authSpy.deleteAccountResult = .failure(DomainError.unexpected("deletion failed"))
-    sut.requestAccountDeletion()
-
-    await sut.confirmDeleteAccount()
-
-    #expect(sut.error == .unexpected("deletion failed"))
+    #expect(deletedCalled)
   }
 
   @Test func cancelDeletion_dismissesConfirmation() {

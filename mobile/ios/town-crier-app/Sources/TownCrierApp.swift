@@ -191,6 +191,12 @@ struct TownCrierApp: App {
         anonymousCoordinator.reset()
       }
     }
+    settingsVM.onAccountDeleted = {
+      Task { @MainActor in
+        loginVM.endSession()
+        anonymousCoordinator.reset()
+      }
+    }
     _settingsViewModel = StateObject(wrappedValue: settingsVM)
 
     let delegate = NotificationDelegate(coordinator: appCoordinator)
