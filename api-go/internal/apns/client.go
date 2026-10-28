@@ -17,7 +17,6 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/codes"
-	"golang.org/x/net/http2"
 
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
 )
@@ -95,13 +94,18 @@ func NewClient(opts Options, logger *slog.Logger, now func() time.Time) (*Client
 }
 
 // newTransport returns an HTTP/2-only transport (APNs requires h2) with a TLS
-// 1.2 floor. The idle read and ping timeouts make a silently dead connection
-// fail fast so the next send redials.
-func newTransport() *http2.Transport {
-	return &http2.Transport{
+// 1.2 floor. The ping timeouts make a silently dead connection fail fast so
+// the next send redials.
+func newTransport() *http.Transport {
+	var protocols http.Protocols
+	protocols.SetHTTP2(true)
+	return &http.Transport{
 		TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12},
-		ReadIdleTimeout: 30 * time.Second,
-		PingTimeout:     15 * time.Second,
+		Protocols:       &protocols,
+		HTTP2: &http.HTTP2Config{
+			SendPingTimeout: 30 * time.Second,
+			PingTimeout:     15 * time.Second,
+		},
 	}
 }
 

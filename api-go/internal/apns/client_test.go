@@ -240,11 +240,14 @@ func TestNoOpSender_SendReturnsNoInvalidTokens(t *testing.T) {
 func TestNewTransport_DetectsDeadConnections(t *testing.T) {
 	t.Parallel()
 	tr := newTransport()
-	if tr.ReadIdleTimeout != 30*time.Second {
-		t.Errorf("ReadIdleTimeout = %v, want 30s", tr.ReadIdleTimeout)
+	if tr.HTTP2.SendPingTimeout != 30*time.Second {
+		t.Errorf("SendPingTimeout = %v, want 30s", tr.HTTP2.SendPingTimeout)
 	}
-	if tr.PingTimeout != 15*time.Second {
-		t.Errorf("PingTimeout = %v, want 15s", tr.PingTimeout)
+	if tr.HTTP2.PingTimeout != 15*time.Second {
+		t.Errorf("PingTimeout = %v, want 15s", tr.HTTP2.PingTimeout)
+	}
+	if tr.Protocols == nil || !tr.Protocols.HTTP2() || tr.Protocols.HTTP1() {
+		t.Errorf("protocols are not HTTP/2 only")
 	}
 	if tr.TLSClientConfig == nil || tr.TLSClientConfig.MinVersion != tls.VersionTLS12 {
 		t.Errorf("TLS floor is not 1.2")
