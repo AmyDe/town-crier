@@ -78,10 +78,24 @@ type IndexNowSubmitter interface {
 	SubmitIndexNow(ctx context.Context) (submitted, skipped int, err error)
 }
 
+// BackupTableStat is one table's row and compressed byte count in a backup.
+type BackupTableStat struct {
+	Name  string
+	Rows  int64
+	Bytes int64
+}
+
+// BackupRunner is exported for the same typed-nil reason as DigestRunner.
+// Run returns per-table counts for a completed backup.
+type BackupRunner interface {
+	Run(ctx context.Context) ([]BackupTableStat, error)
+}
+
 // Run dispatches on WORKER_MODE and returns the process exit code. An unset or unknown mode is a deployment
 // accident and fails fast. Optional runners (purger, reconciler) may be nil:
-// pg-purge and appstore-reconcile then log and exit 0; the others exit 1.
-func Run(ctx context.Context, mode string, digester DigestRunner, dormant DormantRunner, poller PollRunner, sweeper SweepRunner, purger PurgeRunner, reconciler AppStoreReconcileRunner, seoCataloger SEOCatalogRunner, logger *slog.Logger) int {
+// pg-purge and appstore-reconcile then log and exit 0; the others, including
+// pg-backup, exit 1.
+func Run(ctx context.Context, mode string, digester DigestRunner, dormant DormantRunner, poller PollRunner, sweeper SweepRunner, purger PurgeRunner, reconciler AppStoreReconcileRunner, seoCataloger SEOCatalogRunner, backuper BackupRunner, logger *slog.Logger) int {
 	switch mode {
 	case "":
 		logger.ErrorContext(ctx, "WORKER_MODE is unset; refusing to run")
@@ -110,6 +124,9 @@ func Run(ctx context.Context, mode string, digester DigestRunner, dormant Dorman
 
 	case "seo-catalog":
 		return runSEOCatalog(ctx, seoCataloger, logger)
+
+	case "pg-backup":
+		return runBackup(ctx, backuper, logger)
 
 	default:
 		logger.ErrorContext(ctx, "unknown WORKER_MODE; refusing to run", "mode", mode)
@@ -311,5 +328,45 @@ func runSEOCatalog(ctx context.Context, runner SEOCatalogRunner, logger *slog.Lo
 		logger.ErrorContext(ctx, "seo-catalog indexnow submission failed", "error", err)
 		return 1
 	}
+	return 0
+}
+
+// runBackup fails closed: a nil runner means BACKUP_BLOB_URL or
+// BACKUP_CONTAINER was unset, and a silent skip would hide missing backups.
+func runBackup(ctx context.Context, runner BackupRunner, logger *slog.Logger) int {
+	tracer := otel.Tracer(tracerName)
+	ctx, span := tracer.Start(ctx, "Postgres Backup Cycle")
+	defer span.End()
+
+	if runner == nil {
+		logger.ErrorContext(ctx, "pg-backup requires BACKUP_BLOB_URL and BACKUP_CONTAINER; refusing to run")
+		return 1
+	}
+
+	cycleCtx, cancel := context.WithTimeout(ctx, cycleBudget)
+	defer cancel()
+
+	tables, err := runner.Run(cycleCtx)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		logger.ErrorContext(ctx, "pg-backup cycle failed", "error", err)
+		return 1
+	}
+
+	var rows, bytes int64
+	for _, t := range tables {
+		rows += t.Rows
+		bytes += t.Bytes
+		span.SetAttributes(
+			attribute.Int64("pg_backup."+t.Name+".rows", t.Rows),
+			attribute.Int64("pg_backup."+t.Name+".bytes", t.Bytes),
+		)
+	}
+	span.SetAttributes(
+		attribute.Int64("pg_backup.rows_total", rows),
+		attribute.Int64("pg_backup.bytes_total", bytes),
+	)
+	logger.InfoContext(ctx, "pg-backup cycle completed", "tables", len(tables), "rows", rows, "bytes", bytes)
 	return 0
 }

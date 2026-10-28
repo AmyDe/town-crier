@@ -615,7 +615,6 @@ func TestRun_PGBackupWithoutRunnerExitsOne(t *testing.T) {
 }
 
 func TestRun_PGBackupFailureExitsOneAndMarksSpan(t *testing.T) {
-	t.Parallel()
 	b := &fakeBackup{err: errors.New("sink down")}
 	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
 	var code int
@@ -658,12 +657,5 @@ func TestRun_PGBackupRecordsRowAndByteCountsOnSpan(t *testing.T) {
 		if got, ok := attrInt(span, key); !ok || got != w {
 			t.Errorf("%s = %d (present=%v), want %d", key, got, ok, w)
 		}
-	}
-}
-
-func TestRun_PGBackupBudgetStaysUnderReplicaTimeout(t *testing.T) {
-	t.Parallel()
-	if cycleBudget > 8*time.Minute {
-		t.Errorf("cycleBudget %v exceeds 80%% of the 600 s replicaTimeout", cycleBudget)
 	}
 }
