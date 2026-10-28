@@ -31,7 +31,6 @@ public final class PushNudgeViewModel: ObservableObject {
     return authorizationStatus != .authorized
   }
 
-  /// Banner body copy, status-appropriate.
   public var bodyText: String {
     switch authorizationStatus {
     case .denied:
@@ -41,7 +40,6 @@ public final class PushNudgeViewModel: ObservableObject {
     }
   }
 
-  /// Primary-action button title, status-appropriate.
   public var buttonTitle: String {
     switch authorizationStatus {
     case .denied:
@@ -51,12 +49,10 @@ public final class PushNudgeViewModel: ObservableObject {
     }
   }
 
-  /// Reads the current authorization status on appear.
   public func load() async {
     authorizationStatus = await notificationService.authorizationStatus()
   }
 
-  /// Re-reads the authorization status without prompting.
   public func refresh() async {
     authorizationStatus = await notificationService.authorizationStatus()
   }

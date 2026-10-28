@@ -25,9 +25,8 @@ public actor PushNotificationRegistrar {
     self.authService = authService
   }
 
-  /// Called by the AppDelegate when APNs returns a device token.
-  /// Converts the token data to lowercased hex and either registers it
-  /// immediately (if authenticated) or queues it for later flush.
+  /// Registers the token as lowercased hex immediately if authenticated,
+  /// otherwise queues it for `flushPendingRegistration()`.
   public func didReceiveDeviceToken(_ tokenData: Data) async {
     let hexToken = tokenData.hexEncodedString()
     if await authService.currentSession() != nil {

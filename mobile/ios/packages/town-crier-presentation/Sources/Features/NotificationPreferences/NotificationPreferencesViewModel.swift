@@ -82,7 +82,6 @@ public final class NotificationPreferencesViewModel: ObservableObject, ErrorHand
     authorizationStatus = await notificationService.authorizationStatus()
   }
 
-  /// Re-reads the system authorization status without prompting.
   public func refreshAuthorizationStatus() async {
     authorizationStatus = await notificationService.authorizationStatus()
   }

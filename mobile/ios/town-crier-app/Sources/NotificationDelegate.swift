@@ -4,24 +4,13 @@ import UserNotifications
 /// Handles notification tap responses for both cold launch and background
 /// scenarios.
 ///
-/// The class is `@MainActor`; both delegate overloads inherit that isolation
-/// (no `nonisolated`). Swift's compiler-synthesized `@objc` thunk that
-/// bridges the `async` return to the original `withCompletionHandler:` ObjC
-/// selector then fires on the main thread deterministically — which is what
-/// UIKit's `UNUserNotificationCenter` asserts (tc-cbmk).
+/// Both delegate overloads inherit the class's `@MainActor` isolation so the
+/// synthesized `@objc` completion thunk fires on the main thread, as
+/// `UNUserNotificationCenter` asserts. Do not reintroduce `nonisolated` here.
 ///
-/// The prior shape (tc-fcwv) used `nonisolated async` + `await MainActor.run`
-/// to hop back to main inside the body. That left a gap: the @objc thunk's
-/// completion still fired on whatever cooperative thread the runtime resumed
-/// us on. Removing `nonisolated` and letting class-level MainActor
-/// inheritance carry the body is Apple's WWDC23 guidance for
-/// `UNUserNotificationCenterDelegate` async overloads on a `@MainActor`
-/// class. Do not reintroduce `nonisolated` here.
-///
-/// The `@preconcurrency` on the conformance suppresses the strict-
-/// concurrency diagnostic that `UNUserNotificationCenter` /
-/// `UNNotificationResponse` are not `Sendable` — they are passed in by
-/// UIKit on the main thread already, so the actor crossing is safe.
+/// `@preconcurrency` suppresses the non-`Sendable` diagnostics for
+/// `UNUserNotificationCenter` / `UNNotificationResponse`; UIKit already
+/// delivers them on the main thread.
 @MainActor
 final class NotificationDelegate: NSObject, @preconcurrency UNUserNotificationCenterDelegate {
   let coordinator: AppCoordinator
@@ -30,10 +19,9 @@ final class NotificationDelegate: NSObject, @preconcurrency UNUserNotificationCe
     self.coordinator = coordinator
   }
 
-  /// Called when the user taps a notification (cold launch or background).
   /// Forwards the APNs `userInfo` payload to `AppCoordinator.handlePushTap`,
-  /// which routes the application deep link and marks that application read
-  /// (ADR 0035). Digest pushes carry no application deep link and no-op.
+  /// which routes the application deep link and marks that application read.
+  /// Digest pushes carry no application deep link and no-op.
   func userNotificationCenter(
     _ center: UNUserNotificationCenter,
     didReceive response: UNNotificationResponse
@@ -43,7 +31,6 @@ final class NotificationDelegate: NSObject, @preconcurrency UNUserNotificationCe
     )
   }
 
-  /// Show notification banners when the app is in the foreground.
   func userNotificationCenter(
     _ center: UNUserNotificationCenter,
     willPresent notification: UNNotification
