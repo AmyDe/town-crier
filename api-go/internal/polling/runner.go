@@ -21,8 +21,9 @@ const (
 	// work after a cancelled run is bounded to fit inside that grace period.
 	cancelledFlushTimeout = 10 * time.Second
 	// endOfRunTimeout bounds the dispatch and push flush after a run that was not
-	// cancelled, so a stalled APNs connection cannot hold the job past its timeout.
-	endOfRunTimeout     = 5 * time.Minute
+	// cancelled. The 55-minute run budget plus this bound must leave headroom
+	// under the 3600 s replica timeout for health and lease release.
+	endOfRunTimeout     = 2 * time.Minute
 	leaseReleaseTimeout = 5 * time.Second
 	runSpanName         = "PlanIt poll run"
 	tracerName          = "github.com/AmyDe/town-crier/api-go/internal/polling"
