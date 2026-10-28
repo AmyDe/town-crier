@@ -1,5 +1,6 @@
 -- +goose Up
 
+SET LOCAL lock_timeout = '5s';
 ALTER TABLE notifications ADD COLUMN IF NOT EXISTS push_status text;
 ALTER TABLE notifications ADD COLUMN IF NOT EXISTS push_attempted_at timestamptz;
 
