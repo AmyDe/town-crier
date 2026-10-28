@@ -16,31 +16,44 @@ func TestRoutes_VersionConfig(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
-	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+"/v1/version-config", nil)
-	if err != nil {
-		t.Fatalf("new request: %v", err)
+	tests := []struct {
+		name  string
+		query string
+		want  string
+	}{
+		{name: "no platform defaults to iOS", query: "", want: `{"minimumVersion":"1.2.11"}`},
+		{name: "ios", query: "?platform=ios", want: `{"minimumVersion":"1.2.11"}`},
+		{name: "android", query: "?platform=android", want: `{"minimumVersion":"1.0.0"}`},
+		{name: "unknown platform defaults to iOS", query: "?platform=web", want: `{"minimumVersion":"1.2.11"}`},
 	}
-	resp, err := srv.Client().Do(req)
-	if err != nil {
-		t.Fatalf("get: %v", err)
-	}
-	defer resp.Body.Close()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("status: got %d, want %d", resp.StatusCode, http.StatusOK)
-	}
-	// JSON is serialized camelCase with the content type including the explicit
-	// charset parameter.
-	if got, want := resp.Header.Get("Content-Type"), "application/json; charset=utf-8"; got != want {
-		t.Errorf("content-type: got %q, want %q", got, want)
-	}
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+"/v1/version-config"+tt.query, nil)
+			if err != nil {
+				t.Fatalf("new request: %v", err)
+			}
+			resp, err := srv.Client().Do(req)
+			if err != nil {
+				t.Fatalf("get: %v", err)
+			}
+			defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatalf("read body: %v", err)
-	}
-	// Exact wire format: camelCase, no whitespace.
-	if got, want := string(body), `{"minimumVersion":"1.0.0"}`; got != want {
-		t.Errorf("body: got %s, want %s", got, want)
+			if resp.StatusCode != http.StatusOK {
+				t.Errorf("status: got %d, want %d", resp.StatusCode, http.StatusOK)
+			}
+			if got, want := resp.Header.Get("Content-Type"), "application/json; charset=utf-8"; got != want {
+				t.Errorf("content-type: got %q, want %q", got, want)
+			}
+
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				t.Fatalf("read body: %v", err)
+			}
+			if got := string(body); got != tt.want {
+				t.Errorf("body: got %s, want %s", got, tt.want)
+			}
+		})
 	}
 }

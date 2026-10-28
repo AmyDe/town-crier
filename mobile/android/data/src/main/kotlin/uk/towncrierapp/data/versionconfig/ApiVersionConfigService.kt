@@ -36,6 +36,7 @@ public class ApiVersionConfigService(
                 .newBuilder()
                 .addPathSegment("v1")
                 .addPathSegment("version-config")
+                .addQueryParameter("platform", "android")
                 .build()
         val request =
             Request

@@ -21,7 +21,7 @@ class ApiVersionConfigServiceTest {
     private val baseUrl = "https://api-dev.towncrierapp.uk"
 
     @Test
-    fun `fetchMinimumVersion GETs v1 version-config with no Authorization header`() =
+    fun `fetchMinimumVersion GETs v1 version-config for android with no Authorization header`() =
         runTest {
             val transport = FakeHttpTransport()
             transport.enqueueResponse(200, """{"minimumVersion":"1.2.0"}""")
@@ -33,6 +33,7 @@ class ApiVersionConfigServiceTest {
             val request = transport.requests.single()
             assertEquals("GET", request.method)
             assertEquals("/v1/version-config", request.url.encodedPath)
+            assertEquals("android", request.url.queryParameter("platform"))
             assertNull(request.header("Authorization"))
         }
 
