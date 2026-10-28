@@ -8,6 +8,7 @@ import TownCrierDomain
 actor SessionCache {
   private var cached: AuthSession?
   private var inFlight: Task<AuthSession?, Never>?
+  private var generation = 0
   private let leadTime: TimeInterval
   private let now: @Sendable () -> Date
 
@@ -37,10 +38,9 @@ actor SessionCache {
     return nil
   }
 
-  /// Returns the cached session if valid, otherwise invokes `loader` and
-  /// caches the result. Concurrent callers on a cold cache share the same
-  /// in-flight load — this is the single-flight behaviour that prevents
-  /// a foreground burst from issuing N keychain reads for the same token.
+  /// Returns the cached session if valid, otherwise loads and caches one.
+  /// Concurrent callers on a cold cache share one load. A load that
+  /// overlaps `clear()` returns its result but does not cache it.
   func currentOrLoad(
     _ loader: @Sendable @escaping () async -> AuthSession?
   ) async -> AuthSession? {
@@ -50,13 +50,16 @@ actor SessionCache {
     if let inFlight {
       return await inFlight.value
     }
+    let startGeneration = generation
     let task = Task<AuthSession?, Never> {
       await loader()
     }
     inFlight = task
     let result = await task.value
-    cached = result
-    inFlight = nil
+    if generation == startGeneration {
+      cached = result
+      inFlight = nil
+    }
     return result
   }
 
@@ -70,6 +73,7 @@ actor SessionCache {
   /// Drops the cached session and cancels any in-flight load. Called from
   /// `logout`, `deleteAccount`, and unrecoverable refresh failures.
   func clear() {
+    generation += 1
     cached = nil
     inFlight?.cancel()
     inFlight = nil
