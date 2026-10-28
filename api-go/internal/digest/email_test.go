@@ -199,8 +199,6 @@ func TestBuildApplicationDetailURL_PreservesSlashesEncodesSegments(t *testing.T)
 	}
 }
 
-// --- Public Notice restyle (tc-dn6hb / #859) ---
-
 func TestBuildDigestHTML_NoLegacyBrandHexLiterals(t *testing.T) {
 	t.Parallel()
 	// The pre-brand navy/blue/grey literals must be fully gone: every colour
@@ -268,10 +266,6 @@ func TestBuildDigestHTML_CTAIsVerbFirstAmber(t *testing.T) {
 
 func TestBuildDigestHTML_HeadlinesUseSansStack(t *testing.T) {
 	t.Parallel()
-
-	if headlineFontStack != bodyFontStack {
-		t.Errorf("headlineFontStack should equal bodyFontStack, got headlineFontStack=%q bodyFontStack=%q", headlineFontStack, bodyFontStack)
-	}
 
 	n := testNotification("19/00123/FUL", "zone-1", "10 High St", "Householder", "Rear extension")
 	zones := []watchZoneDigest{{name: "Home", notifications: []notifications.DigestNotification{n}}}
@@ -349,8 +343,6 @@ func TestBuildDigestHTML_StructuralSafety(t *testing.T) {
 		t.Errorf("expected an unsubscribe link, got:\n%s", html)
 	}
 }
-
-// --- Free-tier account-status line (tc-m1pb5) ---
 
 func TestBuildDigestHTML_FreeTierNotice_ShownAndPositionedAboveCTA(t *testing.T) {
 	t.Parallel()

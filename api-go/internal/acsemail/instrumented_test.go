@@ -61,7 +61,7 @@ func attrString(span sdktrace.ReadOnlySpan, key string) (string, bool) {
 	return "", false
 }
 
-// TestInstrumentedSender_EmitsEmailSendSpanWithKind pins tc-3jx8d: exactly one
+// TestInstrumentedSender_EmitsEmailSendSpanWithKind asserts exactly one
 // "Email send" wrapper span per Send call, tagged with the caller's kind, so
 // per-email delivery is visible as a dependency distinct from the low-level
 // "ACS email send" HTTP client spans (unaffected by this wrapper).

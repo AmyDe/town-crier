@@ -205,8 +205,8 @@ type fcmAndroidNotification struct {
 	ChannelID string `json:"channel_id"`
 }
 
-// fcmAlertChannelID is the Android notification channel the pushes post to. The
-// #777 client registers this channel; day-1 all shapes share it.
+// fcmAlertChannelID is the Android notification channel all push shapes post
+// to; the Android client registers it.
 const fcmAlertChannelID = "alerts"
 
 // marshalFCMMessage builds the token-less FCM message body from a rendered
@@ -256,7 +256,7 @@ func buildAlertFCMPayload(n notifications.DigestNotification) (json.RawMessage, 
 }
 
 // buildZoneSummaryFCMPayload renders the coalesced watch-zone summary FCM body.
-// It carries kind=zoneSummary and watchZoneId (the #777 routing discriminators)
+// It carries kind=zoneSummary and watchZoneId (the routing discriminators)
 // and, deliberately, none of the single-app deep-link keys.
 func buildZoneSummaryFCMPayload(count int, zoneName, watchZoneID string) (json.RawMessage, error) {
 	title, body := zoneSummaryTitleBody(count, zoneName)

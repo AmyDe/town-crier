@@ -42,9 +42,8 @@ const savedBucket = ""
 
 // PushCoalescer accumulates push-eligible notifications during a poll cycle and
 // flushes them at cycle end as at most one push per (user, watch zone), plus
-// one per-user "saved" bucket for zone-less notifications. It owns the
-// send-path collaborators the dispatchers used to call inline per notification:
-// device lookup, the unread badge, the platform dispatcher (APNs + FCM), and
+// one per-user "saved" bucket for zone-less notifications. It owns device
+// lookup, the unread badge, the platform dispatcher (APNs + FCM), and
 // zone-name resolution.
 //
 // PushCoalescer is driven by the single-goroutine poll handler loop (Reset at
@@ -75,9 +74,8 @@ func NewPushCoalescer(devices deviceReader, state stateReader, dispatcher *Platf
 }
 
 // Add queues a push-eligible notification into its user's zone bucket (or the
-// shared saved bucket for a zone-less notification). Called by the dispatchers
-// in place of the old inline sendInstantPush — the coalescer does no gating,
-// so only already push-eligible notifications must be handed to it.
+// shared saved bucket for a zone-less notification). The coalescer does no
+// gating, so only already push-eligible notifications must be handed to it.
 func (c *PushCoalescer) Add(userID string, n notifications.DigestNotification) {
 	bucket := savedBucket
 	if n.WatchZoneID != nil {
@@ -181,9 +179,8 @@ func buildBucketPayload(bucketKey string, queued []notifications.DigestNotificat
 }
 
 // unreadBadge computes the app-icon badge: the user's unread notifications
-// (read_at IS NULL, ADR 0035). Unlike the old per-notification sendInstantPush,
-// there is no +1 — every record in this cycle is already persisted by the time
-// Flush runs, so the total unread count is already accurate.
+// (read_at IS NULL, ADR 0035). There is no +1: every record in this cycle is
+// already persisted by the time Flush runs.
 func (c *PushCoalescer) unreadBadge(ctx context.Context, userID string) int {
 	count, err := c.state.UnreadCount(ctx, userID)
 	if err != nil {

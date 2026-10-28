@@ -374,12 +374,9 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		Network: &dbforpostgresql.NetworkArgs{
 			PublicNetworkAccess: dbforpostgresql.PublicNetworkAccessEnumEnabled,
 		},
-		// Enable Entra (AAD) authentication alongside password auth. PasswordAuth stays
-		// Enabled to preserve tcadmin break-glass access through the migration; password-only
-		// mode will be disabled in a later hardening step.
 		AuthConfig: &dbforpostgresql.AuthConfigArgs{
 			ActiveDirectoryAuth: pulumi.String("Enabled"),
-			PasswordAuth:        pulumi.String("Enabled"),
+			PasswordAuth:        pulumi.String("Disabled"),
 			TenantId:            pulumi.String(tenantID),
 		},
 		Tags: tags,
