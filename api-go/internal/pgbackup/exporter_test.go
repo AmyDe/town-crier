@@ -68,7 +68,7 @@ func (s *fakeSink) Put(_ context.Context, name string, body io.Reader) error {
 
 func newTestExporter(snap *fakeSnapshot, sink *fakeSink) *Exporter {
 	now := func() time.Time { return time.Date(2026, 10, 28, 5, 15, 0, 0, time.UTC) }
-	return New(fakeSource{snap}, sink, now, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	return New(fakeSource{snap}, sink, now, slog.New(slog.DiscardHandler))
 }
 
 func TestExporter_UploadsEveryTableThenManifestLast(t *testing.T) {

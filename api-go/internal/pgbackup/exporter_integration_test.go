@@ -102,7 +102,7 @@ func TestExporter_RoundTripsAllTablesThroughCopyFrom(t *testing.T) {
 
 	sink := &memSink{blobs: map[string][]byte{}}
 	now := func() time.Time { return time.Date(2026, 10, 28, 5, 15, 0, 0, time.UTC) }
-	res, err := New(NewPGSource(pool), sink, now, slog.New(slog.NewTextHandler(io.Discard, nil))).Run(ctx)
+	res, err := New(NewPGSource(pool), sink, now, slog.New(slog.DiscardHandler)).Run(ctx)
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}

@@ -223,7 +223,8 @@ func TestBuildBackupGrantsSQL_SelectsExactlyTheBackupTables(t *testing.T) {
 			granted[table] = true
 		}
 	}
-	want := []string{"goose_db_version"}
+	want := make([]string, 0, 1+len(pgbackup.Tables))
+	want = append(want, "goose_db_version")
 	for _, tb := range pgbackup.Tables {
 		want = append(want, tb.Name)
 	}
