@@ -84,8 +84,8 @@ type apiErrorResponse struct {
 }
 
 // redeem implements POST /v1/offer-codes/redeem: malformed code -> 400
-// invalid_code_format, unknown code -> 404 invalid_code, already-claimed (by
-// by another user) -> 409 code_already_redeemed, caller already paid -> 409
+// invalid_code_format, unknown code -> 404 invalid_code, already claimed by
+// another user -> 409 code_already_redeemed, caller already paid -> 409
 // already_subscribed. A caller who already redeemed the code gets the original
 // grant re-applied idempotently and the same success response.
 func (h *handler) redeem(w http.ResponseWriter, r *http.Request) {

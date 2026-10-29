@@ -12,14 +12,8 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 )
 
-// Canonical App Store Connect product IDs. These are the strings the iOS app
-// requests and App Store Connect issues — under the uk.towncrierapp prefix,
-// matching the app bundle id uk.towncrierapp.mobile and the domain
-// towncrierapp.uk.
-//
-// Legacy product IDs uk.co.towncrier.personal.monthly /
-// uk.co.towncrier.pro.monthly (an extra ".co.", wrong domain) were never correct
-// and never matched a real purchase. They are deliberately NOT added here.
+// Canonical App Store Connect product IDs. The uk.co.towncrier.* IDs never
+// matched a real purchase and are deliberately NOT added here.
 const (
 	// ProductPersonalMonthly is the Personal-tier monthly subscription.
 	ProductPersonalMonthly = "uk.towncrierapp.personal.monthly"

@@ -51,17 +51,14 @@ type Handler struct {
 	now    func() time.Time
 }
 
-// New builds a subscription-sweep handler. now is injected so tests pin the
-// lapsed cutoff; production passes time.Now.
+// New builds a subscription-sweep handler. now supplies the lapsed cutoff.
 func New(finder Finder, saver Saver, auth0 Auth0Syncer, notify Notifier, logger *slog.Logger, now func() time.Time) *Handler {
 	return &Handler{finder: finder, saver: saver, auth0: auth0, notify: notify, logger: logger, now: now}
 }
 
 // Run executes one sweep cycle and returns the number of profiles fully
-// downgraded. It scans for lapsed paid profiles, then for each reverts the stored
-// tier to Free, saves, and syncs Auth0. A scan failure is fatal to the cycle; a
-// per-profile Save or Auth0 failure is logged and skipped (the profile is not
-// counted and the next daily run retries it) and the cycle continues.
+// downgraded. A scan failure is returned; a per-profile Save or Auth0 failure
+// is logged and skipped, and the next daily run retries that profile.
 func (h *Handler) Run(ctx context.Context) (int, error) {
 	now := h.now()
 	lapsed, err := h.finder.LapsedPaid(ctx, now)
@@ -81,10 +78,9 @@ func (h *Handler) Run(ctx context.Context) (int, error) {
 	return downgraded, nil
 }
 
-// downgrade ends one lapsed profile's subscription, saves it, then syncs Auth0.
-// The save comes first: if it fails the stored state is untouched and the next
-// cycle retries, and if the sync fails only the informational Auth0 metadata is
-// stale because entitlements gate on EffectiveTier.
+// downgrade saves before syncing Auth0: a failed save leaves stored state
+// untouched, and a failed sync only leaves informational metadata stale
+// because entitlements gate on EffectiveTier.
 func (h *Handler) downgrade(ctx context.Context, p *profiles.UserProfile) error {
 	before := subscriptionevents.SnapshotOf(p)
 	p.ExpireSubscription()

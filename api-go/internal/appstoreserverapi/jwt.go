@@ -13,9 +13,7 @@ import (
 	"time"
 )
 
-// jwtValidity is how long a minted JWT is valid for, measured from iat. Apple
-// caps exp at iat+60m; one token is minted per short-lived job run, so a margin
-// under that ceiling is used.
+// jwtValidity stays under Apple's iat+60m exp ceiling.
 const jwtValidity = 55 * time.Minute
 
 // jwtHeader is the JWS header the App Store Server API expects: ES256 with
