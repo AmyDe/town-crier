@@ -1,9 +1,8 @@
 package uk.towncrierapp.domain.subscriptions
 
 /**
- * A feature entitlement a subscription tier may grant. Used to parameterise
- * UI gating decisions and the subscription upsell surfaces. Must remain in
- * sync with the API's `EntitlementMap`.
+ * A feature entitlement a subscription tier may grant. Must remain in sync
+ * with the API's entitlement map.
  */
 public enum class Entitlement(
     public val displayName: String,

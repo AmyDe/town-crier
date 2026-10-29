@@ -9,13 +9,12 @@ struct WatchZoneInlineUpsellCardTests {
 
   // The inline card sells the whole upgrade beneath a free user's single zone.
   // Copy is exposed as constants so the value proposition lives in one place and
-  // can be asserted directly, and reuses the tc-42gc wording so both surfaces
-  // speak in one voice.
+  // can be asserted directly.
 
   // MARK: - Heading
 
   @Test func eyebrow_readsUpgrade() {
-    // The brass small-caps eyebrow (GH#857) — the only filled-amber
+    // The brass small-caps eyebrow — the only filled-amber
     // container on this screen is the CTA button below; the card itself
     // stays bordered, not filled (amber-rationing rule).
     #expect(WatchZoneInlineUpsellCard.Copy.eyebrow == "Upgrade")
@@ -32,8 +31,8 @@ struct WatchZoneInlineUpsellCardTests {
   }
 
   @Test func benefit_customShapes() {
-    // Custom-shape (polygon) zones are a real Personal/Pro entitlement (GH#1031,
-    // tc-7se1w.5) and belong alongside radius and zone-count.
+    // Custom-shape (polygon) zones are a real Personal/Pro entitlement and
+    // belong alongside radius and zone-count.
     #expect(WatchZoneInlineUpsellCard.Copy.customShapes == "Custom shapes instead of a circle")
   }
 

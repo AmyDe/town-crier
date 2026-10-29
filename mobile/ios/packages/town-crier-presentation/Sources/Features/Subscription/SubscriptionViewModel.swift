@@ -4,9 +4,8 @@ import TownCrierDomain
 
 /// ViewModel managing subscription product display, purchasing, and restoration.
 ///
-/// After a successful purchase or restore, refreshes the Auth0 token so the
-/// `subscription_tier` JWT claim reflects the new tier.
-/// Token refresh is best-effort — a failure does not affect the purchase outcome.
+/// After a successful purchase or restore, refreshes the Auth0 token (best-effort)
+/// so the `subscription_tier` JWT claim reflects the new tier.
 @MainActor
 public final class SubscriptionViewModel: ObservableObject, ErrorHandlingViewModel {
   @Published public private(set) var products: [SubscriptionProduct] = []
@@ -20,10 +19,8 @@ public final class SubscriptionViewModel: ObservableObject, ErrorHandlingViewMod
   @Published public var isManageSubscriptionsPresented = false
   @Published public var isTransactionClaimedAlertPresented = false
 
-  /// The legal document currently presented over the paywall, if any.
-  /// Drives a `.sheet(item:)` local to `SubscriptionView` so the Privacy Policy
-  /// and Terms of Use links required by App Store Guideline 3.1.2(c) open without
-  /// routing through the root coordinator (which already owns the paywall sheet).
+  /// The legal document currently presented over the paywall, if any. A sheet local
+  /// to `SubscriptionView`, because the root coordinator already owns the paywall sheet.
   @Published public var presentedLegalDocument: LegalDocumentType?
 
   /// Fired when a purchase fails (not when cancelled or successful). A failed
@@ -147,9 +144,8 @@ public final class SubscriptionViewModel: ObservableObject, ErrorHandlingViewMod
     isPurchasing = false
   }
 
-  /// Restores previously purchased subscriptions (App Store requirement).
-  /// On success with an active entitlement, refreshes the auth token so the JWT
-  /// `subscription_tier` claim reflects the restored tier.
+  /// Restores previously purchased subscriptions (App Store requirement); on an
+  /// active entitlement, refreshes the auth token.
   public func restorePurchases() async {
     isRestoring = true
     error = nil
