@@ -4,7 +4,7 @@ import TownCrierDomain
 
 @testable import TownCrierData
 
-/// Watch-zone quota (tc-gpjk): the create endpoint's only 403 is
+/// Watch-zone quota: the create endpoint's only 403 is
 /// "quota exceeded", so the repository normalises a create 403 to
 /// `DomainError.insufficientEntitlement(required:)` — giving the UI the
 /// "Upgrade Required" path instead of a generic "Server Error". This covers

@@ -62,10 +62,8 @@ type subscriptionNotifier interface {
 }
 
 type handler struct {
-	verifier       jwsVerifier
-	profilesByUser profileByUser
-	// profilesByTxn is used directly by the verify path's ownership check
-	// (runVerify); the webhook path reaches the same store through processor.
+	verifier            jwsVerifier
+	profilesByUser      profileByUser
 	profilesByTxn       profileByTxn
 	auth0               tierSync
 	bundleID            string

@@ -57,7 +57,7 @@ struct SubscriptionTierResolverTests {
     #expect(!result.isTrialPeriod)
   }
 
-  // MARK: - No-downgrade fallback (regression for tc-exg6)
+  // MARK: - No-downgrade fallback
 
   @Test
   func whenServerFailsAndPreviousTierWasPro_preservesPro() async {

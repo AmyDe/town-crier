@@ -2,7 +2,7 @@ package uk.towncrierapp.domain.subscriptions
 
 /**
  * Maps subscription tiers to their granted entitlements and quota limits.
- * Must remain in sync with the API's `EntitlementMap.cs`.
+ * Must remain in sync with the API's entitlement map.
  */
 public object EntitlementMap {
     private val paidEntitlements: Set<Entitlement> =

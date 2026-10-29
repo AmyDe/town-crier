@@ -71,17 +71,15 @@ var _ Store = (*PostgresStore)(nil)
 // Legacy columns (redeemed, redeemed_by_user_id, redeemed_at) stay on
 // offer_codes and are dual-written by RedeemWithCAS and scrubbed by
 // AnonymiseRedemptionsByUserID so a rolled-back binary still recognises a
-// consumed code (see migration 0019). They are never read back.
+// consumed code. They are never read back.
 type PostgresStore struct {
 	db     pool
 	logger *slog.Logger
 }
 
-// NewPostgresStore returns an offer-code store over the given pgx pool (or any
-// pool that satisfies the interface). logger receives a record whenever a
-// deferred transaction rollback in RedeemWithCAS or
-// AnonymiseRedemptionsByUserID fails for a reason other than the transaction
-// already having committed (see the doc comments on those methods).
+// NewPostgresStore returns an offer-code store over the given pgx pool.
+// logger receives deferred transaction rollback failures other than
+// pgx.ErrTxClosed.
 func NewPostgresStore(db pool, logger *slog.Logger) *PostgresStore {
 	return &PostgresStore{db: db, logger: logger}
 }
@@ -151,11 +149,9 @@ ON CONFLICT (code) DO UPDATE SET
     label           = EXCLUDED.label,
     max_redemptions = EXCLUDED.max_redemptions`
 
-// Save upserts the code's mint/update metadata (code, tier, duration, created
-// at, label, max redemptions) only — it never writes redemption state
-// (redemption_count and the legacy redeemed* columns are left untouched on a
-// conflict, so re-saving a code's metadata can never reset or fabricate its
-// redemption history).
+// Save upserts the code's mint metadata only. It never writes redemption
+// state, so re-saving a code can never reset or fabricate its redemption
+// history.
 func (s *PostgresStore) Save(ctx context.Context, c OfferCode) error {
 	_, err := s.db.Exec(ctx, pgSaveCodeQuery,
 		c.Code, c.Tier.String(), c.DurationDays, c.CreatedAt, c.Label, c.MaxRedemptions,
@@ -175,11 +171,9 @@ VALUES ($1, $2, $3)`
 
 // pgRedeemUpdateQuery is the atomic redemption-cap guard: it matches only when
 // the code exists and has at least one free slot
-// (redemption_count < max_redemptions). RETURNING code lets the caller detect
-// "no row matched" via pgx.ErrNoRows without a separate SELECT. The COALESCE
-// calls dual-write the legacy redeemed/redeemed_by_user_id/redeemed_at
-// columns (first-redeemer semantics preserved) so a rolled-back binary still
-// recognises the code as consumed — see migration 0019.
+// (redemption_count < max_redemptions). The COALESCE calls dual-write the
+// legacy redeemed* columns with first-redeemer semantics so a rolled-back
+// binary still recognises the code as consumed.
 const pgRedeemUpdateQuery = `
 UPDATE offer_codes
 SET redemption_count    = redemption_count + 1,
@@ -194,21 +188,11 @@ RETURNING code`
 // (ErrAlreadyRedeemed).
 const pgCodeExistsQuery = "SELECT 1 FROM offer_codes WHERE code = $1"
 
-// RedeemWithCAS atomically redeems the offer code for userID at now, as a
-// single transaction:
-//  1. INSERT into offer_code_redemptions(code, user_id, redeemed_at). A
-//     foreign-key violation (the code does not exist) returns ErrNotFound; a
-//     unique violation (userID already redeemed this code) returns
-//     ErrAlreadyRedeemedByUser. Neither touches offer_codes.
-//  2. UPDATE offer_codes ... WHERE redemption_count < max_redemptions
-//     RETURNING code. No matched row means every slot is already consumed
-//     (ErrAlreadyRedeemed) — the existing existence-check pattern used
-//     elsewhere in this file confirms the code is present (it must be, having
-//     just passed the FK check in step 1) before returning it. Either way the
-//     transaction is rolled back, undoing step 1's insert so a redemption
-//     that didn't actually grant anything is never recorded.
-//
-// On success both writes commit together.
+// RedeemWithCAS atomically redeems the offer code for userID at now, inserting
+// the redemption row and incrementing redemption_count in one transaction.
+// Errors: ErrNotFound (unknown code), ErrAlreadyRedeemedByUser (userID already
+// redeemed it), ErrAlreadyRedeemed (no free slot). Any error rolls back, so a
+// redemption that granted nothing is never recorded.
 func (s *PostgresStore) RedeemWithCAS(ctx context.Context, canonical, userID string, now time.Time) error {
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
@@ -291,7 +275,7 @@ const pgRedeemedColumns = "c.code, c.tier, c.duration_days, r.redeemed_at, r.use
 
 // scanRedeemedOfferCode hydrates one RedeemedOfferCode from a joined
 // offer_code_redemptions/offer_codes row.
-func scanRedeemedOfferCode(row pgx.Row) (RedeemedOfferCode, error) {
+func scanRedeemedOfferCode(row pgx.CollectableRow) (RedeemedOfferCode, error) {
 	var (
 		code         string
 		tier         string
@@ -311,10 +295,6 @@ func scanRedeemedOfferCode(row pgx.Row) (RedeemedOfferCode, error) {
 	}, nil
 }
 
-func scanRedeemedOfferCodeRow(row pgx.CollectableRow) (RedeemedOfferCode, error) {
-	return scanRedeemedOfferCode(row)
-}
-
 const pgRedeemedByUserIDQuery = `
 SELECT ` + pgRedeemedColumns + `
 FROM offer_code_redemptions r JOIN offer_codes c ON c.code = r.code
@@ -330,7 +310,7 @@ func (s *PostgresStore) RedeemedByUserID(ctx context.Context, userID string) ([]
 	if err != nil {
 		return nil, fmt.Errorf("query redemptions for user %q: %w", userID, err)
 	}
-	codes, err := pgx.CollectRows(rows, scanRedeemedOfferCodeRow)
+	codes, err := pgx.CollectRows(rows, scanRedeemedOfferCode)
 	if err != nil {
 		return nil, fmt.Errorf("scan redemptions for user %q: %w", userID, err)
 	}
@@ -346,16 +326,10 @@ FROM offer_code_redemptions r JOIN offer_codes c ON c.code = r.code
 WHERE r.user_id = ANY($1)
 ORDER BY r.id`
 
-// RedeemedByUsers returns, for each user id in the set, the redemptions that
-// user has made — the batched form of RedeemedByUserID used by the admin user
-// list. It issues one grouped query instead of N per-user round trips, then
-// buckets the flat result in Go by each row's UserID.
-//
-// Users who never redeemed a code are absent from the map (the caller treats a
-// missing key as "no active offer" via the map zero value). An anonymised
-// redemption has a NULL user_id, so it never matches ANY($1) and never leaks a
-// GDPR-erased user back into the result. An empty user set returns an empty,
-// non-nil map without issuing a query.
+// RedeemedByUsers is the batched form of RedeemedByUserID. Users who never
+// redeemed a code are absent from the map. An anonymised redemption has a NULL
+// user_id, so it never matches ANY($1) and never leaks a GDPR-erased user. An
+// empty user set returns an empty, non-nil map without issuing a query.
 func (s *PostgresStore) RedeemedByUsers(ctx context.Context, userIDs []string) (map[string][]RedeemedOfferCode, error) {
 	byUser := make(map[string][]RedeemedOfferCode, len(userIDs))
 	if len(userIDs) == 0 {
@@ -365,7 +339,7 @@ func (s *PostgresStore) RedeemedByUsers(ctx context.Context, userIDs []string) (
 	if err != nil {
 		return nil, fmt.Errorf("query redemptions for users: %w", err)
 	}
-	codes, err := pgx.CollectRows(rows, scanRedeemedOfferCodeRow)
+	codes, err := pgx.CollectRows(rows, scanRedeemedOfferCode)
 	if err != nil {
 		return nil, fmt.Errorf("scan redemptions for users: %w", err)
 	}

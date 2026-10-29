@@ -24,22 +24,15 @@ const (
 	productionBaseURL = "https://api.storekit.itunes.apple.com"
 	sandboxBaseURL    = "https://api.storekit-sandbox.itunes.apple.com"
 
-	// historyPath is the Get Notification History endpoint.
 	historyPath = "/inApps/v1/notifications/history"
 
-	// requestTimeout bounds a single HTTP request/attempt.
 	requestTimeout = 30 * time.Second
-	// maxRespBytes bounds a single page's response body. A page of
-	// JWS-signed notification history is a few dozen entries at most;
-	// 10 MiB is a generous ceiling matching the platform's outbound-client
-	// default.
+	// 10 MiB matches the platform's outbound-client default.
 	maxRespBytes = 10 << 20
 	// maxHistoryPages defensively caps pagination so a malformed or
 	// adversarial hasMore:true response can never loop forever.
 	maxHistoryPages = 1000
-	// maxAttempts bounds the retries a single page fetch makes against
-	// repeated 429 responses before giving up.
-	maxAttempts = 5
+	maxAttempts     = 5
 	// defaultRetryAfter is used when a 429 response carries no parseable
 	// Retry-After header.
 	defaultRetryAfter = 5 * time.Second
@@ -54,17 +47,13 @@ type Options struct {
 	// IssuerID is the UUID issuer id carried in the JWT payload (iss).
 	IssuerID string
 	// BundleID is the App Store bundle id carried in the JWT payload (bid).
-	// Callers reuse the existing AppleBundleID config — there is no separate
-	// bundle-id config for this client.
 	BundleID string
 	// Environment selects the base URL: "Sandbox" or "Production".
 	Environment string
 }
 
-// baseURL resolves the App Store Server API host for the configured
-// environment. Anything other than a case-insensitive "sandbox" resolves to
-// Production, matching the fail-safe default used elsewhere in this repo
-// (an unrecognized/unset environment must never silently target Sandbox).
+// baseURL resolves to Sandbox only for a case-insensitive "sandbox", so an
+// unrecognised or unset environment never silently targets Sandbox.
 func (o Options) baseURL() string {
 	if strings.EqualFold(o.Environment, "Sandbox") {
 		return sandboxBaseURL
@@ -105,15 +94,11 @@ type Client struct {
 }
 
 // NewClient builds a client from validated options. now supplies the clock
-// the minted JWT's iat/exp and Retry-After computations use (production
-// passes time.Now; tests pin it).
+// the minted JWT's iat/exp and Retry-After computations use.
 func NewClient(opts Options, now func() time.Time) (*Client, error) {
 	return newClientWithBaseURL(opts, opts.baseURL(), &http.Client{Timeout: requestTimeout}, now)
 }
 
-// newClientWithBaseURL is the constructor seam shared by NewClient and tests:
-// an explicit base URL and HTTP client let an httptest server exercise the
-// request/response logic.
 func newClientWithBaseURL(opts Options, baseURL string, httpClient *http.Client, now func() time.Time) (*Client, error) {
 	if err := opts.validate(); err != nil {
 		return nil, err
@@ -133,11 +118,8 @@ func newClientWithBaseURL(opts Options, baseURL string, httpClient *http.Client,
 	}, nil
 }
 
-// historyRequest is the Get Notification History POST body. Only startDate
-// and endDate are ever set — no optional filter fields (notificationType,
-// notificationSubtype, transactionId, onlyFailures): gap detection is driven
-// by our own idempotency table, not Apple's bookkeeping, so the full
-// unfiltered window is pulled.
+// historyRequest deliberately sets no optional filter fields: gap detection
+// is driven by our own idempotency table, so the full window is pulled.
 type historyRequest struct {
 	StartDate       int64  `json:"startDate"`
 	EndDate         int64  `json:"endDate"`
@@ -156,8 +138,7 @@ type historyResponse struct {
 
 // FetchNotificationHistory pages through Get Notification History for
 // [start, end), following paginationToken/hasMore until exhausted (capped at
-// maxHistoryPages), and returns every item across all pages. The JWT is
-// minted once at the start of the call and reused for every page.
+// maxHistoryPages), and returns every item across all pages.
 func (c *Client) FetchNotificationHistory(ctx context.Context, start, end time.Time) ([]NotificationHistoryItem, error) {
 	token, err := mintJWT(c.key, c.keyID, c.issuerID, c.bundleID, c.now())
 	if err != nil {
