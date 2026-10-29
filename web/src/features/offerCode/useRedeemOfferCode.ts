@@ -55,7 +55,6 @@ export function useRedeemOfferCode(
   const setCode = useCallback((raw: string) => {
     setState((prev) => {
       const next = normalizeCodeInput(raw);
-      // Clear a stale error as soon as the user edits the code.
       if (prev.status === 'error') {
         return { ...INITIAL_STATE, code: next };
       }

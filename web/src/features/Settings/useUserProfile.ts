@@ -27,7 +27,7 @@ export function useUserProfile(
   const error = actionError ?? fetchError;
 
   const updatePreferences = useCallback(async (changes: Partial<UpdateProfileRequest>) => {
-    const base = optimisticProfile ?? fetchedProfile;
+    const base = profile;
     if (!base) return;
 
     const request: UpdateProfileRequest = {
@@ -51,7 +51,7 @@ export function useUserProfile(
       const message = extractErrorMessage(err, 'Failed to update preferences');
       setActionError(message);
     }
-  }, [optimisticProfile, fetchedProfile, repository]);
+  }, [profile, optimisticProfile, repository]);
 
   const exportData = useCallback(async () => {
     setIsExporting(true);

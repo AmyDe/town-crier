@@ -17,7 +17,6 @@ export class SpySettingsRepository implements SettingsRepository {
 
   updateProfileCalls = 0;
   updateProfileLastRequest: UpdateProfileRequest | null = null;
-  updateProfileResult: UserProfile | null = null;
   updateProfileError: Error | null = null;
 
   async updateProfile(request: UpdateProfileRequest): Promise<UserProfile> {
@@ -26,7 +25,7 @@ export class SpySettingsRepository implements SettingsRepository {
     if (this.updateProfileError) {
       throw this.updateProfileError;
     }
-    return this.updateProfileResult ?? { ...this.fetchProfileResult, ...request };
+    return { ...this.fetchProfileResult, ...request };
   }
 
   exportDataCalls = 0;

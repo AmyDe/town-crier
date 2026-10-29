@@ -9,7 +9,6 @@ export class SpyRedeemOfferCodeClient {
   private _deferred: {
     promise: Promise<RedeemResult>;
     resolve: (value: RedeemResult) => void;
-    reject: (reason: unknown) => void;
   } | null = null;
 
   readonly client: RedeemOfferCodeClient = async (code) => {
@@ -23,24 +22,17 @@ export class SpyRedeemOfferCodeClient {
     return this.result;
   };
 
-  /** The next call to `client` stays pending until `resolvePending` or `rejectPending`. */
+  /** The next call to `client` stays pending until `resolvePending`. */
   deferNext(): void {
     let resolve: (value: RedeemResult) => void = () => {};
-    let reject: (reason: unknown) => void = () => {};
-    const promise = new Promise<RedeemResult>((res, rej) => {
+    const promise = new Promise<RedeemResult>((res) => {
       resolve = res;
-      reject = rej;
     });
-    this._deferred = { promise, resolve, reject };
+    this._deferred = { promise, resolve };
   }
 
   resolvePending(value: RedeemResult): void {
     this._deferred?.resolve(value);
-    this._deferred = null;
-  }
-
-  rejectPending(reason: unknown): void {
-    this._deferred?.reject(reason);
     this._deferred = null;
   }
 }
