@@ -16,6 +16,7 @@ import (
 
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
+	"github.com/AmyDe/town-crier/api-go/internal/sharelink"
 )
 
 // appStore is the narrow consumer-side view of the applications store: a single
@@ -38,19 +39,30 @@ type handler struct {
 	logger   *slog.Logger
 }
 
-// Routes registers the anonymous share-page route. The {ref...} wildcard captures
-// the remainder of the path so a PlanIt reference containing slashes is matched
-// whole. Keep the pattern in lockstep with the anonymousPatterns entry in
-// cmd/api/wiring.go — the auth middleware keys on the exact pattern string.
+// Routes registers the anonymous share page and its fixed App Store redirect.
+// The {ref...} wildcard captures the remainder of the path so a PlanIt reference
+// containing slashes is matched whole. Keep the patterns in lockstep with the
+// anonymousPatterns entries in cmd/api/wiring.go — the auth middleware keys on
+// the exact pattern string.
 func Routes(mux *http.ServeMux, store appStore, resolver slugResolver, logger *slog.Logger) {
 	h := &handler{store: store, resolver: resolver, logger: logger}
 	mux.HandleFunc("GET /a/{authoritySlug}/{ref...}", h.serve)
+	mux.HandleFunc("GET "+appStoreRedirectPath, appStoreRedirect)
+}
+
+// appStoreRedirect sends the visitor to the fixed App Store listing. It reads no
+// destination from the request, so it cannot act as an open redirect.
+func appStoreRedirect(w http.ResponseWriter, r *http.Request) {
+	sharelink.Record(r)
+	w.Header().Set("Cache-Control", "no-store")
+	http.Redirect(w, r, ctaURL(), http.StatusFound)
 }
 
 // serve resolves the authority slug, point-reads the application, and renders the
 // page. An unknown slug or unknown ref renders the branded 404 (never a 500); a
 // store error is a bodyless 500 (the envelope is backfilled by middleware).
 func (h *handler) serve(w http.ResponseWriter, r *http.Request) {
+	code := sharelink.Record(r)
 	slug := r.PathValue("authoritySlug")
 	ref := r.PathValue("ref")
 
@@ -70,7 +82,7 @@ func (h *handler) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.render(w, r, http.StatusOK, "public, max-age=3600", "page", buildPageView(app, slug, ref))
+	h.render(w, r, http.StatusOK, "public, max-age=3600", "page", buildPageView(app, slug, ref).withShareCode(code))
 }
 
 // renderNotFound emits the branded 404. It must NOT carry the 200's

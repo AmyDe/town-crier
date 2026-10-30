@@ -5,7 +5,7 @@ import TownCrierDomain
 /// `NSUserActivityTypeBrowsingWeb`) into the in-app ``DeepLink`` vocabulary.
 ///
 /// Two schemes are recognised:
-/// - the public share scheme `/a/{authoritySlug}/{ref...}` (GH #738 Slice 4),
+/// - the public share scheme `/a/{authoritySlug}/{ref...}`,
 ///   where `ref` is the application's full area-prefixed PlanIt name, verbatim
 ///   (slashes preserved as path separators);
 /// - the legacy `/applications/{uid}` (a specific planning application) and
@@ -17,7 +17,7 @@ public enum UniversalLinkParser {
 
   public static func parse(_ url: URL) -> DeepLink? {
     let path = url.path
-    if let shareLink = parseShare(path) {
+    if let shareLink = parseShare(path, linkCode: linkCode(in: url)) {
       return shareLink
     }
     return parseApplications(path)
@@ -40,12 +40,18 @@ public enum UniversalLinkParser {
   /// slug, everything after it (verbatim, slashes preserved) is the ref. A bare
   /// `/a` or `/a/`, or a slug with no ref, returns `nil`. The `/a/` separator is
   /// required, so `/afoo` does not match.
-  private static func parseShare(_ path: String) -> DeepLink? {
+  private static func parseShare(_ path: String, linkCode: String?) -> DeepLink? {
     guard path.hasPrefix(sharePrefix) else { return nil }
     let suffix = String(path.dropFirst(sharePrefix.count))
     let parts = suffix.split(separator: "/", maxSplits: 1, omittingEmptySubsequences: false)
     guard parts.count == 2, !parts[0].isEmpty, !parts[1].isEmpty else { return nil }
-    return .shareApplication(authoritySlug: String(parts[0]), ref: String(parts[1]))
+    return .shareApplication(
+      authoritySlug: String(parts[0]), ref: String(parts[1]), linkCode: linkCode)
+  }
+
+  private static func linkCode(in url: URL) -> String? {
+    let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems
+    return items?.first { $0.name == "s" }?.value.flatMap(ShareLinkCode.validated)
   }
 
   private static func parseApplications(_ path: String) -> DeepLink? {

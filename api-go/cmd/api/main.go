@@ -29,6 +29,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 	"github.com/AmyDe/town-crier/api-go/internal/savedapplications"
 	"github.com/AmyDe/town-crier/api-go/internal/seopage"
+	"github.com/AmyDe/town-crier/api-go/internal/shareevents"
 	"github.com/AmyDe/town-crier/api-go/internal/subscriptionevents"
 	"github.com/AmyDe/town-crier/api-go/internal/subscriptions"
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
@@ -204,7 +205,7 @@ func main() {
 	srv := platform.NewServer(":"+cfg.Port, newRouter(validator, cfg.CorsAllowedOrigins, store, manager, cascade, exportReaders, deviceStore, stateStore, notifStore, watchZoneStore, appStore, savedStore, geocodeClient, designationClient, offerStore, adminStore, cfg.AdminAPIKey, cfg.SiteBuildKey, jwsVerifier, appleNotifStore, cfg.AppleBundleID, cfg.AppleEnvironments, registry, shareCardCache, cfg.AnonRateLimitBurst, cfg.AnonRateLimitRefillPerMinute, pollingAdminDeps{
 		Switch: polling.NewSwitch(polling.NewPostgresPollControlStore(pool), cfg.PollingEnabledDefault),
 		Calls:  polling.NewPostgresPlanItCallStore(pool),
-	}, subscriptionNotifier, seopage.NewPostgresStore(pool, appStore), logger))
+	}, subscriptionNotifier, seopage.NewPostgresStore(pool, appStore), shareevents.NewPostgresStore(pool), logger))
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

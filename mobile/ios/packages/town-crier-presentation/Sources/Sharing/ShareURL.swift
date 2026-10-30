@@ -18,10 +18,13 @@ public enum ShareURL {
   /// Only unsafe characters in `ref` are percent-encoded; `.urlPathAllowed`
   /// keeps `/`, so the ref's slashes remain path separators. The slug is
   /// already URL-safe.
-  public static func build(authoritySlug: String, ref: String) -> URL? {
+  ///
+  /// A non-`nil` `linkCode` is appended as `?s=<code>`.
+  public static func build(authoritySlug: String, ref: String, linkCode: String? = nil) -> URL? {
     guard !authoritySlug.isEmpty, !ref.isEmpty else { return nil }
     let encodedRef =
       ref.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? ref
-    return URL(string: "\(origin)/a/\(authoritySlug)/\(encodedRef)")
+    let base = "\(origin)/a/\(authoritySlug)/\(encodedRef)"
+    return URL(string: linkCode.map { "\(base)?s=\($0)" } ?? base)
   }
 }

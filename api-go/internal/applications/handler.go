@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
+	"github.com/AmyDe/town-crier/api-go/internal/sharelink"
 )
 
 // appStore is the consumer-side store the application read handler uses.
@@ -91,6 +92,8 @@ func (h *handler) getByAuthorityAndName(w http.ResponseWriter, r *http.Request) 
 // An unknown slug or unknown ref returns a bodyless 404 (the envelope is
 // backfilled by middleware.ErrorBody, same as the by-id not-found path).
 func (h *handler) getBySlug(w http.ResponseWriter, r *http.Request) {
+	sharelink.Record(r)
+
 	slug := r.PathValue("authoritySlug")
 	ref := r.PathValue("ref")
 

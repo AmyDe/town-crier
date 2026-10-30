@@ -10,6 +10,13 @@ public struct TimelineItem: Equatable, Sendable {
   public let status: ApplicationStatus
 }
 
+/// One open of the share sheet. It alone holds the link code, so the code lives
+/// and dies with the presentation.
+public struct SharePresentation: Identifiable {
+  public let id = UUID()
+  public let url: URL
+}
+
 /// ViewModel exposing display-ready properties for a planning application detail screen.
 ///
 /// Optionally supports save/unsave when a ``SavedApplicationRepository`` is injected.
@@ -45,6 +52,22 @@ public final class ApplicationDetailViewModel: ObservableObject {
   public var shareURL: URL? {
     guard let slug = application.authority.slug else { return nil }
     return ShareURL.build(authoritySlug: slug, ref: application.id.name)
+  }
+
+  /// Builds the link for one open of the share sheet, with a fresh link code.
+  /// `nil` when ``shareURL`` is `nil`.
+  public func makeSharePresentation() -> SharePresentation? {
+    guard let slug = application.authority.slug,
+      let url = ShareURL.build(
+        authoritySlug: slug, ref: application.id.name, linkCode: ShareLinkCode.generate())
+    else { return nil }
+    return SharePresentation(url: url)
+  }
+
+  /// Reports a finished share as a destination total, given the raw activity
+  /// type from the share sheet.
+  public func shareCompleted(activityType: String?) async {
+    await shareEventReporter?.report(ShareDestination(activityType: activityType))
   }
 
   public var timelineItems: [TimelineItem] {
@@ -106,6 +129,7 @@ public final class ApplicationDetailViewModel: ObservableObject {
   /// when present, it takes precedence — a view model is only ever built for
   /// one path or the other by the coordinator's factory.
   private let anonymousApplicationDetailRepository: AnonymousApplicationDetailRepository?
+  private let shareEventReporter: ShareEventReporter?
 
   /// Re-entrancy guard for ``refresh()``: the detail sheet's `.task` can fire
   /// repeatedly for a single open, so further calls short-circuit while one is in flight.
@@ -118,8 +142,10 @@ public final class ApplicationDetailViewModel: ObservableObject {
     savedApplicationRepository: SavedApplicationRepository? = nil,
     planningApplicationRepository: PlanningApplicationRepository? = nil,
     anonymousApplicationDetailRepository: AnonymousApplicationDetailRepository? = nil,
+    shareEventReporter: ShareEventReporter? = nil,
     isSaved: Bool = false
   ) {
+    self.shareEventReporter = shareEventReporter
     self.application = application
     self.savedApplicationRepository = savedApplicationRepository
     self.planningApplicationRepository = planningApplicationRepository
