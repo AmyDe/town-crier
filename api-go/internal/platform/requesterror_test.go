@@ -41,7 +41,7 @@ func TestClassifyRequestError(t *testing.T) {
 				cancel()
 			}
 			defer cancel()
-			r := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx)
+			r := httptest.NewRequestWithContext(ctx, http.MethodGet, "/", nil)
 			if got := ClassifyRequestError(r, tt.err); got != tt.want {
 				t.Errorf("status = %d, want %d", got, tt.want)
 			}
@@ -73,7 +73,7 @@ func TestRespondRequestError(t *testing.T) {
 			defer cancel()
 			var buf bytes.Buffer
 			logger := slog.New(slog.NewTextHandler(&buf, nil))
-			r := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx)
+			r := httptest.NewRequestWithContext(ctx, http.MethodGet, "/", nil)
 			rec := httptest.NewRecorder()
 
 			RespondRequestError(rec, r, logger, "thing failed", tt.err, "op", "x")

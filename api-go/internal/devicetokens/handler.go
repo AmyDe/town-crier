@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
+	"github.com/AmyDe/town-crier/api-go/internal/platform"
 )
 
 // registrationStore is the consumer-side slice of the store the handlers use.
@@ -57,13 +58,13 @@ func (h handler) register(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	platform, err := ParsePlatform(req.Platform)
+	devicePlatform, err := ParsePlatform(req.Platform)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	reg, err := NewRegistration(userID, req.Token, platform, h.now())
+	reg, err := NewRegistration(userID, req.Token, devicePlatform, h.now())
 	if err != nil {
 		// A blank token only reaches this guard after binding succeeds (a blank is
 		// technically valid JSON), so it surfaces as a 500.
@@ -74,8 +75,7 @@ func (h handler) register(w http.ResponseWriter, r *http.Request) {
 
 	existing, err := h.store.GetByToken(r.Context(), userID, req.Token)
 	if err != nil {
-		h.logger.ErrorContext(r.Context(), "read device token", "error", err)
-		w.WriteHeader(http.StatusInternalServerError)
+		platform.RespondRequestError(w, r, h.logger, "read device token", err)
 		return
 	}
 	if existing != nil {
@@ -83,8 +83,7 @@ func (h handler) register(w http.ResponseWriter, r *http.Request) {
 		reg = *existing
 	}
 	if err := h.store.Save(r.Context(), reg); err != nil {
-		h.logger.ErrorContext(r.Context(), "save device token", "error", err)
-		w.WriteHeader(http.StatusInternalServerError)
+		platform.RespondRequestError(w, r, h.logger, "save device token", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -111,8 +110,7 @@ func (h handler) remove(w http.ResponseWriter, r *http.Request) {
 func (h handler) delete(w http.ResponseWriter, r *http.Request, token string) {
 	userID := auth.Subject(r.Context())
 	if err := h.store.Delete(r.Context(), userID, token); err != nil {
-		h.logger.ErrorContext(r.Context(), "delete device token", "error", err)
-		w.WriteHeader(http.StatusInternalServerError)
+		platform.RespondRequestError(w, r, h.logger, "delete device token", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

@@ -417,8 +417,8 @@ func TestClustersHandler_ContextCanceled_NoServerErrorNoErrorLog(t *testing.T) {
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
-	if rec.Code == http.StatusInternalServerError {
-		t.Fatalf("status = %d, want NOT 500 on a client-cancelled read", rec.Code)
+	if rec.Code != 499 {
+		t.Fatalf("status = %d, want 499 on a client-cancelled read", rec.Code)
 	}
 	if rec.Body.Len() != 0 {
 		t.Errorf("body = %q, want empty", rec.Body.String())

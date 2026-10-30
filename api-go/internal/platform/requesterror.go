@@ -38,7 +38,7 @@ func ClassifyRequestError(r *http.Request, err error) int {
 func RespondRequestError(w http.ResponseWriter, r *http.Request, logger *slog.Logger, msg string, err error, attrs ...any) {
 	status := ClassifyRequestError(r, err)
 	if status != StatusClientClosedRequest {
-		logger.ErrorContext(r.Context(), msg, append(attrs, "error", err)...)
+		logger.ErrorContext(r.Context(), msg, append(attrs, "error", err)...) //nolint:sloglint // msg is a constant at every call site
 	}
 	w.WriteHeader(status)
 }

@@ -28,6 +28,7 @@ func TestErrorBody_BackfillsEmptyErrorResponses(t *testing.T) {
 		{"405 method not allowed", http.StatusMethodNotAllowed, `{"Status":405,"Title":"Method Not Allowed","Detail":null}`},
 		{"429 falls through the reason map to Error", http.StatusTooManyRequests, `{"Status":429,"Title":"Error","Detail":null}`},
 		{"500 internal server error", http.StatusInternalServerError, `{"Status":500,"Title":"Internal Server Error","Detail":null}`},
+		{"499 client closed request uses Error", 499, `{"Status":499,"Title":"Error","Detail":null}`},
 		{"418 unmapped status uses Error", http.StatusTeapot, `{"Status":418,"Title":"Error","Detail":null}`},
 	}
 	for _, tc := range tests {

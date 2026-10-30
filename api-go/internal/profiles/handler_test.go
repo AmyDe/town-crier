@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -12,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
@@ -840,5 +843,39 @@ func TestHandler_CreateProfile_RacingFirstSaveReturnsExistingProfile(t *testing.
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("create status: got %d, want 200", rec.Code)
+	}
+}
+
+func TestHandler_StoreErrorStatusFollowsRequestContext(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		cancelled bool
+		err       error
+		want      int
+	}{
+		{"cancelled with query canceled", true, &pgconn.PgError{Code: "57014"}, 499},
+		{"cancelled with context canceled", true, context.Canceled, 499},
+		{"live with statement timeout", false, &pgconn.PgError{Code: "57014"}, http.StatusServiceUnavailable},
+		{"live with generic error", false, errors.New("db down"), http.StatusInternalServerError},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			store := newFakeStore()
+			store.getErr = fmt.Errorf("get profile: %w", tt.err)
+			h := newTestHandler(store, newFakeAuth0())
+			ctx, cancel := context.WithCancel(t.Context())
+			if tt.cancelled {
+				cancel()
+			}
+			defer cancel()
+			req := withSubject(http.MethodGet, "/v1/me", "auth0|u1", "").WithContext(auth.WithSubject(ctx, "auth0|u1"))
+			rec := httptest.NewRecorder()
+			h.get(rec, req)
+			if rec.Code != tt.want {
+				t.Errorf("status = %d, want %d", rec.Code, tt.want)
+			}
+		})
 	}
 }

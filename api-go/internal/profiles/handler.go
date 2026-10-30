@@ -14,6 +14,7 @@ import (
 
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
 	"github.com/AmyDe/town-crier/api-go/internal/erasure"
+	"github.com/AmyDe/town-crier/api-go/internal/platform"
 )
 
 // maxBodyBytes caps the request body the /v1/me write handlers read.
@@ -289,11 +290,10 @@ func (h *handler) writeJSON(w http.ResponseWriter, r *http.Request, v any) {
 	}
 }
 
-// serverError logs and emits a bodyless 500; middleware.ErrorBody backfills the
-// error envelope.
+// serverError answers a bodyless error status chosen by platform.ClassifyRequestError
+// (499 unlogged for a cancelled request, 503 for a timeout, otherwise 500).
 func (h *handler) serverError(w http.ResponseWriter, r *http.Request, op string, err error) {
-	h.logger.ErrorContext(r.Context(), "profile request failed", "op", op, "error", err)
-	w.WriteHeader(http.StatusInternalServerError)
+	platform.RespondRequestError(w, r, h.logger, "profile request failed", err, "op", op)
 }
 
 // weekdayName serialises a time.Weekday as its English name (e.g. "Wednesday"),

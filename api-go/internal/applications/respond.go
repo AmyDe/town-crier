@@ -2,14 +2,12 @@ package applications
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"net/http"
 
-	"github.com/jackc/pgx/v5/pgconn"
-
 	"github.com/AmyDe/town-crier/api-go/internal/authorities"
 	"github.com/AmyDe/town-crier/api-go/internal/httputil"
+	"github.com/AmyDe/town-crier/api-go/internal/platform"
 )
 
 // writeJSON encodes v as a 200 application/json; charset=utf-8 response with HTML
@@ -27,19 +25,11 @@ func writeJSON(w http.ResponseWriter, r *http.Request, logger *slog.Logger, v an
 	}
 }
 
-// serverError logs and emits a bodyless 500 (503 when the store timed out); the
-// error envelope is backfilled by middleware.ErrorBody. A context.Canceled error
-// means the caller disconnected, so it is deliberately neither logged nor answered.
+// serverError answers a bodyless error status chosen by platform.ClassifyRequestError:
+// 499 (not logged) for a cancelled request, 503 for a timeout, otherwise 500.
+// middleware.ErrorBody backfills the envelope.
 func serverError(w http.ResponseWriter, r *http.Request, logger *slog.Logger, op string, err error) {
-	if errors.Is(err, context.Canceled) {
-		return
-	}
-	logger.ErrorContext(r.Context(), "application request failed", "op", op, "error", err)
-	if errors.Is(err, context.DeadlineExceeded) || pgconn.Timeout(err) {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		return
-	}
-	w.WriteHeader(http.StatusInternalServerError)
+	platform.RespondRequestError(w, r, logger, "application request failed", err, "op", op)
 }
 
 // resolveAuthoritySlugFor resolves the URL slug for an application's authority,

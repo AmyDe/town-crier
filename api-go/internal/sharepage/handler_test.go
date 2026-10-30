@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
+
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
 )
 
@@ -617,14 +619,30 @@ func TestServe_ContextCanceled_NoServerErrorNoErrorLog(t *testing.T) {
 
 	rec := serveWithLogger(t, store, resolver, "/a/croydon/23/0001/FUL", slog.New(capture))
 
-	if rec.Code == http.StatusInternalServerError {
-		t.Fatalf("status = %d, want NOT 500 on a client-cancelled read", rec.Code)
+	if rec.Code != 499 {
+		t.Fatalf("status = %d, want 499 on a client-cancelled read", rec.Code)
 	}
 	if rec.Body.Len() != 0 {
 		t.Errorf("body = %q, want empty", rec.Body.String())
 	}
 	if capture.find(slog.LevelError, "share page read failed") {
 		t.Error("expected no error-level log for a client-cancelled read")
+	}
+}
+
+func TestServe_StatementTimeout_Is503(t *testing.T) {
+	t.Parallel()
+	store := &fakeStore{err: fmt.Errorf("read application: %w", &pgconn.PgError{Code: "57014"})}
+	resolver := &fakeResolver{slugs: map[string]int{"croydon": 165}}
+	capture := &capturingHandler{}
+
+	rec := serveWithLogger(t, store, resolver, "/a/croydon/23/0001/FUL", slog.New(capture))
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", rec.Code)
+	}
+	if !capture.find(slog.LevelError, "share page read failed") {
+		t.Error("expected an error-level log for a statement timeout")
 	}
 }
 
