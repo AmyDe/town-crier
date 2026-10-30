@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The anonymous (pre-signup) tab shell (GH#879 Phase 3), parallel to the
+/// The anonymous (pre-signup) tab shell, parallel to the
 /// authenticated `MainTabView` (`town-crier-app/Sources/MainTabView.swift`):
 /// four tabs — Applications, Map, Zones, Settings (Zones added Phase 4,
 /// matching the authed shell's tab order and its `mappin.and.ellipse` icon).
@@ -61,7 +61,7 @@ public struct AnonymousMainTabView: View {
 
   @ViewBuilder
   private var mapTab: some View {
-    // Full-bleed (tc-3b1hj): no nav title, no nav bar — the tab bar already
+    // Full-bleed: no nav title, no nav bar — the tab bar already
     // says "Map". Nothing else is nav-bar-anchored on this screen; the CTA
     // banner is a bottom `safeAreaInset` applied inside `AnonymousMapView`'s
     // own content, unaffected by hiding the bar above it.

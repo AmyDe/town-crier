@@ -43,23 +43,23 @@ public final class AnonymousBrowseCoordinator: ObservableObject {
   private let geocoder: PostcodeGeocoder
   private let stateRepository: AnonymousBrowseStateRepository
   private let applicationsRepository: AnonymousApplicationsRepository
-  /// Backs the anonymous map's cluster-tap point-reads (GH#924 Phase 2) and
+  /// Backs the anonymous map's cluster-tap point-reads and
   /// (via `AppCoordinator`) the anonymous detail screen / inbound share
   /// Universal Link — the SAME instance the composition root constructs for
   /// both, reused here rather than duplicated.
   private let detailRepository: AnonymousApplicationDetailRepository
-  /// Backs the Zones tab (GH#879 Phase 4) and the Applications tab's
+  /// Backs the Zones tab and the Applications tab's
   /// zone-driven query/picker. A distinct store from `stateRepository` — see
   /// `DeviceLocalZoneRepository`'s own docs for the migration relationship
   /// between the two.
   private let deviceLocalZoneRepository: DeviceLocalZoneRepository
   /// The state backing the current map session — postcode, coordinate, and
-  /// the radius chosen on the postcode-entry screen (GH#912 Phase 4). Also
-  /// the source for the Applications tab's list view model (GH#879 Phase 3).
+  /// the radius chosen on the postcode-entry screen. Also
+  /// the source for the Applications tab's list view model.
   private var currentState: AnonymousBrowseState?
   /// The live Applications list view model, cached the first time
   /// ``makeApplicationListViewModel()`` builds one, and returned unchanged on
-  /// every later call (GH#888). Necessary for the SAME reason
+  /// every later call. Necessary for the SAME reason
   /// ``mapViewModel`` is a stored property mutated in place rather than
   /// rebuilt: `AnonymousMainTabView`'s tab content is re-evaluated on every
   /// `selectedTab`/coordinator change (`TabView` builds every tab's content
@@ -74,12 +74,12 @@ public final class AnonymousBrowseCoordinator: ObservableObject {
   /// ``makeDeviceLocalZoneListViewModel()`` kicks off after a Zones-tab edit
   /// — mirrors `AnonymousMapViewModel.waitForPendingRegionChangeRefetch()`.
   private var pendingZoneEditRefetchTask: Task<Void, Never>?
-  /// Single live source of truth for the appearance preference (GH#878),
+  /// Single live source of truth for the appearance preference,
   /// shared with `SettingsViewModel` — injected by the composition root so
   /// the welcome screen's appearance control and the root
   /// `.preferredColorScheme` observe the exact same instance.
   private let appearanceStore: AppearanceStore
-  /// Backs the anonymous Settings tab's "Version" row (GH#879 Phase 3).
+  /// Backs the anonymous Settings tab's "Version" row.
   /// Required (no default): unlike `appearanceStore`, no concrete
   /// implementation lives in this package — `town-crier-presentation`
   /// deliberately does not depend on `town-crier-data` — so the composition
@@ -174,10 +174,10 @@ public final class AnonymousBrowseCoordinator: ObservableObject {
     screen = .welcome
   }
 
-  // MARK: - Tab shell factories (GH#879 Phase 3)
+  // MARK: - Tab shell factories
 
   /// Builds the Applications tab's list view model. The active device-local
-  /// zone drives the query (GH#879 Phase 4); `state.coordinate`/
+  /// zone drives the query; `state.coordinate`/
   /// `state.radiusMetres` back it only as a fallback for the
   /// practically-unreachable case no device-local zone exists at all.
   /// Returns `nil` only in the practically-unreachable case the tab shell
@@ -185,7 +185,7 @@ public final class AnonymousBrowseCoordinator: ObservableObject {
   /// transitions to `.tabs` once `currentState` (and `mapViewModel`) are both
   /// set.
   public func makeApplicationListViewModel() -> AnonymousApplicationListViewModel? {
-    // Cached (GH#888) — see `applicationListViewModel`'s own docs for why a
+    // Cached — see `applicationListViewModel`'s own docs for why a
     // fresh instance on every call would be silently discarded by the
     // mounted view's `@StateObject`, leaving nothing for a Zones-tab edit to
     // refetch later.
@@ -212,7 +212,7 @@ public final class AnonymousBrowseCoordinator: ObservableObject {
     viewModel.onActiveZoneChanged = { [weak self] zone in
       self?.mapViewModel?.updateActiveZone(zone)
     }
-    // The "Add area" chip's sign-up CTA (GH#888) — the on-device cap is one
+    // The "Add area" chip's sign-up CTA — the on-device cap is one
     // zone, so adding another always routes here.
     viewModel.onRequestSignUp = { [weak self] in self?.onRequestSignIn?() }
     applicationListViewModel = viewModel
@@ -244,7 +244,7 @@ public final class AnonymousBrowseCoordinator: ObservableObject {
   }
 
   /// Test-only synchronisation: await the most recently scheduled
-  /// Applications-list refetch triggered by a Zones-tab edit (GH#888),
+  /// Applications-list refetch triggered by a Zones-tab edit,
   /// mirroring `AnonymousMapViewModel.waitForPendingRegionChangeRefetch()`.
   public func waitForPendingZoneEditRefetch() async {
     await pendingZoneEditRefetchTask?.value

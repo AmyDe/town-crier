@@ -1,8 +1,7 @@
 import SwiftUI
 
 /// Sign-up CTA shown when an anonymous user hits the on-device zone cap
-/// (``DeviceLocalZone/maxZoneCount``) or taps a zone row's alert affordance
-/// (GH#879 Phase 4).
+/// (``DeviceLocalZone/maxZoneCount``) or taps a zone row's alert affordance.
 ///
 /// Copy is a deliberate product/legal decision, mirroring
 /// ``AccountCTABanner``'s rationale: pitches the account, never promises

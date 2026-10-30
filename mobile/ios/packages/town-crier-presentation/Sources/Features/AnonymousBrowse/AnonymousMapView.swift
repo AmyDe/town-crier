@@ -7,13 +7,12 @@ import TownCrierDomain
 /// Centred on the active device-local zone's coordinate, fetches pins via
 /// ``AnonymousMapViewModel``, and clusters them on-device (GH#868 Phase 3
 /// refinement). The persistent ``AccountCTABanner`` is hosted once by
-/// `AnonymousMainTabView` above the tab bar (GH#879 Phase 3) rather than
+/// `AnonymousMainTabView` above the tab bar rather than
 /// here, so it appears over every tab, not just this one. A pin tap shows a
 /// reduced-feature summary preview; a cluster tap zooms in, unless its
 /// members are coincident (same address), in which case it opens a
-/// ``StackedApplicationsSheet`` disambiguation list instead (GH#877);
-/// anything deeper than the summary preview presents the full detail screen
-/// (GH#879 Phase 2).
+/// ``StackedApplicationsSheet`` disambiguation list instead;
+/// anything deeper than the summary preview presents the full detail screen.
 ///
 /// GH#912 Phase 4 ("honest anon map"): the radius slider that used to float
 /// over the bottom safe area is gone — the monitoring radius is now chosen
@@ -73,7 +72,7 @@ public struct AnonymousMapView: View {
           }
         }
       )
-      // Disambiguation list for a coincident ("stacked") cluster tap (GH#877).
+      // Disambiguation list for a coincident ("stacked") cluster tap.
       // Its `onDismiss` presents the chosen row's summary, so the list always
       // finishes dismissing before the summary appears — the two `.sheet`s are
       // never both up (mirrors `MapView.swift`).
@@ -94,7 +93,7 @@ public struct AnonymousMapView: View {
   private var mapBody: some View {
     ZStack {
       #if canImport(UIKit)
-        // Full-bleed (tc-3b1hj): the caller (`AnonymousMainTabView`) hides
+        // Full-bleed: the caller (`AnonymousMainTabView`) hides
         // the nav bar on this screen, so the map extends to every physical
         // edge, including under the status bar/notch at the top.
         AnonymousClusteredMapView(viewModel: viewModel)

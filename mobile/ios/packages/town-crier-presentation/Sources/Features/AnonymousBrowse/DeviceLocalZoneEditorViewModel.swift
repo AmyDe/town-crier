@@ -36,7 +36,7 @@ public final class DeviceLocalZoneEditorViewModel: ObservableObject, ErrorHandli
   /// Invoked when saving would exceed the on-device cap
   /// (`DomainError.deviceLocalZoneLimitReached`) — the list dismisses the
   /// editor and shows the sign-up CTA instead of an inline error. Defensive
-  /// only (GH#888): this editor only ever edits the zone already occupying
+  /// only: this editor only ever edits the zone already occupying
   /// the cap, never creates a new one.
   public var onRequestSignUp: (() -> Void)?
 

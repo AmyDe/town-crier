@@ -1,11 +1,11 @@
 import SwiftUI
 
 /// First screen a fresh install ever sees when there is no authenticated
-/// session and no persisted anonymous browse state (GH#868 Phase 3). "Get
+/// session and no persisted anonymous browse state. "Get
 /// started" routes to postcode entry with no account and no Auth0 call;
 /// "I already have an account" routes into the existing Auth0 login flow.
 ///
-/// Also carries a compact top-trailing appearance control (GH#878): an
+/// Also carries a compact top-trailing appearance control: an
 /// anonymous user has no way into Settings, so this is the only place they
 /// can switch off the system theme before creating an account.
 public struct WelcomeView: View {

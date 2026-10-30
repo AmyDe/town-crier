@@ -1,16 +1,16 @@
 import Foundation
 import TownCrierDomain
 
-/// Backs the anonymous browse flow's postcode entry screen (GH#868 Phase 3):
+/// Backs the anonymous browse flow's postcode entry screen:
 /// validates and geocodes the entered postcode via ``PostcodeGeocoder`` (the
 /// device-side ``PostcodesIOGeocoder`` in production — never `/v1/geocode`,
 /// which requires a session), persists the resolved
 /// ``AnonymousBrowseState``, and hands it to ``AnonymousBrowseCoordinator``
-/// via ``onResolved`` to advance to the tab shell (GH#879 Phase 3).
+/// via ``onResolved`` to advance to the tab shell.
 @MainActor
 public final class AnonymousPostcodeEntryViewModel: ObservableObject, ErrorHandlingViewModel {
   @Published public var postcodeInput: String = ""
-  /// The monitoring radius chosen on this screen (GH#912 Phase 4), persisted
+  /// The monitoring radius chosen on this screen, persisted
   /// into ``AnonymousBrowseState`` on submit and seeding both the first
   /// ``DeviceLocalZone`` and the anonymous map's fetch/drawn-circle radius —
   /// replacing the removed map-slider as the sole way to set the initial
@@ -20,7 +20,7 @@ public final class AnonymousPostcodeEntryViewModel: ObservableObject, ErrorHandl
   @Published public private(set) var isLoading = false
   @Published public internal(set) var error: DomainError?
   /// The silently-geocoded coordinate for the current ``postcodeInput``
-  /// (GH#931) — drives the live ``ZoneMapPreview`` between the radius
+  /// — drives the live ``ZoneMapPreview`` between the radius
   /// slider and Continue. `nil` whenever the input doesn't parse as a
   /// complete ``Postcode`` or the background geocode fails; failures here
   /// are silent and never populate ``error``, which stays the exclusive
@@ -37,8 +37,7 @@ public final class AnonymousPostcodeEntryViewModel: ObservableObject, ErrorHandl
   private let stateRepository: AnonymousBrowseStateRepository
   /// The last postcode successfully previewed — lets ``refreshPreview()``
   /// skip a duplicate geocode while the input is unchanged, and lets
-  /// ``submitPostcode()`` reuse the coordinate instead of a second call
-  /// (GH#931).
+  /// ``submitPostcode()`` reuse the coordinate instead of a second call.
   private var lastPreviewedPostcode: Postcode?
 
   /// Fired when the user taps "Back" — the coordinator returns to welcome.
@@ -68,7 +67,7 @@ public final class AnonymousPostcodeEntryViewModel: ObservableObject, ErrorHandl
 
     do {
       // Reuse a coordinate the live preview already resolved for this exact
-      // postcode (GH#931) — politeness to postcodes.io, a free third-party
+      // postcode — politeness to postcodes.io, a free third-party
       // service, and a zero-cost cache hit.
       let coordinate: Coordinate
       if postcode == lastPreviewedPostcode, let previewedCoordinate = previewCoordinate {
@@ -94,8 +93,8 @@ public final class AnonymousPostcodeEntryViewModel: ObservableObject, ErrorHandl
     onBack?()
   }
 
-  /// Silently (re-)geocodes ``postcodeInput`` for the live map preview
-  /// (GH#931). Debouncing lives in the view (`.task(id:)`); this method is
+  /// Silently (re-)geocodes ``postcodeInput`` for the live map preview.
+  /// Debouncing lives in the view (`.task(id:)`); this method is
   /// the deterministic core VM tests call directly.
   public func refreshPreview() async {
     guard let postcode = try? Postcode(postcodeInput) else {
@@ -110,7 +109,7 @@ public final class AnonymousPostcodeEntryViewModel: ObservableObject, ErrorHandl
       previewCoordinate = try await geocoder.geocode(postcode)
       lastPreviewedPostcode = postcode
     } catch {
-      // Preview geocode failures are silent (GH#931) — `error` stays the
+      // Preview geocode failures are silent — `error` stays the
       // exclusive domain of `submitPostcode()`; a transient failure here
       // must not flash a misleading error while the user is still typing.
       previewCoordinate = nil

@@ -1,13 +1,13 @@
 import SwiftUI
 import TownCrierDomain
 
-/// Postcode entry step of the anonymous browse flow (GH#868 Phase 3) — same
+/// Postcode entry step of the anonymous browse flow — same
 /// styling/validation feel as the onboarding wizard's
 /// `PostcodeEntryStepView`, but geocoding goes through
 /// ``AnonymousPostcodeEntryViewModel`` (postcodes.io directly, no session)
 /// rather than the wizard's authenticated `/v1/geocode`.
 ///
-/// A live ``ZoneMapPreview`` (GH#931) appears between the radius slider and
+/// A live ``ZoneMapPreview`` appears between the radius slider and
 /// Continue as soon as the typed postcode silently geocodes — debounced
 /// 500ms via `.task(id:)`, which auto-cancels the pending refresh on every
 /// keystroke and on dismissal (precedent: `ClusteredMapView`'s viewport
@@ -91,7 +91,7 @@ struct AnonymousPostcodeEntryView: View {
     }
   }
 
-  // MARK: - Radius picker (GH#912 Phase 4)
+  // MARK: - Radius picker
 
   /// Mirrors the onboarding wizard's `RadiusPickerStepView.radiusControl` —
   /// same label/slider/min-max layout — so choosing a radius feels identical
