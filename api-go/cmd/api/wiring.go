@@ -29,6 +29,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 	"github.com/AmyDe/town-crier/api-go/internal/savedapplications"
 	"github.com/AmyDe/town-crier/api-go/internal/seopage"
+	"github.com/AmyDe/town-crier/api-go/internal/shareevents"
 	"github.com/AmyDe/town-crier/api-go/internal/sharepage"
 	"github.com/AmyDe/town-crier/api-go/internal/subscriptionevents"
 	"github.com/AmyDe/town-crier/api-go/internal/subscriptions"
@@ -103,6 +104,12 @@ var anonymousPatterns = map[string]struct{}{
 	// no cookies, no client-IP logging): a server-rendered HTML page for a single
 	// application, the tracer surface of the shareable-page epic.
 	"GET /a/{authoritySlug}/{ref...}": {},
+	// The fixed App Store redirect behind the share page's "Get the app" links
+	// is anonymous: it takes no destination and records only a validated share code.
+	"GET /go/app-store": {},
+	// Anonymous share totals: daily counts by destination, with no code,
+	// application or user on the request. Metered by the per-IP AnonRateLimit.
+	"POST /v1/share-events": {},
 	// The public og:image card is anonymous (public planning data only; no user
 	// data/cookies/IP-logging): a baked OSM map of the site served as the share
 	// page's unfurl image. The ".png" suffix is enforced in the
@@ -253,6 +260,7 @@ func newRouter(
 	pollingAdmin pollingAdminDeps,
 	notifier *subscriptionevents.Notifier,
 	seoStore seopage.Store,
+	shareEventStore shareevents.Store,
 	logger *slog.Logger,
 ) http.Handler {
 	mux := http.NewServeMux()
@@ -377,6 +385,9 @@ func newRouter(
 		} else {
 			sharepage.ImageRoutes(mux, appStore, authorities.NewLookup(), sharepage.NewOSMTileClient(), nil, logger)
 		}
+	}
+	if shareEventStore != nil {
+		shareevents.Routes(mux, shareEventStore, time.Now, logger)
 	}
 	if seoStore != nil {
 		// The live SEO pages (ADR 0050): anonymous to Auth0 and gated by the site

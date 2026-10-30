@@ -9,7 +9,7 @@ import TownCrierDomain
 public struct ApplicationDetailView: View {
   @ObservedObject private var viewModel: ApplicationDetailViewModel
   @State private var showingSafari = false
-  @State private var showingShareSheet = false
+  @State private var sharePresentation: SharePresentation?
 
   public init(viewModel: ApplicationDetailViewModel) {
     _viewModel = ObservedObject(wrappedValue: viewModel)
@@ -56,9 +56,9 @@ public struct ApplicationDetailView: View {
           SafariView(url: url)
         }
       }
-      .sheet(isPresented: $showingShareSheet) {
-        if let shareURL = viewModel.shareURL {
-          ShareSheet(activityItems: [shareURL])
+      .sheet(item: $sharePresentation) { presentation in
+        ShareSheet(activityItems: [presentation.url]) { activityType in
+          Task { await viewModel.shareCompleted(activityType: activityType) }
         }
       }
     #endif
@@ -89,7 +89,7 @@ public struct ApplicationDetailView: View {
       if viewModel.shareURL != nil {
         ToolbarItem(placement: .automatic) {
           Button {
-            showingShareSheet = true
+            sharePresentation = viewModel.makeSharePresentation()
           } label: {
             Image(systemName: "square.and.arrow.up")
               .foregroundStyle(Color.tcTextSecondary)

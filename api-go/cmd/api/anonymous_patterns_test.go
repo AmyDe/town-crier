@@ -131,3 +131,13 @@ func TestAnonymousPatterns_IncludesFilterCatalog(t *testing.T) {
 		t.Errorf("anonymousPatterns must include %q", filterCatalog)
 	}
 }
+
+func TestAnonymousPatterns_IncludesShareLinkRoutes(t *testing.T) {
+	t.Parallel()
+
+	for _, pattern := range []string{"GET /go/app-store", "POST /v1/share-events"} {
+		if _, ok := anonymousPatterns[pattern]; !ok {
+			t.Errorf("anonymousPatterns must include %q", pattern)
+		}
+	}
+}

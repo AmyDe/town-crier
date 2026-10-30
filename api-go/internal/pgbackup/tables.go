@@ -22,7 +22,8 @@ var Tables = []Table{
 }
 
 // Excluded lists the tables deliberately left out of the backup: public data
-// or data derived from it, short-lived operational state, and schema metadata.
+// or data derived from it, anonymous totals, short-lived operational state, and
+// schema metadata.
 // Every table in the schema must be in exactly one of Tables or Excluded.
 var Excluded = []string{
 	"applications",
@@ -45,5 +46,6 @@ var Excluded = []string{
 	"seo_state",
 	"seo_town_applications",
 	"seo_towns",
+	"share_event_totals",
 	"spatial_ref_sys",
 }

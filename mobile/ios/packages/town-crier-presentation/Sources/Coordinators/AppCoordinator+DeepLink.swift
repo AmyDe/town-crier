@@ -22,14 +22,14 @@ extension AppCoordinator {
       showApplicationDetail(id)
     case .applicationsList:
       selectedTab = .applications
-    case let .shareApplication(authoritySlug, ref):
-      // Inbound public share Universal Link (GH #738 Slice 4). Switch to the
+    case let .shareApplication(authoritySlug, ref, linkCode):
+      // Inbound public share Universal Link. Switch to the
       // Applications tab so the hoisted detail sheet modifier is in scope when
       // SwiftUI evaluates the `detailApplication` mutation, then resolve the
       // application via the anonymous by-slug read. No review-prompt signal —
       // arriving from a shared web link is not the instant-alert payoff moment.
       selectedTab = .applications
-      showApplicationDetail(bySlug: authoritySlug, ref: ref)
+      showApplicationDetail(bySlug: authoritySlug, ref: ref, linkCode: linkCode)
     }
   }
 }

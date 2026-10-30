@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-const wantRobots = "User-agent: Twitterbot\nUser-agent: facebookexternalhit\nUser-agent: LinkedInBot\nUser-agent: Slackbot\nUser-agent: Discordbot\nUser-agent: WhatsApp\nUser-agent: TelegramBot\nAllow: /\n\nUser-agent: *\nDisallow: /og/\n"
+const wantRobots = "User-agent: Twitterbot\nUser-agent: facebookexternalhit\nUser-agent: LinkedInBot\nUser-agent: Slackbot\nUser-agent: Discordbot\nUser-agent: WhatsApp\nUser-agent: TelegramBot\nAllow: /\nDisallow: /go/\n\nUser-agent: *\nDisallow: /og/\nDisallow: /go/\n"
 
 func TestRobotsRoutes_ServesCrawlerPolicy(t *testing.T) {
 	t.Parallel()

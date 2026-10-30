@@ -10,7 +10,15 @@ public protocol AnonymousApplicationDetailRepository: Sendable {
   /// API-emitted authority slug plus the full area-prefixed PlanIt ref
   /// (slashes preserved). Backs both an inbound share Universal Link
   /// resolved with no session, and the anonymous detail screen's
-  /// stale-while-revalidate ``refresh()``.
-  func fetchApplication(bySlug authoritySlug: String, ref: String) async throws
+  /// stale-while-revalidate ``refresh()``. A non-`nil` `linkCode` is sent as the
+  /// `s` query parameter.
+  func fetchApplication(bySlug authoritySlug: String, ref: String, linkCode: String?) async throws
     -> PlanningApplication
+}
+
+extension AnonymousApplicationDetailRepository {
+  public func fetchApplication(bySlug authoritySlug: String, ref: String) async throws
+    -> PlanningApplication {
+    try await fetchApplication(bySlug: authoritySlug, ref: ref, linkCode: nil)
+  }
 }
