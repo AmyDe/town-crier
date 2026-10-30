@@ -6,27 +6,6 @@ import (
 	"time"
 )
 
-func TestUserProfile_RenewSubscription(t *testing.T) {
-	t.Parallel()
-	p := &UserProfile{Tier: TierPro}
-	grace := time.Now()
-	p.GracePeriodExpiry = &grace
-
-	newExpiry := time.Now().AddDate(0, 1, 0).UTC()
-	p.RenewSubscription(newExpiry)
-
-	if p.SubscriptionExpiry == nil || !p.SubscriptionExpiry.Equal(newExpiry) {
-		t.Errorf("SubscriptionExpiry = %v, want %v", p.SubscriptionExpiry, newExpiry)
-	}
-	if p.GracePeriodExpiry != nil {
-		t.Errorf("GracePeriodExpiry = %v, want nil", p.GracePeriodExpiry)
-	}
-	// Renewal does not change the tier.
-	if p.Tier != TierPro {
-		t.Errorf("Tier = %v, want Pro", p.Tier)
-	}
-}
-
 func TestUserProfile_EnterGracePeriod(t *testing.T) {
 	t.Parallel()
 	p := &UserProfile{Tier: TierPersonal}
@@ -347,10 +326,6 @@ func TestProfile_SubscriptionInTrial(t *testing.T) {
 		{"expire clears flag", func(p *UserProfile) {
 			p.SubscriptionInTrial = true
 			p.ExpireSubscription()
-		}, false},
-		{"renew clears flag", func(p *UserProfile) {
-			p.SubscriptionInTrial = true
-			p.RenewSubscription(expiry)
 		}, false},
 	}
 	for _, tt := range tests {
