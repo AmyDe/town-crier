@@ -29,6 +29,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 	"github.com/AmyDe/town-crier/api-go/internal/savedapplications"
 	"github.com/AmyDe/town-crier/api-go/internal/seopage"
+	"github.com/AmyDe/town-crier/api-go/internal/sharepage"
 	"github.com/AmyDe/town-crier/api-go/internal/subscriptionevents"
 	"github.com/AmyDe/town-crier/api-go/internal/subscriptions"
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
@@ -201,10 +202,19 @@ func main() {
 	}
 	subscriptionNotifier := subscriptionevents.NewNotifier(adminStore, webhooks, subscriptionevents.NewHTTPClient(), logger, time.Now)
 
+	shareClicks := sharepage.NewClickCounter(sharepage.NewPostgresClickStore(pool), time.Now, logger)
+	clicksCtx, stopClicks := context.WithCancel(context.Background())
+	defer stopClicks()
+	clicksDone := make(chan struct{})
+	go func() {
+		defer close(clicksDone)
+		shareClicks.Run(clicksCtx)
+	}()
+
 	srv := platform.NewServer(":"+cfg.Port, newRouter(validator, cfg.CorsAllowedOrigins, store, manager, cascade, exportReaders, deviceStore, stateStore, notifStore, watchZoneStore, appStore, savedStore, geocodeClient, designationClient, offerStore, adminStore, cfg.AdminAPIKey, cfg.SiteBuildKey, jwsVerifier, appleNotifStore, cfg.AppleBundleID, cfg.AppleEnvironments, registry, shareCardCache, cfg.AnonRateLimitBurst, cfg.AnonRateLimitRefillPerMinute, pollingAdminDeps{
 		Switch: polling.NewSwitch(polling.NewPostgresPollControlStore(pool), cfg.PollingEnabledDefault),
 		Calls:  polling.NewPostgresPlanItCallStore(pool),
-	}, subscriptionNotifier, seopage.NewPostgresStore(pool, appStore), logger))
+	}, shareClicks, subscriptionNotifier, seopage.NewPostgresStore(pool, appStore), logger))
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -224,6 +234,9 @@ func main() {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		logger.Error("shutdown", "error", err)
 	}
+	// Stop the counter only after in-flight requests finish, so its final flush holds their visits.
+	stopClicks()
+	<-clicksDone
 	logger.Info("api stopped")
 }
 
