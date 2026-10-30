@@ -25,6 +25,8 @@ const (
 
 	homeURL = "https://towncrierapp.uk"
 
+	appStoreRedirectPath = "/go/app-store"
+
 	// ogDescriptionMaxRunes bounds the og:/twitter:description so a long proposal
 	// does not overrun a social unfurl card. Counted in runes, not bytes, so a
 	// multibyte character is never split.
@@ -48,6 +50,7 @@ type pageView struct {
 	OGDescription string
 	OGImage       string
 	CanonicalURL  string
+	OGURL         string
 	AppleAppID    string
 	CTAHref       string
 	HomeURL       string
@@ -96,8 +99,9 @@ func buildPageView(app applications.PlanningApplication, slug, ref string) pageV
 		OGDescription: summarise(app.Description, place),
 		OGImage:       shareOrigin + "/og/" + slug + "/" + ref + ".png",
 		CanonicalURL:  canonical,
+		OGURL:         canonical,
 		AppleAppID:    appleAppID,
-		CTAHref:       ctaURL(),
+		CTAHref:       appStoreRedirectPath,
 		HomeURL:       homeURL,
 		Ref:           ref,
 		Address:       app.Address,
@@ -132,6 +136,18 @@ func buildPageView(app applications.PlanningApplication, slug, ref string) pageV
 		v.AuthorityName = areaName
 		v.AuthorityURL = homeURL + "/planning/" + slug
 	}
+	return v
+}
+
+// withShareCode carries a validated share code on og:url and the App Store links.
+// og:url needs it because Facebook can use og:url as the card's link target; the
+// canonical URL stays clean.
+func (v pageView) withShareCode(code string) pageView {
+	if code == "" {
+		return v
+	}
+	v.OGURL += "?s=" + code
+	v.CTAHref += "?s=" + code
 	return v
 }
 

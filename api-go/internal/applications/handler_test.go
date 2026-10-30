@@ -9,6 +9,9 @@ import (
 	"sync"
 	"testing"
 
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
 )
 
@@ -436,5 +439,70 @@ func TestHandler_Routes_BySlugAndByIdCoexist(t *testing.T) {
 	}
 	if bySlugStore.lastAuthorityCode != "471" || bySlugStore.lastName != "x/y/z" {
 		t.Errorf("by-slug routed wrong: code=%q name=%q", bySlugStore.lastAuthorityCode, bySlugStore.lastName)
+	}
+}
+
+func TestHandler_GetBySlug_ShareCodeOnSpan(t *testing.T) {
+	t.Parallel()
+	const route = "/v1/applications/by-slug/city-of-london/24/0123/FUL"
+	for _, tc := range []struct {
+		name      string
+		query     string
+		bearer    bool
+		wantNonce string
+	}{
+		{"valid", "?s=abc123", false, "abc123"},
+		{"absent", "", false, ""},
+		{"invalid", "?s=abc", false, ""},
+		{"carrying an account", "?s=abc123", true, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			mux := http.NewServeMux()
+			Routes(mux, &fakeAppStore{app: testApplication(t), found: true}, nil, testResolver(), slog.New(slog.DiscardHandler))
+
+			recorder := tracetest.NewSpanRecorder()
+			tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+			ctx, span := tp.Tracer("test").Start(context.Background(), "request")
+			req := httptest.NewRequestWithContext(ctx, http.MethodGet, route+tc.query, nil)
+			if tc.bearer {
+				req.Header.Set("Authorization", "Bearer token")
+			}
+			rec := httptest.NewRecorder()
+			mux.ServeHTTP(rec, req)
+			span.End()
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200", rec.Code)
+			}
+			var got string
+			for _, kv := range recorder.Ended()[0].Attributes() {
+				if kv.Key == "share.nonce" {
+					got = kv.Value.AsString()
+				}
+			}
+			if got != tc.wantNonce {
+				t.Errorf("share.nonce = %q, want %q", got, tc.wantNonce)
+			}
+		})
+	}
+}
+
+func TestHandler_GetByAuthorityAndName_NeverRecordsAShareCode(t *testing.T) {
+	t.Parallel()
+	mux := http.NewServeMux()
+	Routes(mux, &fakeAppStore{app: testApplication(t), found: true}, nil, testResolver(), slog.New(slog.DiscardHandler))
+
+	recorder := tracetest.NewSpanRecorder()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	ctx, span := tp.Tracer("test").Start(context.Background(), "request")
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/v1/applications/471/24/0123/FUL?s=abc123", nil)
+	mux.ServeHTTP(httptest.NewRecorder(), req)
+	span.End()
+
+	for _, kv := range recorder.Ended()[0].Attributes() {
+		if kv.Key == "share.nonce" {
+			t.Errorf("share.nonce = %q on the by-id route", kv.Value.AsString())
+		}
 	}
 }

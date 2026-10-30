@@ -16,15 +16,18 @@ public final class APIAnonymousApplicationDetailRepository: AnonymousApplication
     self.apiClient = apiClient
   }
 
-  public func fetchApplication(bySlug authoritySlug: String, ref: String) async throws
-    -> PlanningApplication {
+  public func fetchApplication(bySlug authoritySlug: String, ref: String, linkCode: String?)
+    async throws -> PlanningApplication {
     let dto: PlanningApplicationDTO
     do {
       // The greedy `{**ref}` segment preserves slashes in the full
       // area-prefixed PlanIt name, so `ref` interpolates raw exactly like
       // `APIPlanningApplicationRepository.fetchApplication(bySlug:ref:)`.
       dto = try await apiClient.request(
-        .get("/v1/applications/by-slug/\(authoritySlug)/\(ref)")
+        .get(
+          "/v1/applications/by-slug/\(authoritySlug)/\(ref)",
+          query: linkCode.map { [URLQueryItem(name: "s", value: $0)] } ?? []
+        )
       )
     } catch APIError.notFound {
       throw DomainError.applicationNotFound(

@@ -6,6 +6,7 @@ final class SpyAnonymousApplicationDetailRepository: AnonymousApplicationDetailR
   struct RecordedBySlugRequest: Sendable, Equatable {
     let authoritySlug: String
     let ref: String
+    var linkCode: String?
   }
 
   /// Guards ``fetchApplicationBySlugCalls``'s mutation below. Concurrent
@@ -31,11 +32,11 @@ final class SpyAnonymousApplicationDetailRepository: AnonymousApplicationDetailR
   /// (mirrors `SpyPlanningApplicationRepository.fetchApplicationResultsById`).
   var fetchApplicationBySlugResultsByRef: [String: Result<PlanningApplication, Error>] = [:]
 
-  func fetchApplication(bySlug authoritySlug: String, ref: String) async throws
+  func fetchApplication(bySlug authoritySlug: String, ref: String, linkCode: String?) async throws
     -> PlanningApplication {
     lock.withLock {
       _fetchApplicationBySlugCalls.append(
-        RecordedBySlugRequest(authoritySlug: authoritySlug, ref: ref))
+        RecordedBySlugRequest(authoritySlug: authoritySlug, ref: ref, linkCode: linkCode))
     }
     if let scoped = fetchApplicationBySlugResultsByRef[ref] {
       return try scoped.get()

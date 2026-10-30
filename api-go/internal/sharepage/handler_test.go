@@ -221,15 +221,10 @@ func TestServe_KnownApplication_RendersMetaAndVisibleContent(t *testing.T) {
 		`href="https://towncrierapp.uk/planning/croydon"`,
 		"More planning applications in Croydon",
 		// Sticky CTA: short verb-first label + supporting sentence, plus the
-		// campaign-tagged App Store URL.
+		// first-party App Store redirect.
 		"Get the app",
 		"Instant notifications about planning updates like this one.",
-		"town-crier-planning-alerts",
-		// Apple only attributes ct campaigns when the pt provider token is
-		// also present (tc-fgoyj).
-		"pt=128810278",
-		"ct=share-page",
-		"mt=8",
+		`href="/go/app-store"`,
 	}
 	for _, want := range wantContains {
 		if !strings.Contains(body, want) {
@@ -491,7 +486,7 @@ func TestServe_AppCTAIsPrimaryInCardAction(t *testing.T) {
 	if !strings.Contains(appCTASection, ">Get the app<") {
 		t.Error(`in-card app CTA button must use the short, verb-first label "Get the app"`)
 	}
-	if !strings.Contains(appCTASection, "apps.apple.com") {
+	if !strings.Contains(appCTASection, "/go/app-store") {
 		t.Error("in-card app CTA must link to the App Store")
 	}
 
