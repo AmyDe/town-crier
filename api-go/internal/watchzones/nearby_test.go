@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
+
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
@@ -2323,13 +2325,32 @@ func TestClusters_ContextCanceled_NoServerErrorNoErrorLog(t *testing.T) {
 	mux := newNearbyMuxWithLogger(t, clusterDeps(t, apps), slog.New(capture))
 	rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications/clusters"+validClusterQuery, "")
 
-	if rec.Code == http.StatusInternalServerError {
-		t.Fatalf("status: got %d, want NOT 500 on a client-cancelled read", rec.Code)
+	if rec.Code != 499 {
+		t.Fatalf("status: got %d, want 499 on a client-cancelled read", rec.Code)
 	}
 	if rec.Body.Len() != 0 {
 		t.Errorf("body = %q, want empty", rec.Body.String())
 	}
 	if _, ok := capture.find(slog.LevelError, "watch-zone request failed"); ok {
 		t.Error("expected no error-level log for a client-cancelled read")
+	}
+}
+
+func TestClusters_StatementTimeout_Is503AndLogged(t *testing.T) {
+	t.Parallel()
+	apps := &fakeAppFinder{clusterErr: fmt.Errorf("find clusters: %w", &pgconn.PgError{Code: "57014"})}
+	capture := &capturingHandler{}
+	mux := newNearbyMuxWithLogger(t, clusterDeps(t, apps), slog.New(capture))
+	rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications/clusters"+validClusterQuery, "")
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status: got %d, want 503", rec.Code)
+	}
+	attrs, ok := capture.find(slog.LevelError, "watch-zone request failed")
+	if !ok {
+		t.Fatal("expected an error-level log for a statement timeout")
+	}
+	if attrs["op"] == nil {
+		t.Error("expected the op attribute on the log line")
 	}
 }

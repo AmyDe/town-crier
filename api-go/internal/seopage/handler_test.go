@@ -1,10 +1,15 @@
 package seopage
 
 import (
+	"context"
 	"encoding/xml"
+	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func TestRoutes_NotFoundWithoutBuildKey(t *testing.T) {
@@ -209,6 +214,41 @@ func TestRoutes_StoreErrorIsBodyless500(t *testing.T) {
 		if resp.Code != http.StatusInternalServerError || resp.Body != "" {
 			t.Errorf("GET %s = %d with body %q, want bodyless 500", path, resp.Code, resp.Body)
 		}
+	}
+}
+
+func TestRoutes_StoreErrorStatusFollowsRequestContext(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		cancelled bool
+		err       error
+		want      int
+	}{
+		{"cancelled with query canceled", true, &pgconn.PgError{Code: "57014"}, 499},
+		{"cancelled with context canceled", true, context.Canceled, 499},
+		{"live with statement timeout", false, &pgconn.PgError{Code: "57014"}, http.StatusServiceUnavailable},
+		{"live with generic error", false, errStore, http.StatusInternalServerError},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			fs := loadFixture(t)
+			fs.err = fmt.Errorf("read: %w", tt.err)
+			mux := newTestMux(t, fs)
+			ctx, cancel := context.WithCancel(t.Context())
+			if tt.cancelled {
+				cancel()
+			}
+			defer cancel()
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/planning/cornwall", nil)
+			req.Header.Set("X-Build-Key", testBuildKey)
+			mux.ServeHTTP(rec, req)
+			if rec.Code != tt.want || rec.Body.Len() != 0 {
+				t.Errorf("status = %d body %q, want bodyless %d", rec.Code, rec.Body.String(), tt.want)
+			}
+		})
 	}
 }
 

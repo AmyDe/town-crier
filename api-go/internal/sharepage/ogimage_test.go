@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
@@ -16,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
@@ -322,6 +324,58 @@ func TestImageServe_StoreError_Returns500(t *testing.T) {
 	}
 	if tiles.calls != 0 {
 		t.Errorf("tile fetches = %d, want 0 when the store errors", tiles.calls)
+	}
+}
+
+func TestImageServe_RequestErrors_ClassifiedByRequestContext(t *testing.T) {
+	t.Parallel()
+	timeout := fmt.Errorf("read application: %w", &pgconn.PgError{Code: "57014"})
+	cancelled := fmt.Errorf("read application: %w", context.Canceled)
+	tests := []struct {
+		name       string
+		storeErr   error
+		tilesErr   error
+		cancelCtx  bool
+		wantStatus int
+		wantLog    string
+	}{
+		{name: "store 57014 live context", storeErr: timeout, wantStatus: http.StatusServiceUnavailable, wantLog: "share card read failed"},
+		{name: "store 57014 cancelled context", storeErr: timeout, cancelCtx: true, wantStatus: 499},
+		{name: "store canceled", storeErr: cancelled, wantStatus: 499},
+		{name: "tiles canceled", tilesErr: fmt.Errorf("fetch: %w", context.Canceled), wantStatus: 499},
+		{name: "tiles deadline", tilesErr: fmt.Errorf("fetch: %w", context.DeadlineExceeded), wantStatus: http.StatusServiceUnavailable, wantLog: "share card render failed"},
+		{name: "tiles generic", tilesErr: errors.New("osm 502"), wantStatus: http.StatusInternalServerError, wantLog: "share card render failed"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			store := &fakeStore{app: coordApp(t), found: true, err: tt.storeErr}
+			resolver := &fakeResolver{slugs: map[string]int{"croydon": 165}}
+			tiles := &fakeTiles{err: tt.tilesErr}
+			capture := &capturingHandler{}
+			mux := http.NewServeMux()
+			ImageRoutes(mux, store, resolver, tiles, newFakeImageStore(), slog.New(capture))
+
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			if tt.cancelCtx {
+				cancel()
+			}
+			rec := httptest.NewRecorder()
+			mux.ServeHTTP(rec, httptest.NewRequestWithContext(ctx, http.MethodGet, ogPath, nil))
+
+			if rec.Code != tt.wantStatus {
+				t.Fatalf("status = %d, want %d", rec.Code, tt.wantStatus)
+			}
+			if rec.Body.Len() != 0 {
+				t.Errorf("body = %q, want empty", rec.Body.String())
+			}
+			for _, msg := range []string{"share card read failed", "share card render failed"} {
+				if got := capture.find(slog.LevelError, msg); got != (msg == tt.wantLog) {
+					t.Errorf("error log %q present = %v, want %v", msg, got, msg == tt.wantLog)
+				}
+			}
+		})
 	}
 }
 

@@ -3,12 +3,15 @@ package devicetokens
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
 )
@@ -191,5 +194,54 @@ func TestHandler_RemoveByBody_StoreError(t *testing.T) {
 	rec := doReq(t, testMux(t, store, time.Now()), http.MethodDelete, "/v1/me/device-token", `{"token":"tok-1"}`)
 	if rec.Code != http.StatusInternalServerError {
 		t.Errorf("status = %d, want 500", rec.Code)
+	}
+}
+
+func TestHandler_StoreErrorStatusFollowsRequestContext(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 6, 12, 8, 0, 0, 0, time.UTC)
+	queryCanceled := &pgconn.PgError{Code: "57014"}
+	tests := []struct {
+		name      string
+		cancelled bool
+		err       error
+		want      int
+	}{
+		{"cancelled with query canceled", true, queryCanceled, 499},
+		{"cancelled with context canceled", true, context.Canceled, 499},
+		{"live with statement timeout", false, queryCanceled, http.StatusServiceUnavailable},
+		{"live with generic error", false, errors.New("db down"), http.StatusInternalServerError},
+	}
+	requests := []struct {
+		name   string
+		method string
+		path   string
+		body   string
+		fail   func(*fakeRegStore, error)
+	}{
+		{"read", http.MethodPut, "/v1/me/device-token", `{"token":"tok-1","platform":"ios"}`, func(s *fakeRegStore, err error) { s.getErr = err }},
+		{"save", http.MethodPut, "/v1/me/device-token", `{"token":"tok-1","platform":"ios"}`, func(s *fakeRegStore, err error) { s.saveErr = err }},
+		{"delete", http.MethodDelete, "/v1/me/device-token/tok-1", "", func(s *fakeRegStore, err error) { s.delErr = err }},
+	}
+	for _, rq := range requests {
+		for _, tt := range tests {
+			t.Run(rq.name+"/"+tt.name, func(t *testing.T) {
+				t.Parallel()
+				store := newFakeRegStore()
+				rq.fail(store, fmt.Errorf("store: %w", tt.err))
+				mux := testMux(t, store, now)
+				ctx, cancel := context.WithCancel(auth.WithSubject(t.Context(), "auth0|dev1"))
+				if tt.cancelled {
+					cancel()
+				}
+				defer cancel()
+				rec := httptest.NewRecorder()
+				mux.ServeHTTP(rec, httptest.NewRequestWithContext(ctx, rq.method, rq.path, strings.NewReader(rq.body)))
+				if rec.Code != tt.want {
+					t.Errorf("status = %d, want %d", rec.Code, tt.want)
+				}
+			})
+		}
 	}
 }

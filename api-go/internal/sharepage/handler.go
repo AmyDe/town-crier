@@ -10,12 +10,12 @@ package sharepage
 import (
 	"bytes"
 	"context"
-	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
 
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
+	"github.com/AmyDe/town-crier/api-go/internal/platform"
 )
 
 // appStore is the narrow consumer-side view of the applications store: a single
@@ -62,13 +62,7 @@ func (h *handler) serve(w http.ResponseWriter, r *http.Request) {
 
 	app, found, err := h.store.GetByAuthorityAndName(r.Context(), strconv.Itoa(areaID), ref)
 	if err != nil {
-		// context.Canceled means the caller disconnected; there is nothing to
-		// write back and it is not a server fault.
-		if errors.Is(err, context.Canceled) {
-			return
-		}
-		h.logger.ErrorContext(r.Context(), "share page read failed", "op", "read application by slug", "slug", slug, "ref", ref, "error", err)
-		w.WriteHeader(http.StatusInternalServerError)
+		platform.RespondRequestError(w, r, h.logger, "share page read failed", err, "op", "read application by slug", "slug", slug, "ref", ref)
 		return
 	}
 	if !found {

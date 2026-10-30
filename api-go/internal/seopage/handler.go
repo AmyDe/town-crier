@@ -9,13 +9,13 @@ package seopage
 import (
 	"bytes"
 	"context"
-	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
+	"github.com/AmyDe/town-crier/api-go/internal/platform"
 	"github.com/AmyDe/town-crier/api-go/internal/seocatalog"
 )
 
@@ -215,13 +215,8 @@ func (h *handler) write(w http.ResponseWriter, r *http.Request, status int, body
 	}
 }
 
-// fail logs a store or render error and answers a bodyless 500 (the envelope is
-// backfilled by middleware). A cancelled request writes nothing: the caller is
-// already gone.
+// fail answers a bodyless error status chosen by platform.ClassifyRequestError
+// (499 unlogged for a cancelled request, 503 for a timeout, otherwise 500).
 func (h *handler) fail(w http.ResponseWriter, r *http.Request, op string, err error) {
-	if errors.Is(err, context.Canceled) {
-		return
-	}
-	h.logger.ErrorContext(r.Context(), "seo page failed", "op", op, "path", r.URL.Path, "error", err)
-	w.WriteHeader(http.StatusInternalServerError)
+	platform.RespondRequestError(w, r, h.logger, "seo page failed", err, "op", op, "path", r.URL.Path)
 }

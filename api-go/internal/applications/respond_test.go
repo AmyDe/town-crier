@@ -46,7 +46,8 @@ func TestServerError_Status(t *testing.T) {
 		{"deadline exceeded", fmt.Errorf("search: %w", context.DeadlineExceeded), http.StatusServiceUnavailable},
 		{"pg timeout", pgTimeoutError(t), http.StatusServiceUnavailable},
 		{"generic error", errors.New("boom"), http.StatusInternalServerError},
-		{"canceled writes nothing", fmt.Errorf("search: %w", context.Canceled), http.StatusOK},
+		{"canceled is 499", fmt.Errorf("search: %w", context.Canceled), 499},
+		{"statement timeout is 503", fmt.Errorf("search: %w", &pgconn.PgError{Code: "57014"}), http.StatusServiceUnavailable},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -65,3 +66,21 @@ func TestServerError_Status(t *testing.T) {
 }
 
 var errStoreFailed = errors.New("store failed")
+
+func TestServerError_CancelledContextWithQueryCanceledIs499NoErrorLog(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	capture := &capturingHandler{}
+	rec := httptest.NewRecorder()
+	r := httptest.NewRequestWithContext(ctx, http.MethodGet, "/", nil)
+
+	serverError(rec, r, slog.New(capture), "test", fmt.Errorf("query: %w", &pgconn.PgError{Code: "57014"}))
+
+	if rec.Code != 499 {
+		t.Errorf("status: got %d, want 499", rec.Code)
+	}
+	if _, ok := capture.find(slog.LevelError, "application request failed"); ok {
+		t.Error("expected no error-level log for a client-cancelled request")
+	}
+}
