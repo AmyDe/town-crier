@@ -183,7 +183,7 @@ func (c *Auth0Client) token(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("decode token response: %w", err)
 	}
 	if tokenResp.AccessToken == "" {
-		return "", fmt.Errorf("token response missing access_token")
+		return "", errors.New("token response missing access_token")
 	}
 
 	c.cachedToken = tokenResp.AccessToken

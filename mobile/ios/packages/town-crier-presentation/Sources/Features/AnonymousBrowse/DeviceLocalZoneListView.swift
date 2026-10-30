@@ -1,7 +1,7 @@
 import SwiftUI
 import TownCrierDomain
 
-/// The anonymous (pre-signup) Zones tab (GH#888): exactly one editable
+/// The anonymous (pre-signup) Zones tab: exactly one editable
 /// device-local area. No toolbar "+", no swipe-to-delete — the on-device cap
 /// is ``DeviceLocalZone/maxZoneCount`` == 1, and the only surviving mutation
 /// is editing the single zone via a row tap. A persistent sign-up pitch sits
@@ -71,7 +71,7 @@ public struct DeviceLocalZoneListView: View {
       .listRowBackground(Color.tcBackground)
   }
 
-  /// Load-bearing sign-up pitch (GH#888): this is the only remaining route to
+  /// Load-bearing sign-up pitch: this is the only remaining route to
   /// another area now the cap is one.
   ///
   /// Public Notice (GH#857/#896): styled as the anonymous-mode analogue of
@@ -160,7 +160,7 @@ private struct DeviceLocalZoneRow: View {
       Spacer()
 
       // Any alert/notification affordance on a zone row is a sign-up CTA —
-      // device-local zones never deliver alerts (GH#879 Phase 4).
+      // device-local zones never deliver alerts.
       Button(action: onAlertTap) {
         Image(systemName: "bell.slash")
           .foregroundStyle(Color.tcTextTertiary)

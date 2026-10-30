@@ -242,7 +242,7 @@ func (h *handler) exportData(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, r, export)
 }
 
-// tryBackfillAuth0Tier syncs Auth0's subscription_tier to the Cosmos tier when
+// tryBackfillAuth0Tier syncs Auth0's subscription_tier to the stored tier when
 // the JWT claim drifts. Failures are swallowed and logged — an Auth0 outage must
 // never fail POST /v1/me.
 func (h *handler) tryBackfillAuth0Tier(ctx context.Context, p *UserProfile, jwtTier string) {

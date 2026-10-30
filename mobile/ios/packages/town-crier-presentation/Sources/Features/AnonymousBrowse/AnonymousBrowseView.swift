@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Root view for the anonymous (pre-signup) browse flow (GH#868 Phase 3):
+/// Root view for the anonymous (pre-signup) browse flow:
 /// renders whichever screen ``AnonymousBrowseCoordinator`` says is current.
 /// Rendered by the app shell whenever there is no authenticated session — an
 /// authenticated session always wins over this branch entirely.

@@ -1,7 +1,7 @@
 import SwiftUI
 import TownCrierDomain
 
-/// The anonymous (pre-signup) Settings tab (GH#879 Phase 3). Exposes
+/// The anonymous (pre-signup) Settings tab. Exposes
 /// exactly: a "Create free account" / "Sign in" section, Appearance, Data
 /// Attribution, Legal (Privacy Policy + Terms of Service), and About (Rate
 /// the App + Version). MUST NOT render account info, notification

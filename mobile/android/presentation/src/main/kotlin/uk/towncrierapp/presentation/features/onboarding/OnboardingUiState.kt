@@ -9,9 +9,8 @@ import uk.towncrierapp.presentation.features.watchzones.WatchZoneShapeMode
 
 /**
  * `OnboardingScreen` state. [isComplete] is a one-shot signal the Route
- * reconciles (coroutines-and-flow.md "One-shot effects") by leaving the
- * wizard for the main app - the ViewModel itself never navigates. Port of
- * iOS `OnboardingViewModel`'s published state.
+ * reconciles by leaving the wizard for the main app - the ViewModel itself
+ * never navigates.
  */
 public data class OnboardingUiState(
     val step: OnboardingStep = OnboardingStep.Welcome,
@@ -30,16 +29,9 @@ public data class OnboardingUiState(
     val hasInstantAlertEntitlement: Boolean = false,
     val isCompleting: Boolean = false,
     val isComplete: Boolean = false,
-    // GH#1072 Phase 5 (tc-v6fo0.5): custom-shape (polygon) drawing, mirroring
-    // WatchZoneEditorUiState's equivalent fields (see PolygonDrawingState,
-    // shared between the two so the vertex-add/move/close/undo rules aren't
-    // duplicated). [allowsCustomBoundary] mirrors WatchZoneLimits.allowsCustomBoundary
-    // for the CURRENT [tier] - kept in step with [tier] wherever that field
-    // changes (initialState, reconcileTierAfterUpgrade). [navigateToPaywall]
-    // is a one-shot signal, same shape as
-    // WatchZoneEditorUiState.navigateToPaywall, for the free-tier upsell CTA
-    // on the radius step - there is no paywall to route to yet (#783), so it
-    // is consumed as a no-op until that ships.
+    // [allowsCustomBoundary] must be kept in step with [tier] wherever that
+    // field changes. [navigateToPaywall] has no paywall to route to yet, so it
+    // is consumed as a no-op.
     val allowsCustomBoundary: Boolean = false,
     val shapeMode: WatchZoneShapeMode = WatchZoneShapeMode.CIRCLE,
     val polygonVertices: List<Coordinate> = emptyList(),

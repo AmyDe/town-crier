@@ -2,27 +2,16 @@ import Foundation
 import TownCrierDomain
 
 /// Drives the anonymous (pre-signup) map: server-computed cluster aggregates
-/// across the whole radius circle, no account, no watch zone (GH#924 Phase
-/// 2). Deliberately a small, self-contained view model rather than a shared
-/// abstraction over the authenticated ``MapViewModel`` — but mirrors that
-/// type's cluster fetch/tap-routing shape closely: ``loadClusters(viewport:zoom:)``
-/// mirrors `MapViewModel.loadClusters`, ``selectCluster(_:)``/``selectStack(_:)``
-/// mirror `MapViewModel.selectCluster(_:)`/`selectStack(_:)`.
+/// across the whole radius circle, no account, no watch zone. Deliberately a
+/// small, self-contained view model rather than a shared abstraction over the
+/// authenticated ``MapViewModel``.
 ///
-/// GH#924 Phase 2 ("server-side anon clusters"): previously fetched the 200
-/// nearest applications via `near-point` and clustered them on-device
-/// (MapKit's `clusteringIdentifier`), which silently truncated dense areas —
-/// a 2km circle over Kingston (1000+ applications) showed bubbles only near
-/// the centre. This version instead fetches server-computed grid aggregates
-/// for the visible viewport, exactly like the authenticated map, so every
-/// application in the radius is represented. A cluster tap point-reads the
-/// full application by its public by-slug identity via
-/// ``AnonymousApplicationDetailRepository`` — cluster cells carry only
-/// identity, not the full record (unlike the old `near-point` response).
+/// A cluster tap point-reads the full application by its public by-slug
+/// identity via ``AnonymousApplicationDetailRepository``; cluster cells carry
+/// only identity, not the full record.
 ///
-/// GH#912 Phase 4 ("honest anon map") is preserved: ``anchorCoordinate`` and
-/// ``radiusMetres`` are zone-anchored and fixed — set once at init and again
-/// only by ``updateActiveZone(_:)`` — never by panning. The fetch radius IS
+/// ``anchorCoordinate`` and ``radiusMetres`` are zone-anchored and fixed — set
+/// once at init and again only by ``updateActiveZone(_:)`` — never by panning. The fetch radius IS
 /// the drawn circle's radius, always exactly, so a pin can never render
 /// outside the circle; only the *viewport* (the visible map rect used to
 /// scope the grid aggregation) changes on pan/zoom.
@@ -45,7 +34,7 @@ public final class AnonymousMapViewModel: ObservableObject, ErrorHandlingViewMod
   /// two-sheets race) — mirrors ``MapViewModel``'s handoff.
   @Published public private(set) var pendingSummaryApplication: PlanningApplication?
   /// The application whose full detail screen should present once the
-  /// summary sheet has finished dismissing (GH#879 Phase 2). Set by
+  /// summary sheet has finished dismissing. Set by
   /// ``requestFullDetail()`` and consumed by ``presentPendingDetailIfNeeded()``
   /// from the summary sheet's `onDismiss`, so the summary and the detail
   /// sheet are never on screen at once — mirrors ``MapViewModel``'s
@@ -58,7 +47,7 @@ public final class AnonymousMapViewModel: ObservableObject, ErrorHandlingViewMod
   @Published public private(set) var anchorCoordinate: Coordinate
   /// The zone's actual radius — drives both the drawn circle and the
   /// clusters fetch boundary, always exactly the same value, so a pin can
-  /// never render outside the circle (GH#912 Phase 4). Deliberately NOT
+  /// never render outside the circle. Deliberately NOT
   /// clamped to the free-tier cap: the postcode-entry screen already bounds
   /// the FIRST zone to that cap, but a zone subsequently edited larger via
   /// `DeviceLocalZoneEditorView` (bound up to `DeviceLocalZone.maxRadiusMetres`)
@@ -87,7 +76,7 @@ public final class AnonymousMapViewModel: ObservableObject, ErrorHandlingViewMod
   public var onRequestSignUp: (() -> Void)?
   /// Fired by ``presentPendingDetailIfNeeded()`` once the summary sheet has
   /// dismissed, handing the full application to the coordinator to present
-  /// the detail screen (GH#879 Phase 2).
+  /// the detail screen.
   public var onShowApplicationDetail: ((PlanningApplication) -> Void)?
 
   public init(
@@ -149,20 +138,13 @@ public final class AnonymousMapViewModel: ObservableObject, ErrorHandlingViewMod
   }
 
   /// Routes a single-member cluster tap: point-reads the full application by
-  /// its public by-slug identity via ``AnonymousApplicationDetailRepository``
-  /// (the `ref` is the bare ``AnonymousClusterMember/name`` — the by-slug
-  /// endpoint resolves the authority from the slug itself, so `ref` must NOT
-  /// carry the authority-id prefix ``AnonymousClusterMember/value`` adds;
-  /// verified live against dev: `by-slug/kingston/Kingston/26/01332/CPU` →
-  /// 200, `by-slug/kingston/314/Kingston/26/01332/CPU` → 404. Same contract
-  /// the authed by-slug call site uses — see
-  /// `APIPlanningApplicationRepository.fetchApplication(bySlug:ref:)`'s
-  /// "ref interpolates raw exactly like id.name" comment), then presents the
-  /// summary sheet. No-op for a multi-member cell (the map view zooms into
-  /// it or opens the disambiguation list instead — see ``selectStack(_:)``).
-  /// A missing slug (should never happen — the server resolves one for every
-  /// real authority) silently ignores the tap; a transient point-read
-  /// failure leaves the map untouched, mirroring `MapViewModel.selectCluster(_:)`.
+  /// its public by-slug identity via ``AnonymousApplicationDetailRepository``,
+  /// then presents the summary sheet. `ref` must be the bare
+  /// ``AnonymousClusterMember/name``: the by-slug endpoint resolves the
+  /// authority from the slug, so the authority-id prefix
+  /// ``AnonymousClusterMember/value`` adds makes it 404. No-op for a
+  /// multi-member cell (see ``selectStack(_:)``). A missing slug silently
+  /// ignores the tap; a transient point-read failure leaves the map untouched.
   public func selectCluster(_ cluster: AnonymousMapCluster) async {
     guard cluster.isSingleMember, let member = cluster.member, !member.authoritySlug.isEmpty
     else { return }
@@ -179,14 +161,10 @@ public final class AnonymousMapViewModel: ObservableObject, ErrorHandlingViewMod
   /// Routes a tap on a *stacked* (unsplittable) cluster — a cell whose
   /// members are coincident or closer than the finest grid cell, so zoom can
   /// never split them. Point-reads every carried member's application
-  /// concurrently by slug (one read each, via the same
-  /// `fetchApplication(bySlug:ref:)` a single-pin tap uses — see
-  /// ``selectCluster(_:)``'s docs for why `ref` is the bare
-  /// ``AnonymousClusterMember/name``, never ``AnonymousClusterMember/value``)
-  /// and publishes them as the disambiguation list, preserving the cluster's
+  /// concurrently by slug (`ref` as in ``selectCluster(_:)``) and publishes
+  /// them as the disambiguation list, preserving the cluster's
   /// ``AnonymousMapCluster/members`` order — a `TaskGroup` completes out of
   /// order, so the results are tagged with their index and reindexed.
-  /// Mirrors `MapViewModel.selectStack(_:)`.
   ///
   /// All-or-nothing: if any member has a missing slug, or any member's read
   /// throws, nothing is published and the map is left untouched (no list, no
@@ -247,14 +225,13 @@ public final class AnonymousMapViewModel: ObservableObject, ErrorHandlingViewMod
     stackedApplications = nil
   }
 
-  /// The CTA banner itself routes to sign-up — full detail no longer does
-  /// (GH#879 Phase 2).
+  /// The CTA banner itself routes to sign-up — full detail no longer does.
   public func requestSignUp() {
     onRequestSignUp?()
   }
 
-  /// Requests the full detail screen for the currently selected application
-  /// (GH#879 Phase 2). Stashes the selection as `pendingDetailApplication`
+  /// Requests the full detail screen for the currently selected application.
+  /// Stashes the selection as `pendingDetailApplication`
   /// and clears `selectedApplication`, which dismisses the summary sheet.
   /// The map view's sheet `onDismiss` then calls
   /// ``presentPendingDetailIfNeeded()`` so the detail screen opens only
@@ -293,7 +270,7 @@ public final class AnonymousMapViewModel: ObservableObject, ErrorHandlingViewMod
   /// ACTUAL radius (GH#912 Phase 4 — never clamped to any preview cap, so
   /// the drawn circle always matches the fetch boundary exactly). The FETCH
   /// — and therefore the full cluster-set swap it produces — is debounced.
-  /// This is a crash fix (GH#879 Phase 4): live simulator verification hit a
+  /// This is a crash fix: live simulator verification hit a
   /// MapKit-internal SIGABRT reproducibly when the active zone was switched
   /// rapidly — MapKit's own deferred clustering pass cannot tolerate the
   /// annotation set being replaced faster than it can settle. Debouncing

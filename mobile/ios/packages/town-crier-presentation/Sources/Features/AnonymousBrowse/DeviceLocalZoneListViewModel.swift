@@ -1,7 +1,7 @@
 import Foundation
 import TownCrierDomain
 
-/// Drives the anonymous (pre-signup) Zones tab (GH#888): exactly one
+/// Drives the anonymous (pre-signup) Zones tab: exactly one
 /// editable device-local area (``DeviceLocalZone/maxZoneCount`` == 1),
 /// seeded from the onboarding postcode. No add, no delete — GH#888 reverses
 /// GH#879 Phase 4's 3-zone cap, which made signing up a net loss of areas.
@@ -26,7 +26,7 @@ public final class DeviceLocalZoneListViewModel: ObservableObject {
   /// anonymous CTA uses.
   public var onRequestSignUp: (() -> Void)?
 
-  /// Fired with the saved zone after a successful editor save (GH#888), so
+  /// Fired with the saved zone after a successful editor save, so
   /// the coordinator can propagate the edit live to the Map tab
   /// (`AnonymousMapViewModel.updateActiveZone(_:)`) and the Applications
   /// list — mirrors ``AnonymousApplicationListViewModel/onActiveZoneChanged``.
@@ -52,7 +52,7 @@ public final class DeviceLocalZoneListViewModel: ObservableObject {
   }
 
   /// The persistent "want more areas or alerts?" pitch below the zone
-  /// (GH#888) — with the cap at one, this is the only remaining route to
+  /// — with the cap at one, this is the only remaining route to
   /// another area.
   public func requestSignUpFromPitch() {
     isSignUpCTAPresented = true

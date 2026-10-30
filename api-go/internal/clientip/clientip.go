@@ -30,6 +30,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"slices"
 	"strings"
 )
 
@@ -114,10 +115,5 @@ func peerAddr(remoteAddr string) netip.Addr {
 
 // isCloudflare reports whether addr falls within any vendored Cloudflare range.
 func isCloudflare(addr netip.Addr) bool {
-	for _, p := range cloudflareRanges {
-		if p.Contains(addr) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(cloudflareRanges, func(p netip.Prefix) bool { return p.Contains(addr) })
 }

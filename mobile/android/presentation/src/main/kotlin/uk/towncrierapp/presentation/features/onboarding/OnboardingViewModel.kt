@@ -34,27 +34,14 @@ private val INSTANT_ALERT_ENTITLEMENT = Entitlement.STATUS_CHANGE_ALERTS
 /**
  * Drives the onboarding wizard: postcode geocoding, tier-based radius
  * limits, tier-aware notification-permission copy, and the custom-shape
- * (polygon) drawing step (GH#1072 Phase 5, tc-v6fo0.5). Deliberately
- * constructed ONCE per wizard presentation - never re-created per step or on
- * a tier change - so [reconcileTierAfterUpgrade]/[reconcileTierAfterCustomShapeUpgrade]
- * can push a later tier into the SAME instance's state. That is what lets it
- * survive a future paywall dialog presented over the wizard (#783) without
- * losing the postcode/coordinate/radius already entered: the composition
- * root constructs this ViewModel once for the whole wizard route, not once
- * per step. Port of iOS `OnboardingViewModel`.
+ * (polygon) drawing step. Deliberately constructed ONCE per wizard
+ * presentation, never per step or on a tier change, so
+ * [reconcileTierAfterUpgrade]/[reconcileTierAfterCustomShapeUpgrade] can push
+ * a later tier into the same state without losing the postcode, coordinate
+ * and radius already entered.
  */
 @Suppress("TooManyFunctions")
-// This wizard genuinely owns 16 independent, single-purpose interactions:
-// the original 10 (step nav, postcode entry/lookup, radius edit/confirm,
-// notification enable/skip/complete, reconcileTierAfterUpgrade) plus GH#1072
-// Phase 5's 6 custom-shape actions (onShapeEvent - itself one dispatch point
-// standing in for 5 shape/polygon actions, see WatchZoneShapeEvent -
-// selectCustomShape, requestCustomShapeUpgrade, consumeNavigateToPaywall,
-// reconcileTierAfterCustomShapeUpgrade, confirmBoundary). Splitting further
-// means either merging semantically-distinct methods (breaks the
-// cross-ViewModel consumeX()/confirmX() naming convention) or hiving off an
-// unrelated class purely to dodge this count - neither improves readability
-// over the function-count overage, same rationale as WatchZoneEditorViewModel.
+// Each wizard interaction is single-purpose; splitting the class would only dodge the function count.
 public class OnboardingViewModel(
     private val postcodeGeocoder: PostcodeGeocoder,
     private val watchZoneRepository: WatchZoneRepository,
@@ -146,16 +133,10 @@ public class OnboardingViewModel(
         _uiState.update { it.copy(pendingZone = zone, step = OnboardingStep.NotificationPermission) }
     }
 
-    // MARK: - Custom-shape boundary drawing (GH#1072 Phase 5, tc-v6fo0.5)
-
     /**
      * Routes every shape-mode/polygon-drawing interaction on
-     * [OnboardingStep.BoundaryDrawing] through one dispatch point, same
-     * shape as [uk.towncrierapp.presentation.features.watchzones.WatchZoneEditorViewModel.onShapeEvent]
-     * - see [WatchZoneShapeEvent] for why a single method covers five
-     * distinct user actions. The actual rules live in
-     * [PolygonDrawingState.applyShapeEvent], shared with the editor rather
-     * than duplicated.
+     * [OnboardingStep.BoundaryDrawing] through
+     * [PolygonDrawingState.applyShapeEvent], shared with the editor.
      */
     public fun onShapeEvent(event: WatchZoneShapeEvent) {
         _uiState.update { state ->
@@ -166,16 +147,14 @@ public class OnboardingViewModel(
     /**
      * Re-entry point for a user whose tier already allows a custom shape (an
      * already-Personal/Pro user, or one who backed out of drawing and wants
-     * back in) - mirrors iOS `selectCustomShape()`. Only takes effect while
-     * sitting on [OnboardingStep.Radius] and entitled; a no-op from any other
-     * step or tier, since [RadiusPickerStep] only ever shows this affordance
-     * there.
+     * back in). Only takes effect while sitting on [OnboardingStep.Radius]
+     * and entitled; a no-op from any other step or tier.
      */
     public fun selectCustomShape() {
         _uiState.update { it.enterBoundaryDrawingIfEligible() }
     }
 
-    /** Surfaces the future (#783) in-wizard custom-shape paywall when a free-tier user taps the upsell CTA on the radius step. */
+    /** Signals the in-wizard custom-shape paywall when a free-tier user taps the upsell CTA on the radius step. */
     public fun requestCustomShapeUpgrade() {
         _uiState.update { it.copy(navigateToPaywall = true) }
     }
@@ -186,10 +165,9 @@ public class OnboardingViewModel(
     }
 
     /**
-     * Pushes a tier raised by a (future, #783) purchase from the radius
-     * step's custom-shape upsell into this SAME instance, via
-     * [reconcileTierAfterUpgrade] - then, mirroring iOS
-     * `reconcileTierAfterCustomShapeUpgrade()`, swaps [OnboardingStep.Radius]
+     * Pushes a tier raised by a purchase from the radius step's custom-shape
+     * upsell into this SAME instance, via [reconcileTierAfterUpgrade], then
+     * swaps [OnboardingStep.Radius]
      * for [OnboardingStep.BoundaryDrawing] ONLY when the user is actually
      * still sitting on the radius step and the new tier is now entitled. A
      * purchase completing after the user has already moved on (or that
@@ -204,10 +182,8 @@ public class OnboardingViewModel(
      * Builds the [WatchZone] from the drawn boundary and advances to the
      * notification-permission step - the [OnboardingStep.BoundaryDrawing]
      * counterpart to [confirmRadius]. Centre/radius are derived from the
-     * boundary (centroid + enclosing radius), same as
-     * [uk.towncrierapp.presentation.features.watchzones.WatchZoneEditorViewModel.save]'s
-     * custom-shape path, so every circle-shaped read path (map centring,
-     * list rows) keeps working unchanged. A no-op while the polygon isn't
+     * boundary (centroid + enclosing radius) so circle-shaped read paths
+     * keep working. A no-op while the polygon isn't
      * closed yet (matches the disabled confirm button); surfaces
      * [OnboardingUiState.boundaryError] instead of advancing if the vertices
      * somehow fail [uk.towncrierapp.domain.watchzones.WatchZoneBoundary.of]
@@ -258,9 +234,9 @@ public class OnboardingViewModel(
 
     /**
      * Persists the in-memory zone best-effort - a failure is logged, not
-     * blocking - sets the device latch, and signals completion. Matches iOS
-     * `try?` semantics: the zones tab shows empty and the user can retry
-     * from there rather than being trapped in the wizard.
+     * blocking - sets the device latch, and signals completion. The zones
+     * tab then shows empty and the user can retry from there rather than
+     * being trapped in the wizard.
      */
     public fun completeOnboarding() {
         viewModelScope.launch {
@@ -280,7 +256,7 @@ public class OnboardingViewModel(
     }
 
     /**
-     * Pushes a tier raised by a (future, #783) paywall purchase into this
+     * Pushes a tier raised by a paywall purchase into this
      * SAME instance - the caller re-resolves the tier after the purchase
      * flow and calls this rather than recreating the ViewModel, which is
      * what preserves postcode/coordinate/radius already entered. Also
@@ -350,11 +326,6 @@ private fun initialState(
     )
 }
 
-// MARK: - Custom-shape boundary drawing helpers (GH#1072 Phase 5, tc-v6fo0.5)
-//
-// Top-level, not class members, for the same TooManyFunctions/complexity
-// budget reason as WatchZoneEditorViewModel's equivalent private helpers.
-
 private fun OnboardingUiState.toPolygonDrawingState(): PolygonDrawingState =
     PolygonDrawingState(
         shapeMode = shapeMode,
@@ -393,7 +364,6 @@ private inline fun log(
     enableDebugLogging: Boolean,
     message: () -> String,
 ) {
-    // Guarded so plain JVM unit tests (enableDebugLogging = false by
-    // default) never touch android.util.Log - mirrors ApiClient's `log`.
+    // Guarded so plain JVM unit tests never touch android.util.Log.
     if (enableDebugLogging) Log.w("OnboardingViewModel", message())
 }

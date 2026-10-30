@@ -83,7 +83,7 @@ public final class UserDefaultsDeviceLocalZoneRepository: DeviceLocalZoneReposit
     defaults.set(id.value, forKey: activeZoneIdKey)
   }
 
-  // MARK: - Trim (GH#888)
+  // MARK: - Trim
 
   /// Enforces the cap on read: keeps only the active zone (or the first
   /// zone, if none is marked active) when more than one is stored, and

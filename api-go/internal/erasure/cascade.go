@@ -77,12 +77,8 @@ func (d Deleters) profileAbsent(err error) bool {
 // stays retryable rather than half-erased); Auth0 is deleted last so an Auth0
 // Management-API failure can never strand un-erased data. A profile delete
 // that reports the profile is already gone (per Deleters.ProfileAbsent) is
-// tolerated and the cascade proceeds to Auth0.
-//
-// The offer-code step anonymises rather than deletes: the OfferCodes container
-// holds admin-issued campaign artifacts keyed by code, so on erasure the
-// redeemer back-reference (redeemedByUserId + redeemedAt) is scrubbed while the
-// code's consumed state is kept.
+// tolerated and the cascade proceeds to Auth0. Offer codes are anonymised, not
+// deleted (see RedemptionAnonymiser).
 func Cascade(ctx context.Context, userID string, d Deleters) error {
 	if err := d.Notifications.DeleteAllByUserID(ctx, userID); err != nil {
 		return fmt.Errorf("delete notifications: %w", err)
@@ -118,11 +114,8 @@ type byUserIDDeleter interface {
 	DeleteByUserID(ctx context.Context, userID string) error
 }
 
-// NotificationStateChild bridges the notification-state store to the uniform
-// ChildDeleter contract so both entry points share one adapter instead of
-// duplicating it. The store holds a single watermark document per user, so its
-// DeleteByUserID erases everything the user owns in that container — exactly what
-// DeleteAllByUserID promises.
+// NotificationStateChild adapts the notification-state store, which holds one
+// watermark document per user, to ChildDeleter.
 func NotificationStateChild(s byUserIDDeleter) ChildDeleter {
 	return notificationStateChild{s: s}
 }

@@ -2,11 +2,7 @@ package uk.towncrierapp.domain.auth
 
 /**
  * Errors thrown from `:data` and caught in `:presentation` (only `:domain`
- * is visible to both, per the module dependency rule). Port of iOS
- * `DomainError`'s catalogue, trimmed to what this issue's seams need — later
- * issues (watch zones, applications, purchases) extend this sealed hierarchy
- * feature-by-feature, the same way [uk.towncrierapp.domain.DomainModule]'s
- * placeholder comment describes for other domain types.
+ * is visible to both, per the module dependency rule).
  *
  * User-facing `userTitle`/`userMessage` strings are deliberately NOT here:
  * they live as `:presentation` string resources, keyed off these cases (see
@@ -31,8 +27,7 @@ public sealed class DomainError : Exception() {
      * [postcode] failed local format validation (never reached the network)
      * or its geocode lookup itself failed remotely - either way, the fix is
      * the user editing the postcode and resubmitting, so this is presented
-     * the same way as any other geocoding inline error (tc-7ttz, onboarding
-     * wizard's postcode step).
+     * the same way as any other geocoding inline error.
      */
     public data class GeocodingFailed(
         public val postcode: String,

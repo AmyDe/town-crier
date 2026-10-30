@@ -2,19 +2,9 @@ package profiles
 
 import "context"
 
-// The GDPR export (GET /v1/me/data) populates its child collections from the
-// per-feature stores. Those stores live in packages that cannot be imported here
-// without a cycle: package offercodes already imports profiles
-// (profiles.ParseSubscriptionTier), so profiles importing offercodes (or, by the
-// same DI symmetry, watchzones / notifications / savedapplications / devicetokens)
-// would close a loop. The readers below are therefore consumer-side interfaces,
-// declared where they are used, returning profiles-local row structs (the
-// Exported* types in export.go). cmd/api supplies thin adapters that map each
-// store's records to those row types, mirroring the CascadeDeleters pattern
-// (cascade.go + cmd/api/main.go) exactly.
-//
-// Each reader is single-method and returns the already-shaped export rows so the
-// export does no per-store mapping itself.
+// The feature stores the GDPR export reads cannot be imported here without an
+// import cycle (offercodes already imports profiles), so cmd/api supplies
+// adapters that return the Exported* rows.
 
 // WatchZoneReader reads a user's watch zones for the export.
 type WatchZoneReader interface {

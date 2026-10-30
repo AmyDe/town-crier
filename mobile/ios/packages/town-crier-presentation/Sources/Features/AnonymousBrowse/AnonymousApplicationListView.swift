@@ -61,7 +61,7 @@ public struct AnonymousApplicationListView: View {
       .listRowBackground(Color.tcBackground)
   }
 
-  // MARK: - Zone picker (GH#879 Phase 4)
+  // MARK: - Zone picker
 
   @ViewBuilder
   private var zonePickerRow: some View {

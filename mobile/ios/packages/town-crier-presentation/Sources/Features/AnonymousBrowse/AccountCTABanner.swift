@@ -62,8 +62,8 @@ public struct AccountCTABanner: View {
 }
 
 extension View {
-  /// Pins ``AccountCTABanner`` above this content's bottom safe area
-  /// (GH#879 Phase 3). Apply INSIDE each tab's content in
+  /// Pins ``AccountCTABanner`` above this content's bottom safe area.
+  /// Apply INSIDE each tab's content in
   /// `AnonymousMainTabView` — never on the enclosing `TabView` itself.
   ///
   /// `.safeAreaInset(edge: .bottom)` applied directly to a `TabView` insets

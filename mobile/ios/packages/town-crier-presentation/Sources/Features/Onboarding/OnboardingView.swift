@@ -48,7 +48,7 @@ public struct OnboardingView: View {
         .animation(.spring(response: 0.4), value: viewModel.currentStep)
       }
     }
-    // In-wizard radius upsell (tc-w3cb.3): presented as a sheet *over* the
+    // In-wizard radius upsell: presented as a sheet *over* the
     // wizard so the StateObject — and the in-progress postcode/geocode — survive
     // the purchase round-trip. On dismiss we re-resolve the tier so a successful
     // upgrade unlocks the larger radius range live, without rebuilding the wizard.
@@ -63,7 +63,7 @@ public struct OnboardingView: View {
         }
       }
     )
-    // In-wizard custom-shape upsell (GH#1031, tc-6he3x.10): same "sheet over
+    // In-wizard custom-shape upsell: same "sheet over
     // the wizard" pattern as the radius upsell above, so a successful
     // purchase can swap the radius step for the boundary-drawing step in
     // place without losing the in-progress postcode/geocode.

@@ -76,14 +76,9 @@ type ExportedWatchZone struct {
 	Boundary *ExportedBoundary `json:"boundary"`
 }
 
-// ExportedBoundary is the GeoJSON Polygon wire representation of a
-// custom-shape watch zone's boundary, matching the shape the
-// HTTP watch-zone handlers already emit (watchzones' unexported
-// boundaryGeoJSON type). It is declared here, not reused from watchzones,
-// because profiles must not import watchzones -- watchzones already imports
-// profiles (for SubscriptionTier), so a back-import would close a cycle (see
-// the import-cycle note in export_readers.go); cmd/api/export_adapters.go,
-// which imports both, does the domain -> wire conversion.
+// ExportedBoundary is the GeoJSON Polygon wire form of a custom-shape watch
+// zone's boundary, matching the watch-zone handlers' output. It is declared
+// here because profiles cannot import watchzones (import cycle).
 type ExportedBoundary struct {
 	Type        string         `json:"type"`
 	Coordinates [][][2]float64 `json:"coordinates"`

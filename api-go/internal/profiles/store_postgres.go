@@ -406,9 +406,7 @@ WHERE user_id = $1 AND version = $21`
 // incremented on success.
 //
 // Zero rows affected (version guard fired — concurrent writer won) returns
-// platform.ErrCASPreconditionFailed wrapped via %w, identical to the Cosmos
-// store's contract so the watchzones quota handler can branch on a single
-// errors.Is check regardless of which backend is active.
+// platform.ErrCASPreconditionFailed wrapped via %w.
 func (s *PostgresStore) UpdateZoneCountWithCAS(ctx context.Context, userID string, p *UserProfile, etag string) error {
 	expectedVersion, err := strconv.Atoi(etag)
 	if err != nil {

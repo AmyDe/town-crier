@@ -2,7 +2,7 @@ import Combine
 import Foundation
 import TownCrierDomain
 
-/// The anonymous (pre-signup) Settings tab's ViewModel (GH#879 Phase 3): a
+/// The anonymous (pre-signup) Settings tab's ViewModel: a
 /// deliberately small, distinct type from the authenticated
 /// `SettingsViewModel` rather than a shared abstraction over the two — it has
 /// no `AuthenticationService`, `SubscriptionService`, or
@@ -12,7 +12,7 @@ import TownCrierDomain
 /// behind them.
 ///
 /// Exposes exactly what an anonymous user's Settings needs: the shared
-/// appearance preference (GH#878), the app version, and the same data
+/// appearance preference, the app version, and the same data
 /// attribution rows the authenticated screen shows.
 @MainActor
 public final class AnonymousSettingsViewModel: ObservableObject {
@@ -33,7 +33,7 @@ public final class AnonymousSettingsViewModel: ObservableObject {
   }
 
   /// The currently active appearance mode — a live read-through to the
-  /// shared ``AppearanceStore`` (GH#878), never a separate copy. Bound by the
+  /// shared ``AppearanceStore``, never a separate copy. Bound by the
   /// Settings picker via `$viewModel.appearanceMode`.
   public var appearanceMode: AppearanceMode {
     get { appearanceStore.appearanceMode }

@@ -291,8 +291,7 @@ func (p *UserProfile) subscriptionTier(now time.Time) SubscriptionTier {
 // below LifetimeTier. Used by offer-code redemption and admin grants.
 func (p *UserProfile) ActivateSubscription(tier SubscriptionTier, expiry time.Time) {
 	p.Tier = max(tier, p.LifetimeTier)
-	exp := expiry
-	p.SubscriptionExpiry = &exp
+	p.SubscriptionExpiry = &expiry
 	p.GracePeriodExpiry = nil
 	p.SubscriptionProductID = nil
 	p.SubscriptionInTrial = false
@@ -303,8 +302,7 @@ func (p *UserProfile) ActivateSubscription(tier SubscriptionTier, expiry time.Ti
 // and whether that window is a free trial.
 func (p *UserProfile) ActivateAppStoreSubscription(tier SubscriptionTier, expiry time.Time, productID string, inTrial bool) {
 	p.ActivateSubscription(tier, expiry)
-	id := productID
-	p.SubscriptionProductID = &id
+	p.SubscriptionProductID = &productID
 	p.SubscriptionInTrial = inTrial
 }
 
@@ -324,10 +322,8 @@ func (p *UserProfile) ExpireSubscription() {
 // least tier. Granting the same purchase again is a no-op in effect.
 func (p *UserProfile) GrantLifetime(tier SubscriptionTier, originalTransactionID string, purchasedAt time.Time) {
 	p.LifetimeTier = tier
-	id := originalTransactionID
-	p.LifetimeOriginalTransactionID = &id
-	at := purchasedAt
-	p.LifetimePurchasedAt = &at
+	p.LifetimeOriginalTransactionID = &originalTransactionID
+	p.LifetimePurchasedAt = &purchasedAt
 	p.Tier = max(p.Tier, tier)
 }
 
@@ -343,22 +339,11 @@ func (p *UserProfile) RevokeLifetime() {
 	}
 }
 
-// RenewSubscription extends the subscription to a new expiry and clears any
-// grace period, without changing the tier. Applied on the App Store DID_RENEW
-// notification.
-func (p *UserProfile) RenewSubscription(newExpiry time.Time) {
-	exp := newExpiry
-	p.SubscriptionExpiry = &exp
-	p.GracePeriodExpiry = nil
-	p.SubscriptionInTrial = false
-}
-
 // EnterGracePeriod records the grace-period end while leaving the tier and
 // expiry intact, so the entitlement persists through a billing retry. Applied
 // on DID_FAIL_TO_RENEW with the GRACE_PERIOD subtype.
 func (p *UserProfile) EnterGracePeriod(graceEnd time.Time) {
-	end := graceEnd
-	p.GracePeriodExpiry = &end
+	p.GracePeriodExpiry = &graceEnd
 }
 
 // LinkOriginalTransactionID records the Apple original transaction ID so App
@@ -366,14 +351,12 @@ func (p *UserProfile) EnterGracePeriod(graceEnd time.Time) {
 // The caller supplies a non-blank ID (the transaction decoder requires
 // originalTransactionId).
 func (p *UserProfile) LinkOriginalTransactionID(originalTransactionID string) {
-	id := originalTransactionID
-	p.OriginalTransactionID = &id
+	p.OriginalTransactionID = &originalTransactionID
 }
 
 func normaliseEmail(email string) *string {
 	if strings.TrimSpace(email) == "" {
 		return nil
 	}
-	e := email
-	return &e
+	return &email
 }

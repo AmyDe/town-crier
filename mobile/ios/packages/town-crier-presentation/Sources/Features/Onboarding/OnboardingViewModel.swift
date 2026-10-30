@@ -258,7 +258,7 @@ public final class OnboardingViewModel: ObservableObject, ErrorHandlingViewModel
     }
   }
 
-  // MARK: - Custom-shape boundary drawing (GH#1031, tc-6he3x.10)
+  // MARK: - Custom-shape boundary drawing
 
   /// Mirrors `WatchZoneBoundary`'s geometric minimum (3 distinct vertices
   /// are required to form a polygon).

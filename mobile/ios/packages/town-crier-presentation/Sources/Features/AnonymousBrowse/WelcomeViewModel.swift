@@ -1,12 +1,12 @@
 import Combine
 import Foundation
 
-/// Backs the anonymous browse flow's welcome screen (GH#868 Phase 3): a thin
+/// Backs the anonymous browse flow's welcome screen: a thin
 /// ViewModel whose only job is to expose the two entry intents. Navigation is
 /// decided by ``AnonymousBrowseCoordinator``, which wires the callbacks —
 /// mirrors ``MapViewModel/onApplicationSelected``.
 ///
-/// Also exposes the appearance control (GH#878): `appearanceMode` and
+/// Also exposes the appearance control: `appearanceMode` and
 /// `selectAppearanceMode(_:)` forward directly to the injected
 /// ``AppearanceStore`` — the same single live instance `SettingsViewModel`
 /// reads and writes — so a mode picked here is immediately what the root
