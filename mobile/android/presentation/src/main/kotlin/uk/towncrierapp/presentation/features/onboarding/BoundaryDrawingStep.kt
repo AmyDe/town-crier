@@ -21,14 +21,9 @@ import uk.towncrierapp.presentation.features.watchzones.WatchZoneShapeEvent
 
 /**
  * Step reached only via [OnboardingViewModel.selectCustomShape] or
- * [OnboardingViewModel.reconcileTierAfterCustomShapeUpgrade] (GH#1072 Phase
- * 5, tc-v6fo0.5) - the [OnboardingStep.BoundaryDrawing] counterpart to
- * [RadiusPickerStep]. Reuses the editor's [PolygonDrawingSection] drawing
- * surface directly (it takes the vertex/closed/error fields rather than a
- * whole `WatchZoneEditorUiState`, precisely so this step can share it without
- * an adapter type). [onConfirmClick] is only enabled once the polygon is
- * closed - a custom shape has a genuine "not ready yet" state a circle
- * doesn't.
+ * [OnboardingViewModel.reconcileTierAfterCustomShapeUpgrade], reusing the
+ * editor's [PolygonDrawingSection]. [onConfirmClick] is only enabled once the
+ * polygon is closed.
  */
 @Composable
 internal fun BoundaryDrawingStep(

@@ -13,13 +13,10 @@ import uk.towncrierapp.domain.subscriptions.resolveTier
 import uk.towncrierapp.domain.watchzones.WatchZoneRepository
 
 /**
- * Owns the signed-in transition's ordering (#549): ensure the server profile
+ * Owns the signed-in transition's ordering: ensure the server profile
  * exists, THEN resolve the subscription tier, THEN persist it, THEN - and
- * only then (tc-7ttz) - check account state for the onboarding gate. Port of
- * iOS `AppCoordinator.resolveSubscriptionTier()` / `ServerTierResolver` /
- * `SubscriptionTierResolver` / `AppCoordinator+Onboarding`, degraded to the
- * 2-way tier merge this issue implements (`max(serverTier ?? max(cachedTier,
- * jwtTier), jwtTier)` — no store tier until #783).
+ * only then - check account state for the onboarding gate. The tier merge is
+ * `max(serverTier ?? max(cachedTier, jwtTier), jwtTier)`, with no store tier.
  */
 public class AuthCoordinator(
     private val authService: AuthenticationService,
@@ -39,9 +36,8 @@ public class AuthCoordinator(
      * Runs the full signed-in sequence: ensure profile → resolve tier →
      * persist → resolve the onboarding gate from account state. Call on
      * every signed-out→signed-in transition, including cold-start session
-     * restore. The final step is the tc-k9fk/#549 fix ported to Android:
-     * moving the watch-zone check any earlier in this function reproduces
-     * that production bug.
+     * restore. The watch-zone check must stay last: moving it any earlier
+     * reproduces a production bug.
      */
     @Suppress("SwallowedException")
     // Both catches below are deliberate degrade paths (epic #770): a refresh
@@ -93,9 +89,7 @@ public class AuthCoordinator(
      * Fails open to [OnboardingPresentation.NotRequired] on a transport
      * error - a transient failure checking zone count must never strand a
      * returning user on an indefinite loading screen, and must never trap
-     * them in the wizard either (deliberate simplification: the device latch
-     * is not consulted here, since no acceptance criterion depends on it -
-     * see the bead's KEY DECISIONS).
+     * them in the wizard either. The device latch is not consulted here.
      */
     @Suppress("SwallowedException")
     private suspend fun resolveOnboardingPresentation(): OnboardingPresentation =

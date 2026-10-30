@@ -13,9 +13,8 @@ import uk.towncrierapp.domain.profile.UserProfileRepository
 import uk.towncrierapp.domain.subscriptions.SubscriptionTier
 
 /**
- * `UserProfileRepository` over the Town Crier API (epic #770 / #778):
- * `POST`/`GET`/`PATCH`/`DELETE /v1/me` + `GET /v1/me/data`. Port of iOS
- * `APIUserProfileRepository`.
+ * `UserProfileRepository` over the Town Crier API:
+ * `POST`/`GET`/`PATCH`/`DELETE /v1/me` + `GET /v1/me/data`.
  */
 public class ApiUserProfileRepository(
     private val apiClient: ApiClient,
@@ -25,9 +24,7 @@ public class ApiUserProfileRepository(
         apiClient.request(ApiEndpoint.post("/v1/me"), ServerProfileDto.serializer()).toDomain()
 
     @Suppress("SwallowedException")
-    // A 404 means "no profile yet" — a routine, expected outcome for this
-    // port (mirrors iOS `APIUserProfileRepository.fetch()`), not a failure
-    // the caller needs the original exception for.
+    // A 404 means "no profile yet": an expected outcome, not a failure.
     override suspend fun fetchProfile(): ServerProfile? =
         try {
             apiClient.request(ApiEndpoint.get("/v1/me"), ServerProfileDto.serializer()).toDomain()
@@ -49,13 +46,10 @@ public class ApiUserProfileRepository(
     override suspend fun exportData(): ByteArray = apiClient.requestBytes(ApiEndpoint.get("/v1/me/data"))
 }
 
-// MARK: - DTOs
-
 /**
  * Shared by `POST`/`GET`/`PATCH /v1/me`: `POST`'s response carries only
  * `userId`/`pushEnabled`/`tier` — the remaining four fields fall back to
- * their declared defaults (the server's own `DefaultPreferences`), matching
- * iOS's `decodeIfPresent`-with-fallback DTO.
+ * their declared defaults (the server's own `DefaultPreferences`).
  */
 @Serializable
 internal data class ServerProfileDto(
@@ -81,7 +75,7 @@ internal fun ServerProfileDto.toDomain(): ServerProfile =
         savedDecisionEmail = savedDecisionEmail,
     )
 
-/** The `PATCH /v1/me` body — always all five fields (epic #770 pre-resolved decision: never a partial update). */
+/** The `PATCH /v1/me` body — always all five fields, never a partial update. */
 @Serializable
 internal data class UpdateProfileRequestDto(
     val pushEnabled: Boolean,

@@ -11,18 +11,13 @@ import uk.towncrierapp.domain.auth.AuthSession
 import java.time.Clock
 
 /**
- * In-memory cache for the current [AuthSession] (iOS tc-3d7b). Concurrent
- * foreground bursts (a push tap arriving while the login check and the tier
- * resolver are already in flight) were each hitting
- * `SecureCredentialsManager` independently; this cache holds the most
- * recently loaded session while its access token has at least
+ * In-memory cache for the current [AuthSession]: holds the most recently
+ * loaded session while its access token has at least
  * [leadTimeSeconds] left before expiry, and single-flights concurrent cold
  * reads to one [loader] invocation via a shared [Deferred] so a four-way
  * burst issues at most one credentials-store read.
  *
- * [scope] is the rare case of an explicit, injected `CoroutineScope` for
- * process-lifetime work (android-coding-standards: coroutines-and-flow.md)
- * — the in-flight load must outlive whichever individual caller's coroutine
+ * [scope] is injected because the in-flight load must outlive whichever individual caller's coroutine
  * happens to create it, so every concurrent caller observes the same result.
  */
 public class SessionCache(

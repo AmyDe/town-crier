@@ -14,12 +14,10 @@ import uk.towncrierapp.domain.auth.DomainError
 import uk.towncrierapp.presentation.R
 
 /**
- * Sign in, sign out, and cold-start session restore — port of iOS
- * `LoginViewModel`. [onAuthenticated] fires on every transition into the
- * signed-in state (fresh login or a restored session), which is what the
- * auth-state coordinator hooks to sequence ensure-profile → tier resolution
- * (#549 ordering) and what a future push registrar hooks to flush a pending
- * device-token registration.
+ * Sign in, sign out, and cold-start session restore. [onAuthenticated] fires
+ * on every transition into the signed-in state (fresh login or a restored
+ * session), which is what the auth-state coordinator hooks to sequence
+ * ensure-profile → tier resolution.
  */
 public class LoginViewModel(
     private val authService: AuthenticationService,
@@ -73,8 +71,7 @@ public class LoginViewModel(
     /**
      * Checks for an already-stored session (cold start). `currentSession()`
      * itself is responsible for auto-renewing a near-expiry access token
-     * (see `Auth0AuthenticationService`), so a non-null result here is
-     * already usable — no separate expiry-then-refresh dance is needed.
+     * so a non-null result here is already usable.
      */
     public fun checkExistingSession() {
         viewModelScope.launch {

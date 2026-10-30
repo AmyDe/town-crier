@@ -31,11 +31,10 @@ import uk.towncrierapp.presentation.features.watchzones.WatchZoneShapeEvent
 /**
  * The onboarding wizard: one route hosting all four steps behind a single
  * [OnboardingViewModel] instance (never re-created per step), with a linear
- * progress affordance across the top. Port of iOS `OnboardingView`. The
- * device-permission request (API 33+) is wired here rather than in the
- * ViewModel, since `rememberLauncherForActivityResult` needs a composable
- * scope - its result is deliberately never observed (epic #770 parity:
- * completion proceeds regardless of grant/deny).
+ * progress affordance across the top. The device-permission request (API
+ * 33+) is wired here rather than in the ViewModel, since
+ * `rememberLauncherForActivityResult` needs a composable scope; its result is
+ * deliberately ignored, so completion proceeds regardless of grant/deny.
  */
 @Composable
 public fun OnboardingRoute(
@@ -48,7 +47,7 @@ public fun OnboardingRoute(
 
     val notificationPermissionLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
-            // Result intentionally ignored - see the class doc above.
+            // Result intentionally ignored.
         }
 
     LaunchedEffect(state.isComplete) {
@@ -70,7 +69,7 @@ public fun OnboardingRoute(
         onContinueFromPostcodeClick = viewModel::advance,
         onRadiusChange = viewModel::updateRadius,
         onConfirmRadiusClick = viewModel::confirmRadius,
-        // #783 hasn't shipped - the chip is hidden (OnboardingUiState.canUnlockLargerRadius), so this is never reached.
+        // Never reached: the chip is hidden while OnboardingUiState.canUnlockLargerRadius is false.
         onUnlockLargerZonesClick = {},
         onCustomShapeUpsellClick = viewModel::requestCustomShapeUpgrade,
         onDrawCustomShapeClick = viewModel::selectCustomShape,

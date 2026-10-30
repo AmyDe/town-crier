@@ -37,11 +37,10 @@ private const val RADIUS_STEP_METRES = 100f
 /**
  * Step 3 - a slider from [OnboardingUiState.minRadiusMetres] to the tier's
  * max, defaulting to 1 km. [OnboardingUiState.canUnlockLargerRadius] is
- * false whenever the paywall isn't available yet (#783), which hides the
- * chip entirely rather than routing to a dead tap target.
+ * false whenever the paywall isn't available yet, which hides the chip
+ * entirely rather than routing to a dead tap target.
  *
- * Custom-shape placement (GH#1072 Phase 5, tc-v6fo0.5, mirrors iOS
- * `RadiusPickerStepView`): directly below the radius control, ahead of the
+ * The custom-shape card sits directly below the radius control, ahead of the
  * larger-radius chip, so the polygon capability isn't the last thing a user
  * scrolls past. A tier without [OnboardingUiState.allowsCustomBoundary] sees
  * [CustomShapeUpsellCard]; an already-entitled tier sees [CustomShapeAvailableCard]
@@ -108,10 +107,8 @@ internal fun RadiusPickerStep(
 }
 
 /**
- * What a Free-tier user sees on the radius step: the Phase 4 upsell graphic
- * plus a CTA to the future (#783) in-wizard paywall - the onboarding
- * placement of the same upsell `WatchZoneEditorSections.CustomShapeUpsellSection`
- * shows in the editor. Mirrors iOS `CustomShapeUpsellCard`.
+ * What a Free-tier user sees on the radius step: the upsell graphic plus a
+ * CTA to the in-wizard paywall.
  */
 @Composable
 private fun CustomShapeUpsellCard(
@@ -134,9 +131,7 @@ private fun CustomShapeUpsellCard(
 /**
  * Re-entry affordance for a user whose tier already allows a custom shape
  * (an already-Personal/Pro user, or one who just upgraded and backed out of
- * drawing once) - mirrors iOS `CustomShapeAvailableCard` /
- * [OnboardingViewModel.selectCustomShape]. A direct tap target, never a
- * hidden/disabled toggle.
+ * drawing once). A direct tap target, never a hidden/disabled toggle.
  */
 @Composable
 private fun CustomShapeAvailableCard(

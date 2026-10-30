@@ -7,12 +7,10 @@ import com.auth0.android.result.Credentials
  * `internal` constructor and needs a real `Context`, so it cannot itself be
  * subclassed or faked). [Auth0AuthenticationService]'s testable logic
  * (aud-mismatch wipe, renewability, refresh unrecoverable-vs-transient) is
- * written entirely against this interface; [SecureCredentialsManagerStore]
- * is the thin, untested-by-design Android adapter, and `FakeCredentialsStore`
- * (test source set) stands in for unit tests.
+ * written entirely against this interface.
  */
 public interface CredentialsStore {
-    /** Whether stored credentials are valid — including refresh-token renewability (the real SDK's `hasValidCredentials()` already folds this in; tc-funq). */
+    /** Whether stored credentials are valid — including refresh-token renewability (the real SDK's `hasValidCredentials()` already folds this in). */
     public fun hasValidCredentials(): Boolean
 
     /** Returns the current credentials, renewing via the refresh token if the access token has expired. Throws [CredentialsStoreException]. */

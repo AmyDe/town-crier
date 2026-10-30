@@ -12,17 +12,10 @@ import uk.towncrierapp.domain.auth.UserProfile
 import java.time.Clock
 
 /**
- * Auth0 Android SDK implementation of [AuthenticationService] — port of iOS
- * `Auth0AuthenticationService` (epic #770 "API contract essentials").
- * `login()`/`logout()` need a real Activity + Custom Tabs and are verified
- * on-device; `currentSession()`/`refreshSession()`'s logic is unit-tested
- * entirely against [CredentialsStore] (see `Auth0AuthenticationServiceTest`).
+ * Auth0 Android SDK implementation of [AuthenticationService].
  *
  * [auth0] is lazy: constructing a real `com.auth0.android.Auth0` touches
- * `android.text.TextUtils` (via its user-agent header), which crashes under
- * plain JVM unit tests (no Robolectric). Deferring construction until
- * `login()`/`logout()` actually run keeps the rest of this class's testable
- * surface free of that Android dependency.
+ * `android.text.TextUtils`, which crashes under plain JVM unit tests.
  */
 public class Auth0AuthenticationService(
     private val config: Auth0Config,
