@@ -10,6 +10,8 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/AmyDe/town-crier/api-go/internal/platform"
 )
 
 const (
@@ -60,8 +62,8 @@ func newImageHandler(store appStore, resolver slugResolver, tiles tileClient, ca
 // serve resolves the slug, point-reads the application, then serves the baked
 // card — from the cache when present, otherwise generating it (map or fallback)
 // and caching it. An unknown slug/ref or a non-.png request is a no-store 404
-// (never a 500); a store error is a bodyless 500 (the envelope is backfilled by
-// middleware). Cache hits never wait; a miss renders under a one-per-replica
+// (never a 500); a store or render error gets the bodyless status chosen by
+// platform.RespondRequestError (the envelope is backfilled by middleware). Cache hits never wait; a miss renders under a one-per-replica
 // slot (OSM tile policy) and answers 429 + Retry-After when the slot is not free
 // within renderWait.
 func (h *imageHandler) serve(w http.ResponseWriter, r *http.Request) {
@@ -84,8 +86,7 @@ func (h *imageHandler) serve(w http.ResponseWriter, r *http.Request) {
 
 	app, found, err := h.store.GetByAuthorityAndName(r.Context(), strconv.Itoa(areaID), ref)
 	if err != nil {
-		h.logger.ErrorContext(r.Context(), "share card read failed", "op", "read application by slug", "slug", slug, "ref", ref, "error", err)
-		w.WriteHeader(http.StatusInternalServerError)
+		platform.RespondRequestError(w, r, h.logger, "share card read failed", err, "op", "read application by slug", "slug", slug, "ref", ref)
 		return
 	}
 	if !found {
@@ -124,8 +125,7 @@ func (h *imageHandler) serve(w http.ResponseWriter, r *http.Request) {
 
 	png, err := generateCard(r.Context(), h.tiles, app)
 	if err != nil {
-		h.logger.ErrorContext(r.Context(), "share card render failed", "key", key, "error", err)
-		w.WriteHeader(http.StatusInternalServerError)
+		platform.RespondRequestError(w, r, h.logger, "share card render failed", err, "key", key)
 		return
 	}
 	h.writeCache(r.Context(), key, png)
