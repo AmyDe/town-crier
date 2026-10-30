@@ -251,6 +251,7 @@ func newRouter(
 	anonRateLimitBurst int,
 	anonRateLimitRefillPerMinute int,
 	pollingAdmin pollingAdminDeps,
+	shareClicks *sharepage.ClickCounter,
 	notifier *subscriptionevents.Notifier,
 	seoStore seopage.Store,
 	logger *slog.Logger,
@@ -364,7 +365,12 @@ func newRouter(
 		// single application at GET /a/{authoritySlug}/{ref...}. It point-reads the
 		// same applications store and resolves the authority slug via the static
 		// authority lookup; it reads no user data and emits only public planning data.
-		sharepage.Routes(mux, appStore, authorities.NewLookup(), logger)
+		// A nil shareClicks must reach Routes as a nil interface, not a typed nil.
+		if shareClicks != nil {
+			sharepage.Routes(mux, appStore, authorities.NewLookup(), shareClicks, logger)
+		} else {
+			sharepage.Routes(mux, appStore, authorities.NewLookup(), nil, logger)
+		}
 		// The og:image map card: an anonymous GET /og/{slug}/{ref}.png
 		// serving a baked OSM map of the site as the share page's unfurl image. It
 		// reuses the same applications store + authority lookup and the real OSM tile
