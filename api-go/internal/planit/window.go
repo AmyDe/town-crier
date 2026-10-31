@@ -26,10 +26,6 @@ var ingestSelectFields = []string{
 	"associated_id", "last_changed", "last_scraped", "scraper_name", "other_fields",
 }
 
-func selectParam(fields []string) string {
-	return strings.Join(fields, ",")
-}
-
 // contactUserAgentSuffix identifies Town Crier to PlanIt's operator (POLLING.md
 // "User-Agent"). The address is deliberately a constant, never configuration.
 const contactUserAgentSuffix = "(+https://towncrierapp.uk; support@towncrierapp.uk)"
@@ -105,23 +101,25 @@ func (c *Client) FetchWindowPage(ctx context.Context, q WindowQuery) (FetchPageR
 		_ = resp.Body.Close()
 		return FetchPageResult{}, &ForbiddenError{}
 	}
-	return decodePage(resp, c.areaID, q.Index, nationalPageSize)
+	return decodePage(resp, c.areaID, q.Index)
 }
 
 func (c *Client) buildWindowPath(q WindowQuery) string {
+	from := q.From.UTC().Format(time.DateOnly)
+	to := q.To.UTC().Format(time.DateOnly)
 	var filter string
 	switch {
 	case q.DifferentStart != nil && q.Axis == AxisDecided:
-		filter = fmt.Sprintf("different_start=%s&decided_start=%s", q.DifferentStart.UTC().Format(time.DateOnly), q.From.UTC().Format(time.DateOnly))
+		filter = fmt.Sprintf("different_start=%s&decided_start=%s", q.DifferentStart.UTC().Format(time.DateOnly), from)
 	case q.DifferentStart != nil:
-		filter = fmt.Sprintf("different_start=%s&start_date=%s", q.DifferentStart.UTC().Format(time.DateOnly), q.From.UTC().Format(time.DateOnly))
+		filter = fmt.Sprintf("different_start=%s&start_date=%s", q.DifferentStart.UTC().Format(time.DateOnly), from)
 	case q.Axis == AxisDecided:
-		filter = fmt.Sprintf("decided_start=%s&decided_end=%s", q.From.UTC().Format(time.DateOnly), q.To.UTC().Format(time.DateOnly))
+		filter = fmt.Sprintf("decided_start=%s&decided_end=%s", from, to)
 	default:
-		filter = fmt.Sprintf("start_date=%s&end_date=%s", q.From.UTC().Format(time.DateOnly), q.To.UTC().Format(time.DateOnly))
+		filter = fmt.Sprintf("start_date=%s&end_date=%s", from, to)
 	}
 	path := fmt.Sprintf("/api/applics/json?%s&sort=last_different&pg_sz=%d&index=%d&select=%s&compress=on",
-		filter, nationalPageSize, q.Index, selectParam(ingestSelectFields))
+		filter, nationalPageSize, q.Index, strings.Join(ingestSelectFields, ","))
 	if c.areaID != 0 {
 		path += fmt.Sprintf("&auth=%d", c.areaID)
 	}

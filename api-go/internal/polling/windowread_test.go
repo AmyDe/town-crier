@@ -73,7 +73,6 @@ func recs(from, n int) []applications.PlanningApplication {
 	return out
 }
 
-// page builds a page starting at from with n records out of total.
 func page(from, n, total int) planit.FetchPageResult {
 	t := total
 	return planit.FetchPageResult{From: from, Applications: recs(from, n), Total: &t, HasMorePages: from+n < total}

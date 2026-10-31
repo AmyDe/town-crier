@@ -11,18 +11,14 @@ import (
 	"time"
 )
 
-// notifPurger deletes notification rows older than a cutoff.
 type notifPurger interface {
 	PurgeOlderThan(ctx context.Context, cutoff time.Time) (int64, error)
 }
 
-// devicePurger deletes device-registration rows older than a cutoff.
 type devicePurger interface {
 	PurgeOlderThan(ctx context.Context, cutoff time.Time) (int64, error)
 }
 
-// pollPurger deletes stale polling rows relative to now and returns the count
-// deleted per table.
 type pollPurger interface {
 	Purge(ctx context.Context, now time.Time) (map[string]int64, error)
 }
@@ -67,10 +63,8 @@ func (h *Handler) WithPollRetention(p pollPurger) *Handler {
 	return h
 }
 
-// Run deletes rows older than their respective retention windows and returns
-// (notifsPurged, devicesPurged, error). Notifications are purged first, then
-// devices, then poll data; a failure skips the rest so the caller can surface a
-// single actionable error.
+// Run purges notifications, then devices, then poll data, and returns the
+// notification and device counts purged; a failure skips the rest.
 func (h *Handler) Run(ctx context.Context) (int, int, error) {
 	now := h.now()
 

@@ -60,7 +60,7 @@ func day(m time.Month, d int) time.Time {
 
 func TestFetchWindowPage_QueryShapes(t *testing.T) {
 	t.Parallel()
-	sel := selectParam(ingestSelectFields)
+	sel := strings.Join(ingestSelectFields, ",")
 	tail := "&sort=last_different&pg_sz=300&index=%d&select=" + sel + "&compress=on"
 	diff := day(9, 28)
 
