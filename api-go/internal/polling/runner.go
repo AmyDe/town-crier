@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -20,9 +21,8 @@ const (
 	// A stop signal leaves the container about 30 s before it is killed, so the
 	// work after a cancelled run is bounded to fit inside that grace period.
 	cancelledFlushTimeout = 10 * time.Second
-	// endOfRunTimeout bounds the dispatch and push flush after a run that was not
-	// cancelled. The 55-minute run budget plus this bound must leave headroom
-	// under the 3600 s replica timeout for health and lease release.
+	// The 55-minute run budget plus endOfRunTimeout must stay under the 3600 s
+	// replica timeout, leaving headroom for health and lease release.
 	endOfRunTimeout     = 2 * time.Minute
 	leaseReleaseTimeout = 5 * time.Second
 	runSpanName         = "PlanIt poll run"
@@ -365,21 +365,19 @@ func (r *Runner) loadState(ctx context.Context, now time.Time, skipped map[Windo
 }
 
 func hasWindow(ws []WindowState, ref WindowRef) bool {
-	for _, w := range ws {
-		if w.Axis == ref.Axis && w.Day.Equal(ref.Day) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(ws, func(w WindowState) bool {
+		return w.Axis == ref.Axis && w.Day.Equal(ref.Day)
+	})
 }
 
 func windowStateFor(state WindowPlanState, item *PlannedWork) WindowState {
-	for _, w := range state.Windows {
-		if w.Axis == item.Axis && w.Day.Equal(item.Day) {
-			return w
-		}
+	i := slices.IndexFunc(state.Windows, func(w WindowState) bool {
+		return w.Axis == item.Axis && w.Day.Equal(item.Day)
+	})
+	if i < 0 {
+		return WindowState{Axis: item.Axis, Day: item.Day}
 	}
-	return WindowState{Axis: item.Axis, Day: item.Day}
+	return state.Windows[i]
 }
 
 // alertBandComplete reports whether it is night and every alert-band window

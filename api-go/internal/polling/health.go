@@ -3,8 +3,6 @@ package polling
 import (
 	"slices"
 	"time"
-
-	"github.com/AmyDe/town-crier/api-go/internal/planit"
 )
 
 // HealthLevel is the value of the poll.health span attribute.
@@ -82,7 +80,7 @@ type HealthInputs struct {
 	Notifications24h int
 }
 
-// ComputeHealth applies the section 8 rules. It is pure.
+// ComputeHealth derives a run's Health from in at now. It is pure.
 func ComputeHealth(in HealthInputs, now time.Time) Health {
 	var reasons []HealthReason
 	add := func(cond bool, r HealthReason) {
@@ -137,7 +135,7 @@ func unverifiedWindows(windows []WindowState, now time.Time) int {
 	byRef := windowsByRef(windows)
 	n := 0
 	for age := 0; age <= alertBandMaxAge; age++ {
-		for _, axis := range [...]planit.Axis{planit.AxisStart, planit.AxisDecided} {
+		for _, axis := range windowAxes {
 			w := byRef[WindowRef{Axis: axis, Day: today.AddDate(0, 0, -age)}]
 			if w.LastCompleteAt == nil || w.LastCompleteAt.Before(nightStart) {
 				n++
