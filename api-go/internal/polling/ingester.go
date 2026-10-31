@@ -124,8 +124,16 @@ func (o pgIngestOpener) Begin(ctx context.Context) (ingestUnit, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &pgIngestUnit{PostgresStore: applications.NewPostgresStore(tx), tx: tx}, nil
+	return &pgIngestUnit{PostgresStore: applications.NewPostgresStore(txQuerier{Tx: tx}), tx: tx}, nil
 }
+
+var errNestedTx = errors.New("polling: transactions cannot be started inside an ingest unit")
+
+// txQuerier lets the ingest transaction back an applications store, which only
+// needs Exec/Query/QueryRow here; it never starts a transaction of its own.
+type txQuerier struct{ pgx.Tx }
+
+func (txQuerier) BeginTx(context.Context, pgx.TxOptions) (pgx.Tx, error) { return nil, errNestedTx }
 
 type pgIngestUnit struct {
 	*applications.PostgresStore
