@@ -70,36 +70,10 @@ type ClusterQuery struct {
 	CoalesceThresholdDegrees float64
 }
 
-// The cluster query is a single PostGIS grid aggregation, mirroring the SEO
-// "GROUP BY app_state" rollup (store_postgres.go) plus ST_SnapToGrid to bucket by
-// cell. It runs as a chain of CTEs within one statement:
-//
-//   - filtered selects the in-radius, in-viewport (and, for the by-status variant,
-//     in-state) applications once, each tagged with its grid cell, app_state,
-//     authority, name and point. Both downstream rollups read from it, so the
-//     status filter is applied in exactly one place and the member list can never
-//     name an application the filter excludes.
-//   - per_cell_state pre-aggregates filtered by (grid cell, app_state): one row per
-//     state present in each cell, carrying the state's count, the collected member
-//     points, and the MIN (authority, name).
-//   - per_cell folds those rows up per cell: the centroid is the mean of all member
-//     points (ST_Centroid over the re-collected points), member_count is the SUM of
-//     the per-state counts, status_counts is jsonb_object_agg over the distinct
-//     per-cell states (NULL app_state folded to 'Unknown'), and the MIN
-//     authority/name identify the single member when member_count = 1.
-//   - cell_meta computes, per cell, the member-point extent (ST_Extent → ST_XMax -
-//     ST_XMin, ST_YMax - ST_YMin) and, only for an unsplittable multi-member cell
-//     (member_count > 1 AND both extent deltas below the coalesce threshold $9),
-//     the capped {authority, name} member list as JSONB (jsonb_agg over a
-//     deterministically ordered LIMIT-50 subquery of that cell's members). Every
-//     other cell yields a NULL members column. Gating on the threshold keeps the
-//     LIMIT-50 subquery off the splittable hot path, and gating on member_count > 1
-//     keeps the common single-pin cell free of a redundant one-element list.
-//
-// Filter ($3 radius via ST_DWithin, served by the existing applications_location_gist
-// GiST index) AND ($5..$8 viewport via location::geometry && ST_MakeEnvelope). Group
-// by ST_SnapToGrid(location::geometry, $4) where $4 is GridSizeDegrees. A safety
-// LIMIT of 1000 cells (densest first) bounds a pathological viewport.
+// clusterQueryHead and clusterQueryTail form the grid aggregation behind
+// FindClustersInZone: one row per grid cell with centroid, count, per-app_state
+// breakdown and, for an unsplittable multi-member cell only, the first 50 members
+// by (authority, name). Output is capped at 1000 cells, densest first.
 //
 // $1 longitude, $2 latitude, $3 radiusMetres, $4 gridSizeDegrees, $5 west,
 // $6 south, $7 east, $8 north, $9 coalesceThresholdDegrees, and (clusterQueryByStatus
@@ -136,36 +110,28 @@ per_cell AS (
 		SUM(n)::bigint AS member_count,
 		jsonb_object_agg(state, n) AS status_counts,
 		MIN(authority) AS member_authority,
-		MIN(name) AS member_name
+		MIN(name) AS member_name,
+		ST_XMax(ST_Extent(geoms)) - ST_XMin(ST_Extent(geoms)) AS x_extent,
+		ST_YMax(ST_Extent(geoms)) - ST_YMin(ST_Extent(geoms)) AS y_extent
 	FROM per_cell_state
 	GROUP BY cell
 ),
-cell_meta AS (
-	SELECT
-		base.cell AS cell,
-		CASE
-			WHEN COUNT(*) > 1
-				AND ST_XMax(ST_Extent(geom)) - ST_XMin(ST_Extent(geom)) < $9
-				AND ST_YMax(ST_Extent(geom)) - ST_YMin(ST_Extent(geom)) < $9
-			THEN (
-				-- Cap the member list at 50: a single address realistically holds a
-				-- handful to a couple of dozen applications, and 50 bounds the payload
-				-- against a pathological centroid-geocoded mega-site. A cell exceeding
-				-- 50 coincident members surfaces only the first 50 by (authority, name)
-				-- — an accepted edge. jsonb_agg has no LIMIT, hence the inner subquery.
-				SELECT jsonb_agg(jsonb_build_object('authority', m.authority, 'name', m.name))
-				FROM (
-					SELECT authority, name
-					FROM filtered f
-					WHERE f.cell = base.cell
-					ORDER BY authority, name
-					LIMIT 50
-				) m
-			)
-			ELSE NULL
-		END AS members
-	FROM filtered base
-	GROUP BY base.cell
+unsplittable AS (
+	SELECT cell FROM per_cell
+	WHERE member_count > 1 AND x_extent < $9 AND y_extent < $9
+),
+ranked AS (
+	SELECT f.cell, f.authority, f.name,
+		row_number() OVER (PARTITION BY f.cell ORDER BY f.authority, f.name) AS rn
+	FROM filtered f
+	JOIN unsplittable u ON u.cell = f.cell
+),
+members AS (
+	SELECT cell,
+		jsonb_agg(jsonb_build_object('authority', authority, 'name', name) ORDER BY rn) AS members
+	FROM ranked
+	WHERE rn <= 50
+	GROUP BY cell
 )
 SELECT
 	per_cell.centroid_lat,
@@ -174,9 +140,9 @@ SELECT
 	per_cell.status_counts,
 	per_cell.member_authority,
 	per_cell.member_name,
-	cell_meta.members
+	members.members
 FROM per_cell
-JOIN cell_meta ON cell_meta.cell = per_cell.cell
+LEFT JOIN members ON members.cell = per_cell.cell
 ORDER BY per_cell.member_count DESC
 LIMIT 1000`
 
@@ -234,11 +200,15 @@ func (s *PostgresStore) FindClustersInZone(ctx context.Context, q ClusterQuery) 
 		args = append(args, q.Status)
 	}
 
-	rows, err := s.db.Query(ctx, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("find clusters in zone near (%v, %v): %w", q.Latitude, q.Longitude, err)
-	}
-	clusters, err := pgx.CollectRows(rows, scanClusterRow)
+	var clusters []Cluster
+	err := s.withNoNestLoop(ctx, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, query, append([]any{pgx.QueryExecModeExec}, args...)...)
+		if err != nil {
+			return err
+		}
+		clusters, err = pgx.CollectRows(rows, scanClusterRow)
+		return err
+	})
 	if err != nil {
 		return nil, fmt.Errorf("find clusters in zone near (%v, %v): %w", q.Latitude, q.Longitude, err)
 	}

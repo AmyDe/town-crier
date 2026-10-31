@@ -112,3 +112,94 @@ func TestPostgresStore_FindClustersInBoundary_StatusFilter(t *testing.T) {
 		t.Fatalf("filtered count: got %d, want 2 (only Permitted)", got)
 	}
 }
+
+// legacyBoundaryClusterQueryTail is the pre-rewrite cell_meta tail, kept verbatim
+// as the oracle the rewritten query must match.
+const legacyBoundaryClusterQueryTail = `
+),
+per_cell_state AS (
+	SELECT
+		cell,
+		state,
+		COUNT(*) AS n,
+		ST_Collect(geom) AS geoms,
+		MIN(authority) AS authority,
+		MIN(name) AS name
+	FROM filtered
+	GROUP BY cell, state
+),
+per_cell AS (
+	SELECT
+		cell,
+		ST_Y(ST_Centroid(ST_Collect(geoms))) AS centroid_lat,
+		ST_X(ST_Centroid(ST_Collect(geoms))) AS centroid_lon,
+		SUM(n)::bigint AS member_count,
+		jsonb_object_agg(state, n) AS status_counts,
+		MIN(authority) AS member_authority,
+		MIN(name) AS member_name
+	FROM per_cell_state
+	GROUP BY cell
+),
+cell_meta AS (
+	SELECT
+		base.cell AS cell,
+		CASE
+			WHEN COUNT(*) > 1
+				AND ST_XMax(ST_Extent(geom)) - ST_XMin(ST_Extent(geom)) < $7
+				AND ST_YMax(ST_Extent(geom)) - ST_YMin(ST_Extent(geom)) < $7
+			THEN (
+				SELECT jsonb_agg(jsonb_build_object('authority', m.authority, 'name', m.name))
+				FROM (
+					SELECT authority, name
+					FROM filtered f
+					WHERE f.cell = base.cell
+					ORDER BY authority, name
+					LIMIT 50
+				) m
+			)
+			ELSE NULL
+		END AS members
+	FROM filtered base
+	GROUP BY base.cell
+)
+SELECT
+	per_cell.centroid_lat,
+	per_cell.centroid_lon,
+	per_cell.member_count,
+	per_cell.status_counts,
+	per_cell.member_authority,
+	per_cell.member_name,
+	cell_meta.members
+FROM per_cell
+JOIN cell_meta ON cell_meta.cell = per_cell.cell
+ORDER BY per_cell.member_count DESC
+LIMIT 1000`
+
+func TestPostgresStore_FindClustersInBoundary_MatchesLegacyQuery(t *testing.T) {
+	pool, store := seedClusterFixture(t)
+	ctx := context.Background()
+
+	for _, status := range []string{"", "Permitted"} {
+		t.Run("status="+status, func(t *testing.T) {
+			q := fixtureBoundaryQuery(status)
+			_, args := boundaryQueryAndArgs(t, q)
+			legacy := boundaryClusterQueryHead + legacyBoundaryClusterQueryTail
+			if status != "" {
+				legacy = boundaryClusterQueryHead + "\n\t\tAND app_state = $8" + legacyBoundaryClusterQueryTail
+			}
+
+			want := collectClusters(ctx, t, pool, legacy, args...)
+			got, err := store.FindClustersInBoundary(ctx, q)
+			if err != nil {
+				t.Fatalf("FindClustersInBoundary: %v", err)
+			}
+			if len(want) == 0 || len(got) == 0 {
+				t.Fatalf("empty result: legacy %d cells, new %d cells", len(want), len(got))
+			}
+			if status == "" {
+				assertFixtureCoverage(ctx, t, pool, got)
+			}
+			assertClustersEqual(t, got, want)
+		})
+	}
+}

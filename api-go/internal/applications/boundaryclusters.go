@@ -36,11 +36,9 @@ const boundaryClusterQueryHead = `WITH filtered AS (
 	WHERE ST_Covers(` + boundaryZonePolygonNoPoint + `, location)
 		AND location::geometry && ST_MakeEnvelope($3, $4, $5, $6, 4326)`
 
-// boundaryClusterQueryTail mirrors clusterQueryTail exactly, renumbered for
-// this query's parameter positions: $7 is the coalesce threshold (clusterQueryTail's
-// $9) and, for boundaryClusterQueryByStatus only, $8 is the status filter
-// (clusterQueryTail's $10). See clusterQueryTail for the full per-cell aggregation
-// rationale, which applies unchanged here.
+// boundaryClusterQueryTail is clusterQueryTail renumbered for this query's
+// parameters: $7 is the coalesce threshold and, for boundaryClusterQueryByStatus
+// only, $8 the status filter.
 const boundaryClusterQueryTail = `
 ),
 per_cell_state AS (
@@ -62,31 +60,28 @@ per_cell AS (
 		SUM(n)::bigint AS member_count,
 		jsonb_object_agg(state, n) AS status_counts,
 		MIN(authority) AS member_authority,
-		MIN(name) AS member_name
+		MIN(name) AS member_name,
+		ST_XMax(ST_Extent(geoms)) - ST_XMin(ST_Extent(geoms)) AS x_extent,
+		ST_YMax(ST_Extent(geoms)) - ST_YMin(ST_Extent(geoms)) AS y_extent
 	FROM per_cell_state
 	GROUP BY cell
 ),
-cell_meta AS (
-	SELECT
-		base.cell AS cell,
-		CASE
-			WHEN COUNT(*) > 1
-				AND ST_XMax(ST_Extent(geom)) - ST_XMin(ST_Extent(geom)) < $7
-				AND ST_YMax(ST_Extent(geom)) - ST_YMin(ST_Extent(geom)) < $7
-			THEN (
-				SELECT jsonb_agg(jsonb_build_object('authority', m.authority, 'name', m.name))
-				FROM (
-					SELECT authority, name
-					FROM filtered f
-					WHERE f.cell = base.cell
-					ORDER BY authority, name
-					LIMIT 50
-				) m
-			)
-			ELSE NULL
-		END AS members
-	FROM filtered base
-	GROUP BY base.cell
+unsplittable AS (
+	SELECT cell FROM per_cell
+	WHERE member_count > 1 AND x_extent < $7 AND y_extent < $7
+),
+ranked AS (
+	SELECT f.cell, f.authority, f.name,
+		row_number() OVER (PARTITION BY f.cell ORDER BY f.authority, f.name) AS rn
+	FROM filtered f
+	JOIN unsplittable u ON u.cell = f.cell
+),
+members AS (
+	SELECT cell,
+		jsonb_agg(jsonb_build_object('authority', authority, 'name', name) ORDER BY rn) AS members
+	FROM ranked
+	WHERE rn <= 50
+	GROUP BY cell
 )
 SELECT
 	per_cell.centroid_lat,
@@ -95,9 +90,9 @@ SELECT
 	per_cell.status_counts,
 	per_cell.member_authority,
 	per_cell.member_name,
-	cell_meta.members
+	members.members
 FROM per_cell
-JOIN cell_meta ON cell_meta.cell = per_cell.cell
+LEFT JOIN members ON members.cell = per_cell.cell
 ORDER BY per_cell.member_count DESC
 LIMIT 1000`
 
@@ -107,12 +102,8 @@ const (
 )
 
 // FindClustersInBoundary is FindClustersInZone's custom-shape counterpart:
-// grid-aggregated cluster bubbles for the viewport q,
-// restricted to applications ST_Covers-contained in q.Boundary rather than
-// within a circle. The cell/centroid/status-breakdown/member-list shape is
-// identical to FindClustersInZone's Cluster rows; see FindClustersInZone and
-// clusterQueryHead/clusterQueryTail for the full aggregation rationale, which
-// applies unchanged here -- only the containment predicate differs.
+// the same Cluster rows, restricted to applications ST_Covers-contained in
+// q.Boundary rather than within a circle.
 func (s *PostgresStore) FindClustersInBoundary(ctx context.Context, q BoundaryClusterQuery) ([]Cluster, error) {
 	boundaryJSON, err := encodeBoundaryGeoJSON(q.Boundary)
 	if err != nil {
@@ -126,11 +117,15 @@ func (s *PostgresStore) FindClustersInBoundary(ctx context.Context, q BoundaryCl
 		args = append(args, q.Status)
 	}
 
-	rows, err := s.db.Query(ctx, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("find clusters in boundary: %w", err)
-	}
-	clusters, err := pgx.CollectRows(rows, scanClusterRow)
+	var clusters []Cluster
+	err = s.withNoNestLoop(ctx, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, query, append([]any{pgx.QueryExecModeExec}, args...)...)
+		if err != nil {
+			return err
+		}
+		clusters, err = pgx.CollectRows(rows, scanClusterRow)
+		return err
+	})
 	if err != nil {
 		return nil, fmt.Errorf("find clusters in boundary: %w", err)
 	}

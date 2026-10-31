@@ -16,10 +16,11 @@ import (
 )
 
 // querier is the consumer-side slice of *pgxpool.Pool the store uses: parameterised
-// exec/query/query-row. Defining it here (not importing pgxpool) keeps the store
-// decoupled from the concrete pool and lets a pgx.Tx stand in. Both *pgxpool.Pool
-// and pgx.Tx satisfy it structurally.
+// exec/query/query-row plus BeginTx. Defining it here (not importing pgxpool) keeps
+// the store decoupled from the concrete pool. *pgxpool.Pool and *pgxpool.Conn
+// satisfy it structurally; a pgx.Tx does not.
 type querier interface {
+	BeginTx(ctx context.Context, opts pgx.TxOptions) (pgx.Tx, error)
 	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
@@ -74,6 +75,35 @@ func NewPostgresStore(db querier) *PostgresStore {
 func (s *PostgresStore) WithLogger(logger *slog.Logger) *PostgresStore {
 	s.logger = logger
 	return s
+}
+
+// withNoNestLoop runs fn in a read-only transaction with nested loops disabled.
+// The planner estimates the cluster CTE at one row and picks a nested loop that
+// re-reads it per cell; queries inside fn must use pgx.QueryExecModeExec, because
+// a cached generic plan ignores SET LOCAL. Rows must be fully collected inside fn.
+func (s *PostgresStore) withNoNestLoop(ctx context.Context, fn func(pgx.Tx) error) error {
+	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return fmt.Errorf("begin read-only transaction: %w", err)
+	}
+	defer func() {
+		rollbackCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		if err := tx.Rollback(rollbackCtx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			s.logger.WarnContext(rollbackCtx, "rollback read-only transaction", slog.Any("error", err))
+		}
+	}()
+
+	if _, err := tx.Exec(ctx, "SET LOCAL enable_nestloop = off"); err != nil {
+		return fmt.Errorf("disable nested loops: %w", err)
+	}
+	if err := fn(tx); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit read-only transaction: %w", err)
+	}
+	return nil
 }
 
 // appColumns is the read projection. Its order MUST match appScanDest. ST_Y is the
