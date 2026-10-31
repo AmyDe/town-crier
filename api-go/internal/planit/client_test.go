@@ -51,7 +51,6 @@ func TestFetchWindowPage_ParsesRecordsAndTotal(t *testing.T) {
 	if !app.LastDifferent.Equal(time.Date(2026, 6, 10, 9, 0, 0, 0, time.UTC)) {
 		t.Errorf("lastDifferent: got %v", app.LastDifferent)
 	}
-	// from(0) + 1 record < total(42): more records remain.
 	if !res.HasMorePages {
 		t.Error("HasMorePages should be true when from+len(records) < total")
 	}
