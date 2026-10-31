@@ -28,7 +28,6 @@ type ApplicationEvent struct {
 	EventDate     *time.Time
 }
 
-// ingestUnit is one transaction's worth of ingest work.
 type ingestUnit interface {
 	GetByUID(ctx context.Context, uid, authorityCode string) (applications.PlanningApplication, bool, error)
 	Upsert(ctx context.Context, a applications.PlanningApplication) error

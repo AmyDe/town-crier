@@ -48,8 +48,6 @@ import (
 	"go.opentelemetry.io/otel"
 )
 
-// stores holds every Postgres store the worker's modes use, built once from the
-// shared pool at boot.
 type stores struct {
 	app          *applications.PostgresStore
 	zone         *watchzones.PostgresStore

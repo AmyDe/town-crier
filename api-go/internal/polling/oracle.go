@@ -72,7 +72,7 @@ func NewOracle(fetch windowPageFetcher, members oracleMemberStore, diffs oracleD
 func (o *Oracle) Run(ctx context.Context, now time.Time) (OracleOutcome, error) {
 	res := OracleOutcome{Classified: map[string]int{}}
 	nightStart, _ := BudgetDay(now)
-	for _, axis := range [...]planit.Axis{planit.AxisStart, planit.AxisDecided} {
+	for _, axis := range windowAxes {
 		done, err := o.events.DoneSince(ctx, axis, nightStart)
 		if err != nil {
 			return res, fmt.Errorf("oracle done check: %w", err)

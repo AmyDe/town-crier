@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"time"
 
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
 )
 
-// planItResponse is the PlanIt list-endpoint envelope. JSON tags mirror the
-// snake_case keys PlanIt returns.
+// planItResponse is the PlanIt list-endpoint envelope.
 type planItResponse struct {
 	Records []planItRecord `json:"records"`
 	PageSiz *int           `json:"pg_sz"`
@@ -19,9 +19,8 @@ type planItResponse struct {
 	Total   *int           `json:"total"`
 }
 
-// planItRecord is one PlanIt application record. JSON tags match PlanIt's
-// snake_case field names. Nullable upstream fields are pointers so an absent
-// value maps to a nil domain pointer.
+// planItRecord is one PlanIt application record. Nullable upstream fields are
+// pointers so an absent value maps to a nil domain pointer.
 type planItRecord struct {
 	Name          string   `json:"name"`
 	UID           string   `json:"uid"`
@@ -47,8 +46,8 @@ type planItRecord struct {
 	Reference    *string         `json:"reference"`
 	Altid        json.RawMessage `json:"altid"`         // may be a JSON string OR array depending on scraper
 	AssociatedID json.RawMessage `json:"associated_id"` // same string-or-array shape as Altid
-	LastChanged  *string         `json:"last_changed"`  // same naive-UTC format as LastDifferent; bookkeeping
-	LastScraped  *string         `json:"last_scraped"`  // same naive-UTC format as LastDifferent; bookkeeping
+	LastChanged  *string         `json:"last_changed"`  // same naive-UTC format as LastDifferent
+	LastScraped  *string         `json:"last_scraped"`  // same naive-UTC format as LastDifferent
 	ScraperName  *string         `json:"scraper_name"`
 	OtherFields  map[string]any  `json:"other_fields"`
 }
@@ -65,10 +64,7 @@ func stripRestrictedOtherFields(fields map[string]any) map[string]any {
 	if len(fields) == 0 {
 		return nil
 	}
-	out := make(map[string]any, len(fields))
-	for k, v := range fields {
-		out[k] = v
-	}
+	out := maps.Clone(fields)
 	for _, restricted := range restrictedOtherFieldsKeys {
 		delete(out, restricted)
 	}
@@ -84,7 +80,7 @@ func rawJSONOrNil(raw json.RawMessage) []byte {
 	if len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
 		return nil
 	}
-	return append([]byte(nil), raw...)
+	return bytes.Clone(raw)
 }
 
 // parsePlanItInstantLenient maps an absent, empty or unparseable bookkeeping
@@ -186,8 +182,6 @@ func parsePlanItInstant(value string) (time.Time, error) {
 	return time.Time{}, fmt.Errorf("unrecognised timestamp %q", value)
 }
 
-// parseDateOnly parses an optional "yyyy-MM-dd" PlanIt date into a *time.Time,
-// returning nil for an absent or empty value.
 func parseDateOnly(value *string) (*time.Time, error) {
 	if value == nil || *value == "" {
 		return nil, nil //nolint:nilnil // absent optional date is a valid nil, not an error

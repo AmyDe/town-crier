@@ -16,6 +16,8 @@ const (
 	dayEndHour         = 18
 )
 
+var windowAxes = [...]planit.Axis{planit.AxisStart, planit.AxisDecided}
+
 // CivilTime is a wall-clock hour and minute in Europe/London.
 type CivilTime struct {
 	Hour   int
@@ -95,11 +97,10 @@ func NextWindowWork(cfg WindowPlanConfig, state WindowPlanState, now time.Time, 
 
 	nightStart, _ := BudgetDay(now)
 	byRef := windowsByRef(state.Windows)
-	axes := [...]planit.Axis{planit.AxisStart, planit.AxisDecided}
 
 	for age := 0; age <= alertBandMaxAge; age++ {
 		day := today.AddDate(0, 0, -age)
-		for _, axis := range axes {
+		for _, axis := range windowAxes {
 			w := byRef[WindowRef{Axis: axis, Day: day}]
 			if w.LastCompleteAt == nil || w.LastCompleteAt.Before(nightStart) {
 				return windowWork(axis, day)
@@ -109,7 +110,7 @@ func NextWindowWork(cfg WindowPlanConfig, state WindowPlanState, now time.Time, 
 
 	for age := alertBandMaxAge + 1; age <= coverageBandMaxAge; age++ {
 		day := today.AddDate(0, 0, -age)
-		for _, axis := range axes {
+		for _, axis := range windowAxes {
 			w := byRef[WindowRef{Axis: axis, Day: day}]
 			if w.LastCompleteAt == nil || now.Sub(*w.LastCompleteAt) > coverageMaxStale {
 				return windowWork(axis, day)

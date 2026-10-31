@@ -21,8 +21,7 @@ import (
 // -ldflags "-X main.version=<v>".
 var version = "dev"
 
-// pollRunnerAdapter runs one polling.Runner and logs its summary. It satisfies
-// worker.PollRunner.
+// pollRunnerAdapter runs one polling.Runner and logs its summary.
 type pollRunnerAdapter struct {
 	runner *polling.Runner
 	logger *slog.Logger
@@ -43,8 +42,6 @@ func (a *pollRunnerAdapter) Run(ctx context.Context) error {
 	return nil
 }
 
-// buildPoller wires the WORKER_MODE=poll runner: pacer, PlanIt client, window
-// reader, ingester, event dispatcher, and the dev-only oracle.
 func buildPoller(cfg platform.Config, pool *pgxpool.Pool, registry *metrics.Registry, st *stores, logger *slog.Logger) (*pollRunnerAdapter, error) {
 	slots, err := parseDeltaSlots(cfg.PollingDeltaSlots)
 	if err != nil {

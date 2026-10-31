@@ -21,14 +21,11 @@ const (
 	prodEnv      = "prod"
 )
 
-// seoAdapter exposes the seocatalog store as the worker's SEO runners.
 type seoAdapter struct {
 	store  *seocatalog.Store
 	logger *slog.Logger
 }
 
-// buildSEO wires the seo-catalog runner over the embedded gazetteer and
-// authority list.
 func buildSEO(pool *pgxpool.Pool, logger *slog.Logger) (*seoAdapter, error) {
 	gazetteer, err := seocatalog.EmbeddedGazetteer()
 	if err != nil {
@@ -54,7 +51,6 @@ type indexNowSubmitter interface {
 	Submit(ctx context.Context) (indexnow.Result, error)
 }
 
-// indexNowSeoRunner adds the post-rebuild IndexNow submission to the catalog run.
 type indexNowSeoRunner struct {
 	seoCatalogRunner
 	submitter indexNowSubmitter

@@ -32,7 +32,6 @@ const (
 	StopError       StopReason = "error"
 )
 
-// stopReasonFor classifies an error from a paced PlanIt fetch.
 func stopReasonFor(err error) StopReason {
 	var rl *planit.RateLimitError
 	var forbidden *planit.ForbiddenError
