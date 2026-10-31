@@ -178,7 +178,7 @@ func NewClient(opts Options) (*Client, error) {
 }
 
 // decodePage maps resp to a FetchPageResult. It closes resp.Body.
-func decodePage(resp *http.Response, authorityIDForMetrics, startIndex, pageSize int) (FetchPageResult, error) {
+func decodePage(resp *http.Response, authorityIDForMetrics, startIndex int) (FetchPageResult, error) {
 	defer func() { _ = resp.Body.Close() }()
 
 	if err := classify(resp); err != nil {
@@ -218,7 +218,7 @@ func decodePage(resp *http.Response, authorityIDForMetrics, startIndex, pageSize
 		return FetchPageResult{}, &ResponseError{StatusCode: resp.StatusCode, Err: fmt.Errorf("planit fetch (authority %d) at index %d: %w", authorityIDForMetrics, startIndex, ErrZeroProgress)}
 	}
 
-	hasMorePages := read >= pageSize
+	hasMorePages := read >= nationalPageSize
 	if parsed.Total != nil {
 		hasMorePages = from+read < *parsed.Total
 	}
