@@ -337,7 +337,9 @@ func (s *PostgresStore) FindInZonePage(ctx context.Context, q InZoneQuery) ([]Pl
 		c = &decoded
 	}
 
-	// Filtered requests take the dynamic builder; unfiltered ones use the per-sort constant queries.
+	if s.thinList(ctx) {
+		return s.findZoneThin(ctx, q, c)
+	}
 	if q.Status != "" || q.Unread {
 		return s.findFilteredZonePage(ctx, q, c)
 	}
@@ -753,38 +755,66 @@ func (s *PostgresStore) findFilteredZonePage(ctx context.Context, q InZoneQuery,
 // the read_at IS NULL unread subquery (ADR 0035), grouped on (application_uid,
 // authority_id) so the outer join stays authority-safe.
 func buildFilteredZoneQuery(q InZoneQuery, c *pageCursor) (string, []any, error) {
+	return buildZoneQueryOn(q, c, "applications")
+}
+
+func buildThinFilteredZoneQuery(q InZoneQuery, c *pageCursor) (string, []any, error) {
+	return buildZoneQueryOn(q, c, thinTable)
+}
+
+// filteredProjection is the select list of a filtered page: full rows from
+// applications, or just the keys and cursor values from application_locations.
+func filteredProjection(sort Sort, point, table string) string {
+	if table == thinTable {
+		switch sort {
+		case SortDistance:
+			return thinDistanceColumns + ", location <-> " + point + " AS distance"
+		case SortRecentActivity:
+			return thinDistanceColumns + ", " + activityExpr + " AS activity_ts"
+		case SortStatus:
+			return thinStatusColumns
+		default:
+			return thinDateColumns
+		}
+	}
+	switch sort {
+	case SortDistance:
+		return appColumns + ", location <-> " + point + " AS distance"
+	case SortRecentActivity:
+		return dateColumns + ", " + activityExpr + " AS activity_ts"
+	default:
+		return dateColumns
+	}
+}
+
+// unreadJoin joins table to the caller's latest unread notification per
+// application. The INNER form drops applications with no unread.
+func unreadJoin(inner bool, userP, table string) string {
+	joinType := "LEFT JOIN"
+	if inner {
+		joinType = "JOIN"
+	}
+	subquery := "SELECT n.application_uid, n.authority_id, MAX(n.created_at) AS created_at" +
+		" FROM notifications n" +
+		" WHERE n.user_id = " + userP + " AND n.read_at IS NULL" +
+		" GROUP BY n.application_uid, n.authority_id"
+	return " " + joinType + " (" + subquery + ") u" +
+		" ON " + table + ".uid = u.application_uid AND " + table + ".area_id = u.authority_id"
+}
+
+func buildZoneQueryOn(q InZoneQuery, c *pageCursor, table string) (string, []any, error) {
 	b := &argBuilder{}
 	lonP := b.add(q.Longitude)
 	latP := b.add(q.Latitude)
 	point := "ST_SetSRID(ST_MakePoint(" + lonP + ", " + latP + "), 4326)::geography"
 
-	var projection string
-	switch q.Sort {
-	case SortDistance:
-		projection = appColumns + ", location <-> " + point + " AS distance"
-	case SortRecentActivity:
-		projection = dateColumns + ", " + activityExpr + " AS activity_ts"
-	default:
-		projection = dateColumns
-	}
-
 	var sb strings.Builder
 	sb.WriteString("SELECT ")
-	sb.WriteString(projection)
-	sb.WriteString(" FROM applications")
+	sb.WriteString(filteredProjection(q.Sort, point, table))
+	sb.WriteString(" FROM " + table)
 
 	if q.Unread || q.Sort == SortRecentActivity {
-		joinType := "LEFT JOIN"
-		if q.Unread {
-			joinType = "JOIN" // INNER: drop applications with no unread for the caller.
-		}
-		userP := b.add(q.UserID)
-		subquery := "SELECT n.application_uid, n.authority_id, MAX(n.created_at) AS created_at" +
-			" FROM notifications n" +
-			" WHERE n.user_id = " + userP + " AND n.read_at IS NULL" +
-			" GROUP BY n.application_uid, n.authority_id"
-		sb.WriteString(" " + joinType + " (" + subquery + ") u" +
-			" ON applications.uid = u.application_uid AND applications.area_id = u.authority_id")
+		sb.WriteString(unreadJoin(q.Unread, b.add(q.UserID), table))
 	}
 
 	radiusP := b.add(q.RadiusMetres)

@@ -107,7 +107,7 @@ func seedThinFixture(t *testing.T, pool *pgxpool.Pool) {
 		FROM generate_series(1, 70) i`,
 		`INSERT INTO applications (planit_name, authority_code, uid, area_name, area_id, app_state, start_date, location, last_different)
 		SELECT 'DUP/1', a, 'uid-dup-' || a, 'Test', a::int, 'Undecided', DATE '2026-01-03',
-			ST_SetSRID(ST_MakePoint(-0.1268, 51.5084), 4326)::geography, now()
+			ST_SetSRID(ST_MakePoint(-0.1268 + a::int * 0.00001, 51.5084), 4326)::geography, now()
 		FROM unnest(ARRAY['100', '200']) a`,
 		`INSERT INTO applications (planit_name, authority_code, uid, area_name, area_id, app_state, start_date, last_different)
 		VALUES ('NOLOC', '100', 'uid-noloc', 'Test', 100, 'Undecided', DATE '2026-01-02', now())`,

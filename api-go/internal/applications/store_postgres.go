@@ -62,8 +62,9 @@ var (
 //   - location is a geography(Point,4326) served by one GiST index, so the radius
 //     reads use ST_DWithin and the nearest-first read uses the KNN <-> operator.
 type PostgresStore struct {
-	db     querier
-	logger *slog.Logger
+	db       querier
+	logger   *slog.Logger
+	readPath thinListSwitch
 }
 
 // NewPostgresStore returns a store over the given pgx pool (or any querier).
@@ -393,9 +394,14 @@ const nearbyPoint = "ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography"
 // (distance, planit_name) top limit. <-> measures on the sphere but ST_DWithin on
 // the spheroid (up to ~0.34% longer), hence the 1% + 1 m margin.
 func knnThenExact(filter, limitParam string) string {
-	return "WITH knn AS MATERIALIZED (SELECT location <-> " + nearbyPoint + " AS d FROM applications WHERE " + filter +
+	return knnThenExactOn(appColumns, "applications", filter, limitParam)
+}
+
+// knnThenExactOn is knnThenExact over table, selecting columns and the distance.
+func knnThenExactOn(columns, table, filter, limitParam string) string {
+	return "WITH knn AS MATERIALIZED (SELECT location <-> " + nearbyPoint + " AS d FROM " + table + " WHERE " + filter +
 		" ORDER BY location <-> " + nearbyPoint + " LIMIT " + limitParam + ") " +
-		"SELECT " + appColumns + ", location <-> " + nearbyPoint + " AS distance FROM applications WHERE " + filter +
+		"SELECT " + columns + ", location <-> " + nearbyPoint + " AS distance FROM " + table + " WHERE " + filter +
 		" AND ST_DWithin(location, " + nearbyPoint + ", (SELECT max(d) FROM knn) * 1.01 + 1)" +
 		" ORDER BY location <-> " + nearbyPoint + ", planit_name LIMIT " + limitParam
 }
@@ -439,6 +445,19 @@ func (s *PostgresStore) FindNearbyPage(ctx context.Context, latitude, longitude,
 	}
 	wrap := func(err error) error {
 		return fmt.Errorf("find applications near (%v, %v): %w", latitude, longitude, err)
+	}
+	if s.thinList(ctx) {
+		thinQuery := thinNearbyFirstQuery
+		if cursor != "" {
+			thinQuery = thinNearbyKeysetQuery
+		}
+		return s.pageThin(ctx, s.withKNNWalk, thinQuery, args, SortDistance, limit, func(r thinRow) (string, error) {
+			enc, err := encodeNearbyCursor(r.dist, r.key.name)
+			if err != nil {
+				return "", fmt.Errorf("encode nearby cursor: %w", err)
+			}
+			return enc, nil
+		}, wrap)
 	}
 	var (
 		apps []PlanningApplication
