@@ -38,4 +38,4 @@ func buildApplicationLocations(pool *pgxpool.Pool, logger *slog.Logger) applicat
 	return applicationLocationsRunner{jobs: applications.NewApplicationLocations(pool, sw, logger, time.Now)}
 }
 
-var errAuthoritiesAbandoned = errors.New("reconcile abandoned authorities after repeated deadlocks")
+var errAuthoritiesAbandoned = errors.New("reconcile abandoned one or more authorities")

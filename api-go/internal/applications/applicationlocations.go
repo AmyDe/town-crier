@@ -30,7 +30,7 @@ var allBuckets = []int{0, 1, 2, 3, 4, 5, 6}
 
 // ReconcileResult counts what one Reconcile run changed. Skipped is true when
 // thin_sync was off and nothing ran. Failed counts authorities abandoned after
-// repeated deadlocks.
+// an error (deadlock retries exhausted or any other repair failure).
 type ReconcileResult struct {
 	Skipped     bool
 	Authorities int
