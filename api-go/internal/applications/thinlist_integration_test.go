@@ -23,9 +23,10 @@ const (
 	thinLimit  = 5
 )
 
-type fixedThinList bool
+type fixedReadPath struct{ list, mapOn bool }
 
-func (f fixedThinList) ThinList(context.Context) bool { return bool(f) }
+func (f fixedReadPath) ThinList(context.Context) bool { return f.list }
+func (f fixedReadPath) ThinMap(context.Context) bool  { return f.mapOn }
 
 type thinCase struct {
 	name string
@@ -169,7 +170,7 @@ func assertPagesEqual(t *testing.T, name string, got, want []thinPage) {
 }
 
 func thinStores(pool *pgxpool.Pool) (off, on *PostgresStore) {
-	return NewPostgresStore(pool), NewPostgresStore(pool).WithReadPath(fixedThinList(true))
+	return NewPostgresStore(pool), NewPostgresStore(pool).WithReadPath(fixedReadPath{list: true})
 }
 
 func TestThinList_SwitchOnMatchesOffAcrossSortsFiltersAndShapes(t *testing.T) {
@@ -282,7 +283,7 @@ func recordedThinStore(t *testing.T, pool *pgxpool.Pool) (*PostgresStore, *sqlRe
 		t.Fatalf("traced pool: %v", err)
 	}
 	t.Cleanup(traced.Close)
-	return NewPostgresStore(traced).WithReadPath(fixedThinList(true)), rec
+	return NewPostgresStore(traced).WithReadPath(fixedReadPath{list: true}), rec
 }
 
 type explainNode struct {

@@ -1,6 +1,7 @@
 package applications
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"regexp"
@@ -30,10 +31,10 @@ func TestThinClusterQueries_ReadOnlyTheThinTable(t *testing.T) {
 func TestClusterQueries_OffPathTextIsUnchanged(t *testing.T) {
 	t.Parallel()
 	want := map[string]string{
-		"zone all":        "",
-		"zone status":     "",
-		"boundary all":    "",
-		"boundary status": "",
+		"zone all":        "5c4c92e2e1064a9bdaeb3ebef6010493b48383987056d4b67af32653cc28f838",
+		"zone status":     "2ee937e872880435c16acef4772e3fffcc303227ac7087d1f73ab5c877e12954",
+		"boundary all":    "33788967c785bc346b53659ddf6f9c6a6e8f4a4198c032e4a307937b086d6fd7",
+		"boundary status": "38fa8184cb844aa5679c690712a53881f08376d2670d83ed29fb78931bbe90dc",
 	}
 	got := map[string]string{
 		"zone all":        clusterQueryAllStatuses,

@@ -19,7 +19,7 @@ const (
 
 // ReadPathSwitches are the thin-table switches. ThinSync keeps
 // application_locations in step with applications. ThinList moves the paged list
-// reads onto it. ThinMap is stored but no read uses it yet.
+// reads onto it. ThinMap moves the map cluster reads onto it.
 type ReadPathSwitches struct {
 	ThinSync bool
 	ThinList bool
@@ -183,4 +183,9 @@ func (c *CachedReadPath) Switches(ctx context.Context) ReadPathSwitches {
 // ThinList reports whether the paged list reads use application_locations.
 func (c *CachedReadPath) ThinList(ctx context.Context) bool {
 	return c.Switches(ctx).ThinList
+}
+
+// ThinMap reports whether the map cluster reads use application_locations.
+func (c *CachedReadPath) ThinMap(ctx context.Context) bool {
+	return c.Switches(ctx).ThinMap
 }
