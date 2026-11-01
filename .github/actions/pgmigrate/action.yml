@@ -52,4 +52,4 @@ runs:
           -host psql-town-crier-shared.postgres.database.azure.com \
           -admin-user town-crier-github-actions \
           -db ${{ inputs.database-name }} \
-          -timeout 600s
+          -timeout 1800s

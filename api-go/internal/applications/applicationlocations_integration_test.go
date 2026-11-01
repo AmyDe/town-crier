@@ -30,26 +30,10 @@ type locRow struct {
 
 func pt(lon, lat float64) (*float64, *float64) { return &lon, &lat }
 
-// addTestPrimaryKey gives application_locations the key the upsert conflicts on.
-// The migration adds it only after the production load, so tests add it here.
-func addTestPrimaryKey(t *testing.T, pool *pgxpool.Pool) {
-	t.Helper()
-	ctx := context.Background()
-	if _, err := pool.Exec(ctx, `ALTER TABLE application_locations ADD CONSTRAINT application_locations_test_pk PRIMARY KEY (authority_code, planit_name)`); err != nil {
-		t.Fatalf("add test primary key: %v", err)
-	}
-	t.Cleanup(func() {
-		if _, err := pool.Exec(context.Background(), `ALTER TABLE application_locations DROP CONSTRAINT IF EXISTS application_locations_test_pk`); err != nil {
-			t.Errorf("drop test primary key: %v", err)
-		}
-	})
-}
-
 func thinPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	pool := pgtest.New(t)
 	pgtest.Truncate(t, pool, "applications", "application_locations", "read_path_control")
-	addTestPrimaryKey(t, pool)
 	return pool
 }
 

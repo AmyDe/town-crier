@@ -182,7 +182,7 @@ jobs:
     # 'skipped' result as a pass, not a block.
     if: always() && (needs.changes.outputs.go == 'true' || needs.changes.outputs.infra == 'true' || github.event_name == 'workflow_dispatch') && (needs.infra-dev.result == 'success' || needs.infra-dev.result == 'skipped')
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 35
     environment: development
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
