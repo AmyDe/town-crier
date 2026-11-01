@@ -16,15 +16,23 @@ var workerModeBudgetConsts = map[string]string{
 	"appstore-reconcile": "cycleBudget",
 	"pg-purge":           "cycleBudget",
 	"seo-catalog":        "seoBudget",
+
+	"application-locations-load":          "applicationLocationsLoadBudget",
+	"application-locations-reconcile":     "applicationLocationsReconcileBudget",
+	"application-locations-reconcile-all": "applicationLocationsReconcileAllBudget",
 }
+
+var workerModeBudgetSources = map[string]string{
+	"application-locations-load":          "../api-go/internal/worker/applicationlocations.go",
+	"application-locations-reconcile":     "../api-go/internal/worker/applicationlocations.go",
+	"application-locations-reconcile-all": "../api-go/internal/worker/applicationlocations.go",
+}
+
+const defaultBudgetSource = "../api-go/internal/worker/dispatch.go"
 
 func TestWorkerBudgetsStayUnderReplicaTimeouts(t *testing.T) {
 	t.Parallel()
 	envSrc, err := os.ReadFile("environment.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	dispatchSrc, err := os.ReadFile("../api-go/internal/worker/dispatch.go")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,9 +51,17 @@ func TestWorkerBudgetsStayUnderReplicaTimeouts(t *testing.T) {
 			if !ok {
 				t.Fatalf("no createWorkerJob call found for mode %q", mode)
 			}
-			m := regexp.MustCompile(`(?m)^\s*(?:const )?` + name + `\s*=\s*(\d+) \* time\.Minute`).FindStringSubmatch(string(dispatchSrc))
+			srcPath, ok := workerModeBudgetSources[mode]
+			if !ok {
+				srcPath = defaultBudgetSource
+			}
+			src, err := os.ReadFile(srcPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			m := regexp.MustCompile(`(?m)^\s*(?:const )?` + name + `\s*=\s*(\d+) \* time\.Minute`).FindStringSubmatch(string(src))
 			if m == nil {
-				t.Fatalf("budget constant %s not found in dispatch.go", name)
+				t.Fatalf("budget constant %s not found in %s", name, srcPath)
 			}
 			mins, _ := strconv.Atoi(m[1])
 			budget := time.Duration(mins) * time.Minute
@@ -53,5 +69,26 @@ func TestWorkerBudgetsStayUnderReplicaTimeouts(t *testing.T) {
 				t.Errorf("%s budget %v must be below replica timeout %v", mode, budget, timeout)
 			}
 		})
+	}
+}
+
+func TestWorkerJobNamesFitContainerAppsLimit(t *testing.T) {
+	t.Parallel()
+	envSrc, err := os.ReadFile("environment.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	nameRe := regexp.MustCompile(`createWorkerJob\(ctx, ec, "([^"]+)"`)
+	matches := nameRe.FindAllStringSubmatch(string(envSrc), -1)
+	if len(matches) == 0 {
+		t.Fatal("no createWorkerJob calls found")
+	}
+	for _, m := range matches {
+		for _, env := range []string{"dev", "prod"} {
+			name := "job-tc-" + m[1] + "-" + env
+			if len(name) > 32 {
+				t.Errorf("job name %q is %d characters, limit is 32", name, len(name))
+			}
+		}
 	}
 }

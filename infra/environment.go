@@ -545,6 +545,16 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 		return err
 	}
 
+	if err = createWorkerJob(ctx, ec, "thin-load", manualTrigger, 7200, "application-locations-load"); err != nil {
+		return err
+	}
+	if err = createWorkerJob(ctx, ec, "thin-reconcile-all", manualTrigger, 7200, "application-locations-reconcile-all"); err != nil {
+		return err
+	}
+	if err = createWorkerJob(ctx, ec, "thin-reconcile", "30 10 * * *", 3600, "application-locations-reconcile"); err != nil {
+		return err
+	}
+
 	// Static Web App (Landing Page)
 	staticWebApp, err := web.NewStaticSite(ctx, StaticWebAppName(env), &web.StaticSiteArgs{
 		Name:              pulumi.String(StaticWebAppName(env)),
@@ -592,7 +602,11 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 	return nil
 }
 
-// createWorkerJob creates a Schedule-triggered Container Apps Job for a background worker.
+// manualTrigger is the cronExpression value that makes createWorkerJob create a Manual-trigger job.
+const manualTrigger = ""
+
+// createWorkerJob creates a Container Apps Job for a background worker. It is Schedule-triggered
+// unless cronExpression is manualTrigger.
 func createWorkerJob(ctx *pulumi.Context, ec envContext, nameSuffix, cronExpression string, replicaTimeout int, workerMode string) error {
 	// Base env shared by every worker job.
 	envVars := app.EnvironmentVarArray{
@@ -636,11 +650,19 @@ func createWorkerJob(ctx *pulumi.Context, ec envContext, nameSuffix, cronExpress
 		Secrets: secrets,
 	}
 
-	configuration.TriggerType = pulumi.String(string(app.TriggerTypeSchedule))
-	configuration.ScheduleTriggerConfig = &app.JobConfigurationScheduleTriggerConfigArgs{
-		CronExpression:         pulumi.String(cronExpression),
-		Parallelism:            pulumi.Int(1),
-		ReplicaCompletionCount: pulumi.Int(1),
+	if cronExpression == manualTrigger {
+		configuration.TriggerType = pulumi.String(string(app.TriggerTypeManual))
+		configuration.ManualTriggerConfig = &app.JobConfigurationManualTriggerConfigArgs{
+			Parallelism:            pulumi.Int(1),
+			ReplicaCompletionCount: pulumi.Int(1),
+		}
+	} else {
+		configuration.TriggerType = pulumi.String(string(app.TriggerTypeSchedule))
+		configuration.ScheduleTriggerConfig = &app.JobConfigurationScheduleTriggerConfigArgs{
+			CronExpression:         pulumi.String(cronExpression),
+			Parallelism:            pulumi.Int(1),
+			ReplicaCompletionCount: pulumi.Int(1),
+		}
 	}
 
 	jobIdentities := pulumi.StringArray{
