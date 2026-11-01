@@ -5,7 +5,10 @@ import type { NotificationStateRepository } from '../../domain/ports/notificatio
 import { isApplicationsSort, useApplications } from './useApplications';
 import { ApplicationCard } from '../../components/ApplicationCard/ApplicationCard';
 import { EmptyState } from '../../components/EmptyState/EmptyState';
+import { LargeZoneNotice, LargeZoneLoadingMessage } from '../../components/LargeZoneNotice/LargeZoneNotice';
+import { isLargeZone } from '../../domain/largeZone';
 import { useFetchData } from '../../hooks/useFetchData';
+import { useSlowLoadNotice } from '../../hooks/useSlowLoadNotice';
 import styles from './ApplicationsPage.module.css';
 
 interface ZonesPort {
@@ -79,6 +82,8 @@ export function ApplicationsPage({
     notificationStateRepository,
   });
 
+  const isLargeSelectedZone = selectedZone !== null && isLargeZone(selectedZone);
+  const showLoadingMessage = useSlowLoadNotice(isLoadingApps, isLargeSelectedZone);
   const hasZones = (zones ?? []).length > 0;
   const hasUnread = unreadCount > 0;
 
@@ -191,8 +196,13 @@ export function ApplicationsPage({
             )}
           </div>
 
+          <LargeZoneNotice isLarge={isLargeSelectedZone} />
+
           {isLoadingApps && (
-            <div className={styles.loading} aria-live="polite">Loading applications...</div>
+            <>
+              <div className={styles.loading} aria-live="polite">Loading applications...</div>
+              <LargeZoneLoadingMessage isVisible={showLoadingMessage} />
+            </>
           )}
 
           {appsError !== null && (
