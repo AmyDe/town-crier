@@ -96,6 +96,19 @@ func (s *PostgresStore) FindInBoundaryPage(ctx context.Context, latitude, longit
 	wrap := func(err error) error {
 		return fmt.Errorf("find applications in boundary near (%v, %v): %w", latitude, longitude, err)
 	}
+	if s.thinList(ctx) {
+		thinQuery := thinBoundaryFirstQuery
+		if cursor != "" {
+			thinQuery = thinBoundaryKeysetQuery
+		}
+		return s.pageThin(ctx, s.withKNNWalk, thinQuery, args, SortDistance, limit, func(r thinRow) (string, error) {
+			enc, err := encodeNearbyCursor(r.dist, r.key.name)
+			if err != nil {
+				return "", fmt.Errorf("encode boundary cursor: %w", err)
+			}
+			return enc, nil
+		}, wrap)
+	}
 	var (
 		apps []PlanningApplication
 		next string

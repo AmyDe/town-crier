@@ -189,7 +189,9 @@ func (s *PostgresStore) FindInBoundaryZonePage(ctx context.Context, q InBoundary
 		return nil, "", fmt.Errorf("encode boundary geojson: %w", err)
 	}
 
-	// Filtered requests take the dynamic builder; unfiltered ones use the per-sort constant queries.
+	if s.thinList(ctx) {
+		return s.findBoundaryZoneThin(ctx, q, boundaryJSON, c)
+	}
 	if q.Status != "" || q.Unread {
 		return s.findFilteredBoundaryZonePage(ctx, q, boundaryJSON, c)
 	}
@@ -393,20 +395,18 @@ func (s *PostgresStore) findFilteredBoundaryZonePage(ctx context.Context, q InBo
 	}
 }
 
-// buildFilteredBoundaryZoneQuery mirrors buildFilteredZoneQuery: the shape --
-// projection, optional unread join, optional status predicate, keyset
-// predicate, ORDER BY, LIMIT -- is otherwise identical, built via the exact
-// same shared orderByExpr/keysetPredicate helpers. Two things differ: the
-// spatial predicate (ST_Covers against the polygon replacing ST_DWithin
-// against the circle), and, following from that, the centroid point is only
-// added as a query argument for SortDistance -- the one sort that still
-// orders by it. orderByExpr/keysetPredicate never reference point for any
-// other sort, so adding it unconditionally (as the circle version does, where
-// the centroid is also the ST_DWithin containment test and so is always
-// used) would leave it an unreferenced placeholder; Postgres cannot infer an
-// unreferenced parameter's type ("could not determine data type of parameter
-// $1").
 func buildFilteredBoundaryZoneQuery(q InBoundaryQuery, boundaryJSON string, c *pageCursor) (string, []any, error) {
+	return buildBoundaryZoneQueryOn(q, boundaryJSON, c, "applications")
+}
+
+func buildThinFilteredBoundaryZoneQuery(q InBoundaryQuery, boundaryJSON string, c *pageCursor) (string, []any, error) {
+	return buildBoundaryZoneQueryOn(q, boundaryJSON, c, thinTable)
+}
+
+// buildBoundaryZoneQueryOn mirrors buildZoneQueryOn with ST_Covers against the
+// polygon replacing ST_DWithin. The centroid is bound only for SortDistance:
+// Postgres cannot type a placeholder that no sort references.
+func buildBoundaryZoneQueryOn(q InBoundaryQuery, boundaryJSON string, c *pageCursor, table string) (string, []any, error) {
 	b := &argBuilder{}
 	var point string
 	if q.Sort == SortDistance {
@@ -415,33 +415,13 @@ func buildFilteredBoundaryZoneQuery(q InBoundaryQuery, boundaryJSON string, c *p
 		point = "ST_SetSRID(ST_MakePoint(" + lonP + ", " + latP + "), 4326)::geography"
 	}
 
-	var projection string
-	switch q.Sort {
-	case SortDistance:
-		projection = appColumns + ", location <-> " + point + " AS distance"
-	case SortRecentActivity:
-		projection = dateColumns + ", " + activityExpr + " AS activity_ts"
-	default:
-		projection = dateColumns
-	}
-
 	var sb strings.Builder
 	sb.WriteString("SELECT ")
-	sb.WriteString(projection)
-	sb.WriteString(" FROM applications")
+	sb.WriteString(filteredProjection(q.Sort, point, table))
+	sb.WriteString(" FROM " + table)
 
 	if q.Unread || q.Sort == SortRecentActivity {
-		joinType := "LEFT JOIN"
-		if q.Unread {
-			joinType = "JOIN" // INNER: drop applications with no unread for the caller.
-		}
-		userP := b.add(q.UserID)
-		subquery := "SELECT n.application_uid, n.authority_id, MAX(n.created_at) AS created_at" +
-			" FROM notifications n" +
-			" WHERE n.user_id = " + userP + " AND n.read_at IS NULL" +
-			" GROUP BY n.application_uid, n.authority_id"
-		sb.WriteString(" " + joinType + " (" + subquery + ") u" +
-			" ON applications.uid = u.application_uid AND applications.area_id = u.authority_id")
+		sb.WriteString(unreadJoin(q.Unread, b.add(q.UserID), table))
 	}
 
 	polygonP := b.add(boundaryJSON)
