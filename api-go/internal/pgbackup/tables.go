@@ -45,5 +45,6 @@ var Excluded = []string{
 	"seo_state",
 	"seo_town_applications",
 	"seo_towns",
+	"share_page_click_totals",
 	"spatial_ref_sys",
 }

@@ -127,7 +127,7 @@ func serve(t *testing.T, store appStore, resolver slugResolver, path string) *ht
 func serveWithLogger(t *testing.T, store appStore, resolver slugResolver, path string, logger *slog.Logger) *httptest.ResponseRecorder {
 	t.Helper()
 	mux := http.NewServeMux()
-	Routes(mux, store, resolver, logger)
+	Routes(mux, store, resolver, nil, logger)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil)
 	mux.ServeHTTP(rec, req)

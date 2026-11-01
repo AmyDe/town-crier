@@ -17,6 +17,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/offercodes"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 	"github.com/AmyDe/town-crier/api-go/internal/savedapplications"
+	"github.com/AmyDe/town-crier/api-go/internal/sharepage"
 	"github.com/AmyDe/town-crier/api-go/internal/subscriptions"
 )
 
@@ -321,7 +322,7 @@ func testDesignationClientWith(t *testing.T, baseURL string, httpClient *http.Cl
 
 func newTestHandler(t *testing.T) http.Handler {
 	t.Helper()
-	return newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, nil, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "", nil, nil, "", nil, nil, nil, 60, 60, pollingAdminDeps{}, nil, nil, slog.New(slog.DiscardHandler))
+	return newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, nil, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "", nil, nil, "", nil, nil, nil, 60, 60, pollingAdminDeps{}, nil, nil, nil, slog.New(slog.DiscardHandler))
 }
 
 // TestRouter_AnonymousRoutesServedWithoutToken confirms the iteration-0/1
@@ -408,7 +409,7 @@ func TestRouter_ShareCardBusy_Returns429ThroughFullChain(t *testing.T) {
 
 	logs := &slotHoldingLogHandler{held: make(chan struct{}), release: make(chan struct{})}
 	app := applications.PlanningApplication{Name: "23/03456/FUL", UID: "croydon-23-03456-FUL", AreaName: "Croydon", AreaID: 301}
-	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, foundAppStore{app: app}, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "", nil, nil, "", nil, nil, nil, 60, 60, pollingAdminDeps{}, nil, nil, slog.New(logs))
+	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, foundAppStore{app: app}, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "", nil, nil, "", nil, nil, nil, 60, 60, pollingAdminDeps{}, nil, nil, nil, slog.New(logs))
 	const path = "/og/croydon/23/03456/FUL.png"
 
 	first := make(chan *httptest.ResponseRecorder, 1)
@@ -477,7 +478,7 @@ func TestRouter_SharePageAndBySlugAnonymous_ByIdStaysAuthed(t *testing.T) {
 	appStore := foundAppStore{app: app}
 	// denyAllValidator rejects every token, so the by-id route can only pass if it
 	// were (wrongly) anonymous.
-	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, appStore, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "", nil, nil, "", nil, nil, nil, 60, 60, pollingAdminDeps{}, nil, nil, logger)
+	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, appStore, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "", nil, nil, "", nil, nil, nil, 60, 60, pollingAdminDeps{}, nil, nil, nil, logger)
 
 	// (1) Public HTML share page: anonymous, 200 text/html.
 	page := serveReq(t, h, http.MethodGet, "/a/croydon/23/03456/FUL", "", "")
@@ -546,7 +547,7 @@ func TestRouter_ApplicationSearchAnonymous(t *testing.T) {
 		Address:  "10 Downing Street, London",
 	}
 	appStore := foundAppStore{app: app}
-	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, appStore, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "", nil, nil, "", nil, nil, nil, 60, 60, pollingAdminDeps{}, nil, nil, logger)
+	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, appStore, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "", nil, nil, "", nil, nil, nil, 60, 60, pollingAdminDeps{}, nil, nil, nil, logger)
 
 	rec := serveReq(t, h, http.MethodGet, "/v1/applications/search?q=downing&lat=51.5074&lon=-0.1278", "", "")
 	if rec.Code != http.StatusOK {
@@ -585,7 +586,7 @@ func TestRouter_NearPointAnonymous(t *testing.T) {
 		Address:  "10 Downing Street, London",
 	}
 	appStore := foundAppStore{app: app}
-	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, appStore, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "", nil, nil, "", nil, nil, nil, 60, 60, pollingAdminDeps{}, nil, nil, logger)
+	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, appStore, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "", nil, nil, "", nil, nil, nil, 60, 60, pollingAdminDeps{}, nil, nil, nil, logger)
 
 	rec := serveReq(t, h, http.MethodGet, "/v1/applications/near-point?lat=51.5&lng=-0.1", "", "")
 	if rec.Code != http.StatusOK {
@@ -628,7 +629,7 @@ func TestRouter_ClustersAnonymous(t *testing.T) {
 		Address:  "10 Downing Street, London",
 	}
 	appStore := foundAppStore{app: app}
-	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, appStore, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "", nil, nil, "", nil, nil, nil, 60, 60, pollingAdminDeps{}, nil, nil, logger)
+	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, appStore, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "", nil, nil, "", nil, nil, nil, 60, 60, pollingAdminDeps{}, nil, nil, nil, logger)
 
 	url := "/v1/applications/clusters?lat=51.5&lng=-0.1&bbox=-0.2,51.4,-0.05,51.6&zoom=14"
 	rec := serveReq(t, h, http.MethodGet, url, "", "")
@@ -730,7 +731,7 @@ func TestRouter_AuthenticatedPipeline(t *testing.T) {
 	appStore := fakeAppStore{}
 	savedStore := fakeSavedStore{}
 	validator := staticValidator{claims: auth.Claims{Subject: "auth0|wiretest", Email: "wire@example.com", EmailVerified: true}}
-	h := newRouter(validator, []string{"https://towncrierapp.uk"}, store, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, watchZoneStore, appStore, savedStore, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "", nil, nil, "", nil, nil, nil, 60, 60, pollingAdminDeps{}, nil, nil, logger)
+	h := newRouter(validator, []string{"https://towncrierapp.uk"}, store, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, watchZoneStore, appStore, savedStore, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "", nil, nil, "", nil, nil, nil, 60, 60, pollingAdminDeps{}, nil, nil, nil, logger)
 
 	// Create the profile, then read it back through the same chain.
 	rec := serveReq(t, h, http.MethodPost, "/v1/me", "", "Bearer tok")
@@ -829,7 +830,7 @@ func TestRouter_GeocodeAndDesignationsDispatch(t *testing.T) {
 	validator := staticValidator{claims: auth.Claims{Subject: "auth0|wiretest", Email: "wire@example.com", EmailVerified: true}}
 	geocodeClient := testGeocodeClientWith(t, upstream.URL, upstream.Client())
 	designationClient := testDesignationClientWith(t, upstream.URL, upstream.Client())
-	h := newRouter(validator, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, nil, nil, geocodeClient, designationClient, nil, nil, "", "", nil, nil, "", nil, nil, nil, 60, 60, pollingAdminDeps{}, nil, nil, logger)
+	h := newRouter(validator, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, nil, nil, geocodeClient, designationClient, nil, nil, "", "", nil, nil, "", nil, nil, nil, 60, 60, pollingAdminDeps{}, nil, nil, nil, logger)
 
 	rec := serveReq(t, h, http.MethodGet, "/v1/geocode/SW1A%201AA", "", "Bearer tok")
 	if rec.Code != http.StatusOK {
@@ -868,7 +869,7 @@ func TestRouter_SubscriptionsWired(t *testing.T) {
 		t.Fatalf("NewJWSVerifier: %v", err)
 	}
 
-	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, store, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, nil, nil, testGeocodeClient(t), testDesignationClient(t), nil, adminStore, "", "", verifier, notifStore, "uk.towncrierapp.mobile", []string{"Production"}, nil, nil, 60, 60, pollingAdminDeps{}, nil, nil, logger)
+	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, store, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, nil, nil, testGeocodeClient(t), testDesignationClient(t), nil, adminStore, "", "", verifier, notifStore, "uk.towncrierapp.mobile", []string{"Production"}, nil, nil, 60, 60, pollingAdminDeps{}, nil, nil, nil, logger)
 
 	// Webhook is anonymous: a malformed body reaches the handler -> 400 with the
 	// malformed_request envelope, not the WWW-Authenticate 401 fallback.
@@ -898,7 +899,7 @@ func TestRouter_AdminGate(t *testing.T) {
 	logger := slog.New(slog.DiscardHandler)
 	offerStore := fakeOfferStore{}
 	adminStore := fakeAdminStore{}
-	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, nil, nil, testGeocodeClient(t), testDesignationClient(t), offerStore, adminStore, "s3cret", "", nil, nil, "", nil, nil, nil, 60, 60, pollingAdminDeps{}, nil, nil, logger)
+	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, nil, nil, testGeocodeClient(t), testDesignationClient(t), offerStore, adminStore, "s3cret", "", nil, nil, "", nil, nil, nil, 60, 60, pollingAdminDeps{}, nil, nil, nil, logger)
 
 	// No key: the admin gate rejects with a bodyless 401 and NO WWW-Authenticate
 	// (distinguishing it from the Auth0 fallback-deny).
@@ -929,7 +930,7 @@ func TestRouter_AdminOfferCodesListGate(t *testing.T) {
 	logger := slog.New(slog.DiscardHandler)
 	offerStore := fakeOfferStore{}
 	adminStore := fakeAdminStore{}
-	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, nil, nil, testGeocodeClient(t), testDesignationClient(t), offerStore, adminStore, "s3cret", "", nil, nil, "", nil, nil, nil, 60, 60, pollingAdminDeps{}, nil, nil, logger)
+	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, nil, nil, testGeocodeClient(t), testDesignationClient(t), offerStore, adminStore, "s3cret", "", nil, nil, "", nil, nil, nil, 60, 60, pollingAdminDeps{}, nil, nil, nil, logger)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	t.Cleanup(cancel)
@@ -958,7 +959,7 @@ func TestRouter_AdminStatsGate(t *testing.T) {
 	adminStore := fakeAdminStore{}
 	// notif (pos 9), saved (pos 12), device (pos 7) all nil: the reach stores are
 	// unwired, exercising the nil-safe reach path through the full router chain.
-	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, nil, nil, testGeocodeClient(t), testDesignationClient(t), offerStore, adminStore, "s3cret", "", nil, nil, "", nil, nil, nil, 60, 60, pollingAdminDeps{}, nil, nil, logger)
+	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, nil, nil, testGeocodeClient(t), testDesignationClient(t), offerStore, adminStore, "s3cret", "", nil, nil, "", nil, nil, nil, 60, 60, pollingAdminDeps{}, nil, nil, nil, logger)
 
 	statsReq := func(key string) *httptest.ResponseRecorder {
 		t.Helper()
@@ -1027,4 +1028,42 @@ func serveReq(t *testing.T, h http.Handler, method, path, origin, authz string) 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	return rec
+}
+
+type recordingClickWriter struct {
+	mu   sync.Mutex
+	rows []sharepage.ClickTotal
+}
+
+func (w *recordingClickWriter) WriteClicks(_ context.Context, clicks []sharepage.ClickTotal) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.rows = append(w.rows, clicks...)
+	return nil
+}
+
+func TestRouter_SharePage_CountsHumanVisitThroughFullChain(t *testing.T) {
+	t.Parallel()
+
+	app := applications.PlanningApplication{Name: "23/03456/FUL", UID: "croydon-23-03456-FUL", AreaName: "Croydon", AreaID: 301}
+	writer := &recordingClickWriter{}
+	clicks := sharepage.NewClickCounter(writer, time.Now, slog.New(slog.DiscardHandler))
+	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, foundAppStore{app: app}, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "", nil, nil, "", nil, nil, nil, 60, 60, pollingAdminDeps{}, clicks, nil, nil, slog.New(slog.DiscardHandler))
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/a/croydon/23/03456/FUL", nil)
+	req.Header.Set("Sec-Fetch-Mode", "navigate")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (iPhone) Safari/604.1")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	clicks.Run(ctx)
+
+	if len(writer.rows) != 1 || writer.rows[0].Ref != "23/03456/FUL" || writer.rows[0].Source != sharepage.SourceNone || writer.rows[0].Count != 1 {
+		t.Fatalf("rows = %+v, want one human visit", writer.rows)
+	}
 }

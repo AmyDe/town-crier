@@ -32,9 +32,16 @@ type slugResolver interface {
 	SlugToAreaID(slug string) (int, bool)
 }
 
+// clickRecorder counts a likely-human visit without doing I/O.
+// *ClickCounter satisfies it structurally.
+type clickRecorder interface {
+	Add(slug, ref string, source SourceGroup)
+}
+
 type handler struct {
 	store    appStore
 	resolver slugResolver
+	clicks   clickRecorder
 	logger   *slog.Logger
 }
 
@@ -42,8 +49,9 @@ type handler struct {
 // the remainder of the path so a PlanIt reference containing slashes is matched
 // whole. Keep the pattern in lockstep with the anonymousPatterns entry in
 // cmd/api/wiring.go — the auth middleware keys on the exact pattern string.
-func Routes(mux *http.ServeMux, store appStore, resolver slugResolver, logger *slog.Logger) {
-	h := &handler{store: store, resolver: resolver, logger: logger}
+// clicks may be nil, which turns visit counting off.
+func Routes(mux *http.ServeMux, store appStore, resolver slugResolver, clicks clickRecorder, logger *slog.Logger) {
+	h := &handler{store: store, resolver: resolver, clicks: clicks, logger: logger}
 	mux.HandleFunc("GET /a/{authoritySlug}/{ref...}", h.serve)
 }
 
@@ -70,7 +78,9 @@ func (h *handler) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.render(w, r, http.StatusOK, "public, max-age=3600", "page", buildPageView(app, slug, ref))
+	if h.render(w, r, http.StatusOK, "public, max-age=3600", "page", buildPageView(app, slug, ref)) {
+		h.countVisit(r, slug, ref)
+	}
 }
 
 // renderNotFound emits the branded 404. It must NOT carry the 200's
@@ -82,13 +92,13 @@ func (h *handler) renderNotFound(w http.ResponseWriter, r *http.Request) {
 
 // render executes the named template into a buffer first, so a mid-render error
 // becomes a clean bodyless 500 rather than a half-written page, then writes the
-// status, content type and cache header.
-func (h *handler) render(w http.ResponseWriter, r *http.Request, status int, cacheControl, name string, data any) {
+// status, content type and cache header. It reports whether the status was sent.
+func (h *handler) render(w http.ResponseWriter, r *http.Request, status int, cacheControl, name string, data any) bool {
 	var buf bytes.Buffer
 	if err := pageTemplates.ExecuteTemplate(&buf, name, data); err != nil {
 		h.logger.ErrorContext(r.Context(), "share page render failed", "template", name, "error", err)
 		w.WriteHeader(http.StatusInternalServerError)
-		return
+		return false
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", cacheControl)
@@ -96,4 +106,5 @@ func (h *handler) render(w http.ResponseWriter, r *http.Request, status int, cac
 	if _, err := w.Write(buf.Bytes()); err != nil {
 		h.logger.ErrorContext(r.Context(), "share page write failed", "template", name, "error", err)
 	}
+	return true
 }
