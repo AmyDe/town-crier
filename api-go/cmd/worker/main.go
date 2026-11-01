@@ -294,7 +294,6 @@ func buildSweep(cfg platform.Config, st *stores, logger *slog.Logger) sweepRunne
 	webhooks, err := subscriptionevents.ParseWebhooks(cfg.SubscriptionWebhooks.Expose())
 	if err != nil {
 		logger.Error("subscription webhooks misconfigured; running with none", "error", err)
-		webhooks = nil
 	}
 	notifier := subscriptionevents.NewNotifier(adminStore, webhooks, subscriptionevents.NewHTTPClient(), logger, time.Now)
 	handler := subscriptionsweep.New(adminStore, adminStore, buildAuth0Syncer(cfg, logger), notifier, logger, time.Now)

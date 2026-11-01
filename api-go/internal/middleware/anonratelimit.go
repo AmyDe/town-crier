@@ -25,55 +25,29 @@ var healthCheckPaths = map[string]struct{}{
 }
 
 // AnonRateLimit returns middleware enforcing a per-IP token-bucket rate limit
-// keyed by resolved client IP (internal/clientip), applied ONLY to requests
-// with no authenticated subject (auth.Subject(ctx) == ""). Authenticated
-// traffic passes straight through untouched: it is metered by the sibling
-// per-subject RateLimit instead, and this middleware never inspects or
-// affects it. A point+radius public endpoint is a
-// whole-table scraping target and drives unmetered load onto PlanIt (our
-// free, single-operator upstream) if left uncapped, hence this second
-// limiter.
+// keyed by resolved client IP (internal/clientip), applied only to requests
+// with no authenticated subject. Authenticated traffic passes straight through
+// untouched (the per-subject RateLimit meters it).
 //
-// burst is the bucket's capacity: the number of requests an IP can make in
-// an instantaneous burst before it starts drawing on the steady refill rate
-// carried by store (see NewAnonRateLimitStore). This replaced a flat
-// fixed-window counter: a real anonymous session panning the map
-// fans a single pan/zoom settle event out across several endpoints
-// (GET /v1/applications/clusters, GET /v1/me/watch-zones/{id}/applications/
-// clusters, GET /v1/applications/near-point, ...) even though both clients
-// already debounce pan/zoom client-side at ~250ms — so a flat per-window
-// budget throttled ordinary browsing, not just scraping. A token bucket lets
-// that fan-out through as a burst while the refill rate still caps
-// sustained/scraping-shaped load at roughly the same long-run rate as before
-// (see the config doc comment for the chosen numbers).
+// burst is the bucket's capacity: the number of requests an IP can make in an
+// instantaneous burst before drawing on the steady refill rate carried by
+// store. A token bucket, not a flat window, because one anonymous map pan/zoom
+// fans out across several endpoints at once even with client-side debounce.
 //
-// Requests whose client IP cannot be resolved (clientip.FromRequest returns
-// the invalid zero Addr — which per the clientip package doc happens only
-// when RemoteAddr itself cannot be parsed) collapse onto one shared
-// conservative bucket: the zero Addr is identical for every such request, so
-// no caller that cannot be individually attributed can bypass metering
-// entirely by virtue of being unattributable.
+// Requests whose client IP cannot be resolved share one bucket (the zero
+// Addr), so being unattributable never bypasses metering.
 //
 // On an allowed request it sets X-RateLimit-Limit and X-RateLimit-Remaining;
 // on a throttled one it returns 429 with those headers (Remaining 0) plus
-// Retry-After — the same response contract as the per-subject RateLimit.
+// Retry-After, the same response contract as RateLimit.
 //
-// exempt is an additional per-request bypass alongside the health-check paths
-// above, evaluated only for otherwise-anonymous requests: when it returns
-// true the request passes straight through untouched, exactly like
-// authenticated traffic. nil means no additional exemption. The motivating
-// case is the SEO endpoints served to the
-// Cloudflare Worker (internal/seopage): they authenticate via the X-Build-Key
-// header checked inside the handler, not via Auth0, so auth.Subject is always
-// empty for them and the Worker's traffic would be metered as anonymous.
-// Callers build the predicate from applications.BuildKeyMatches
-// (cmd/api/wiring.go) rather than this package importing internal/applications
-// directly, keeping middleware dependency-free.
+// exempt is an additional per-request bypass alongside the health-check paths,
+// evaluated only for otherwise-anonymous requests; nil means none. It exists
+// for the build-key-authenticated SEO endpoints, whose auth.Subject is always
+// empty.
 //
-// The client IP itself is never logged, stored, or exported anywhere beyond
-// this in-memory accounting: only the numeric limit/retry values are recorded
-// on a throttle, honouring the clientip package's "in-memory, non-persisted
-// purpose only" constraint.
+// The client IP is never logged, stored, or exported beyond this in-memory
+// accounting.
 func AnonRateLimit(store *anonRateLimitStore, burst int, exempt func(*http.Request) bool, logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

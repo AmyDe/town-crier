@@ -20,7 +20,7 @@ type activityRecorder interface {
 // RecordActivity returns middleware that, after the inner handler completes,
 // records the authenticated user's activity for the dormancy-cleanup worker (UK
 // GDPR Art. 5(1)(e)). It runs after the response, skips anonymous requests, and
-// swallows recorder failures so a transient Cosmos error never turns a
+// swallows recorder failures so a transient store error never turns a
 // successful request into a 500.
 func RecordActivity(recorder activityRecorder, now func() time.Time, logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {

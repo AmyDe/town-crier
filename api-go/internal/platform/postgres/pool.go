@@ -1,14 +1,8 @@
-// Package postgres provides the connection pool and migration plumbing for the
-// Cosmos -> Postgres + PostGIS migration (docs/memo/0010, epic #645).
-//
-// DSNFromEnv + NewPool + Migrate stand up the local, seedable database the
-// integration-tagged tests run against (Phase 0). NewPoolFromEnv adds
-// auth-mode-aware connection for dev/prod: POSTGRES_AUTH=azure-managed-identity
+// Package postgres provides the pgx connection pool and migration runner.
+// NewPoolFromEnv is auth-mode-aware: POSTGRES_AUTH=azure-managed-identity
 // selects passwordless Entra-token auth (the token is injected as the
-// connection password via pgx BeforeConnect), while any other value keeps the
-// password/trust path untouched. No store reads are wired onto Postgres yet —
-// Cosmos remains the live datastore; this is the MI-auth connection layer
-// the later wiring phases build on.
+// connection password via pgx BeforeConnect); any other value uses the
+// password/trust path.
 package postgres
 
 import (
@@ -247,9 +241,8 @@ func (s aadTokenSource) Token(ctx context.Context) (string, error) {
 }
 
 // newManagedIdentityCredential builds a user-assigned managed-identity
-// credential pinned to clientID when set, mirroring the Cosmos and Service Bus
-// wiring (cosmos.go:213, servicebus/client.go:70). An empty clientID falls back
-// to the ambient managed identity.
+// credential pinned to clientID when set. An empty clientID falls back to the
+// ambient managed identity.
 func newManagedIdentityCredential(clientID string) (azcore.TokenCredential, error) {
 	credOpts := &azidentity.ManagedIdentityCredentialOptions{}
 	if clientID != "" {

@@ -2,9 +2,9 @@
 // SDK for the Town Crier share-card cache (ADR 0037). It exposes
 // only the Get/Put a keyed-PNG object cache needs and never leaks SDK types past
 // its methods. Authentication is the pinned user-assigned managed identity
-// (AZURE_CLIENT_ID); there is no shared-key / connection-string path, mirroring
-// the Service Bus and Postgres identity model. Connections open lazily on first
-// call, so wiring can construct it without paying a cold-start cost.
+// (AZURE_CLIENT_ID); there is no shared-key / connection-string path.
+// Connections open lazily on first call, so wiring can construct it without
+// paying a cold-start cost.
 package blobstore
 
 import (
