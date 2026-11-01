@@ -5,14 +5,8 @@ import SwiftUI
 /// zone with a **custom shape** (polygon) watch zone, to visually explain the
 /// paid "draw a custom shape instead of a circle" entitlement.
 ///
-/// Drawn entirely in code with SwiftUI `Path`, never a raster asset — ADR
-/// 0040 single-sources design tokens, and a bitmap can't follow the
-/// light/dark/OLED theme. The muted, dashed circle reads as the existing,
-/// unremarkable default; the solid `tcAmber` polygon reads as the premium
-/// capability, matching the app's convention that `tcAmber` marks brand and
-/// interactive emphasis. Purely presentational: no ViewModel, no external
-/// state — every color and spacing value comes from a design token, so the
-/// graphic needs no wiring to render correctly in any theme.
+/// Drawn in code with SwiftUI `Path`, never a raster asset, so it follows the
+/// light/dark/OLED theme.
 public struct CustomShapeUpsellGraphic: View {
   private static let tileSize: CGFloat = 96
 

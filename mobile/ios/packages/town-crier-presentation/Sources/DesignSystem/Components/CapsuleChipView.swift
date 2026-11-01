@@ -2,23 +2,8 @@ import SwiftUI
 
 /// A compact, tappable capsule chip used in horizontal chip rows.
 ///
-/// Shared, neutral component for any single-line capsule selection chip — both
-/// the status-filter rows (e.g. "Pending", "Refused") and the watch-zone picker
-/// rows (e.g. a zone name) render with it, so the name describes the shape
-/// rather than any one call site's meaning.
-///
-/// Purely presentational: it renders a label in a capsule whose fill, text
-/// colour, and border reflect the `isSelected` flag, and forwards taps to
-/// `onTap`. The caller owns all selection logic — `CapsuleChipView` never
-/// inspects a view model — so each call site can compute selection from its own
-/// state (e.g. `viewModel.selectedStatusFilter == .undecided` or
-/// `zone.id == viewModel.selectedZone?.id`) and run its own tap action,
-/// synchronous or async (e.g. `Task { await viewModel.selectZone(zone) }`),
-/// without changing the chip's appearance.
-///
-/// Follows the design language: `tcCaptionEmphasis` typography, `tcAmber`
-/// for the selected fill, `tcSurface` for the unselected fill, and a
-/// `tcBorder` outline that hides when selected.
+/// Purely presentational: fill, text colour and border reflect `isSelected`,
+/// taps forward to `onTap`, and the caller owns all selection logic.
 ///
 /// Usage:
 /// ```swift

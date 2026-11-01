@@ -4,14 +4,9 @@ import Foundation
 /// (System/Light/Dark/OLED Dark), persisted to UserDefaults under the
 /// `"appearanceMode"` key.
 ///
-/// Owned once at the composition root (`TownCrierApp.swift`) and injected
-/// into both `SettingsViewModel` (Settings picker) and the anonymous
-/// welcome screen's appearance control (`WelcomeViewModel`), so a change
-/// from either surface live-updates the root `.preferredColorScheme`
-/// immediately. A second object merely writing the same UserDefaults key
-/// would persist correctly but would NOT live-update the already-published
-/// scheme until relaunch — this type exists so there is exactly one
-/// `@Published` instance for every consumer to share.
+/// Share one instance (owned at the composition root): a second object writing
+/// the same UserDefaults key would not live-update the published scheme until
+/// relaunch.
 @MainActor
 public final class AppearanceStore: ObservableObject {
   public static let appearanceModeKey = "appearanceMode"
