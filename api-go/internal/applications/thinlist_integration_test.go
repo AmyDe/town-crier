@@ -389,6 +389,28 @@ func TestThinList_FindPlansNeverReadApplicationsAndHydrateUsesPrimaryKey(t *test
 	}
 }
 
+func TestThinList_EveryFindRunsInExecMode(t *testing.T) {
+	pool := pgtest.New(t)
+	seedThinFixture(t, pool)
+	on, rec := recordedThinStore(t, pool)
+
+	var finds int
+	for _, c := range thinCases() {
+		for _, s := range firstTwoPages(t, c, on, rec) {
+			if !isFind(s) {
+				continue
+			}
+			finds++
+			if len(s.args) == 0 || s.args[0] != pgx.QueryExecModeExec {
+				t.Errorf("%s: find does not use QueryExecModeExec\n%s", c.name, s.sql)
+			}
+		}
+	}
+	if finds == 0 {
+		t.Fatal("no find statements recorded")
+	}
+}
+
 func TestThinList_ActivityAndUnreadFindsRunWithNestedLoopsOffAndPlanWithoutThem(t *testing.T) {
 	pool := pgtest.New(t)
 	seedThinFixture(t, pool)
