@@ -1,4 +1,4 @@
-import type { WatchZoneBoundary, WatchZoneSummary } from './types';
+import type { Coordinates, WatchZoneBoundary, WatchZoneSummary } from './types';
 
 const EARTH_RADIUS_M = 6_371_008.8;
 const LARGE_ZONE_RADIUS_M = 2000;
@@ -37,6 +37,12 @@ export function isLargeCircle(radiusMetres: number): boolean {
 
 export function isLargeBoundary(boundary: WatchZoneBoundary): boolean {
   return boundaryAreaM2(boundary) > LARGE_ZONE_AREA_M2;
+}
+
+/** For a ring still being drawn: needs three vertices, and does not need the closing vertex. */
+export function isLargeVertices(vertices: readonly Coordinates[]): boolean {
+  const ring = vertices.map((v) => [v.longitude, v.latitude] as const);
+  return isLargeBoundary({ type: 'Polygon', coordinates: [ring] });
 }
 
 /** Uses the boundary when the zone has one, else its radius. */

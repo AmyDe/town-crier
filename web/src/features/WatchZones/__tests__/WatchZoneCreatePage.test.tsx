@@ -26,6 +26,8 @@ interface PathLayerProps {
   positions: [number, number][];
 }
 
+const LARGE_ZONE_TITLE = 'Large zones are for notifications, not browsing';
+
 const { capturedMapEvents } = vi.hoisted(() => ({
   capturedMapEvents: { click: undefined as ((event: LatLngPayload) => void) | undefined },
 }));
@@ -193,7 +195,7 @@ describe('WatchZoneCreatePage', () => {
     expect(navigatedTo).toBeNull();
   });
 
-  it('shows the large-radius warning on the details step at the default 2km radius', async () => {
+  it('hides the large-zone warning at the default 2km radius', async () => {
     const user = userEvent.setup();
 
     renderWithRouter(
@@ -209,15 +211,10 @@ describe('WatchZoneCreatePage', () => {
 
     await screen.findByLabelText(/zone name/i);
 
-    // Default radius is 2km — warning is visible immediately on the details step.
-    expect(
-      screen.getByText(/hundreds of notifications a day/i),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/100[–-]500m/i)).toBeInTheDocument();
-    expect(screen.getByText(/under 2km/i)).toBeInTheDocument();
+    expect(screen.queryByText(LARGE_ZONE_TITLE)).not.toBeInTheDocument();
   });
 
-  it('hides the large-radius warning when 1km is selected', async () => {
+  it('shows the large-zone warning when a radius above 2km is selected and hides it again', async () => {
     const user = userEvent.setup();
 
     renderWithRouter(
@@ -230,13 +227,46 @@ describe('WatchZoneCreatePage', () => {
 
     await user.type(screen.getByRole('textbox', { name: /postcode/i }), 'CB1 2AD');
     await user.click(screen.getByRole('button', { name: /look up/i }));
-
     await screen.findByLabelText(/zone name/i);
-    await user.click(screen.getByLabelText('1 km'));
 
-    expect(
-      screen.queryByText(/hundreds of notifications a day/i),
-    ).not.toBeInTheDocument();
+    await user.click(screen.getByLabelText('5 km'));
+    expect(screen.getByText(LARGE_ZONE_TITLE)).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText('1 km'));
+    expect(screen.queryByText(LARGE_ZONE_TITLE)).not.toBeInTheDocument();
+  });
+
+  it('shows the large-zone warning live while a custom shape over the limit is drawn', async () => {
+    const user = userEvent.setup();
+
+    renderWithRouter(
+      <WatchZoneCreatePage
+        repository={repoSpy}
+        geocodingPort={geocodingSpy}
+        navigate={navigate}
+        tier="Personal"
+      />,
+    );
+
+    await user.type(screen.getByRole('textbox', { name: /postcode/i }), 'CB1 2AD');
+    await user.click(screen.getByRole('button', { name: /look up/i }));
+    await screen.findByLabelText(/zone name/i);
+
+    await user.click(screen.getByLabelText('5 km'));
+    await user.click(screen.getByRole('radio', { name: /^custom shape$/i }));
+    expect(screen.queryByText(LARGE_ZONE_TITLE)).not.toBeInTheDocument();
+
+    act(() => {
+      capturedMapEvents.click?.({ latlng: { lat: 51.95, lng: -1.05 } });
+    });
+    act(() => {
+      capturedMapEvents.click?.({ latlng: { lat: 51.95, lng: -0.95 } });
+    });
+    act(() => {
+      capturedMapEvents.click?.({ latlng: { lat: 52.05, lng: -0.95 } });
+    });
+
+    expect(screen.getByText(LARGE_ZONE_TITLE)).toBeInTheDocument();
   });
 
   it('has a cancel link back to the list', () => {

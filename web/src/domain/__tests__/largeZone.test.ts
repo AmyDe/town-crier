@@ -4,6 +4,7 @@ import {
   boundaryAreaM2,
   isLargeBoundary,
   isLargeCircle,
+  isLargeVertices,
   isLargeZone,
 } from '../largeZone';
 import type { WatchZoneBoundary } from '../types';
@@ -83,5 +84,16 @@ describe('largeZone', () => {
   it('isLargeZone uses the radius when there is no boundary', () => {
     expect(isLargeZone({ radiusMetres: 5000, boundary: null })).toBe(true);
     expect(isLargeZone({ radiusMetres: 1000, boundary: null })).toBe(false);
+  });
+
+  it('isLargeVertices judges an open ring from its vertices', () => {
+    const big = [
+      { latitude: 51.95, longitude: -1.05 },
+      { latitude: 51.95, longitude: -0.95 },
+      { latitude: 52.05, longitude: -0.95 },
+    ];
+    expect(isLargeVertices(big)).toBe(true);
+    expect(isLargeVertices(big.slice(0, 2))).toBe(false);
+    expect(isLargeVertices([])).toBe(false);
   });
 });

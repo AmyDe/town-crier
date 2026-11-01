@@ -5,7 +5,12 @@ import { MemoryRouter } from 'react-router';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { WatchZoneEditPage } from '../WatchZoneEditPage';
 import { SpyWatchZoneRepository } from './spies/spy-watch-zone-repository';
-import { aWatchZone, aWatchZoneBoundary, zonePreferences } from './fixtures/watch-zone.fixtures';
+import {
+  aLargeWatchZoneBoundary,
+  aWatchZone,
+  aWatchZoneBoundary,
+  zonePreferences,
+} from './fixtures/watch-zone.fixtures';
 import { appStoreUrl } from '../../../config/links';
 
 interface LatLngPayload {
@@ -281,31 +286,27 @@ describe('WatchZoneEditPage', () => {
     expect(saveButton).toBeInTheDocument();
   });
 
-  describe('large-radius warning', () => {
-    it('shows the warning copy when the zone radius is at or above 2km', () => {
+  describe('large-zone warning', () => {
+    const TITLE = 'Large zones are for notifications, not browsing';
+
+    it('hides the warning at exactly 2km', () => {
       spy.getPreferencesResult = zonePreferences();
 
       renderWithRouter(
         <WatchZoneEditPage repository={spy} zone={aWatchZone({ radiusMetres: 2000 })} />,
       );
 
-      expect(
-        screen.getByText(/hundreds of notifications a day/i),
-      ).toBeInTheDocument();
-      expect(screen.getByText(/100[–-]500m/i)).toBeInTheDocument();
-      expect(screen.getByText(/under 2km/i)).toBeInTheDocument();
+      expect(screen.queryByText(TITLE)).not.toBeInTheDocument();
     });
 
-    it('hides the warning when the zone radius is below 2km', () => {
+    it('shows the warning when the zone radius is above 2km', () => {
       spy.getPreferencesResult = zonePreferences();
 
       renderWithRouter(
-        <WatchZoneEditPage repository={spy} zone={aWatchZone({ radiusMetres: 1000 })} />,
+        <WatchZoneEditPage repository={spy} zone={aWatchZone({ radiusMetres: 5000 })} />,
       );
 
-      expect(
-        screen.queryByText(/hundreds of notifications a day/i),
-      ).not.toBeInTheDocument();
+      expect(screen.getByText(TITLE)).toBeInTheDocument();
     });
 
     it('appears when the user picks a large radius and disappears when they pick a small one', async () => {
@@ -316,21 +317,83 @@ describe('WatchZoneEditPage', () => {
         <WatchZoneEditPage repository={spy} zone={aWatchZone({ radiusMetres: 1000 })} />,
       );
 
-      expect(
-        screen.queryByText(/hundreds of notifications a day/i),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByText(TITLE)).not.toBeInTheDocument();
 
       await user.click(screen.getByRole('radio', { name: '5 km' }));
-
-      expect(
-        screen.getByText(/hundreds of notifications a day/i),
-      ).toBeInTheDocument();
+      expect(screen.getByText(TITLE)).toBeInTheDocument();
 
       await user.click(screen.getByRole('radio', { name: '1 km' }));
+      expect(screen.queryByText(TITLE)).not.toBeInTheDocument();
+    });
 
-      expect(
-        screen.queryByText(/hundreds of notifications a day/i),
-      ).not.toBeInTheDocument();
+    it('uses the saved boundary, not the radius, for a custom-shape zone', () => {
+      spy.getPreferencesResult = zonePreferences();
+
+      const { unmount } = renderWithRouter(
+        <WatchZoneEditPage
+          repository={spy}
+          zone={aWatchZone({ radiusMetres: 10000, boundary: aWatchZoneBoundary() })}
+          tier="Personal"
+        />,
+      );
+      expect(screen.queryByText(TITLE)).not.toBeInTheDocument();
+      unmount();
+
+      renderWithRouter(
+        <WatchZoneEditPage
+          repository={spy}
+          zone={aWatchZone({ radiusMetres: 500, boundary: aLargeWatchZoneBoundary() })}
+          tier="Personal"
+        />,
+      );
+      expect(screen.getByText(TITLE)).toBeInTheDocument();
+    });
+
+    it('follows the radius again after switching a custom zone back to circle', async () => {
+      const user = userEvent.setup();
+      spy.getPreferencesResult = zonePreferences();
+
+      renderWithRouter(
+        <WatchZoneEditPage
+          repository={spy}
+          zone={aWatchZone({ radiusMetres: 500, boundary: aLargeWatchZoneBoundary() })}
+          tier="Personal"
+        />,
+      );
+      expect(screen.getByText(TITLE)).toBeInTheDocument();
+
+      await user.click(screen.getByRole('radio', { name: /^circle$/i }));
+
+      expect(screen.queryByText(TITLE)).not.toBeInTheDocument();
+    });
+
+    it('updates live while a custom shape is being drawn, before the ring is closed', async () => {
+      const user = userEvent.setup();
+      spy.getPreferencesResult = zonePreferences();
+
+      renderWithRouter(
+        <WatchZoneEditPage
+          repository={spy}
+          zone={aWatchZone({ radiusMetres: 5000, boundary: null })}
+          tier="Personal"
+        />,
+      );
+      expect(screen.getByText(TITLE)).toBeInTheDocument();
+
+      await user.click(screen.getByRole('radio', { name: /^custom shape$/i }));
+      expect(screen.queryByText(TITLE)).not.toBeInTheDocument();
+
+      act(() => {
+        capturedMapEvents.click?.({ latlng: { lat: 51.95, lng: -1.05 } });
+      });
+      act(() => {
+        capturedMapEvents.click?.({ latlng: { lat: 51.95, lng: -0.95 } });
+      });
+      act(() => {
+        capturedMapEvents.click?.({ latlng: { lat: 52.05, lng: -0.95 } });
+      });
+
+      expect(screen.getByText(TITLE)).toBeInTheDocument();
     });
   });
 

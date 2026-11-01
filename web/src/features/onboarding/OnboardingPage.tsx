@@ -5,8 +5,10 @@ import { ConfirmMap } from '../../components/ConfirmMap/ConfirmMap';
 import { PostcodeInput } from '../../components/PostcodeInput/PostcodeInput';
 import { RadiusPicker } from '../../components/RadiusPicker/RadiusPicker';
 import { BoundaryMap } from '../../components/BoundaryMap/BoundaryMap';
+import { LargeZoneWarning } from '../../components/LargeZoneWarning/LargeZoneWarning';
 import { CustomShapeUpsell } from '../../components/CustomShapeUpsell/CustomShapeUpsell';
 import { useBoundaryDrawing } from '../../hooks/useBoundaryDrawing';
+import { isLargeCircle, isLargeVertices } from '../../domain/largeZone';
 import { appStoreUrl } from '../../config/links';
 import { useOnboarding } from './useOnboarding';
 import styles from './OnboardingPage.module.css';
@@ -76,6 +78,7 @@ export function OnboardingPage({ onboardingPort, geocodingPort }: Props) {
               selectedMetres={radiusMetres}
               onSelect={selectRadius}
             />
+            <LargeZoneWarning isLarge={isLargeCircle(radiusMetres)} />
             {tier === 'Free' && (
               <CustomShapeUpsell
                 upgradeHref={appStoreUrl('web-onboarding-custom-shape')}
@@ -104,6 +107,7 @@ export function OnboardingPage({ onboardingPort, geocodingPort }: Props) {
               onUndo={drawing.undo}
               onReset={drawing.reset}
             />
+            <LargeZoneWarning isLarge={isLargeVertices(drawing.vertices)} />
             <button
               type="button"
               className={styles.primaryButton}

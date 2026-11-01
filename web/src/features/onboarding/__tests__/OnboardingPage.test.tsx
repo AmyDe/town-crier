@@ -86,6 +86,26 @@ describe('OnboardingPage', () => {
     });
   });
 
+  it('shows the large-zone warning on the radius step only above 2km', async () => {
+    const user = userEvent.setup();
+    renderOnboarding(new SpyOnboardingPort(), new SpyGeocodingPort());
+
+    await user.click(screen.getByRole('button', { name: /get started/i }));
+    await user.type(screen.getByLabelText(/postcode/i), 'SW1A 1AA');
+    await user.click(screen.getByRole('button', { name: /look up/i }));
+    await screen.findByRole('radiogroup', { name: /radius/i });
+
+    await user.click(screen.getByLabelText('2 km'));
+    expect(
+      screen.queryByText('Large zones are for notifications, not browsing'),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByLabelText('5 km'));
+    expect(
+      screen.getByText('Large zones are for notifications, not browsing'),
+    ).toBeInTheDocument();
+  });
+
   it('advances to confirm step after radius selection', async () => {
     const user = userEvent.setup();
     const geocodingSpy = new SpyGeocodingPort();
