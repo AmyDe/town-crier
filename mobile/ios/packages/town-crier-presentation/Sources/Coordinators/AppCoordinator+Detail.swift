@@ -51,8 +51,8 @@ extension AppCoordinator {
   }
 
   /// Resolves an inbound public share Universal Link `/a/{authoritySlug}/{ref...}`
-  /// (GH #738 Slice 4) into the native detail screen. Routes to the anonymous
-  /// by-slug repository when there is no session (GH#879 Phase 2) — the authed
+  /// into the native detail screen. Routes to the anonymous
+  /// by-slug repository when there is no session — the authed
   /// `URLSessionAPIClient` throws `sessionExpired` before any HTTP call with no
   /// session, which previously surfaced a misleading "Session Expired" alert to
   /// a signed-out user tapping a share link. A signed-in session always keeps
@@ -60,8 +60,10 @@ extension AppCoordinator {
   /// are authed-only server behaviours. Falls back to the authed repository if
   /// no anonymous repository was injected, preserving prior behaviour. Same
   /// cancellation-guard pattern as ``showApplicationDetail(_:)-(PlanningApplicationId)``
-  /// so overlapping opens collapse to a single presentation.
-  func showApplicationDetail(bySlug authoritySlug: String, ref: String) {
+  /// so overlapping opens collapse to a single presentation. `linkCode` goes only
+  /// on the anonymous read: a signed-in read would sit beside that user's authed
+  /// requests in the logs and so tie the code to an account.
+  func showApplicationDetail(bySlug authoritySlug: String, ref: String, linkCode: String? = nil) {
     pendingDetailLoad?.cancel()
     pendingDetailLoad = Task { [weak self] in
       guard let self else { return }
@@ -70,7 +72,7 @@ extension AppCoordinator {
         let application: PlanningApplication
         if isAnonymous, let anonymousApplicationDetailRepository {
           application = try await anonymousApplicationDetailRepository.fetchApplication(
-            bySlug: authoritySlug, ref: ref)
+            bySlug: authoritySlug, ref: ref, linkCode: linkCode)
         } else {
           application = try await repository.fetchApplication(bySlug: authoritySlug, ref: ref)
         }
@@ -106,13 +108,15 @@ extension AppCoordinator {
     if isDetailApplicationAnonymous, let anonymousApplicationDetailRepository {
       viewModel = ApplicationDetailViewModel(
         application: application,
-        anonymousApplicationDetailRepository: anonymousApplicationDetailRepository
+        anonymousApplicationDetailRepository: anonymousApplicationDetailRepository,
+        shareEventReporter: shareEventReporter
       )
     } else {
       viewModel = ApplicationDetailViewModel(
         application: application,
         savedApplicationRepository: savedApplicationRepository,
-        planningApplicationRepository: repository
+        planningApplicationRepository: repository,
+        shareEventReporter: shareEventReporter
       )
     }
     viewModel.onDismiss = { [weak self] in

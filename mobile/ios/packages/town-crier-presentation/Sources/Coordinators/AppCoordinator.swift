@@ -76,6 +76,7 @@ public final class AppCoordinator: ObservableObject {
   // existing call sites/tests inject nothing. Internal so AppCoordinator+Detail
   // can read it.
   let anonymousApplicationDetailRepository: AnonymousApplicationDetailRepository?
+  let shareEventReporter: ShareEventReporter?
   // Device-local (pre-signup) zones (GH#879 Phase 4/5). Optional so existing
   // call sites/tests that never exercise anonymous browsing inject nothing.
   // Internal (not private) so AppCoordinator+Onboarding and
@@ -154,7 +155,8 @@ public final class AppCoordinator: ObservableObject {
     anonymousBrowseStateRepository: AnonymousBrowseStateRepository? = nil,
     appearanceStore: AppearanceStore? = nil,
     anonymousApplicationDetailRepository: AnonymousApplicationDetailRepository? = nil,
-    deviceLocalZoneRepository: DeviceLocalZoneRepository? = nil
+    deviceLocalZoneRepository: DeviceLocalZoneRepository? = nil,
+    shareEventReporter: ShareEventReporter? = nil
   ) {
     self.repository = repository
     self.authService = authService
@@ -184,6 +186,7 @@ public final class AppCoordinator: ObservableObject {
     self.appearanceStore = appearanceStore
     self.anonymousApplicationDetailRepository = anonymousApplicationDetailRepository
     self.deviceLocalZoneRepository = deviceLocalZoneRepository
+    self.shareEventReporter = shareEventReporter
 
     // Restore the last successfully resolved tier so that paying users
     // retain feature access immediately, even before the live resolution

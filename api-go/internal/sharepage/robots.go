@@ -13,14 +13,16 @@ User-agent: Discordbot
 User-agent: WhatsApp
 User-agent: TelegramBot
 Allow: /
+Disallow: /go/
 
 User-agent: *
 Disallow: /og/
+Disallow: /go/
 `
 
 // RobotsRoutes registers the anonymous GET /robots.txt crawler policy for the
 // API and share hosts: link-preview bots may fetch share cards, generic
-// crawlers are kept off /og/. Keep the pattern in lockstep with the
+// crawlers are kept off /og/, and no crawler follows the /go/ redirects. Keep the pattern in lockstep with the
 // anonymousPatterns entry in cmd/api/wiring.go.
 func RobotsRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /robots.txt", func(w http.ResponseWriter, _ *http.Request) {

@@ -1,7 +1,7 @@
 {
   "documentType": "privacy",
   "title": "Privacy Policy",
-  "lastUpdated": "2026-10-28",
+  "lastUpdated": "2026-10-30",
   "sections": [
     {
       "heading": "Who We Are",
@@ -13,7 +13,7 @@
     },
     {
       "heading": "Why We Collect It",
-      "body": "We use your data on two lawful bases under UK GDPR. To deliver the service you asked for (Article 6(1)(b), contract): your account, watch zones, preferences, push token, and subscription information. To keep the service reliable and secure (Article 6(1)(f), legitimate interests): authentication, server-side error telemetry, email delivery records, and limiting the rate of unauthenticated requests to prevent abuse (see \"Rate Limiting and Abuse Prevention\" below). We do not process any data on the basis of consent, we do not make automated decisions with legal effects on you, and we do not send marketing email. We also count changes to subscriptions, such as trials started, upgrades and cancellations, as totals to help us run the business (Article 6(1)(f), legitimate interests). These counts never say who you are."
+      "body": "We use your data on two lawful bases under UK GDPR. To deliver the service you asked for (Article 6(1)(b), contract): your account, watch zones, preferences, push token, and subscription information. To keep the service reliable and secure (Article 6(1)(f), legitimate interests): authentication, server-side error telemetry, email delivery records, and limiting the rate of unauthenticated requests to prevent abuse (see \"Rate Limiting and Abuse Prevention\" below). We do not process any data on the basis of consent, we do not make automated decisions with legal effects on you, and we do not send marketing email. We also count changes to subscriptions, such as trials started, upgrades and cancellations, as totals to help us run the business (Article 6(1)(f), legitimate interests). These counts never say who you are. Links you share from the app carry a short random code, so we can see how many clicks each link gets, and we count shares as totals by the app you shared to. The code isn't tied to your account or to anyone who clicks it, and it's deleted with our logs after 30 days (Article 6(1)(f), legitimate interests)."
     },
     {
       "heading": "Who Processes Your Data for Us",
