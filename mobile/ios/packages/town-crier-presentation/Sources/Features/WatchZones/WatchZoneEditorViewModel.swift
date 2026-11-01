@@ -178,11 +178,17 @@ public final class WatchZoneEditorViewModel: ObservableObject, EntitlementGating
     onUpgradeRequired?()
   }
 
-  /// Whether to surface the "this zone may produce lots of notifications" callout
-  /// (tc-1zb7). Triggered just above the free tier's 2 km cap so only paid tiers
-  /// see it — see `LargeRadiusWarningView` for the threshold rationale.
+  /// Whether to show the large-zone warning: the radius in circle mode, the
+  /// drawn polygon in custom mode (false until the vertices form a valid
+  /// boundary). See ``LargeZone``.
   public var showsLargeZoneWarning: Bool {
-    selectedRadiusMetres >= 2100
+    switch shapeMode {
+    case .circle:
+      return LargeZone.isLarge(radiusMetres: selectedRadiusMetres)
+    case .custom:
+      guard let boundary = try? WatchZoneBoundary(vertices: boundaryVertices) else { return false }
+      return LargeZone.isLarge(boundary: boundary)
+    }
   }
 
   // MARK: - Shape mode (GH#1031)

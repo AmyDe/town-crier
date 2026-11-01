@@ -231,11 +231,9 @@ public final class OnboardingViewModel: ObservableObject, ErrorHandlingViewModel
     await onUpgradeFlowCompleted?()
   }
 
-  /// Whether to surface the "this zone may produce lots of notifications" callout.
-  /// Triggered just above the free tier's 2 km cap so only paid tiers
-  /// see it — see `LargeRadiusWarningView` for the threshold rationale.
+  /// Whether the selected radius makes a large zone. See ``LargeZone``.
   public var showsLargeZoneWarning: Bool {
-    selectedRadiusMetres >= 2100
+    LargeZone.isLarge(radiusMetres: selectedRadiusMetres)
   }
 
   public func confirmRadius() {
