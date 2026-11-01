@@ -82,7 +82,7 @@ func (l *ApplicationLocations) Load(ctx context.Context) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("begin load transaction: %w", err)
 	}
-	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+	defer l.rollback(ctx, tx)
 
 	if _, err := tx.Exec(ctx, "LOCK TABLE application_locations IN SHARE ROW EXCLUSIVE MODE"); err != nil {
 		return 0, fmt.Errorf("lock application_locations: %w", err)
@@ -300,7 +300,7 @@ func (l *ApplicationLocations) runBatch(ctx context.Context, query, code string,
 		if err != nil {
 			return fmt.Errorf("begin batch: %w", err)
 		}
-		defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+		defer l.rollback(ctx, tx)
 		if l.beforeBatch != nil {
 			if err := l.beforeBatch(ctx, tx); err != nil {
 				return err
@@ -342,4 +342,10 @@ func retryDeadlock(ctx context.Context, sleep func(context.Context, time.Duratio
 		}
 	}
 	return err
+}
+
+func (l *ApplicationLocations) rollback(ctx context.Context, tx pgx.Tx) {
+	if err := tx.Rollback(context.WithoutCancel(ctx)); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+		l.logger.WarnContext(ctx, "rollback application-locations transaction", "error", err)
+	}
 }

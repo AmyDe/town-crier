@@ -28,7 +28,7 @@ type locRow struct {
 	lat   *float64
 }
 
-func lonLat(lon, lat float64) (*float64, *float64) { return &lon, &lat }
+func pt(lon, lat float64) (*float64, *float64) { return &lon, &lat }
 
 // addTestPrimaryKey gives application_locations the key the upsert conflicts on.
 // The migration adds it only after the production load, so tests add it here.
@@ -105,7 +105,7 @@ func TestApplicationLocationsTrigger_KeepsThinTableEqualToSource(t *testing.T) {
 	pool := thinPool(t)
 	ctx := context.Background()
 	setThinSync(t, pool, true)
-	lon, lat := lonLat(-0.1, 51.5)
+	lon, lat := pt(-0.1, 51.5)
 	row := locRow{code: "100", name: "A/1", uid: "u1", area: 7, state: "Undecided", start: "2026-01-02", lon: lon, lat: lat}
 
 	steps := []struct {
@@ -156,7 +156,7 @@ func TestApplicationLocationsTrigger_LastScrapedOnlyUpdateWritesNothing(t *testi
 	pool := thinPool(t)
 	ctx := context.Background()
 	setThinSync(t, pool, true)
-	lon, lat := lonLat(-0.1, 51.5)
+	lon, lat := pt(-0.1, 51.5)
 	insertLocRow(t, pool, locRow{code: "100", name: "A/1", uid: "u1", area: 7, state: "Undecided", lon: lon, lat: lat})
 	xminBefore := thinXmin(t, pool)
 
@@ -188,7 +188,7 @@ func TestApplicationLocationsTrigger_FailedThinWriteDoesNotAbortUpsert(t *testin
 	t.Cleanup(func() {
 		_, _ = pool.Exec(context.Background(), `ALTER TABLE application_locations DROP CONSTRAINT IF EXISTS application_locations_test_fail`)
 	})
-	lon, lat := lonLat(-0.1, 51.5)
+	lon, lat := pt(-0.1, 51.5)
 
 	insertLocRow(t, pool, locRow{code: "100", name: "A/1", uid: "u1", area: 7, lon: lon, lat: lat})
 
@@ -212,7 +212,7 @@ func TestApplicationLocationsTrigger_WritesNothingWhenSyncOffOrNoControlRow(t *t
 		t.Run(tc.name, func(t *testing.T) {
 			pool := thinPool(t)
 			tc.setup(t, pool)
-			lon, lat := lonLat(-0.1, 51.5)
+			lon, lat := pt(-0.1, 51.5)
 
 			insertLocRow(t, pool, locRow{code: "100", name: "A/1", uid: "u1", area: 7, lon: lon, lat: lat})
 			if _, err := pool.Exec(context.Background(), `UPDATE applications SET app_state = 'Approved'`); err != nil {
@@ -239,8 +239,6 @@ func seedSource(t *testing.T, pool *pgxpool.Pool, rows ...locRow) {
 		insertLocRow(t, pool, r)
 	}
 }
-
-func pt(lon, lat float64) (*float64, *float64) { return &lon, &lat }
 
 func fixtureRows() []locRow {
 	l1, a1 := pt(-0.10, 51.50)

@@ -27,8 +27,8 @@ func TestBucketForWeekday_EachWeekdaySelectsItsOwnBucket(t *testing.T) {
 
 func TestSelectBuckets_EveryAuthorityFallsInExactlyOneWeekday(t *testing.T) {
 	t.Parallel()
-	var all []authorityBucket
-	for i := 0; i < 100; i++ {
+	all := make([]authorityBucket, 0, 100)
+	for i := range 100 {
 		all = append(all, authorityBucket{code: fmt.Sprint(i), bucket: i % 7})
 	}
 	counts := map[string]int{}

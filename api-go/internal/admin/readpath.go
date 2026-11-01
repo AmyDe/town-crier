@@ -77,9 +77,9 @@ func (h *readPathHandler) put(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.logger.InfoContext(r.Context(), "admin.read_path_switched",
-		slog.Bool("thin_sync_from", before.ThinSync), slog.Bool("thin_sync_to", after.ThinSync),
-		slog.Bool("thin_list_from", before.ThinList), slog.Bool("thin_list_to", after.ThinList),
-		slog.Bool("thin_map_from", before.ThinMap), slog.Bool("thin_map_to", after.ThinMap),
+		slog.Bool("thinSyncFrom", before.ThinSync), slog.Bool("thinSyncTo", after.ThinSync),
+		slog.Bool("thinListFrom", before.ThinList), slog.Bool("thinListTo", after.ThinList),
+		slog.Bool("thinMapFrom", before.ThinMap), slog.Bool("thinMapTo", after.ThinMap),
 		slog.String("reason", req.Reason))
 	h.respond(w, r, after)
 }
