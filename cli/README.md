@@ -22,7 +22,7 @@ Settings are read from `~/.config/tc/config.json`:
 
 `--url` and `--api-key` override the file. Either source must supply both values.
 
-The polling commands need both environments, under `environments`:
+The polling and read-path commands need both environments, under `environments`:
 
 ```json
 {
@@ -43,6 +43,7 @@ tc grant-subscription   --email <email> --tier <Free|Personal|Pro>
 tc list-users           [--search <term>] [--page-size <n>]
 tc polling-status
 tc polling-switch       --to <dev|prod|off> [--reason <text>] [--allow-missing true]
+tc read-path-switch     --env <dev|prod> [--thin-sync <on|off>] [--thin-list <on|off>] [--thin-map <on|off>] [--reason <text>]
 tc help
 tc version
 ```
@@ -60,6 +61,11 @@ no request from it can land within 60 seconds of the target's first request
 (up to 2 minutes), then turns the target on and reads it back. It prints the
 state of both environments before and after, and on any failure it stops
 before the target is turned on.
+
+`read-path-switch` sets the thin-table switches of one environment through
+`PUT /v1/admin/read-path`, changing only the switches named, then reads them
+back and fails if they differ. With no switch flag it prints the current state.
+It needs the `environments` block above.
 
 Run `tc help` for full usage. Exit codes: `0` success, `1` usage/validation/config
 error, `2` API/runtime error.

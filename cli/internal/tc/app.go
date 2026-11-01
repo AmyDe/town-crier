@@ -20,6 +20,7 @@ Commands:
   stats                       Show aggregate user-base statistics
   polling-status              Show whether dev and prod poll PlanIt
   polling-switch              Move PlanIt polling to dev, to prod, or off
+  read-path-switch            Show or set the thin-table switches of one environment
   help                        Show this help message
   version                     Print version
 
@@ -42,7 +43,15 @@ polling-switch options:
   --reason <text>        Reason stored with the switch
   --allow-missing true   Continue when the other environment has no switch
 
-polling-status and polling-switch read "environments" (dev and prod, each
+read-path-switch options:
+  --env <dev|prod>       Environment to change (required)
+  --thin-sync <on|off>   Keep application_locations in step with applications
+  --thin-list <on|off>   Reserved; no read uses it yet
+  --thin-map <on|off>    Reserved; no read uses it yet
+  --reason <text>        Reason stored with the change
+  With no switch flag it only prints the current state.
+
+polling-status, polling-switch and read-path-switch read "environments" (dev and prod, each
 with url and apiKey) from the config file and ignore --url and --api-key.
 
 Global options:
@@ -64,7 +73,7 @@ func Run(ctx context.Context, env Env, rawArgs []string) int {
 	case "help":
 		fmt.Fprintln(env.Out, helpText)
 		return exitOK
-	case "polling-status", "polling-switch":
+	case "polling-status", "polling-switch", "read-path-switch":
 		cfgs, err := LoadEnvironments(DefaultConfigPath())
 		if err != nil {
 			fmt.Fprintln(env.Err, err.Error())
@@ -72,6 +81,9 @@ func Run(ctx context.Context, env Env, rawArgs []string) int {
 		}
 		if args.Command == "polling-status" {
 			return runPollingStatus(ctx, cfgs, env)
+		}
+		if args.Command == "read-path-switch" {
+			return runReadPathSwitch(ctx, cfgs, env, args)
 		}
 		return runPollingSwitch(ctx, cfgs, env, args, realPollingClock)
 	}
