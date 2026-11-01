@@ -203,4 +203,87 @@ describe('useMapData', () => {
 
     expect(resolved).toBeNull();
   });
+
+  describe('isFetchingClusters', () => {
+    async function withRegion(spy: SpyMapPort) {
+      spy.holdClusterRequests = true;
+      const view = await loadedHook(spy);
+      act(() => {
+        view.result.current.onRegionChange(BOUNDS, 13);
+      });
+      return view;
+    }
+
+    it('is false before any cluster request', async () => {
+      const spy = new SpyMapPort();
+      spy.fetchMyZonesResult = [aZone()];
+
+      const { result } = await loadedHook(spy);
+
+      expect(result.current.isFetchingClusters).toBe(false);
+    });
+
+    it('is true while a cluster request is in flight and false after it settles', async () => {
+      const spy = new SpyMapPort();
+      spy.fetchMyZonesResult = [aZone()];
+      const { result } = await withRegion(spy);
+
+      await waitFor(() => {
+        expect(result.current.isFetchingClusters).toBe(true);
+      });
+
+      act(() => {
+        spy.settleClusterRequest([aBubbleCluster()]);
+      });
+
+      await waitFor(() => {
+        expect(result.current.isFetchingClusters).toBe(false);
+      });
+    });
+
+    it('is false after a failed request', async () => {
+      const spy = new SpyMapPort();
+      spy.fetchMyZonesResult = [aZone()];
+      const { result } = await withRegion(spy);
+      await waitFor(() => {
+        expect(result.current.isFetchingClusters).toBe(true);
+      });
+
+      act(() => {
+        spy.settleClusterRequest(new Error('boom'));
+      });
+
+      await waitFor(() => {
+        expect(result.current.isFetchingClusters).toBe(false);
+      });
+    });
+
+    it('stays true when a stale request finishes while a newer one is in flight', async () => {
+      const spy = new SpyMapPort();
+      spy.fetchMyZonesResult = [aZone(), aSecondZone()];
+      const { result } = await withRegion(spy);
+      await waitFor(() => {
+        expect(spy.pendingClusterRequestCount).toBe(1);
+      });
+
+      act(() => {
+        result.current.selectZone(aSecondZone());
+      });
+      await waitFor(() => {
+        expect(spy.pendingClusterRequestCount).toBe(2);
+      });
+
+      act(() => {
+        spy.settleClusterRequest([aBubbleCluster()], 0);
+      });
+      expect(result.current.isFetchingClusters).toBe(true);
+
+      act(() => {
+        spy.settleClusterRequest([aBubbleCluster()], 0);
+      });
+      await waitFor(() => {
+        expect(result.current.isFetchingClusters).toBe(false);
+      });
+    });
+  });
 });
