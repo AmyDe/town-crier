@@ -388,6 +388,7 @@ describe('MapPage', () => {
         spy.fetchMyZonesResult = [aZone({ radiusMetres: 5000 })];
 
         renderMap(spy);
+        await advance(0);
         await advance(300);
         expect(spy.pendingClusterRequestCount).toBe(1);
         await advance(2000);
@@ -407,6 +408,7 @@ describe('MapPage', () => {
         spy.fetchMyZonesResult = [aZone({ radiusMetres: 1000 })];
 
         renderMap(spy);
+        await advance(0);
         await advance(300);
         await advance(10_000);
 
@@ -418,6 +420,7 @@ describe('MapPage', () => {
         spy.fetchMyZonesResult = [aZone({ radiusMetres: 5000 })];
 
         renderMap(spy);
+        await advance(0);
         await advance(300);
         await advance(1000);
         await act(async () => {
