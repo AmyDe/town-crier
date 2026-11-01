@@ -14,10 +14,12 @@ import TownCrierDomain
 public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
   @Published private(set) var clusters: [MapCluster] = []
   @Published private(set) var isLoading = false
-  @Published private var loadHasBeenSlow = false
-  private var loadGeneration = 0
-  private var slowLoadTask: Task<Void, Never>?
+  @Published private(set) var loadHasBeenSlow = false
   private let slowLoadDelay: Duration
+  private lazy var loadTracker = SlowLoadTracker(delay: slowLoadDelay) { [weak self] isLoading, isSlow in
+    self?.isLoading = isLoading
+    self?.loadHasBeenSlow = isSlow
+  }
   @Published var error: DomainError?
   @Published private(set) var selectedApplication: PlanningApplication?
   /// The application whose full detail card should open once the summary
@@ -131,37 +133,9 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
     self.slowLoadDelay = slowLoadDelay
   }
 
-  public var showsLargeZoneNotice: Bool { false }
-
-  public var showsLargeZoneLoadingMessage: Bool {
-    isLoading && loadHasBeenSlow && selectedZone?.isLarge == true
-  }
-
-  private func beginLoad() -> Int {
-    loadGeneration += 1
-    let generation = loadGeneration
-    isLoading = true
-    loadHasBeenSlow = false
-    slowLoadTask?.cancel()
-    slowLoadTask = Task { [slowLoadDelay] in
-      try? await Task.sleep(for: slowLoadDelay)
-      guard !Task.isCancelled, generation == loadGeneration else { return }
-      loadHasBeenSlow = true
-    }
-    return generation
-  }
-
-  private func endLoad(_ generation: Int) {
-    guard generation == loadGeneration else { return }
-    slowLoadTask?.cancel()
-    slowLoadTask = nil
-    isLoading = false
-    loadHasBeenSlow = false
-  }
-
   public func loadApplications() async {
-    let loadToken = beginLoad()
-    defer { endLoad(loadToken) }
+    let loadToken = loadTracker.begin()
+    defer { loadTracker.end(loadToken) }
     error = nil
     do {
       let loadedZones = try await watchZoneRepository.loadAll()
@@ -244,8 +218,8 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
     centreLat = zone.centre.latitude
     centreLon = zone.centre.longitude
     radiusMetres = zone.radiusMetres
-    let loadToken = beginLoad()
-    defer { endLoad(loadToken) }
+    let loadToken = loadTracker.begin()
+    defer { loadTracker.end(loadToken) }
     error = nil
     let (viewport, zoom) = Self.initialViewport(
       centre: zone.centre, radiusMetres: zone.radiusMetres)
@@ -397,35 +371,5 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
         // Preserve current state on failure
       }
     }
-  }
-
-  // MARK: - Viewport geometry
-
-  /// Derives the initial whole-zone viewport and slippy zoom from a zone centre
-  /// and radius. Mirrors the camera framing (a span of 2.5x the radius), so the
-  /// seeded clusters cover the whole circle until the map view reports its real
-  /// visible rect.
-  static func initialViewport(
-    centre: Coordinate, radiusMetres: Double
-  ) -> (viewport: MapViewport, zoom: Int) {
-    let metresPerDegreeLat = 111_320.0
-    let halfSpanMetres = radiusMetres * 2.5 / 2
-    let halfLatDeg = halfSpanMetres / metresPerDegreeLat
-    let cosLat = max(0.01, cos(centre.latitude * .pi / 180))
-    let halfLonDeg = halfSpanMetres / (metresPerDegreeLat * cosLat)
-    let viewport = MapViewport(
-      west: centre.longitude - halfLonDeg,
-      south: centre.latitude - halfLatDeg,
-      east: centre.longitude + halfLonDeg,
-      north: centre.latitude + halfLatDeg)
-    return (viewport, slippyZoom(forLongitudeSpanDegrees: halfLonDeg * 2))
-  }
-
-  /// Standard slippy-map zoom for a longitude span: `log2(360 / span)`, clamped
-  /// to the API's accepted 0...20 range.
-  static func slippyZoom(forLongitudeSpanDegrees longitudeSpan: Double) -> Int {
-    guard longitudeSpan > 0 else { return 20 }
-    let zoom = (log2(360.0 / longitudeSpan)).rounded()
-    return max(0, min(20, Int(zoom)))
   }
 }

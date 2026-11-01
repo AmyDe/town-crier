@@ -147,6 +147,15 @@ public struct ApplicationListView: View {
       .listRowBackground(Color.tcBackground)
     }
 
+    if viewModel.showsLargeZoneNotice {
+      LargeZoneNoticeView()
+        .padding(.horizontal, TCSpacing.medium)
+        .padding(.vertical, TCSpacing.extraSmall)
+        .listRowSeparator(.hidden)
+        .listRowInsets(EdgeInsets())
+        .listRowBackground(Color.tcBackground)
+    }
+
     if !viewModel.applications.isEmpty {
       ScrollView(.horizontal, showsIndicators: false) {
         HStack(spacing: TCSpacing.small) {
@@ -174,6 +183,15 @@ public struct ApplicationListView: View {
 
   @ViewBuilder
   private var contentRows: some View {
+    if viewModel.showsLargeZoneLoadingMessage {
+      LargeZoneLoadingMessageView()
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, TCSpacing.medium)
+        .listRowSeparator(.hidden)
+        .listRowInsets(EdgeInsets())
+        .listRowBackground(Color.tcBackground)
+    }
+
     if viewModel.isLoading && viewModel.filteredApplications.isEmpty {
       ListSkeletonView()
         .listRowSeparator(.hidden)

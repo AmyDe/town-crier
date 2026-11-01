@@ -115,15 +115,19 @@ struct LargeZoneWarningTests {
     #expect(LargeZoneCopy.warningTitle == "Large zones are for notifications, not browsing")
     #expect(
       LargeZoneCopy.warningSpeedParagraph
-        == "Good if you want to hear about everything in a wide area - tradespeople looking for leads, for example. Your notifications work as normal, but the map and list can take up to a minute to load the first time."
+        == "Good if you want to hear about everything in a wide area - tradespeople looking for "
+        + "leads, for example. Your notifications work as normal, but the map and list can take "
+        + "up to a minute to load the first time."
     )
     #expect(
       LargeZoneCopy.warningAdviceParagraph
-        == "Just want to keep an eye on your street? Stick to 100-500 m in built-up areas, and under 2 km everywhere else."
+        == "Just want to keep an eye on your street? Stick to 100-500 m in built-up areas, "
+        + "and under 2 km everywhere else."
     )
     #expect(
       LargeZoneCopy.notice
-        == "Large zone: built for notifications. This can take up to a minute to load the first time."
+        == "Large zone: built for notifications. "
+        + "This can take up to a minute to load the first time."
     )
     #expect(
       LargeZoneCopy.loadingMessage

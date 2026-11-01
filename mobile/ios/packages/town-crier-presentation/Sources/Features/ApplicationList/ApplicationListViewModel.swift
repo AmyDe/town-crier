@@ -35,10 +35,12 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     }
   }
   @Published private(set) var isLoading = false
-  @Published private var loadHasBeenSlow = false
-  private var loadGeneration = 0
-  private var slowLoadTask: Task<Void, Never>?
+  @Published private(set) var loadHasBeenSlow = false
   private let slowLoadDelay: Duration
+  private lazy var loadTracker = SlowLoadTracker(delay: slowLoadDelay) { [weak self] isLoading, isSlow in
+    self?.isLoading = isLoading
+    self?.loadHasBeenSlow = isSlow
+  }
   @Published var error: DomainError?
   @Published private(set) var zones: [WatchZone] = []
   @Published private(set) var selectedZone: WatchZone?
@@ -275,34 +277,6 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     self.slowLoadDelay = slowLoadDelay
   }
 
-  public var showsLargeZoneNotice: Bool { false }
-
-  public var showsLargeZoneLoadingMessage: Bool {
-    isLoading && loadHasBeenSlow && (selectedZone ?? zone)?.isLarge == true
-  }
-
-  private func beginLoad() -> Int {
-    loadGeneration += 1
-    let generation = loadGeneration
-    isLoading = true
-    loadHasBeenSlow = false
-    slowLoadTask?.cancel()
-    slowLoadTask = Task { [slowLoadDelay] in
-      try? await Task.sleep(for: slowLoadDelay)
-      guard !Task.isCancelled, generation == loadGeneration else { return }
-      loadHasBeenSlow = true
-    }
-    return generation
-  }
-
-  private func endLoad(_ generation: Int) {
-    guard generation == loadGeneration else { return }
-    slowLoadTask?.cancel()
-    slowLoadTask = nil
-    isLoading = false
-    loadHasBeenSlow = false
-  }
-
   public func loadApplications() async {
     // Drop re-entrant calls while a load is already running so a single user
     // action issues at most one fetch for the active zone. The
@@ -312,8 +286,8 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     isLoadInFlight = true
     defer { isLoadInFlight = false }
 
-    let loadToken = beginLoad()
-    defer { endLoad(loadToken) }
+    let loadToken = loadTracker.begin()
+    defer { loadTracker.end(loadToken) }
     error = nil
     // Zone-independent, so it runs even when the no-active-zone branch below
     // returns early.
@@ -349,8 +323,8 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     selectedStatusFilter = nil
     unreadOnly = false
     userDefaults.set(zone.id.value, forKey: zoneSelectionKey)
-    let loadToken = beginLoad()
-    defer { endLoad(loadToken) }
+    let loadToken = loadTracker.begin()
+    defer { loadTracker.end(loadToken) }
     error = nil
     do {
       try await loadActiveZone(zone)
@@ -421,16 +395,5 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
       return try await repository.fetchApplications(for: zone)
     }
     return []
-  }
-
-  private static func readPersistedSort(
-    from defaults: UserDefaults,
-    key: String
-  ) -> ApplicationsSort {
-    if let raw = defaults.string(forKey: key),
-      let parsed = ApplicationsSort(rawValue: raw) {
-      return parsed
-    }
-    return .recentActivity
   }
 }
