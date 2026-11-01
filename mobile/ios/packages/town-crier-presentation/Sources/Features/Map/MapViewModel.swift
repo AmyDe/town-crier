@@ -14,6 +14,7 @@ import TownCrierDomain
 public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
   @Published private(set) var clusters: [MapCluster] = []
   @Published private(set) var isLoading = false
+  public var showsLargeZoneLoadingMessage: Bool { false }
   @Published var error: DomainError?
   @Published private(set) var selectedApplication: PlanningApplication?
   /// The application whose full detail card should open once the summary
@@ -116,7 +117,8 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
     watchZoneRepository: WatchZoneRepository,
     userDefaults: UserDefaults = .standard,
     zoneSelectionKey: String = "lastSelectedZone.map",
-    savedApplicationRepository: SavedApplicationRepository? = nil
+    savedApplicationRepository: SavedApplicationRepository? = nil,
+    slowLoadDelay: Duration = .seconds(3)
   ) {
     self.repository = repository
     self.watchZoneRepository = watchZoneRepository

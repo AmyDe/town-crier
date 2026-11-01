@@ -35,6 +35,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     }
   }
   @Published private(set) var isLoading = false
+  public var showsLargeZoneLoadingMessage: Bool { false }
   @Published var error: DomainError?
   @Published private(set) var zones: [WatchZone] = []
   @Published private(set) var selectedZone: WatchZone?
@@ -230,7 +231,8 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     badgeSetter: BadgeSetting? = nil,
     userDefaults: UserDefaults = .standard,
     zoneSelectionKey: String = "lastSelectedZone.applications",
-    sortKey: String = defaultSortKey
+    sortKey: String = defaultSortKey,
+    slowLoadDelay: Duration = .seconds(3)
   ) {
     self.repository = repository
     self.offlineRepository = nil
