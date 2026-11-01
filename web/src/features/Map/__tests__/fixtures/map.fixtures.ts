@@ -106,3 +106,19 @@ export function aSinglePinCluster(overrides?: Partial<MapCluster>): MapCluster {
     ...overrides,
   };
 }
+
+/** A 0.1 degree square at 52N, about 76 km2: over the large-zone threshold. */
+export function aLargePolygonBoundary(): WatchZoneBoundary {
+  return {
+    type: 'Polygon',
+    coordinates: [
+      [
+        [-1.05, 51.95],
+        [-0.95, 51.95],
+        [-0.95, 52.05],
+        [-1.05, 52.05],
+        [-1.05, 51.95],
+      ],
+    ],
+  };
+}
