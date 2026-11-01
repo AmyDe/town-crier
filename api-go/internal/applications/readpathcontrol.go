@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -17,8 +18,8 @@ const (
 )
 
 // ReadPathSwitches are the thin-table switches. ThinSync keeps
-// application_locations in step with applications. ThinList and ThinMap are
-// stored but no read uses them yet.
+// application_locations in step with applications. ThinList moves the paged list
+// reads onto it. ThinMap is stored but no read uses it yet.
 type ReadPathSwitches struct {
 	ThinSync bool
 	ThinList bool
@@ -135,4 +136,51 @@ func (s *PostgresReadPathStore) Set(ctx context.Context, c ReadPathControl) erro
 		return fmt.Errorf("upsert read_path_control: %w", err)
 	}
 	return nil
+}
+
+const readPathCacheTTL = 30 * time.Second
+
+// CachedReadPath answers the read-path switches from an in-process copy of the
+// control row, refreshed at most every 30 seconds. It is safe for concurrent use.
+type CachedReadPath struct {
+	store readPathStore
+	now   func() time.Time
+
+	mu       sync.Mutex
+	switches ReadPathSwitches
+	loadedAt time.Time
+	loaded   bool
+}
+
+// NewCachedReadPath wires a CachedReadPath over store. now supplies the clock.
+func NewCachedReadPath(store readPathStore, now func() time.Time) *CachedReadPath {
+	return &CachedReadPath{store: store, now: now}
+}
+
+// Switches returns the cached switches. A missing row or a failed read means
+// every switch is off, and that answer is cached like any other.
+func (c *CachedReadPath) Switches(ctx context.Context) ReadPathSwitches {
+	now := c.now()
+	c.mu.Lock()
+	if c.loaded && now.Sub(c.loadedAt) < readPathCacheTTL {
+		sw := c.switches
+		c.mu.Unlock()
+		return sw
+	}
+	c.mu.Unlock()
+
+	var sw ReadPathSwitches
+	if row, found, err := c.store.Get(ctx); err == nil && found {
+		sw = row.ReadPathSwitches
+	}
+
+	c.mu.Lock()
+	c.switches, c.loadedAt, c.loaded = sw, now, true
+	c.mu.Unlock()
+	return sw
+}
+
+// ThinList reports whether the paged list reads use application_locations.
+func (c *CachedReadPath) ThinList(ctx context.Context) bool {
+	return c.Switches(ctx).ThinList
 }

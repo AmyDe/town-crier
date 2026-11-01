@@ -96,3 +96,69 @@ func TestReadPathSwitch_StoreErrorsAreWrapped(t *testing.T) {
 		t.Errorf("Set() error = %v, want wrapped boom", err)
 	}
 }
+
+type countingReadPathStore struct {
+	fakeReadPathStore
+	gets int
+}
+
+func (c *countingReadPathStore) Get(ctx context.Context) (ReadPathControl, bool, error) {
+	c.gets++
+	return c.fakeReadPathStore.Get(ctx)
+}
+
+func TestCachedReadPath_DefaultsOffWithNoRow(t *testing.T) {
+	t.Parallel()
+	c := NewCachedReadPath(&fakeReadPathStore{}, time.Now)
+
+	if c.ThinList(context.Background()) {
+		t.Error("ThinList() = true, want off with no stored row")
+	}
+}
+
+func TestCachedReadPath_ReadFailureMeansOff(t *testing.T) {
+	t.Parallel()
+	store := &fakeReadPathStore{found: true, row: ReadPathControl{ReadPathSwitches: ReadPathSwitches{ThinList: true}}, getErr: errors.New("db down")}
+	c := NewCachedReadPath(store, time.Now)
+
+	if c.ThinList(context.Background()) {
+		t.Error("ThinList() = true, want off on a read failure")
+	}
+}
+
+func TestCachedReadPath_ReportsStoredSwitch(t *testing.T) {
+	t.Parallel()
+	store := &fakeReadPathStore{found: true, row: ReadPathControl{ReadPathSwitches: ReadPathSwitches{ThinList: true}}}
+	c := NewCachedReadPath(store, time.Now)
+
+	if !c.ThinList(context.Background()) {
+		t.Error("ThinList() = false, want on")
+	}
+}
+
+func TestCachedReadPath_CacheExpiresAfterThirtySeconds(t *testing.T) {
+	t.Parallel()
+	store := &countingReadPathStore{}
+	now := time.Date(2026, 11, 2, 10, 0, 0, 0, time.UTC)
+	c := NewCachedReadPath(store, func() time.Time { return now })
+	ctx := context.Background()
+
+	c.ThinList(ctx)
+	store.row, store.found = ReadPathControl{ReadPathSwitches: ReadPathSwitches{ThinList: true}}, true
+
+	now = now.Add(29 * time.Second)
+	if c.ThinList(ctx) {
+		t.Error("ThinList() = true at 29s, want the cached off")
+	}
+	if store.gets != 1 {
+		t.Errorf("store reads = %d at 29s, want 1", store.gets)
+	}
+
+	now = now.Add(time.Second)
+	if !c.ThinList(ctx) {
+		t.Error("ThinList() = false at 30s, want the refreshed on")
+	}
+	if store.gets != 2 {
+		t.Errorf("store reads = %d at 30s, want 2", store.gets)
+	}
+}
