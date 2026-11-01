@@ -12,20 +12,32 @@ import (
 
 const thinTable = "application_locations"
 
-// thinListSwitch reports whether the paged list reads use application_locations.
-type thinListSwitch interface {
+// readPathSwitch reports which reads use application_locations: ThinList the
+// paged list reads, ThinMap the cluster reads.
+type readPathSwitch interface {
 	ThinList(ctx context.Context) bool
+	ThinMap(ctx context.Context) bool
 }
 
-// WithReadPath sets the switch the paged list reads consult and returns the
-// store. Without one every read stays on applications.
-func (s *PostgresStore) WithReadPath(sw thinListSwitch) *PostgresStore {
+// WithReadPath sets the switch the list and cluster reads consult and returns
+// the store. Without one every read stays on applications.
+func (s *PostgresStore) WithReadPath(sw readPathSwitch) *PostgresStore {
 	s.readPath = sw
 	return s
 }
 
 func (s *PostgresStore) thinList(ctx context.Context) bool {
 	return s.readPath != nil && s.readPath.ThinList(ctx)
+}
+
+func (s *PostgresStore) thinMap(ctx context.Context) bool {
+	return s.readPath != nil && s.readPath.ThinMap(ctx)
+}
+
+// thinClusterQuery points a cluster query at application_locations. The cluster
+// queries indent their FROM with a tab, which thinReplacer does not match.
+func thinClusterQuery(query string) string {
+	return strings.Replace(query, "\n\tFROM applications\n", "\n\tFROM "+thinTable+"\n", 1)
 }
 
 type appKey struct {

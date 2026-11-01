@@ -64,7 +64,7 @@ var (
 type PostgresStore struct {
 	db       querier
 	logger   *slog.Logger
-	readPath thinListSwitch
+	readPath readPathSwitch
 }
 
 // NewPostgresStore returns a store over the given pgx pool (or any querier).

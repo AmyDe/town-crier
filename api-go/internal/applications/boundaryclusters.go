@@ -117,6 +117,10 @@ func (s *PostgresStore) FindClustersInBoundary(ctx context.Context, q BoundaryCl
 		args = append(args, q.Status)
 	}
 
+	if s.thinMap(ctx) {
+		query = thinClusterQuery(query)
+	}
+
 	var clusters []Cluster
 	err = s.withNoNestLoop(ctx, func(tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, query, append([]any{pgx.QueryExecModeExec}, args...)...)

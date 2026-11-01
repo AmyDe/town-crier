@@ -162,3 +162,43 @@ func TestCachedReadPath_CacheExpiresAfterThirtySeconds(t *testing.T) {
 		t.Errorf("store reads = %d at 30s, want 2", store.gets)
 	}
 }
+
+func TestCachedReadPath_ThinMapDefaultsOffAndReadFailureMeansOff(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	if NewCachedReadPath(&fakeReadPathStore{}, time.Now).ThinMap(ctx) {
+		t.Error("ThinMap() = true with no stored row, want off")
+	}
+	failing := &fakeReadPathStore{found: true, row: ReadPathControl{ReadPathSwitches: ReadPathSwitches{ThinMap: true}}, getErr: errors.New("db down")}
+	if NewCachedReadPath(failing, time.Now).ThinMap(ctx) {
+		t.Error("ThinMap() = true on a read failure, want off")
+	}
+	stored := &fakeReadPathStore{found: true, row: ReadPathControl{ReadPathSwitches: ReadPathSwitches{ThinMap: true}}}
+	c := NewCachedReadPath(stored, time.Now)
+	if !c.ThinMap(ctx) {
+		t.Error("ThinMap() = false, want on")
+	}
+	if c.ThinList(ctx) {
+		t.Error("ThinList() = true, want independent of ThinMap")
+	}
+}
+
+func TestCachedReadPath_ThinMapCacheExpiresAfterThirtySeconds(t *testing.T) {
+	t.Parallel()
+	store := &countingReadPathStore{}
+	now := time.Date(2026, 11, 2, 10, 0, 0, 0, time.UTC)
+	c := NewCachedReadPath(store, func() time.Time { return now })
+	ctx := context.Background()
+
+	c.ThinMap(ctx)
+	store.row, store.found = ReadPathControl{ReadPathSwitches: ReadPathSwitches{ThinMap: true}}, true
+
+	now = now.Add(29 * time.Second)
+	if c.ThinMap(ctx) || store.gets != 1 {
+		t.Errorf("at 29s: ThinMap = true or reads = %d, want cached off with 1 read", store.gets)
+	}
+	now = now.Add(time.Second)
+	if !c.ThinMap(ctx) || store.gets != 2 {
+		t.Errorf("at 30s: ThinMap = false or reads = %d, want refreshed on with 2 reads", store.gets)
+	}
+}
