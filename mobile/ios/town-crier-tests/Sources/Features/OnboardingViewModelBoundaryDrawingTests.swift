@@ -246,6 +246,25 @@ struct OnboardingViewModelBoundaryDrawingTests {
     #expect(sut.boundaryVertices.isEmpty)
   }
 
+  // MARK: - Large zone warning in custom mode
+
+  @Test func showsLargeZoneWarning_inCustomMode_followsDrawnPolygon() async throws {
+    let (sut, _, _, _, _) = makeSUT()
+    sut.advance()
+    sut.postcodeInput = "CB1 2AD"
+    await sut.submitPostcode()
+    sut.onUpgradeFlowCompleted = { sut.subscriptionTier = .personal }
+    await sut.reconcileTierAfterCustomShapeUpgrade()
+    sut.selectedRadiusMetres = 5000
+    #expect(sut.showsLargeZoneWarning == false)
+
+    for (lat, lon) in [(51.95, -0.05), (51.95, 0.05), (52.05, 0.05), (52.05, -0.05)] {
+      try sut.addVertex(Coordinate(latitude: lat, longitude: lon))
+    }
+
+    #expect(sut.showsLargeZoneWarning == true)
+  }
+
   // MARK: - selectCustomShape() re-entry (tc-6he3x.10)
 
   @Test func selectCustomShape_entitledOnRadiusPicker_entersBoundaryDrawing() async {

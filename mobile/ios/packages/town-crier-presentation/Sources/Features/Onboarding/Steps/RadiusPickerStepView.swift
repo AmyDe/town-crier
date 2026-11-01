@@ -58,8 +58,8 @@ struct RadiusPickerStepView: View {
           }
         }
 
-        if viewModel.showsLargeRadiusWarning {
-          LargeRadiusWarningView()
+        if viewModel.showsLargeZoneWarning {
+          LargeZoneWarningView()
         }
 
         PrimaryButton("Continue") {

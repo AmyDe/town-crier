@@ -92,6 +92,13 @@ public struct MapView: View {
       if viewModel.showZonePicker {
         zonePickerSection
       }
+      if viewModel.showsLargeZoneNotice {
+        LargeZoneNoticeView()
+          .padding(.horizontal, TCSpacing.medium)
+          .padding(.vertical, TCSpacing.extraSmall)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .background(Color.tcBackground)
+      }
       if viewModel.showStatusFilters {
         filterHeader
       }
@@ -195,8 +202,7 @@ public struct MapView: View {
           mapContent
         #endif
         if viewModel.isLoading {
-          ProgressView()
-            .controlSize(.large)
+          loadingIndicator
         }
       }
     }
@@ -206,9 +212,19 @@ public struct MapView: View {
     ZStack {
       Color.tcBackground.ignoresSafeArea()
       MapSkeletonView()
+      loadingIndicator
+    }
+  }
+
+  private var loadingIndicator: some View {
+    VStack(spacing: TCSpacing.small) {
       ProgressView()
         .controlSize(.large)
+      if viewModel.showsLargeZoneLoadingMessage {
+        LargeZoneLoadingMessageView()
+      }
     }
+    .padding(.horizontal, TCSpacing.extraLarge)
   }
 
   // MARK: - macOS SwiftUI Map fallback (not compiled on iOS)

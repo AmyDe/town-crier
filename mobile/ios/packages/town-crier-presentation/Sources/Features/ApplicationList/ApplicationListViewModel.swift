@@ -35,6 +35,12 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     }
   }
   @Published private(set) var isLoading = false
+  @Published private(set) var loadHasBeenSlow = false
+  private let slowLoadDelay: Duration
+  private lazy var loadTracker = SlowLoadTracker(delay: slowLoadDelay) { [weak self] isLoading, isSlow in
+    self?.isLoading = isLoading
+    self?.loadHasBeenSlow = isSlow
+  }
   @Published var error: DomainError?
   @Published private(set) var zones: [WatchZone] = []
   @Published private(set) var selectedZone: WatchZone?
@@ -201,6 +207,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     self.zoneSelectionKey = ""
     self.sortKey = sortKey
     self.sort = Self.readPersistedSort(from: userDefaults, key: sortKey)
+    self.slowLoadDelay = .seconds(3)
   }
 
   public init(
@@ -221,6 +228,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     self.zoneSelectionKey = ""
     self.sortKey = sortKey
     self.sort = Self.readPersistedSort(from: userDefaults, key: sortKey)
+    self.slowLoadDelay = .seconds(3)
   }
 
   public init(
@@ -230,7 +238,8 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     badgeSetter: BadgeSetting? = nil,
     userDefaults: UserDefaults = .standard,
     zoneSelectionKey: String = "lastSelectedZone.applications",
-    sortKey: String = defaultSortKey
+    sortKey: String = defaultSortKey,
+    slowLoadDelay: Duration = .seconds(3)
   ) {
     self.repository = repository
     self.offlineRepository = nil
@@ -242,6 +251,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     self.zoneSelectionKey = zoneSelectionKey
     self.sortKey = sortKey
     self.sort = Self.readPersistedSort(from: userDefaults, key: sortKey)
+    self.slowLoadDelay = slowLoadDelay
   }
 
   public init(
@@ -251,7 +261,8 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     badgeSetter: BadgeSetting? = nil,
     userDefaults: UserDefaults = .standard,
     zoneSelectionKey: String = "lastSelectedZone.applications",
-    sortKey: String = defaultSortKey
+    sortKey: String = defaultSortKey,
+    slowLoadDelay: Duration = .seconds(3)
   ) {
     self.repository = nil
     self.offlineRepository = offlineRepository
@@ -263,6 +274,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     self.zoneSelectionKey = zoneSelectionKey
     self.sortKey = sortKey
     self.sort = Self.readPersistedSort(from: userDefaults, key: sortKey)
+    self.slowLoadDelay = slowLoadDelay
   }
 
   public func loadApplications() async {
@@ -274,7 +286,8 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     isLoadInFlight = true
     defer { isLoadInFlight = false }
 
-    isLoading = true
+    let loadToken = loadTracker.begin()
+    defer { loadTracker.end(loadToken) }
     error = nil
     // Zone-independent, so it runs even when the no-active-zone branch below
     // returns early.
@@ -297,14 +310,12 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
       guard let activeZone = selectedZone ?? zone else {
         applications = []
         nextCursor = nil
-        isLoading = false
         return
       }
       try await loadActiveZone(activeZone)
     } catch {
       handleError(error)
     }
-    isLoading = false
   }
 
   public func selectZone(_ zone: WatchZone) async {
@@ -312,14 +323,14 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     selectedStatusFilter = nil
     unreadOnly = false
     userDefaults.set(zone.id.value, forKey: zoneSelectionKey)
-    isLoading = true
+    let loadToken = loadTracker.begin()
+    defer { loadTracker.end(loadToken) }
     error = nil
     do {
       try await loadActiveZone(zone)
     } catch {
       handleError(error)
     }
-    isLoading = false
   }
 
   public func selectApplication(_ id: PlanningApplicationId) {
@@ -384,16 +395,5 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
       return try await repository.fetchApplications(for: zone)
     }
     return []
-  }
-
-  private static func readPersistedSort(
-    from defaults: UserDefaults,
-    key: String
-  ) -> ApplicationsSort {
-    if let raw = defaults.string(forKey: key),
-      let parsed = ApplicationsSort(rawValue: raw) {
-      return parsed
-    }
-    return .recentActivity
   }
 }

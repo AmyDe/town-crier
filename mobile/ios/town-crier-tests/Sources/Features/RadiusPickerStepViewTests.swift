@@ -37,10 +37,10 @@ struct RadiusPickerStepViewTests {
     _ = sut.body
   }
 
-  @Test func body_renders_whenLargeRadiusWarningShown() {
+  @Test func body_renders_whenLargeZoneWarningShown() {
     let vm = makeViewModel(tier: .pro)
-    vm.selectedRadiusMetres = 3000  // above the 2.1 km large-radius threshold
-    #expect(vm.showsLargeRadiusWarning)
+    vm.selectedRadiusMetres = 3000  // above the large-zone threshold
+    #expect(vm.showsLargeZoneWarning)
 
     let sut = RadiusPickerStepView(viewModel: vm)
     _ = sut.body

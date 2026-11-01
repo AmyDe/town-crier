@@ -105,4 +105,13 @@ public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
   public var isCustomShape: Bool {
     boundary != nil
   }
+
+  /// Whether this zone is large under ``LargeZone``'s area rule. A custom
+  /// shape uses its polygon area, not the derived enclosing radius.
+  public var isLarge: Bool {
+    if let boundary {
+      return LargeZone.isLarge(boundary: boundary)
+    }
+    return LargeZone.isLarge(radiusMetres: radiusMetres)
+  }
 }

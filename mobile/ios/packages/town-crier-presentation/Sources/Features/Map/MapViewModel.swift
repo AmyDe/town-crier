@@ -14,6 +14,12 @@ import TownCrierDomain
 public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
   @Published private(set) var clusters: [MapCluster] = []
   @Published private(set) var isLoading = false
+  @Published private(set) var loadHasBeenSlow = false
+  private let slowLoadDelay: Duration
+  private lazy var loadTracker = SlowLoadTracker(delay: slowLoadDelay) { [weak self] isLoading, isSlow in
+    self?.isLoading = isLoading
+    self?.loadHasBeenSlow = isSlow
+  }
   @Published var error: DomainError?
   @Published private(set) var selectedApplication: PlanningApplication?
   /// The application whose full detail card should open once the summary
@@ -116,17 +122,20 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
     watchZoneRepository: WatchZoneRepository,
     userDefaults: UserDefaults = .standard,
     zoneSelectionKey: String = "lastSelectedZone.map",
-    savedApplicationRepository: SavedApplicationRepository? = nil
+    savedApplicationRepository: SavedApplicationRepository? = nil,
+    slowLoadDelay: Duration = .seconds(3)
   ) {
     self.repository = repository
     self.watchZoneRepository = watchZoneRepository
     self.savedApplicationRepository = savedApplicationRepository
     self.userDefaults = userDefaults
     self.zoneSelectionKey = zoneSelectionKey
+    self.slowLoadDelay = slowLoadDelay
   }
 
   public func loadApplications() async {
-    isLoading = true
+    let loadToken = loadTracker.begin()
+    defer { loadTracker.end(loadToken) }
     error = nil
     do {
       let loadedZones = try await watchZoneRepository.loadAll()
@@ -142,7 +151,6 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
         selectedZone = resolveInitialZone(from: loadedZones)
       }
       guard let zone = selectedZone else {
-        isLoading = false
         hasLoaded = true
         return
       }
@@ -159,7 +167,6 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
     } catch {
       handleError(error)
     }
-    isLoading = false
     hasLoaded = true
   }
 
@@ -211,12 +218,12 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
     centreLat = zone.centre.latitude
     centreLon = zone.centre.longitude
     radiusMetres = zone.radiusMetres
-    isLoading = true
+    let loadToken = loadTracker.begin()
+    defer { loadTracker.end(loadToken) }
     error = nil
     let (viewport, zoom) = Self.initialViewport(
       centre: zone.centre, radiusMetres: zone.radiusMetres)
     await loadClusters(viewport: viewport, zoom: zoom)
-    isLoading = false
   }
 
   private func resolveInitialZone(from zones: [WatchZone]) -> WatchZone? {
@@ -364,35 +371,5 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
         // Preserve current state on failure
       }
     }
-  }
-
-  // MARK: - Viewport geometry
-
-  /// Derives the initial whole-zone viewport and slippy zoom from a zone centre
-  /// and radius. Mirrors the camera framing (a span of 2.5x the radius), so the
-  /// seeded clusters cover the whole circle until the map view reports its real
-  /// visible rect.
-  static func initialViewport(
-    centre: Coordinate, radiusMetres: Double
-  ) -> (viewport: MapViewport, zoom: Int) {
-    let metresPerDegreeLat = 111_320.0
-    let halfSpanMetres = radiusMetres * 2.5 / 2
-    let halfLatDeg = halfSpanMetres / metresPerDegreeLat
-    let cosLat = max(0.01, cos(centre.latitude * .pi / 180))
-    let halfLonDeg = halfSpanMetres / (metresPerDegreeLat * cosLat)
-    let viewport = MapViewport(
-      west: centre.longitude - halfLonDeg,
-      south: centre.latitude - halfLatDeg,
-      east: centre.longitude + halfLonDeg,
-      north: centre.latitude + halfLatDeg)
-    return (viewport, slippyZoom(forLongitudeSpanDegrees: halfLonDeg * 2))
-  }
-
-  /// Standard slippy-map zoom for a longitude span: `log2(360 / span)`, clamped
-  /// to the API's accepted 0...20 range.
-  static func slippyZoom(forLongitudeSpanDegrees longitudeSpan: Double) -> Int {
-    guard longitudeSpan > 0 else { return 20 }
-    let zoom = (log2(360.0 / longitudeSpan)).rounded()
-    return max(0, min(20, Int(zoom)))
   }
 }
