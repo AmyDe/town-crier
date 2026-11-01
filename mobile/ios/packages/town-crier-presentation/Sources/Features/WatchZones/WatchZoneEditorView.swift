@@ -29,6 +29,11 @@ public struct WatchZoneEditorView: View {
             } else {
               lockedCustomShapeSection
             }
+            if viewModel.showsLargeZoneWarning {
+              Section {
+                LargeZoneWarningView()
+              }
+            }
             if viewModel.isFilterSectionVisible { WatchZoneFilterSection(viewModel: viewModel) }
           }
           if viewModel.areNotificationTogglesVisible {
@@ -142,11 +147,6 @@ public struct WatchZoneEditorView: View {
             viewModel.viewPlans()
           }
           .padding(.top, TCSpacing.small)
-        }
-
-        if viewModel.showsLargeZoneWarning {
-          LargeZoneWarningView()
-            .padding(.top, TCSpacing.small)
         }
       }
     }

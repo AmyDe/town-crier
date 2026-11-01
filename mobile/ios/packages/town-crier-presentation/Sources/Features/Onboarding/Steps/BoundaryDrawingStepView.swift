@@ -40,6 +40,10 @@ struct BoundaryDrawingStepView: View {
         .disabled(viewModel.boundaryVertices.isEmpty)
       }
 
+      if viewModel.showsLargeZoneWarning {
+        LargeZoneWarningView()
+      }
+
       PrimaryButton("Continue") {
         viewModel.confirmBoundary()
       }
