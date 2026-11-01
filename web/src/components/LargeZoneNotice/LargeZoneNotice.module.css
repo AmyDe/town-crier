@@ -1,0 +1,22 @@
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--tc-space-sm);
+  margin: 0;
+  font-size: var(--tc-text-caption);
+  color: var(--tc-text-secondary);
+  line-height: var(--tc-leading-snug);
+}
+
+.icon {
+  flex-shrink: 0;
+  color: var(--tc-status-conditions);
+  font-weight: var(--tc-weight-bold);
+}
+
+.loadingMessage {
+  margin: 0;
+  font-size: var(--tc-text-caption);
+  color: var(--tc-text-secondary);
+  line-height: var(--tc-leading-snug);
+}
