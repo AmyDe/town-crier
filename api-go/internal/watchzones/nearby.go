@@ -40,8 +40,8 @@ type profileReader interface {
 	Get(ctx context.Context, userID string) (*profiles.UserProfile, error)
 }
 
-// appFinder runs the spatial lookups behind create's nearby applications, the
-// per-zone applications list and the map clusters. Lookups are authority-agnostic,
+// appFinder runs the spatial lookups behind the per-zone applications list and
+// the map clusters. Lookups are authority-agnostic,
 // so a border-spanning zone surfaces neighbour-authority apps. Circle zones use
 // FindNearbyPage, FindInZonePage and FindClustersInZone (ST_DWithin); custom-shape
 // zones use the *Boundary* counterparts (ST_Covers against the polygon).
@@ -60,8 +60,7 @@ type unreadReader interface {
 	GetLatestUnreadByApplications(ctx context.Context, userID string, applicationUIDs []string) (map[string]notifications.LatestUnread, error)
 }
 
-// NearbyRoutes registers POST /v1/me/watch-zones (create, returning nearby
-// applications) and GET /v1/me/watch-zones/{zoneId}/applications. newID mints the
+// NearbyRoutes registers POST /v1/me/watch-zones (create) and GET /v1/me/watch-zones/{zoneId}/applications. newID mints the
 // zone id (a GUID in production); now stamps the zone's creation time.
 func NearbyRoutes(
 	mux *http.ServeMux,
@@ -121,7 +120,7 @@ const maxRadiusMetres = 10_000
 // The param-less path keeps the 500 default (backward-compat contract). The
 // sort-aware path (?sort=) uses a smaller 150 default for a
 // snappier first paint and infinite-scroll increment. maxNearbyLimit
-// is the shared clamp ceiling for both. The create path fetches page one only.
+// is the shared clamp ceiling for both.
 const (
 	defaultNearbyLimit = 500
 	defaultSortedLimit = 150
@@ -204,10 +203,11 @@ func (req createRequest) valid() bool {
 // a boundary-aware client can read the derived circle fields off the same
 // response without a follow-up GET.
 type createResult struct {
-	Latitude           float64                     `json:"latitude"`
-	Longitude          float64                     `json:"longitude"`
-	RadiusMetres       float64                     `json:"radiusMetres"`
-	Boundary           *boundaryGeoJSON            `json:"boundary"`
+	Latitude     float64          `json:"latitude"`
+	Longitude    float64          `json:"longitude"`
+	RadiusMetres float64          `json:"radiusMetres"`
+	Boundary     *boundaryGeoJSON `json:"boundary"`
+	// NearbyApplications is always an empty array, kept so the wire shape is stable.
 	NearbyApplications []applications.NearbyResult `json:"nearbyApplications"`
 	// FilterKey round-trips the persisted filter: nil
 	// for an unfiltered zone, the catalog key string otherwise.
@@ -218,7 +218,8 @@ type createResult struct {
 // boundary-carrying request on the caller's tier (403
 // boundary_requires_paid_tier) and shape/radius (400 boundary_invalid /
 // boundary_too_large), enforce the tier's watch-zone quota (403), persist the
-// zone, and return 201 Created with the applications already nearby.
+// zone, and return 201 Created. nearbyApplications is always empty: no client
+// reads it, and the spatial query it needed could fail after the zone was saved.
 func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 	userID := auth.Subject(r.Context())
 
@@ -245,9 +246,8 @@ func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 	// shape is even parsed (cheapest check first), then on shape validity,
 	// then on the enclosing radius against both the hard server ceiling and
 	// the tier's own cap. On success Latitude/Longitude/RadiusMetres are
-	// overwritten with the boundary's derived values, so every existing
-	// circle-shaped step below (NewWatchZone, the nearby-applications fetch)
-	// runs unchanged against them.
+	// overwritten with the boundary's derived values, so the circle-shaped
+	// NewWatchZone step below runs unchanged against them.
 	var boundary Boundary
 	if req.Boundary != nil {
 		if !tier.AllowsCustomBoundary() {
@@ -331,25 +331,12 @@ func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 		h.metrics.WatchZoneCreated(r.Context())
 	}
 
-	// The create response carries page one of the bounded fetch; the continuation
-	// token is irrelevant here (no "load more" on create), so it is discarded.
-	nearby, _, err := h.apps.FindNearbyPage(
-		r.Context(), req.Latitude, req.Longitude, req.RadiusMetres, maxNearbyLimit, "")
-	if err != nil {
-		h.serverError(w, r, "find nearby applications", err)
-		return
-	}
-
-	results := make([]applications.NearbyResult, 0, len(nearby))
-	for _, a := range nearby {
-		results = append(results, applications.NearbyResultOf(a))
-	}
 	h.writeCreated(w, r, "/v1/me/watch-zones/"+zone.ID, createResult{
 		Latitude:           zone.Latitude,
 		Longitude:          zone.Longitude,
 		RadiusMetres:       zone.RadiusMetres,
 		Boundary:           boundaryToGeoJSON(zone.Boundary),
-		NearbyApplications: results,
+		NearbyApplications: []applications.NearbyResult{},
 		FilterKey:          encodeFilterKey(zone.FilterKey),
 	})
 }
