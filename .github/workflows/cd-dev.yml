@@ -325,7 +325,7 @@ jobs:
 
       - uses: ./.github/actions/deploy-worker-jobs
         with:
-          jobs: poll digest digest-hourly dormant-cleanup subscription-sweep pg-purge seo-catalog appstore-reconcile
+          jobs: poll digest digest-hourly dormant-cleanup subscription-sweep pg-purge seo-catalog appstore-reconcile thin-load thin-reconcile thin-reconcile-all
           env-suffix: dev
           resource-group: ${{ env.RESOURCE_GROUP_DEV }}
           image: ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_REPO_WORKER }}:${{ github.sha }}

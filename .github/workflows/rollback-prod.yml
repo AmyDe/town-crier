@@ -124,7 +124,7 @@ jobs:
 
       - uses: ./.github/actions/deploy-worker-jobs
         with:
-          jobs: poll digest digest-hourly dormant-cleanup subscription-sweep pg-purge seo-catalog appstore-reconcile
+          jobs: poll digest digest-hourly dormant-cleanup subscription-sweep pg-purge seo-catalog appstore-reconcile thin-load thin-reconcile thin-reconcile-all
           env-suffix: prod
           resource-group: ${{ needs.resolve.outputs.resource-group }}
           image: ${{ needs.resolve.outputs.worker-image }}
