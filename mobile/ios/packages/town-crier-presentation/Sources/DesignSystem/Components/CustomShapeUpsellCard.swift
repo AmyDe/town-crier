@@ -2,11 +2,8 @@ import SwiftUI
 
 /// In-context upsell shown on the onboarding radius step for a Free-tier
 /// user, explaining that a paid tier can draw a custom-shape zone instead of
-/// a circle. Wraps ``CustomShapeUpsellGraphic`` with
-/// title copy and a tappable action, mirroring ``UnlockLargerZonesChip``'s
-/// "safe fallback" pattern (tap to open the paywall) but for the
-/// custom-shape entitlement rather than a larger radius — the two upsells
-/// are distinct and may both show together for a Free-tier user.
+/// a circle. Tapping it opens the paywall. Distinct from
+/// ``UnlockLargerZonesChip``; both may show together.
 public struct CustomShapeUpsellCard: View {
   /// User-facing copy, kept in one place so it can be unit-tested and reused.
   enum Copy {

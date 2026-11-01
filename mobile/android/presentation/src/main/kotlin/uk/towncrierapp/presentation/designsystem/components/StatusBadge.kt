@@ -26,26 +26,20 @@ import uk.towncrierapp.presentation.designsystem.TownCrierRadius
 import uk.towncrierapp.presentation.designsystem.TownCrierSpacing
 import uk.towncrierapp.presentation.designsystem.TownCrierTheme
 
-/** Border thickness of the Public Notice status stamp — see [StatusBadge] doc. */
 private val STAMP_BORDER_THICKNESS = 1.5.dp
 
-/** Letter-spacing of the Public Notice status stamp's uppercase label — see [StatusBadge] doc. */
 private val STAMP_LETTER_SPACING = 0.12.em
 
 /**
- * A compact stamp-style indicator for planning application status (Public
- * Notice component language, epic #848 R5): an uppercase, letter-spaced
- * label in [color], a [color]-bordered outline at [TownCrierRadius.sm], and
- * NO fill — the outline itself reads as the accent, matching web's
- * `.statusBadge` / iOS's status pill. This is the ONLY status badge in this
- * design system — do not add a second variant.
+ * A compact stamp-style indicator for planning application status: an
+ * uppercase, letter-spaced label in [color], a [color]-bordered outline at
+ * [TownCrierRadius.sm], and no fill. This is the only status badge in this
+ * design system.
  *
- * Callers pass [color] from `TownCrierTheme.colors.status*` — this component
- * has no opinion on which domain status maps to which color; that mapping
- * lands with the domain status type in a later phase of the Android parity
- * epic (#770). The icon is always paired with a text [label] (never color
- * alone) for colour-blind accessibility; its content description is null
- * because [label] already conveys the same information.
+ * Callers pass [color] from `TownCrierTheme.colors.status*`. The icon is
+ * always paired with a text [label] for colour-blind accessibility; its
+ * content description is null because [label] already conveys the same
+ * information.
  */
 @Composable
 public fun StatusBadge(

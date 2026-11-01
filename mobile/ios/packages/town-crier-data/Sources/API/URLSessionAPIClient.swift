@@ -104,9 +104,8 @@ public final class URLSessionAPIClient: Sendable {
   }
 
   /// Performs a request and returns the raw response body bytes without
-  /// decoding. Used for opaque payloads (e.g. the GDPR data export) that must
-  /// be preserved byte-for-byte as the server produced them. Auth, token
-  /// refresh on 401, and HTTP status mapping are identical to `request(_:)`.
+  /// decoding. Auth, token refresh on 401, and HTTP status mapping are
+  /// identical to `request(_:)`.
   public func requestData(_ endpoint: APIEndpoint) async throws -> Data {
     guard let session = await authService.currentSession() else {
       throw DomainError.sessionExpired

@@ -11,16 +11,11 @@ import Foundation
 /// - `2026-06-12T09:30:00+00:00` — whole second, no fractional part.
 /// - `2026-06-12T09:30:00Z` — `Z` zero-offset spelling.
 ///
-/// A single `ISO8601DateFormatter` cannot cover all three: `.withFractionalSeconds`
-/// rejects whole-second strings, and the default `.withInternetDateTime` rejects
-/// fractional ones. So we try fractional first, then fall back to plain. Both
-/// option sets include `.withTimeZone`, which accepts the `Z` and `+hh:mm` forms.
+/// A single `ISO8601DateFormatter` cannot cover both fractional and whole-second
+/// strings, so fractional is tried first, then plain.
 ///
-/// Two `ISO8601DateFormatter` instances are cached. They are configured once and
-/// never mutated afterwards, so reusing them avoids per-call allocation. The type
-/// is not `Sendable`, but `ISO8601DateFormatter` is documented as safe for
-/// concurrent use of its parsing methods once configured, and `formatOptions` is
-/// never touched after init here — hence `nonisolated(unsafe)`.
+/// `nonisolated(unsafe)`: the formatters are never mutated after init, and
+/// `ISO8601DateFormatter` parsing is safe for concurrent use once configured.
 enum DotNetTimeParser {
   private nonisolated(unsafe) static let fractional: ISO8601DateFormatter = {
     let formatter = ISO8601DateFormatter()

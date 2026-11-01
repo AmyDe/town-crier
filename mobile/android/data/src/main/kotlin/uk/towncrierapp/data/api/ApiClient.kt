@@ -25,8 +25,7 @@ internal data class PagedResult<T>(
 private class UnauthorizedException : Exception()
 
 /**
- * Hand-rolled API client (no Retrofit) matching iOS `URLSessionAPIClient`
- * behaviour. Every request:
+ * Hand-rolled API client (no Retrofit). Every request:
  * requires a session first (else [DomainError.SessionExpired], no network
  * call); attaches `Authorization: Bearer`, `Accept: application/json`
  * always, `Content-Type: application/json` only with a body; on 401,
@@ -71,8 +70,7 @@ public class ApiClient(
     /**
      * Runs [action] with [initialAccessToken]; on a 401, refreshes the
      * session exactly once and retries [action] exactly once with the
-     * refreshed token. The whole retry policy lives here, shared by
-     * [performRequest] and [requestBytes].
+     * refreshed token.
      */
     @Suppress("SwallowedException", "TooGenericExceptionCaught")
     // The deliberately generic catches below are the policy (401 -> refresh and
@@ -164,18 +162,14 @@ private inline fun log(
     enableDebugLogging: Boolean,
     message: () -> String,
 ) {
-    // Debug-flavor-only request logging (method/path/status — never tokens),
-    // wired from :app via BuildConfig.DEBUG. Guarded so plain JVM unit tests
-    // (enableDebugLogging = false by default) never touch android.util.Log.
+    // Guarded so plain JVM unit tests (enableDebugLogging = false by default)
+    // never touch android.util.Log.
     if (enableDebugLogging) Log.d("ApiClient", message())
 }
 
 // No charset parameter: BridgeInterceptor rewrites the Content-Type header
-// from this RequestBody's contentType() unconditionally once a real
-// OkHttpClient executes the request, so the media type set here — not the
-// explicit header() call below — is what actually reaches the wire. Bare
-// "application/json" keeps both the wire value and the (BridgeInterceptor-
-// free) FakeHttpTransport-observed value equal to the contract.
+// from this RequestBody's media type, so this value, not the explicit
+// header() call below, is what reaches the wire.
 private val jsonMediaType = "application/json".toMediaType()
 private val emptyBody: RequestBody = ByteArray(0).toRequestBody(null)
 
@@ -189,13 +183,9 @@ private fun buildRequest(
         .trim('/')
         .split("/")
         .filter { it.isNotEmpty() }
-        // addEncodedPathSegment (not addPathSegment): a caller that has
-        // pre-percent-encoded a literal "/" it needs preserved WITHIN one
-        // segment (e.g. ApiSavedApplicationRepository's "%2F"-escaped id)
-        // would otherwise have that escape's "%" itself re-encoded to "%25"
-        // (double-encoding it into mush). Every OTHER unsafe character still
-        // gets encoded either way, so existing callers passing plain,
-        // unencoded segments (UUIDs, postcodes with a space) are unaffected.
+        // addEncodedPathSegment, not addPathSegment, so a pre-encoded "%2F"
+        // within one segment (e.g. ApiSavedApplicationRepository's id) is not
+        // double-encoded to "%252F"; other unsafe characters are still encoded.
         .forEach { urlBuilder.addEncodedPathSegment(it) }
     endpoint.query.forEach { (name, value) -> urlBuilder.addQueryParameter(name, value) }
 

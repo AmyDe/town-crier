@@ -1,15 +1,10 @@
 import Foundation
 import TownCrierDomain
 
-/// Foundation HTTP client for the anonymous (pre-signup) browse surface:
-/// the same decode / error-mapping / paged-request shape as
-/// ``URLSessionAPIClient``, but with no `AuthenticationService`, no
-/// `Authorization` header, and no 401 token-refresh recovery — there is no
-/// session to refresh. A missing/failed request surfaces a domain error
-/// directly. Deliberately a parallel type rather than making
-/// `URLSessionAPIClient`'s session requirement optional, so that client's
-/// session guard — a safety property every authenticated repository relies on
-/// — is never weakened.
+/// Foundation HTTP client for the anonymous (pre-signup) browse surface: no
+/// `Authorization` header and no 401 token-refresh recovery. A parallel type
+/// rather than making `URLSessionAPIClient`'s session optional, so that
+/// client's session guard is never weakened.
 public final class AnonymousURLSessionAPIClient: Sendable {
   private let baseURL: URL
   private let transport: HTTPTransport

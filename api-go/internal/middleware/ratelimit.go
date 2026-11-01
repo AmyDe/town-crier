@@ -21,9 +21,7 @@ const (
 )
 
 // tierLookup reports whether a user is on a paid tier. The entitlement source is
-// the Cosmos profile, NOT the JWT subscription_tier claim (ADR 0010): Cosmos is
-// the single source of truth for entitlements. *profiles.CosmosStore-backed
-// adapters satisfy this; tests substitute a fake.
+// the stored profile, NOT the JWT subscription_tier claim (ADR 0010).
 type tierLookup interface {
 	IsPaidUser(ctx context.Context, userID string) (bool, error)
 }

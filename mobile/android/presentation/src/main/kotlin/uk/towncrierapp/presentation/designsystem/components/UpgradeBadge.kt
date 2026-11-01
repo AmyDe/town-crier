@@ -12,11 +12,9 @@ import uk.towncrierapp.presentation.R
 import uk.towncrierapp.presentation.designsystem.TownCrierTheme
 
 /**
- * The small "Upgrade" pill shown wherever a free/lower-tier user has hit a
- * gate — the "+" button at watch-zone quota, [GatedToggle]'s locked row, and
- * (later) other entitlement-gated affordances. A thin, purpose-named wrapper
- * over [StatusBadge] rather than a second badge shape (design-language skill,
- * Status Badges).
+ * The small "Upgrade" pill shown wherever a free/lower-tier user has hit an
+ * entitlement gate. A purpose-named wrapper over [StatusBadge] rather than a
+ * second badge shape.
  */
 @Composable
 public fun UpgradeBadge(modifier: Modifier = Modifier) {

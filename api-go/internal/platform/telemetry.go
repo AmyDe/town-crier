@@ -38,9 +38,6 @@ const postgresDatabasePrefix = "town_crier_"
 // without the expected "town_crier_" prefix returns "" so the caller omits the
 // attribute rather than emitting deployment.environment="".
 func deploymentEnvironment(postgresDB string) string {
-	if postgresDB == "" {
-		return ""
-	}
 	env, ok := strings.CutPrefix(postgresDB, postgresDatabasePrefix)
 	if !ok {
 		return ""

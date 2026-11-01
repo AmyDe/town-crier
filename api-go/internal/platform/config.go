@@ -93,8 +93,7 @@ type Config struct {
 	// AppleBundleID is the App Store bundle id a verified StoreKit transaction
 	// must carry (the /v1/subscriptions/verify bundle check). It defaults to the
 	// canonical uk.towncrierapp.mobile — the value the iOS app is built under and
-	// App Store Connect issues transactions for. The legacy API defaulted to
-	// the wrong uk.co.towncrier.ios; that bug is not carried over.
+	// App Store Connect issues transactions for.
 	AppleBundleID string
 
 	// AppleEnvironments is the allowlist of StoreKit transaction environments

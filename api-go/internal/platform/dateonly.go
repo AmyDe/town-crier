@@ -12,7 +12,7 @@ const dateOnlyLayout = "2006-01-02"
 
 // DateOnly marshals as a bare "yyyy-MM-dd" date, never a full timestamp.
 // Planning-application dates (start/decided/consulted) are stored and served
-// in this format; Cosmos documents must use this type so the wire shape is exact.
+// in this format.
 type DateOnly time.Time
 
 // String renders the calendar date as "yyyy-MM-dd".

@@ -11,11 +11,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 
-/**
- * Town Crier's appearance preference — mirrors the iOS `AppearanceMode` enum
- * as implemented (epic #770 pre-resolved decision). The picker UI lands in a
- * later issue; this is the theme-resolution API only.
- */
+/** Town Crier's appearance preference; mirrors the iOS `AppearanceMode` enum. */
 public enum class Appearance {
     System,
     Light,
@@ -64,7 +60,6 @@ internal fun resolveIsOled(
     isDark: Boolean,
 ): Boolean = isDark && (appearance == Appearance.OledDark || oled == true)
 
-/** The formula the epic specifies: `isDark ? (isOled ? oled : dark) : light`. */
 internal fun resolvePalette(
     isDark: Boolean,
     isOled: Boolean,
@@ -141,9 +136,7 @@ public fun TownCrierTheme(
 /**
  * Mirrors `MaterialTheme.colorScheme`/`.typography` for tokens Material 3 has
  * no slot for: `TownCrierTheme.colors.*` (status colors, amberMuted, overlay),
- * `TownCrierTheme.bodyEmphasis` (tcBodyEmphasis — bodyLarge at SemiBold), and
- * `TownCrierTheme.mono` (the Public Notice mono metadata role — references,
- * dates, distances — epic #848 R5).
+ * `TownCrierTheme.bodyEmphasis` and `TownCrierTheme.mono`.
  */
 public object TownCrierTheme {
     public val colors: TownCrierColors

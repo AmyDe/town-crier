@@ -2,18 +2,8 @@ import SwiftUI
 
 /// In-context upsell affordance surfaced beneath the radius slider when the
 /// user's tier caps their watch zones below the full set of paid benefits.
-///
-/// This is the "safe fallback" interaction from the design: a capped slider plus
-/// an explicit tappable chip, rather than a drag-past-the-cap gesture. Tapping it
-/// opens the subscription paywall; on a successful upgrade the radius range
-/// unlocks live. The richer "locked region on the track" gesture is an open
-/// question to be prototyped in TestFlight before release.
-///
-/// The copy sells the whole upgrade, not just a bigger radius: bigger zones, custom
-/// shapes instead of a circle, more than one zone, and instant alerts by push and
-/// email (the free tier gets a weekly digest only). Uses the brand amber at 15%
-/// opacity so it reads as an invitation, not an error — mirrors
-/// ``LargeRadiusWarningView``.
+/// Tapping it opens the subscription paywall. Uses the brand amber at 15%
+/// opacity so it reads as an invitation, not an error.
 public struct UnlockLargerZonesChip: View {
   /// User-facing copy, kept in one place so it can be unit-tested and reused.
   enum Copy {
