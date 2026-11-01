@@ -144,8 +144,8 @@ public struct WatchZoneEditorView: View {
           .padding(.top, TCSpacing.small)
         }
 
-        if viewModel.showsLargeRadiusWarning {
-          LargeRadiusWarningView()
+        if viewModel.showsLargeZoneWarning {
+          LargeZoneWarningView()
             .padding(.top, TCSpacing.small)
         }
       }
