@@ -14,6 +14,19 @@ export class SpyApplicationsBrowsePort implements ApplicationsBrowsePort {
     | ((query: ApplicationsBrowseQuery) => ApplicationsPageResult)
     | null = null;
 
+  holdFetches = false;
+  private heldFetches: ((result: ApplicationsPageResult) => void)[] = [];
+
+  get heldFetchCount(): number {
+    return this.heldFetches.length;
+  }
+
+  settleHeldFetch(result: ApplicationsPageResult = { rows: [], nextCursor: null }): void {
+    const resolve = this.heldFetches.shift();
+    if (!resolve) throw new Error('no held fetch');
+    resolve(result);
+  }
+
   /** Whole-zone unread total returned by `countUnread`. */
   unreadTotal = 0;
   countUnreadCalls: WatchZoneId[] = [];
@@ -21,6 +34,11 @@ export class SpyApplicationsBrowsePort implements ApplicationsBrowsePort {
 
   async fetchByZone(query: ApplicationsBrowseQuery): Promise<ApplicationsPageResult> {
     this.fetchByZoneCalls.push(query);
+    if (this.holdFetches) {
+      return new Promise((resolve) => {
+        this.heldFetches.push(resolve);
+      });
+    }
     if (this.fetchByZoneResponder) {
       return this.fetchByZoneResponder(query);
     }
