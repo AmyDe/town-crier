@@ -105,4 +105,6 @@ public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
   public var isCustomShape: Bool {
     boundary != nil
   }
+
+  public var isLarge: Bool { false }
 }
