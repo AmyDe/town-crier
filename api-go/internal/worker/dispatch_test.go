@@ -659,3 +659,82 @@ func TestRun_PGBackupRecordsRowAndByteCountsOnSpan(t *testing.T) {
 		}
 	}
 }
+
+type fakeApplicationLocations struct {
+	loadCalls      int
+	reconcileCalls int
+	reconcileAll   bool
+	loadErr        error
+	reconcileErr   error
+	repairs        int
+}
+
+func (f *fakeApplicationLocations) Load(context.Context) (int64, error) {
+	f.loadCalls++
+	return 7, f.loadErr
+}
+
+func (f *fakeApplicationLocations) Reconcile(_ context.Context, all bool) (int, error) {
+	f.reconcileCalls++
+	f.reconcileAll = all
+	return f.repairs, f.reconcileErr
+}
+
+func TestIsApplicationLocationsMode(t *testing.T) {
+	t.Parallel()
+	for mode, want := range map[string]bool{
+		"application-locations-load":          true,
+		"application-locations-reconcile":     true,
+		"application-locations-reconcile-all": true,
+		"poll":                                false,
+		"":                                    false,
+	} {
+		if got := IsApplicationLocationsMode(mode); got != want {
+			t.Errorf("IsApplicationLocationsMode(%q) = %v, want %v", mode, got, want)
+		}
+	}
+}
+
+func TestRunApplicationLocations(t *testing.T) {
+	t.Parallel()
+	boom := errors.New("boom")
+	cases := []struct {
+		name       string
+		mode       string
+		fake       *fakeApplicationLocations
+		nilRunner  bool
+		wantCode   int
+		wantLoad   int
+		wantRecon  int
+		wantAllArg bool
+	}{
+		{"load", "application-locations-load", &fakeApplicationLocations{}, false, 0, 1, 0, false},
+		{"load error", "application-locations-load", &fakeApplicationLocations{loadErr: boom}, false, 1, 1, 0, false},
+		{"reconcile", "application-locations-reconcile", &fakeApplicationLocations{}, false, 0, 0, 1, false},
+		{"reconcile all", "application-locations-reconcile-all", &fakeApplicationLocations{}, false, 0, 0, 1, true},
+		{"reconcile error", "application-locations-reconcile", &fakeApplicationLocations{reconcileErr: boom}, false, 1, 0, 1, false},
+		{"no runner", "application-locations-load", nil, true, 1, 0, 0, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
+			var runner ApplicationLocationsRunner
+			if !tc.nilRunner {
+				runner = tc.fake
+			}
+
+			code := RunApplicationLocations(context.Background(), tc.mode, runner, logger)
+
+			if code != tc.wantCode {
+				t.Errorf("code = %d, want %d", code, tc.wantCode)
+			}
+			if tc.nilRunner {
+				return
+			}
+			if tc.fake.loadCalls != tc.wantLoad || tc.fake.reconcileCalls != tc.wantRecon || tc.fake.reconcileAll != tc.wantAllArg {
+				t.Errorf("load=%d reconcile=%d all=%v, want %d/%d/%v", tc.fake.loadCalls, tc.fake.reconcileCalls, tc.fake.reconcileAll, tc.wantLoad, tc.wantRecon, tc.wantAllArg)
+			}
+		})
+	}
+}
