@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   LARGE_ZONE_AREA_M2,
+  boundaryAreaM2,
   isLargeBoundary,
   isLargeCircle,
   isLargeZone,
@@ -45,11 +46,8 @@ describe('largeZone', () => {
   });
 
   it('computes the area of a 0.1 degree square at 52N within 1% of 76.12 km2', () => {
-    const larger = isLargeBoundary(squareBoundary(52, -1, 0.1));
-    expect(larger).toBe(true);
-    // 0.0295 deg square is about 6.6 km2, 0.0935 is about 66.5 km2: bracket the threshold
-    expect(isLargeBoundary(squareBoundary(52, -1, 0.0638))).toBe(false);
-    expect(isLargeBoundary(squareBoundary(52, -1, 0.0642))).toBe(true);
+    const area = boundaryAreaM2(squareBoundary(52, -1, 0.1));
+    expect(Math.abs(area - 76_120_000) / 76_120_000).toBeLessThan(0.01);
   });
 
   it('is not large for a degenerate boundary', () => {
