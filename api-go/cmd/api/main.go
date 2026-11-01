@@ -213,8 +213,9 @@ func main() {
 	}()
 
 	srv := platform.NewServer(":"+cfg.Port, newRouter(validator, cfg.CorsAllowedOrigins, store, manager, cascade, exportReaders, deviceStore, stateStore, notifStore, watchZoneStore, appStore, savedStore, geocodeClient, designationClient, offerStore, adminStore, cfg.AdminAPIKey, cfg.SiteBuildKey, jwsVerifier, appleNotifStore, cfg.AppleBundleID, cfg.AppleEnvironments, registry, shareCardCache, cfg.AnonRateLimitBurst, cfg.AnonRateLimitRefillPerMinute, pollingAdminDeps{
-		Switch: polling.NewSwitch(polling.NewPostgresPollControlStore(pool), cfg.PollingEnabledDefault),
-		Calls:  polling.NewPostgresPlanItCallStore(pool),
+		Switch:   polling.NewSwitch(polling.NewPostgresPollControlStore(pool), cfg.PollingEnabledDefault),
+		Calls:    polling.NewPostgresPlanItCallStore(pool),
+		ReadPath: applications.NewReadPathSwitch(applications.NewPostgresReadPathStore(pool)),
 	}, shareClicks, subscriptionNotifier, seopage.NewPostgresStore(pool, appStore), shareevents.NewPostgresStore(pool), logger))
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
