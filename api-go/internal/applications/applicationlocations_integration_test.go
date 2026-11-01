@@ -320,7 +320,7 @@ func TestApplicationLocationsReconcile_RepairsMissingExtraAndStaleThenSecondRunR
 	drift := []string{
 		`DELETE FROM application_locations WHERE planit_name = 'A/1'`,
 		`INSERT INTO application_locations (authority_code, planit_name, location) VALUES ('200', 'GHOST', ST_SetSRID(ST_MakePoint(0, 0), 4326)::geography)`,
-		`INSERT INTO application_locations (authority_code, planit_name, location) SELECT authority_code, planit_name || 'X', location FROM applications WHERE planit_name = 'C/2'`,
+		`INSERT INTO application_locations (authority_code, planit_name, location) SELECT authority_code, planit_name || 'X', location FROM applications WHERE planit_name = 'C/1'`,
 		`UPDATE application_locations SET uid = 'stale' WHERE planit_name = 'A/2'`,
 		`UPDATE application_locations SET area_id = 99 WHERE planit_name = 'B/1'`,
 		`UPDATE application_locations SET app_state = 'stale' WHERE planit_name = 'C/1'`,
@@ -338,8 +338,8 @@ func TestApplicationLocationsReconcile_RepairsMissingExtraAndStaleThenSecondRunR
 	if err != nil {
 		t.Fatalf("Reconcile() error = %v", err)
 	}
-	if first.Upserted != 5 || first.Deleted != 2 {
-		t.Errorf("first run = %+v, want 5 upserted and 2 deleted", first)
+	if first.Upserted != 4 || first.Deleted != 2 {
+		t.Errorf("first run = %+v, want 4 upserted and 2 deleted", first)
 	}
 	if d := thinDrift(t, pool); d != 0 {
 		t.Errorf("thin drifts from source by %d rows after repair", d)
