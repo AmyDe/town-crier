@@ -212,38 +212,45 @@ func (s *PostgresStore) FindInBoundaryZonePage(ctx context.Context, q InBoundary
 // shared sort/filter cursor contract -- mirroring zonepage.go's
 // findDistanceZonePage.
 func (s *PostgresStore) findDistanceBoundaryZonePage(ctx context.Context, latitude, longitude float64, boundaryJSON string, limit int, c *pageCursor) ([]PlanningApplication, string, error) {
-	var (
-		rows pgx.Rows
-		err  error
-	)
-	if c == nil {
-		rows, err = s.db.Query(ctx, findBoundaryFirstPageQuery, longitude, latitude, boundaryJSON, limit)
-	} else {
+	query, args := findBoundaryFirstPageQuery, []any{longitude, latitude, boundaryJSON, limit}
+	if c != nil {
 		dist, perr := strconv.ParseFloat(c.D, 64)
 		if perr != nil {
 			return nil, "", fmt.Errorf("parse distance cursor: %w: %w", ErrCursorInvalid, perr)
 		}
-		rows, err = s.db.Query(ctx, findBoundaryKeysetQuery, longitude, latitude, boundaryJSON, limit, dist, c.N)
+		query, args = findBoundaryKeysetQuery, append(args, dist, c.N)
 	}
 	wrap := func(err error) error {
 		return fmt.Errorf("find applications by %s near (%v, %v): %w", SortDistance, latitude, longitude, err)
 	}
+	var (
+		apps []PlanningApplication
+		next string
+	)
+	err := s.withKNNWalk(ctx, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, query, append([]any{pgx.QueryExecModeExec}, args...)...)
+		if err != nil {
+			return wrap(err)
+		}
+		apps, next, err = collectPage(rows, scanNearbyRow, nearbyAppOf,
+			func(last nearbyRow) (string, error) {
+				enc, err := encodePageCursor(pageCursor{
+					M: SortDistance,
+					D: strconv.FormatFloat(last.dist, 'g', -1, 64),
+					N: last.app.Name,
+				})
+				if err != nil {
+					return "", fmt.Errorf("encode distance cursor: %w", err)
+				}
+				return enc, nil
+			},
+			limit, wrap)
+		return err
+	})
 	if err != nil {
-		return nil, "", wrap(err)
+		return nil, "", err
 	}
-	return collectPage(rows, scanNearbyRow, nearbyAppOf,
-		func(last nearbyRow) (string, error) {
-			enc, err := encodePageCursor(pageCursor{
-				M: SortDistance,
-				D: strconv.FormatFloat(last.dist, 'g', -1, 64),
-				N: last.app.Name,
-			})
-			if err != nil {
-				return "", fmt.Errorf("encode distance cursor: %w", err)
-			}
-			return enc, nil
-		},
-		limit, wrap)
+	return apps, next, nil
 }
 
 // findDateBoundaryZonePage serves SortNewest/SortOldest, mirroring
