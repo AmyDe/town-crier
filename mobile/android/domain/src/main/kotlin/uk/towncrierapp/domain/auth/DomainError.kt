@@ -23,12 +23,7 @@ public sealed class DomainError : Exception() {
         public val required: String,
     ) : DomainError()
 
-    /**
-     * [postcode] failed local format validation (never reached the network)
-     * or its geocode lookup itself failed remotely - either way, the fix is
-     * the user editing the postcode and resubmitting, so this is presented
-     * the same way as any other geocoding inline error.
-     */
+    /** [postcode] failed local format validation or its remote geocode lookup. */
     public data class GeocodingFailed(
         public val postcode: String,
     ) : DomainError()
@@ -41,12 +36,9 @@ public sealed class DomainError : Exception() {
 
     /**
      * Sign-in itself failed (cancelled, provider error, ...). The optional
-     * [cause] overload calls [initCause] rather than becoming a stored
-     * property — a data class's primary constructor can only declare
-     * properties, and threading `cause` through as one would fold it into
-     * `equals`/`copy`, breaking `AuthenticationFailed(reason)` comparisons in
-     * tests. This is purely so the original SDK exception isn't lost from
-     * the stack trace / crash report.
+     * [cause] overload calls [initCause] rather than storing a property, so
+     * `cause` stays out of `equals`/`copy` while keeping the original SDK
+     * exception in the stack trace.
      */
     public data class AuthenticationFailed(
         public val reason: String,

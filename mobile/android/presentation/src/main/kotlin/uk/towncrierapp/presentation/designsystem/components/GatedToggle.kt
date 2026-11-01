@@ -21,12 +21,9 @@ import uk.towncrierapp.presentation.designsystem.TownCrierTheme
 
 /**
  * A toggle that is proactively disabled when the user's tier lacks the
- * required entitlement. Per the epic's Material-native-idiom chapter, the
- * locked state is NOT a greyed-out switch — it renders as a tappable row
- * (tertiary label + [UpgradeBadge]) that invokes [onUpgradeRequired] on tap.
- * Reused by the watch-zone editor's instant-alert toggles and, per tc-z95t's
- * bead brief, by #778's notification-preferences screen. Port of iOS
- * `GatedToggle`.
+ * required entitlement. The locked state is not a greyed-out switch: it
+ * renders as a tappable row (tertiary label + [UpgradeBadge]) that invokes
+ * [onUpgradeRequired] on tap.
  */
 @Composable
 public fun GatedToggle(

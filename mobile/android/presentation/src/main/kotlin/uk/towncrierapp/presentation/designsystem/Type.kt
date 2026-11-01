@@ -23,31 +23,14 @@ internal val InterFontFamily =
 private val baseTypography = Typography()
 
 /**
- * Town Crier's type scale, mapped tc token → Material 3 role (design-language
- * skill). Sizes/line-heights stay at Material 3's defaults for each role —
- * only the font family and weight are Town Crier's; text always renders in
- * sp, never a raw dp, so it respects the user's font-size setting.
+ * Town Crier's type scale. Sizes/line-heights stay at Material 3's defaults
+ * for each role; only the font family (Inter) and weight are Town Crier's.
+ * Text always renders in sp, never a raw dp, so it respects the user's
+ * font-size setting.
  *
- * Sans standardisation (issue #912 Phase 5): all roles use Inter, including
- * the three display/headline roles that previously used a bundled display
- * serif — dropped everywhere per the 2026-07-10 owner-approved decision.
- * They stay at SemiBold (mirrors iOS `TCTypography`'s unchanged weight
- * treatment for those roles).
- *
- * | tc token             | M3 role      | Family   | Weight   |
- * |-----------------------|--------------|----------|----------|
- * | tcDisplayLarge         | headlineLarge| Inter    | SemiBold |
- * | tcDisplaySmall         | titleLarge   | Inter    | SemiBold |
- * | tcHeadline             | titleMedium  | Inter    | SemiBold |
- * | tcBody                 | bodyLarge    | Inter    | Regular  |
- * | tcCaption               | bodySmall    | Inter    | Regular  |
- * | tcCaptionEmphasis       | labelMedium  | Inter    | Medium   |
- *
- * tcBodyEmphasis has no dedicated M3 slot (it shares bodyLarge's metrics with
- * a heavier weight) — see [bodyEmphasisTextStyle], exposed as
- * `TownCrierTheme.bodyEmphasis`. There is likewise no M3 slot for the new
- * mono metadata role (references, dates, distances) — see [monoTextStyle],
- * exposed as `TownCrierTheme.mono`.
+ * tcBodyEmphasis and the mono metadata role have no M3 slot: see
+ * [bodyEmphasisTextStyle] and [monoTextStyle], exposed as
+ * `TownCrierTheme.bodyEmphasis` and `TownCrierTheme.mono`.
  */
 internal val TownCrierTypography =
     Typography(
@@ -74,12 +57,8 @@ internal val TownCrierTypography =
 internal val bodyEmphasisTextStyle = TownCrierTypography.bodyLarge.copy(fontWeight = FontWeight.SemiBold)
 
 /**
- * The new mono metadata role (epic #848 R5): planning references, dates, and
- * distances — the system monospace family with tabular figures
- * (`fontFeatureSettings = "tnum"`) so columns of digits align. Built off
- * [TownCrierTypography.bodySmall]'s metrics (the same base [bodyEmphasisTextStyle]
- * uses) rather than a new M3 role, since there is no dedicated slot for it.
- * Exposed as `TownCrierTheme.mono`.
+ * Mono metadata role (planning references, dates, distances): the system
+ * monospace family with tabular figures so columns of digits align.
  */
 internal val monoTextStyle =
     TownCrierTypography.bodySmall.copy(fontFamily = FontFamily.Monospace, fontFeatureSettings = "tnum")

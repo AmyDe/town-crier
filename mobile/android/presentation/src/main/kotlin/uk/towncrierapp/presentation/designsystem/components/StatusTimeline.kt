@@ -21,11 +21,9 @@ import uk.towncrierapp.presentation.designsystem.TownCrierTheme
 import java.time.LocalDate
 
 /**
- * Renders the CLIENT-synthesized `statusHistory` (max 2 points: submitted,
- * then decided) as a Monzo-activity-feed-style vertical list — a
- * Transaction-feed list per the design-language skill, not a graphical
- * connector timeline. Dates are absolute only via [DateDisplayFormatter],
- * never relative. Port of iOS `StatusTimelineView` (GH#775).
+ * Renders the client-synthesized `statusHistory` (max 2 points: submitted,
+ * then decided) as a vertical list. Dates are absolute only via
+ * [DateDisplayFormatter], never relative.
  */
 @Composable
 public fun StatusTimeline(

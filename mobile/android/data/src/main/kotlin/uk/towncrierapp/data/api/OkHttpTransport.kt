@@ -11,13 +11,10 @@ import kotlin.coroutines.resumeWithException
 
 /**
  * Production [HttpTransport]: bridges OkHttp's [Call.Factory] to a suspend
- * call. OkHttp is pinned to the
- * 4.x line here (the 5.x "okhttp-android" variant declares a compileSdk-36
- * floor this project doesn't meet), so the official `okhttp-coroutines`
- * artifact (5.x-only) isn't available — this is that same bridge, hand-
- * rolled: cancellation-aware (closes the response if the coroutine is
- * cancelled mid-flight) and already non-blocking, so no `withContext`
- * dispatcher hop is needed here.
+ * call. A hand-rolled `okhttp-coroutines` (5.x-only; OkHttp is pinned to 4.x
+ * because 5.x needs compileSdk 36): it closes the response if the coroutine
+ * is cancelled mid-flight, and needs no dispatcher hop because enqueue is
+ * non-blocking.
  */
 public class OkHttpTransport(
     private val callFactory: Call.Factory,

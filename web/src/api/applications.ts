@@ -92,11 +92,7 @@ export function applicationsApi(client: ApiClient) {
           nextCursor: headers.get('X-Next-Cursor'),
         }));
     },
-    /**
-     * Fetches the server-computed cluster aggregates for the visible viewport of
-     * a single watch zone. The map renders these instead of draining
-     * every application, refetching on debounced pan/zoom.
-     */
+    /** Server-computed cluster aggregates for the visible viewport of a single watch zone. */
     getClusters: (zoneId: string, options: GetClustersOptions) => {
       const params: Record<string, string> = {
         bbox: options.bbox,
@@ -113,11 +109,9 @@ export function applicationsApi(client: ApiClient) {
         .then((dtos) => dtos.map(mapClusterToDomain));
     },
     /**
-     * Composite-key point-read of a single application via its `{authority, name}`
-     * identity. `name` is a path-wildcard segment that may
-     * contain slashes (e.g. "22/1234/FUL"), so it is interpolated raw to match
-     * the server's greedy `{name...}` route. The returned record carries `uid`
-     * for navigating to the existing `/applications/{uid}` detail route.
+     * Point-read of one application by `{authority, name}`. `name` may contain slashes
+     * (e.g. "22/1234/FUL"), so it is interpolated raw to match the server's greedy `{name...}` route.
+     * The returned record carries `uid` for the `/applications/{uid}` detail route.
      */
     getByAuthorityAndName: (authority: string, name: string) =>
       client.get<PlanningApplication>(`/v1/applications/${authority}/${name}`),
