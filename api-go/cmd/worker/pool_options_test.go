@@ -6,13 +6,16 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func TestPoolOptions_GuardsOnlySEOCatalog(t *testing.T) {
+func TestPoolOptions_GuardsOnlyLongRunningModes(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		mode        string
 		wantTimeout string
 	}{
 		{"seo-catalog", "600000"},
+		{"application-locations-load", "6600000"},
+		{"application-locations-reconcile", "600000"},
+		{"application-locations-reconcile-all", "600000"},
 		{"poll", ""},
 		{"digest", ""},
 		{"pg-purge", ""},

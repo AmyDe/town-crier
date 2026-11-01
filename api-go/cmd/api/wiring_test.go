@@ -1111,3 +1111,43 @@ func TestRouter_AppStoreRedirectAnonymous(t *testing.T) {
 		t.Fatalf("status = %d, want 302", rec.Code)
 	}
 }
+
+type fakeReadPathStore struct{}
+
+func (fakeReadPathStore) Get(context.Context) (applications.ReadPathControl, bool, error) {
+	return applications.ReadPathControl{}, false, nil
+}
+
+func (fakeReadPathStore) Set(context.Context, applications.ReadPathControl) error { return nil }
+
+func TestRouter_AdminReadPathIsAnonymousToAuth0AndGatedByAdminKey(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.DiscardHandler)
+	deps := pollingAdminDeps{ReadPath: applications.NewReadPathSwitch(fakeReadPathStore{})}
+	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, nil, nil, testGeocodeClient(t), testDesignationClient(t), fakeOfferStore{}, fakeAdminStore{}, "s3cret", "", nil, nil, "", nil, nil, nil, 60, 60, deps, nil, nil, nil, nil, logger)
+
+	for _, tc := range []struct {
+		name, key string
+		want      int
+	}{
+		{"with key", "s3cret", http.StatusOK},
+		{"wrong key", "nope", http.StatusUnauthorized},
+		{"no key", "", http.StatusUnauthorized},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			t.Cleanup(cancel)
+			req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/v1/admin/read-path", nil)
+			if tc.key != "" {
+				req.Header.Set("X-Admin-Key", tc.key)
+			}
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+			if rec.Code != tc.want {
+				t.Fatalf("status = %d body = %s, want %d", rec.Code, rec.Body.String(), tc.want)
+			}
+		})
+	}
+}

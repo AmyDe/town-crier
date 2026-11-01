@@ -113,6 +113,10 @@ func run() int {
 	}
 	defer pool.Close()
 
+	if worker.IsApplicationLocationsMode(mode) {
+		return worker.RunApplicationLocations(ctx, mode, buildApplicationLocations(pool, logger), logger)
+	}
+
 	st := &stores{
 		app:          applications.NewPostgresStore(pool),
 		zone:         watchzones.NewPostgresStore(pool),

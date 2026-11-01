@@ -68,6 +68,8 @@ var anonymousPatterns = map[string]struct{}{
 	"GET /v1/admin/offer-codes":   {},
 	"GET /v1/admin/polling":       {},
 	"PUT /v1/admin/polling":       {},
+	"GET /v1/admin/read-path":     {},
+	"PUT /v1/admin/read-path":     {},
 	// The App Store Server Notifications webhook is Apple -> API, not user-facing,
 	// so it is anonymous to Auth0; the signed JWS is its authentication. (The
 	// sibling POST /v1/subscriptions/verify is authed and absent here.)
@@ -180,11 +182,12 @@ type offerStoreReader interface {
 	List(ctx context.Context, labelFilter *string, limit int) ([]offercodes.ListedOfferCode, error)
 }
 
-// pollingAdminDeps wires GET and PUT /v1/admin/polling; a zero value leaves
-// them unregistered.
+// pollingAdminDeps wires GET and PUT /v1/admin/polling and GET and PUT
+// /v1/admin/read-path; a zero value leaves them unregistered.
 type pollingAdminDeps struct {
-	Switch *polling.Switch
-	Calls  *polling.PostgresPlanItCallStore
+	Switch   *polling.Switch
+	Calls    *polling.PostgresPlanItCallStore
+	ReadPath *applications.ReadPathSwitch
 }
 
 // adminUserStore is the admin profile store the router wires into admin.Routes:
@@ -434,6 +437,9 @@ func newRouter(
 	}
 	if pollingAdmin.Switch != nil && pollingAdmin.Calls != nil {
 		admin.PollingRoutes(mux, adminKey, pollingAdmin.Switch, pollingAdmin.Calls, time.Now, logger)
+	}
+	if pollingAdmin.ReadPath != nil {
+		admin.ReadPathRoutes(mux, adminKey, pollingAdmin.ReadPath, time.Now, logger)
 	}
 	if store != nil && adminStore != nil && jwsVerifier != nil && appleNotifStore != nil {
 		// Subscriptions: verify (authed, by user id via the profile store) and the

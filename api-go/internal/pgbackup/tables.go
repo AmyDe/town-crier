@@ -26,6 +26,7 @@ var Tables = []Table{
 // schema metadata.
 // Every table in the schema must be in exactly one of Tables or Excluded.
 var Excluded = []string{
+	"application_locations",
 	"applications",
 	"apple_notifications",
 	"application_event",
@@ -40,6 +41,7 @@ var Excluded = []string{
 	"poll_state",
 	"poll_window",
 	"poll_window_member",
+	"read_path_control",
 	"recent_sweep_state",
 	"seo_pages",
 	"seo_redirects",
