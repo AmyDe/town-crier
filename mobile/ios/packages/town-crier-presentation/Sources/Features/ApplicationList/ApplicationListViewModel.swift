@@ -35,7 +35,10 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     }
   }
   @Published private(set) var isLoading = false
-  public var showsLargeZoneLoadingMessage: Bool { false }
+  @Published private var loadHasBeenSlow = false
+  private var loadGeneration = 0
+  private var slowLoadTask: Task<Void, Never>?
+  private let slowLoadDelay: Duration
   @Published var error: DomainError?
   @Published private(set) var zones: [WatchZone] = []
   @Published private(set) var selectedZone: WatchZone?
@@ -202,6 +205,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     self.zoneSelectionKey = ""
     self.sortKey = sortKey
     self.sort = Self.readPersistedSort(from: userDefaults, key: sortKey)
+    self.slowLoadDelay = .seconds(3)
   }
 
   public init(
@@ -222,6 +226,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     self.zoneSelectionKey = ""
     self.sortKey = sortKey
     self.sort = Self.readPersistedSort(from: userDefaults, key: sortKey)
+    self.slowLoadDelay = .seconds(3)
   }
 
   public init(
@@ -244,6 +249,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     self.zoneSelectionKey = zoneSelectionKey
     self.sortKey = sortKey
     self.sort = Self.readPersistedSort(from: userDefaults, key: sortKey)
+    self.slowLoadDelay = slowLoadDelay
   }
 
   public init(
@@ -253,7 +259,8 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     badgeSetter: BadgeSetting? = nil,
     userDefaults: UserDefaults = .standard,
     zoneSelectionKey: String = "lastSelectedZone.applications",
-    sortKey: String = defaultSortKey
+    sortKey: String = defaultSortKey,
+    slowLoadDelay: Duration = .seconds(3)
   ) {
     self.repository = nil
     self.offlineRepository = offlineRepository
@@ -265,6 +272,33 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     self.zoneSelectionKey = zoneSelectionKey
     self.sortKey = sortKey
     self.sort = Self.readPersistedSort(from: userDefaults, key: sortKey)
+    self.slowLoadDelay = slowLoadDelay
+  }
+
+  public var showsLargeZoneLoadingMessage: Bool {
+    isLoading && loadHasBeenSlow && (selectedZone ?? zone)?.isLarge == true
+  }
+
+  private func beginLoad() -> Int {
+    loadGeneration += 1
+    let generation = loadGeneration
+    isLoading = true
+    loadHasBeenSlow = false
+    slowLoadTask?.cancel()
+    slowLoadTask = Task { [slowLoadDelay] in
+      try? await Task.sleep(for: slowLoadDelay)
+      guard !Task.isCancelled, generation == loadGeneration else { return }
+      loadHasBeenSlow = true
+    }
+    return generation
+  }
+
+  private func endLoad(_ generation: Int) {
+    guard generation == loadGeneration else { return }
+    slowLoadTask?.cancel()
+    slowLoadTask = nil
+    isLoading = false
+    loadHasBeenSlow = false
   }
 
   public func loadApplications() async {
@@ -276,7 +310,8 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     isLoadInFlight = true
     defer { isLoadInFlight = false }
 
-    isLoading = true
+    let loadToken = beginLoad()
+    defer { endLoad(loadToken) }
     error = nil
     // Zone-independent, so it runs even when the no-active-zone branch below
     // returns early.
@@ -299,14 +334,12 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
       guard let activeZone = selectedZone ?? zone else {
         applications = []
         nextCursor = nil
-        isLoading = false
         return
       }
       try await loadActiveZone(activeZone)
     } catch {
       handleError(error)
     }
-    isLoading = false
   }
 
   public func selectZone(_ zone: WatchZone) async {
@@ -314,14 +347,14 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     selectedStatusFilter = nil
     unreadOnly = false
     userDefaults.set(zone.id.value, forKey: zoneSelectionKey)
-    isLoading = true
+    let loadToken = beginLoad()
+    defer { endLoad(loadToken) }
     error = nil
     do {
       try await loadActiveZone(zone)
     } catch {
       handleError(error)
     }
-    isLoading = false
   }
 
   public func selectApplication(_ id: PlanningApplicationId) {

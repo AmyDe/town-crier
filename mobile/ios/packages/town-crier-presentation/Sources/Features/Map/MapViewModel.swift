@@ -14,7 +14,10 @@ import TownCrierDomain
 public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
   @Published private(set) var clusters: [MapCluster] = []
   @Published private(set) var isLoading = false
-  public var showsLargeZoneLoadingMessage: Bool { false }
+  @Published private var loadHasBeenSlow = false
+  private var loadGeneration = 0
+  private var slowLoadTask: Task<Void, Never>?
+  private let slowLoadDelay: Duration
   @Published var error: DomainError?
   @Published private(set) var selectedApplication: PlanningApplication?
   /// The application whose full detail card should open once the summary
@@ -125,10 +128,38 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
     self.savedApplicationRepository = savedApplicationRepository
     self.userDefaults = userDefaults
     self.zoneSelectionKey = zoneSelectionKey
+    self.slowLoadDelay = slowLoadDelay
+  }
+
+  public var showsLargeZoneLoadingMessage: Bool {
+    isLoading && loadHasBeenSlow && selectedZone?.isLarge == true
+  }
+
+  private func beginLoad() -> Int {
+    loadGeneration += 1
+    let generation = loadGeneration
+    isLoading = true
+    loadHasBeenSlow = false
+    slowLoadTask?.cancel()
+    slowLoadTask = Task { [slowLoadDelay] in
+      try? await Task.sleep(for: slowLoadDelay)
+      guard !Task.isCancelled, generation == loadGeneration else { return }
+      loadHasBeenSlow = true
+    }
+    return generation
+  }
+
+  private func endLoad(_ generation: Int) {
+    guard generation == loadGeneration else { return }
+    slowLoadTask?.cancel()
+    slowLoadTask = nil
+    isLoading = false
+    loadHasBeenSlow = false
   }
 
   public func loadApplications() async {
-    isLoading = true
+    let loadToken = beginLoad()
+    defer { endLoad(loadToken) }
     error = nil
     do {
       let loadedZones = try await watchZoneRepository.loadAll()
@@ -144,7 +175,6 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
         selectedZone = resolveInitialZone(from: loadedZones)
       }
       guard let zone = selectedZone else {
-        isLoading = false
         hasLoaded = true
         return
       }
@@ -161,7 +191,6 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
     } catch {
       handleError(error)
     }
-    isLoading = false
     hasLoaded = true
   }
 
@@ -213,12 +242,12 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
     centreLat = zone.centre.latitude
     centreLon = zone.centre.longitude
     radiusMetres = zone.radiusMetres
-    isLoading = true
+    let loadToken = beginLoad()
+    defer { endLoad(loadToken) }
     error = nil
     let (viewport, zoom) = Self.initialViewport(
       centre: zone.centre, radiusMetres: zone.radiusMetres)
     await loadClusters(viewport: viewport, zoom: zoom)
-    isLoading = false
   }
 
   private func resolveInitialZone(from zones: [WatchZone]) -> WatchZone? {
