@@ -200,7 +200,7 @@ func (s *PostgresStore) noNestLoopIf(on bool) findRunner {
 
 func (s *PostgresStore) findThinRows(ctx context.Context, run findRunner, query string, args []any, scan func(pgx.CollectableRow) (thinRow, error)) ([]thinRow, error) {
 	if run == nil {
-		rows, err := s.db.Query(ctx, query, args...)
+		rows, err := s.db.Query(ctx, query, append([]any{pgx.QueryExecModeExec}, args...)...)
 		if err != nil {
 			return nil, err
 		}
