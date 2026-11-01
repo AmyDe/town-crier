@@ -33,7 +33,7 @@ type readPathStatus struct {
 	UpdatedAt *time.Time `json:"updatedAt"`
 }
 
-type readPathRequest struct {
+type readPathBody struct {
 	ThinSync *bool  `json:"thinSync"`
 	ThinList *bool  `json:"thinList"`
 	ThinMap  *bool  `json:"thinMap"`
@@ -61,7 +61,7 @@ func (h *readPathHandler) get(w http.ResponseWriter, r *http.Request) {
 
 func (h *readPathHandler) put(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
-	var req readPathRequest
+	var req readPathBody
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || (req.ThinSync == nil && req.ThinList == nil && req.ThinMap == nil) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
