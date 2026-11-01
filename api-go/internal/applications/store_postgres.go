@@ -82,6 +82,19 @@ func (s *PostgresStore) WithLogger(logger *slog.Logger) *PostgresStore {
 // re-reads it per cell; queries inside fn must use pgx.QueryExecModeExec, because
 // a cached generic plan ignores SET LOCAL. Rows must be fully collected inside fn.
 func (s *PostgresStore) withNoNestLoop(ctx context.Context, fn func(pgx.Tx) error) error {
+	return s.withLocalSetting(ctx, "SET LOCAL enable_nestloop = off", fn)
+}
+
+// withKNNWalk runs fn in a read-only transaction with bitmap scans disabled. On a
+// dense zone the planner estimates fewer rows than the LIMIT and reads the whole
+// zone through a bitmap scan instead of walking the GiST index nearest-first;
+// queries inside fn must use pgx.QueryExecModeExec, because a cached generic plan
+// ignores SET LOCAL. Rows must be fully collected inside fn.
+func (s *PostgresStore) withKNNWalk(ctx context.Context, fn func(pgx.Tx) error) error {
+	return s.withLocalSetting(ctx, "SET LOCAL enable_bitmapscan = off", fn)
+}
+
+func (s *PostgresStore) withLocalSetting(ctx context.Context, setStmt string, fn func(pgx.Tx) error) error {
 	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return fmt.Errorf("begin read-only transaction: %w", err)
@@ -94,8 +107,8 @@ func (s *PostgresStore) withNoNestLoop(ctx context.Context, fn func(pgx.Tx) erro
 		}
 	}()
 
-	if _, err := tx.Exec(ctx, "SET LOCAL enable_nestloop = off"); err != nil {
-		return fmt.Errorf("disable nested loops: %w", err)
+	if _, err := tx.Exec(ctx, setStmt); err != nil {
+		return fmt.Errorf("%s: %w", setStmt, err)
 	}
 	if err := fn(tx); err != nil {
 		return err
@@ -416,35 +429,41 @@ func scanNearbyRow(row pgx.CollectableRow) (nearbyRow, error) {
 // (empty when exhausted), using KNN ordering with keyset pagination. It is
 // authority-agnostic.
 func (s *PostgresStore) FindNearbyPage(ctx context.Context, latitude, longitude, radiusMetres float64, limit int, cursor string) ([]PlanningApplication, string, error) {
-	var (
-		rows pgx.Rows
-		err  error
-	)
-	// QueryExecModeExec keeps Postgres on a custom plan: a generic plan does a full scan and sort.
-	if cursor == "" {
-		rows, err = s.db.Query(ctx, findNearbyFirstPageQuery, pgx.QueryExecModeExec, longitude, latitude, radiusMetres, limit)
-	} else {
+	query, args := findNearbyFirstPageQuery, []any{longitude, latitude, radiusMetres, limit}
+	if cursor != "" {
 		dist, name, decodeErr := decodeNearbyCursor(cursor)
 		if decodeErr != nil {
 			return nil, "", fmt.Errorf("decode nearby cursor: %w", decodeErr)
 		}
-		rows, err = s.db.Query(ctx, findNearbyKeysetQuery, pgx.QueryExecModeExec, longitude, latitude, radiusMetres, limit, dist, name)
+		query, args = findNearbyKeysetQuery, append(args, dist, name)
 	}
 	wrap := func(err error) error {
 		return fmt.Errorf("find applications near (%v, %v): %w", latitude, longitude, err)
 	}
+	var (
+		apps []PlanningApplication
+		next string
+	)
+	err := s.withKNNWalk(ctx, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, query, append([]any{pgx.QueryExecModeExec}, args...)...)
+		if err != nil {
+			return wrap(err)
+		}
+		apps, next, err = collectPage(rows, scanNearbyRow, nearbyAppOf,
+			func(last nearbyRow) (string, error) {
+				enc, err := encodeNearbyCursor(last.dist, last.app.Name)
+				if err != nil {
+					return "", fmt.Errorf("encode nearby cursor: %w", err)
+				}
+				return enc, nil
+			},
+			limit, wrap)
+		return err
+	})
 	if err != nil {
-		return nil, "", wrap(err)
+		return nil, "", err
 	}
-	return collectPage(rows, scanNearbyRow, nearbyAppOf,
-		func(last nearbyRow) (string, error) {
-			enc, err := encodeNearbyCursor(last.dist, last.app.Name)
-			if err != nil {
-				return "", fmt.Errorf("encode nearby cursor: %w", err)
-			}
-			return enc, nil
-		},
-		limit, wrap)
+	return apps, next, nil
 }
 
 // pgRecentNearPointQuery mirrors pgRecentByAuthorityQuery's RecentRealDateOrder

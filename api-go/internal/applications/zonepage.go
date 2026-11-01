@@ -356,38 +356,45 @@ func (s *PostgresStore) FindInZonePage(ctx context.Context, q InZoneQuery) ([]Pl
 // findDistanceZonePage serves SortDistance: the legacy KNN nearest-first query
 // with a sort-aware (mode="distance") cursor on (distance, planit_name).
 func (s *PostgresStore) findDistanceZonePage(ctx context.Context, latitude, longitude, radiusMetres float64, limit int, c *pageCursor) ([]PlanningApplication, string, error) {
-	var (
-		rows pgx.Rows
-		err  error
-	)
-	if c == nil {
-		rows, err = s.db.Query(ctx, findNearbyFirstPageQuery, longitude, latitude, radiusMetres, limit)
-	} else {
+	query, args := findNearbyFirstPageQuery, []any{longitude, latitude, radiusMetres, limit}
+	if c != nil {
 		dist, perr := strconv.ParseFloat(c.D, 64)
 		if perr != nil {
 			return nil, "", fmt.Errorf("parse distance cursor: %w: %w", ErrCursorInvalid, perr)
 		}
-		rows, err = s.db.Query(ctx, findNearbyKeysetQuery, longitude, latitude, radiusMetres, limit, dist, c.N)
+		query, args = findNearbyKeysetQuery, append(args, dist, c.N)
 	}
 	wrap := func(err error) error {
 		return fmt.Errorf("find applications by distance near (%v, %v): %w", latitude, longitude, err)
 	}
+	var (
+		apps []PlanningApplication
+		next string
+	)
+	err := s.withKNNWalk(ctx, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, query, append([]any{pgx.QueryExecModeExec}, args...)...)
+		if err != nil {
+			return wrap(err)
+		}
+		apps, next, err = collectPage(rows, scanNearbyRow, nearbyAppOf,
+			func(last nearbyRow) (string, error) {
+				enc, err := encodePageCursor(pageCursor{
+					M: SortDistance,
+					D: strconv.FormatFloat(last.dist, 'g', -1, 64),
+					N: last.app.Name,
+				})
+				if err != nil {
+					return "", fmt.Errorf("encode distance cursor: %w", err)
+				}
+				return enc, nil
+			},
+			limit, wrap)
+		return err
+	})
 	if err != nil {
-		return nil, "", wrap(err)
+		return nil, "", err
 	}
-	return collectPage(rows, scanNearbyRow, nearbyAppOf,
-		func(last nearbyRow) (string, error) {
-			enc, err := encodePageCursor(pageCursor{
-				M: SortDistance,
-				D: strconv.FormatFloat(last.dist, 'g', -1, 64),
-				N: last.app.Name,
-			})
-			if err != nil {
-				return "", fmt.Errorf("encode distance cursor: %w", err)
-			}
-			return enc, nil
-		},
-		limit, wrap)
+	return apps, next, nil
 }
 
 // findDateZonePage serves SortNewest/SortOldest: the start_date-ordered query with

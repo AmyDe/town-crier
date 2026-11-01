@@ -10,6 +10,7 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -293,19 +294,13 @@ func testAppInAuthority(uid, name string, areaID int) applications.PlanningAppli
 	return a
 }
 
-func TestCreate_PersistsZoneAndReturnsNearbyApplications(t *testing.T) {
+func TestCreate_PersistsZone(t *testing.T) {
 	t.Parallel()
-	// A border-spanning zone whose circle covers applications from two different
-	// authorities. The browse path is authority-agnostic, so the create response
-	// must surface both.
 	d := nearbyDeps{
 		store:    &fakeZoneStore{},
 		profiles: &fakeProfileReader{profile: proProfile(t)},
-		apps: &fakeAppFinder{apps: []applications.PlanningApplication{
-			testAppInAuthority("uid-1", "24/001", 471),
-			testAppInAuthority("uid-2", "24/002", 246),
-		}},
-		unread: &fakeUnread{},
+		apps:     &fakeAppFinder{},
+		unread:   &fakeUnread{},
 	}
 	mux := newNearbyMux(t, d)
 
@@ -324,28 +319,50 @@ func TestCreate_PersistsZoneAndReturnsNearbyApplications(t *testing.T) {
 	if !d.store.saved.PushEnabled || !d.store.saved.EmailInstantEnabled {
 		t.Errorf("flags should default true: got push=%v email=%v", d.store.saved.PushEnabled, d.store.saved.EmailInstantEnabled)
 	}
-	if !d.apps.called {
-		t.Error("FindNearby must run to populate the create response")
+}
+
+func TestCreate_DoesNotQueryNearbyApplications(t *testing.T) {
+	t.Parallel()
+	d := nearbyDeps{
+		store:    &fakeZoneStore{},
+		profiles: &fakeProfileReader{profile: proProfile(t)},
+		apps: &fakeAppFinder{
+			apps: []applications.PlanningApplication{testApp("uid-1", "24/001")},
+			err:  errors.New("nearby query must not run"),
+		},
+		unread: &fakeUnread{},
 	}
-	var got struct {
-		NearbyApplications []struct {
-			UID               string          `json:"uid"`
-			LatestUnreadEvent json.RawMessage `json:"latestUnreadEvent"`
-		} `json:"nearbyApplications"`
+	mux := newNearbyMux(t, d)
+
+	body := `{"name":"My Zone","latitude":51.5,"longitude":-0.12,"radiusMetres":1000}`
+	rec := doReq(t, mux, http.MethodPost, "/v1/me/watch-zones", body)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status: got %d, want 201; body=%s", rec.Code, rec.Body.String())
 	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
-		t.Fatalf("decode: %v; raw=%s", err, rec.Body.String())
+	if d.apps.called || d.apps.inZoneCalled || d.apps.boundaryCalled || d.apps.boundaryZoneCalled {
+		t.Error("create must not run any applications query")
 	}
-	gotUIDs := map[string]bool{}
-	for _, a := range got.NearbyApplications {
-		gotUIDs[a.UID] = true
+}
+
+func TestCreate_ReturnsEmptyNearbyApplications(t *testing.T) {
+	t.Parallel()
+	d := nearbyDeps{
+		store:    &fakeZoneStore{},
+		profiles: &fakeProfileReader{profile: proProfile(t)},
+		apps:     &fakeAppFinder{},
+		unread:   &fakeUnread{},
 	}
-	if len(got.NearbyApplications) != 2 || !gotUIDs["uid-1"] || !gotUIDs["uid-2"] {
-		t.Fatalf("nearbyApplications must surface both home and neighbour authority apps: got %+v", got.NearbyApplications)
+	mux := newNearbyMux(t, d)
+
+	body := `{"name":"My Zone","latitude":51.5,"longitude":-0.12,"radiusMetres":1000}`
+	rec := doReq(t, mux, http.MethodPost, "/v1/me/watch-zones", body)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status: got %d, want 201; body=%s", rec.Code, rec.Body.String())
 	}
-	// The create response carries the raw-domain shape — no latestUnreadEvent key.
-	if got.NearbyApplications[0].LatestUnreadEvent != nil {
-		t.Errorf("create response must not include latestUnreadEvent")
+	if !strings.Contains(rec.Body.String(), `"nearbyApplications":[]`) {
+		t.Errorf("body must carry an empty nearbyApplications array: %s", rec.Body.String())
 	}
 }
 
