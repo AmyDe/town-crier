@@ -94,10 +94,18 @@ describe('Amber rationing sweep — non-CTA/active/focus/unread/upsell uses conv
     expect(block(css, '.radio:checked + .label')).toContain('var(--tc-amber)');
   });
 
-  it('LargeRadiusWarning: warning callout no longer uses brand amber (uses the conditions/warning token)', () => {
-    const css = readCss('components/LargeRadiusWarning/LargeRadiusWarning.module.css');
+  it('LargeZoneWarning: warning callout no longer uses brand amber (uses the conditions/warning token)', () => {
+    const css = readCss('components/LargeZoneWarning/LargeZoneWarning.module.css');
     expect(css).not.toContain('var(--tc-amber');
     expect(css).toContain('var(--tc-status-conditions)');
+  });
+
+  it('LargeZoneNotice: amber-family icon, secondary text, no background', () => {
+    const css = readCss('components/LargeZoneNotice/LargeZoneNotice.module.css');
+    expect(css).not.toContain('var(--tc-amber');
+    expect(block(css, '.icon')).toContain('var(--tc-status-conditions)');
+    expect(block(css, '.notice')).toContain('var(--tc-text-secondary)');
+    expect(block(css, '.notice')).not.toContain('background');
   });
 
   it('FullPageLoader: spinner accent no longer uses amber', () => {

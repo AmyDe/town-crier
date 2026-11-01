@@ -1,6 +1,6 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { MapPage } from '../MapPage';
 import { SpyMapPort } from './spies/spy-map-port';
 import {
@@ -10,6 +10,7 @@ import {
   aSinglePinCluster,
   anApplication,
   aPolygonBoundary,
+  aLargePolygonBoundary,
 } from './fixtures/map.fixtures';
 import { asApplicationUid } from '../../../domain/types';
 
@@ -311,5 +312,124 @@ describe('MapPage', () => {
     });
     expect(screen.queryByTestId('zone-circle')).not.toBeInTheDocument();
     expect(screen.queryByTestId('zone-polygon')).not.toBeInTheDocument();
+  });
+
+  describe('large-zone notice', () => {
+    const NOTICE =
+      'Large zone: built for notifications. This can take up to a minute to load the first time.';
+    const LOADING = 'Loading a large zone. This can take up to a minute the first time.';
+
+    it('shows the notice for a large circle zone', async () => {
+      spy.fetchMyZonesResult = [aZone({ radiusMetres: 5000 })];
+
+      renderMap(spy);
+
+      expect(await screen.findByText(NOTICE)).toBeInTheDocument();
+    });
+
+    it('shows the notice for a large custom-shape zone, judged by its boundary not its radius', async () => {
+      spy.fetchMyZonesResult = [
+        aZone({ radiusMetres: 500, boundary: aLargePolygonBoundary() }),
+      ];
+
+      renderMap(spy);
+
+      expect(await screen.findByText(NOTICE)).toBeInTheDocument();
+    });
+
+    it('does not show the notice for a small zone', async () => {
+      spy.fetchMyZonesResult = [aZone({ radiusMetres: 1000 })];
+
+      renderMap(spy);
+
+      await screen.findByTestId('map-container');
+      expect(screen.queryByText(NOTICE)).not.toBeInTheDocument();
+    });
+
+    it('does not show the notice when no zone is selected', async () => {
+      spy.fetchMyZonesResult = [];
+
+      renderMap(spy);
+
+      await screen.findByTestId('map-container');
+      expect(screen.queryByText(NOTICE)).not.toBeInTheDocument();
+    });
+
+    it('follows the selected zone when the zone picker changes', async () => {
+      spy.fetchMyZonesResult = [aZone({ radiusMetres: 5000 }), aSecondZone()];
+
+      renderMap(spy);
+      expect(await screen.findByText(NOTICE)).toBeInTheDocument();
+
+      fireEvent.change(screen.getByLabelText('Watch zone'), {
+        target: { value: 'zone-002' },
+      });
+
+      expect(screen.queryByText(NOTICE)).not.toBeInTheDocument();
+    });
+
+    describe('loading message', () => {
+      beforeEach(() => {
+        vi.useFakeTimers();
+      });
+
+      afterEach(() => {
+        vi.useRealTimers();
+      });
+
+      async function advance(ms: number) {
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(ms);
+        });
+      }
+
+      it('shows after 3 seconds of a cluster request on a large zone and clears when it ends', async () => {
+        spy.holdClusterRequests = true;
+        spy.fetchMyZonesResult = [aZone({ radiusMetres: 5000 })];
+
+        renderMap(spy);
+        await advance(0);
+        await advance(300);
+        expect(spy.pendingClusterRequestCount).toBe(1);
+        await advance(2000);
+        expect(screen.queryByText(LOADING)).not.toBeInTheDocument();
+
+        await advance(1000);
+        expect(screen.getByText(LOADING)).toBeInTheDocument();
+
+        await act(async () => {
+          spy.settleClusterRequest([aBubbleCluster()]);
+        });
+        expect(screen.queryByText(LOADING)).not.toBeInTheDocument();
+      });
+
+      it('never shows for a small zone', async () => {
+        spy.holdClusterRequests = true;
+        spy.fetchMyZonesResult = [aZone({ radiusMetres: 1000 })];
+
+        renderMap(spy);
+        await advance(0);
+        await advance(300);
+        await advance(10_000);
+
+        expect(screen.queryByText(LOADING)).not.toBeInTheDocument();
+      });
+
+      it('never shows when the request ends within 3 seconds', async () => {
+        spy.holdClusterRequests = true;
+        spy.fetchMyZonesResult = [aZone({ radiusMetres: 5000 })];
+
+        renderMap(spy);
+        await advance(0);
+        await advance(300);
+        await advance(1000);
+        await act(async () => {
+          spy.settleClusterRequest([aBubbleCluster()]);
+        });
+        await advance(10_000);
+
+        expect(screen.queryByText(LOADING)).not.toBeInTheDocument();
+      });
+    });
   });
 });

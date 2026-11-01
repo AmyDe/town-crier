@@ -5,7 +5,8 @@ import { useZonePreferences } from './useZonePreferences';
 import { useZoneEdit } from './useZoneEdit';
 import { useBoundaryDrawing } from '../../hooks/useBoundaryDrawing';
 import { RadiusPicker } from '../../components/RadiusPicker/RadiusPicker';
-import { LargeRadiusWarning } from '../../components/LargeRadiusWarning/LargeRadiusWarning';
+import { LargeZoneWarning } from '../../components/LargeZoneWarning/LargeZoneWarning';
+import { isLargeCircle, isLargeVertices } from '../../domain/largeZone';
 import { Toggle } from '../../components/Toggle/Toggle';
 import { ShapeModeToggle } from './ShapeModeToggle';
 import { BoundaryMap } from '../../components/BoundaryMap/BoundaryMap';
@@ -35,6 +36,9 @@ export function WatchZoneEditPage({ repository, zone, tier = 'Free' }: Props) {
   const isCustomShape = canDrawCustomShape && zoneHasCustomShape;
   // The radius picker would misrepresent a downgraded user's custom-shape zone, so it gets a locked notice instead.
   const shapeLockedByTier = zoneHasCustomShape && !canDrawCustomShape;
+  const isLarge = zoneHasCustomShape
+    ? isLargeVertices(drawing.vertices)
+    : isLargeCircle(zoneEdit.radiusMetres);
 
   type PreferenceField =
     | 'newApplicationPush'
@@ -108,14 +112,13 @@ export function WatchZoneEditPage({ repository, zone, tier = 'Free' }: Props) {
             This zone uses a custom shape. Upgrade to Personal or Pro to view or edit it.
           </p>
         ) : (
-          <>
-            <RadiusPicker
-              selectedMetres={zoneEdit.radiusMetres}
-              onSelect={zoneEdit.setRadiusMetres}
-            />
-            <LargeRadiusWarning radiusMetres={zoneEdit.radiusMetres} />
-          </>
+          <RadiusPicker
+            selectedMetres={zoneEdit.radiusMetres}
+            onSelect={zoneEdit.setRadiusMetres}
+          />
         )}
+
+        <LargeZoneWarning isLarge={isLarge} />
 
         {!canDrawCustomShape && (
           <CustomShapeUpsell

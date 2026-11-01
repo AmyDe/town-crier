@@ -28,6 +28,9 @@ export function useMapData(port: MapPort) {
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<ApplicationStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isFetchingClusters, setIsFetchingClusters] = useState(false);
+  const inFlightClustersRef = useRef(0);
+  const isMountedRef = useRef(true);
 
   // Refs let the stable, debounced region handler read the latest zone/filter
   // without being recreated (which would detach Leaflet's event listeners).
@@ -66,6 +69,8 @@ export function useMapData(port: MapPort) {
 
   const fetchClusters = useCallback(
     async (zoneId: WatchZoneId, region: MapRegion, status: ApplicationStatus | null) => {
+      inFlightClustersRef.current += 1;
+      setIsFetchingClusters(true);
       try {
         const result = await port.fetchClusters(zoneId, region.bounds, region.zoom, status);
         setClusters(result);
@@ -78,6 +83,9 @@ export function useMapData(port: MapPort) {
           if (prev.length === 0) setError(extractErrorMessage(err));
           return prev;
         });
+      } finally {
+        inFlightClustersRef.current -= 1;
+        if (isMountedRef.current) setIsFetchingClusters(inFlightClustersRef.current > 0);
       }
     },
     [port],
@@ -135,12 +143,13 @@ export function useMapData(port: MapPort) {
     [port],
   );
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
       if (debounceRef.current) clearTimeout(debounceRef.current);
-    },
-    [],
-  );
+    };
+  }, []);
 
   return {
     zones,
@@ -148,6 +157,7 @@ export function useMapData(port: MapPort) {
     clusters,
     selectedStatusFilter,
     isLoading,
+    isFetchingClusters,
     error,
     onRegionChange,
     setStatusFilter,

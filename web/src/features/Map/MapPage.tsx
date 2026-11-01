@@ -6,6 +6,9 @@ import type { ApplicationStatus, ClusterMember, MapCluster, WatchZoneSummary } f
 import { clusterMemberStatus } from '../../domain/types';
 import { useMapData } from './useMapData';
 import { countBubbleIcon, statusPinIcon } from './markerIcons';
+import { LargeZoneNotice, LargeZoneLoadingMessage } from '../../components/LargeZoneNotice/LargeZoneNotice';
+import { isLargeZone } from '../../domain/largeZone';
+import { useSlowLoadNotice } from '../../hooks/useSlowLoadNotice';
 import { OSM_TILE_URL, OSM_ATTRIBUTION } from '../../components/osmTiles';
 import styles from './MapPage.module.css';
 import 'leaflet/dist/leaflet.css';
@@ -138,12 +141,16 @@ export function MapPage({ port }: Props) {
     clusters,
     selectedStatusFilter,
     isLoading,
+    isFetchingClusters,
     error,
     onRegionChange,
     setStatusFilter,
     selectZone,
     resolveMember,
   } = useMapData(port);
+
+  const isLargeSelectedZone = selectedZone !== null && isLargeZone(selectedZone);
+  const showLoadingMessage = useSlowLoadNotice(isFetchingClusters, isLargeSelectedZone);
 
   const handleSelectMember = useCallback(
     async (member: ClusterMember) => {
@@ -210,6 +217,9 @@ export function MapPage({ port }: Props) {
           </select>
         </label>
       )}
+
+      <LargeZoneNotice isLarge={isLargeSelectedZone} />
+      <LargeZoneLoadingMessage isVisible={showLoadingMessage} />
 
       {selectedZone && (
         <div className={styles.statusFilters} role="group" aria-label="Filter by status">

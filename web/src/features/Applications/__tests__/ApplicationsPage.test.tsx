@@ -1,7 +1,7 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ApplicationsPage } from '../ApplicationsPage';
 import { SpyApplicationsBrowsePort } from './spies/spy-applications-browse-port';
 import { SpyNotificationStateRepository } from './spies/spy-notification-state-repository';
@@ -380,5 +380,102 @@ describe('ApplicationsPage — Load more (keyset pagination)', () => {
 
     await waitFor(() => expect(screen.getByText('2026/0042/FUL')).toBeInTheDocument());
     expect(screen.queryByRole('button', { name: /load more/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('ApplicationsPage — large-zone notice', () => {
+  const NOTICE =
+    'Large zone: built for notifications. This can take up to a minute to load the first time.';
+  const LOADING = 'Loading a large zone. This can take up to a minute the first time.';
+
+  async function renderWithZones(...zones: WatchZoneSummary[]) {
+    const zonesPort = new SpyZonesPort();
+    zonesPort.fetchZonesResult = zones;
+    const browsePort = new SpyApplicationsBrowsePort();
+    browsePort.fetchByZoneResult = onePage([undecidedApplication()]);
+    renderPage({ zonesPort, browsePort });
+    await waitFor(() => expect(screen.getByText('2026/0042/FUL')).toBeInTheDocument());
+    return browsePort;
+  }
+
+  it('shows the notice for a large zone', async () => {
+    await renderWithZones({ ...cambridgeZone(), radiusMetres: 5000 });
+
+    expect(screen.getByText(NOTICE)).toBeInTheDocument();
+  });
+
+  it('does not show the notice for a small zone', async () => {
+    await renderWithZones({ ...cambridgeZone(), radiusMetres: 1000 });
+
+    expect(screen.queryByText(NOTICE)).not.toBeInTheDocument();
+  });
+
+  it('follows the selected zone', async () => {
+    const user = userEvent.setup();
+    await renderWithZones(
+      { ...cambridgeZone(), radiusMetres: 5000 },
+      { ...oxfordZone(), radiusMetres: 500 },
+    );
+    expect(screen.getByText(NOTICE)).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText('Zone'), oxfordZone().id);
+
+    expect(screen.queryByText(NOTICE)).not.toBeInTheDocument();
+  });
+
+  it('does not show the notice before a zone is selected', () => {
+    renderPage();
+
+    expect(screen.queryByText(NOTICE)).not.toBeInTheDocument();
+  });
+
+  describe('loading message', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    async function advance(ms: number) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(ms);
+      });
+    }
+
+    function renderHeld(zone: WatchZoneSummary) {
+      const zonesPort = new SpyZonesPort();
+      zonesPort.fetchZonesResult = [zone];
+      const browsePort = new SpyApplicationsBrowsePort();
+      browsePort.holdFetches = true;
+      renderPage({ zonesPort, browsePort });
+      return browsePort;
+    }
+
+    it('shows after 3 seconds of loading a large zone and clears when loading ends', async () => {
+      const browsePort = renderHeld({ ...cambridgeZone(), radiusMetres: 5000 });
+      await advance(0);
+      expect(browsePort.heldFetchCount).toBe(1);
+
+      await advance(2999);
+      expect(screen.queryByText(LOADING)).not.toBeInTheDocument();
+      await advance(1);
+      expect(screen.getByText(LOADING)).toBeInTheDocument();
+      expect(screen.getByText('Loading applications...')).toBeInTheDocument();
+
+      await act(async () => {
+        browsePort.settleHeldFetch({ rows: [undecidedApplication()], nextCursor: null });
+      });
+      expect(screen.queryByText(LOADING)).not.toBeInTheDocument();
+    });
+
+    it('never shows for a small zone', async () => {
+      renderHeld({ ...cambridgeZone(), radiusMetres: 1000 });
+      await advance(0);
+      await advance(10_000);
+
+      expect(screen.queryByText(LOADING)).not.toBeInTheDocument();
+    });
   });
 });

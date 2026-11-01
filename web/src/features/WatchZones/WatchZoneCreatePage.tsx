@@ -6,7 +6,8 @@ import { useCreateWatchZone } from './useCreateWatchZone';
 import { useBoundaryDrawing } from '../../hooks/useBoundaryDrawing';
 import { PostcodeInput } from '../../components/PostcodeInput/PostcodeInput';
 import { RadiusPicker } from '../../components/RadiusPicker/RadiusPicker';
-import { LargeRadiusWarning } from '../../components/LargeRadiusWarning/LargeRadiusWarning';
+import { LargeZoneWarning } from '../../components/LargeZoneWarning/LargeZoneWarning';
+import { isLargeCircle, isLargeVertices } from '../../domain/largeZone';
 import { ConfirmMap } from '../../components/ConfirmMap/ConfirmMap';
 import { ShapeModeToggle } from './ShapeModeToggle';
 import { BoundaryMap } from '../../components/BoundaryMap/BoundaryMap';
@@ -43,6 +44,9 @@ export function WatchZoneCreatePage({ repository, geocodingPort, navigate, tier 
   const drawing = useBoundaryDrawing();
   const canDrawCustomShape = tier !== 'Free';
   const isCustomShape = canDrawCustomShape && shapeMode === 'custom';
+  const isLarge = isCustomShape
+    ? isLargeVertices(drawing.vertices)
+    : isLargeCircle(radiusMetres);
 
   return (
     <div className={styles.container}>
@@ -94,11 +98,10 @@ export function WatchZoneCreatePage({ repository, geocodingPort, navigate, tier 
               />
             )
           ) : (
-            <>
-              <RadiusPicker selectedMetres={radiusMetres} onSelect={setRadiusMetres} />
-              <LargeRadiusWarning radiusMetres={radiusMetres} />
-            </>
+            <RadiusPicker selectedMetres={radiusMetres} onSelect={setRadiusMetres} />
           )}
+
+          <LargeZoneWarning isLarge={isLarge} />
 
           {!canDrawCustomShape && (
             <CustomShapeUpsell
