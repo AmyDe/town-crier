@@ -275,6 +275,11 @@ func (r *sqlRecorder) drain() []recordedStmt {
 // statement it runs.
 func recordedThinStore(t *testing.T, pool *pgxpool.Pool) (*PostgresStore, *sqlRecorder) {
 	t.Helper()
+	return recordedStore(t, pool, fixedReadPath{list: true})
+}
+
+func recordedStore(t *testing.T, pool *pgxpool.Pool, sw readPathSwitch) (*PostgresStore, *sqlRecorder) {
+	t.Helper()
 	rec := &sqlRecorder{}
 	cfg := pool.Config().Copy()
 	cfg.ConnConfig.Tracer = rec
@@ -283,7 +288,7 @@ func recordedThinStore(t *testing.T, pool *pgxpool.Pool) (*PostgresStore, *sqlRe
 		t.Fatalf("traced pool: %v", err)
 	}
 	t.Cleanup(traced.Close)
-	return NewPostgresStore(traced).WithReadPath(fixedReadPath{list: true}), rec
+	return NewPostgresStore(traced).WithReadPath(sw), rec
 }
 
 type explainNode struct {
