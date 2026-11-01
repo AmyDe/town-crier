@@ -275,6 +275,8 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     self.slowLoadDelay = slowLoadDelay
   }
 
+  public var showsLargeZoneNotice: Bool { false }
+
   public var showsLargeZoneLoadingMessage: Bool {
     isLoading && loadHasBeenSlow && (selectedZone ?? zone)?.isLarge == true
   }

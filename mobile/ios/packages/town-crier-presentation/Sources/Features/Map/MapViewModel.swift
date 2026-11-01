@@ -131,6 +131,8 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
     self.slowLoadDelay = slowLoadDelay
   }
 
+  public var showsLargeZoneNotice: Bool { false }
+
   public var showsLargeZoneLoadingMessage: Bool {
     isLoading && loadHasBeenSlow && selectedZone?.isLarge == true
   }

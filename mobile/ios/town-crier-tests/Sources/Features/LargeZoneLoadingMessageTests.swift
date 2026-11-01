@@ -87,6 +87,20 @@ struct MapViewModelLargeZoneLoadingMessageTests {
     #expect(sut.showsLargeZoneLoadingMessage == false)
   }
 
+  @Test func notice_showsOnlyForLargeSelectedZone() async throws {
+    let large = try zone(id: "large", radiusMetres: 5000)
+    let small = try zone(id: "small", radiusMetres: 500)
+    let (sut, _) = makeSUT(zones: [large, small])
+    #expect(sut.showsLargeZoneNotice == false)
+
+    await sut.loadApplications()
+    await sut.selectZone(large)
+    #expect(sut.showsLargeZoneNotice == true)
+
+    await sut.selectZone(small)
+    #expect(sut.showsLargeZoneNotice == false)
+  }
+
   @Test func supersededLoadCompletion_doesNotClearNewerLoad() async throws {
     let large = try zone(id: "large", radiusMetres: 5000)
     let large2 = try zone(id: "large2", radiusMetres: 6000)
@@ -175,6 +189,20 @@ struct ApplicationListViewModelLargeZoneLoadingMessageTests {
     await first.value
     await second.value
     #expect(sut.showsLargeZoneLoadingMessage == false)
+  }
+
+  @Test func notice_showsOnlyForLargeSelectedZone() async throws {
+    let large = try zone(id: "large", radiusMetres: 5000)
+    let small = try zone(id: "small", radiusMetres: 500)
+    let (sut, _) = makeSUT(zones: [large, small])
+    #expect(sut.showsLargeZoneNotice == false)
+
+    await sut.loadApplications()
+    await sut.selectZone(large)
+    #expect(sut.showsLargeZoneNotice == true)
+
+    await sut.selectZone(small)
+    #expect(sut.showsLargeZoneNotice == false)
   }
 
   @Test func supersededLoadCompletion_doesNotClearNewerLoad() async throws {
