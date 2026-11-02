@@ -342,15 +342,12 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 		tags:                        tags,
 	}
 
-	// Dev-only: Postgres database for town_crier_dev on the shared Flexible Server.
-	// Part of the Cosmos → Postgres + PostGIS migration (memo 0010, epic tc-hpd2 / GH #645).
-	// The password-based connection-string secret is retired; the dev API authenticates via
-	// Entra managed identity using a runtime token (no stored password).
+	// Dev-only: Postgres database for town_crier_dev on the shared Flexible Server. The dev API
+	// authenticates via Entra managed identity using a runtime token (no stored password).
 	//
-	// town_crier_prod is intentionally NOT declared here: it was provisioned data-plane
-	// (CREATE DATABASE + role + goose schema; GH #664 Phase C, bead tc-hpd2.3). Bringing it
-	// under Pulumi management (a prod NewDatabase + `pulumi import`) is deferred to the gated
-	// flip release so this merge-only change can't try to (re)create the live prod DB.
+	// town_crier_prod is intentionally NOT declared here: it was provisioned data-plane, and
+	// bringing it under Pulumi management (a prod NewDatabase + `pulumi import`) is deferred so a
+	// merge cannot try to (re)create the live prod DB.
 	if env == "dev" {
 		postgresServerName := shared.GetStringOutput(pulumi.String("postgresServerName"))
 
@@ -404,8 +401,7 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 	if subscriptionWebhooks != nil {
 		apiEnvVars = append(apiEnvVars, app.EnvironmentVarArgs{Name: pulumi.String("SUBSCRIPTION_WEBHOOKS"), SecretRef: pulumi.String("subscription-webhooks"), Value: pulumi.String("")})
 	}
-	// Both env stacks (dev + prod — the only environment stacks) run on Postgres
-	// single-store (memo 0010 / GH #669 prod, GH #681 dev). The API authenticates to
+	// Both env stacks (dev + prod) run on Postgres single-store. The API authenticates to
 	// town_crier_<env> via Entra managed identity (POSTGRES_AUTH); the connection vars are
 	// explicit and identical across envs except POSTGRES_DB. env is exactly "dev"/"prod"
 	// here, so "town_crier_"+env mirrors the addGoWorkerEnv idiom. AZURE_CLIENT_ID is already
@@ -521,16 +517,16 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 	}
 	// Subscription sweep — daily at 04:30 UTC (offset an hour from dormant-cleanup so the two
 	// full-scan jobs don't contend). Reverts lapsed offer-code/App Store paid tiers to Free in
-	// Cosmos and syncs Auth0 metadata (ADR 0010 reconciliation; epic tc-rlja / GH #608).
+	// Cosmos and syncs Auth0 metadata (ADR 0010 reconciliation).
 	if err = createWorkerJob(ctx, ec, "subscription-sweep", "30 4 * * *", 600, "subscription-sweep"); err != nil {
 		return err
 	}
 	if err = createWorkerJob(ctx, ec, "appstore-reconcile", "15 */6 * * *", 600, "appstore-reconcile"); err != nil {
 		return err
 	}
-	// pg-purge — daily at 02:00 UTC. Replaces the Cosmos per-document TTLs: runs
-	// WORKER_MODE=pg-purge which calls Postgres PurgeOlderThan to enforce the 90-day
-	// (Notifications) and 180-day (DeviceRegistrations) retention defaults (memo 0010 / GH #669).
+	// pg-purge — daily at 02:00 UTC. Runs WORKER_MODE=pg-purge which calls Postgres
+	// PurgeOlderThan to enforce the 90-day (Notifications) and 180-day (DeviceRegistrations)
+	// retention defaults.
 	// Created for both envs: it enforces retention against town_crier_dev on dev, the same as
 	// prod against town_crier_prod.
 	if err = createWorkerJob(ctx, ec, "pg-purge", "0 2 * * *", 600, "pg-purge"); err != nil {
@@ -700,8 +696,8 @@ func createWorkerJob(ctx *pulumi.Context, ec envContext, nameSuffix, cronExpress
 // addGoWorkerEnv appends the Go worker's env vars (SINGLE-underscore names). The consumer
 // is api-go/internal/platform/config.go.
 func addGoWorkerEnv(envVars app.EnvironmentVarArray, ec envContext, workerMode string) app.EnvironmentVarArray {
-	// Both envs: every worker job runs on Postgres single-store (memo 0010 / GH #669 prod,
-	// GH #681 dev). POSTGRES_DB is per-env (town_crier_dev / town_crier_prod) — ec.env is
+	// Both envs: every worker job runs on Postgres single-store. POSTGRES_DB is per-env
+	// (town_crier_dev / town_crier_prod) — ec.env is
 	// exactly "dev"/"prod". AZURE_CLIENT_ID is already set on every worker job
 	// (createWorkerJob) and reused for the Entra MI token fetch, so it is not duplicated here.
 	envVars = append(envVars,
@@ -716,12 +712,9 @@ func addGoWorkerEnv(envVars app.EnvironmentVarArray, ec envContext, workerMode s
 		envVars = append(envVars, pollJobEnv(ec.env)...)
 	}
 
-	// APNs push: poll sends the instant new-application / decision alerts
-	// (notifydispatch fan-out, #456); digest / hourly-digest send the weekly
-	// digest push. The apns-auth-key secret is on every worker job (see the
-	// shared secrets above). Without these env vars buildPushSender falls back to
-	// the NoOp sender and silently drops every push — which is exactly why the
-	// poll worker delivered no instant pushes in prod.
+	// APNs push: poll sends the instant new-application / decision alerts; digest /
+	// hourly-digest send the weekly digest push. Without these env vars buildPushSender falls
+	// back to the NoOp sender and silently drops every push.
 	if workerMode == "poll" || workerMode == "digest" || workerMode == "hourly-digest" {
 		envVars = append(envVars,
 			app.EnvironmentVarArgs{Name: pulumi.String("APNS_ENABLED"), Value: pulumi.String("true")},
@@ -843,11 +836,10 @@ func pollJobEnv(env string) app.EnvironmentVarArray {
 
 // createBlobStorage provisions the per-environment Storage Account and its share-cards container
 // for the public share-page OG images, and grants the API's user-assigned managed identity
-// (cosmosDataIdentity) Storage Blob Data Contributor so it can cache-once baked cards (#738
-// Slice 3). The CI OIDC identity also keeps Storage Blob Data Contributor on the account.
+// (cosmosDataIdentity) Storage Blob Data Contributor so it can cache-once baked cards. The CI
+// OIDC identity also keeps Storage Blob Data Contributor on the account.
 //
-// This is the project's first Storage Account. It uses the smallest/cheapest profile:
-// StorageV2, Standard_LRS, Hot. Shared-key access is disabled, so all data-plane access is
+// It uses the smallest/cheapest profile: StorageV2, Standard_LRS, Hot. Shared-key access is disabled, so all data-plane access is
 // AAD/RBAC only — CI authenticates via OIDC and must use `--auth-mode login` for blob I/O.
 func createBlobStorage(ctx *pulumi.Context, env string, resourceGroupName pulumi.StringOutput, ciServicePrincipalID string, cosmosDataIdentityPrincipalID pulumi.StringOutput, tags pulumi.StringMap) error {
 	// Storage account names are 3-24 chars, lowercase alphanumeric, globally unique. "st" prefix
@@ -908,8 +900,8 @@ func createBlobStorage(ctx *pulumi.Context, env string, resourceGroupName pulumi
 
 	// Same built-in role for the API's user-assigned managed identity (cosmosDataIdentity, whose
 	// client id is injected as AZURE_CLIENT_ID). The share-page OG handler runs as the API app and
-	// needs data-plane read+write to cache-once baked cards into the share-cards container (#738
-	// Slice 3). Scoped to the whole account, mirroring the CI grant above.
+	// needs data-plane read+write to cache-once baked cards into the share-cards container.
+	// Scoped to the whole account, mirroring the CI grant above.
 	_, err = authorization.NewRoleAssignment(ctx, fmt.Sprintf("share-cards-blob-contributor-%s", env), &authorization.RoleAssignmentArgs{
 		Scope: account.ID(),
 		RoleDefinitionId: pulumi.Sprintf(

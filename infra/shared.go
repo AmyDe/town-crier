@@ -359,8 +359,8 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 			// AutoGrow defaults to Disabled, which turns storage exhaustion into a silent
 			// full-outage path (the server stops accepting writes with no automatic remediation).
 			// Enabled lets Azure grow storage automatically as free space nears zero. This is an
-			// in-place property update, not a replace — see tc-97k35.3 handoff notes for the
-			// preview verification. The storage_percent > 80% alert below (alert-pg-storage-shared)
+			// in-place property update, not a replace. The storage_percent > 80% alert below
+			// (alert-pg-storage-shared)
 			// stays as a second line of defence even with auto-grow on.
 			AutoGrow: dbforpostgresql.StorageAutoGrowEnabled,
 		},
@@ -422,7 +422,7 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 	}
 
 	// Entra administrator on the shared Postgres server. The repo owner's account is used
-	// so `cmd/pgbootstrap` (Slice B of GH #653) can run locally under `az login` credentials
+	// so `cmd/pgbootstrap` can run locally under `az login` credentials
 	// to create the towncrier_api role and grant least-privilege DML rights. The CI service
 	// principal can be added as a second Administrator later if CI bootstrap is needed.
 	aadAdmin, err := dbforpostgresql.NewAdministrator(ctx, "psql-town-crier-shared-aad-admin", &dbforpostgresql.AdministratorArgs{
@@ -462,7 +462,7 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 	}
 
 	// Subscription-wide cost guard rail — fires at £50 cumulative monthly spend across the
-	// whole subscription. See tc-yica and docs/cost-forecast/2026-05-02.md.
+	// whole subscription.
 	alertEmail := conf.Require("alertEmail")
 	_, err = consumption.NewBudget(ctx, "budget-subscription-monthly", &consumption.BudgetArgs{
 		BudgetName: pulumi.String("budget-subscription-monthly"),
@@ -540,8 +540,7 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 	}
 
 	// Scheduled query (log) alert — PlanIt non-429 dependency failure ratio over the last 24
-	// hours, computed from AppDependencies on this shared Log Analytics workspace (tc-ttjor / GH
-	// #938 PR3). Go emits no AppMetrics by design (no Go Azure Monitor metrics exporter), so a
+	// hours, computed from AppDependencies on this shared Log Analytics workspace. Go emits no AppMetrics by design (no Go Azure Monitor metrics exporter), so a
 	// log-based alert is the only option here. The query requires >=20 calls in the window so a
 	// quiet hour with one stray failure can't read as 100%. ResultCode on these dependency spans
 	// is the OTel span status ('0'/'2'), NOT the HTTP status — hence filtering on
@@ -568,18 +567,9 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		Severity:            pulumi.Float64(2), // Warning
 		Enabled:             pulumi.Bool(true),
 		EvaluationFrequency: pulumi.String("PT15M"),
-		// WindowSize is P1D, not PT3H (widened again by tc-x5xsx, alert-noise audit 2026-08-25).
-		// PlanIt is a free, single-operator service (ADR 0006) with frequent multi-hour
-		// outages/slowdowns that are not actionable by the owner until they've been ongoing a
-		// full day — confirmed against Azure Monitor's alert history that the PT3H window (itself
-		// already widened once from PT1H by tc-k5c9w) was firing on real but short-lived PlanIt
-		// degradation multiple times a week, occasionally flapping fire/resolve within the same
-		// day. An 8x wider rolling window dilutes the failure-ratio calc by ~8x more total calls
-		// before it can cross 30%, so anything shorter than a sustained day-long PlanIt outage
-		// self-heals without paging, while a genuinely daylong outage — the only kind of event
-		// this alert should page for — still comfortably breaches within the window. Same "give it
-		// space to prove it's a real trend, not a blip" principle as the PT3H widening, taken
-		// further because PlanIt's normal operating noise floor is higher than first assumed.
+		// WindowSize is P1D: PlanIt (ADR 0006) has frequent multi-hour outages that are not
+		// actionable until they last a full day, and shorter windows paged on short-lived
+		// degradation several times a week.
 		WindowSize: pulumi.String("P1D"),
 		Scopes:     pulumi.StringArray{logAnalytics.ID()},
 		Criteria: monitor.ScheduledQueryRuleCriteriaArgs{
@@ -693,20 +683,12 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		return err
 	}
 
-	// Alert posture. The 2026-07-12 audit found the action group and
-	// PlanIt rule above already ported but the rest of the P1+P2 posture
-	// unimplemented. This codifies the remainder: availability tests, Postgres/job/ACS metric
-	// alerts, API/webhook/APNs/ACS/Auth0 log alerts, job-absence detection, Service Health,
-	// Failure Anomalies. Everything below scopes prod resources via constructed ID strings
-	// (armSubscriptionID + documented literal names) rather than cross-stack reads, per the
-	// issue's design: alert rules are ARM meta-resources that can live in the shared RG while
-	// pointing at resources in rg-town-crier-prod.
+	// Alert rules below scope prod resources via constructed ID strings (armSubscriptionID +
+	// documented literal names) rather than cross-stack reads: alert rules are ARM
+	// meta-resources that can live in the shared RG while pointing at rg-town-crier-prod.
 	//
-	// alert-poll-queue-depth-prod is deliberately NOT duplicated here. It is already
-	// Pulumi-managed by the prod stack (infra/environment.go, createPollQueueDepthAlert) and was
-	// applied there via cd-prod (releases v0.19.3/v0.19.4) — it was never a CLI orphan, so the
-	// issue's Phase 1 item 3 "move it into the shared stack" premise doesn't hold. The prod-stack
-	// copy stays canonical.
+	// alert-poll-queue-depth-prod is deliberately NOT duplicated here: the prod stack owns it
+	// (infra/environment.go, createPollQueueDepthAlert).
 
 	// Phase 2: availability tests.
 	if err = createAvailabilityCheck(ctx, resourceGroup, appInsights, actionGroup, tags,
@@ -720,10 +702,9 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 
 	// Phase 3: platform metric alerts.
 
-	// Postgres — scoped to the shared Flexible Server provisioned above (B1ms burstable, 32GB,
-	// storage auto-grow enabled per tc-97k35.3 — so storage exhaustion now self-remediates, but
-	// CPU-credit exhaustion is still a real operational risk here, and the storage alert below
-	// stays as an early-warning/cost signal even with auto-grow on).
+	// Postgres alerts scope to the shared Flexible Server above (B1ms burstable). Storage
+	// auto-grow is on, but the storage alert stays as an early-warning/cost signal, and
+	// CPU-credit exhaustion is still a real risk.
 	type postgresAlertSpec struct {
 		suffix     string // resource-name suffix, e.g. "storage" -> alert-pg-storage-shared
 		metricName string
@@ -1119,19 +1100,12 @@ expected
 		return err
 	}
 
-	// Operational Dashboard. Rebuilt on telemetry the Go stack
-	// actually emits: ACA's managed OpenTelemetry agent forwards only logs+traces for Go
-	// workloads, so every prior tile's customMetrics/AppMetrics query (towncrier.*) had no data
-	// behind it — Go wires no Azure Monitor metrics exporter (same reason the PlanIt
-	// failure-rate alert above is log-based, not metric-based) — and user_AuthenticatedId is
-	// never populated by the Go auth middleware. All 23 tiles below query the classic
-	// requests/dependencies KQL tables (workspace-based AppRequests/AppDependencies), the
-	// standard availabilityResults metric from the WebTests above, or a platform metric
-	// (Postgres, Service Bus) via MonitorChartPart; each pre-existing tile was verified against
-	// the live App Insights component on 2026-07-13. Queries with no natural "still exists"
-	// guarantee (5xx counts, PlanIt 429s/errors, dependency/email/APNs failures, and the tc-gha6l
-	// additions below) use the `let data = ...; union data, (datatable(...)[])` scaffold so a
-	// quiet period renders a flat zero line instead of Azure's blank "no data" tile.
+	// Operational Dashboard. ACA's managed OpenTelemetry agent forwards only logs+traces for Go
+	// workloads and Go wires no Azure Monitor metrics exporter, so tiles query the
+	// requests/dependencies KQL tables, the availabilityResults metric, or a platform metric via
+	// MonitorChartPart, never customMetrics. Queries with no natural "still exists" guarantee use
+	// the `let data = ...; union data, (datatable(...)[])` scaffold so a quiet period renders a
+	// flat zero line instead of Azure's blank "no data" tile.
 	appInsightsID := appInsights.ID().ToStringOutput()
 
 	postgresServerID := postgresServer.ID().ToStringOutput()
@@ -1147,13 +1121,10 @@ expected
 	const dashboardPlanItCallsQuery = `dependencies | where customDimensions['deployment.environment'] == 'prod' | where target == 'PlanIt search' | summarize Value=toreal(count()) by timestamp=bin(timestamp, 1h) | render timechart`
 	const dashboardPlanIt429sQuery = `let data = dependencies | where customDimensions['deployment.environment'] == 'prod' | where target == 'PlanIt search' | where tostring(customDimensions['http.response.status_code']) == '429' | summarize Value=toreal(count()) by timestamp=bin(timestamp, 1h); union data, (datatable(timestamp:datetime, Value:real)[]) | render timechart`
 	const dashboardPlanItErrorsQuery = `let data = dependencies | where customDimensions['deployment.environment'] == 'prod' | where target == 'PlanIt search' and success == false | extend status = tostring(customDimensions['http.response.status_code']) | where status != '429' | summarize Value=toreal(count()) by timestamp=bin(timestamp, 1h), status; union data, (datatable(timestamp:datetime, Value:real, status:string)[]) | render timechart`
-	// Replaces the former dashboardEmailsSentVsFailedQuery (target == 'ACS email send'), which
-	// counted the send+poll HTTP calls behind each email rather than the email itself, inflating
-	// per-email counts. 'Email send' is the one-span-per-email telemetry.
+	// 'Email send' is the one-span-per-email telemetry; the ACS send+poll HTTP spans would
+	// inflate per-email counts.
 	const dashboardEmailsByKindQuery = `let data = dependencies | where customDimensions['deployment.environment'] == 'prod' | where name == 'Email send' | summarize Value=toreal(count()) by timestamp=bin(timestamp, 1h), series=strcat(tostring(customDimensions['email.kind']), iff(success == true, '', ' (failed)')); union data, (datatable(timestamp:datetime, Value:real, series:string)[]) | render timechart`
 	const dashboardAPNsPushesQuery = `let data = dependencies | where customDimensions['deployment.environment'] == 'prod' | where target == 'APNs push' | summarize Value=toreal(count()) by timestamp=bin(timestamp, 1h), outcome=iff(success == true, 'Sent', 'Failed'); union data, (datatable(timestamp:datetime, Value:real, outcome:string)[]) | render timechart`
-
-	// tc-gha6l row y=24: poll queue depth, other job cycles, PlanIt latency.
 	const dashboardJobCyclesByOutcomeQuery = `let data = dependencies | where customDimensions['deployment.environment'] == 'prod' | where name in ('Digest Cycle', 'Hourly Digest Cycle', 'Dormant Cleanup Cycle', 'Subscription Sweep Cycle', 'Postgres Purge Cycle', 'PlanIt poll run') | summarize Value=toreal(count()) by timestamp=bin(timestamp, 1h), series=iff(success == true, name, strcat(name, ' (failed)')); union data, (datatable(timestamp:datetime, Value:real, series:string)[]) | render timechart`
 	const dashboardPlanItLatencyP95Query = `dependencies | where customDimensions['deployment.environment'] == 'prod' | where target == 'PlanIt search' | summarize Value=percentile(duration, 95) by timestamp=bin(timestamp, 1h) | render timechart`
 
@@ -1226,7 +1197,7 @@ expected
 	// docs/adr/0038-dev-seed-least-privilege-prod-read.md.
 	ctx.Export("devSeedReaderIdentityPrincipalId", devSeedReaderIdentity.PrincipalId)
 	ctx.Export("containerAppsEnvironmentId", containerAppsEnv.ID())
-	// Postgres Flexible Server (Cosmos → Postgres migration, epic tc-hpd2). The admin password
+	// Postgres Flexible Server. The admin password
 	// is a Pulumi secret (RandomPassword.Result); env stacks read these to build per-env
 	// database connection strings.
 	ctx.Export("postgresServerName", postgresServer.Name)
@@ -1265,10 +1236,7 @@ const (
 	monitorAggregationAverage = 4
 )
 
-// monitorChartTile renders an arbitrary Azure Monitor platform metric — Application Insights
-// availabilityResults, Postgres Flexible Server metrics, or any
-// other metric under a namespace Go itself emits nothing for (Go wires no Azure Monitor metrics
-// exporter; see the Operational Dashboard comment above) — as a MonitorChartPart bound to
+// monitorChartTile renders an Azure Monitor platform metric as a MonitorChartPart bound to
 // resourceID.
 func monitorChartTile(resourceID pulumi.StringOutput, metricName, metricNamespace string, title string) portal.DashboardPartMetadataArgs {
 	return portal.DashboardPartMetadataArgs{
@@ -1299,10 +1267,8 @@ func monitorChartTile(resourceID pulumi.StringOutput, metricName, metricNamespac
 	}
 }
 
-// availabilityMetricTile renders the Application Insights standard availabilityPercentage
-// metric — a platform metric under the microsoft.insights/components namespace, not a
-// customMetrics/AppMetrics series — as a MonitorChartPart. Thin wrapper over monitorChartTile
-// kept for its existing call site and the metric-name discovery documented above.
+// availabilityMetricTile renders the Application Insights availabilityPercentage platform
+// metric, not a customMetrics series.
 func availabilityMetricTile(appInsightsID pulumi.StringOutput, title string) portal.DashboardPartMetadataArgs {
 	return monitorChartTile(appInsightsID, "availabilityResults/availabilityPercentage", "microsoft.insights/components", title)
 }
@@ -1499,37 +1465,24 @@ func createLogAlert(ctx *pulumi.Context, resourceGroup *resources.ResourceGroup,
 // character that is special in RE2 (e.g. the literal "+" in "\+http"). The regex sits inside a
 // KQL verbatim string (@"..."), so write a single backslash, not a doubled one.
 //
-// The list starts from the ad hoc regex used in the GH #1020 investigation
-// (bot|spider|crawl|slurp|facebookexternalhit|whatsapp|telegrambot|slackbot|discordbot|
-// preview|headless|curl|python-requests|go-http-client — 91% of /a/ traffic over a 27-day
-// sample), plus two confirmed misses from that same investigation (Google's screen-reader
-// crawler, which carries no "bot" substring, and Facebook's own crawler, which
-// self-identifies via an embedded "+http" URL rather than a "bot" token), plus common SEO/
-// security scanners, plus the AI-crawler allowlist from web/public/robots.txt (deliberately
-// welcomed there for SEO/AI-discoverability — welcomed still means bot traffic for the
-// purposes of this volume count, not organic).
+// The list includes the AI-crawler allowlist from web/public/robots.txt: welcomed there still
+// means bot traffic for this volume count, not organic.
 const isLikelyBotQuery = `// IsLikelyBot(ua: string): bool — see infra/shared.go createSharePageAnalytics for how
 // this function is maintained (tc-kg77x / GH #1020).
 tolower(ua) matches regex @"(bot|spider|crawl|slurp|facebookexternalhit|whatsapp|telegrambot|slackbot|discordbot|preview|headless|curl|python-requests|go-http-client|read-aloud|webindexer|\+http|ahrefsbot|semrushbot|mj12bot|dotbot|censys|zgrab|masscan|gptbot|oai-searchbot|chatgpt-user|google-extended|claudebot|claude-user|anthropic-ai|perplexitybot|perplexity-user|ccbot|applebot-extended)"`
 
 // sharePageHumanTrafficQuery is the body of the SharePageHumanTraffic() saved KQL function.
 // Combines IsLikelyBot(ua) with a burst/behavioral heuristic to catch
-// browser-spoofed crawlers presenting a generic desktop UA (the GH #1020 investigation found a
-// 2,243-hit cluster on an all-zero-build Chrome UA — real browsers never report an all-zero
-// patch/build number — hitting the same path dozens of times within minutes), then reports the
+// browser-spoofed crawlers presenting a generic desktop UA, then reports the
 // residual likely-organic AppRequests volume to the share-page routes
 // (`/a/{authoritySlug}/{ref...}` and `/og/{authoritySlug}/{ref...}`, ADR 0037), bucketed by
 // slug and day.
 //
 // IMPORTANT — burst threshold is an unvalidated starting estimate, not a tuned value: more
 // than 5 requests to the same (Ua, Path) within any genuine rolling 10-minute window, bucketed
-// by UA+day. Chosen because the GH #1020 sample's confirmed-bot cluster showed dozens of hits
-// within minutes to the same path, while plausible human traffic was single-digit and spread
-// out across a session — but nobody has run this function against live prod data yet (no `az`
-// CLI / Log Analytics access from the environment this was authored in). Before relying on the
-// organic-count output: run it against 30+ days of prod data from a local session with `az`
-// access, sanity-check the result against known usage, and adjust burstThreshold/burstWindow
-// below if it's over- or under-flagging.
+// by UA+day. Before relying on the organic-count output: run it against 30+ days of prod
+// data from a local session with `az` access, sanity-check the result against known usage,
+// and adjust burstThreshold/burstWindow below if it's over- or under-flagging.
 //
 // The window is a genuine per-request rolling window (self-join: for each candidate request,
 // count same-Ua+Path requests in [TimeGenerated, TimeGenerated+burstWindow)), not a fixed
