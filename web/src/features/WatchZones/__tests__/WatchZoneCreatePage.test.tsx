@@ -26,7 +26,7 @@ interface PathLayerProps {
   positions: [number, number][];
 }
 
-const LARGE_ZONE_TITLE = 'Large zones are for notifications, not browsing';
+const LARGE_ZONE_TITLE = 'Large zones can be slower to browse';
 
 const { capturedMapEvents } = vi.hoisted(() => ({
   capturedMapEvents: { click: undefined as ((event: LatLngPayload) => void) | undefined },

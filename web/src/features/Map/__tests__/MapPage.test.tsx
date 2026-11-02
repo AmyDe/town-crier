@@ -314,58 +314,17 @@ describe('MapPage', () => {
     expect(screen.queryByTestId('zone-polygon')).not.toBeInTheDocument();
   });
 
-  describe('large-zone notice', () => {
-    const NOTICE =
-      'Large zone: built for notifications. This can take up to a minute to load the first time.';
-    const LOADING = 'Loading a large zone. This can take up to a minute the first time.';
+  describe('large-zone copy', () => {
+    const LOADING = 'Loading a large zone. This can take a few seconds.';
 
-    it('shows the notice for a large circle zone', async () => {
+    it('shows no permanent notice for a large zone', async () => {
       spy.fetchMyZonesResult = [aZone({ radiusMetres: 5000 })];
 
       renderMap(spy);
 
-      expect(await screen.findByText(NOTICE)).toBeInTheDocument();
-    });
-
-    it('shows the notice for a large custom-shape zone, judged by its boundary not its radius', async () => {
-      spy.fetchMyZonesResult = [
-        aZone({ radiusMetres: 500, boundary: aLargePolygonBoundary() }),
-      ];
-
-      renderMap(spy);
-
-      expect(await screen.findByText(NOTICE)).toBeInTheDocument();
-    });
-
-    it('does not show the notice for a small zone', async () => {
-      spy.fetchMyZonesResult = [aZone({ radiusMetres: 1000 })];
-
-      renderMap(spy);
-
       await screen.findByTestId('map-container');
-      expect(screen.queryByText(NOTICE)).not.toBeInTheDocument();
-    });
-
-    it('does not show the notice when no zone is selected', async () => {
-      spy.fetchMyZonesResult = [];
-
-      renderMap(spy);
-
-      await screen.findByTestId('map-container');
-      expect(screen.queryByText(NOTICE)).not.toBeInTheDocument();
-    });
-
-    it('follows the selected zone when the zone picker changes', async () => {
-      spy.fetchMyZonesResult = [aZone({ radiusMetres: 5000 }), aSecondZone()];
-
-      renderMap(spy);
-      expect(await screen.findByText(NOTICE)).toBeInTheDocument();
-
-      fireEvent.change(screen.getByLabelText('Watch zone'), {
-        target: { value: 'zone-002' },
-      });
-
-      expect(screen.queryByText(NOTICE)).not.toBeInTheDocument();
+      expect(screen.queryByText(/built for notifications/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/large zone/i)).not.toBeInTheDocument();
     });
 
     describe('loading message', () => {

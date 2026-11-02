@@ -97,12 +97,12 @@ describe('OnboardingPage', () => {
 
     await user.click(screen.getByLabelText('2 km'));
     expect(
-      screen.queryByText('Large zones are for notifications, not browsing'),
+      screen.queryByText('Large zones can be slower to browse'),
     ).not.toBeInTheDocument();
 
     await user.click(screen.getByLabelText('5 km'));
     expect(
-      screen.getByText('Large zones are for notifications, not browsing'),
+      screen.getByText('Large zones can be slower to browse'),
     ).toBeInTheDocument();
   });
 

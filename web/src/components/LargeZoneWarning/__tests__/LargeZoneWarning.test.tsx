@@ -13,9 +13,9 @@ describe('LargeZoneWarning', () => {
     render(<LargeZoneWarning isLarge />);
 
     const status = screen.getByRole('status');
-    expect(status).toHaveTextContent('Large zones are for notifications, not browsing');
+    expect(status).toHaveTextContent('Large zones can be slower to browse');
     expect(status).toHaveTextContent(
-      'Good if you want to hear about everything in a wide area - tradespeople looking for leads, for example. Your notifications work as normal, but the map and list can take up to a minute to load the first time.',
+      'Your notifications work as normal, but the map and list can take a few seconds to load, especially in cities.',
     );
     expect(status).toHaveTextContent(
       'Just want to keep an eye on your street? Stick to 100-500 m in built-up areas, and under 2 km everywhere else.',
