@@ -59,9 +59,7 @@ func TestRenderStats_ContainsAggregates(t *testing.T) {
 		"Users", "Paying", "Signups", "Activity", "Reach",
 		// Users.
 		"Total: 42", "Free 30, Personal 8, Pro 4",
-		// Paying: App Store headline with tier split, estimated MRR, then the
-		// non-App-Store buckets. "Effective paid" is gone — the headline paying
-		// number is App Store only.
+		// Paying: the headline paying number is App Store only.
 		"Paying (App Store): 9 (Personal 3, Pro 6)", "Est. MRR: £35.91/mo",
 		"Comped (offer/admin): 3", "Lapsed: 2", "In grace: 1",
 		// Signups.

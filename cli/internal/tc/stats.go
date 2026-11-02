@@ -21,8 +21,6 @@ func runStats(ctx context.Context, client *Client, env Env, _ *ParsedArgs) int {
 	return exitOK
 }
 
-// renderStats writes the aggregate as five labelled groups (Users, Paying,
-// Signups, Activity, Reach).
 func renderStats(out io.Writer, s *statsResponse) {
 	fmt.Fprintln(out, "Users")
 	fmt.Fprintf(out, "  Total: %d\n", s.Users.Total)
@@ -81,9 +79,8 @@ func mostRecentCell(mr *statsMostRecent) string {
 	return fmt.Sprintf("%s (%s) at %s", mr.UserID, email, mr.CreatedAt)
 }
 
-// payingAppStoreLine renders the App Store-only paying headline. A nil
-// AppStoreByTier means an API build that predates the tier split, so it
-// degrades to the bare count rather than guess a breakdown.
+// payingAppStoreLine: a nil AppStoreByTier means an API build that predates the
+// tier split, so it degrades to the bare count rather than guess a breakdown.
 func payingAppStoreLine(p statsPaying) string {
 	if p.AppStoreByTier == nil {
 		return fmt.Sprintf("Paying (App Store): %d", p.AppStore)
@@ -96,9 +93,8 @@ func payingAppStoreLine(p statsPaying) string {
 	return line + ")"
 }
 
-// estMRRLine renders the estimated monthly recurring revenue line, or "-"
-// when the API predates the tier split needed to compute it. With annual Pro
-// payers it also shows the monthly and annual components.
+// estMRRLine renders "-" when the API predates the tier split needed to compute
+// MRR.
 func estMRRLine(p statsPaying) string {
 	if p.AppStoreByTier == nil {
 		return "Est. MRR: -"
@@ -110,7 +106,6 @@ func estMRRLine(p statsPaying) string {
 	return line
 }
 
-// annualPlansLine renders the yearly cash value of annual Pro subscriptions.
 func annualPlansLine(annual int) string {
 	if annual == 0 {
 		return "Annual plans: 0"
@@ -162,24 +157,19 @@ func annualCount(p statsPaying) int {
 	return *p.AppStoreProAnnual
 }
 
-// mrrPence computes the estimated MRR in integer pence. A nil tier split is
-// zero.
 func mrrPence(p statsPaying) int {
 	return monthlyMRRPence(p) + annualMRRPence(p)
 }
 
-// formatPence renders integer pence as "£X.YY".
 func formatPence(pence int) string {
 	return fmt.Sprintf("£%d.%02d", pence/100, pence%100)
 }
 
-// formatMRR renders the integer-pence MRR as "£X.YY/mo".
 func formatMRR(p statsPaying) string {
 	return formatPence(mrrPence(p)) + "/mo"
 }
 
-// mrrSummarySegment renders the MRR segment of statsSummaryLine, degrading to
-// "MRR -" when the API predates the tier split.
+// mrrSummarySegment degrades to "MRR -" when the API predates the tier split.
 func mrrSummarySegment(p statsPaying) string {
 	if p.AppStoreByTier == nil {
 		return "MRR -"
@@ -187,8 +177,7 @@ func mrrSummarySegment(p statsPaying) string {
 	return "MRR " + formatMRR(p)
 }
 
-// lifetimeSummarySegment renders the optional lifetime segment of
-// statsSummaryLine, empty when the API predates lifetime Pro.
+// lifetimeSummarySegment is empty when the API predates lifetime Pro.
 func lifetimeSummarySegment(p statsPaying) string {
 	if p.Lifetime == nil {
 		return ""
@@ -196,8 +185,7 @@ func lifetimeSummarySegment(p statsPaying) string {
 	return fmt.Sprintf(" · lifetime %d (%s)", *p.Lifetime, formatPence(*p.Lifetime*proLifetimePence))
 }
 
-// trialSummarySegment renders the optional trial segment of statsSummaryLine,
-// empty when the API predates free-trial tracking.
+// trialSummarySegment is empty when the API predates free-trial tracking.
 func trialSummarySegment(p statsPaying) string {
 	if p.InTrial == nil {
 		return ""
@@ -205,9 +193,8 @@ func trialSummarySegment(p statsPaying) string {
 	return fmt.Sprintf(" · trial %d", *p.InTrial)
 }
 
-// statsSummaryLine condenses the aggregate into a single line for the
-// list-users first-page header. The headline paying figure is App Store only;
-// offer/admin comps are reported separately, never bundled in.
+// statsSummaryLine's headline paying figure is App Store only; offer/admin comps
+// are reported separately, never bundled in.
 func statsSummaryLine(s *statsResponse) string {
 	return fmt.Sprintf(
 		"%d users (Free %d, Personal %d, Pro %d) · paying %d%s · %s%s · comped %d · lapsed %d · new 24h %d · active 24h %d",

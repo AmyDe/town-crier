@@ -13,7 +13,6 @@ import (
 
 const apiKeyHeader = "X-Admin-Key"
 
-// maxRespBytes bounds JSON response bodies read fully into memory.
 const maxRespBytes = 10 << 20 // 10 MiB
 
 // Client is a thin admin-API HTTP client. It targets the configured base URL and
