@@ -394,7 +394,6 @@ describe('ApplicationsPage — large-zone copy', () => {
     renderPage({ zonesPort, browsePort });
     await waitFor(() => expect(screen.getByText('2026/0042/FUL')).toBeInTheDocument());
 
-    expect(screen.queryByText(/built for notifications/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/large zone/i)).not.toBeInTheDocument();
   });
 

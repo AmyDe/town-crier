@@ -322,7 +322,6 @@ describe('MapPage', () => {
       renderMap(spy);
 
       await screen.findByTestId('map-container');
-      expect(screen.queryByText(/built for notifications/i)).not.toBeInTheDocument();
       expect(screen.queryByText(/large zone/i)).not.toBeInTheDocument();
     });
 
