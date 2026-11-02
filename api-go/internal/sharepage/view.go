@@ -40,10 +40,8 @@ func ctaURL() string {
 		"&ct=" + shareCampaignToken + "&mt=" + appStoreMediaType
 }
 
-// pageView is the pre-formatted, template-ready projection of a
-// PlanningApplication. All optional sections are already resolved to empty
-// strings / empty slices here so the template stays logic-light: an empty field
-// means "omit this section". Dates are human-formatted in Go.
+// pageView is the template-ready projection of a PlanningApplication; an empty
+// field means the template omits that section.
 type pageView struct {
 	Title         string
 	OGTitle       string
@@ -69,17 +67,12 @@ type pageView struct {
 	AuthorityURL   string
 }
 
-// dateEntry is one row of the key-dates timeline (which doubles as the status
-// history — the snapshot carries no richer feed).
+// dateEntry is one row of the key-dates timeline.
 type dateEntry struct {
 	Label string
 	Value string
 }
 
-// buildPageView projects an application into its template-ready view. slug and
-// ref come from the resolved request path and are used verbatim to build the
-// canonical URL. Every pointer field is nil-guarded: an absent value collapses
-// to an empty string and the template omits the corresponding section.
 func buildPageView(app applications.PlanningApplication, slug, ref string) pageView {
 	place := strings.TrimSpace(app.Address)
 	if place == "" {
@@ -187,14 +180,12 @@ func addressIncludesPostcode(address, postcode string) bool {
 	return strings.HasSuffix(strings.ToLower(a), strings.ToLower(p))
 }
 
-// formatDate renders a date as "2 March 2024".
 func formatDate(t time.Time) string {
 	return t.Format("2 January 2006")
 }
 
-// summarise builds the og:/twitter:description from the proposal text, trimmed to
-// a concise length on a whole-rune boundary with an ellipsis. It falls back to a
-// place-based sentence when the record carries no proposal text.
+// summarise falls back to a place-based sentence when the record carries no
+// proposal text.
 func summarise(description, place string) string {
 	d := strings.TrimSpace(description)
 	if d == "" {

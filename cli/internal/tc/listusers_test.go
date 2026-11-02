@@ -62,7 +62,7 @@ func TestPrintUsersTable_DynamicWidthsAndColumns(t *testing.T) {
 	row1 := lines[2]
 	row2 := lines[3]
 
-	// All column headers are present, including the three new ones.
+	// All column headers are present.
 	for _, col := range []string{"UserId", "Email", "Tier", "Offer", "WatchZones", "LastActive", "Created", "Notifs", "Saved", "Devices"} {
 		if !strings.Contains(header, col) {
 			t.Errorf("header missing column %q:\n%s", col, header)
@@ -158,8 +158,7 @@ func TestDatePart(t *testing.T) {
 // TestPrintStatsSummary_RendersPayingMRRLine drives printStatsSummary against
 // a fake /v1/admin/stats endpoint whose body carries the appStoreByTier
 // split, asserting the header above the list-users table shows the App
-// Store-only paying count and the computed MRR (not the old "effectivePaid"
-// figure or comped users).
+// Store-only paying count and the computed MRR (not comped users).
 func TestPrintStatsSummary_RendersPayingMRRLine(t *testing.T) {
 	t.Parallel()
 	body := `{"users":{"total":2,"byTier":{"Free":1,"Personal":0,"Pro":1}},` +

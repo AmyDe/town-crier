@@ -19,22 +19,19 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/sharelink"
 )
 
-// appStore is the narrow consumer-side view of the applications store: a single
-// point read by (authorityCode, ref). The authorityCode is the stringified area
-// id. *applications.PostgresStore satisfies it structurally.
+// appStore point-reads an application by (authorityCode, ref); authorityCode is
+// the stringified area id.
 type appStore interface {
 	GetByAuthorityAndName(ctx context.Context, authorityCode, name string) (applications.PlanningApplication, bool, error)
 }
 
 // slugResolver resolves an authority slug to its area id (which equals the
-// authority id / stringified authority_code). *authorities.Lookup satisfies it
-// structurally.
+// authority id / stringified authority_code).
 type slugResolver interface {
 	SlugToAreaID(slug string) (int, bool)
 }
 
 // clickRecorder counts a likely-human visit without doing I/O.
-// *ClickCounter satisfies it structurally.
 type clickRecorder interface {
 	Add(slug, ref string, source SourceGroup)
 }
@@ -57,17 +54,16 @@ func Routes(mux *http.ServeMux, store appStore, resolver slugResolver, clicks cl
 	mux.HandleFunc("GET "+appStoreRedirectPath, appStoreRedirect)
 }
 
-// appStoreRedirect sends the visitor to the fixed App Store listing. It reads no
-// destination from the request, so it cannot act as an open redirect.
+// appStoreRedirect reads no destination from the request, so it cannot act as an
+// open redirect.
 func appStoreRedirect(w http.ResponseWriter, r *http.Request) {
 	sharelink.Record(r)
 	w.Header().Set("Cache-Control", "no-store")
 	http.Redirect(w, r, ctaURL(), http.StatusFound)
 }
 
-// serve resolves the authority slug, point-reads the application, and renders the
-// page. An unknown slug or unknown ref renders the branded 404 (never a 500); a
-// store error is a bodyless 500 (the envelope is backfilled by middleware).
+// serve renders the branded 404 (never a 500) for an unknown slug or ref; a store
+// error is a bodyless 500 (the envelope is backfilled by middleware).
 func (h *handler) serve(w http.ResponseWriter, r *http.Request) {
 	code := sharelink.Record(r)
 	slug := r.PathValue("authoritySlug")
@@ -94,16 +90,15 @@ func (h *handler) serve(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// renderNotFound emits the branded 404. It must NOT carry the 200's
-// max-age=3600: a just-ingested application would otherwise be negatively cached
-// at the edge for an hour, so the 404 is no-store.
+// The 404 is no-store: carrying the 200's max-age would negatively cache a
+// just-ingested application at the edge for an hour.
 func (h *handler) renderNotFound(w http.ResponseWriter, r *http.Request) {
 	h.render(w, r, http.StatusNotFound, "no-store", "notfound", nil)
 }
 
-// render executes the named template into a buffer first, so a mid-render error
-// becomes a clean bodyless 500 rather than a half-written page, then writes the
-// status, content type and cache header. It reports whether the status was sent.
+// render buffers the template first so a mid-render error becomes a clean
+// bodyless 500 rather than a half-written page. It reports whether the status
+// was sent.
 func (h *handler) render(w http.ResponseWriter, r *http.Request, status int, cacheControl, name string, data any) bool {
 	var buf bytes.Buffer
 	if err := pageTemplates.ExecuteTemplate(&buf, name, data); err != nil {

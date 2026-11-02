@@ -7,7 +7,6 @@ import (
 	"net/http"
 )
 
-// grantTiers are the tiers an admin grant may set.
 var grantTiers = []string{"Free", "Personal", "Pro"}
 
 const grantSubscriptionUsage = "Usage: tc grant-subscription --email <email> --tier <Free|Personal|Pro>"

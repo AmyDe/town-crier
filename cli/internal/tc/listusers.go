@@ -63,9 +63,8 @@ func runListUsers(ctx context.Context, client *Client, env Env, args *ParsedArgs
 	return exitOK
 }
 
-// printStatsSummary fetches the aggregate once and prints a one-line header
-// above the first page. It is a convenience, not the payload: any failure
-// (network, non-2xx, empty body) is swallowed so the users table still renders.
+// printStatsSummary swallows any failure (network, non-2xx, empty body) so the
+// users table still renders; the summary is a convenience, not the payload.
 func printStatsSummary(ctx context.Context, client *Client, out io.Writer) {
 	var resp *statsResponse
 	if err := client.GetJSON(ctx, "/v1/admin/stats", &resp); err != nil || resp == nil {
@@ -124,7 +123,6 @@ func printUsersTable(out io.Writer, page *listUsersResponse) {
 		})
 	}
 
-	// Seed widths from the headers, then widen to the longest cell per column.
 	wUserID, wEmail, wTier, wOffer := len(hUserID), len(hEmail), len(hTier), len(hOffer)
 	wWatch, wLast, wCreated, wNotifs := len(hWatchZones), len(hLastActive), len(hCreated), len(hNotifs)
 	wSaved, wDevices := len(hSaved), len(hDevices)
@@ -152,7 +150,6 @@ func printUsersTable(out io.Writer, page *listUsersResponse) {
 	}
 }
 
-// emailCell renders an optional email, falling back to "(none)" when absent.
 func emailCell(email *string) string {
 	if email == nil {
 		return "(none)"
@@ -160,8 +157,7 @@ func emailCell(email *string) string {
 	return *email
 }
 
-// watchZonesCell renders the watch-zone count, or "-" for a legacy profile that
-// never had the counter (nil).
+// watchZonesCell: nil means a legacy profile that never had the counter.
 func watchZonesCell(n *int) string {
 	if n == nil {
 		return "-"
@@ -169,9 +165,8 @@ func watchZonesCell(n *int) string {
 	return strconv.Itoa(*n)
 }
 
-// offerCell renders the user's active offer code, or "-" when none is active
-// (the API sends null for no active code, and for an erased user whose
-// redeemed_by_user_id was scrubbed).
+// offerCell: the API sends null for no active code, and for an erased user whose
+// redeemed_by_user_id was scrubbed.
 func offerCell(code *string) string {
 	if code == nil {
 		return "-"
@@ -179,9 +174,6 @@ func offerCell(code *string) string {
 	return *code
 }
 
-// datePart trims an RFC3339 timestamp to its date portion (YYYY-MM-DD) for
-// compact display. A nil or empty value renders as "-"; a value shorter than a
-// full date is passed through unchanged.
 func datePart(s *string) string {
 	if s == nil || *s == "" {
 		return "-"

@@ -162,14 +162,9 @@ func TestImageServe_CacheOnce_SecondRequestSkipsTiles(t *testing.T) {
 	}
 }
 
-// TestImageServe_NilCache_RendersByteIdenticalPNGAcrossTwoRequests is a
-// characterisation guard for the v2 restyle (tc-fmrx3, #855): the masthead
-// strip and pin-outline token swap must stay fully deterministic, and the
-// og:image route's caching mechanism must still produce byte-stable output
-// across two renders of the same application, exactly as it did before the
-// restyle. A nil cache regenerates on every request (Slice 2, pre-Blob), so
-// this drives the rendering path twice and asserts the bytes match, without
-// touching ogimage.go's caching/routing logic at all.
+// TestImageServe_NilCache_RendersByteIdenticalPNGAcrossTwoRequests guards card
+// rendering determinism: a nil cache regenerates on every request, so two
+// renders of the same application must produce identical bytes.
 func TestImageServe_NilCache_RendersByteIdenticalPNGAcrossTwoRequests(t *testing.T) {
 	t.Parallel()
 	store := &fakeStore{app: coordApp(t), found: true}
@@ -216,7 +211,6 @@ func TestImageServe_NilCache_RegeneratesEveryRequest(t *testing.T) {
 	store := &fakeStore{app: coordApp(t), found: true}
 	resolver := &fakeResolver{slugs: map[string]int{"croydon": 165}}
 	tiles := &fakeTiles{fill: color.RGBA{R: 0x88, G: 0xCC, B: 0xFF, A: 0xFF}}
-	// nil cache: the Slice-3 Blob store is not wired yet; degrade to regenerate.
 	mux := wireOG(t, store, resolver, tiles, nil)
 
 	first := serveOG(t, mux, "/og/croydon/23/03456/FUL.png")

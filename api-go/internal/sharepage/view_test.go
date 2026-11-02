@@ -8,10 +8,9 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
 )
 
-// TestBuildPageView_OGImagePointsAtGeneratedCard pins the Slice-2 repoint: the
-// unfurl image is the generated OSM map-card route for this exact (slug, ref),
-// built from the share origin — not a static placeholder. The route itself
-// decides map vs branded fallback, so the page always points here.
+// TestBuildPageView_OGImagePointsAtGeneratedCard: the unfurl image is always the
+// generated card route for this (slug, ref); the route itself decides map vs
+// branded fallback.
 func TestBuildPageView_OGImagePointsAtGeneratedCard(t *testing.T) {
 	t.Parallel()
 	v := buildPageView(applications.PlanningApplication{Name: "23/03456/FUL", AreaID: 165}, "croydon", "23/03456/FUL")
@@ -21,10 +20,9 @@ func TestBuildPageView_OGImagePointsAtGeneratedCard(t *testing.T) {
 	}
 }
 
-// TestBuildPageView_HomeURLPointsAtTownCrierHomepage pins Problem 3 (#763,
-// tc-iuf0): the share page has no per-application web destination, so the
-// homepage link always points at the Town Crier marketing site, regardless of
-// device or the (slug, ref) being viewed.
+// TestBuildPageView_HomeURLPointsAtTownCrierHomepage: the share page has no
+// per-application web destination, so the homepage link always points at the
+// marketing site.
 func TestBuildPageView_HomeURLPointsAtTownCrierHomepage(t *testing.T) {
 	t.Parallel()
 	v := buildPageView(applications.PlanningApplication{Name: "23/03456/FUL", AreaID: 165}, "croydon", "23/03456/FUL")
@@ -93,10 +91,9 @@ func TestSummarise_EmptyDescriptionNoPlace(t *testing.T) {
 	}
 }
 
-// TestAddressIncludesPostcode pins the case/whitespace-insensitive suffix check
-// behind the postcode-duplication fix (tc-r4n9.6): PlanIt addresses usually
-// already end with the postcode, so appending it again in the h1 would render
-// "... CR2 7DY, CR2 7DY".
+// TestAddressIncludesPostcode pins the case/whitespace-insensitive suffix check:
+// PlanIt addresses usually already end with the postcode, so appending it again
+// would render "... CR2 7DY, CR2 7DY".
 func TestAddressIncludesPostcode(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -206,8 +203,8 @@ func TestBuildPageView_PostcodeDeduplication(t *testing.T) {
 	}
 }
 
-// TestStatusChip pins the shared status vocabulary/palette (tc-r4n9 decision
-// 4): the resident-facing label mirrors web/scripts/lib/format.mjs's
+// TestStatusChip pins the shared status vocabulary/palette: the resident-facing
+// label mirrors web/scripts/lib/format.mjs's
 // STATUS_DISPLAY_LABEL_MAP, and the colour modifier deliberately collapses to
 // three buckets — granted (green), refused (red), neutral for everything else
 // including "Undecided" and every long-tail state — rather than a five-way
@@ -220,11 +217,7 @@ func TestStatusChip(t *testing.T) {
 		wantModifier string
 	}{
 		{appState: "Permitted", wantLabel: "Granted", wantModifier: "granted"},
-		// "Granted with conditions" is explicitly a long-tail state per issue #794
-		// Phase 3 ("fold the long tail: Withdrawn, Unresolved, Granted with
-		// conditions, Referred") and per tc-r4n9.2's web-side implementation
-		// (Permitted->granted/green, Rejected->refused/red, everything else
-		// including Conditions->neutral/grey) — it is NOT a green "granted" bucket.
+		// "Granted with conditions" is a long-tail state, NOT a green "granted" bucket.
 		{appState: "Conditions", wantLabel: "Granted with conditions", wantModifier: "neutral"},
 		{appState: "Rejected", wantLabel: "Refused", wantModifier: "refused"},
 		{appState: "Undecided", wantLabel: "Undecided", wantModifier: "neutral"},
@@ -268,14 +261,9 @@ func TestBuildPageView_StatusChip(t *testing.T) {
 	})
 }
 
-// TestBuildPageView_AuthorityBacklink pins the "More planning applications in
-// {area} ->" backlink (tc-r4n9.6): it points at the SEO planning page for the
-// application's authority, built from the SAME slug the share page itself was
-// resolved by — the two page families share one Slugify implementation
-// (api-go/internal/authorities/slug.go, byte-equal ported from
-// web/scripts/lib/slug.mjs), so this is the correct authority-page path
-// whenever that authority actually has a published SEO page (see the worker
-// report for the coverage-gate/area-type caveat).
+// TestBuildPageView_AuthorityBacklink: the "More planning applications in
+// {area} ->" backlink is built from the SAME slug the share page was resolved
+// by, since both page families share one Slugify implementation.
 func TestBuildPageView_AuthorityBacklink(t *testing.T) {
 	t.Parallel()
 	t.Run("area name present: link built from slug", func(t *testing.T) {

@@ -11,8 +11,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/subscriptionevents"
 )
 
-// farFutureExpiry is the sentinel expiry an admin grant assigns to a paid tier
-// (2099-12-31T00:00:00+00:00).
+// farFutureExpiry is the sentinel expiry an admin grant assigns to a paid tier.
 var farFutureExpiry = time.Date(2099, 12, 31, 0, 0, 0, 0, time.UTC)
 
 type grantRequest struct {

@@ -187,11 +187,8 @@ func TestServe_KnownApplication_RendersMetaAndVisibleContent(t *testing.T) {
 		"CR0 1AB",
 		"23/03456/FUL",
 		"Erection of a two-storey rear extension.",
-		// Reference and application type each get their own explicit metadata row
-		// (tc-r4n9.6) — no longer squashed into a cryptic "Reference … · Type" line.
-		// The reference now leads the mono document-header strip ("No. {ref}"),
-		// with the authority name on the right (tc-fmrx3, #855 filed-notice
-		// restyle) -- Reference is no longer a meta-list row.
+		// The reference leads the document-header strip, with the authority name
+		// on the right.
 		`<span class="doc-header-ref">No. 23/03456/FUL</span>`,
 		`<span class="doc-header-authority">Croydon</span>`,
 		`<span class="meta-label">Type</span><span class="meta-value">Full planning permission</span>`,
@@ -216,8 +213,7 @@ func TestServe_KnownApplication_RendersMetaAndVisibleContent(t *testing.T) {
 		"Contains public sector information licensed under the Open Government Licence. Crown Copyright.",
 		"Contains Ordnance Survey data © Crown Copyright and database right.",
 		"Map data © OpenStreetMap contributors.",
-		// Authority backlink (tc-r4n9.6): points at the SEO planning page for the
-		// same authority, built from the identical Slugify-derived slug.
+		// Authority backlink: the SEO planning page for the same Slugify-derived slug.
 		`href="https://towncrierapp.uk/planning/croydon"`,
 		"More planning applications in Croydon",
 		// Sticky CTA: short verb-first label + supporting sentence, plus the
@@ -233,10 +229,8 @@ func TestServe_KnownApplication_RendersMetaAndVisibleContent(t *testing.T) {
 	}
 }
 
-// TestServe_RendersMapHeroInBody pins Problem 2 (#763, tc-9ui9): the baked OSM
-// map card was previously emitted ONLY as og:image/twitter:image in <head>, so
-// browsers never showed it — only social unfurls did. The page body must carry
-// a visible hero <img> pointing at the SAME cached card URL as the unfurl meta.
+// TestServe_RendersMapHeroInBody: the page body must carry a visible hero <img>
+// pointing at the SAME cached card URL as the unfurl meta.
 func TestServe_RendersMapHeroInBody(t *testing.T) {
 	t.Parallel()
 	store := &fakeStore{app: fullApp(t), found: true}
@@ -257,11 +251,8 @@ func TestServe_RendersMapHeroInBody(t *testing.T) {
 	}
 }
 
-// TestServe_HeroFramedWithBorderConsistentWithCard pins Phase 7 (#794, tc-r4n9.7):
-// the hero gets the same deliberate border treatment as .card (design-language's
-// "frame with tcBorder" convention) rather than floating as a bare, edgeless
-// image — part of the "deliberate framed treatment" this phase requires instead
-// of a raw, untreated reuse of the OG card.
+// TestServe_HeroFramedWithBorderConsistentWithCard: the hero gets the same
+// border treatment as .card (design-language's "frame with tcBorder" convention).
 func TestServe_HeroFramedWithBorderConsistentWithCard(t *testing.T) {
 	t.Parallel()
 	store := &fakeStore{app: fullApp(t), found: true}
@@ -278,16 +269,9 @@ func TestServe_HeroFramedWithBorderConsistentWithCard(t *testing.T) {
 	}
 }
 
-// TestServe_HeroDarkModeFilterAvoidsJarringBrightRectangle pins Phase 7 (#794,
-// tc-r4n9.7): stop reusing the raw OG card PNG as the hero with no dark-mode
-// treatment. Standard 256px OSM tiles render on a near-white/cream basemap, so
-// dropping the 1200x630 card straight onto the dark canvas would show a jarring
-// bright rectangle. The fix recolours the SAME cached PNG with a CSS filter
-// (invert+hue-rotate is the well-known technique for showing a light raster map
-// image acceptably on a dark background — it approximately restores each
-// feature's original hue while flipping overall lightness) — it fetches ZERO
-// additional OSM tiles per page-view; see the tile-budget comment beside the
-// rule in styles.gohtml.
+// TestServe_HeroDarkModeFilterAvoidsJarringBrightRectangle: OSM tiles render on a
+// near-white basemap, so dark mode recolours the SAME cached PNG with a CSS
+// invert+hue-rotate filter rather than fetching extra tiles.
 func TestServe_HeroDarkModeFilterAvoidsJarringBrightRectangle(t *testing.T) {
 	t.Parallel()
 	store := &fakeStore{app: fullApp(t), found: true}
@@ -310,9 +294,8 @@ func TestServe_HeroDarkModeFilterAvoidsJarringBrightRectangle(t *testing.T) {
 	}
 }
 
-// TestServe_RendersHomepageLink pins Problem 3 (#763, tc-iuf0): the only CTA was
-// the iOS-only App Store bar, with no link to the web app anywhere. A visible,
-// always-present link to the Town Crier homepage must be present on every device.
+// TestServe_RendersHomepageLink: the App Store CTA is iOS-only, so a visible link
+// to the Town Crier homepage must be present on every device.
 func TestServe_RendersHomepageLink(t *testing.T) {
 	t.Parallel()
 	store := &fakeStore{app: fullApp(t), found: true}
@@ -329,10 +312,8 @@ func TestServe_RendersHomepageLink(t *testing.T) {
 	}
 }
 
-// TestServe_RendersHeaderAboveHeroWithBrandLockup pins Phase 5 (#794): the
-// floating "• Town Crier" legend-dot below the map is replaced by a real
-// header element above the hero, whose brand lockup links to the marketing
-// homepage.
+// TestServe_RendersHeaderAboveHeroWithBrandLockup: a header above the hero
+// carries a brand lockup linking to the marketing homepage.
 func TestServe_RendersHeaderAboveHeroWithBrandLockup(t *testing.T) {
 	t.Parallel()
 	store := &fakeStore{app: fullApp(t), found: true}
@@ -362,12 +343,9 @@ func TestServe_RendersHeaderAboveHeroWithBrandLockup(t *testing.T) {
 	}
 }
 
-// TestServe_MastheadIsSmallCapsWithDoubleRule pins the Public Notice masthead
-// restyle (tc-fmrx3, #855): the brand lockup reads in small-caps with tracked
-// letter-spacing, and a double rule (2.5px heavy rule over a 1px hairline)
-// sits beneath it — the same visual language as the web masthead (SPA
-// Navbar, #853/#854 broadsheet restyle), consuming the generated token vars
-// rather than any hand-added hex.
+// TestServe_MastheadIsSmallCapsWithDoubleRule: the brand lockup reads in
+// small-caps with tracked letter-spacing over a double rule (2.5px heavy rule
+// over a 1px hairline), using the generated token vars rather than hex.
 func TestServe_MastheadIsSmallCapsWithDoubleRule(t *testing.T) {
 	t.Parallel()
 	store := &fakeStore{app: fullApp(t), found: true}
@@ -394,11 +372,9 @@ func TestServe_MastheadIsSmallCapsWithDoubleRule(t *testing.T) {
 	}
 }
 
-// TestServe_CardIsFiledNoticeWithDocHeaderStrip pins the filed-notice card
-// restyle (tc-fmrx3, #855): the card carries a 2px ink top rule (not the
-// amber rule used elsewhere), and a monospace document-header strip — "No.
-// {ref}" left, authority name right — renders ABOVE the address H1, whose
-// own font switches to the display-serif stack.
+// TestServe_CardIsFiledNoticeWithDocHeaderStrip: the card carries a 2px ink top
+// rule, and a monospace document-header strip ("No. {ref}" left, authority name
+// right) renders ABOVE the display-serif address H1.
 func TestServe_CardIsFiledNoticeWithDocHeaderStrip(t *testing.T) {
 	t.Parallel()
 	store := &fakeStore{app: fullApp(t), found: true}
@@ -431,9 +407,8 @@ func TestServe_CardIsFiledNoticeWithDocHeaderStrip(t *testing.T) {
 	}
 }
 
-// TestServe_KeyDatesValuesUseMonospace pins the key-dates timeline restyle
-// (tc-fmrx3, #855): labels stay in the sans body font, but values render in
-// the monospace stack.
+// TestServe_KeyDatesValuesUseMonospace: labels stay in the sans body font, but
+// values render in the monospace stack.
 func TestServe_KeyDatesValuesUseMonospace(t *testing.T) {
 	t.Parallel()
 	store := &fakeStore{app: fullApp(t), found: true}
@@ -451,10 +426,8 @@ func TestServe_KeyDatesValuesUseMonospace(t *testing.T) {
 	}
 }
 
-// TestServe_AppCTAIsPrimaryInCardAction pins decision 2 (#794): the App Store
-// CTA is the visually primary action inside the card, rendered above the
-// "Official record" section — whose PlanIt/council links are restyled
-// secondary/tertiary so an external link never outweighs our own CTA.
+// TestServe_AppCTAIsPrimaryInCardAction: the App Store CTA renders above the
+// "Official record" section so an external link never outweighs our own CTA.
 func TestServe_AppCTAIsPrimaryInCardAction(t *testing.T) {
 	t.Parallel()
 	store := &fakeStore{app: fullApp(t), found: true}
@@ -501,10 +474,9 @@ func TestServe_AppCTAIsPrimaryInCardAction(t *testing.T) {
 	}
 }
 
-// TestServe_CTABarShortLabelNoRedundantSecondLink pins Phase 5 (#794): the
-// cta-bar drops the redundant second "Get Town Crier at towncrierapp.uk" link
-// (now covered by the header brand lockup) in favour of a short, verb-first
-// label plus a one-line supporting sentence rendered as plain text.
+// TestServe_CTABarShortLabelNoRedundantSecondLink: the cta-bar carries a short,
+// verb-first label plus a plain-text supporting sentence, and no second link
+// (the header brand lockup covers the homepage).
 func TestServe_CTABarShortLabelNoRedundantSecondLink(t *testing.T) {
 	t.Parallel()
 	store := &fakeStore{app: fullApp(t), found: true}
@@ -604,8 +576,7 @@ func TestServe_StoreError_Returns500(t *testing.T) {
 // TestServe_ContextCanceled_NoServerErrorNoErrorLog proves a client disconnect
 // (context.Canceled from the store, wrapped as a real caller would wrap it) is
 // NOT treated as a server fault: no 500 is written and no error-level log line
-// is emitted (tc-ftccw). A disconnected caller is already gone, so nothing
-// meaningfully needs to be sent back.
+// is emitted. A disconnected caller is already gone.
 func TestServe_ContextCanceled_NoServerErrorNoErrorLog(t *testing.T) {
 	t.Parallel()
 	store := &fakeStore{err: fmt.Errorf(`read application "165"/"23/0001/FUL": %w`, context.Canceled)}

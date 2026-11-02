@@ -44,7 +44,7 @@ type pollingSetRequest struct {
 	Reason  string `json:"reason"`
 }
 
-// pollingEnv is one environment's client and its last known status. Err is set
+// pollingEnv is one environment's client and its last known status; err is set
 // when the status could not be read.
 type pollingEnv struct {
 	name   string
@@ -143,7 +143,7 @@ func runPollingStatus(ctx context.Context, cfgs map[string]Config, env Env) int 
 func runPollingSwitch(ctx context.Context, cfgs map[string]Config, env Env, args *ParsedArgs, clock pollingClock) int {
 	target, err := args.GetRequired("to")
 	target = strings.ToLower(target)
-	if err != nil || (target != "off" && !isPollingEnv(target)) {
+	if err != nil || (target != "off" && !slices.Contains(pollingEnvNames, target)) {
 		fmt.Fprintln(env.Err, pollingSwitchUsage)
 		return exitUsage
 	}
@@ -176,8 +176,7 @@ func runPollingSwitch(ctx context.Context, cfgs map[string]Config, env Env, args
 		if e.name == target || e.err != nil {
 			continue
 		}
-		wasOn := e.status.Enabled
-		if wasOn {
+		if e.status.Enabled {
 			fmt.Fprintf(env.Out, "Turning %s off...\n", e.name)
 			if err := e.set(ctx, false, reason); err != nil {
 				return pollingFailed(ctx, env, envs, fmt.Sprintf("turn %s off", e.name), err)
@@ -217,10 +216,6 @@ func runPollingSwitch(ctx context.Context, cfgs map[string]Config, env Env, args
 		return pollingFailed(ctx, env, envs, fmt.Sprintf("turn %s on", target), err)
 	}
 	return pollingDone(ctx, env, envs)
-}
-
-func isPollingEnv(name string) bool {
-	return slices.Contains(pollingEnvNames, name)
 }
 
 func pollingDone(ctx context.Context, env Env, envs []*pollingEnv) int {

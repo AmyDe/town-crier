@@ -21,8 +21,6 @@ import (
 // ".json" extension: the Content-Type identifies the document, not the path.
 const wellKnownPath = "/.well-known/apple-app-site-association"
 
-// pathComponent is the applinks path component the share pages live under. A
-// shared link .../a/{slug}/{ref} matches /a/*.
 const pathComponent = "/a/*"
 
 type document struct {
@@ -52,9 +50,7 @@ type handler struct {
 // pattern in lockstep with the anonymousPatterns entry in cmd/api/wiring.go —
 // the auth middleware keys on the exact registered pattern string.
 //
-// The document is marshalled once at wiring time so the handler does no per-
-// request work. Marshalling a fixed-shape struct of strings cannot fail; on the
-// impossible error the route is simply not registered (it then falls to the
+// On the impossible marshal error the route is not registered (it falls to the
 // deny fallback) rather than panicking during boot.
 func Routes(mux *http.ServeMux, appID string, logger *slog.Logger) {
 	body, err := json.Marshal(document{
