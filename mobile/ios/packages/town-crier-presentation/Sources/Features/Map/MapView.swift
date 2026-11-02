@@ -92,13 +92,6 @@ public struct MapView: View {
       if viewModel.showZonePicker {
         zonePickerSection
       }
-      if viewModel.showsLargeZoneNotice {
-        LargeZoneNoticeView()
-          .padding(.horizontal, TCSpacing.medium)
-          .padding(.vertical, TCSpacing.extraSmall)
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .background(Color.tcBackground)
-      }
       if viewModel.showStatusFilters {
         filterHeader
       }

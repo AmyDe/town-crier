@@ -1,19 +1,15 @@
 import SwiftUI
 
-/// User-facing copy for the large-zone warning, notice and loading message.
+/// User-facing copy for the large-zone warning and loading message.
 public enum LargeZoneCopy {
-  public static let warningTitle = "Large zones are for notifications, not browsing"
+  public static let warningTitle = "Large zones can be slower to browse"
   public static let warningSpeedParagraph =
-    "Good if you want to hear about everything in a wide area - tradespeople looking for leads, "
-    + "for example. Your notifications work as normal, but the map and list can take up to a "
-    + "minute to load the first time."
+    "Your notifications work as normal, but the map and list can take a few seconds to load, "
+    + "especially in cities."
   public static let warningAdviceParagraph =
     "Just want to keep an eye on your street? Stick to 100-500 m in built-up areas, "
     + "and under 2 km everywhere else."
-  public static let notice =
-    "Large zone: built for notifications. This can take up to a minute to load the first time."
-  public static let loadingMessage =
-    "Loading a large zone. This can take up to a minute the first time."
+  public static let loadingMessage = "Loading a large zone. This can take a few seconds."
 }
 
 /// Callout shown on onboarding, create and edit when the zone is large under
