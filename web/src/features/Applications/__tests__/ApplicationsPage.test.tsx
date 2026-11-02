@@ -383,50 +383,18 @@ describe('ApplicationsPage — Load more (keyset pagination)', () => {
   });
 });
 
-describe('ApplicationsPage — large-zone notice', () => {
-  const NOTICE =
-    'Large zone: built for notifications. This can take up to a minute to load the first time.';
-  const LOADING = 'Loading a large zone. This can take up to a minute the first time.';
+describe('ApplicationsPage — large-zone copy', () => {
+  const LOADING = 'Loading a large zone. This can take a few seconds.';
 
-  async function renderWithZones(...zones: WatchZoneSummary[]) {
+  it('shows no permanent notice for a large zone', async () => {
     const zonesPort = new SpyZonesPort();
-    zonesPort.fetchZonesResult = zones;
+    zonesPort.fetchZonesResult = [{ ...cambridgeZone(), radiusMetres: 5000 }];
     const browsePort = new SpyApplicationsBrowsePort();
     browsePort.fetchByZoneResult = onePage([undecidedApplication()]);
     renderPage({ zonesPort, browsePort });
     await waitFor(() => expect(screen.getByText('2026/0042/FUL')).toBeInTheDocument());
-    return browsePort;
-  }
 
-  it('shows the notice for a large zone', async () => {
-    await renderWithZones({ ...cambridgeZone(), radiusMetres: 5000 });
-
-    expect(screen.getByText(NOTICE)).toBeInTheDocument();
-  });
-
-  it('does not show the notice for a small zone', async () => {
-    await renderWithZones({ ...cambridgeZone(), radiusMetres: 1000 });
-
-    expect(screen.queryByText(NOTICE)).not.toBeInTheDocument();
-  });
-
-  it('follows the selected zone', async () => {
-    const user = userEvent.setup();
-    await renderWithZones(
-      { ...cambridgeZone(), radiusMetres: 5000 },
-      { ...oxfordZone(), radiusMetres: 500 },
-    );
-    expect(screen.getByText(NOTICE)).toBeInTheDocument();
-
-    await user.selectOptions(screen.getByLabelText('Zone'), oxfordZone().id);
-
-    expect(screen.queryByText(NOTICE)).not.toBeInTheDocument();
-  });
-
-  it('does not show the notice before a zone is selected', () => {
-    renderPage();
-
-    expect(screen.queryByText(NOTICE)).not.toBeInTheDocument();
+    expect(screen.queryByText(/large zone/i)).not.toBeInTheDocument();
   });
 
   describe('loading message', () => {

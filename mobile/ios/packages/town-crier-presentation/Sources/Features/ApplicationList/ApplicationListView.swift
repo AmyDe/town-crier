@@ -147,15 +147,6 @@ public struct ApplicationListView: View {
       .listRowBackground(Color.tcBackground)
     }
 
-    if viewModel.showsLargeZoneNotice {
-      LargeZoneNoticeView()
-        .padding(.horizontal, TCSpacing.medium)
-        .padding(.vertical, TCSpacing.extraSmall)
-        .listRowSeparator(.hidden)
-        .listRowInsets(EdgeInsets())
-        .listRowBackground(Color.tcBackground)
-    }
-
     if !viewModel.applications.isEmpty {
       ScrollView(.horizontal, showsIndicators: false) {
         HStack(spacing: TCSpacing.small) {

@@ -100,12 +100,11 @@ describe('Amber rationing sweep — non-CTA/active/focus/unread/upsell uses conv
     expect(css).toContain('var(--tc-status-conditions)');
   });
 
-  it('LargeZoneNotice: amber-family icon, secondary text, no background', () => {
+  it('LargeZoneLoadingMessage: secondary text, no background, no amber', () => {
     const css = readCss('components/LargeZoneNotice/LargeZoneNotice.module.css');
     expect(css).not.toContain('var(--tc-amber');
-    expect(block(css, '.icon')).toContain('var(--tc-status-conditions)');
-    expect(block(css, '.notice')).toContain('var(--tc-text-secondary)');
-    expect(block(css, '.notice')).not.toContain('background');
+    expect(block(css, '.loadingMessage')).toContain('var(--tc-text-secondary)');
+    expect(block(css, '.loadingMessage')).not.toContain('background');
   });
 
   it('FullPageLoader: spinner accent no longer uses amber', () => {

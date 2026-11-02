@@ -112,12 +112,11 @@ struct LargeZoneWarningTests {
   // MARK: - Copy
 
   @Test func warningCopy_matchesSpecExactly() {
-    #expect(LargeZoneCopy.warningTitle == "Large zones are for notifications, not browsing")
+    #expect(LargeZoneCopy.warningTitle == "Large zones can be slower to browse")
     #expect(
       LargeZoneCopy.warningSpeedParagraph
-        == "Good if you want to hear about everything in a wide area - tradespeople looking for "
-        + "leads, for example. Your notifications work as normal, but the map and list can take "
-        + "up to a minute to load the first time."
+        == "Your notifications work as normal, but the map and list can take a few seconds "
+        + "to load, especially in cities."
     )
     #expect(
       LargeZoneCopy.warningAdviceParagraph
@@ -125,13 +124,8 @@ struct LargeZoneWarningTests {
         + "and under 2 km everywhere else."
     )
     #expect(
-      LargeZoneCopy.notice
-        == "Large zone: built for notifications. "
-        + "This can take up to a minute to load the first time."
-    )
-    #expect(
       LargeZoneCopy.loadingMessage
-        == "Loading a large zone. This can take up to a minute the first time.")
+        == "Loading a large zone. This can take a few seconds.")
   }
 
   // MARK: - View structure (smoke renders)
@@ -167,8 +161,8 @@ struct LargeZoneWarningTests {
     _ = sut.body
   }
 
-  @Test func noticeView_renders() {
-    let sut = LargeZoneNoticeView()
+  @Test func loadingMessageView_renders() {
+    let sut = LargeZoneLoadingMessageView()
     _ = sut.body
   }
 

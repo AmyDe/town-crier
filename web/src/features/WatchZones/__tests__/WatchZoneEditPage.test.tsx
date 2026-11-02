@@ -287,7 +287,7 @@ describe('WatchZoneEditPage', () => {
   });
 
   describe('large-zone warning', () => {
-    const TITLE = 'Large zones are for notifications, not browsing';
+    const TITLE = 'Large zones can be slower to browse';
 
     it('hides the warning at exactly 2km', () => {
       spy.getPreferencesResult = zonePreferences();

@@ -6,7 +6,7 @@ import type { ApplicationStatus, ClusterMember, MapCluster, WatchZoneSummary } f
 import { clusterMemberStatus } from '../../domain/types';
 import { useMapData } from './useMapData';
 import { countBubbleIcon, statusPinIcon } from './markerIcons';
-import { LargeZoneNotice, LargeZoneLoadingMessage } from '../../components/LargeZoneNotice/LargeZoneNotice';
+import { LargeZoneLoadingMessage } from '../../components/LargeZoneNotice/LargeZoneNotice';
 import { isLargeZone } from '../../domain/largeZone';
 import { useSlowLoadNotice } from '../../hooks/useSlowLoadNotice';
 import { OSM_TILE_URL, OSM_ATTRIBUTION } from '../../components/osmTiles';
@@ -218,7 +218,6 @@ export function MapPage({ port }: Props) {
         </label>
       )}
 
-      <LargeZoneNotice isLarge={isLargeSelectedZone} />
       <LargeZoneLoadingMessage isVisible={showLoadingMessage} />
 
       {selectedZone && (
