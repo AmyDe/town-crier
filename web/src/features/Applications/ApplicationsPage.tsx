@@ -5,7 +5,7 @@ import type { NotificationStateRepository } from '../../domain/ports/notificatio
 import { isApplicationsSort, useApplications } from './useApplications';
 import { ApplicationCard } from '../../components/ApplicationCard/ApplicationCard';
 import { EmptyState } from '../../components/EmptyState/EmptyState';
-import { LargeZoneNotice, LargeZoneLoadingMessage } from '../../components/LargeZoneNotice/LargeZoneNotice';
+import { LargeZoneLoadingMessage } from '../../components/LargeZoneNotice/LargeZoneNotice';
 import { isLargeZone } from '../../domain/largeZone';
 import { useFetchData } from '../../hooks/useFetchData';
 import { useSlowLoadNotice } from '../../hooks/useSlowLoadNotice';
@@ -196,7 +196,6 @@ export function ApplicationsPage({
             )}
           </div>
 
-          <LargeZoneNotice isLarge={isLargeSelectedZone} />
 
           {isLoadingApps && (
             <>
