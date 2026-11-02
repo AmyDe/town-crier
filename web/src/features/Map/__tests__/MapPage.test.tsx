@@ -10,7 +10,6 @@ import {
   aSinglePinCluster,
   anApplication,
   aPolygonBoundary,
-  aLargePolygonBoundary,
 } from './fixtures/map.fixtures';
 import { asApplicationUid } from '../../../domain/types';
 
