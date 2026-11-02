@@ -25,8 +25,7 @@ const (
 	// relationHandleAllURLs is the only relation Digital Asset Links defines
 	// for App Links verification.
 	relationHandleAllURLs = "delegate_permission/common.handle_all_urls"
-	// namespaceAndroidApp identifies the target as an Android application.
-	namespaceAndroidApp = "android_app"
+	namespaceAndroidApp   = "android_app"
 )
 
 // Package pairs an Android application id with the SHA-256 certificate
@@ -56,11 +55,8 @@ type handler struct {
 
 // Routes registers the anonymous assetlinks endpoint for the given packages.
 // A Package with no fingerprints yet (e.g. uk.towncrierapp.mobile, pending
-// Play Console enrolment, #779) is skipped rather than published with an
-// empty or placeholder fingerprint that would fail verification anyway.
-//
-// The document is marshalled once at wiring time so the handler does no
-// per-request work.
+// Play Console enrolment) is skipped rather than published with an empty or
+// placeholder fingerprint that would fail verification anyway.
 func Routes(mux *http.ServeMux, packages []Package, logger *slog.Logger) {
 	statements := make([]statement, 0, len(packages))
 	for _, p := range packages {

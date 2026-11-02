@@ -100,16 +100,12 @@ func generateCard(ctx context.Context, tiles tileClient, app applications.Planni
 	return mapCard(ctx, tiles, *app.Latitude, *app.Longitude)
 }
 
-// mapCard composites the OSM tiles overlapping a 1200x630 window centred on
-// (lat, lng), then burns a pin at the centre and the OSM credit bottom-right.
-// Tiles are fetched sequentially: the OSM tile-usage policy forbids parallel
+// mapCard fetches tiles sequentially: the OSM tile-usage policy forbids parallel
 // hammering, and cache-once keeps the per-app volume to one pass.
 func mapCard(ctx context.Context, tiles tileClient, lat, lng float64) ([]byte, error) {
 	canvas := image.NewRGBA(image.Rect(0, 0, cardWidth, cardHeight))
 
 	centerPxX, centerPxY := projectToGlobalPixel(lat, lng, mapZoom)
-	// Top-left of the window in global pixel space, and its integer pixel origin
-	// used to place each tile.
 	originX := centerPxX - cardWidth/2
 	originY := centerPxY - cardHeight/2
 	roundOriginX := int(math.Round(originX))
@@ -146,9 +142,6 @@ func mapCard(ctx context.Context, tiles tileClient, lat, lng float64) ([]byte, e
 	return encodePNG(canvas)
 }
 
-// fallbackCard is the branded 1200x630 PNG served when an application has no
-// coordinates: a solid brand-amber field with the "Town Crier" wordmark and a
-// short tagline, both horizontally centred. It fetches no tiles.
 func fallbackCard() ([]byte, error) {
 	canvas := image.NewRGBA(image.Rect(0, 0, cardWidth, cardHeight))
 	draw.Draw(canvas, canvas.Bounds(), image.NewUniform(fallbackBg), image.Point{}, draw.Src)
@@ -162,10 +155,8 @@ func fallbackCard() ([]byte, error) {
 	return encodePNG(canvas)
 }
 
-// drawPin renders a location pin whose tip points at (tipX, tipY): an amber
-// teardrop with a white outline, ~37px tall, legible over any tile. It is the
-// union of a head disc and a downward triangular tail — drawn white first, then
-// amber inset by the outline width so a clean border remains.
+// drawPin draws the outline shape first, then the fill inset by the outline
+// width, so a clean border remains.
 func drawPin(img *image.RGBA, tipX, tipY int) {
 	const (
 		headRadius = 13
@@ -177,9 +168,6 @@ func drawPin(img *image.RGBA, tipX, tipY int) {
 	fillPin(img, tipX, tipY, headCenterY, headRadius, pinFill)
 }
 
-// fillPin fills one pin shape in col: a head disc centred at (tipX, headCenterY)
-// of the given radius, plus a triangular tail tapering from the disc's horizontal
-// diameter down to (tipX, tipY).
 func fillPin(img *image.RGBA, tipX, tipY, headCenterY, radius int, col color.RGBA) {
 	fillDisc(img, tipX, headCenterY, radius, col)
 	span := float64(tipY - headCenterY)
@@ -191,7 +179,6 @@ func fillPin(img *image.RGBA, tipX, tipY, headCenterY, radius int, col color.RGB
 	}
 }
 
-// fillDisc fills the disc of radius r centred at (cx, cy) with col.
 func fillDisc(img *image.RGBA, cx, cy, r int, col color.RGBA) {
 	r2 := r * r
 	for y := cy - r; y <= cy+r; y++ {
@@ -204,7 +191,6 @@ func fillDisc(img *image.RGBA, cx, cy, r int, col color.RGBA) {
 	}
 }
 
-// setPixel writes col at (x, y) if that point is inside the image.
 func setPixel(img *image.RGBA, x, y int, col color.RGBA) {
 	if image.Pt(x, y).In(img.Bounds()) {
 		img.SetRGBA(x, y, col)
@@ -252,10 +238,8 @@ func drawMasthead(img *image.RGBA) {
 	drawer.DrawString(text)
 }
 
-// drawAttribution burns the OSM credit into the bottom-right corner over a
-// semi-transparent dark strip sized from the measured string. Attribution is
-// best-effort: a face-construction failure must not sink the whole card, so it
-// returns silently rather than erroring.
+// drawAttribution is best-effort: a face-construction failure must not sink the
+// card.
 func drawAttribution(img *image.RGBA) {
 	const (
 		fontPx  = 14
@@ -293,8 +277,6 @@ func drawAttribution(img *image.RGBA) {
 	drawer.DrawString(osmAttribution)
 }
 
-// drawCentredText draws text in col, horizontally centred, with its baseline at
-// baselineY, using font f at sizePx pixels.
 func drawCentredText(img *image.RGBA, f *opentype.Font, text string, sizePx float64, baselineY int, col color.RGBA) error {
 	face, err := newFace(f, sizePx)
 	if err != nil {
@@ -313,8 +295,7 @@ func drawCentredText(img *image.RGBA, f *opentype.Font, text string, sizePx floa
 	return nil
 }
 
-// newFace builds an anti-aliased face for f at sizePx pixels. DPI is fixed at 72
-// so one point equals one pixel and Size is read directly as the pixel height.
+// DPI is fixed at 72 so one point equals one pixel and Size is the pixel height.
 func newFace(f *opentype.Font, sizePx float64) (font.Face, error) {
 	return opentype.NewFace(f, &opentype.FaceOptions{
 		Size:    sizePx,
@@ -323,7 +304,6 @@ func newFace(f *opentype.Font, sizePx float64) (font.Face, error) {
 	})
 }
 
-// encodePNG encodes img to PNG bytes.
 func encodePNG(img image.Image) ([]byte, error) {
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, img); err != nil {

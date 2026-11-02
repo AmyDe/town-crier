@@ -139,14 +139,8 @@ func TestMapCard_RendersMapWithPinAndAttribution(t *testing.T) {
 	}
 }
 
-// TestMapCard_RendersMastheadStripWithInkRule pins the Public Notice masthead
-// band (tc-fmrx3, #855): a paper-coloured strip burned across the top of the
-// map card, with a 2px ink rule beneath it, so the card carries the same
-// wordmark-over-double-rule language as the web masthead (#853/#854) even
-// though it composites onto a raster PNG rather than CSS. The band overlays
-// the already-composited tiles rather than reserving a gap in the map
-// projection, so this only changes THIS function's pixels — the map centring
-// math and OSM tile budget are untouched.
+// TestMapCard_RendersMastheadStripWithInkRule pins the paper-coloured masthead
+// strip across the top of the map card, with a 2px ink rule beneath it.
 func TestMapCard_RendersMastheadStripWithInkRule(t *testing.T) {
 	t.Parallel()
 	fill := color.RGBA{0x88, 0xCC, 0xFF, 0xFF}
@@ -174,11 +168,9 @@ func TestMapCard_RendersMastheadStripWithInkRule(t *testing.T) {
 	}
 }
 
-// TestMapCard_PinOutlineIsPaperNotWhite pins the pin-outline token swap
-// (tc-fmrx3, #855): the outline goes from pure white to the paper
-// designtokens.SurfaceLight, consuming the token package rather than a
-// hand-rolled white. (600,277) sits 14px from the pin head's centre (291),
-// inside the outline ring (13px fill radius < 14 <= 16px outline radius).
+// TestMapCard_PinOutlineIsPaperNotWhite pins the pin outline to
+// designtokens.SurfaceLight. (600,277) sits 14px from the pin head's centre
+// (291), inside the outline ring (13px fill radius < 14 <= 16px outline radius).
 func TestMapCard_PinOutlineIsPaperNotWhite(t *testing.T) {
 	t.Parallel()
 	tiles := &fakeTiles{fill: color.RGBA{0x88, 0xCC, 0xFF, 0xFF}}
@@ -227,10 +219,8 @@ func TestFallbackCard_BrandedNoTiles(t *testing.T) {
 	}
 }
 
-// TestFallbackCard_PaperFieldWithInkText pins the v2 fallback restyle
-// (tc-fmrx3, #855): the flat brand-amber field becomes the paper
-// designtokens.BackgroundLight, with ink (not white) wordmark text — the
-// no-map card now reads as a filed notice rather than a brand-amber poster.
+// TestFallbackCard_PaperFieldWithInkText pins the fallback card to the paper
+// designtokens.BackgroundLight with ink wordmark text.
 func TestFallbackCard_PaperFieldWithInkText(t *testing.T) {
 	t.Parallel()
 	data, err := fallbackCard()

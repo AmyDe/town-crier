@@ -531,8 +531,7 @@ func TestGenerate_HappyPath(t *testing.T) {
 }
 
 // TestGenerate_DefaultsMaxRedemptionsToOne confirms that omitting
-// maxRedemptions mints a single-use code (maxRedemptions=1) — the pre-existing
-// behaviour every code used to have.
+// maxRedemptions mints a single-use code (maxRedemptions=1).
 func TestGenerate_DefaultsMaxRedemptionsToOne(t *testing.T) {
 	t.Parallel()
 

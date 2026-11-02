@@ -84,11 +84,8 @@ type statsReach struct {
 	NotificationsUnread int `json:"notificationsUnread"`
 }
 
-// stats implements GET /v1/admin/stats: the whole-user-base aggregate. The user,
-// signup and activity blocks come from the profiles UserStats SQL aggregate; the
-// paying block is classified in Go from the paid-tier candidates via
-// EffectiveTier (so the expiry/grace rule stays in the domain); the reach block
-// sums the per-feature stores. Every reach store is optional — a nil (unwired)
+// stats implements GET /v1/admin/stats. The paying block is classified in Go via
+// EffectiveTier so the expiry and grace rule stays in the domain. A nil reach
 // store contributes zero, never a 500.
 func (h *handler) stats(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -212,8 +209,6 @@ func inGrace(c *profiles.UserProfile, now time.Time) bool {
 		c.GracePeriodExpiry != nil && c.GracePeriodExpiry.After(now)
 }
 
-// mostRecent renders the profiles RecentSignup into the wire shape, preserving
-// the null-when-empty contract.
 func mostRecent(r *profiles.RecentSignup) *statsMostRecent {
 	if r == nil {
 		return nil
@@ -225,8 +220,6 @@ func mostRecent(r *profiles.RecentSignup) *statsMostRecent {
 	}
 }
 
-// savedTotal returns the global saved-application count, or 0 when the store is
-// unwired (store-less local boot).
 func (h *handler) savedTotal(ctx context.Context) (int, error) {
 	if h.savedCounts == nil {
 		return 0, nil
@@ -234,8 +227,6 @@ func (h *handler) savedTotal(ctx context.Context) (int, error) {
 	return h.savedCounts.Count(ctx)
 }
 
-// deviceTotal returns the global device-registration count, or 0 when the store
-// is unwired.
 func (h *handler) deviceTotal(ctx context.Context) (int, error) {
 	if h.deviceCounts == nil {
 		return 0, nil
@@ -243,8 +234,6 @@ func (h *handler) deviceTotal(ctx context.Context) (int, error) {
 	return h.deviceCounts.Count(ctx)
 }
 
-// notifTotals returns the whole-table notification tally, or the zero value when
-// the store is unwired.
 func (h *handler) notifTotals(ctx context.Context) (notifications.NotificationTotals, error) {
 	if h.notifCounts == nil {
 		return notifications.NotificationTotals{}, nil

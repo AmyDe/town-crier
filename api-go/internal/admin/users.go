@@ -107,9 +107,6 @@ func (h *handler) listUsers(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(r, w, listResult{Items: items, ContinuationToken: token})
 }
 
-// notificationCountsFor returns the per-user notification tally for the page in
-// a single batched lookup. An empty page (or an unwired counts store) skips the
-// query and returns an empty map, leaving every row's counts at {0, 0}.
 func (h *handler) notificationCountsFor(r *http.Request, page profiles.Page) (map[string]notifications.NotificationCounts, error) {
 	if h.notifCounts == nil || len(page.Profiles) == 0 {
 		return map[string]notifications.NotificationCounts{}, nil
@@ -117,8 +114,6 @@ func (h *handler) notificationCountsFor(r *http.Request, page profiles.Page) (ma
 	return h.notifCounts.CountsByUsers(r.Context(), pageUserIDs(page))
 }
 
-// savedCountsFor returns the per-user saved-application count for the page in one
-// batched lookup, skipping the query when the store is unwired or the page empty.
 func (h *handler) savedCountsFor(r *http.Request, page profiles.Page) (map[string]int, error) {
 	if h.savedCounts == nil || len(page.Profiles) == 0 {
 		return map[string]int{}, nil
@@ -126,8 +121,6 @@ func (h *handler) savedCountsFor(r *http.Request, page profiles.Page) (map[strin
 	return h.savedCounts.CountsByUsers(r.Context(), pageUserIDs(page))
 }
 
-// deviceCountsFor returns the per-user device-registration count for the page in
-// one batched lookup, skipping the query when the store is unwired or page empty.
 func (h *handler) deviceCountsFor(r *http.Request, page profiles.Page) (map[string]int, error) {
 	if h.deviceCounts == nil || len(page.Profiles) == 0 {
 		return map[string]int{}, nil
@@ -135,8 +128,6 @@ func (h *handler) deviceCountsFor(r *http.Request, page profiles.Page) (map[stri
 	return h.deviceCounts.CountsByUsers(r.Context(), pageUserIDs(page))
 }
 
-// redemptionsFor returns each user's redemptions for the page in one batched
-// lookup, skipping the query when the store is unwired or the page empty.
 func (h *handler) redemptionsFor(r *http.Request, page profiles.Page) (map[string][]offercodes.RedeemedOfferCode, error) {
 	if h.redemptions == nil || len(page.Profiles) == 0 {
 		return map[string][]offercodes.RedeemedOfferCode{}, nil
@@ -144,7 +135,6 @@ func (h *handler) redemptionsFor(r *http.Request, page profiles.Page) (map[strin
 	return h.redemptions.RedeemedByUsers(r.Context(), pageUserIDs(page))
 }
 
-// pageUserIDs collects the page's user ids for a batched enrichment lookup.
 func pageUserIDs(page profiles.Page) []string {
 	ids := make([]string, 0, len(page.Profiles))
 	for _, p := range page.Profiles {
@@ -153,10 +143,7 @@ func pageUserIDs(page profiles.Page) []string {
 	return ids
 }
 
-// activeOfferCode returns the first still-active redemption (its redeemed_at +
-// the code's duration window has not closed at now) among the user's
-// redemptions, or nil when none is active. A user can hold several
-// redemptions; only a live one is surfaced.
+// A user can hold several redemptions; only the first live one is surfaced.
 func activeOfferCode(codes []offercodes.RedeemedOfferCode, now time.Time) *string {
 	for i := range codes {
 		if codes[i].ActiveAt(now) {

@@ -3,9 +3,8 @@ package assetlinks
 import "testing"
 
 // TestDefaultPackages_IncludesDebugKeystoreFingerprintForDevPackage pins the
-// dev-flavor entry to the debug keystore's SHA-256 fingerprint (computed
-// locally for GH#782) so a locally-built dev APK verifies against the
-// deployed document.
+// dev-flavor entry to the debug keystore's SHA-256 fingerprint so a
+// locally-built dev APK verifies against the deployed document.
 func TestDefaultPackages_IncludesDebugKeystoreFingerprintForDevPackage(t *testing.T) {
 	t.Parallel()
 
@@ -27,11 +26,8 @@ func TestDefaultPackages_IncludesDebugKeystoreFingerprintForDevPackage(t *testin
 	}
 }
 
-// TestDefaultPackages_OmitsProdPackageUntilPlayConsoleEnrolment documents the
-// deliberate gap: uk.towncrierapp.mobile has no Play App Signing certificate
-// fingerprint until Play Console enrolment (#779). This test exists so that
-// bead lands loudly (as a failing test to update) rather than silently once a
-// real fingerprint is available.
+// TestDefaultPackages_OmitsProdPackageUntilPlayConsoleEnrolment fails loudly
+// once a real prod fingerprint is added, so the change is deliberate.
 func TestDefaultPackages_OmitsProdPackageUntilPlayConsoleEnrolment(t *testing.T) {
 	t.Parallel()
 

@@ -64,12 +64,8 @@ func TestAssetLinks_ServesJSONDocument(t *testing.T) {
 	}
 }
 
-// TestAssetLinks_OmitsPackagesWithNoFingerprints covers the prod package
-// (uk.towncrierapp.mobile) before Play Console enrolment (#779): it has no
-// known signing-key fingerprint yet, so publishing it with an empty or
-// placeholder fingerprint would fail Digital Asset Links verification
-// anyway. Routes drops any Package with no fingerprints rather than
-// serving a broken entry.
+// TestAssetLinks_OmitsPackagesWithNoFingerprints: an empty or placeholder
+// fingerprint would fail Digital Asset Links verification anyway.
 func TestAssetLinks_OmitsPackagesWithNoFingerprints(t *testing.T) {
 	t.Parallel()
 

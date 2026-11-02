@@ -78,8 +78,6 @@ func loadCompact(file string) ([]byte, error) {
 	return bytes.TrimRight(buf.Bytes(), "\n"), nil
 }
 
-// lookup returns the pre-encoded document for the given route value
-// (case-insensitive). The bool reports whether a known type was found.
 func (s *store) lookup(documentType string) ([]byte, bool) {
 	doc, ok := s.docs[strings.ToUpper(documentType)]
 	return doc, ok
@@ -99,8 +97,7 @@ type handler struct {
 func (h handler) get(w http.ResponseWriter, r *http.Request) {
 	doc, ok := h.store.lookup(r.PathValue("documentType"))
 	if !ok {
-		// Returns a bodyless 404; the PascalCase envelope is backfilled by
-		// middleware.ErrorBody.
+		// The PascalCase envelope is backfilled by middleware.ErrorBody.
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}

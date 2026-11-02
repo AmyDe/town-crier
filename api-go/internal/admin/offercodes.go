@@ -47,10 +47,9 @@ type apiErrorResponse struct {
 	Message *string `json:"message"`
 }
 
-// generateOfferCodes implements POST /v1/admin/offer-codes: mint N codes for a
-// paid tier, all sharing one label and redemption cap, and return them, one
-// display-formatted code per line, as text/plain. Validation failure messages
-// include the " (Parameter 'command')" and "Actual value was N." suffixes for
+// generateOfferCodes implements POST /v1/admin/offer-codes, returning one
+// display-formatted code per line as text/plain. Validation failure messages
+// keep the " (Parameter 'command')" and "Actual value was N." suffixes for
 // client compatibility.
 func (h *handler) generateOfferCodes(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
@@ -177,8 +176,6 @@ func (h *handler) listOfferCodes(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(r, w, items)
 }
 
-// formatOptionalTime renders t as RFC3339, or nil when t itself is nil (a code
-// that has never been redeemed).
 func formatOptionalTime(t *time.Time) *string {
 	if t == nil {
 		return nil
@@ -200,14 +197,10 @@ func (h *handler) writeBadRequest(r *http.Request, w http.ResponseWriter, messag
 	}
 }
 
-// argOutOfRange formats an out-of-range validation message in the shape
-// "{message} (Parameter 'command')\nActual value was {value}.".
 func argOutOfRange(message string, value int) string {
 	return message + " (Parameter 'command')\nActual value was " + strconv.Itoa(value) + "."
 }
 
-// argException formats a validation message in the shape
-// "{message} (Parameter 'command')".
 func argException(message string) string {
 	return message + " (Parameter 'command')"
 }

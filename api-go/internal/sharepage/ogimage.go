@@ -59,19 +59,14 @@ func newImageHandler(store appStore, resolver slugResolver, tiles tileClient, ca
 	}
 }
 
-// serve resolves the slug, point-reads the application, then serves the baked
-// card — from the cache when present, otherwise generating it (map or fallback)
-// and caching it. An unknown slug/ref or a non-.png request is a no-store 404
-// (never a 500); a store or render error gets the bodyless status chosen by
-// platform.RespondRequestError (the envelope is backfilled by middleware). Cache hits never wait; a miss renders under a one-per-replica
+// serve answers a no-store 404 (never a 500) for an unknown slug or ref or a
+// non-.png request. Cache hits never wait; a miss renders under a one-per-replica
 // slot (OSM tile policy) and answers 429 + Retry-After when the slot is not free
 // within renderWait.
 func (h *imageHandler) serve(w http.ResponseWriter, r *http.Request) {
 	slug := r.PathValue("authoritySlug")
 	ref := r.PathValue("ref")
 
-	// The mux cannot match the ".png" suffix (the wildcard must be final), so
-	// require and strip it here. Anything else is an unknown resource, not a card.
 	if !strings.HasSuffix(ref, ".png") {
 		h.notFound(w)
 		return
@@ -133,8 +128,6 @@ func (h *imageHandler) serve(w http.ResponseWriter, r *http.Request) {
 	h.writePNG(r.Context(), w, png)
 }
 
-// acquire takes the render slot, giving up after renderWait or when the request
-// context ends.
 func (h *imageHandler) acquire(r *http.Request) bool {
 	timer := time.NewTimer(h.renderWait)
 	defer timer.Stop()
@@ -173,8 +166,8 @@ func (h *imageHandler) writeCache(ctx context.Context, key string, png []byte) {
 	}
 }
 
-// writePNG serves the card body with a day-long public cache lifetime for the CF
-// edge; the card is immutable for the application snapshot it depicts.
+// The card is immutable for the application snapshot it depicts, hence the
+// day-long public cache.
 func (h *imageHandler) writePNG(ctx context.Context, w http.ResponseWriter, png []byte) {
 	w.Header().Set("Content-Type", "image/png")
 	w.Header().Set("Cache-Control", "public, max-age=86400")
@@ -183,8 +176,8 @@ func (h *imageHandler) writePNG(ctx context.Context, w http.ResponseWriter, png 
 	}
 }
 
-// notFound emits a bodyless 404 that is never positively cached, so a
-// just-ingested application is not negatively cached at the edge.
+// notFound is no-store so a just-ingested application is not negatively cached at
+// the edge.
 func (h *imageHandler) notFound(w http.ResponseWriter) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusNotFound)
