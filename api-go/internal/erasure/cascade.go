@@ -1,6 +1,7 @@
 // Package erasure holds the single shared GDPR Art. 17 account-erasure cascade
-// run by both account-deletion entry points: the dormant-cleanup worker
-// (WORKER_MODE=dormant-cleanup) and DELETE /v1/me.
+// run by every account-deletion entry point: the dormant-cleanup worker
+// (WORKER_MODE=dormant-cleanup), DELETE /v1/me and the admin
+// POST /v1/admin/users/erase.
 //
 // The package is deliberately stdlib-only so profiles can import it without an
 // import cycle; the profile-absent tolerance is injected as

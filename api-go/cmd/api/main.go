@@ -129,8 +129,8 @@ func main() {
 		}
 	}
 
-	// cascade bundles the per-store deleters DELETE /v1/me runs for a complete GDPR
-	// erasure. The notification store satisfies erasure.ChildDeleter
+	// cascade bundles the per-store deleters DELETE /v1/me and
+	// POST /v1/admin/users/erase run for a complete GDPR erasure. The notification store satisfies erasure.ChildDeleter
 	// (DeleteAllByUserID) directly; the other stores satisfy erasure.ChildDeleter or
 	// erasure.RedemptionAnonymiser on their exported Store interface. The watch-zone
 	// deleter and the export reader bind to the same watch-zone store the routes use.

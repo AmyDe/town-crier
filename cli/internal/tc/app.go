@@ -17,7 +17,8 @@ Commands:
   list-offer-codes            List offer codes and their redemption progress
   grant-subscription          Grant or change a user's subscription tier
   list-users                  List users with email, ID, and subscription tier
-  stats                       Show aggregate user-base statistics
+  delete-user                 Permanently erase a user's account (GDPR erasure)
+  stats                      Show aggregate user-base statistics
   polling-status              Show whether dev and prod poll PlanIt
   polling-switch              Move PlanIt polling to dev, to prod, or off
   read-path-switch            Show or set the thin-table switches of one environment
@@ -37,6 +38,11 @@ list-offer-codes options:
 list-users options:
   --search <term>      Filter by email substring (case-insensitive)
   --page-size <n>      Results per page (default: 20)
+
+delete-user options:
+  --email <email>      Erase every account with this exact email
+  --user-id <id>       Erase this user id; finishes an erasure that failed
+  Pass exactly one. Asks you to type it again before it erases anything.
 
 polling-switch options:
   --to <dev|prod|off>    Environment that polls afterwards (required)
@@ -113,6 +119,8 @@ func Run(ctx context.Context, env Env, rawArgs []string) int {
 		return runGrantSubscription(ctx, client, env, args)
 	case "list-users":
 		return runListUsers(ctx, client, env, args)
+	case "delete-user":
+		return runDeleteUser(ctx, client, env, args)
 	case "stats":
 		return runStats(ctx, client, env, args)
 	default:

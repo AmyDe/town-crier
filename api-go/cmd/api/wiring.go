@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/blobstore"
 	"github.com/AmyDe/town-crier/api-go/internal/designations"
 	"github.com/AmyDe/town-crier/api-go/internal/devicetokens"
+	"github.com/AmyDe/town-crier/api-go/internal/erasure"
 	"github.com/AmyDe/town-crier/api-go/internal/geocoding"
 	"github.com/AmyDe/town-crier/api-go/internal/health"
 	"github.com/AmyDe/town-crier/api-go/internal/legal"
@@ -70,6 +72,7 @@ var anonymousPatterns = map[string]struct{}{
 	"PUT /v1/admin/polling":       {},
 	"GET /v1/admin/read-path":     {},
 	"PUT /v1/admin/read-path":     {},
+	"POST /v1/admin/users/erase":  {},
 	// The App Store Server Notifications webhook is Apple -> API, not user-facing,
 	// so it is anonymous to Auth0; the signed JWS is its authentication. (The
 	// sibling POST /v1/subscriptions/verify is authed and absent here.)
@@ -434,6 +437,19 @@ func newRouter(
 		// list and feed the stats reach block; each may be nil on a store-less boot,
 		// and the handlers treat a nil reader as "metric absent".
 		admin.Routes(mux, adminKey, adminStore, notifStore, savedStore, deviceStore, offerStore, auth0, notifier, offerStore, offercodes.NewRandomGenerator(), time.Now, logger)
+	}
+	if store != nil && adminStore != nil {
+		admin.ErasureRoutes(mux, adminKey, adminStore, erasure.Deleters{
+			Notifications:       cascade.Notifications,
+			WatchZones:          cascade.WatchZones,
+			SavedApplications:   cascade.SavedApplications,
+			DeviceRegistrations: cascade.DeviceRegistrations,
+			NotificationState:   cascade.NotificationState,
+			OfferCodes:          cascade.OfferCodes,
+			Profile:             store,
+			Auth0:               auth0,
+			ProfileAbsent:       func(e error) bool { return errors.Is(e, profiles.ErrNotFound) },
+		}, logger)
 	}
 	if pollingAdmin.Switch != nil && pollingAdmin.Calls != nil {
 		admin.PollingRoutes(mux, adminKey, pollingAdmin.Switch, pollingAdmin.Calls, time.Now, logger)
