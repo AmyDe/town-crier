@@ -41,6 +41,7 @@ tc generate-offer-codes --count <N> --tier <Personal|Pro> --duration-days <D> --
 tc list-offer-codes     [--label <term>]
 tc grant-subscription   --email <email> --tier <Free|Personal|Pro>
 tc list-users           [--search <term>] [--page-size <n>]
+tc delete-user          --email <email>
 tc polling-status
 tc polling-switch       --to <dev|prod|off> [--reason <text>] [--allow-missing true]
 tc read-path-switch     --env <dev|prod> [--thin-sync <on|off>] [--thin-list <on|off>] [--thin-map <on|off>] [--reason <text>]
@@ -54,6 +55,15 @@ default 1 — a single-use code is just the default). `list-offer-codes` renders
 the code listing (label, tier, duration, redeemed x/N, created, last redeemed)
 from `GET /v1/admin/offer-codes`, optionally filtered by a case-insensitive
 `--label` substring; there is no pagination beyond the API's own limit.
+
+`delete-user` actions a GDPR erasure request for someone who cannot sign in to
+delete their own account. It asks you to type the email again, then calls
+`POST /v1/admin/users/erase`, which runs the same cascade as `DELETE /v1/me`:
+notifications, watch zones, saved applications, devices, notification state,
+offer-code redemptions (anonymised), the profile and, last, the Auth0 user. The
+email must match exactly; use `list-users --search` to find it. Erasing the
+account does not cancel an App Store subscription; only the subscriber can do
+that.
 
 Only one environment may poll PlanIt at a time (see `POLLING.md`).
 `polling-switch` turns the other environment off and reads it back, waits until

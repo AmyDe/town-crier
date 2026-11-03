@@ -1151,3 +1151,31 @@ func TestRouter_AdminReadPathIsAnonymousToAuth0AndGatedByAdminKey(t *testing.T) 
 		})
 	}
 }
+
+func TestRouter_AdminUserErasureGate(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.DiscardHandler)
+	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, newFakeProfileStore(), profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, nil, nil, testGeocodeClient(t), testDesignationClient(t), nil, fakeAdminStore{}, "s3cret", "", nil, nil, "", nil, nil, nil, 60, 60, pollingAdminDeps{}, nil, nil, nil, nil, logger)
+
+	erase := func(key string) *httptest.ResponseRecorder {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		t.Cleanup(cancel)
+		req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/v1/admin/users/erase", strings.NewReader(`{"email":"nobody@example.com"}`))
+		if key != "" {
+			req.Header.Set("X-Admin-Key", key)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+
+	noKey := erase("")
+	if noKey.Code != http.StatusUnauthorized || noKey.Header().Get("WWW-Authenticate") != "" {
+		t.Fatalf("no key: status = %d WWW-Authenticate = %q, want admin-gate 401", noKey.Code, noKey.Header().Get("WWW-Authenticate"))
+	}
+	if withKey := erase("s3cret"); withKey.Code != http.StatusNotFound {
+		t.Fatalf("with key: status = %d body = %s, want 404 for an unknown email", withKey.Code, withKey.Body.String())
+	}
+}

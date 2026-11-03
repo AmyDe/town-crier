@@ -1,7 +1,8 @@
 // Package admin serves PUT /v1/admin/subscriptions, GET /v1/admin/users,
-// GET /v1/admin/stats, GET and POST /v1/admin/offer-codes and GET and PUT
-// /v1/admin/polling and /v1/admin/read-path. The routes are anonymous to Auth0 (absent from the
-// fallback-deny set) and authenticated solely by the shared X-Admin-Key.
+// GET /v1/admin/stats, GET and POST /v1/admin/offer-codes, GET and PUT
+// /v1/admin/polling and /v1/admin/read-path, and POST /v1/admin/users/erase.
+// The routes are anonymous to Auth0 (absent from the fallback-deny set) and
+// authenticated solely by the shared X-Admin-Key.
 package admin
 
 import (
