@@ -115,3 +115,8 @@ c126dc47ce22eb61  # infra/environment.go:755 secret-assignment: Container App se
 d245395ea7be4c95  # api-go/internal/devicetokens/handler_test.go:164 secret-assignment: fake device token in test fixture
 037193be1e396ab2  # api-go/internal/middleware/legacypath.go:11 secret-assignment: URL path segment constant
 53ec839a8d7553a1  # mobile/android/data/src/test/kotlin/uk/towncrierapp/data/auth/SessionCacheTest.kt:120 secret-assignment: fake access token in test
+eb74c719428eea33  # api-go/internal/applications/thinclusters_test.go:34 high-entropy-string: SHA-256 digest of query text
+ec83f0e4e102b701  # api-go/internal/applications/thinclusters_test.go:35 high-entropy-string: SHA-256 digest of query text
+a428ef3737ab1fc3  # api-go/internal/applications/thinclusters_test.go:36 high-entropy-string: SHA-256 digest of query text
+2c7a10bc42c3d903  # api-go/internal/applications/thinclusters_test.go:37 high-entropy-string: SHA-256 digest of query text
+b60e6711f69f86c5  # infra/shared.go:379 secret-assignment: PasswordAuth set to the literal Disabled, not a password
