@@ -288,11 +288,6 @@ public final class WatchZoneEditorViewModel: ObservableObject, EntitlementGating
     selectedFilterKey != nil && !canSetWatchZoneFilter
   }
 
-  // `selectFilterKey(_:)`, `loadFilterCatalogIfNeeded()`, and
-  // `filterDisplayName(for:)` live in
-  // `WatchZoneEditorViewModel+FilterCatalog.swift`, split out to keep this
-  // file under SwiftLint's `file_length` ceiling (GH#1104, tc-m8j90.2).
-
   public func submitPostcode() async {
     isLoading = true
     error = nil

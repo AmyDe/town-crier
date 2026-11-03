@@ -28,17 +28,14 @@ public struct WatchZoneUpsellView: View {
       Spacer()
         .frame(height: TCSpacing.medium)
 
-      // Icon
       Image(systemName: "mappin.and.ellipse")
         .font(TCTypography.displayLarge)
         .foregroundStyle(Color.tcAmber)
 
-      // Title
       Text("Add more watch zones")
         .font(TCTypography.displaySmall)
         .foregroundStyle(Color.tcTextPrimary)
 
-      // Value proposition
       Text(valueProposition)
         .font(TCTypography.body)
         .foregroundStyle(Color.tcTextSecondary)
@@ -48,11 +45,9 @@ public struct WatchZoneUpsellView: View {
       Spacer()
         .frame(height: TCSpacing.small)
 
-      // Primary CTA
       PrimaryButton("View Plans", action: onViewPlans)
         .padding(.horizontal, TCSpacing.medium)
 
-      // Secondary dismiss
       Button(action: onDismiss) {
         Text("Not now")
           .font(TCTypography.body)

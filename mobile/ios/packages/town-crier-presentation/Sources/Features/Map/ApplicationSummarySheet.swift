@@ -25,8 +25,6 @@ struct ApplicationSummarySheet: View {
           }
           .accessibilityLabel(viewModel.isSelectedApplicationSaved ? "Unsave" : "Save")
         }
-        // Mono metadata: the planning reference, previously plain
-        // body text.
         Text(application.reference.value)
           .font(TCTypography.mono)
           .foregroundStyle(Color.tcTextSecondary)

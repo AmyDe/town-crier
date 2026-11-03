@@ -3,8 +3,7 @@ import TownCrierDomain
 
 /// Drives the anonymous (pre-signup) Zones tab: exactly one
 /// editable device-local area (``DeviceLocalZone/maxZoneCount`` == 1),
-/// seeded from the onboarding postcode. No add, no delete — GH#888 reverses
-/// GH#879 Phase 4's 3-zone cap, which made signing up a net loss of areas.
+/// seeded from the onboarding postcode. No add, no delete.
 /// Tapping the zone still opens the editor; any per-row alert affordance
 /// still routes straight to a sign-up CTA (``isSignUpCTAPresented``).
 @MainActor
