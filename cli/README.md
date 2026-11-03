@@ -41,7 +41,7 @@ tc generate-offer-codes --count <N> --tier <Personal|Pro> --duration-days <D> --
 tc list-offer-codes     [--label <term>]
 tc grant-subscription   --email <email> --tier <Free|Personal|Pro>
 tc list-users           [--search <term>] [--page-size <n>]
-tc delete-user          --email <email>
+tc delete-user          --email <email> | --user-id <id>
 tc polling-status
 tc polling-switch       --to <dev|prod|off> [--reason <text>] [--allow-missing true]
 tc read-path-switch     --env <dev|prod> [--thin-sync <on|off>] [--thin-list <on|off>] [--thin-map <on|off>] [--reason <text>]
@@ -60,10 +60,17 @@ from `GET /v1/admin/offer-codes`, optionally filtered by a case-insensitive
 delete their own account. It asks you to type the email again, then calls
 `POST /v1/admin/users/erase`, which runs the same cascade as `DELETE /v1/me`:
 notifications, watch zones, saved applications, devices, notification state,
-offer-code redemptions (anonymised), the profile and, last, the Auth0 user. The
-email must match exactly; use `list-users --search` to find it. Erasing the
-account does not cancel an App Store subscription; only the subscriber can do
-that.
+offer-code redemptions (anonymised), the profile and, last, the Auth0 user.
+Email is not unique, so it erases every account with that email and prints each
+user id. The email must match exactly; use `list-users --search` to find it.
+
+If a step fails, it prints what it erased and the user id that did not finish.
+`tc delete-user --user-id <id>` finishes that one: it runs the cascade even when
+the profile is already gone, so it still removes the Auth0 user. Repeating it is
+safe.
+
+Erasing the account does not cancel an App Store subscription; only the
+subscriber can do that.
 
 Only one environment may poll PlanIt at a time (see `POLLING.md`).
 `polling-switch` turns the other environment off and reads it back, waits until

@@ -40,8 +40,9 @@ list-users options:
   --page-size <n>      Results per page (default: 20)
 
 delete-user options:
-  --email <email>      Exact email of the account to erase (required)
-  Asks you to type the email again before it erases anything.
+  --email <email>      Erase every account with this exact email
+  --user-id <id>       Erase this user id; finishes an erasure that failed
+  Pass exactly one. Asks you to type it again before it erases anything.
 
 polling-switch options:
   --to <dev|prod|off>    Environment that polls afterwards (required)
