@@ -15,7 +15,6 @@ import kotlin.test.assertTrue
  * tc-v6fo0.1).
  */
 class WatchZoneBoundaryTest {
-
     @Test
     fun `an open ring is auto-closed by appending a copy of the first vertex`() {
         val triangle =
