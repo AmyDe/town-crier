@@ -744,17 +744,15 @@ func (h *handler) atomicQuotaIncrement(ctx context.Context, userID string, limit
 			return false, nil
 		}
 
-		// Claim the slot.
 		newCount := currentCount + 1
 		updated := *profile
 		updated.WatchZoneCount = &newCount
 
 		err = h.profileCAS.UpdateZoneCountWithCAS(ctx, userID, &updated, etag)
 		if err == nil {
-			return true, nil // slot claimed
+			return true, nil
 		}
 		if errors.Is(err, platform.ErrCASPreconditionFailed) {
-			// Lost the race — re-read and retry.
 			continue
 		}
 		return false, fmt.Errorf("quota CAS replace: %w", err)

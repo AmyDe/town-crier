@@ -76,8 +76,7 @@ var filterExcludedAppTypes = []string{"Trees", "Conditions", "Amendment", "Adver
 //
 // Do not "clean up" or paraphrase these operators — every expression here
 // was validated against live production data and a change silently
-// invalidates that validation. Retuning the catalog is a separate,
-// deliberate follow-up bead, not a drive-by edit.
+// invalidates that validation.
 var filterCatalog = map[FilterKey]FilterDefinition{
 	FilterKeyFewerNotifications: {
 		DisplayName: "Fewer notifications",

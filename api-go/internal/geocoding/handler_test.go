@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -38,15 +39,7 @@ func newGeocodeRequest(t *testing.T, g geocoder, rawPostcode string) *httptest.R
 // escapeSegment percent-escapes a space so the raw postcode survives as one path
 // segment; the realistic inputs here contain only letters, digits and spaces.
 func escapeSegment(s string) string {
-	out := ""
-	for _, c := range s {
-		if c == ' ' {
-			out += "%20"
-			continue
-		}
-		out += string(c)
-	}
-	return out
+	return strings.ReplaceAll(s, " ", "%20")
 }
 
 func TestHandler_Geocode_ReturnsCoordinates(t *testing.T) {
