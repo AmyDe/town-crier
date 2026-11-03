@@ -1,6 +1,9 @@
 import { ApiRequestError } from '../../api/client';
 import { extractErrorMessage } from '../../utils/extractErrorMessage';
 
+export const MISSING_BOUNDARY_ERROR =
+  'Draw a shape with at least 3 points, then close it by clicking the first point again.';
+
 const MESSAGES_BY_CODE: Readonly<Record<string, string>> = {
   zone_name_taken: 'You already have a watch zone with that name. Pick a different one.',
   boundary_requires_paid_tier:

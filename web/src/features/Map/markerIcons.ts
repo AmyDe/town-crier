@@ -7,9 +7,7 @@ const STATUS_TOKEN: Record<string, string> = {
   Rejected: '--tc-status-rejected',
   Withdrawn: '--tc-status-withdrawn',
   Appealed: '--tc-status-appealed',
-  Unresolved: '--tc-status-withdrawn',
   Referred: '--tc-status-appealed',
-  'Not Available': '--tc-status-withdrawn',
 };
 
 function statusToken(appState: string): string {

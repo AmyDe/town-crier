@@ -2,10 +2,7 @@ import { useState, useCallback } from 'react';
 import type { WatchZoneSummary, UpdateWatchZoneRequest, WatchZoneBoundary } from '../../domain/types';
 import type { WatchZoneRepository } from '../../domain/ports/watch-zone-repository';
 import type { ShapeMode } from './ShapeModeToggle';
-import { watchZoneErrorMessage } from './watchZoneErrorMessage';
-
-const MISSING_BOUNDARY_ERROR =
-  'Draw a shape with at least 3 points, then close it by clicking the first point again.';
+import { MISSING_BOUNDARY_ERROR, watchZoneErrorMessage } from './watchZoneErrorMessage';
 
 function shapeModeOf(boundary: WatchZoneBoundary | null): ShapeMode {
   return boundary ? 'custom' : 'circle';

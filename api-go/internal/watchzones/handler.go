@@ -493,7 +493,7 @@ func (h *handler) patch(w http.ResponseWriter, r *http.Request) {
 // maxCASRetries is the maximum number of etag-conditional replace attempts for
 // quota CAS loops. After this many ErrCASPreconditionFailed responses the
 // create path returns 403 (quota-exceeded is the safe failure mode) and the
-// delete path gives up silently (the counter will self-correct on next create).
+// delete path logs and gives up.
 const maxCASRetries = 3
 
 // delete implements DELETE /v1/me/watch-zones/{zoneId}: 204 on success, 404 when
@@ -524,8 +524,7 @@ func (h *handler) delete(w http.ResponseWriter, r *http.Request) {
 
 // decrementZoneCount reduces the CAS quota counter by 1 (floor 0) after a
 // successful zone delete. It uses a bounded CAS retry loop so concurrent
-// deletes do not race. On persistent conflict it logs and continues — the
-// counter will converge on the next create's lazy-init read.
+// deletes do not race. On persistent conflict it logs and returns.
 func (h *handler) decrementZoneCount(ctx context.Context, userID string) {
 	for range maxCASRetries {
 		profile, etag, err := h.profileCAS.GetWithETag(ctx, userID)
@@ -542,10 +541,9 @@ func (h *handler) decrementZoneCount(ctx context.Context, userID string) {
 
 		err = h.profileCAS.UpdateZoneCountWithCAS(ctx, userID, &updated, etag)
 		if err == nil {
-			return // success
+			return
 		}
 		if errors.Is(err, platform.ErrCASPreconditionFailed) {
-			// Concurrent writer — retry
 			continue
 		}
 		h.logger.WarnContext(ctx, "decrement zone count: CAS replace failed", "user", userID, "error", err)
@@ -562,10 +560,7 @@ type apiErrorResponse struct {
 }
 
 // writeJSON encodes v as an application/json; charset=utf-8 response with HTML
-// escaping off and no trailing newline (the same approach the profiles handler
-// uses). status is kept explicit at every call site (mirroring writeCreated's 201
-// and writeError) so the success code is visible where the response is written,
-// even though every JSON success body is a 200 today.
+// escaping off and no trailing newline.
 //
 //nolint:unparam // status is intentionally explicit at call sites; 200-only today.
 func (h *handler) writeJSON(w http.ResponseWriter, r *http.Request, status int, v any) {
@@ -576,11 +571,6 @@ func (h *handler) writeJSON(w http.ResponseWriter, r *http.Request, status int, 
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
-	// G705 (gosec taint analysis) flags this since the nearby browse handler reads
-	// ?limit=/?cursor= query params, but reflected XSS is not applicable: writeJSON
-	// always emits application/json and body is server-encoded JSON of structured
-	// data — the query params never reach the body (the cursor returns via a
-	// base64url-encoded response header, not here).
 	if _, err := w.Write(body); err != nil { //nolint:gosec // G705 false positive: JSON-only response, query params never reach the body
 		h.logger.ErrorContext(r.Context(), "write response", "error", err)
 	}

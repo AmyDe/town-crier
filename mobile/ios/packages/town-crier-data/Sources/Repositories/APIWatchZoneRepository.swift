@@ -104,7 +104,6 @@ public final class APIWatchZoneRepository: WatchZoneRepository, Sendable {
         .delete("/v1/me/watch-zones/\(id.value)")
       )
     } catch APIError.notFound {
-      // Idempotent delete — if the zone is already gone, succeed silently
       return
     } catch let domainError as DomainError {
       throw domainError
@@ -291,7 +290,6 @@ struct WatchZoneSummaryDTO: Decodable, Sendable {
     self.latitude = try container.decode(Double.self, forKey: .latitude)
     self.longitude = try container.decode(Double.self, forKey: .longitude)
     self.radiusMetres = try container.decode(Double.self, forKey: .radiusMetres)
-    // Per spec (T1): existing zones without these fields hydrate to true (preserves prior behaviour).
     self.pushEnabled = try container.decodeIfPresent(Bool.self, forKey: .pushEnabled) ?? true
     self.emailInstantEnabled =
       try container.decodeIfPresent(Bool.self, forKey: .emailInstantEnabled) ?? true
@@ -299,7 +297,7 @@ struct WatchZoneSummaryDTO: Decodable, Sendable {
     self.paused = try container.decodeIfPresent(Bool.self, forKey: .paused) ?? false
     // Absent (older API/back-compat, or a plain circle zone) hydrates to nil.
     self.boundary = try container.decodeIfPresent(GeoJSONPolygon.self, forKey: .boundary)
-    // Absent or null both hydrate to nil; any non-null string round-trips verbatim -- no enum-backed validation.
+    // Opaque key: round-tripped verbatim, no enum-backed validation.
     self.filterKey = try container.decodeIfPresent(String.self, forKey: .filterKey)
   }
 

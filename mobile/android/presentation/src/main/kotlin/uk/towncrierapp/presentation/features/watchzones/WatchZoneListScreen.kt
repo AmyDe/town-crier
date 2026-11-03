@@ -50,10 +50,7 @@ import uk.towncrierapp.presentation.designsystem.noticeCard
 
 /**
  * The watch-zones tab: list, swipe-to-delete, tap-to-edit, "+" to add (badged
- * when at quota), and the free-tier inline upsell card at cap. Port of iOS
- * `WatchZoneListView`. "View Plans"/the upgrade badge are no-ops until #783
- * ships the paywall (bead brief tc-z95t) — the locked/upsell UI state is
- * still correct, just not yet wired to a destination.
+ * when at quota), and the free-tier inline upsell card at cap.
  */
 @Composable
 public fun WatchZonesRoute(
@@ -273,10 +270,7 @@ private fun WatchZoneRow(
     }
 }
 
-/**
- * Static placeholder for the zone's map preview — Google Maps lands in #776;
- * the editor and list both use this box until then (issue's Out of Scope).
- */
+/** Static map-preview box used by the zone list row and the editor. */
 @Composable
 internal fun ZoneMapPlaceholder(modifier: Modifier = Modifier) {
     Box(

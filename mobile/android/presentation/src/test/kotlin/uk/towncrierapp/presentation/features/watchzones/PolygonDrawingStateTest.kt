@@ -35,8 +35,6 @@ class PolygonDrawingStateTest {
             Coordinate(latitude = 51.51, longitude = -0.10),
         )
 
-    // MARK: - Mode gating
-
     @Test
     fun `mode select to CUSTOM is ignored when custom boundaries aren't allowed`() {
         val state = PolygonDrawingState()
@@ -62,8 +60,6 @@ class PolygonDrawingStateTest {
 
         assertEquals(WatchZoneShapeMode.CUSTOM, result.shapeMode)
     }
-
-    // MARK: - Adding vertices
 
     @Test
     fun `adding vertices accumulates them in tap order`() {
@@ -103,8 +99,6 @@ class PolygonDrawingStateTest {
 
         assertEquals(fullRing, state.polygonVertices)
     }
-
-    // MARK: - Closing (minimum 3 vertices)
 
     @Test
     fun `closing is not allowed below 3 vertices`() {
@@ -149,8 +143,6 @@ class PolygonDrawingStateTest {
         assertFalse(state.isPolygonClosed)
         assertTrue(state.boundaryError)
     }
-
-    // MARK: - Dragging (moving) a vertex
 
     @Test
     fun `moving a vertex replaces its position without changing the vertex count`() {
@@ -219,8 +211,6 @@ class PolygonDrawingStateTest {
         assertTrue(state.boundaryError)
     }
 
-    // MARK: - Undo
-
     @Test
     fun `undo removes the last added vertex`() {
         var state = PolygonDrawingState()
@@ -254,8 +244,6 @@ class PolygonDrawingStateTest {
 
         assertTrue(state.polygonVertices.isEmpty())
     }
-
-    // MARK: - resolveShapeForSave
 
     @Test
     fun `resolveShapeForSave returns Circle for CIRCLE mode regardless of vertices`() {

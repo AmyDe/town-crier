@@ -42,7 +42,6 @@ type Store interface {
 	FindZonesContaining(ctx context.Context, latitude, longitude float64) ([]WatchZone, error)
 }
 
-// Compile-time check: the store satisfies the consumer-side Store interface.
 var _ Store = (*PostgresStore)(nil)
 
 // PostgresStore reads and writes watch zones in the Postgres `watch_zones` table.
@@ -107,12 +106,9 @@ func scanZone(row pgx.Row) (WatchZone, error) {
 
 // boundaryGeoJSON is the GeoJSON Polygon wire representation of a Boundary
 // ring: a single exterior ring, [longitude, latitude] coordinate order
-// (GeoJSON/RFC 7946 convention). It is shared by two layers: this store, which
-// round-trips it as a JSON string for ST_GeomFromGeoJSON (write) and
-// ST_AsGeoJSON (read), and the HTTP handlers (handler.go, nearby.go) plus the
-// GDPR export adapter (cmd/api/export_adapters.go), which round-trip it
-// directly as a JSON value in request/response bodies. Single outer ring only
-// -- no holes, no multi-polygon, mirroring the domain's Boundary type.
+// (GeoJSON/RFC 7946 convention). The store round-trips it as text for
+// ST_GeomFromGeoJSON/ST_AsGeoJSON; the HTTP handlers use it directly in
+// request and response bodies. Single outer ring only, like Boundary.
 type boundaryGeoJSON struct {
 	Type        string         `json:"type"`
 	Coordinates [][][2]float64 `json:"coordinates"`

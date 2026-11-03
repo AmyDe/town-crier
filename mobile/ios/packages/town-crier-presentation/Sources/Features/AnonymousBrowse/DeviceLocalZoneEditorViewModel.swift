@@ -1,18 +1,14 @@
 import Foundation
 import TownCrierDomain
 
-/// Edits the anonymous user's single device-local zone (GH#888: the
-/// on-device cap dropped to 1, so this editor no longer has a "create new
-/// zone" mode — the Zones tab's only entry point is `editZone(_:)` on the
-/// existing zone, so `editing` is a required, already-geocoded zone rather
-/// than an optional "nil means new"). Postcode entry is geocoded
+/// Edits the anonymous user's single device-local zone; `editing` is a
+/// required, already-geocoded zone. Postcode entry is geocoded
 /// client-side via `PostcodeGeocoder` — never `/v1/geocode` — and radius is
 /// clamped to `[DeviceLocalZone.minRadiusMetres, DeviceLocalZone.maxRadiusMetres]`.
 ///
 /// The postcode field is always reachable, even though the zone already has
-/// a coordinate: it's the only way to correct a mistyped onboarding postcode
-/// (GH#888 acceptance criteria) without deleting and re-seeding the zone,
-/// which isn't possible any more now there's no add path.
+/// a coordinate: it's the only way to correct a mistyped onboarding postcode,
+/// since there is no add or delete path.
 ///
 /// Visual/interaction conventions mirror the authed `WatchZoneEditorViewModel`,
 /// but this is a distinct, simpler type — no tier, no entitlement gating, no
@@ -24,9 +20,7 @@ public final class DeviceLocalZoneEditorViewModel: ObservableObject, ErrorHandli
   @Published public var postcodeInput: String = ""
   @Published public var selectedRadiusMetres: Double
   /// The zone's coordinate — seeded from the zone being edited, and updated
-  /// by a successful ``submitPostcode()``. Never nil: unlike GH#879 Phase 4's
-  /// "new zone" mode, this editor always starts from an existing zone that
-  /// already has a coordinate.
+  /// by a successful ``submitPostcode()``. Never nil.
   @Published public private(set) var geocodedCoordinate: Coordinate
   @Published public private(set) var isLoading = false
   @Published public internal(set) var error: DomainError?

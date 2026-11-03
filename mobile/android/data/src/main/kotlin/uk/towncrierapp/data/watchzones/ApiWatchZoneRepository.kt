@@ -47,7 +47,6 @@ public class ApiWatchZoneRepository(
     }
 
     @Suppress("SwallowedException")
-    // Idempotent delete: already gone counts as success.
     override suspend fun delete(id: WatchZoneId) {
         try {
             apiClient.requestBytes(ApiEndpoint.delete("/v1/me/watch-zones/${id.value}"))

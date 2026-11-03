@@ -37,10 +37,7 @@ type catalogHandler struct {
 }
 
 // catalog always returns 200: the catalog is static content baked into the
-// binary, so there is no not-found branch to model. Encoding can only fail
-// on a filterCatalogEntry that can't be marshalled, which never happens for
-// this all-string struct — the error branch exists to match this package's
-// other handlers' writeJSON pattern, not because it's reachable today.
+// binary, so there is no not-found branch to model.
 func (h catalogHandler) catalog(w http.ResponseWriter, r *http.Request) {
 	result := filterCatalogResult{Filters: make([]filterCatalogEntry, 0, len(filterCatalogOrder))}
 	for _, key := range filterCatalogOrder {

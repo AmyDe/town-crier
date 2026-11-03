@@ -161,9 +161,6 @@ internal fun WatchZoneEditorDestinationContent(
                             appGraph.watchZoneRepository,
                             subscriptionTier,
                             editingZone,
-                            // Closes the #774/#775 cache-invalidation loop:
-                            // a successful edit-save invalidates this zone's
-                            // applications cache entry.
                             appGraph.applicationCacheStore,
                         )
                     }
@@ -172,8 +169,7 @@ internal fun WatchZoneEditorDestinationContent(
     WatchZoneEditorRoute(
         viewModel = editorViewModel,
         onSaveSuccess = {
-            // tc-yg0q: tell the Zones tab (if that's where we came from) its
-            // data is stale — see ZONE_SAVED_RESULT_KEY's doc above.
+            // Tell the Zones tab its data is stale; see ZONE_SAVED_RESULT_KEY.
             navController.previousBackStackEntry
                 ?.savedStateHandle
                 ?.set(ZONE_SAVED_RESULT_KEY, true)
