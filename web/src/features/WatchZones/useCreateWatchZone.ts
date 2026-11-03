@@ -2,12 +2,9 @@ import { useState, useCallback } from 'react';
 import type { GeocodeResult, WatchZoneBoundary } from '../../domain/types';
 import type { WatchZoneRepository } from '../../domain/ports/watch-zone-repository';
 import type { ShapeMode } from './ShapeModeToggle';
-import { watchZoneErrorMessage } from './watchZoneErrorMessage';
+import { MISSING_BOUNDARY_ERROR, watchZoneErrorMessage } from './watchZoneErrorMessage';
 
 type CreateStep = 'postcode' | 'details' | 'confirm';
-
-const MISSING_BOUNDARY_ERROR =
-  'Draw a shape with at least 3 points, then close it by clicking the first point again.';
 
 interface CreateWatchZoneState {
   step: CreateStep;
