@@ -40,12 +40,7 @@ public class WatchZoneListViewModel(
 
     /**
      * Forces a refetch regardless of [hasLoadedSuccessfully] — for an
-     * explicit "something changed" signal rather than a plain tab revisit
-     * (tc-yg0q: a successful watch-zone edit, surfaced to this ViewModel via
-     * the editor's nav-result SavedStateHandle signal in `WatchZoneNavGraph`,
-     * since ViewModels never navigate/observe nav state directly). Mirrors
-     * how [uk.towncrierapp.presentation.features.applicationlist.ApplicationListViewModel.markAllRead]
-     * already bypasses its own load-once guard via `fetchFirstPage()`.
+     * explicit "something changed" signal rather than a plain tab revisit.
      */
     public fun reload() {
         fetchZones()

@@ -48,8 +48,6 @@ class CoordinateTest {
         assertEquals(Coordinate(52.2053, 0.1218), Coordinate(52.2053, 0.1218))
     }
 
-    // MARK: - haversineMetres
-
     @Test
     fun `haversine distance between the same point is zero`() {
         assertEquals(0.0, haversineMetres(52.2053, 0.1218, 52.2053, 0.1218))

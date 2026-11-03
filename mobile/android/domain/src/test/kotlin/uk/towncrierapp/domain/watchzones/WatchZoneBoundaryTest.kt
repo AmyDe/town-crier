@@ -15,7 +15,6 @@ import kotlin.test.assertTrue
  * tc-v6fo0.1).
  */
 class WatchZoneBoundaryTest {
-    // MARK: - Closure
 
     @Test
     fun `an open ring is auto-closed by appending a copy of the first vertex`() {
@@ -46,8 +45,6 @@ class WatchZoneBoundaryTest {
 
         assertEquals(closed.size, result.boundary.vertices.size)
     }
-
-    // MARK: - Vertex count
 
     @Test
     fun `fewer than 3 distinct vertices is rejected`() {
@@ -103,8 +100,6 @@ class WatchZoneBoundaryTest {
         assertEquals(WatchZoneBoundaryResult.DuplicateVertex, WatchZoneBoundary.of(vertices))
     }
 
-    // MARK: - Self-intersection
-
     @Test
     fun `a self-intersecting bowtie ring is rejected`() {
         val bowtie =
@@ -130,8 +125,6 @@ class WatchZoneBoundaryTest {
         assertEquals(WatchZoneBoundaryResult.SelfIntersecting, WatchZoneBoundary.of(collinear))
     }
 
-    // MARK: - Out of bounds
-
     @Test
     fun `a vertex outside the UK bounding box is rejected`() {
         val vertices =
@@ -143,8 +136,6 @@ class WatchZoneBoundaryTest {
 
         assertEquals(WatchZoneBoundaryResult.OutOfBounds, WatchZoneBoundary.of(vertices))
     }
-
-    // MARK: - Centroid
 
     @Test
     fun `centroid of a known rectangle is its geometric centre`() {
@@ -190,8 +181,6 @@ class WatchZoneBoundaryTest {
         assertTrue(abs(centroid.latitude - (baseLat + 1.5)) < 1e-9)
         assertTrue(abs(centroid.longitude - (baseLon + 2.5)) < 1e-9)
     }
-
-    // MARK: - Enclosing radius
 
     @Test
     fun `enclosing radius of a known square matches the precomputed distance`() {

@@ -77,8 +77,6 @@ class WatchZoneEditorViewModelShapeModeTest {
             Coordinate(latitude = 51.51, longitude = -0.10),
         )
 
-    // MARK: - Mode gating
-
     @Test
     fun `a free tier editor exposes no path to custom shape mode`() {
         val viewModel = makeViewModel(SubscriptionTier.FREE)
@@ -116,8 +114,6 @@ class WatchZoneEditorViewModelShapeModeTest {
         assertEquals(triangle, viewModel.uiState.value.polygonVertices)
     }
 
-    // MARK: - Adding vertices
-
     @Test
     fun `adding vertices accumulates them in tap order`() {
         val viewModel = makeViewModel(SubscriptionTier.PERSONAL)
@@ -139,8 +135,6 @@ class WatchZoneEditorViewModelShapeModeTest {
 
         assertEquals(triangle, viewModel.uiState.value.polygonVertices)
     }
-
-    // MARK: - Closing (minimum 3 vertices)
 
     @Test
     fun `closing is not allowed below 3 vertices`() {
@@ -179,8 +173,6 @@ class WatchZoneEditorViewModelShapeModeTest {
         assertFalse(viewModel.uiState.value.isPolygonClosed)
         assertTrue(viewModel.uiState.value.boundaryError)
     }
-
-    // MARK: - Dragging (moving) a vertex
 
     @Test
     fun `moving a vertex replaces its position without changing the vertex count`() {
@@ -249,8 +241,6 @@ class WatchZoneEditorViewModelShapeModeTest {
         assertFalse(state.isSaveEnabled)
     }
 
-    // MARK: - Undo
-
     @Test
     fun `undo removes the last added vertex`() {
         val viewModel = makeViewModel(SubscriptionTier.PERSONAL)
@@ -287,8 +277,6 @@ class WatchZoneEditorViewModelShapeModeTest {
                 .isEmpty(),
         )
     }
-
-    // MARK: - Save enablement
 
     @Test
     fun `save is disabled in custom mode until the polygon is closed`() {
@@ -342,8 +330,6 @@ class WatchZoneEditorViewModelShapeModeTest {
 
         assertNull(repository.createCalls.single().boundary)
     }
-
-    // MARK: - Editing an existing custom-shape zone
 
     @Test
     fun `editing an existing custom-shape zone pre-fills the drawn vertices and shape mode`() {
