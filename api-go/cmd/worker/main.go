@@ -209,7 +209,7 @@ func buildNotifyFanOut(cfg platform.Config, registry *metrics.Registry, zoneStor
 	}
 
 	pushDispatcher := buildPlatformDispatcher(cfg, registry, logger)
-	coalescer := notifydispatch.NewPushCoalescer(deviceStore, statePushStore, pushDispatcher, zoneStore, logger)
+	coalescer := notifydispatch.NewPushCoalescer(deviceStore, statePushStore, pushDispatcher, zoneStore, notifStore, time.Now, logger)
 	enqueuer := notifydispatch.NewEnqueuer(
 		notifStore, zoneStore, profileStore, coalescer, appStore,
 		uuid.NewString, time.Now, logger,

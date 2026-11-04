@@ -20,8 +20,8 @@ type DigestNotification struct {
 	EventType              EventType
 	Sources                string
 	// PushSent means "a push was queued", never "delivered": it is set before
-	// the coalescer sends and is deliberately never reconciled against the
-	// delivery outcome. Only the user's data export reads it.
+	// the coalescer sends. The delivery lifecycle lives in the push_status
+	// column. Only the user's data export reads it.
 	PushSent  bool
 	EmailSent bool
 	CreatedAt time.Time

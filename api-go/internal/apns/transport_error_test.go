@@ -41,7 +41,7 @@ func TestClient_TransportErrorOmitsDeviceToken(t *testing.T) {
 	var logs bytes.Buffer
 	client := newFailingClient(t, errors.New("connection refused"), &logs)
 
-	_, err := client.do(context.Background(), secretToken, json.RawMessage(`{}`))
+	_, err := client.do(context.Background(), secretToken, json.RawMessage(`{}`), "")
 	if err == nil {
 		t.Fatal("do: want error")
 	}
@@ -100,7 +100,7 @@ func TestClient_TransportErrorKeepsClassification(t *testing.T) {
 			t.Parallel()
 			var logs bytes.Buffer
 			client := newFailingClient(t, tc.err, &logs)
-			_, err := client.do(context.Background(), secretToken, json.RawMessage(`{}`))
+			_, err := client.do(context.Background(), secretToken, json.RawMessage(`{}`), "")
 			if !errors.Is(err, tc.err) {
 				t.Fatalf("errors.Is(%v) = false; err = %v", tc.err, err)
 			}

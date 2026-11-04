@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/AmyDe/town-crier/api-go/internal/devicetokens"
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
@@ -117,7 +118,7 @@ func newMixedCoalescer(t *testing.T) (*PushCoalescer, *fakeDevices, *fakePush, *
 	fcm := &fakePush{}
 	zones := &fakeZoneNames{byUser: map[string][]watchzones.WatchZone{}}
 	disp := NewPlatformDispatcher(apns, fcm, testLogger(t))
-	c := NewPushCoalescer(devs, st, disp, zones, testLogger(t))
+	c := NewPushCoalescer(devs, st, disp, zones, &fakeMarker{}, time.Now, testLogger(t))
 	return c, devs, apns, fcm
 }
 
@@ -186,7 +187,7 @@ func TestPushCoalescer_AndroidOnlyRecipient_NoAPNsSend(t *testing.T) {
 	apns := &fakePush{}
 	fcm := &fakePush{}
 	disp := NewPlatformDispatcher(apns, fcm, testLogger(t))
-	c := NewPushCoalescer(devs, &fakeState{}, disp, &fakeZoneNames{byUser: map[string][]watchzones.WatchZone{}}, testLogger(t))
+	c := NewPushCoalescer(devs, &fakeState{}, disp, &fakeZoneNames{byUser: map[string][]watchzones.WatchZone{}}, &fakeMarker{}, time.Now, testLogger(t))
 	c.Add("auth0|bob", notifications.DigestNotification{ID: "n-1", ApplicationAddress: "x"})
 
 	if err := c.Flush(context.Background()); err != nil {

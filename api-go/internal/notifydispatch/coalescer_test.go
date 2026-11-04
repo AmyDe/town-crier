@@ -4,7 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"regexp"
+	"slices"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/AmyDe/town-crier/api-go/internal/devicetokens"
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
@@ -46,14 +50,22 @@ func (f *fakeState) UnreadCount(_ context.Context, _ string) (int, error) {
 // returns as invalid. sendErr, when set, is returned instead so tests can
 // assert a send failure is swallowed rather than propagated.
 type fakePush struct {
-	calls    int
-	tokens   []string
-	payloads []json.RawMessage
-	invalid  []string
-	sendErr  error
+	events      *eventLog
+	collapseIDs []string
+	calls       int
+	tokens      []string
+	payloads    []json.RawMessage
+	invalid     []string
+	sendErr     error
+}
+
+func (f *fakePush) SendCollapsed(ctx context.Context, tokens []string, payload json.RawMessage, collapseID string) ([]string, error) {
+	f.collapseIDs = append(f.collapseIDs, collapseID)
+	return f.Send(ctx, tokens, payload)
 }
 
 func (f *fakePush) Send(_ context.Context, tokens []string, payload json.RawMessage) ([]string, error) {
+	f.events.add("send")
 	f.calls++
 	f.tokens = append(f.tokens, tokens...)
 	f.payloads = append(f.payloads, payload)
@@ -90,7 +102,7 @@ func newCoalescerHarness(t *testing.T) (*PushCoalescer, *fakeDevices, *fakeState
 	// the APNs fake (push) that the existing assertions inspect. A throwaway FCM
 	// fake stands in for the Android sender the iOS-only fixtures never exercise.
 	disp := NewPlatformDispatcher(push, &fakePush{}, testLogger(t))
-	c := NewPushCoalescer(devs, st, disp, zones, testLogger(t))
+	c := NewPushCoalescer(devs, st, disp, zones, &fakeMarker{}, time.Now, testLogger(t))
 	return c, devs, st, push, zones
 }
 
@@ -330,5 +342,169 @@ func TestPushCoalescer_Flush_ConsumesQueuedItems(t *testing.T) {
 	}
 	if push.calls != 1 {
 		t.Errorf("second flush with nothing queued must not resend, got %d", push.calls)
+	}
+}
+
+// eventLog records an ordered list of lifecycle events; a nil log is a no-op.
+type eventLog struct {
+	mu     sync.Mutex
+	events []string
+}
+
+func (l *eventLog) add(e string) {
+	if l == nil {
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.events = append(l.events, e)
+}
+
+type fakeMarker struct {
+	events      *eventLog
+	attemptedAt []time.Time
+	statuses    map[notifications.PushStatus][][]string
+	attemptErr  error
+	statusErr   error
+}
+
+func (f *fakeMarker) MarkPushAttempted(_ context.Context, _ []string, at time.Time) error {
+	f.events.add("attempted")
+	f.attemptedAt = append(f.attemptedAt, at)
+	return f.attemptErr
+}
+
+func (f *fakeMarker) MarkPushStatus(_ context.Context, ids []string, status notifications.PushStatus) error {
+	f.events.add(string(status))
+	if f.statuses == nil {
+		f.statuses = map[notifications.PushStatus][][]string{}
+	}
+	f.statuses[status] = append(f.statuses[status], ids)
+	return f.statusErr
+}
+
+func queuedNotif(id string) notifications.DigestNotification {
+	return notifications.DigestNotification{ID: id, UserID: "auth0|alice", ApplicationName: "22/TEST", CreatedAt: time.Now()}
+}
+
+func TestPushCoalescer_MarksAttemptedBeforeSendAndSentAfter(t *testing.T) {
+	t.Parallel()
+	log := &eventLog{}
+	push := &fakePush{events: log}
+	marker := &fakeMarker{events: log}
+	devs := &fakeDevices{byUser: map[string][]devicetokens.DeviceRegistration{"auth0|alice": {{Token: "tok-1"}}}}
+	at := time.Date(2026, 11, 4, 9, 0, 0, 0, time.UTC)
+	c := NewPushCoalescer(devs, &fakeState{}, NewPlatformDispatcher(push, &fakePush{}, testLogger(t)),
+		&fakeZoneNames{}, marker, func() time.Time { return at }, testLogger(t))
+
+	c.Add("auth0|alice", queuedNotif("n-1"))
+	if err := c.Flush(context.Background()); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+
+	want := []string{"attempted", "send", "sent"}
+	if !slices.Equal(log.events, want) {
+		t.Errorf("events = %v, want %v", log.events, want)
+	}
+	if len(marker.attemptedAt) != 1 || !marker.attemptedAt[0].Equal(at) {
+		t.Errorf("attemptedAt = %v, want [%v]", marker.attemptedAt, at)
+	}
+	if got := marker.statuses[notifications.PushStatusSent]; len(got) != 1 || !slices.Equal(got[0], []string{"n-1"}) {
+		t.Errorf("sent marks = %v, want [[n-1]]", got)
+	}
+	if len(push.collapseIDs) != 1 || push.collapseIDs[0] != "n-1" {
+		t.Errorf("collapseIDs = %v, want [n-1]", push.collapseIDs)
+	}
+}
+
+func TestPushCoalescer_MarkFailureIsNotFatal(t *testing.T) {
+	t.Parallel()
+	push := &fakePush{}
+	marker := &fakeMarker{attemptErr: errors.New("db down"), statusErr: errors.New("db down")}
+	devs := &fakeDevices{byUser: map[string][]devicetokens.DeviceRegistration{"auth0|alice": {{Token: "tok-1"}}}}
+	c := NewPushCoalescer(devs, &fakeState{}, NewPlatformDispatcher(push, &fakePush{}, testLogger(t)),
+		&fakeZoneNames{}, marker, time.Now, testLogger(t))
+
+	c.Add("auth0|alice", queuedNotif("n-1"))
+	c.Add("auth0|alice", queuedNotif("n-2"))
+	if err := c.Flush(context.Background()); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+	if push.calls != 1 {
+		t.Errorf("send calls = %d, want 1 despite mark failures", push.calls)
+	}
+}
+
+func TestPushCoalescer_NoDevicesMarksSkipped(t *testing.T) {
+	t.Parallel()
+	push := &fakePush{}
+	marker := &fakeMarker{}
+	devs := &fakeDevices{byUser: map[string][]devicetokens.DeviceRegistration{}}
+	c := NewPushCoalescer(devs, &fakeState{}, NewPlatformDispatcher(push, &fakePush{}, testLogger(t)),
+		&fakeZoneNames{}, marker, time.Now, testLogger(t))
+
+	c.Add("auth0|alice", queuedNotif("n-1"))
+	if err := c.Flush(context.Background()); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+	if got := marker.statuses[notifications.PushStatusSkipped]; len(got) != 1 || !slices.Equal(got[0], []string{"n-1"}) {
+		t.Errorf("skipped marks = %v, want [[n-1]]", got)
+	}
+	if push.calls != 0 || len(marker.attemptedAt) != 0 {
+		t.Errorf("no send or attempt expected, got calls=%d attempts=%d", push.calls, len(marker.attemptedAt))
+	}
+}
+
+func TestPushCollapseID(t *testing.T) {
+	t.Parallel()
+	hexSuffix := regexp.MustCompile(`^s-[0-9a-f]{40}$`)
+
+	if got := pushCollapseID([]string{"only"}); got != "only" {
+		t.Errorf("single = %q, want the notification id", got)
+	}
+	a := pushCollapseID([]string{"n-1", "n-2", "n-3"})
+	b := pushCollapseID([]string{"n-3", "n-1", "n-2"})
+	if a != b {
+		t.Errorf("order-dependent: %q != %q", a, b)
+	}
+	if !hexSuffix.MatchString(a) {
+		t.Errorf("summary = %q, want s- plus 40 hex", a)
+	}
+	if a == pushCollapseID([]string{"n-1", "n-2"}) {
+		t.Error("different sets must differ")
+	}
+}
+
+func TestPushCoalescer_SummaryCollapseIDAndFCMTag(t *testing.T) {
+	t.Parallel()
+	apns, fcm := &fakePush{}, &fakePush{}
+	devs := &fakeDevices{byUser: map[string][]devicetokens.DeviceRegistration{"auth0|alice": {
+		{Token: "ios-1"}, {Token: "and-1", Platform: devicetokens.PlatformAndroid},
+	}}}
+	c := NewPushCoalescer(devs, &fakeState{}, NewPlatformDispatcher(apns, fcm, testLogger(t)),
+		&fakeZoneNames{}, &fakeMarker{}, time.Now, testLogger(t))
+
+	c.Add("auth0|alice", queuedNotif("n-2"))
+	c.Add("auth0|alice", queuedNotif("n-1"))
+	if err := c.Flush(context.Background()); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+
+	want := pushCollapseID([]string{"n-1", "n-2"})
+	if len(apns.collapseIDs) != 1 || apns.collapseIDs[0] != want {
+		t.Errorf("apns collapseIDs = %v, want [%s]", apns.collapseIDs, want)
+	}
+	var msg struct {
+		Android struct {
+			Notification struct {
+				Tag string `json:"tag"`
+			} `json:"notification"`
+		} `json:"android"`
+	}
+	if err := json.Unmarshal(fcm.payloads[0], &msg); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if msg.Android.Notification.Tag != want {
+		t.Errorf("fcm tag = %q, want %q", msg.Android.Notification.Tag, want)
 	}
 }

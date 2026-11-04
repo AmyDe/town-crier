@@ -19,14 +19,14 @@ import (
 // never block the other's delivery or the union prune. Both apns.PushSender and
 // fcm.PushSender satisfy the (structurally identical) pushSender contract.
 type PlatformDispatcher struct {
-	apns   pushSender
+	apns   collapsingSender
 	fcm    pushSender
 	logger *slog.Logger
 }
 
 // NewPlatformDispatcher wires the dispatcher over an APNs and an FCM sender
 // (either the real client or its NoOp twin).
-func NewPlatformDispatcher(apnsSender, fcmSender pushSender, logger *slog.Logger) *PlatformDispatcher {
+func NewPlatformDispatcher(apnsSender collapsingSender, fcmSender pushSender, logger *slog.Logger) *PlatformDispatcher {
 	return &PlatformDispatcher{apns: apnsSender, fcm: fcmSender, logger: logger}
 }
 
@@ -41,9 +41,23 @@ func (d *PlatformDispatcher) Send(
 	iosTokens []string, iosPayload json.RawMessage,
 	androidTokens []string, androidPayload json.RawMessage,
 ) ([]string, error) {
+	return d.SendCollapsed(ctx, "", iosTokens, iosPayload, androidTokens, androidPayload)
+}
+
+// SendCollapsed is Send with a collapseID sent to APNs as apns-collapse-id.
+// The FCM payload carries its own tag, so the FCM sender is called unchanged.
+// An empty collapseID behaves exactly like Send.
+func (d *PlatformDispatcher) SendCollapsed(
+	ctx context.Context,
+	collapseID string,
+	iosTokens []string, iosPayload json.RawMessage,
+	androidTokens []string, androidPayload json.RawMessage,
+) ([]string, error) {
 	var invalid []string
-	invalid = d.deliver(ctx, "apns", d.apns, iosTokens, iosPayload, invalid)
-	invalid = d.deliver(ctx, "fcm", d.fcm, androidTokens, androidPayload, invalid)
+	invalid = d.deliver(ctx, "apns", func(ctx context.Context, tokens []string, payload json.RawMessage) ([]string, error) {
+		return d.apns.SendCollapsed(ctx, tokens, payload, collapseID)
+	}, iosTokens, iosPayload, invalid)
+	invalid = d.deliver(ctx, "fcm", d.fcm.Send, androidTokens, androidPayload, invalid)
 	return invalid, nil
 }
 
@@ -53,7 +67,7 @@ func (d *PlatformDispatcher) Send(
 func (d *PlatformDispatcher) deliver(
 	ctx context.Context,
 	platformName string,
-	sender pushSender,
+	send func(ctx context.Context, tokens []string, payload json.RawMessage) ([]string, error),
 	tokens []string,
 	payload json.RawMessage,
 	invalid []string,
@@ -61,7 +75,7 @@ func (d *PlatformDispatcher) deliver(
 	if len(tokens) == 0 || payload == nil {
 		return invalid
 	}
-	rejected, err := sender.Send(ctx, tokens, payload)
+	rejected, err := send(ctx, tokens, payload)
 	if err != nil {
 		d.logger.ErrorContext(ctx, "platform dispatch: send failed", "platform", platformName, "error", err)
 		return invalid

@@ -203,6 +203,7 @@ type fcmAndroidConfig struct {
 
 type fcmAndroidNotification struct {
 	ChannelID string `json:"channel_id"`
+	Tag       string `json:"tag,omitempty"`
 }
 
 // fcmAlertChannelID is the Android notification channel all push shapes post
@@ -211,12 +212,12 @@ const fcmAlertChannelID = "alerts"
 
 // marshalFCMMessage builds the token-less FCM message body from a rendered
 // title/body and the data dictionary.
-func marshalFCMMessage(title, body string, data map[string]string) (json.RawMessage, error) {
+func marshalFCMMessage(title, body, tag string, data map[string]string) (json.RawMessage, error) {
 	raw, err := json.Marshal(fcmMessage{
 		Notification: fcmNotification{Title: title, Body: body},
 		Android: fcmAndroidConfig{
 			Priority:     "HIGH",
-			Notification: fcmAndroidNotification{ChannelID: fcmAlertChannelID},
+			Notification: fcmAndroidNotification{ChannelID: fcmAlertChannelID, Tag: tag},
 		},
 		Data: data,
 	})
@@ -229,14 +230,14 @@ func marshalFCMMessage(title, body string, data map[string]string) (json.RawMess
 // buildBucketFCMPayload renders one bucket's FCM message body, mirroring
 // buildBucketPayload: the rich single-app alert (with deep-link data) when
 // exactly one notification queued, otherwise the zone or saved summary.
-func buildBucketFCMPayload(bucketKey string, queued []notifications.DigestNotification, zoneNames map[string]string) (json.RawMessage, error) {
+func buildBucketFCMPayload(bucketKey string, queued []notifications.DigestNotification, zoneNames map[string]string, tag string) (json.RawMessage, error) {
 	if len(queued) == 1 {
-		return buildAlertFCMPayload(queued[0])
+		return buildAlertFCMPayload(queued[0], tag)
 	}
 	if bucketKey == savedBucket {
-		return buildSavedSummaryFCMPayload(len(queued))
+		return buildSavedSummaryFCMPayload(len(queued), tag)
 	}
-	return buildZoneSummaryFCMPayload(len(queued), zoneNames[bucketKey], bucketKey)
+	return buildZoneSummaryFCMPayload(len(queued), zoneNames[bucketKey], bucketKey, tag)
 }
 
 // buildAlertFCMPayload renders the instant-push FCM body for a single
@@ -244,9 +245,9 @@ func buildBucketFCMPayload(bucketKey string, queued []notifications.DigestNotifi
 // (notificationId / applicationRef / authorityId / createdAt) so the Android
 // client's tap-routing mirrors iOS. authorityId is stringified (FCM data values
 // are strings); there is no badge (Android badges are channel-driven).
-func buildAlertFCMPayload(n notifications.DigestNotification) (json.RawMessage, error) {
+func buildAlertFCMPayload(n notifications.DigestNotification, tag string) (json.RawMessage, error) {
 	title, body := alertTitleBody(n)
-	return marshalFCMMessage(title, body, map[string]string{
+	return marshalFCMMessage(title, body, tag, map[string]string{
 		"kind":           "alert",
 		"notificationId": n.ID,
 		"applicationRef": n.ApplicationName,
@@ -258,9 +259,9 @@ func buildAlertFCMPayload(n notifications.DigestNotification) (json.RawMessage, 
 // buildZoneSummaryFCMPayload renders the coalesced watch-zone summary FCM body.
 // It carries kind=zoneSummary and watchZoneId (the routing discriminators)
 // and, deliberately, none of the single-app deep-link keys.
-func buildZoneSummaryFCMPayload(count int, zoneName, watchZoneID string) (json.RawMessage, error) {
+func buildZoneSummaryFCMPayload(count int, zoneName, watchZoneID, tag string) (json.RawMessage, error) {
 	title, body := zoneSummaryTitleBody(count, zoneName)
-	return marshalFCMMessage(title, body, map[string]string{
+	return marshalFCMMessage(title, body, tag, map[string]string{
 		"kind":        "zoneSummary",
 		"watchZoneId": watchZoneID,
 	})
@@ -268,9 +269,9 @@ func buildZoneSummaryFCMPayload(count int, zoneName, watchZoneID string) (json.R
 
 // buildSavedSummaryFCMPayload renders the coalesced saved-bucket summary FCM
 // body: kind=savedSummary, no watchZoneId, no deep-link keys.
-func buildSavedSummaryFCMPayload(count int) (json.RawMessage, error) {
+func buildSavedSummaryFCMPayload(count int, tag string) (json.RawMessage, error) {
 	title, body := savedSummaryTitleBody(count)
-	return marshalFCMMessage(title, body, map[string]string{
+	return marshalFCMMessage(title, body, tag, map[string]string{
 		"kind": "savedSummary",
 	})
 }

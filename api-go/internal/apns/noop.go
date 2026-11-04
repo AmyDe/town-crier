@@ -17,3 +17,8 @@ func NewNoOpSender() *NoOpSender { return &NoOpSender{} }
 func (NoOpSender) Send(context.Context, []string, json.RawMessage) ([]string, error) {
 	return nil, nil
 }
+
+// SendCollapsed discards the push and returns no invalid tokens.
+func (NoOpSender) SendCollapsed(context.Context, []string, json.RawMessage, string) ([]string, error) {
+	return nil, nil
+}

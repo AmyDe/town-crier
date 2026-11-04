@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/AmyDe/town-crier/api-go/internal/platform/postgres/pgtest"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // newPGNotifStore returns a notifications PostgresStore over a freshly
@@ -449,4 +450,109 @@ func TestIntegration_Notifications_Totals(t *testing.T) {
 	if got != (NotificationTotals{Sent: 4, Unread: 3}) {
 		t.Errorf("Totals: got %+v, want {4 3}", got)
 	}
+}
+
+// --- push lifecycle ---
+
+type pushState struct {
+	status      *string
+	attemptedAt *time.Time
+}
+
+func pushStateOf(t *testing.T, pool *pgxpool.Pool, id string) pushState {
+	t.Helper()
+	var st pushState
+	err := pool.QueryRow(context.Background(),
+		"SELECT push_status, push_attempted_at FROM notifications WHERE id = $1", id).
+		Scan(&st.status, &st.attemptedAt)
+	if err != nil {
+		t.Fatalf("read push state %q: %v", id, err)
+	}
+	return st
+}
+
+func TestIntegration_Notifications_CreateWritesPendingOnlyWhenPushSent(t *testing.T) {
+	pool := pgtest.New(t)
+	pgtest.Truncate(t, pool, "notifications", "notification_state")
+	s := NewPostgresStore(pool)
+	ctx := context.Background()
+	at := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+
+	queued := intNotif("id-queued", "user-1", "uid-A", EventNewApplication, at)
+	queued.PushSent = true
+	unqueued := intNotif("id-unqueued", "user-1", "uid-B", EventNewApplication, at)
+	for _, n := range []DigestNotification{queued, unqueued} {
+		if err := s.Create(ctx, n); err != nil {
+			t.Fatalf("Create %s: %v", n.ID, err)
+		}
+	}
+
+	got := pushStateOf(t, pool, "id-queued")
+	if got.status == nil || *got.status != "pending" || got.attemptedAt != nil {
+		t.Errorf("queued = %+v, want pending with NULL attempted_at", got)
+	}
+	got = pushStateOf(t, pool, "id-unqueued")
+	if got.status != nil || got.attemptedAt != nil {
+		t.Errorf("unqueued = %+v, want NULL status and attempted_at", got)
+	}
+}
+
+func TestIntegration_Notifications_MarkPushLifecycle(t *testing.T) {
+	pool := pgtest.New(t)
+	pgtest.Truncate(t, pool, "notifications", "notification_state")
+	s := NewPostgresStore(pool)
+	ctx := context.Background()
+	at := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	attempt := at.Add(time.Hour)
+
+	for _, id := range []string{"p-1", "p-2", "p-3"} {
+		n := intNotif(id, "user-1", "uid-"+id, EventNewApplication, at)
+		n.PushSent = true
+		if err := s.Create(ctx, n); err != nil {
+			t.Fatalf("Create %s: %v", id, err)
+		}
+	}
+	if err := s.Create(ctx, intNotif("none", "user-1", "uid-none", EventNewApplication, at)); err != nil {
+		t.Fatalf("Create none: %v", err)
+	}
+	all := []string{"p-1", "p-2", "p-3", "none"}
+
+	if err := s.MarkPushStatus(ctx, []string{"p-2"}, PushStatusSent); err != nil {
+		t.Fatalf("MarkPushStatus sent: %v", err)
+	}
+	if err := s.MarkPushStatus(ctx, []string{"p-3"}, PushStatusSkipped); err != nil {
+		t.Fatalf("MarkPushStatus skipped: %v", err)
+	}
+
+	if err := s.MarkPushAttempted(ctx, all, attempt); err != nil {
+		t.Fatalf("MarkPushAttempted: %v", err)
+	}
+	if got := pushStateOf(t, pool, "p-1"); got.attemptedAt == nil || !got.attemptedAt.Equal(attempt) {
+		t.Errorf("pending row attempted_at = %v, want %v", got.attemptedAt, attempt)
+	}
+	for _, id := range []string{"p-2", "p-3", "none"} {
+		if got := pushStateOf(t, pool, id); got.attemptedAt != nil {
+			t.Errorf("%s attempted_at = %v, want untouched NULL", id, got.attemptedAt)
+		}
+	}
+
+	if err := s.MarkPushStatus(ctx, all, PushStatusSkipped); err != nil {
+		t.Fatalf("MarkPushStatus all: %v", err)
+	}
+	want := map[string]*string{"p-1": ptr("skipped"), "p-2": ptr("sent"), "p-3": ptr("skipped"), "none": nil}
+	for id, w := range want {
+		got := pushStateOf(t, pool, id).status
+		if (got == nil) != (w == nil) || (got != nil && *got != *w) {
+			t.Errorf("%s status = %v, want %v", id, deref(got), deref(w))
+		}
+	}
+}
+
+func ptr(s string) *string { return &s }
+
+func deref(s *string) string {
+	if s == nil {
+		return "NULL"
+	}
+	return *s
 }

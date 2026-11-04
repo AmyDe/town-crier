@@ -122,9 +122,11 @@ const pgCreateQuery = `
 INSERT INTO notifications (
     id, user_id, application_uid, application_name, watch_zone_id,
     application_address, application_description, application_type,
-    authority_id, decision, event_type, sources, push_sent, email_sent, created_at
+    authority_id, decision, event_type, sources, push_sent, email_sent, created_at,
+    push_status, push_attempted_at
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
+    $16, NULL
 )
 ON CONFLICT (id) DO UPDATE SET
     user_id                 = EXCLUDED.user_id,
@@ -142,14 +144,31 @@ ON CONFLICT (id) DO UPDATE SET
     email_sent              = EXCLUDED.email_sent,
     created_at              = EXCLUDED.created_at`
 
-// Create writes a dispatched notification. Idempotent on the notification id
-// (ON CONFLICT (id) DO UPDATE): re-creating the same id overwrites in place.
+// PushStatus is a notification's push lifecycle state (push_status column).
+type PushStatus string
+
+// PushStatus values. A NULL column means no push is due.
+const (
+	PushStatusPending PushStatus = "pending"
+	PushStatusSent    PushStatus = "sent"
+	PushStatusSkipped PushStatus = "skipped"
+)
+
+// Create writes a dispatched notification, with push_status 'pending' when
+// PushSent is true and NULL otherwise. Idempotent on the notification id
+// (ON CONFLICT (id) DO UPDATE): re-creating the same id overwrites in place,
+// leaving push_status and push_attempted_at untouched.
 func (s *PostgresStore) Create(ctx context.Context, n DigestNotification) error {
+	var pushStatus *string
+	if n.PushSent {
+		pending := string(PushStatusPending)
+		pushStatus = &pending
+	}
 	_, err := s.db.Exec(ctx, pgCreateQuery,
 		n.ID, n.UserID, n.ApplicationUID, n.ApplicationName, n.WatchZoneID,
 		n.ApplicationAddress, n.ApplicationDescription, n.ApplicationType,
 		n.AuthorityID, n.Decision, string(n.EventType), n.Sources,
-		n.PushSent, n.EmailSent, n.CreatedAt,
+		n.PushSent, n.EmailSent, n.CreatedAt, pushStatus,
 	)
 	if err != nil {
 		return fmt.Errorf("create notification %q: %w", n.ID, err)
@@ -277,6 +296,36 @@ const pgMarkEmailSentQuery = "UPDATE notifications SET email_sent = true WHERE i
 func (s *PostgresStore) MarkEmailSent(ctx context.Context, n DigestNotification) error {
 	if _, err := s.db.Exec(ctx, pgMarkEmailSentQuery, n.ID); err != nil {
 		return fmt.Errorf("mark email sent for notification %q: %w", n.ID, err)
+	}
+	return nil
+}
+
+const pgMarkPushAttemptedQuery = "UPDATE notifications SET push_attempted_at = $2 " +
+	"WHERE id = ANY($1) AND push_status = 'pending'"
+
+// MarkPushAttempted stamps push_attempted_at on the still-pending rows among
+// ids. Rows in any other state are left unchanged.
+func (s *PostgresStore) MarkPushAttempted(ctx context.Context, ids []string, at time.Time) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	if _, err := s.db.Exec(ctx, pgMarkPushAttemptedQuery, ids, at); err != nil {
+		return fmt.Errorf("mark push attempted for %d notifications: %w", len(ids), err)
+	}
+	return nil
+}
+
+const pgMarkPushStatusQuery = "UPDATE notifications SET push_status = $2 " +
+	"WHERE id = ANY($1) AND push_status = 'pending'"
+
+// MarkPushStatus moves the still-pending rows among ids to status. Terminal
+// rows never change.
+func (s *PostgresStore) MarkPushStatus(ctx context.Context, ids []string, status PushStatus) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	if _, err := s.db.Exec(ctx, pgMarkPushStatusQuery, ids, string(status)); err != nil {
+		return fmt.Errorf("mark push status %q for %d notifications: %w", status, len(ids), err)
 	}
 	return nil
 }

@@ -145,9 +145,16 @@ func newClientWithBaseURL(opts Options, baseURL string, httpClient *http.Client,
 // an error — one bad device must not abort the rest. The payload is the
 // caller-built APNs JSON body (the {"aps":...} document).
 func (c *Client) Send(ctx context.Context, tokens []string, payload json.RawMessage) ([]string, error) {
+	return c.SendCollapsed(ctx, tokens, payload, "")
+}
+
+// SendCollapsed is Send with an apns-collapse-id header when collapseID is
+// non-empty, so APNs replaces an earlier push carrying the same ID instead of
+// showing both. An empty collapseID sends no header.
+func (c *Client) SendCollapsed(ctx context.Context, tokens []string, payload json.RawMessage, collapseID string) ([]string, error) {
 	var invalid []string
 	for _, token := range tokens {
-		rejected, err := c.sendOneTraced(ctx, token, payload)
+		rejected, err := c.sendOneTraced(ctx, token, payload, collapseID)
 		if err != nil {
 			c.logger.ErrorContext(ctx, "apns send failed", "token", redactToken(token), "error", err)
 			continue
@@ -162,11 +169,11 @@ func (c *Client) Send(ctx context.Context, tokens []string, payload json.RawMess
 // sendOneTraced wraps sendOne in an "APNs delivery" span and records
 // towncrier.push.delivery_failed on failure. A permanently-invalid-token
 // rejection (rejected=true, err=nil) is expected churn and is not a failure.
-func (c *Client) sendOneTraced(ctx context.Context, token string, payload json.RawMessage) (rejected bool, err error) {
+func (c *Client) sendOneTraced(ctx context.Context, token string, payload json.RawMessage, collapseID string) (rejected bool, err error) {
 	ctx, span := otel.Tracer(tracerName).Start(ctx, "APNs delivery")
 	defer span.End()
 
-	rejected, err = c.sendOne(ctx, token, payload)
+	rejected, err = c.sendOne(ctx, token, payload, collapseID)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
@@ -181,12 +188,12 @@ func (c *Client) sendOneTraced(ctx context.Context, token string, payload json.R
 // APNs reports the token is permanently invalid. It refreshes the JWT once on a
 // 403 ExpiredProviderToken and retries idempotent 5xx / transport failures with
 // exponential backoff.
-func (c *Client) sendOne(ctx context.Context, token string, payload json.RawMessage) (rejected bool, err error) {
+func (c *Client) sendOne(ctx context.Context, token string, payload json.RawMessage, collapseID string) (rejected bool, err error) {
 	backoff := initialBackoff
 	jwtRefreshed := false
 
 	for attempt := 1; ; attempt++ {
-		resp, sendErr := c.do(ctx, token, payload)
+		resp, sendErr := c.do(ctx, token, payload, collapseID)
 		if sendErr != nil {
 			if attempt < maxAttempts {
 				if waitErr := platform.Sleep(ctx, backoff); waitErr != nil {
@@ -239,7 +246,7 @@ type apnsResponse struct {
 }
 
 // do performs a single APNs request, reading and closing the response body.
-func (c *Client) do(ctx context.Context, token string, payload json.RawMessage) (apnsResponse, error) {
+func (c *Client) do(ctx context.Context, token string, payload json.RawMessage, collapseID string) (apnsResponse, error) {
 	jwtToken, err := c.jwt.current()
 	if err != nil {
 		return apnsResponse{}, fmt.Errorf("apns: mint jwt: %w", err)
@@ -257,6 +264,9 @@ func (c *Client) do(ctx context.Context, token string, payload json.RawMessage) 
 	req.Header.Set("apns-topic", c.bundleID)
 	req.Header.Set("apns-push-type", "alert")
 	req.Header.Set("apns-priority", "10")
+	if collapseID != "" {
+		req.Header.Set("apns-collapse-id", collapseID)
+	}
 	req.Header.Set("content-type", "application/json")
 
 	resp, err := c.http.Do(req)

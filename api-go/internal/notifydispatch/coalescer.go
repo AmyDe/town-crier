@@ -2,8 +2,13 @@ package notifydispatch
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"log/slog"
+	"sort"
+	"strings"
+	"time"
 
 	"github.com/AmyDe/town-crier/api-go/internal/devicetokens"
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
@@ -17,6 +22,13 @@ type deviceReader interface {
 	Delete(ctx context.Context, userID, token string) error
 }
 
+// collapsingSender is the APNs-side contract: pushSender plus a collapse ID.
+// apns.PushSender satisfies it.
+type collapsingSender interface {
+	pushSender
+	SendCollapsed(ctx context.Context, tokens []string, payload json.RawMessage, collapseID string) ([]string, error)
+}
+
 // stateReader supplies the unread-badge input: the total unread tally
 // (read_at IS NULL, ADR 0035). *notificationstate.PostgresStore satisfies it.
 type stateReader interface {
@@ -27,6 +39,13 @@ type stateReader interface {
 // Client or the NoOpSender) satisfies it structurally.
 type pushSender interface {
 	Send(ctx context.Context, tokens []string, payload json.RawMessage) ([]string, error)
+}
+
+// pushMarker records a bucket's push lifecycle on the notification rows.
+// *notifications.PostgresStore satisfies it.
+type pushMarker interface {
+	MarkPushAttempted(ctx context.Context, ids []string, at time.Time) error
+	MarkPushStatus(ctx context.Context, ids []string, status notifications.PushStatus) error
 }
 
 // zoneNameReader resolves a user's watch zones so the coalescer can name a
@@ -54,6 +73,8 @@ type PushCoalescer struct {
 	state      stateReader
 	dispatcher *PlatformDispatcher
 	zones      zoneNameReader
+	marker     pushMarker
+	now        func() time.Time
 	logger     *slog.Logger
 
 	// items is userID -> bucketKey (watch zone id, or savedBucket) -> the
@@ -62,12 +83,14 @@ type PushCoalescer struct {
 }
 
 // NewPushCoalescer wires the coalescer.
-func NewPushCoalescer(devices deviceReader, state stateReader, dispatcher *PlatformDispatcher, zones zoneNameReader, logger *slog.Logger) *PushCoalescer {
+func NewPushCoalescer(devices deviceReader, state stateReader, dispatcher *PlatformDispatcher, zones zoneNameReader, marker pushMarker, now func() time.Time, logger *slog.Logger) *PushCoalescer {
 	return &PushCoalescer{
 		devices:    devices,
 		state:      state,
 		dispatcher: dispatcher,
 		zones:      zones,
+		marker:     marker,
+		now:        now,
 		logger:     logger,
 		items:      make(map[string]map[string][]notifications.DigestNotification),
 	}
@@ -121,6 +144,9 @@ func (c *PushCoalescer) flushUser(ctx context.Context, userID string, buckets ma
 		return
 	}
 	if len(devices) == 0 {
+		for bucketKey, queued := range buckets {
+			c.mark(ctx, userID, bucketKey, notificationIDs(queued), notifications.PushStatusSkipped)
+		}
 		return
 	}
 	iosTokens, androidTokens := groupTokensByPlatform(devices)
@@ -130,6 +156,8 @@ func (c *PushCoalescer) flushUser(ctx context.Context, userID string, buckets ma
 
 	invalid := make(map[string]struct{})
 	for bucketKey, queued := range buckets {
+		ids := notificationIDs(queued)
+		collapseID := pushCollapseID(ids)
 		var iosPayload, androidPayload json.RawMessage
 		if len(iosTokens) > 0 {
 			p, err := buildBucketPayload(bucketKey, queued, zoneNames, badge)
@@ -140,7 +168,7 @@ func (c *PushCoalescer) flushUser(ctx context.Context, userID string, buckets ma
 			iosPayload = p
 		}
 		if len(androidTokens) > 0 {
-			p, err := buildBucketFCMPayload(bucketKey, queued, zoneNames)
+			p, err := buildBucketFCMPayload(bucketKey, queued, zoneNames, collapseID)
 			if err != nil {
 				c.logger.ErrorContext(ctx, "push coalescer: build fcm payload failed", "user", userID, "bucket", bucketKey, "error", err)
 				continue
@@ -148,11 +176,15 @@ func (c *PushCoalescer) flushUser(ctx context.Context, userID string, buckets ma
 			androidPayload = p
 		}
 
-		invalidTokens, err := c.dispatcher.Send(ctx, iosTokens, iosPayload, androidTokens, androidPayload)
+		if err := c.marker.MarkPushAttempted(ctx, ids, c.now()); err != nil {
+			c.logMarkFailed(ctx, userID, bucketKey, err)
+		}
+		invalidTokens, err := c.dispatcher.SendCollapsed(ctx, collapseID, iosTokens, iosPayload, androidTokens, androidPayload)
 		if err != nil {
 			c.logger.ErrorContext(ctx, "push coalescer: send failed", "user", userID, "bucket", bucketKey, "error", err)
 			continue
 		}
+		c.mark(ctx, userID, bucketKey, ids, notifications.PushStatusSent)
 		for _, token := range invalidTokens {
 			invalid[token] = struct{}{}
 		}
@@ -163,6 +195,39 @@ func (c *PushCoalescer) flushUser(ctx context.Context, userID string, buckets ma
 			c.logger.WarnContext(ctx, "push coalescer: prune invalid token failed", "user", userID, "error", err)
 		}
 	}
+}
+
+func (c *PushCoalescer) mark(ctx context.Context, userID, bucketKey string, ids []string, status notifications.PushStatus) {
+	if err := c.marker.MarkPushStatus(ctx, ids, status); err != nil {
+		c.logMarkFailed(ctx, userID, bucketKey, err)
+	}
+}
+
+func (c *PushCoalescer) logMarkFailed(ctx context.Context, userID, bucketKey string, err error) {
+	c.logger.WarnContext(ctx, "push.mark_failed", "user", userID, "bucket", bucketKey, "error", err)
+}
+
+func notificationIDs(queued []notifications.DigestNotification) []string {
+	ids := make([]string, len(queued))
+	for i, n := range queued {
+		ids[i] = n.ID
+	}
+	return ids
+}
+
+// pushCollapseID returns the APNs collapse ID (and FCM tag) for a bucket's
+// push: the notification ID for a single push, otherwise "s-" plus the first 40
+// hex characters of SHA-256 over the sorted IDs joined with commas. It is
+// stable for a given set of IDs regardless of order, so a resend of the same
+// set replaces the first copy; both forms stay under APNs' 64-byte limit.
+func pushCollapseID(ids []string) string {
+	if len(ids) == 1 {
+		return ids[0]
+	}
+	sorted := append([]string(nil), ids...)
+	sort.Strings(sorted)
+	sum := sha256.Sum256([]byte(strings.Join(sorted, ",")))
+	return "s-" + hex.EncodeToString(sum[:])[:40]
 }
 
 // buildBucketPayload renders one bucket's push body: the existing rich
