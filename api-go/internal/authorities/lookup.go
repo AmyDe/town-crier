@@ -10,11 +10,6 @@ func NewLookup() *Lookup {
 	return &Lookup{store: newStaticStore()}
 }
 
-// ByID returns the authority with the given id, reporting whether it exists.
-func (l *Lookup) ByID(id int) (Authority, bool) {
-	return l.store.byID(id)
-}
-
 // All returns every authority in the static list, sorted by name.
 func (l *Lookup) All() []Authority {
 	return l.store.all()

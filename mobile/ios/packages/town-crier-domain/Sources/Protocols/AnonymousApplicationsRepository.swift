@@ -1,12 +1,10 @@
-/// Port for the anonymous (pre-signup) map/list's data access (GH#868 Phase
-/// 3): fetches planning applications near a point with no account or
-/// session, backed by the public `GET /v1/applications/near-point` endpoint.
+/// Port for the anonymous (pre-signup) map/list's data access: fetches
+/// planning applications near a point with no account or session, backed by
+/// the public `GET /v1/applications/near-point` endpoint.
 public protocol AnonymousApplicationsRepository: Sendable {
   /// Fetches one page of planning applications within `radiusMetres` of
-  /// (`latitude`, `longitude`), ordered per `sort` and capped at `limit`. No
-  /// clustering or infinite scroll — the anonymous browse surfaces are a
-  /// deliberately reduced feature set, so a single bounded page per query is
-  /// sufficient.
+  /// (`latitude`, `longitude`), ordered per `sort` and capped at `limit`.
+  /// Single page; no pagination.
   func fetchNearby(
     latitude: Double,
     longitude: Double,
@@ -19,11 +17,8 @@ public protocol AnonymousApplicationsRepository: Sendable {
   /// visible viewport within `radiusMetres` of (`latitude`, `longitude`) at a
   /// given slippy zoom — the anonymous mirror of
   /// `PlanningApplicationRepository.fetchClusters`, backed by the public
-  /// `GET /v1/applications/clusters` endpoint. The map renders these
-  /// aggregates across the whole radius circle instead of a truncated
-  /// nearest-N page, refetching on debounced pan/zoom. No `status` param —
-  /// the anonymous map has no filter chips (GH#879 scoped anonymous as a
-  /// deliberately reduced surface).
+  /// `GET /v1/applications/clusters` endpoint. No `status` param: the
+  /// anonymous map has no filter chips.
   func fetchClusters(
     latitude: Double,
     longitude: Double,
@@ -34,11 +29,7 @@ public protocol AnonymousApplicationsRepository: Sendable {
 }
 
 extension AnonymousApplicationsRepository {
-  /// Convenience overload preserving the pre-GH#912 call shape: defaults to
-  /// `.distance`, the server's own default and the semantics the anonymous
-  /// map relies on (GH#912 settled decision #5 — `near-point` keeps
-  /// `distance` as default, so the map's existing `fetchNearby(...)` call
-  /// sites need no change).
+  /// Convenience overload defaulting to `.distance`, the server's default.
   public func fetchNearby(
     latitude: Double,
     longitude: Double,

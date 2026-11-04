@@ -1,36 +1,14 @@
-import type { NotificationStateSnapshot } from '../../../../domain/types';
 import type { NotificationStateRepository } from '../../../../domain/ports/notification-state-repository';
 
 export class SpyNotificationStateRepository
   implements NotificationStateRepository
 {
-  getStateCalls = 0;
-  getStateResult: NotificationStateSnapshot = {
-    lastReadAt: '2026-01-01T00:00:00Z',
-    version: 1,
-    totalUnreadCount: 0,
-  };
-  getStateError: Error | null = null;
-
   markAllReadCalls = 0;
-  markAllReadError: Error | null = null;
 
   markApplicationReadCalls: Array<{ applicationUid: string; authorityId: number }> = [];
-  markApplicationReadError: Error | null = null;
-
-  async getState(): Promise<NotificationStateSnapshot> {
-    this.getStateCalls++;
-    if (this.getStateError) {
-      throw this.getStateError;
-    }
-    return this.getStateResult;
-  }
 
   async markAllRead(): Promise<void> {
     this.markAllReadCalls++;
-    if (this.markAllReadError) {
-      throw this.markAllReadError;
-    }
   }
 
   async markApplicationRead(
@@ -38,8 +16,5 @@ export class SpyNotificationStateRepository
     authorityId: number,
   ): Promise<void> {
     this.markApplicationReadCalls.push({ applicationUid, authorityId });
-    if (this.markApplicationReadError) {
-      throw this.markApplicationReadError;
-    }
   }
 }

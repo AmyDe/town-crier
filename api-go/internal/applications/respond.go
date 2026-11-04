@@ -32,16 +32,10 @@ func serverError(w http.ResponseWriter, r *http.Request, logger *slog.Logger, op
 	platform.RespondRequestError(w, r, logger, "application request failed", err, "op", op)
 }
 
-// resolveAuthoritySlugFor resolves the URL slug for an application's authority,
-// round-trip-safe against SlugToAreaID: it prefers resolver.SlugForAreaID (so
-// the emitted slug is exactly what SlugToAreaID resolves back), and only when
-// the id is unknown falls back to slugifying the PlanIt area name. The
-// fallback is warn-logged because it means PlanIt returned an area id absent
-// from the static authorities data — the emitted slug then may not round-trip
-// back through SlugToAreaID, so a share/by-slug link built from it could 404.
-// op names the calling handler in the log line (each handler passes its own,
-// distinct string) so a fallback can be traced back to its endpoint. Shared by
-// (h *handler).authoritySlug and (h *searchHandler).authoritySlug.
+// resolveAuthoritySlugFor prefers resolver.SlugForAreaID so the slug
+// round-trips through SlugToAreaID. For an area id missing from the static
+// authorities data it falls back to slugifying the area name and warn-logs,
+// since a link built from that slug may 404. op names the caller in the log.
 func resolveAuthoritySlugFor(ctx context.Context, resolver authoritySlugResolver, logger *slog.Logger, op string, app PlanningApplication) string {
 	if slug, ok := resolver.SlugForAreaID(app.AreaID); ok {
 		return slug

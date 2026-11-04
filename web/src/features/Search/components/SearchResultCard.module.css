@@ -23,7 +23,6 @@
   margin: 0;
 }
 
-/* ---------- Status stamp: outlined, uppercase, icon + label always ---------- */
 .statusBadge {
   display: inline-flex;
   align-items: center;

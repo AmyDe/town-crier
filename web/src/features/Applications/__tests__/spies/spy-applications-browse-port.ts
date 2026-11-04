@@ -30,7 +30,6 @@ export class SpyApplicationsBrowsePort implements ApplicationsBrowsePort {
   /** Whole-zone unread total returned by `countUnread`. */
   unreadTotal = 0;
   countUnreadCalls: WatchZoneId[] = [];
-  countUnreadError: Error | null = null;
 
   async fetchByZone(query: ApplicationsBrowseQuery): Promise<ApplicationsPageResult> {
     this.fetchByZoneCalls.push(query);
@@ -50,9 +49,6 @@ export class SpyApplicationsBrowsePort implements ApplicationsBrowsePort {
 
   async countUnread(zoneId: WatchZoneId): Promise<number> {
     this.countUnreadCalls.push(zoneId);
-    if (this.countUnreadError) {
-      throw this.countUnreadError;
-    }
     return this.unreadTotal;
   }
 }

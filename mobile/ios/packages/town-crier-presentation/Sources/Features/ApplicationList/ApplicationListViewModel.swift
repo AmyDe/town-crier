@@ -2,17 +2,14 @@ import Combine
 import Foundation
 import TownCrierDomain
 
-/// ViewModel driving the per-zone planning-application list. Status filtering
-/// is free for all subscription tiers; cross-zone Saved listing now
-/// lives in `SavedApplicationListViewModel`.
+/// ViewModel driving the per-zone planning-application list. The server owns
+/// ordering and filtering.
 ///
 /// Owns the unread-watermark plumbing when a
 /// ``NotificationStateRepository`` is injected: derives the per-zone unread
-/// count client-side from each row's `latestUnreadEvent`, exposes
-/// the five sort modes (all server-driven and paged since GH#682 slice 3),
-/// drives the Mark-All-Read toolbar action, and supplies an Unread filter
-/// that mirrors the web bead's single-select status-chip group. Ordering is
-/// the server's; only the status/unread filter stays client-side (slice 4).
+/// count client-side from each row's `latestUnreadEvent`, drives the
+/// Mark-All-Read toolbar action, and supplies an Unread filter in a
+/// single-select group with the status chips.
 @MainActor
 public final class ApplicationListViewModel: ObservableObject, ErrorHandlingViewModel {
   // `internal(set)` (the default for this non-public property) rather than
@@ -21,7 +18,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
   @Published var applications: [PlanningApplication] = []
   @Published var selectedStatusFilter: ApplicationStatus? {
     didSet {
-      // Status and Unread chips share a single-select group (spec decision #7)
+      // Status and Unread chips share a single-select group.
       if selectedStatusFilter != nil {
         unreadOnly = false
       }
@@ -67,7 +64,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     return .all
   }
   /// Bound by the sort menu. Setter persists the choice to `UserDefaults`
-  /// under `sortKey` so user intent survives relaunches (spec decision #10).
+  /// under `sortKey` so user intent survives relaunches.
   @Published var sort: ApplicationsSort {
     didSet {
       userDefaults.set(sort.rawValue, forKey: sortKey)
@@ -104,8 +101,8 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
   /// memory, as before).
   var loadedSort: ApplicationsSort?
   /// The filter the currently-loaded `applications` were fetched under. Lets a
-  /// filter change short-circuit when it would not change the query (GH#682
-  /// slice 4). Set alongside `loadedSort` on every fresh first-page load.
+  /// filter change short-circuit when it would not change the query. Set
+  /// alongside `loadedSort` on every fresh first-page load.
   var loadedFilter: ApplicationFilter?
   /// Re-entrancy guard for next-page fetches — independent of `isLoadInFlight`
   /// so an in-flight first-page load never blocks (or is blocked by) appends.
@@ -142,7 +139,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
   }
 
   /// True when the global watermark reports at least one unread notification.
-  /// Drives the conditional visibility of the Unread chip (spec decision #8).
+  /// Drives the conditional visibility of the Unread chip.
   public var hasUnread: Bool {
     unreadCount > 0
   }
@@ -174,13 +171,8 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     }
   }
 
-  /// The rows to render. Ordering **and** filtering are owned entirely by the
-  /// server now: every sort is paged via `?sort=` and the
-  /// status/unread filter is applied server-side via `?status=`/`?unread=`
-  /// (slice 4). The loaded `applications` are therefore the authoritative,
-  /// already-filtered, already-ordered set — rendered verbatim with no local
-  /// re-sort or re-filter (either would only ever touch the pages already
-  /// loaded). The name is kept for call-site stability.
+  /// The rows to render, verbatim: ordering and filtering are server-side, and
+  /// a local re-sort or re-filter would only touch the pages already loaded.
   public var filteredApplications: [PlanningApplication] {
     applications
   }
@@ -362,7 +354,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
       globalUnreadCount = 0
       badgeSetter?.setBadge(0)
     } catch {
-      // Swallow — optimistic UI per spec decision #8.
+      // Swallow: the UI is optimistic.
     }
     await offlineRepository?.invalidateAllCaches()
     guard let activeZone = selectedZone ?? zone else { return }

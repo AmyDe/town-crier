@@ -58,7 +58,6 @@
   margin: 0 0 var(--tc-space-sm) 0;
 }
 
-/* ---------- Status stamp: outlined, uppercase, icon + label always ---------- */
 .badge {
   display: inline-flex;
   align-items: center;

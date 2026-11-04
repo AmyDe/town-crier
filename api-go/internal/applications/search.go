@@ -15,20 +15,17 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
 )
 
-// searchMinQueryLen and searchMaxQueryLen bound the free-text q parameter: below
-// the minimum q is rejected unless looksLikeReference reports it is probably a
-// planning reference rather than an address/description fragment (a defensible,
-// low-risk heuristic — see looksLikeReference's doc comment); above the maximum
-// it is rejected outright, so a single request cannot force an expensive
-// similarity/ts_rank scan with a pathological input size.
+// searchMinQueryLen and searchMaxQueryLen bound the free-text q parameter:
+// below the minimum q is rejected unless looksLikeReference; above the maximum
+// it is rejected so a pathological input cannot force an expensive scan.
 const (
 	searchMinQueryLen = 3
 	searchMaxQueryLen = 200
 )
 
 // searchDefaultLimit and searchMaxLimit bound how many rows the endpoint
-// returns. v1 has no cursor: an over-limit match set is truncated and flagged via
-// SearchResponse.RefineQuery rather than paginated.
+// returns. There is no cursor: an over-limit match set is truncated and flagged
+// via SearchResponse.RefineQuery.
 const (
 	searchDefaultLimit = 20
 	searchMaxLimit     = 20
@@ -40,42 +37,29 @@ const (
 // timeout so callers see a clean failure rather than a gateway timeout.
 const searchTimeout = 8 * time.Second
 
-// searchStore is the consumer-side store the search handler needs: a
-// nearest-first, capped read across the three match tiers — reference exact/prefix match on uid, address fuzzy match
-// (pg_trgm), description full-text match (tsvector) — merged, deduplicated by
-// identity, and ordered by distance from (lat, lon) ascending. authorityCode
-// "" means no authority filter (a bare reference legitimately matches across
-// authorities — application_uid is only unique within a council). The bool
-// return reports whether more matches exist beyond limit (RefineQuery on the
-// wire); the concrete *PostgresStore satisfies it structurally.
+// searchStore is the nearest-first, capped read across the three match tiers.
+// authorityCode "" means no authority filter. The bool reports whether more
+// matches exist beyond limit.
 type searchStore interface {
 	Search(ctx context.Context, query, authorityCode string, lat, lon float64, limit int) ([]PlanningApplication, bool, error)
 }
 
-// searchHandler serves the anonymous application search endpoint.
 type searchHandler struct {
 	store    searchStore
 	resolver authoritySlugResolver
 	logger   *slog.Logger
 }
 
-// SearchRoutes registers the anonymous application search endpoint. It is kept
-// out of auth's fallback-deny set in cmd/api/wiring.go's anonymousPatterns (like
-// the by-slug application read) and reads only public planning data from
-// Postgres — PlanIt is never touched by this endpoint.
+// SearchRoutes registers the anonymous application search endpoint.
 func SearchRoutes(mux *http.ServeMux, store searchStore, resolver authoritySlugResolver, logger *slog.Logger) {
 	h := &searchHandler{store: store, resolver: resolver, logger: logger}
 	mux.HandleFunc("GET /v1/applications/search", h.search)
 }
 
-// search validates q, the mandatory lat/lon query point, and the optional
-// authority filter + limit, then returns the nearest-first match set: the
-// union of the three match tiers (reference exact/prefix on uid, address
-// fuzzy match, description full-text match), deduplicated by identity and
-// ordered by distance from (lat, lon) ascending. A missing/too-short q (unless it looks
-// like a reference), a missing/unparseable lat or lon, or an unresolvable
-// authority slug is a bodyless 400; a store failure is a bodyless 500 (both
-// envelopes backfilled by middleware.ErrorBody).
+// search returns the nearest-first match set. A missing or too-short q (unless
+// it looks like a reference), a missing or unparseable lat or lon, or an
+// unresolvable authority slug is a bodyless 400; a store failure is a bodyless
+// 500 (both envelopes backfilled by middleware.ErrorBody).
 func (h *searchHandler) search(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 
@@ -143,13 +127,9 @@ func validSearchQuery(q string) bool {
 	return looksLikeReference(q)
 }
 
-// looksLikeReference reports whether q contains at least one digit — the cheap
-// heuristic for "this short query is probably a planning reference, not an
-// address/description fragment". Real
-// references vary too widely in shape (24/0001/FUL, 9/P/2026/0044/HH,
-// 24/SAME/FUL) to anchor a stricter pattern; over-admitting costs nothing since
-// the reference tier is an indexed exact/prefix lookup on uid that simply
-// returns zero rows on a miss.
+// looksLikeReference reports whether q contains at least one digit. References
+// vary too widely in shape to anchor a stricter pattern, and over-admitting is
+// cheap because the reference tier is an indexed exact/prefix lookup.
 func looksLikeReference(q string) bool {
 	return strings.ContainsFunc(q, func(r rune) bool { return r >= '0' && r <= '9' })
 }
@@ -168,10 +148,8 @@ func parseSearchLimit(raw string) int {
 	return n
 }
 
-// parseRequiredCoord parses a mandatory lat/lon query parameter as a float64,
-// reporting false for a missing, empty, or unparseable value (-> bodyless 400
-// via search's callers). lat/lon are mandatory: nearest-first search has no
-// meaning without a query point.
+// parseRequiredCoord parses a mandatory lat/lon query parameter, reporting
+// false for a missing, empty, or unparseable value.
 func parseRequiredCoord(raw string) (float64, bool) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -185,10 +163,8 @@ func parseRequiredCoord(raw string) (float64, bool) {
 }
 
 // resolveAuthorityParam resolves the authority=<id-or-slug> filter to an
-// authority_code (the stringified area id): a numeric value is used directly
-// (an id with no applications is just an empty result, not an error); a non-numeric value is resolved as a slug via
-// resolver.SlugToAreaID, and an unresolvable slug is reported false (-> 400),
-// since a slug that cannot resolve at all is unambiguously a client error.
+// authority_code: a numeric value is used directly, otherwise it is resolved as
+// a slug, and an unresolvable slug is reported false.
 func resolveAuthorityParam(raw string, resolver authoritySlugResolver) (string, bool) {
 	if id, err := strconv.Atoi(raw); err == nil {
 		return strconv.Itoa(id), true
@@ -203,11 +179,7 @@ func resolveAuthorityParam(raw string, resolver authoritySlugResolver) (string, 
 // SearchResult is one ranked row of GET /v1/applications/search: just enough to
 // render a result card and build a share URL client-side
 // (share.towncrierapp.uk/a/{authoritySlug}/{reference}). Reference is
-// planit_name (PlanningApplication.Name), NOT uid: uid is only ever the tier-1
-// ranking's match key, never emitted, since the share route resolves by
-// planit_name (sharepage/handler.go -> GetByAuthorityAndName) — echoing uid
-// would 404 the link whenever uid != planit_name, which per real PlanIt data is
-// the common case, not an edge case.
+// planit_name, not uid, because the share route resolves by planit_name.
 type SearchResult struct {
 	Reference     string             `json:"reference"`
 	AuthoritySlug string             `json:"authoritySlug"`
@@ -233,10 +205,9 @@ func SearchResultOf(a PlanningApplication, authoritySlug string) SearchResult {
 }
 
 // SearchResponse is the full wire body of GET /v1/applications/search. Results
-// is always a non-null array (bounded at the request's limit, capped at
-// searchMaxLimit). RefineQuery is true when the match set exceeds the limit: v1
-// has no cursor, so rather than silently truncating a possibly much larger
-// result set, the caller is told to narrow q/authority instead of paging.
+// is always a non-null array, capped at the request's limit. RefineQuery is
+// true when the match set exceeds the limit, telling the caller to narrow
+// q/authority since there is no cursor.
 type SearchResponse struct {
 	Query       string         `json:"query"`
 	Results     []SearchResult `json:"results"`

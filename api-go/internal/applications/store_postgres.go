@@ -26,12 +26,8 @@ type querier interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
-// Store is the full method set the Applications store exposes to its consumers
-// across packages (handler's appStore, watchzones.appFinder's FindNearbyPage, the savedapplications snapshot
-// backfill's GetByUID, and the poll
-// Upsert). It is the exported consumer-side interface cmd/api's newRouter accepts
-// for the Applications routes. Every narrower per-handler interface is a subset
-// of this set.
+// Store is the full method set the Applications store exposes across packages;
+// cmd/api's newRouter accepts it for the Applications routes.
 type Store interface {
 	Upsert(ctx context.Context, a PlanningApplication) error
 	GetByAuthorityAndName(ctx context.Context, authorityCode, name string) (PlanningApplication, bool, error)
@@ -54,13 +50,9 @@ var (
 )
 
 // PostgresStore reads and writes planning applications in the Postgres
-// `applications` table.
-//
-//   - The natural key is the COMPOSITE (authority_code, planit_name) — a PlanIt
-//     case reference is only unique within an authority — so Upsert is
-//     INSERT ... ON CONFLICT (authority_code, planit_name) DO UPDATE.
-//   - location is a geography(Point,4326) served by one GiST index, so the radius
-//     reads use ST_DWithin and the nearest-first read uses the KNN <-> operator.
+// `applications` table. The natural key is the composite (authority_code,
+// planit_name), because a PlanIt case reference is only unique within an
+// authority.
 type PostgresStore struct {
 	db       querier
 	logger   *slog.Logger
@@ -127,8 +119,7 @@ const appColumns = "planit_name, uid, area_name, area_id, address, postcode, " +
 	"description, app_type, app_state, app_size, start_date, decided_date, " +
 	"consulted_date, ST_Y(location::geometry), ST_X(location::geometry), url, link, last_different"
 
-// appScanDest returns the scan destinations for appColumns, in order. The
-// nullable text/float/date columns scan into pointer fields (NULL -> nil).
+// appScanDest returns the scan destinations for appColumns, in order.
 func appScanDest(a *PlanningApplication) []any {
 	return []any{
 		&a.Name, &a.UID, &a.AreaName, &a.AreaID, &a.Address, &a.Postcode,
@@ -138,7 +129,6 @@ func appScanDest(a *PlanningApplication) []any {
 	}
 }
 
-// scanApp hydrates one application from a single-row read (QueryRow).
 func scanApp(row pgx.Row) (PlanningApplication, error) {
 	var a PlanningApplication
 	if err := row.Scan(appScanDest(&a)...); err != nil {
@@ -147,7 +137,6 @@ func scanApp(row pgx.Row) (PlanningApplication, error) {
 	return a, nil
 }
 
-// scanAppRow adapts scanApp to pgx.CollectRows over a multi-row result.
 func scanAppRow(row pgx.CollectableRow) (PlanningApplication, error) {
 	return scanApp(row)
 }
@@ -156,7 +145,6 @@ func scanAppRow(row pgx.CollectableRow) (PlanningApplication, error) {
 // planit_name). location is built from longitude ($15) and latitude ($16): when
 // either is NULL, ST_MakePoint yields NULL, so a coordinate-less application stores
 // a NULL location.
-// $20-$26 are the PlanIt full-field widening's seven silent columns (GH#935):
 // other_fields ($26) binds a map[string]any natively as jsonb via pgx; a nil
 // map binds as SQL NULL. altid/associated_id ($21/$22) bind raw JSON bytes the
 // same way; a nil slice binds as SQL NULL.
@@ -294,22 +282,17 @@ func (s *PostgresStore) getByCollapsedName(ctx context.Context, authorityCode, n
 	}
 }
 
-// fullAppColumns is appColumns plus the seven silent-field columns (GH#935,
-// the PlanIt full-field widening). It is used ONLY by getByUIDQuery: the
-// ingester's read-back needs the silent-field snapshot to evaluate
-// HasSameSilentFieldsAs. Every other read keeps appColumns unchanged, so
-// list/search payloads and every HTTP response DTO are byte-for-byte
-// unaffected — no query path outside GetByUID ever selects these columns.
+// fullAppColumns is appColumns plus the seven silent-field columns. Only
+// getByUIDQuery selects them, because the ingester's read-back needs them for
+// HasSameSilentFieldsAs; list and search payloads never carry them.
 const fullAppColumns = appColumns +
 	", reference, altid, associated_id, last_changed, last_scraped, scraper_name, other_fields"
 
 const getByUIDQuery = "SELECT " + fullAppColumns +
 	" FROM applications WHERE authority_code = $1 AND uid = $2 ORDER BY planit_name LIMIT 1"
 
-// scanFullApp hydrates one application from a fullAppColumns single-row read:
-// appScanDest's destinations plus the seven silent fields. other_fields scans
-// into an intermediate []byte (the jsonb wire form) and is then unmarshalled,
-// matching the savedapplications snapshot-column pattern.
+// scanFullApp is scanApp plus the seven silent fields; other_fields is read as
+// jsonb bytes and then unmarshalled.
 func scanFullApp(row pgx.Row) (PlanningApplication, error) {
 	var a PlanningApplication
 	var otherFieldsJSON []byte
@@ -344,10 +327,7 @@ const matchesExpressionQuery = "SELECT to_tsvector('english', $1::text) @@ to_ts
 
 // MatchesExpression reports whether description matches the given
 // to_tsquery('english', ...) boolean expression under Postgres full-text
-// search — the watch-zone pre-canned filter matcher (GH#1090, epic tc-w825j;
-// see watchzones.FilterDefinition.Expression for the catalog this is built
-// to evaluate). It touches no table: both operands are literals, so there is
-// no index or row cost to this call beyond the tsvector/tsquery parse.
+// search. It touches no table.
 func (s *PostgresStore) MatchesExpression(ctx context.Context, description, expression string) (bool, error) {
 	var matches bool
 	if err := s.db.QueryRow(ctx, matchesExpressionQuery, description, expression).Scan(&matches); err != nil {
@@ -356,18 +336,10 @@ func (s *PostgresStore) MatchesExpression(ctx context.Context, description, expr
 	return matches, nil
 }
 
-// RecentRealDateOrder is the shared "sort by the stable real-world lifecycle
-// date, not PlanIt's last_different re-index marker" ORDER BY clause (#819
-// decision 1). last_different is bumped to "now" whenever PlanIt re-indexes an
-// application regardless of its actual age, which floats stale applications to
-// the top of a last_different-ordered list — GREATEST(decided_date, start_date)
-// never moves on a re-index. Postgres's GREATEST ignores NULL arguments (unlike
-// last_different, which is NOT NULL), so a decided application sorts by its
-// decided_date, an undecided one by its start_date, and an application with
-// neither sorts last (NULLS LAST) rather than erroring or floating to the top.
-// The tie-break (start_date DESC NULLS LAST, then planit_name ASC) makes the
-// order fully deterministic when two applications share the same GREATEST
-// value. Shared by pgRecentByAuthorityQuery and pgRecentNearPointQuery.
+// RecentRealDateOrder orders by the real-world lifecycle date,
+// GREATEST(decided_date, start_date), never last_different, which PlanIt bumps
+// on every re-index and so floats stale applications to the top. GREATEST
+// ignores NULL arguments; an application with neither date sorts last.
 const RecentRealDateOrder = "GREATEST(decided_date, start_date) DESC NULLS LAST, start_date DESC NULLS LAST, planit_name"
 
 const pgRecentByAuthorityQuery = "SELECT " + appColumns +
@@ -383,8 +355,7 @@ func (s *PostgresStore) RecentByAuthority(ctx context.Context, authorityCode str
 	return apps, nil
 }
 
-// nearbyPoint is the GeoJSON-equivalent query point for the authority-agnostic
-// browse reads, built from $1 (longitude) and $2 (latitude).
+// nearbyPoint is built from $1 (longitude) and $2 (latitude).
 const nearbyPoint = "ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography"
 
 // knnThenExact returns the nearest-first query over filter. The planit_name
@@ -485,20 +456,10 @@ func (s *PostgresStore) FindNearbyPage(ctx context.Context, latitude, longitude,
 	return apps, next, nil
 }
 
-// pgRecentNearPointQuery mirrors pgRecentByAuthorityQuery's RecentRealDateOrder
-// but is authority-agnostic and radius-bounded (ST_DWithin over nearbyPoint,
-// exactly like findNearbyFirstPageQuery) instead of authority-scoped — the
-// public near-point browse endpoint's ?sort=recent (GH#912 Phase 2). It returns
-// a single ordered page with NO keyset continuation, unlike FindNearbyPage:
-// RecentRealDateOrder's primary key, GREATEST(decided_date, start_date), and its
-// secondary key, start_date, are each independently nullable, so a correct
-// keyset predicate needs a per-NULL-combination branch (see statusKeysetQuery
-// and its three siblings in zonepage.go for the shape that takes) for an
-// ordering nothing has needed to paginate before now — RecentByAuthority, the other
-// RecentRealDateOrder call site, is a single-page cap-only read too. The near-point recent sort's only consumer
-// (the anonymous browse list, GH#912 Phase 3) fetches one bounded page
-// (<= nearPointMaxLimit), so this mirrors that existing single-page shape
-// rather than building an unused continuation.
+// pgRecentNearPointQuery returns a single ordered page with no keyset
+// continuation: RecentRealDateOrder's two sort keys are independently nullable,
+// so a keyset predicate would need a branch per NULL combination, and the only
+// consumer fetches one bounded page (<= nearPointMaxLimit).
 const pgRecentNearPointQuery = "SELECT " + appColumns +
 	" FROM applications WHERE ST_DWithin(location, " + nearbyPoint + ", $3) " +
 	"ORDER BY " + RecentRealDateOrder + " LIMIT $4"
@@ -519,11 +480,8 @@ const pgRecentNearPointSinceQuery = "SELECT " + appColumns +
 var recentNearPointWindowDays = []int{30, 90, 365}
 
 // RecentNearPoint returns up to limit applications within radiusMetres of
-// (latitude, longitude), ordered by RecentRealDateOrder (most-recently-decided,
-// falling back to most-recently-submitted, NULLS LAST) — the near-point browse
-// endpoint's ?sort=recent (GH#912 Phase 2). It is authority-agnostic like
-// FindNearbyPage, which remains the sole paginated (?sort=distance) path; see
-// pgRecentNearPointQuery for why this one does not paginate.
+// (latitude, longitude), ordered by RecentRealDateOrder. It does not paginate;
+// see pgRecentNearPointQuery.
 func (s *PostgresStore) RecentNearPoint(ctx context.Context, latitude, longitude, radiusMetres float64, limit int) ([]PlanningApplication, error) {
 	today := time.Now().UTC().Truncate(24 * time.Hour)
 	for _, days := range recentNearPointWindowDays {
