@@ -42,3 +42,17 @@ func TestSnapshotDocument_KeysOmitContainerIdentity(t *testing.T) {
 		t.Errorf("snapshot missing geojson location: %s", body)
 	}
 }
+
+func TestCoordsToLatLng(t *testing.T) {
+	t.Parallel()
+	if lon, lat := coordsToLatLng(nil); lon != nil || lat != nil {
+		t.Errorf("absent point: got lon=%v lat=%v, want nil/nil", lon, lat)
+	}
+	if lon, lat := coordsToLatLng(&geoJSONPoint{Type: "Point", Coordinates: []float64{-0.1278}}); lon != nil || lat != nil {
+		t.Errorf("one coordinate: got lon=%v lat=%v, want nil/nil", lon, lat)
+	}
+	lon, lat := coordsToLatLng(&geoJSONPoint{Type: "Point", Coordinates: []float64{0, 0}})
+	if lon == nil || lat == nil || *lon != 0 || *lat != 0 {
+		t.Errorf("zero point: got lon=%v lat=%v, want 0/0", lon, lat)
+	}
+}

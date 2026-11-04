@@ -7,10 +7,8 @@ import (
 )
 
 // SnapshotDocument is the embedded planning-application snapshot stored inline on
-// a saved-application document. It carries the same fields as the master
-// applicationDocument minus the container identity (id / authorityCode /
-// planitName); the case reference is the "name" key here. savedapplications
-// embeds it so the GeoJSON and date mapping is not duplicated.
+// a saved-application document; the case reference is the "name" key.
+// savedapplications embeds it so the GeoJSON and date mapping is not duplicated.
 type SnapshotDocument struct {
 	Name          string              `json:"name"`
 	UID           string              `json:"uid"`
@@ -77,4 +75,28 @@ func (s SnapshotDocument) ToDomain() PlanningApplication {
 		Link:          s.Link,
 		LastDifferent: time.Time(s.LastDifferent),
 	}
+}
+
+// geoJSONPoint is a GeoJSON Point with [longitude, latitude] order.
+type geoJSONPoint struct {
+	Type        string    `json:"type"`
+	Coordinates []float64 `json:"coordinates"`
+}
+
+func newGeoPoint(lon, lat *float64) *geoJSONPoint {
+	if lon == nil || lat == nil {
+		return nil
+	}
+	return &geoJSONPoint{Type: "Point", Coordinates: []float64{*lon, *lat}}
+}
+
+// coordsToLatLng returns (nil, nil) for an absent or malformed point; an
+// explicit [0,0] point is preserved.
+func coordsToLatLng(p *geoJSONPoint) (lon, lat *float64) {
+	if p == nil || len(p.Coordinates) < 2 {
+		return nil, nil
+	}
+	lo := p.Coordinates[0]
+	la := p.Coordinates[1]
+	return &lo, &la
 }
