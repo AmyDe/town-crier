@@ -566,17 +566,11 @@ func statusCursorOf(last datePageRow) pageCursor {
 	return c
 }
 
-// activityUnreadSubquery computes, per application, the caller's latest UNREAD
-// notification timestamp. $5 is the caller's userID. Unread is read_at IS NULL
-// (ADR 0035, replacing the notification_state watermark JOIN). The "no unread
-// for an untouched user" behaviour is preserved by migration 0015's backfill:
-// existing no-watermark users had their history marked read (read_at set), so
-// they contribute no rows here; a genuinely new notification (read_at IS NULL)
-// correctly reads as unread. It groups on (application_uid, authority_id) — the
-// same keys the outer LEFT JOIN matches against the application's (uid, area_id)
-// — so the integer authority_id (NOT the text authority_code) reconciles a
-// notification to its application, and a bare uid shared across authorities
-// cannot cross-contaminate.
+// activityUnreadSubquery computes, per application, the caller's latest unread
+// (read_at IS NULL) notification timestamp. $5 is the caller's userID. It groups
+// on (application_uid, authority_id), the keys the outer join matches against
+// (uid, area_id), so a bare uid shared across authorities cannot
+// cross-contaminate.
 const activityUnreadSubquery = "SELECT n.application_uid, n.authority_id, MAX(n.created_at) AS created_at" +
 	" FROM notifications n" +
 	" WHERE n.user_id = $5 AND n.read_at IS NULL" +
@@ -752,7 +746,7 @@ func (s *PostgresStore) findFilteredZonePage(ctx context.Context, q InZoneQuery,
 // an optional "AND app_state = $x" status predicate, and an optional unread join.
 // The join is INNER when q.Unread is set (it drops applications with no unread for
 // the caller) and LEFT when only recent-activity needs it for ordering; both reuse
-// the read_at IS NULL unread subquery (ADR 0035), grouped on (application_uid,
+// the read_at IS NULL unread subquery, grouped on (application_uid,
 // authority_id) so the outer join stays authority-safe.
 func buildFilteredZoneQuery(q InZoneQuery, c *pageCursor) (string, []any, error) {
 	return buildZoneQueryOn(q, c, "applications")

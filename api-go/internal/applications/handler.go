@@ -118,8 +118,6 @@ func (h *handler) getBySlug(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, h.logger, result)
 }
 
-// authoritySlug returns the URL slug for the application's authority. See
-// resolveAuthoritySlugFor (respond.go) for the round-trip/fallback behaviour.
 func (h *handler) authoritySlug(ctx context.Context, app PlanningApplication) string {
 	return resolveAuthoritySlugFor(ctx, h.resolver, h.logger, "authority slug", app)
 }
