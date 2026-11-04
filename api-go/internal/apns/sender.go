@@ -13,4 +13,8 @@ type PushSender interface {
 	// those are logged and skipped; an error is reserved for a caller-level fault
 	// (e.g. a cancelled context).
 	Send(ctx context.Context, tokens []string, payload json.RawMessage) ([]string, error)
+	// SendCollapsed is Send with an apns-collapse-id so a resend of the same
+	// push replaces the first copy on the device. An empty collapseID behaves
+	// exactly like Send.
+	SendCollapsed(ctx context.Context, tokens []string, payload json.RawMessage, collapseID string) ([]string, error)
 }

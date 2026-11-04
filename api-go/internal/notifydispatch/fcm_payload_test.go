@@ -57,7 +57,7 @@ func TestBuildAlertFCMPayload_CarriesDeepLinkDataAsStrings(t *testing.T) {
 		CreatedAt:          created,
 	}
 
-	raw, err := buildAlertFCMPayload(n)
+	raw, err := buildAlertFCMPayload(n, "")
 	if err != nil {
 		t.Fatalf("buildAlertFCMPayload: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestBuildAlertFCMPayload_SavedNotificationTitle(t *testing.T) {
 		CreatedAt:          time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC),
 	}
 
-	raw, err := buildAlertFCMPayload(n)
+	raw, err := buildAlertFCMPayload(n, "")
 	if err != nil {
 		t.Fatalf("buildAlertFCMPayload: %v", err)
 	}
@@ -129,7 +129,7 @@ func TestBuildAlertFCMPayload_SavedNotificationTitle(t *testing.T) {
 
 func TestBuildZoneSummaryFCMPayload_KindAndWatchZoneNoDeepLink(t *testing.T) {
 	t.Parallel()
-	raw, err := buildZoneSummaryFCMPayload(4, "Riverside", "zone-1")
+	raw, err := buildZoneSummaryFCMPayload(4, "Riverside", "zone-1", "")
 	if err != nil {
 		t.Fatalf("buildZoneSummaryFCMPayload: %v", err)
 	}
@@ -158,7 +158,7 @@ func TestBuildZoneSummaryFCMPayload_KindAndWatchZoneNoDeepLink(t *testing.T) {
 
 func TestBuildSavedSummaryFCMPayload_KindNoWatchZoneNoDeepLink(t *testing.T) {
 	t.Parallel()
-	raw, err := buildSavedSummaryFCMPayload(2)
+	raw, err := buildSavedSummaryFCMPayload(2, "")
 	if err != nil {
 		t.Fatalf("buildSavedSummaryFCMPayload: %v", err)
 	}
@@ -196,7 +196,7 @@ func TestFCMAndAPNsShareCopy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildAlertPayload: %v", err)
 	}
-	fcmRaw, err := buildAlertFCMPayload(n)
+	fcmRaw, err := buildAlertFCMPayload(n, "")
 	if err != nil {
 		t.Fatalf("buildAlertFCMPayload: %v", err)
 	}
@@ -218,5 +218,26 @@ func TestFCMAndAPNsShareCopy(t *testing.T) {
 	}
 	if fcm.Notification.Body != apnsDecoded.Aps.Alert.Body {
 		t.Errorf("bodies differ: fcm %q vs apns %q", fcm.Notification.Body, apnsDecoded.Aps.Alert.Body)
+	}
+}
+
+func TestBuildBucketFCMPayload_SetsAndroidNotificationTag(t *testing.T) {
+	t.Parallel()
+	raw, err := buildBucketFCMPayload(savedBucket, []notifications.DigestNotification{{ID: "n-1"}}, nil, "n-1")
+	if err != nil {
+		t.Fatalf("buildBucketFCMPayload: %v", err)
+	}
+	var msg struct {
+		Android struct {
+			Notification struct {
+				Tag string `json:"tag"`
+			} `json:"notification"`
+		} `json:"android"`
+	}
+	if err := json.Unmarshal(raw, &msg); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if msg.Android.Notification.Tag != "n-1" {
+		t.Errorf("tag = %q, want n-1", msg.Android.Notification.Tag)
 	}
 }

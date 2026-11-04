@@ -253,3 +253,73 @@ func TestNewTransport_DetectsDeadConnections(t *testing.T) {
 		t.Errorf("TLS floor is not 1.2")
 	}
 }
+
+func TestClient_CollapseIDHeader(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		send      func(c *Client) error
+		wantSet   bool
+		wantValue string
+	}{
+		{
+			name: "SendCollapsed sets the header",
+			send: func(c *Client) error {
+				_, err := c.SendCollapsed(context.Background(), []string{"tok"}, json.RawMessage(`{}`), "notif-1")
+				return err
+			},
+			wantSet:   true,
+			wantValue: "notif-1",
+		},
+		{
+			name: "SendCollapsed with empty ID omits the header",
+			send: func(c *Client) error {
+				_, err := c.SendCollapsed(context.Background(), []string{"tok"}, json.RawMessage(`{}`), "")
+				return err
+			},
+		},
+		{
+			name: "Send omits the header",
+			send: func(c *Client) error {
+				_, err := c.Send(context.Background(), []string{"tok"}, json.RawMessage(`{}`))
+				return err
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var (
+				mu     sync.Mutex
+				values []string
+				apnsID []string
+			)
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				mu.Lock()
+				values = r.Header.Values("apns-collapse-id")
+				apnsID = r.Header.Values("apns-id")
+				mu.Unlock()
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer srv.Close()
+
+			if err := tt.send(newTestClient(t, srv)); err != nil {
+				t.Fatalf("send: %v", err)
+			}
+
+			mu.Lock()
+			defer mu.Unlock()
+			if tt.wantSet {
+				if len(values) != 1 || values[0] != tt.wantValue {
+					t.Errorf("apns-collapse-id = %v, want [%s]", values, tt.wantValue)
+				}
+			} else if len(values) != 0 {
+				t.Errorf("apns-collapse-id = %v, want absent", values)
+			}
+			if len(apnsID) != 0 {
+				t.Errorf("apns-id = %v, want unset", apnsID)
+			}
+		})
+	}
+}

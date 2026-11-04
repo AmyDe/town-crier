@@ -220,8 +220,8 @@ func (e *Enqueuer) Enqueue(ctx context.Context, app applications.PlanningApplica
 		now:         e.now().UTC(),
 	})
 
-	// PushSent means "queued", not "delivered", and is never reconciled with the
-	// send outcome. Free tiers (including a lapsed paid tier) get the record for
+	// PushSent means "queued", not "delivered"; the delivery lifecycle lives in
+	// push_status. Free tiers (including a lapsed paid tier) get the record for
 	// the weekly digest but no push.
 	queuePush := profile.EffectiveTier(e.now()).IsPaid() && profile.Preferences.PushEnabled
 	n.PushSent = queuePush

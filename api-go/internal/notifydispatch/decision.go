@@ -161,8 +161,8 @@ func (d *DecisionDispatcher) dispatchForUser(ctx context.Context, app applicatio
 		now:         d.now().UTC(),
 	})
 
-	// PushSent means "queued", not "delivered", and is never reconciled with the
-	// send outcome.
+	// PushSent means "queued", not "delivered"; the delivery lifecycle lives in
+	// push_status.
 	queuePush := d.canPush(profile, m)
 	n.PushSent = queuePush
 
