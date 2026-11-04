@@ -51,6 +51,12 @@ const notifColumns = "id, user_id, application_uid, application_name, watch_zone
 // scanDigestRow hydrates one row into a full DigestNotification. Used by
 // ByUserSince, AllByUser, UnsentEmailsByUser, and GetByUserAndApplication.
 func scanDigestRow(row pgx.CollectableRow) (DigestNotification, error) {
+	return scanDigestRowExtra(row)
+}
+
+// scanDigestRowExtra scans the notifColumns projection plus any trailing
+// columns into extra.
+func scanDigestRowExtra(row pgx.CollectableRow, extra ...any) (DigestNotification, error) {
 	var (
 		id, userID, applicationUID, applicationName string
 		watchZoneID                                 *string
@@ -62,11 +68,12 @@ func scanDigestRow(row pgx.CollectableRow) (DigestNotification, error) {
 		pushSent, emailSent                         bool
 		createdAt                                   time.Time
 	)
-	if err := row.Scan(
+	dest := append([]any{
 		&id, &userID, &applicationUID, &applicationName, &watchZoneID,
 		&applicationAddress, &applicationDescription, &applicationType,
 		&authorityID, &decision, &eventType, &sources, &pushSent, &emailSent, &createdAt,
-	); err != nil {
+	}, extra...)
+	if err := row.Scan(dest...); err != nil {
 		return DigestNotification{}, err
 	}
 	et := EventNewApplication
@@ -152,6 +159,7 @@ const (
 	PushStatusPending PushStatus = "pending"
 	PushStatusSent    PushStatus = "sent"
 	PushStatusSkipped PushStatus = "skipped"
+	PushStatusExpired PushStatus = "expired"
 )
 
 // Create writes a dispatched notification, with push_status 'pending' when
@@ -328,6 +336,50 @@ func (s *PostgresStore) MarkPushStatus(ctx context.Context, ids []string, status
 		return fmt.Errorf("mark push status %q for %d notifications: %w", status, len(ids), err)
 	}
 	return nil
+}
+
+// PendingPush is a notification whose push is still pending. AttemptedAt is set
+// when an earlier run started sending it and never recorded the outcome.
+type PendingPush struct {
+	DigestNotification
+	AttemptedAt *time.Time
+}
+
+const pgPendingPushesQuery = "SELECT " + notifColumns + ", push_attempted_at FROM notifications" +
+	" WHERE push_status = 'pending' AND created_at >= $1 ORDER BY created_at LIMIT $2"
+
+// PendingPushes returns up to limit rows still pending that were created at or
+// after cutoff, oldest first.
+func (s *PostgresStore) PendingPushes(ctx context.Context, cutoff time.Time, limit int) ([]PendingPush, error) {
+	rows, err := s.db.Query(ctx, pgPendingPushesQuery, cutoff, limit)
+	if err != nil {
+		return nil, fmt.Errorf("query pending pushes: %w", err)
+	}
+	out, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (PendingPush, error) {
+		var attemptedAt *time.Time
+		n, err := scanDigestRowExtra(row, &attemptedAt)
+		if err != nil {
+			return PendingPush{}, err
+		}
+		return PendingPush{DigestNotification: n, AttemptedAt: attemptedAt}, nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("collect pending pushes: %w", err)
+	}
+	return out, nil
+}
+
+const pgExpirePendingPushesQuery = "UPDATE notifications SET push_status = 'expired' " +
+	"WHERE push_status = 'pending' AND created_at < $1"
+
+// ExpirePendingPushes marks rows still pending that were created before cutoff
+// as expired and returns how many it changed.
+func (s *PostgresStore) ExpirePendingPushes(ctx context.Context, cutoff time.Time) (int, error) {
+	tag, err := s.db.Exec(ctx, pgExpirePendingPushesQuery, cutoff)
+	if err != nil {
+		return 0, fmt.Errorf("expire pending pushes: %w", err)
+	}
+	return int(tag.RowsAffected()), nil
 }
 
 const pgGetByUserAndApplicationQuery = "SELECT " + notifColumns +

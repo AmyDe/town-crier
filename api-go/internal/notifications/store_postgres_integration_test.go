@@ -4,6 +4,7 @@ package notifications
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 
@@ -540,6 +541,98 @@ func TestIntegration_Notifications_MarkPushLifecycle(t *testing.T) {
 		t.Fatalf("MarkPushStatus all: %v", err)
 	}
 	want := map[string]*string{"p-1": ptr("skipped"), "p-2": ptr("sent"), "p-3": ptr("skipped"), "none": nil}
+	for id, w := range want {
+		got := pushStateOf(t, pool, id).status
+		if (got == nil) != (w == nil) || (got != nil && *got != *w) {
+			t.Errorf("%s status = %v, want %v", id, deref(got), deref(w))
+		}
+	}
+}
+
+func createPending(t *testing.T, s *PostgresStore, id string, created time.Time) {
+	t.Helper()
+	n := intNotif(id, "user-1", "uid-"+id, EventNewApplication, created)
+	n.PushSent = true
+	if err := s.Create(context.Background(), n); err != nil {
+		t.Fatalf("Create %s: %v", id, err)
+	}
+}
+
+func TestIntegration_Notifications_PendingPushes(t *testing.T) {
+	pool := pgtest.New(t)
+	pgtest.Truncate(t, pool, "notifications", "notification_state")
+	s := NewPostgresStore(pool)
+	ctx := context.Background()
+	cutoff := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	attempt := cutoff.Add(5 * time.Hour)
+
+	createPending(t, s, "late", cutoff.Add(3*time.Hour))
+	createPending(t, s, "early", cutoff.Add(time.Hour))
+	createPending(t, s, "edge", cutoff)
+	createPending(t, s, "old", cutoff.Add(-time.Second))
+	createPending(t, s, "done", cutoff.Add(2*time.Hour))
+	if err := s.Create(ctx, intNotif("nopush", "user-1", "uid-nopush", EventNewApplication, cutoff.Add(time.Hour))); err != nil {
+		t.Fatalf("Create nopush: %v", err)
+	}
+	if err := s.MarkPushStatus(ctx, []string{"done"}, PushStatusSent); err != nil {
+		t.Fatalf("MarkPushStatus: %v", err)
+	}
+	if err := s.MarkPushAttempted(ctx, []string{"early"}, attempt); err != nil {
+		t.Fatalf("MarkPushAttempted: %v", err)
+	}
+
+	got, err := s.PendingPushes(ctx, cutoff, 10)
+	if err != nil {
+		t.Fatalf("PendingPushes: %v", err)
+	}
+	var ids []string
+	for _, p := range got {
+		ids = append(ids, p.ID)
+	}
+	if want := []string{"edge", "early", "late"}; !slices.Equal(ids, want) {
+		t.Fatalf("ids = %v, want %v (age filter, oldest first, pending only)", ids, want)
+	}
+	if got[0].AttemptedAt != nil || got[1].AttemptedAt == nil || !got[1].AttemptedAt.Equal(attempt) {
+		t.Errorf("attemptedAt = %v, %v, want nil then %v", got[0].AttemptedAt, got[1].AttemptedAt, attempt)
+	}
+	if got[1].UserID != "user-1" || got[1].ApplicationUID != "uid-early" {
+		t.Errorf("row not hydrated: %+v", got[1].DigestNotification)
+	}
+
+	limited, err := s.PendingPushes(ctx, cutoff, 2)
+	if err != nil {
+		t.Fatalf("PendingPushes limited: %v", err)
+	}
+	if len(limited) != 2 || limited[0].ID != "edge" || limited[1].ID != "early" {
+		t.Errorf("limited = %v, want the 2 oldest", limited)
+	}
+}
+
+func TestIntegration_Notifications_ExpirePendingPushes(t *testing.T) {
+	pool := pgtest.New(t)
+	pgtest.Truncate(t, pool, "notifications", "notification_state")
+	s := NewPostgresStore(pool)
+	ctx := context.Background()
+	cutoff := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+
+	createPending(t, s, "old", cutoff.Add(-time.Hour))
+	createPending(t, s, "old-sent", cutoff.Add(-time.Hour))
+	createPending(t, s, "edge", cutoff)
+	if err := s.Create(ctx, intNotif("old-nopush", "user-1", "uid-nopush", EventNewApplication, cutoff.Add(-time.Hour))); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := s.MarkPushStatus(ctx, []string{"old-sent"}, PushStatusSent); err != nil {
+		t.Fatalf("MarkPushStatus: %v", err)
+	}
+
+	n, err := s.ExpirePendingPushes(ctx, cutoff)
+	if err != nil {
+		t.Fatalf("ExpirePendingPushes: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("expired = %d, want 1", n)
+	}
+	want := map[string]*string{"old": ptr("expired"), "old-sent": ptr("sent"), "edge": ptr("pending"), "old-nopush": nil}
 	for id, w := range want {
 		got := pushStateOf(t, pool, id).status
 		if (got == nil) != (w == nil) || (got != nil && *got != *w) {

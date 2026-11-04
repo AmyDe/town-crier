@@ -10,6 +10,7 @@ func TestLoadConfig_PollRebuildDefaults(t *testing.T) {
 		"POLLING_DELTA_SLOTS", "POLLING_DELTA_MAX_PAGES", "POLLING_DAY_ALLOWANCE",
 		"POLLING_FULL_READ_MAX_AGE_DAYS", "POLLING_RUN_BUDGET_MINUTES", "POLLING_AREA_ID",
 		"POLLING_ORACLE_ENABLED", "NOTIFY_QUIET_START", "NOTIFY_QUIET_END", "NOTIFY_EVENT_SURGE_THRESHOLD",
+		"NOTIFY_PUSH_RECOVERY_ENABLED",
 	} {
 		t.Setenv(k, "")
 	}
@@ -57,6 +58,9 @@ func TestLoadConfig_PollRebuildDefaults(t *testing.T) {
 	if cfg.NotifyEventSurgeThreshold != 10000 {
 		t.Errorf("NotifyEventSurgeThreshold = %d, want 10000", cfg.NotifyEventSurgeThreshold)
 	}
+	if cfg.NotifyPushRecoveryEnabled {
+		t.Error("NotifyPushRecoveryEnabled = true, want false by default")
+	}
 }
 
 func TestLoadConfig_PollRebuildOverrides(t *testing.T) {
@@ -73,6 +77,7 @@ func TestLoadConfig_PollRebuildOverrides(t *testing.T) {
 	t.Setenv("NOTIFY_QUIET_START", "23:00")
 	t.Setenv("NOTIFY_QUIET_END", "06:30")
 	t.Setenv("NOTIFY_EVENT_SURGE_THRESHOLD", "500")
+	t.Setenv("NOTIFY_PUSH_RECOVERY_ENABLED", "true")
 
 	cfg, err := LoadConfig()
 	if err != nil {
@@ -82,7 +87,8 @@ func TestLoadConfig_PollRebuildOverrides(t *testing.T) {
 		cfg.PollingDeltaSlots != "10:00,14:00" || cfg.PollingDeltaMaxPages != 5 ||
 		cfg.PollingDayAllowance != 10 || cfg.PollingFullReadMaxAgeDays != 0 ||
 		cfg.PollingRunBudgetMinutes != 30 || cfg.PollingAreaID != 314 || !cfg.PollingOracleEnabled ||
-		cfg.NotifyQuietStart != "23:00" || cfg.NotifyQuietEnd != "06:30" || cfg.NotifyEventSurgeThreshold != 500 {
+		cfg.NotifyQuietStart != "23:00" || cfg.NotifyQuietEnd != "06:30" || cfg.NotifyEventSurgeThreshold != 500 ||
+		!cfg.NotifyPushRecoveryEnabled {
 		t.Errorf("overrides not applied: %+v", cfg)
 	}
 }

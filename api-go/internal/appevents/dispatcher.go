@@ -109,6 +109,10 @@ type pushFlusher interface {
 	Flush(ctx context.Context) error
 }
 
+type pushRecoverer interface {
+	Recover(ctx context.Context, now time.Time) error
+}
+
 // Dispatcher drains application_event. It holds no state between calls.
 type Dispatcher struct {
 	store    eventStore
@@ -116,6 +120,7 @@ type Dispatcher struct {
 	decision decisionDispatcher
 	enqueuer enqueuer
 	push     pushFlusher
+	recover  pushRecoverer
 	cfg      Config
 	now      func() time.Time
 	logger   *slog.Logger
@@ -125,6 +130,13 @@ type Dispatcher struct {
 // NewDispatcher wires a Dispatcher.
 func NewDispatcher(store eventStore, apps applicationLoader, decision decisionDispatcher, enq enqueuer, push pushFlusher, cfg Config, now func() time.Time, logger *slog.Logger) *Dispatcher {
 	return &Dispatcher{store: store, apps: apps, decision: decision, enqueuer: enq, push: push, cfg: cfg, now: now, logger: logger, london: londonLocation()}
+}
+
+// WithRecovery makes Flush recover pending pushes before it sends. Without it,
+// Flush only sends the pushes queued by Dispatch.
+func (d *Dispatcher) WithRecovery(r pushRecoverer) *Dispatcher {
+	d.recover = r
+	return d
 }
 
 // Dispatch processes pending events once. Events stay pending during quiet
@@ -252,8 +264,18 @@ func (d *Dispatcher) recordFailure(ctx context.Context, e Event, cause error, no
 }
 
 // Flush sends the coalesced pushes queued by Dispatch: at most one per
-// (user, zone) per run.
+// (user, zone) per run. When recovery is enabled and it is not quiet hours, it
+// first queues pushes that earlier runs left pending. A recovery failure is
+// logged and does not stop the flush.
 func (d *Dispatcher) Flush(ctx context.Context) error {
+	if d.recover != nil {
+		now := d.now()
+		if !d.inQuietHours(now.In(d.london)) {
+			if err := d.recover.Recover(ctx, now); err != nil {
+				d.logger.ErrorContext(ctx, "push.recovery_failed", "error", err)
+			}
+		}
+	}
 	return d.push.Flush(ctx)
 }
 

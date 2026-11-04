@@ -209,6 +209,9 @@ type Config struct {
 	NotifyQuietStart          string
 	NotifyQuietEnd            string
 	NotifyEventSurgeThreshold int
+	// NotifyPushRecoveryEnabled is NOTIFY_PUSH_RECOVERY_ENABLED: whether the
+	// poll run re-sends pushes that earlier runs left pending (unset = off).
+	NotifyPushRecoveryEnabled bool
 }
 
 // defaultPlanItBaseURL is the live PlanIt applications API.
@@ -306,6 +309,7 @@ func LoadConfig() (Config, error) {
 		NotifyQuietStart:          getenv("NOTIFY_QUIET_START", "22:00"),
 		NotifyQuietEnd:            getenv("NOTIFY_QUIET_END", "07:00"),
 		NotifyEventSurgeThreshold: getenvInt("NOTIFY_EVENT_SURGE_THRESHOLD", 10000),
+		NotifyPushRecoveryEnabled: getenvBool("NOTIFY_PUSH_RECOVERY_ENABLED"),
 	}
 
 	if raw := strings.TrimSpace(os.Getenv("POLLING_AREA_ID")); raw != "" {
