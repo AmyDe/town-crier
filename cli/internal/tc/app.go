@@ -18,7 +18,7 @@ Commands:
   grant-subscription          Grant or change a user's subscription tier
   list-users                  List users with email, ID, and subscription tier
   delete-user                 Permanently erase a user's account (GDPR erasure)
-  stats                      Show aggregate user-base statistics
+  stats                       Show aggregate user-base statistics
   polling-status              Show whether dev and prod poll PlanIt
   polling-switch              Move PlanIt polling to dev, to prod, or off
   read-path-switch            Show or set the thin-table switches of one environment
@@ -37,7 +37,7 @@ list-offer-codes options:
 
 list-users options:
   --search <term>      Filter by email substring (case-insensitive)
-  --page-size <n>      Results per page (default: 20)
+  --page-size <n>      Results per page (default: 200)
 
 delete-user options:
   --email <email>      Erase every account with this exact email

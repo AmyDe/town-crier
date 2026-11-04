@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-const defaultPageSize = 20
+const defaultPageSize = 200
 
 func runListUsers(ctx context.Context, client *Client, env Env, args *ParsedArgs) int {
 	search, hasSearch := args.GetOptional("search")
