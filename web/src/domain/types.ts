@@ -59,7 +59,7 @@ export type SubscriptionTier = "Free" | "Personal" | "Pro";
  * one-to-one onto the `?sort=` values the API accepts
  * (`GET /v1/me/watch-zones/{zoneId}/applications`); an absent param defaults to
  * `distance` (nearest-first). The picker hides `distance` when no single zone
- * is active. Mirrors the iOS list sort modes (#682).
+ * is active.
  */
 export type ApplicationsSort =
   | "recent-activity"
@@ -206,9 +206,6 @@ export interface PlanningApplication {
  * exists strictly after the user's `lastReadAt` watermark for this row, or the
  * user has no watermark document yet (first-touch path; clients seed via
  * `GET /v1/me/notification-state`).
- *
- * Drives the saturated/muted styling of the application card status pill —
- * see spec `docs/specs/notifications-unread-watermark.md#api-augment-applications`.
  */
 export interface LatestUnreadEvent {
   readonly type: NotificationEventType;
@@ -231,14 +228,14 @@ export interface PlanningApplicationSummary {
    * Numeric authority (PlanIt area) id. Together with `name` it forms the
    * composite key the detail page point-reads via
    * `GET /v1/applications/{authority}/{name...}` — carried in router navigation
-   * state so a tapped list row resolves without a uid endpoint (tc-yxnc).
+   * state so a tapped list row resolves without a uid endpoint.
    */
   readonly areaId: AuthorityId;
   readonly startDate: string | null;
   readonly url: string | null;
   /**
    * Geographic location, when the upstream PlanIt record carried one.
-   * Drives the distance sort on the Applications list (tc-ge7j).
+   * Drives the distance sort on the Applications list.
    */
   readonly latitude: number | null;
   readonly longitude: number | null;

@@ -356,20 +356,6 @@ describe('useApplications — unread chip count (whole-zone, not loaded pages)',
     expect(result.current.unreadCount).toBe(7);
     expect(browsePort.countUnreadCalls.length).toBe(countCallsBefore);
   });
-
-  it('does not reach for the notification-state snapshot for the chip count', async () => {
-    const browsePort = new SpyApplicationsBrowsePort();
-    browsePort.fetchByZoneResult = { rows: [], nextCursor: null };
-    const stateRepo = new SpyNotificationStateRepository();
-    const zones = [cambridgeZone()];
-
-    renderHook(() =>
-      useApplications(makeOptions({ browsePort, zones, notificationStateRepository: stateRepo })),
-    );
-
-    await waitFor(() => expect(browsePort.fetchByZoneCalls.length).toBe(1));
-    expect(stateRepo.getStateCalls).toBe(0);
-  });
 });
 
 describe('useApplications — markAllRead', () => {

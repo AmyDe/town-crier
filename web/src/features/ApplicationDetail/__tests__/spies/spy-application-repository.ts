@@ -2,7 +2,7 @@ import type { ApplicationRepository } from '../../../../domain/ports/application
 import type { PlanningApplication } from '../../../../domain/types';
 import { fullApplication } from '../fixtures/planning-application.fixtures';
 
-export interface FetchApplicationCall {
+interface FetchApplicationCall {
   readonly authority: string;
   readonly name: string;
 }

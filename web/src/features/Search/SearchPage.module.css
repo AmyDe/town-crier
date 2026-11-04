@@ -4,8 +4,6 @@
   padding: var(--tc-space-xl) var(--tc-space-md);
 }
 
-/* ---------- Location gate: disabled bar + inline gate (never a modal/full page) ---------- */
-
 .locationBar {
   margin-bottom: var(--tc-space-md);
 }

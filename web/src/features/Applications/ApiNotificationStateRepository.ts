@@ -1,5 +1,4 @@
 import type { ApiClient } from '../../api/client';
-import type { NotificationStateSnapshot } from '../../domain/types';
 import type { NotificationStateRepository } from '../../domain/ports/notification-state-repository';
 import { notificationStateApi } from '../../api/notification-state';
 
@@ -10,10 +9,6 @@ export class ApiNotificationStateRepository
 
   constructor(client: ApiClient) {
     this.api = notificationStateApi(client);
-  }
-
-  async getState(): Promise<NotificationStateSnapshot> {
-    return this.api.getState();
   }
 
   async markAllRead(): Promise<void> {

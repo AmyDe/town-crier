@@ -26,24 +26,6 @@ const baseUrl = 'https://api.example.com';
 const getToken = async () => 'token';
 
 describe('ApiNotificationStateRepository', () => {
-  it('getState returns the wire snapshot from /v1/me/notification-state', async () => {
-    const { fetch: fakeFetch } = createFakeFetch(200, {
-      lastReadAt: '2026-05-04T12:00:00Z',
-      version: 4,
-      totalUnreadCount: 12,
-    });
-    const client = createApiClient(baseUrl, getToken, fakeFetch);
-    const repo = new ApiNotificationStateRepository(client);
-
-    const result = await repo.getState();
-
-    expect(result).toEqual({
-      lastReadAt: '2026-05-04T12:00:00Z',
-      version: 4,
-      totalUnreadCount: 12,
-    });
-  });
-
   it('markAllRead POSTs to /v1/me/notification-state/mark-all-read', async () => {
     const { fetch: fakeFetch, calls } = createFakeFetch(204, null);
     const client = createApiClient(baseUrl, getToken, fakeFetch);
