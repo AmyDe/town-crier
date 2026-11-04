@@ -1,8 +1,5 @@
-// ApplicationNavGraph.kt is the bead-mandated file name for every
-// applications-browsing nav destination + composable (mirrors
-// WatchZoneNavGraph.kt) — ApplicationDetailDestination below is only ONE of
-// several top-level declarations this file thematically groups, not its sole
-// declaration in spirit.
+// Groups every applications-browsing nav destination, so the file is not named
+// after any single declaration.
 @file:Suppress("MatchingDeclarationName")
 
 package uk.towncrierapp.app
@@ -70,9 +67,8 @@ internal fun applicationDetailDestinationFor(application: PlanningApplication): 
         latitude = application.location?.latitude,
         longitude = application.location?.longitude,
         portalUrl = application.portalUrl,
-        // At most 2 statusHistory points by construction (GH#775): index 0 is
-        // always the Undecided/submitted event, index 1 (if present) is the
-        // decided one.
+        // At most 2 statusHistory points by construction: index 0 is always the
+        // Undecided/submitted event, index 1 (if present) is the decided one.
         decidedDate =
             application.statusHistory
                 .getOrNull(1)
@@ -104,7 +100,7 @@ private fun ApplicationDetailDestination.toInitialApplication(): PlanningApplica
     )
 }
 
-/** The Applications tab (GH#775) — first bottom-nav destination, replacing the #771 Home placeholder. */
+/** The Applications tab: the first bottom-nav destination. */
 @Composable
 internal fun ApplicationsTab(
     appGraph: AppGraph,
@@ -153,7 +149,7 @@ internal fun SavedTab(
     )
 }
 
-/** Application detail — a full navigation destination reachable from any tab (GH#775 pre-resolved decision: not a bottom sheet). */
+/** Application detail: a full navigation destination reachable from any tab. */
 @Composable
 internal fun ApplicationDetailDestinationContent(
     entry: NavBackStackEntry,
