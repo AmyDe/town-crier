@@ -244,6 +244,30 @@ func TestRunListUsers_PaginatesOnYes(t *testing.T) {
 	}
 }
 
+func TestRunListUsers_DefaultPageSizeIs200(t *testing.T) {
+	t.Parallel()
+	var pageSize string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/v1/admin/stats" {
+			_, _ = io.WriteString(w, testStatsJSON)
+			return
+		}
+		pageSize = r.URL.Query().Get("pageSize")
+		_, _ = io.WriteString(w, `{"items":[],"continuationToken":null}`)
+	}))
+	defer server.Close()
+
+	env := Env{In: strings.NewReader(""), Out: io.Discard, Err: io.Discard}
+	code := runListUsers(context.Background(), clientFor(server), env, ParseArgs([]string{"list-users"}))
+	if code != exitOK {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+	if pageSize != "200" {
+		t.Fatalf("pageSize = %q, want 200", pageSize)
+	}
+}
+
 func TestRunListUsers_StopsOnNo(t *testing.T) {
 	t.Parallel()
 	var requests int
