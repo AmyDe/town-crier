@@ -93,9 +93,13 @@ func (f *fakeNotifications) MarkEmailSent(_ context.Context, n notifications.Dig
 
 type fakeZones struct {
 	byUser map[string][]watchzones.WatchZone
+	errFor map[string]error
 }
 
 func (f *fakeZones) GetByUserID(_ context.Context, userID string) ([]watchzones.WatchZone, error) {
+	if err := f.errFor[userID]; err != nil {
+		return nil, err
+	}
 	return f.byUser[userID], nil
 }
 
@@ -365,6 +369,9 @@ func TestRunWeekly_ProTierGetsPushWithBadgeAndPrunesInvalidTokens(t *testing.T) 
 	// Invalid token pruned.
 	if len(devices.deleted) != 1 || devices.deleted[0] != "dead-token" {
 		t.Errorf("pruned tokens: got %v, want [dead-token]", devices.deleted)
+	}
+	if len(email.sent) != 0 {
+		t.Errorf("emails sent: got %d, want 0 (email digest disabled)", len(email.sent))
 	}
 }
 
@@ -1329,5 +1336,63 @@ func TestRunWeekly_GapCountsFromPreviousSendStart(t *testing.T) {
 	want := []time.Duration{time.Second, time.Second}
 	if !slices.Equal(slept, want) {
 		t.Errorf("sleeps = %v, want %v", slept, want)
+	}
+}
+
+func mkUser(t *testing.T, id string, tier profiles.SubscriptionTier, emailOn, pushOn bool) *profiles.UserProfile {
+	t.Helper()
+	p, err := profiles.NewProfile(id, id+"@example.com", time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("NewProfile: %v", err)
+	}
+	p.Tier = tier
+	p.Preferences = profiles.DefaultPreferences()
+	p.Preferences.EmailDigestEnabled = emailOn
+	p.Preferences.PushEnabled = pushOn
+	return p
+}
+
+func recipients(msgs []acsemail.Message) []string {
+	out := make([]string, 0, len(msgs))
+	for _, m := range msgs {
+		out = append(out, m.Recipient)
+	}
+	return out
+}
+
+func TestRunWeekly_EmailOnlyWhenDigestEnabledAndEmailPresent(t *testing.T) {
+	t.Parallel()
+	address := testEmail
+	empty := ""
+	tests := []struct {
+		name      string
+		enabled   bool
+		email     *string
+		wantSends int
+	}{
+		{name: "enabled with email", enabled: true, email: &address, wantSends: 1},
+		{name: "disabled with email", enabled: false, email: &address, wantSends: 0},
+		{name: "enabled nil email", enabled: true, email: nil, wantSends: 0},
+		{name: "enabled empty email", enabled: true, email: &empty, wantSends: 0},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			p := mkUser(t, testUser, profiles.TierFree, tc.enabled, false)
+			p.Email = tc.email
+			fp := &fakeProfiles{byDay: map[time.Weekday][]*profiles.UserProfile{time.Wednesday: {p}}}
+			fn := &fakeNotifications{sinceByUser: map[string][]notifications.DigestNotification{
+				testUser: {zoneNotif("uid-A", "zone-1")},
+			}}
+			email := &spyEmail{}
+			h := newHandler(fp, fn, &fakeZones{}, &fakeState{}, &fakeDevices{}, email, &spyPush{})
+
+			if err := h.RunWeekly(context.Background()); err != nil {
+				t.Fatalf("RunWeekly: %v", err)
+			}
+			if len(email.sent) != tc.wantSends {
+				t.Errorf("emails sent: got %d, want %d", len(email.sent), tc.wantSends)
+			}
+		})
 	}
 }

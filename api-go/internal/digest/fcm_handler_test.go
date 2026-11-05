@@ -74,7 +74,8 @@ func TestRunWeekly_MixedRecipient_APNsToIosAndFCMToAndroid(t *testing.T) {
 	}}
 	ios := &spyPush{}
 	android := &spyPush{}
-	h := newHandlerWithDispatcher(fp, fn, &fakeZones{}, state, devices, &spyEmail{}, &fakeDispatcher{ios: ios, android: android})
+	email := &spyEmail{}
+	h := newHandlerWithDispatcher(fp, fn, &fakeZones{}, state, devices, email, &fakeDispatcher{ios: ios, android: android})
 
 	if err := h.RunWeekly(context.Background()); err != nil {
 		t.Fatalf("RunWeekly: %v", err)
@@ -122,6 +123,9 @@ func TestRunWeekly_MixedRecipient_APNsToIosAndFCMToAndroid(t *testing.T) {
 	if fcmParsed.Notification.Body != "2 new applications this week" {
 		t.Errorf("fcm body: got %q", fcmParsed.Notification.Body)
 	}
+	if len(email.sent) != 0 {
+		t.Errorf("emails sent: got %d, want 0 (email digest disabled)", len(email.sent))
+	}
 }
 
 func TestRunWeekly_AndroidOnlyRecipient_PrunesInvalidFCMTokenNoAPNs(t *testing.T) {
@@ -140,7 +144,8 @@ func TestRunWeekly_AndroidOnlyRecipient_PrunesInvalidFCMTokenNoAPNs(t *testing.T
 	}}
 	ios := &spyPush{}
 	android := &spyPush{invalid: []string{"and-dead"}}
-	h := newHandlerWithDispatcher(fp, fn, &fakeZones{}, &fakeState{unread: map[string]int{}}, devices, &spyEmail{}, &fakeDispatcher{ios: ios, android: android})
+	email := &spyEmail{}
+	h := newHandlerWithDispatcher(fp, fn, &fakeZones{}, &fakeState{unread: map[string]int{}}, devices, email, &fakeDispatcher{ios: ios, android: android})
 
 	if err := h.RunWeekly(context.Background()); err != nil {
 		t.Fatalf("RunWeekly: %v", err)
@@ -153,5 +158,8 @@ func TestRunWeekly_AndroidOnlyRecipient_PrunesInvalidFCMTokenNoAPNs(t *testing.T
 	}
 	if len(devices.deleted) != 1 || devices.deleted[0] != "and-dead" {
 		t.Errorf("pruned = %v, want [and-dead]", devices.deleted)
+	}
+	if len(email.sent) != 0 {
+		t.Errorf("emails sent: got %d, want 0 (email digest disabled)", len(email.sent))
 	}
 }
