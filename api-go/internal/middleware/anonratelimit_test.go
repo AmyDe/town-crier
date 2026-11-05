@@ -490,3 +490,95 @@ func TestAnonRateLimitStore_MapStaysBoundedAcrossRefills(t *testing.T) {
 		}
 	}
 }
+
+func TestAnonRateLimitStore_FractionalRefillAddsToRemainingTokens(t *testing.T) {
+	t.Parallel()
+
+	clock := &fixedClock{t: time.Unix(2000, 0)}
+	store := newAnonRateLimitStore(clock.now, 0.5)
+	addr := netip.MustParseAddr("203.0.113.60")
+
+	if r := store.checkAndIncrement(addr, 3); !r.allowed {
+		t.Fatal("first request denied")
+	}
+	clock.t = clock.t.Add(time.Second)
+
+	for i := range 2 {
+		if r := store.checkAndIncrement(addr, 3); !r.allowed {
+			t.Fatalf("request %d after refill denied, want allowed (2.5 tokens)", i+1)
+		}
+	}
+	if r := store.checkAndIncrement(addr, 3); r.allowed {
+		t.Error("third request after refill allowed, want denied (0.5 tokens left)")
+	}
+}
+
+func TestAnonRateLimitStore_RetryAfterIsTimeToEarnOneToken(t *testing.T) {
+	t.Parallel()
+
+	clock := &fixedClock{t: time.Unix(2000, 0)}
+	store := newAnonRateLimitStore(clock.now, 0.5)
+	addr := netip.MustParseAddr("203.0.113.61")
+
+	if r := store.checkAndIncrement(addr, 1); !r.allowed {
+		t.Fatal("first request denied")
+	}
+
+	denied := store.checkAndIncrement(addr, 1)
+	if denied.allowed {
+		t.Fatal("empty bucket allowed a request")
+	}
+	if denied.retryAfter != 2*time.Second {
+		t.Errorf("retryAfter from empty bucket = %v, want 2s", denied.retryAfter)
+	}
+
+	clock.t = clock.t.Add(time.Second)
+	denied = store.checkAndIncrement(addr, 1)
+	if denied.allowed {
+		t.Fatal("half-full bucket allowed a request")
+	}
+	if denied.retryAfter != time.Second {
+		t.Errorf("retryAfter from half-token bucket = %v, want 1s", denied.retryAfter)
+	}
+}
+
+func TestAnonRateLimitStore_LongIdleRefillsOnlyToBurst(t *testing.T) {
+	t.Parallel()
+
+	clock := &fixedClock{t: time.Unix(2000, 0)}
+	store := newAnonRateLimitStore(clock.now, 0.5)
+	addr := netip.MustParseAddr("203.0.113.62")
+
+	for range 3 {
+		store.checkAndIncrement(addr, 3)
+	}
+	clock.t = clock.t.Add(24 * time.Hour)
+
+	for i := range 3 {
+		if r := store.checkAndIncrement(addr, 3); !r.allowed {
+			t.Fatalf("request %d after long idle denied, want allowed", i+1)
+		}
+	}
+	if r := store.checkAndIncrement(addr, 3); r.allowed {
+		t.Error("request beyond burst after long idle allowed, want denied")
+	}
+}
+
+func TestAnonRateLimitStore_ZeroRefillDeniesWithMinimumRetryAfter(t *testing.T) {
+	t.Parallel()
+
+	clock := &fixedClock{t: time.Unix(2000, 0)}
+	store := newAnonRateLimitStore(clock.now, 0)
+	addr := netip.MustParseAddr("203.0.113.63")
+
+	store.checkAndIncrement(addr, 1)
+	clock.t = clock.t.Add(time.Hour)
+
+	denied := store.checkAndIncrement(addr, 1)
+	if denied.allowed {
+		t.Fatal("zero-refill bucket refilled")
+	}
+	if denied.retryAfter != time.Millisecond {
+		t.Errorf("retryAfter = %v, want 1ms", denied.retryAfter)
+	}
+}

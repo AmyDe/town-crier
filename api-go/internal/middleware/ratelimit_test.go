@@ -289,3 +289,25 @@ func TestRateLimitStore_DeniedDoesNotDoubleCountAcrossCalls(t *testing.T) {
 		t.Fatalf("after second denial: stored len = %d, want 2 (double-count regression)", got)
 	}
 }
+
+func TestRateLimitResult_RetryAfterSecondsRoundsUpWithMinimumOne(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		retryAfter time.Duration
+		want       int
+	}{
+		{0, 1},
+		{500 * time.Millisecond, 1},
+		{time.Second, 1},
+		{1500 * time.Millisecond, 2},
+		{2 * time.Second, 2},
+	}
+	for _, tc := range tests {
+		t.Run(tc.retryAfter.String(), func(t *testing.T) {
+			t.Parallel()
+			if got := (rateLimitResult{retryAfter: tc.retryAfter}).retryAfterSeconds(); got != tc.want {
+				t.Errorf("retryAfterSeconds(%v) = %d, want %d", tc.retryAfter, got, tc.want)
+			}
+		})
+	}
+}
