@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"slices"
 	"testing"
 	"time"
 
@@ -469,5 +470,70 @@ func TestParseTimeOfDay(t *testing.T) {
 		if (err != nil) != tc.wantErr || got != tc.want {
 			t.Errorf("ParseTimeOfDay(%q) = %v, %v", tc.in, got, err)
 		}
+	}
+}
+
+type fakeRecoverer struct {
+	log *[]string
+	err error
+	at  []time.Time
+}
+
+func (f *fakeRecoverer) Recover(_ context.Context, now time.Time) error {
+	*f.log = append(*f.log, "recover")
+	f.at = append(f.at, now)
+	return f.err
+}
+
+type orderedFlusher struct{ log *[]string }
+
+func (f orderedFlusher) Flush(context.Context) error {
+	*f.log = append(*f.log, "flush")
+	return nil
+}
+
+func newRecoveryDispatcher(now time.Time, rec *fakeRecoverer, log *[]string) *Dispatcher {
+	h := newHarness(now, DefaultConfig())
+	return NewDispatcher(h.store, fakeApps{}, h.fan, h.fan, orderedFlusher{log: log}, DefaultConfig(),
+		func() time.Time { return now }, slog.New(slog.DiscardHandler)).WithRecovery(rec)
+}
+
+func TestFlush_RecoversBeforeFlushing(t *testing.T) {
+	t.Parallel()
+	var log []string
+	rec := &fakeRecoverer{log: &log}
+	d := newRecoveryDispatcher(at(12, 0), rec, &log)
+	if err := d.Flush(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(log, []string{"recover", "flush"}) {
+		t.Errorf("order = %v, want [recover flush]", log)
+	}
+	if len(rec.at) != 1 || !rec.at[0].Equal(at(12, 0)) {
+		t.Errorf("recover times = %v", rec.at)
+	}
+}
+
+func TestFlush_QuietHoursSkipRecover(t *testing.T) {
+	t.Parallel()
+	var log []string
+	d := newRecoveryDispatcher(at(23, 0), &fakeRecoverer{log: &log}, &log)
+	if err := d.Flush(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(log, []string{"flush"}) {
+		t.Errorf("order = %v, want [flush]", log)
+	}
+}
+
+func TestFlush_RecoverFailureStillFlushes(t *testing.T) {
+	t.Parallel()
+	var log []string
+	d := newRecoveryDispatcher(at(12, 0), &fakeRecoverer{log: &log, err: errors.New("db down")}, &log)
+	if err := d.Flush(context.Background()); err != nil {
+		t.Fatalf("Flush = %v, want nil", err)
+	}
+	if !slices.Equal(log, []string{"recover", "flush"}) {
+		t.Errorf("order = %v, want [recover flush]", log)
 	}
 }

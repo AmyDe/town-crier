@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log/slog"
 	"sort"
 	"strings"
@@ -12,6 +14,7 @@ import (
 
 	"github.com/AmyDe/town-crier/api-go/internal/devicetokens"
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
+	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
 )
 
@@ -48,6 +51,20 @@ type pushMarker interface {
 	MarkPushStatus(ctx context.Context, ids []string, status notifications.PushStatus) error
 }
 
+// pendingPushStore serves the recovery queries. *notifications.PostgresStore
+// satisfies it.
+type pendingPushStore interface {
+	ExpirePendingPushes(ctx context.Context, cutoff time.Time) (int, error)
+	PendingPushes(ctx context.Context, cutoff time.Time, limit int) ([]notifications.PendingPush, error)
+}
+
+// Recovery bounds: a pending push older than pendingPushMaxAge is expired, and
+// one Recover call loads at most recoveryBatchLimit rows.
+const (
+	pendingPushMaxAge  = 12 * time.Hour
+	recoveryBatchLimit = 2000
+)
+
 // zoneNameReader resolves a user's watch zones so the coalescer can name a
 // zone's summary push at flush time. watchzones.Store satisfies it — the same
 // GetByUserID pattern the digest handler already uses.
@@ -74,12 +91,26 @@ type PushCoalescer struct {
 	dispatcher *PlatformDispatcher
 	zones      zoneNameReader
 	marker     pushMarker
+	pending    pendingPushStore
+	profiles   profileReader
 	now        func() time.Time
 	logger     *slog.Logger
 
 	// items is userID -> bucketKey (watch zone id, or savedBucket) -> the
 	// push-eligible notifications queued for that bucket this cycle.
 	items map[string]map[string][]notifications.DigestNotification
+
+	// resend holds per-user sets that an earlier run attempted but never marked
+	// sent. Each set is sent as its own bucket so its collapse ID matches the
+	// first attempt.
+	resend map[string][]pushBucket
+}
+
+// pushBucket is one push to send: the bucket key (watch zone id or savedBucket)
+// and the notifications it covers.
+type pushBucket struct {
+	key    string
+	queued []notifications.DigestNotification
 }
 
 // NewPushCoalescer wires the coalescer.
@@ -96,6 +127,14 @@ func NewPushCoalescer(devices deviceReader, state stateReader, dispatcher *Platf
 	}
 }
 
+// WithRecovery enables recovery of pending pushes through Recover. Without it,
+// Recover is a no-op.
+func (c *PushCoalescer) WithRecovery(pending pendingPushStore, profs profileReader) *PushCoalescer {
+	c.pending = pending
+	c.profiles = profs
+	return c
+}
+
 // Add queues a push-eligible notification into its user's zone bucket (or the
 // shared saved bucket for a zone-less notification). The coalescer does no
 // gating, so only already push-eligible notifications must be handed to it.
@@ -107,6 +146,11 @@ func (c *PushCoalescer) Add(userID string, n notifications.DigestNotification) {
 	if c.items[userID] == nil {
 		c.items[userID] = make(map[string][]notifications.DigestNotification)
 	}
+	for _, q := range c.items[userID][bucket] {
+		if q.ID == n.ID {
+			return
+		}
+	}
 	c.items[userID][bucket] = append(c.items[userID][bucket], n)
 }
 
@@ -114,6 +158,7 @@ func (c *PushCoalescer) Add(userID string, n notifications.DigestNotification) {
 // (before the authority loop) so a cycle only ever flushes its own pushes.
 func (c *PushCoalescer) Reset() {
 	c.items = make(map[string]map[string][]notifications.DigestNotification)
+	c.resend = nil
 }
 
 // Flush sends one push per accumulated (user, bucket) and then clears the
@@ -123,10 +168,20 @@ func (c *PushCoalescer) Reset() {
 // polling handler's pushFlusher contract has somewhere to report a future
 // failure without a signature change.
 func (c *PushCoalescer) Flush(ctx context.Context) error {
-	items := c.items
+	items, resend := c.items, c.resend
 	c.items = make(map[string]map[string][]notifications.DigestNotification)
+	c.resend = nil
 
+	sends := make(map[string][]pushBucket, len(items))
 	for userID, buckets := range items {
+		for key, queued := range buckets {
+			sends[userID] = append(sends[userID], pushBucket{key: key, queued: queued})
+		}
+	}
+	for userID, groups := range resend {
+		sends[userID] = append(sends[userID], groups...)
+	}
+	for userID, buckets := range sends {
 		c.flushUser(ctx, userID, buckets)
 	}
 	return nil
@@ -137,15 +192,15 @@ func (c *PushCoalescer) Flush(ctx context.Context) error {
 // accumulating any invalid tokens either sender reports across all of this
 // user's sends and pruning the union once at the end. The per-platform payload
 // is built only when the user has tokens on that platform.
-func (c *PushCoalescer) flushUser(ctx context.Context, userID string, buckets map[string][]notifications.DigestNotification) {
+func (c *PushCoalescer) flushUser(ctx context.Context, userID string, buckets []pushBucket) {
 	devices, err := c.devices.ListByUser(ctx, userID)
 	if err != nil {
 		c.logger.ErrorContext(ctx, "push coalescer: load devices failed", "user", userID, "error", err)
 		return
 	}
 	if len(devices) == 0 {
-		for bucketKey, queued := range buckets {
-			c.mark(ctx, userID, bucketKey, notificationIDs(queued), notifications.PushStatusSkipped)
+		for _, b := range buckets {
+			c.mark(ctx, userID, b.key, notificationIDs(b.queued), notifications.PushStatusSkipped)
 		}
 		return
 	}
@@ -155,7 +210,8 @@ func (c *PushCoalescer) flushUser(ctx context.Context, userID string, buckets ma
 	zoneNames := c.zoneNames(ctx, userID)
 
 	invalid := make(map[string]struct{})
-	for bucketKey, queued := range buckets {
+	for _, b := range buckets {
+		bucketKey, queued := b.key, b.queued
 		ids := notificationIDs(queued)
 		collapseID := pushCollapseID(ids)
 		var iosPayload, androidPayload json.RawMessage
@@ -269,4 +325,106 @@ func (c *PushCoalescer) zoneNames(ctx context.Context, userID string) map[string
 		names[z.ID] = z.Name
 	}
 	return names
+}
+
+// Recover expires pending pushes past the age limit, then queues the rest for
+// the next Flush: rows never attempted join the normal buckets, and rows an
+// earlier run attempted are regrouped into the sets that run tried to send. A
+// pending push whose user is no longer push-eligible is marked skipped. Without
+// WithRecovery it does nothing.
+func (c *PushCoalescer) Recover(ctx context.Context, now time.Time) error {
+	if c.pending == nil {
+		return nil
+	}
+	cutoff := now.Add(-pendingPushMaxAge)
+	expired, err := c.pending.ExpirePendingPushes(ctx, cutoff)
+	if err != nil {
+		return fmt.Errorf("expire pending pushes: %w", err)
+	}
+	if expired > 0 {
+		c.logger.WarnContext(ctx, "push.expired", "count", expired)
+	}
+	rows, err := c.pending.PendingPushes(ctx, cutoff, recoveryBatchLimit)
+	if err != nil {
+		return fmt.Errorf("load pending pushes: %w", err)
+	}
+	if len(rows) == 0 {
+		return nil
+	}
+
+	byUser := make(map[string][]notifications.PendingPush)
+	for _, r := range rows {
+		byUser[r.UserID] = append(byUser[r.UserID], r)
+	}
+	var recovered, resent int
+	oldest := now
+	for userID, userRows := range byUser {
+		if !c.recoverUser(ctx, userID, userRows, now) {
+			continue
+		}
+		for _, r := range userRows {
+			recovered++
+			if r.AttemptedAt != nil {
+				resent++
+			}
+			if r.CreatedAt.Before(oldest) {
+				oldest = r.CreatedAt
+			}
+		}
+	}
+	if recovered > 0 {
+		c.logger.InfoContext(ctx, "push.recovered", "count", recovered,
+			"oldestAgeSeconds", int(now.Sub(oldest).Seconds()), "resentInflight", resent)
+	}
+	return nil
+}
+
+// recoverUser queues one user's pending rows, or marks them skipped when the
+// user can no longer receive pushes. It reports whether the rows were queued.
+func (c *PushCoalescer) recoverUser(ctx context.Context, userID string, rows []notifications.PendingPush, now time.Time) bool {
+	profile, err := c.profiles.Get(ctx, userID)
+	if err != nil && !errors.Is(err, profiles.ErrNotFound) {
+		c.logger.WarnContext(ctx, "push.recovery_failed", "user", userID, "error", err)
+		return false
+	}
+	if profile == nil || !profile.EffectiveTier(now).IsPaid() || !profile.Preferences.PushEnabled {
+		ids := make([]string, len(rows))
+		for i, r := range rows {
+			ids[i] = r.ID
+		}
+		c.mark(ctx, userID, "", ids, notifications.PushStatusSkipped)
+		return false
+	}
+
+	type groupKey struct {
+		bucket    string
+		attempted time.Time
+	}
+	groups := make(map[groupKey]*pushBucket)
+	var order []groupKey
+	for _, r := range rows {
+		if r.AttemptedAt == nil {
+			c.Add(userID, r.DigestNotification)
+			continue
+		}
+		bucket := savedBucket
+		if r.WatchZoneID != nil {
+			bucket = *r.WatchZoneID
+		}
+		k := groupKey{bucket: bucket, attempted: r.AttemptedAt.UTC()}
+		g, ok := groups[k]
+		if !ok {
+			g = &pushBucket{key: bucket}
+			groups[k] = g
+			order = append(order, k)
+		}
+		g.queued = append(g.queued, r.DigestNotification)
+	}
+	if c.resend == nil {
+		c.resend = make(map[string][]pushBucket)
+	}
+	for _, k := range order {
+		c.resend[userID] = append(c.resend[userID], *groups[k])
+	}
+	return true
 }

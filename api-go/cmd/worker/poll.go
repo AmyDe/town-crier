@@ -92,6 +92,9 @@ func buildPoller(cfg platform.Config, pool *pgxpool.Pool, registry *metrics.Regi
 		},
 		now, logger,
 	)
+	if cfg.NotifyPushRecoveryEnabled {
+		dispatcher = dispatcher.WithRecovery(coalescer)
+	}
 
 	windows := polling.NewPostgresWindowStore(pool)
 	events := polling.NewPostgresPollEventStore(pool)
