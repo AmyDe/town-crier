@@ -14,14 +14,7 @@ import uk.towncrierapp.domain.applications.PlanningApplicationRepository
 import uk.towncrierapp.domain.applications.SavedApplicationRepository
 import uk.towncrierapp.domain.auth.DomainError
 
-/**
- * Drives the application detail screen: stale-while-revalidate (the passed-in
- * [initial] row renders instantly; [refresh] replaces it with the by-id
- * fetch's fresh copy, re-entrancy-guarded against a second rapid
- * navigation), and save/unsave with saved-state comparison by the
- * RECONSTRUCTED [uk.towncrierapp.domain.applications.PlanningApplicationId]
- * never a raw uid string.
- */
+/** Drives the application detail screen: [initial] renders instantly, [refresh] replaces it, plus save/unsave. */
 public class ApplicationDetailViewModel(
     private val repository: PlanningApplicationRepository,
     private val savedApplicationRepository: SavedApplicationRepository,
