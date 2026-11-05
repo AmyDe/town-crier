@@ -582,6 +582,37 @@ func TestRedeem_RetryAfterSaveFailureGrantsSameExpiry(t *testing.T) {
 	}
 }
 
+func TestRedeem_RetryAfterSaveFailureWithLapsedSameTierActivates(t *testing.T) {
+	t.Parallel()
+	first := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
+	retry := first.Add(48 * time.Hour)
+	lapsed := freeProfile(t)
+	lapsed.ActivateSubscription(profiles.TierPro, first.AddDate(0, 0, -10))
+	codes := seededCode(t)
+	profile := &fakeProfileStore{profile: lapsed, saveErr: errors.New("db down")}
+	auth0 := &fakeTierSync{}
+
+	rec := serveRedeem(t, codes, profile, auth0, first, `{"code":"ABCDEFGHJKMN"}`)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("first status = %d body = %s", rec.Code, rec.Body.String())
+	}
+
+	profile.saveErr = nil
+	rec = serveRedeem(t, codes, profile, auth0, retry, `{"code":"ABCDEFGHJKMN"}`)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("retry status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Body.String(); got != `{"tier":"Pro","expiresAt":"2026-07-10T12:00:00+00:00"}` {
+		t.Errorf("body = %s", got)
+	}
+	want := first.AddDate(0, 0, 30)
+	if profile.saved == nil || profile.saved.Tier != profiles.TierPro ||
+		profile.saved.SubscriptionExpiry == nil || !profile.saved.SubscriptionExpiry.Equal(want) {
+		t.Errorf("saved profile = %+v, want Pro expiring %v", profile.saved, want)
+	}
+}
+
 func TestRedeem_RetryWhenGrantAlreadyAppliedDoesNotExtend(t *testing.T) {
 	t.Parallel()
 	first := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
