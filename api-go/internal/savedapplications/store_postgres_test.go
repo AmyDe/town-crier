@@ -8,8 +8,6 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-
-	"github.com/AmyDe/town-crier/api-go/internal/applications"
 )
 
 type fakeSavedQuerier struct {
@@ -96,18 +94,6 @@ type errSavedRow struct{ err error }
 
 func (r *errSavedRow) Scan(_ ...any) error { return r.err }
 
-func newTestApp() applications.PlanningApplication {
-	return applications.PlanningApplication{
-		Name:          "24/00001/FUL",
-		UID:           "uid-1",
-		AreaName:      "Testshire",
-		AreaID:        100,
-		Address:       "1 Test Street",
-		Description:   "test application",
-		LastDifferent: time.Date(2026, 6, 26, 12, 0, 0, 0, time.UTC),
-	}
-}
-
 func TestSavedPostgresStore_Save_PropagatesExecError(t *testing.T) {
 	t.Parallel()
 
@@ -115,7 +101,7 @@ func TestSavedPostgresStore_Save_PropagatesExecError(t *testing.T) {
 	fq := &fakeSavedQuerier{execErr: sentinel}
 	store := NewPostgresStore(fq)
 
-	app := newTestApp()
+	app := testApp(t)
 	sa := NewSavedApplication("auth0|u1", app, time.Now())
 	if err := store.Save(context.Background(), sa); !errors.Is(err, sentinel) {
 		t.Fatalf("Save error: got %v, want wrapped %v", err, sentinel)

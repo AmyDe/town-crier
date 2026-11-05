@@ -16,8 +16,6 @@ extension SavedApplication {
     application: .permitted
   )
 
-  /// Builds a SavedApplication with a denormalised PlanningApplication payload
-  /// matching the supplied uid/status.
   static func fixture(
     uid: String,
     savedAt: Date = Date(timeIntervalSince1970: 1_700_000_000),

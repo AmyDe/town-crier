@@ -6,7 +6,6 @@ import type {
 } from '../../../../domain/types';
 
 export class SpySavedApplicationRepository implements SavedApplicationRepository {
-  listSavedCalls = 0;
   listSavedResult: readonly SavedApplication[] = [];
   listSavedError: Error | null = null;
 
@@ -17,7 +16,6 @@ export class SpySavedApplicationRepository implements SavedApplicationRepository
   removeError: Error | null = null;
 
   async listSaved(): Promise<readonly SavedApplication[]> {
-    this.listSavedCalls += 1;
     if (this.listSavedError) {
       throw this.listSavedError;
     }
