@@ -107,6 +107,39 @@ func TestAuth0Client_CachesToken(t *testing.T) {
 	}
 }
 
+func TestAuth0Client_RefetchesExpiredToken(t *testing.T) {
+	t.Parallel()
+
+	fake, srv := newAuth0Server(t)
+	client := newTestAuth0Client(srv)
+
+	if err := client.UpdateSubscriptionTier(context.Background(), "auth0|abc", "Pro"); err != nil {
+		t.Fatalf("UpdateSubscriptionTier: %v", err)
+	}
+	client.tokenExpiry = time.Now().Add(-time.Second)
+	if err := client.UpdateSubscriptionTier(context.Background(), "auth0|abc", "Pro"); err != nil {
+		t.Fatalf("UpdateSubscriptionTier: %v", err)
+	}
+	if got := fake.tokenHits.Load(); got != 2 {
+		t.Errorf("token endpoint hit %d times, want 2 (expired token refetched)", got)
+	}
+}
+
+func TestAuth0Client_TokenExpiryAppliesSkew(t *testing.T) {
+	t.Parallel()
+
+	_, srv := newAuth0Server(t)
+	client := newTestAuth0Client(srv)
+
+	if err := client.UpdateSubscriptionTier(context.Background(), "auth0|abc", "Pro"); err != nil {
+		t.Fatalf("UpdateSubscriptionTier: %v", err)
+	}
+	want := time.Now().Add(86400*time.Second - 60*time.Second)
+	if diff := client.tokenExpiry.Sub(want); diff < -5*time.Second || diff > 5*time.Second {
+		t.Errorf("tokenExpiry = %v, want within 5s of %v (expires_in 86400 minus 60s skew)", client.tokenExpiry, want)
+	}
+}
+
 func TestAuth0Client_DeleteUser_Succeeds(t *testing.T) {
 	t.Parallel()
 

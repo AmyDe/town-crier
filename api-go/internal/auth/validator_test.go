@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"testing"
 
@@ -33,8 +34,8 @@ func TestNewAuth0Validator_DenyAllWhenUnconfigured(t *testing.T) {
 			if err != nil {
 				t.Fatalf("NewAuth0Validator: %v", err)
 			}
-			if _, err := v.ValidateToken(context.Background(), "any-token"); err == nil {
-				t.Error("ValidateToken succeeded with no Auth0 config; want deny-all error")
+			if _, err := v.ValidateToken(context.Background(), "any-token"); !errors.Is(err, ErrUnconfigured) {
+				t.Errorf("ValidateToken err = %v, want ErrUnconfigured", err)
 			}
 		})
 	}
@@ -43,15 +44,23 @@ func TestNewAuth0Validator_DenyAllWhenUnconfigured(t *testing.T) {
 func TestNewAuth0Validator_ConfiguredBuildsRealValidator(t *testing.T) {
 	t.Parallel()
 
-	// A fully configured validator constructs without error. It does not reach
-	// the network here (JWKS is fetched lazily on first ValidateToken), so this
-	// asserts only that wiring the issuer URL and audience succeeds.
 	v, err := NewAuth0Validator("town-crier.eu.auth0.com", "https://api.towncrierapp.uk", discardLogger())
 	if err != nil {
 		t.Fatalf("NewAuth0Validator: %v", err)
 	}
 	if v == nil {
 		t.Fatal("NewAuth0Validator returned nil validator")
+	}
+
+	// A cancelled context keeps any lazy JWKS fetch off the network.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err = v.ValidateToken(ctx, "any-token")
+	if err == nil {
+		t.Fatal("ValidateToken accepted a malformed token")
+	}
+	if errors.Is(err, ErrUnconfigured) {
+		t.Errorf("ValidateToken err = %v, want a validation error from the real validator", err)
 	}
 }
 

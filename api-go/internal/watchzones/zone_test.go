@@ -215,6 +215,99 @@ func TestNewBoundary_RejectsSelfIntersectingRing(t *testing.T) {
 	}
 }
 
+func TestNewBoundary_SelfIntersectionShapes(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		vertices []Coordinate
+		wantErr  error
+	}{
+		{
+			name: "t-junction",
+			vertices: []Coordinate{
+				{Longitude: -0.10, Latitude: 51.50},
+				{Longitude: -0.06, Latitude: 51.50},
+				{Longitude: -0.06, Latitude: 51.54},
+				{Longitude: -0.07, Latitude: 51.52},
+				{Longitude: -0.06, Latitude: 51.52},
+			},
+			wantErr: ErrBoundarySelfIntersecting,
+		},
+		{
+			name: "collinear spike back onto the base",
+			vertices: []Coordinate{
+				{Longitude: -0.10, Latitude: 51.50},
+				{Longitude: -0.06, Latitude: 51.50},
+				{Longitude: -0.06, Latitude: 51.54},
+				{Longitude: -0.08, Latitude: 51.54},
+				{Longitude: -0.08, Latitude: 51.50},
+			},
+			wantErr: ErrBoundarySelfIntersecting,
+		},
+		{
+			name: "concave valid",
+			vertices: []Coordinate{
+				{Longitude: -0.10, Latitude: 51.50},
+				{Longitude: -0.06, Latitude: 51.50},
+				{Longitude: -0.06, Latitude: 51.53},
+				{Longitude: -0.08, Latitude: 51.51},
+				{Longitude: -0.10, Latitude: 51.53},
+			},
+			wantErr: nil,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := NewBoundary(tc.vertices)
+			if !errors.Is(err, tc.wantErr) {
+				t.Errorf("NewBoundary err = %v, want %v", err, tc.wantErr)
+			}
+		})
+	}
+}
+
+func TestSegmentsIntersect(t *testing.T) {
+	t.Parallel()
+	pt := func(x, y float64) Coordinate { return Coordinate{Longitude: x, Latitude: y} }
+	tests := []struct {
+		name           string
+		p1, p2, p3, p4 Coordinate
+		want           bool
+	}{
+		{name: "proper crossing", p1: pt(0, 0), p2: pt(2, 2), p3: pt(0, 2), p4: pt(2, 0), want: true},
+		{name: "proper crossing reversed", p1: pt(2, 2), p2: pt(0, 0), p3: pt(2, 0), p4: pt(0, 2), want: true},
+		{name: "proper crossing opposite orientation", p1: pt(0, 2), p2: pt(2, 0), p3: pt(0, 0), p4: pt(2, 2), want: true},
+		{name: "disjoint parallel", p1: pt(0, 0), p2: pt(2, 0), p3: pt(0, 1), p4: pt(2, 1), want: false},
+		{name: "lines cross beyond second segment", p1: pt(0, 0), p2: pt(2, 2), p3: pt(3, 0), p4: pt(2, 1), want: false},
+		{name: "lines cross beyond first segment", p1: pt(3, 0), p2: pt(2, 1), p3: pt(0, 0), p4: pt(2, 2), want: false},
+		{name: "p1 on p3p4", p1: pt(1, 0), p2: pt(1, 2), p3: pt(0, 0), p4: pt(2, 0), want: true},
+		{name: "p2 on p3p4", p1: pt(1, 2), p2: pt(1, 0), p3: pt(0, 0), p4: pt(2, 0), want: true},
+		{name: "p3 on p1p2", p1: pt(0, 0), p2: pt(2, 0), p3: pt(1, 0), p4: pt(1, 2), want: true},
+		{name: "p4 on p1p2", p1: pt(0, 0), p2: pt(2, 0), p3: pt(1, 2), p4: pt(1, 0), want: true},
+		{name: "p1 collinear beyond p3p4", p1: pt(3, 0), p2: pt(3, 2), p3: pt(0, 0), p4: pt(2, 0), want: false},
+		{name: "p2 collinear beyond p3p4", p1: pt(3, 2), p2: pt(3, 0), p3: pt(0, 0), p4: pt(2, 0), want: false},
+		{name: "p3 collinear beyond p1p2", p1: pt(0, 0), p2: pt(2, 0), p3: pt(3, 0), p4: pt(3, 2), want: false},
+		{name: "p4 collinear beyond p1p2", p1: pt(0, 0), p2: pt(2, 0), p3: pt(3, 2), p4: pt(3, 0), want: false},
+		{name: "touch at maximum longitude", p1: pt(0, 0), p2: pt(2, 0), p3: pt(2, 0), p4: pt(2, 2), want: true},
+		{name: "touch at minimum longitude", p1: pt(0, 0), p2: pt(2, 0), p3: pt(0, 0), p4: pt(0, 2), want: true},
+		{name: "touch at maximum latitude", p1: pt(0, 0), p2: pt(0, 2), p3: pt(0, 2), p4: pt(2, 2), want: true},
+		{name: "touch at minimum latitude", p1: pt(0, 0), p2: pt(0, 2), p3: pt(0, 0), p4: pt(2, 0), want: true},
+		{name: "collinear disjoint after", p1: pt(0, 0), p2: pt(1, 0), p3: pt(2, 0), p4: pt(3, 0), want: false},
+		{name: "collinear disjoint before", p1: pt(2, 0), p2: pt(3, 0), p3: pt(0, 0), p4: pt(1, 0), want: false},
+		{name: "vertical collinear disjoint after", p1: pt(0, 0), p2: pt(0, 1), p3: pt(0, 2), p4: pt(0, 3), want: false},
+		{name: "vertical collinear disjoint before", p1: pt(0, 2), p2: pt(0, 3), p3: pt(0, 0), p4: pt(0, 1), want: false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := segmentsIntersect(tc.p1, tc.p2, tc.p3, tc.p4); got != tc.want {
+				t.Errorf("segmentsIntersect = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestNewBoundary_RejectsOutOfUKBoundsVertex(t *testing.T) {
 	t.Parallel()
 	_, err := NewBoundary([]Coordinate{

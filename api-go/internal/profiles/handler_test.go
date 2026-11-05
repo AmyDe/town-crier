@@ -443,6 +443,46 @@ func TestHandler_PatchProfile_AcceptsDigestDayAsInt(t *testing.T) {
 	}
 }
 
+func TestHandler_PatchProfile_DigestDayIntBounds(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		day        string
+		wantStatus int
+		wantDay    string
+	}{
+		{day: "0", wantStatus: http.StatusOK, wantDay: "Sunday"},
+		{day: "6", wantStatus: http.StatusOK, wantDay: "Saturday"},
+		{day: "-1", wantStatus: http.StatusBadRequest},
+		{day: "7", wantStatus: http.StatusBadRequest},
+		{day: "9", wantStatus: http.StatusBadRequest},
+	}
+	for _, tc := range tests {
+		t.Run(tc.day, func(t *testing.T) {
+			t.Parallel()
+			store := newFakeStore()
+			existing, _ := NewProfile("auth0|abc", "", time.Now())
+			store.byID["auth0|abc"] = existing
+			h := newTestHandler(store, newFakeAuth0())
+
+			body := `{"pushEnabled":true,"digestDay":` + tc.day + `}`
+			rec := httptest.NewRecorder()
+			h.patch(rec, withSubject(http.MethodPatch, "/v1/me", "auth0|abc", body))
+
+			if rec.Code != tc.wantStatus {
+				t.Fatalf("patch status: got %d, want %d", rec.Code, tc.wantStatus)
+			}
+			if tc.wantStatus != http.StatusOK {
+				return
+			}
+			var got map[string]any
+			_ = json.Unmarshal(rec.Body.Bytes(), &got)
+			if got["digestDay"] != tc.wantDay {
+				t.Errorf("digestDay: got %v, want %s", got["digestDay"], tc.wantDay)
+			}
+		})
+	}
+}
+
 func TestHandler_PatchProfile_NotFound(t *testing.T) {
 	t.Parallel()
 

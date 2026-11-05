@@ -26,6 +26,8 @@ func TestNewOfferCode_Validates(t *testing.T) {
 		{"free tier rejected", "ABCDEFGHJKMN", profiles.TierFree, 30, "label", 1, true},
 		{"duration too low", "ABCDEFGHJKMN", profiles.TierPro, 0, "label", 1, true},
 		{"duration too high", "ABCDEFGHJKMN", profiles.TierPro, 366, "label", 1, true},
+		{"duration 1 accepted", "ABCDEFGHJKMN", profiles.TierPro, 1, "label", 1, false},
+		{"duration 365 accepted", "ABCDEFGHJKMN", profiles.TierPro, 365, "label", 1, false},
 		{"blank label rejected", "ABCDEFGHJKMN", profiles.TierPro, 30, "", 1, true},
 		{"whitespace-only label rejected", "ABCDEFGHJKMN", profiles.TierPro, 30, "   ", 1, true},
 		{"label at max length accepted", "ABCDEFGHJKMN", profiles.TierPro, 30, repeatChar('a', 100), 1, false},

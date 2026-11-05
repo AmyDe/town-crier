@@ -440,6 +440,80 @@ func TestVerify_RevokedSubscriptionIsSkipped(t *testing.T) {
 	}
 }
 
+func TestVerify_RevokedThenActiveSubscriptionGrantsTier(t *testing.T) {
+	t.Parallel()
+	d := newTestDeps()
+	d.byUser.profile = freshProfile(t)
+	d.verifier.results["REV"] = fmt.Sprintf(`{"transactionId":"t0","originalTransactionId":"orig-rev","productId":%q,"bundleId":%q,"purchaseDate":1,"expiresDate":%d,"revocationDate":2,"environment":"Production"}`,
+		ProductProMonthly, testBundleID, futureExpiryMs())
+	d.verifier.results["SUB"] = txnJSON(ProductProMonthly, testBundleID, "orig-sub", futureExpiryMs())
+
+	rec := d.serve(t, "/v1/subscriptions/verify", `{"signedTransactions":["REV","SUB"]}`, true)
+
+	if resp := verifyTier(t, rec); resp.Tier != "Pro" {
+		t.Errorf("tier = %q, want Pro", resp.Tier)
+	}
+	saved := d.byUser.saved
+	if saved == nil || saved.OriginalTransactionID == nil || *saved.OriginalTransactionID != "orig-sub" {
+		t.Errorf("saved = %+v, want OriginalTransactionID orig-sub", saved)
+	}
+}
+
+func TestVerify_LifetimeThenActiveMonthlyGrantsBoth(t *testing.T) {
+	t.Parallel()
+	d := newTestDeps()
+	d.byUser.profile = freshProfile(t)
+	d.verifier.results["LIFE"] = lifetimeTxnJSON(ProductProLifetime, "life-1", 0)
+	d.verifier.results["SUB"] = txnJSON(ProductPersonalMonthly, testBundleID, "orig-sub", futureExpiryMs())
+
+	rec := d.serve(t, "/v1/subscriptions/verify", `{"signedTransactions":["LIFE","SUB"]}`, true)
+
+	resp := verifyTier(t, rec)
+	if resp.Tier != "Pro" {
+		t.Errorf("tier = %q, want Pro", resp.Tier)
+	}
+	saved := d.byUser.saved
+	if saved.Tier != profiles.TierPro || saved.LifetimeTier != profiles.TierPro {
+		t.Errorf("Tier/LifetimeTier = %v/%v, want Pro/Pro", saved.Tier, saved.LifetimeTier)
+	}
+	if saved.SubscriptionExpiry == nil {
+		t.Error("SubscriptionExpiry = nil, want the Personal subscription window recorded")
+	}
+	if saved.OriginalTransactionID == nil || *saved.OriginalTransactionID != "orig-sub" {
+		t.Errorf("OriginalTransactionID = %v, want orig-sub", saved.OriginalTransactionID)
+	}
+}
+
+func TestVerify_TwoActiveSameTierKeepsFirstSeen(t *testing.T) {
+	t.Parallel()
+	d := newTestDeps()
+	d.byUser.profile = freshProfile(t)
+	firstExpiry := testNow.AddDate(0, 1, 0)
+	secondExpiry := testNow.AddDate(0, 2, 0)
+	d.verifier.results["FIRST"] = txnJSON(ProductProMonthly, testBundleID, "orig-first", firstExpiry.UnixMilli())
+	d.verifier.results["SECOND"] = txnJSON(ProductProMonthly, testBundleID, "orig-second", secondExpiry.UnixMilli())
+
+	rec := d.serve(t, "/v1/subscriptions/verify", `{"signedTransactions":["FIRST","SECOND"]}`, true)
+
+	resp := verifyTier(t, rec)
+	if resp.Tier != "Pro" {
+		t.Errorf("tier = %q, want Pro", resp.Tier)
+	}
+	if resp.SubscriptionExpiry == nil || !time.Time(*resp.SubscriptionExpiry).Equal(firstExpiry) {
+		t.Errorf("response subscriptionExpiry = %v, want %v", resp.SubscriptionExpiry, firstExpiry)
+	}
+	saved := d.byUser.saved
+	if saved == nil {
+		t.Fatal("profile not saved")
+	}
+	if saved.SubscriptionExpiry == nil || !saved.SubscriptionExpiry.Equal(firstExpiry) {
+		t.Errorf("saved SubscriptionExpiry = %v, want %v", saved.SubscriptionExpiry, firstExpiry)
+	}
+	if saved.OriginalTransactionID == nil || *saved.OriginalTransactionID != "orig-first" {
+		t.Errorf("saved OriginalTransactionID = %v, want orig-first", saved.OriginalTransactionID)
+	}
+}
+
 func TestVerify_LifetimeOwnedByAnotherUserConflicts(t *testing.T) {
 	t.Parallel()
 	d := newTestDeps()
