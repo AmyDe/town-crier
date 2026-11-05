@@ -33,11 +33,6 @@ func pgApp(name string, areaID int) applications.PlanningApplication {
 	}
 }
 
-func pgSavedApp(t *testing.T, userID string, app applications.PlanningApplication, savedAt time.Time) SavedApplication {
-	t.Helper()
-	return NewSavedApplication(userID, app, savedAt)
-}
-
 func assertSavedAppEqual(t *testing.T, got, want SavedApplication) {
 	t.Helper()
 	if !got.SavedAt.Equal(want.SavedAt) {
@@ -73,7 +68,7 @@ func TestSavedPostgresStore_SaveGetByUserID(t *testing.T) {
 
 	app := pgApp("24/00001/FUL", 100)
 	savedAt := time.Date(2026, 6, 27, 10, 0, 0, 0, time.UTC)
-	want := pgSavedApp(t, "auth0|u1", app, savedAt)
+	want := NewSavedApplication("auth0|u1", app, savedAt)
 
 	if err := store.Save(ctx, want); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -94,7 +89,7 @@ func TestSavedPostgresStore_Exists(t *testing.T) {
 	store := newSavedPGStore(t)
 
 	app := pgApp("24/00001/FUL", 100)
-	sa := pgSavedApp(t, "auth0|u1", app, time.Now())
+	sa := NewSavedApplication("auth0|u1", app, time.Now())
 
 	exists, err := store.Exists(ctx, "auth0|u1", sa.ApplicationUID)
 	if err != nil {
@@ -122,7 +117,7 @@ func TestSavedPostgresStore_Delete(t *testing.T) {
 	store := newSavedPGStore(t)
 
 	app := pgApp("24/00001/FUL", 100)
-	sa := pgSavedApp(t, "auth0|u1", app, time.Now())
+	sa := NewSavedApplication("auth0|u1", app, time.Now())
 
 	if err := store.Save(ctx, sa); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -147,7 +142,7 @@ func TestSavedPostgresStore_Delete_CollapsedSlashUID(t *testing.T) {
 
 	app := pgApp("Bromley/23/00178//CON6", 299)
 	for _, user := range []string{"auth0|u1", "auth0|u2"} {
-		if err := store.Save(ctx, pgSavedApp(t, user, app, time.Now())); err != nil {
+		if err := store.Save(ctx, NewSavedApplication(user, app, time.Now())); err != nil {
 			t.Fatalf("Save %s: %v", user, err)
 		}
 	}
@@ -175,9 +170,9 @@ func TestSavedPostgresStore_GetByUserID_OrderedAndScoped(t *testing.T) {
 
 	// Insert out of order to exercise the ORDER BY.
 	for _, sa := range []SavedApplication{
-		pgSavedApp(t, "auth0|u1", pgApp("app-b", 100), t2),
-		pgSavedApp(t, "auth0|u1", pgApp("app-a", 100), t1),
-		pgSavedApp(t, "auth0|other", pgApp("app-c", 100), t3),
+		NewSavedApplication("auth0|u1", pgApp("app-b", 100), t2),
+		NewSavedApplication("auth0|u1", pgApp("app-a", 100), t1),
+		NewSavedApplication("auth0|other", pgApp("app-c", 100), t3),
 	} {
 		if err := store.Save(ctx, sa); err != nil {
 			t.Fatalf("Save %s: %v", sa.ApplicationUID, err)
@@ -192,7 +187,7 @@ func TestSavedPostgresStore_GetByUserID_OrderedAndScoped(t *testing.T) {
 		t.Fatalf("GetByUserID: got %d records, want 2", len(got))
 	}
 	// Ordered by saved_at: app-a first.
-	if got[0].ApplicationUID != pgSavedApp(t, "auth0|u1", pgApp("app-a", 100), t1).ApplicationUID {
+	if got[0].ApplicationUID != NewSavedApplication("auth0|u1", pgApp("app-a", 100), t1).ApplicationUID {
 		t.Errorf("first record: got %q, want app-a uid", got[0].ApplicationUID)
 	}
 }
@@ -202,7 +197,7 @@ func TestSavedPostgresStore_Save_Upsert(t *testing.T) {
 	store := newSavedPGStore(t)
 
 	app := pgApp("24/00001/FUL", 100)
-	sa := pgSavedApp(t, "auth0|u1", app, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	sa := NewSavedApplication("auth0|u1", app, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
 	if err := store.Save(ctx, sa); err != nil {
 		t.Fatalf("Save first: %v", err)
 	}
@@ -210,7 +205,7 @@ func TestSavedPostgresStore_Save_Upsert(t *testing.T) {
 	// Update the application state so the snapshot changes.
 	state := "Permitted"
 	app.AppState = &state
-	updated := pgSavedApp(t, "auth0|u1", app, time.Date(2026, 6, 27, 0, 0, 0, 0, time.UTC))
+	updated := NewSavedApplication("auth0|u1", app, time.Date(2026, 6, 27, 0, 0, 0, 0, time.UTC))
 	if err := store.Save(ctx, updated); err != nil {
 		t.Fatalf("Save updated: %v", err)
 	}
@@ -234,14 +229,14 @@ func TestSavedPostgresStore_UserIDsForApplication(t *testing.T) {
 
 	// Three users in authority 100 save the same application.
 	for _, userID := range []string{"auth0|u1", "auth0|u2", "auth0|u3"} {
-		sa := pgSavedApp(t, userID, app, now)
+		sa := NewSavedApplication(userID, app, now)
 		if err := store.Save(ctx, sa); err != nil {
 			t.Fatalf("Save %s: %v", userID, err)
 		}
 	}
 	// One user in a different authority (200) saves an application with the same uid.
 	otherApp := pgApp("24/00001/FUL", 200) // same planit_name, different authority
-	sa := pgSavedApp(t, "auth0|u4", otherApp, now)
+	sa := NewSavedApplication("auth0|u4", otherApp, now)
 	if err := store.Save(ctx, sa); err != nil {
 		t.Fatalf("Save u4 (authority 200): %v", err)
 	}
@@ -266,7 +261,7 @@ func TestSavedPostgresStore_UserIDsForApplication_EmptyForMismatch(t *testing.T)
 	store := newSavedPGStore(t)
 
 	app := pgApp("24/00001/FUL", 100)
-	sa := pgSavedApp(t, "auth0|u1", app, time.Now())
+	sa := NewSavedApplication("auth0|u1", app, time.Now())
 	if err := store.Save(ctx, sa); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
@@ -286,9 +281,9 @@ func TestSavedPostgresStore_DeleteAllByUserID(t *testing.T) {
 
 	now := time.Date(2026, 6, 27, 0, 0, 0, 0, time.UTC)
 	for _, sa := range []SavedApplication{
-		pgSavedApp(t, "auth0|u1", pgApp("app-a", 100), now),
-		pgSavedApp(t, "auth0|u1", pgApp("app-b", 100), now),
-		pgSavedApp(t, "auth0|other", pgApp("app-c", 100), now),
+		NewSavedApplication("auth0|u1", pgApp("app-a", 100), now),
+		NewSavedApplication("auth0|u1", pgApp("app-b", 100), now),
+		NewSavedApplication("auth0|other", pgApp("app-c", 100), now),
 	} {
 		if err := store.Save(ctx, sa); err != nil {
 			t.Fatalf("Save %s: %v", sa.ApplicationUID, err)
@@ -321,10 +316,10 @@ func TestSavedPostgresStore_CountsByUsers_Integration(t *testing.T) {
 	now := time.Date(2026, 6, 27, 0, 0, 0, 0, time.UTC)
 	// u1 saves two apps, u2 saves one, u3 (queried) saves none, u4 (not queried).
 	for _, sa := range []SavedApplication{
-		pgSavedApp(t, "auth0|u1", pgApp("app-a", 100), now),
-		pgSavedApp(t, "auth0|u1", pgApp("app-b", 100), now),
-		pgSavedApp(t, "auth0|u2", pgApp("app-c", 100), now),
-		pgSavedApp(t, "auth0|u4", pgApp("app-d", 100), now),
+		NewSavedApplication("auth0|u1", pgApp("app-a", 100), now),
+		NewSavedApplication("auth0|u1", pgApp("app-b", 100), now),
+		NewSavedApplication("auth0|u2", pgApp("app-c", 100), now),
+		NewSavedApplication("auth0|u4", pgApp("app-d", 100), now),
 	} {
 		if err := store.Save(ctx, sa); err != nil {
 			t.Fatalf("Save %s: %v", sa.ApplicationUID, err)
@@ -359,9 +354,9 @@ func TestSavedPostgresStore_Count_Integration(t *testing.T) {
 
 	now := time.Date(2026, 6, 27, 0, 0, 0, 0, time.UTC)
 	for _, sa := range []SavedApplication{
-		pgSavedApp(t, "auth0|u1", pgApp("app-a", 100), now),
-		pgSavedApp(t, "auth0|u1", pgApp("app-b", 100), now),
-		pgSavedApp(t, "auth0|u2", pgApp("app-c", 100), now),
+		NewSavedApplication("auth0|u1", pgApp("app-a", 100), now),
+		NewSavedApplication("auth0|u1", pgApp("app-b", 100), now),
+		NewSavedApplication("auth0|u2", pgApp("app-c", 100), now),
 	} {
 		if err := store.Save(ctx, sa); err != nil {
 			t.Fatalf("Save %s: %v", sa.ApplicationUID, err)
