@@ -1404,25 +1404,17 @@ func TestRunWeekly_EmailOnlyWhenDigestEnabledAndEmailPresent(t *testing.T) {
 func TestRunWeekly_SkippedUserDoesNotStopLaterUsers(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name        string
-		first       func(t *testing.T) *profiles.UserProfile
-		firstNotifs bool
+		name         string
+		firstEmailOn bool
+		firstNotifs  bool
 	}{
-		{
-			name:        "opted out of both channels",
-			first:       func(t *testing.T) *profiles.UserProfile { return mkUser(t, "first", profiles.TierFree, false, false) },
-			firstNotifs: true,
-		},
-		{
-			name:        "no notifications",
-			first:       func(t *testing.T) *profiles.UserProfile { return mkUser(t, "first", profiles.TierFree, true, false) },
-			firstNotifs: false,
-		},
+		{name: "opted out of both channels", firstEmailOn: false, firstNotifs: true},
+		{name: "no notifications", firstEmailOn: true, firstNotifs: false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			first := tc.first(t)
+			first := mkUser(t, "first", profiles.TierFree, tc.firstEmailOn, false)
 			second := mkUser(t, "second", profiles.TierFree, true, false)
 			fp := &fakeProfiles{byDay: map[time.Weekday][]*profiles.UserProfile{time.Wednesday: {first, second}}}
 			fn := &fakeNotifications{sinceByUser: map[string][]notifications.DigestNotification{
@@ -1488,6 +1480,7 @@ func TestRunHourly_SkippedUserDoesNotStopLaterUsers(t *testing.T) {
 		{
 			name: "free tier",
 			setup: func(t *testing.T, fp *fakeProfiles, fn *fakeNotifications, _ *fakeZones) {
+				t.Helper()
 				fp.byID["first"] = mkUser(t, "first", profiles.TierFree, true, false)
 				fn.unsentByUser["first"] = []notifications.DigestNotification{zoneNotif("uid-A", "zone-1")}
 			},
@@ -1495,6 +1488,7 @@ func TestRunHourly_SkippedUserDoesNotStopLaterUsers(t *testing.T) {
 		{
 			name: "no email address",
 			setup: func(t *testing.T, fp *fakeProfiles, fn *fakeNotifications, _ *fakeZones) {
+				t.Helper()
 				p := mkUser(t, "first", profiles.TierPro, true, false)
 				p.Email = nil
 				fp.byID["first"] = p
@@ -1504,6 +1498,7 @@ func TestRunHourly_SkippedUserDoesNotStopLaterUsers(t *testing.T) {
 		{
 			name: "email digest disabled",
 			setup: func(t *testing.T, fp *fakeProfiles, fn *fakeNotifications, _ *fakeZones) {
+				t.Helper()
 				fp.byID["first"] = mkUser(t, "first", profiles.TierPro, false, false)
 				fn.unsentByUser["first"] = []notifications.DigestNotification{zoneNotif("uid-A", "zone-1")}
 			},
@@ -1511,12 +1506,14 @@ func TestRunHourly_SkippedUserDoesNotStopLaterUsers(t *testing.T) {
 		{
 			name: "no unsent notifications",
 			setup: func(t *testing.T, fp *fakeProfiles, _ *fakeNotifications, _ *fakeZones) {
+				t.Helper()
 				fp.byID["first"] = mkUser(t, "first", profiles.TierPro, true, false)
 			},
 		},
 		{
 			name: "zone load error",
 			setup: func(t *testing.T, fp *fakeProfiles, fn *fakeNotifications, fz *fakeZones) {
+				t.Helper()
 				fp.byID["first"] = mkUser(t, "first", profiles.TierPro, true, false)
 				fn.unsentByUser["first"] = []notifications.DigestNotification{zoneNotif("uid-A", "zone-1")}
 				fz.errFor = map[string]error{"first": errors.New("zones unavailable")}
@@ -1525,6 +1522,7 @@ func TestRunHourly_SkippedUserDoesNotStopLaterUsers(t *testing.T) {
 		{
 			name: "every notification gated out",
 			setup: func(t *testing.T, fp *fakeProfiles, fn *fakeNotifications, fz *fakeZones) {
+				t.Helper()
 				fp.byID["first"] = mkUser(t, "first", profiles.TierPro, true, false)
 				fn.unsentByUser["first"] = []notifications.DigestNotification{zoneNotif("uid-A", "zone-off")}
 				fz.byUser["first"] = []watchzones.WatchZone{mkZone(t, "zone-off", "Off", false)}
@@ -1533,6 +1531,7 @@ func TestRunHourly_SkippedUserDoesNotStopLaterUsers(t *testing.T) {
 		{
 			name: "email send fails",
 			setup: func(t *testing.T, fp *fakeProfiles, fn *fakeNotifications, _ *fakeZones) {
+				t.Helper()
 				fp.byID["first"] = mkUser(t, "first", profiles.TierPro, true, false)
 				fn.unsentByUser["first"] = []notifications.DigestNotification{zoneNotif("uid-A", "zone-1")}
 			},
