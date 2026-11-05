@@ -5,8 +5,7 @@ import TownCrierDomain
 
 @testable import TownCrierPresentation
 
-/// Construction/render smoke tests only: SwiftUI view trees aren't
-/// introspectable here (no ViewInspector), as in `WatchZoneListViewTests`.
+/// Smoke tests only: SwiftUI view trees aren't introspectable here (no ViewInspector).
 @Suite("SavedApplicationListView")
 @MainActor
 struct SavedApplicationListViewTests {

@@ -1,8 +1,7 @@
 import SwiftUI
 import TownCrierDomain
 
-/// The dedicated Saved tab: a flat, cross-zone list of the user's bookmarked
-/// applications, with a status filter pill row that's free for all tiers.
+/// The Saved tab: a flat, cross-zone list of the user's bookmarked applications.
 public struct SavedApplicationListView: View {
   @StateObject private var viewModel: SavedApplicationListViewModel
 

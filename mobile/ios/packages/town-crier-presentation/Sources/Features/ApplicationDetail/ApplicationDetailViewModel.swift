@@ -153,9 +153,7 @@ public final class ApplicationDetailViewModel: ObservableObject {
     self.isSaved = isSaved
   }
 
-  /// Loads the saved state from the repository and updates `isSaved` accordingly.
-  /// Call this after creating the ViewModel to reflect the server-side saved state.
-  /// No-op if no repository was provided.
+  /// Sets `isSaved` from the server; a no-op if no repository was provided.
   ///
   /// The match compares the reconstructed ``PlanningApplicationId`` of each
   /// saved item's embedded snapshot, never the raw top-level `applicationUid`,
