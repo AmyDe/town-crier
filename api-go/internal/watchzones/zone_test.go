@@ -297,6 +297,16 @@ func TestSegmentsIntersect(t *testing.T) {
 		{name: "collinear disjoint before", p1: pt(2, 0), p2: pt(3, 0), p3: pt(0, 0), p4: pt(1, 0), want: false},
 		{name: "vertical collinear disjoint after", p1: pt(0, 0), p2: pt(0, 1), p3: pt(0, 2), p4: pt(0, 3), want: false},
 		{name: "vertical collinear disjoint before", p1: pt(0, 2), p2: pt(0, 3), p3: pt(0, 0), p4: pt(0, 1), want: false},
+		// These points are not exactly collinear, but one orientation rounds to exactly 0 in float64,
+		// so the strict > and < comparisons decide the result.
+		{name: "near-collinear, d1 rounds to zero with d2 negative", p1: pt(-0.9999999990686774, -1.0000000009313226), p2: pt(-1.9999999972060323, -1.862645149230957e-09), p3: pt(-2, 1.862645149230957e-09), p4: pt(-1.0000000018626451, -0.9999999981373549), want: false},
+		{name: "near-collinear, d2 rounds to zero with d1 positive", p1: pt(-9.313225746154785e-10, 0), p2: pt(-1.9999999981373549, -1.0000000009313226), p3: pt(-2.000000001862645, -1.0000000027939677), p4: pt(-2, -1.0000000018626451), want: false},
+		{name: "near-collinear, d1 rounds to zero with d2 positive", p1: pt(-1.0000000009313226, 1.9999999981373549), p2: pt(2.0000000009313226, -1.0000000018626451), p3: pt(1.9999999990686774, -0.9999999990686774), p4: pt(-1, 1.9999999972060323), want: false},
+		{name: "near-collinear, d2 rounds to zero with d1 negative", p1: pt(1.9999999972060323, 0.9999999990686774), p2: pt(0.9999999990686774, -1.862645149230957e-09), p3: pt(0.9999999981373549, -2.7939677238464355e-09), p4: pt(-9.313225746154785e-10, -1.0000000018626451), want: false},
+		{name: "near-collinear, d3 rounds to zero with d4 negative", p1: pt(-9.313225746154785e-10, 9.313225746154785e-10), p2: pt(0.9999999981373549, -1.0000000018626451), p3: pt(0.9999999990686774, -1.0000000027939677), p4: pt(-1.0000000009313226, 0.9999999981373549), want: false},
+		{name: "near-collinear, d4 rounds to zero with d3 positive", p1: pt(-0.9999999990686774, -0.9999999990686774), p2: pt(-1.9999999990686774, -1.9999999990686774), p3: pt(0, -9.313225746154785e-10), p4: pt(-0.9999999972060323, -0.9999999972060323), want: false},
+		{name: "near-collinear, d3 rounds to zero with d4 positive", p1: pt(-1.9999999972060323, -2), p2: pt(0.9999999981373549, 1), p3: pt(1.0000000009313226, 1.0000000027939677), p4: pt(-1.9999999981373549, -1.9999999990686774), want: false},
+		{name: "near-collinear, d4 rounds to zero with d3 negative", p1: pt(-1.9999999981373549, 1.9999999990686774), p2: pt(-2.7939677238464355e-09, 1.862645149230957e-09), p3: pt(0.9999999981373549, -1.0000000009313226), p4: pt(1.862645149230957e-09, -2.7939677238464355e-09), want: false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
