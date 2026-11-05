@@ -129,11 +129,15 @@ type spyEmail struct {
 	sent    []acsemail.Message
 	kinds   []string // email.kind passed on each Send call, in order
 	sendErr error    // returned (after recording the attempt) when set
+	failFor map[string]error
 }
 
 func (s *spyEmail) Send(_ context.Context, kind string, msg acsemail.Message) error {
 	s.sent = append(s.sent, msg)
 	s.kinds = append(s.kinds, kind)
+	if err := s.failFor[msg.Recipient]; err != nil {
+		return err
+	}
 	return s.sendErr
 }
 
@@ -1394,5 +1398,212 @@ func TestRunWeekly_EmailOnlyWhenDigestEnabledAndEmailPresent(t *testing.T) {
 				t.Errorf("emails sent: got %d, want %d", len(email.sent), tc.wantSends)
 			}
 		})
+	}
+}
+
+func TestRunWeekly_SkippedUserDoesNotStopLaterUsers(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name        string
+		first       func(t *testing.T) *profiles.UserProfile
+		firstNotifs bool
+	}{
+		{
+			name:        "opted out of both channels",
+			first:       func(t *testing.T) *profiles.UserProfile { return mkUser(t, "first", profiles.TierFree, false, false) },
+			firstNotifs: true,
+		},
+		{
+			name:        "no notifications",
+			first:       func(t *testing.T) *profiles.UserProfile { return mkUser(t, "first", profiles.TierFree, true, false) },
+			firstNotifs: false,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			first := tc.first(t)
+			second := mkUser(t, "second", profiles.TierFree, true, false)
+			fp := &fakeProfiles{byDay: map[time.Weekday][]*profiles.UserProfile{time.Wednesday: {first, second}}}
+			fn := &fakeNotifications{sinceByUser: map[string][]notifications.DigestNotification{
+				"second": {zoneNotif("uid-B", "zone-1")},
+			}}
+			if tc.firstNotifs {
+				fn.sinceByUser["first"] = []notifications.DigestNotification{zoneNotif("uid-A", "zone-1")}
+			}
+			email := &spyEmail{}
+			h := newHandler(fp, fn, &fakeZones{}, &fakeState{}, &fakeDevices{}, email, &spyPush{})
+			h.emailGap = 0
+
+			if err := h.RunWeekly(context.Background()); err != nil {
+				t.Fatalf("RunWeekly: %v", err)
+			}
+			if got := recipients(email.sent); !slices.Equal(got, []string{"second@example.com"}) {
+				t.Errorf("recipients: got %v, want [second@example.com]", got)
+			}
+		})
+	}
+}
+
+func TestRunWeekly_AndroidDeviceListedFirstStillPushesIos(t *testing.T) {
+	t.Parallel()
+	p := mkUser(t, testUser, profiles.TierPro, false, true)
+	fp := &fakeProfiles{byDay: map[time.Weekday][]*profiles.UserProfile{time.Wednesday: {p}}}
+	fn := &fakeNotifications{sinceByUser: map[string][]notifications.DigestNotification{
+		testUser: {zoneNotif("uid-A", "zone-1")},
+	}}
+	devices := &fakeDevices{byUser: map[string][]devicetokens.DeviceRegistration{
+		testUser: {
+			{UserID: testUser, Token: "and-tok", Platform: devicetokens.PlatformAndroid},
+			{UserID: testUser, Token: "ios-tok", Platform: devicetokens.PlatformIos},
+		},
+	}}
+	ios := &spyPush{}
+	android := &spyPush{}
+	h := newHandlerWithDispatcher(fp, fn, &fakeZones{}, &fakeState{}, devices, &spyEmail{}, &fakeDispatcher{ios: ios, android: android})
+
+	if err := h.RunWeekly(context.Background()); err != nil {
+		t.Fatalf("RunWeekly: %v", err)
+	}
+	if !slices.Equal(android.tokens, []string{"and-tok"}) {
+		t.Errorf("android tokens: got %v, want [and-tok]", android.tokens)
+	}
+	if !slices.Equal(ios.tokens, []string{"ios-tok"}) {
+		t.Errorf("ios tokens: got %v, want [ios-tok]", ios.tokens)
+	}
+}
+
+func TestRunHourly_SkippedUserDoesNotStopLaterUsers(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		setup func(t *testing.T, fp *fakeProfiles, fn *fakeNotifications, fz *fakeZones)
+	}{
+		{
+			name: "profile not found",
+			setup: func(_ *testing.T, _ *fakeProfiles, fn *fakeNotifications, _ *fakeZones) {
+				fn.unsentByUser["first"] = []notifications.DigestNotification{zoneNotif("uid-A", "zone-1")}
+			},
+		},
+		{
+			name: "free tier",
+			setup: func(t *testing.T, fp *fakeProfiles, fn *fakeNotifications, _ *fakeZones) {
+				fp.byID["first"] = mkUser(t, "first", profiles.TierFree, true, false)
+				fn.unsentByUser["first"] = []notifications.DigestNotification{zoneNotif("uid-A", "zone-1")}
+			},
+		},
+		{
+			name: "no email address",
+			setup: func(t *testing.T, fp *fakeProfiles, fn *fakeNotifications, _ *fakeZones) {
+				p := mkUser(t, "first", profiles.TierPro, true, false)
+				p.Email = nil
+				fp.byID["first"] = p
+				fn.unsentByUser["first"] = []notifications.DigestNotification{zoneNotif("uid-A", "zone-1")}
+			},
+		},
+		{
+			name: "email digest disabled",
+			setup: func(t *testing.T, fp *fakeProfiles, fn *fakeNotifications, _ *fakeZones) {
+				fp.byID["first"] = mkUser(t, "first", profiles.TierPro, false, false)
+				fn.unsentByUser["first"] = []notifications.DigestNotification{zoneNotif("uid-A", "zone-1")}
+			},
+		},
+		{
+			name: "no unsent notifications",
+			setup: func(t *testing.T, fp *fakeProfiles, _ *fakeNotifications, _ *fakeZones) {
+				fp.byID["first"] = mkUser(t, "first", profiles.TierPro, true, false)
+			},
+		},
+		{
+			name: "zone load error",
+			setup: func(t *testing.T, fp *fakeProfiles, fn *fakeNotifications, fz *fakeZones) {
+				fp.byID["first"] = mkUser(t, "first", profiles.TierPro, true, false)
+				fn.unsentByUser["first"] = []notifications.DigestNotification{zoneNotif("uid-A", "zone-1")}
+				fz.errFor = map[string]error{"first": errors.New("zones unavailable")}
+			},
+		},
+		{
+			name: "every notification gated out",
+			setup: func(t *testing.T, fp *fakeProfiles, fn *fakeNotifications, fz *fakeZones) {
+				fp.byID["first"] = mkUser(t, "first", profiles.TierPro, true, false)
+				fn.unsentByUser["first"] = []notifications.DigestNotification{zoneNotif("uid-A", "zone-off")}
+				fz.byUser["first"] = []watchzones.WatchZone{mkZone(t, "zone-off", "Off", false)}
+			},
+		},
+		{
+			name: "email send fails",
+			setup: func(t *testing.T, fp *fakeProfiles, fn *fakeNotifications, _ *fakeZones) {
+				fp.byID["first"] = mkUser(t, "first", profiles.TierPro, true, false)
+				fn.unsentByUser["first"] = []notifications.DigestNotification{zoneNotif("uid-A", "zone-1")}
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			fp := &fakeProfiles{byID: map[string]*profiles.UserProfile{
+				"second": mkUser(t, "second", profiles.TierPro, true, false),
+			}}
+			second := zoneNotif("uid-B", "zone-1")
+			second.ID = "n-second"
+			fn := &fakeNotifications{
+				unsentUserIDs: []string{"first", "second"},
+				unsentByUser:  map[string][]notifications.DigestNotification{"second": {second}},
+			}
+			fz := &fakeZones{byUser: map[string][]watchzones.WatchZone{
+				"first":  {mkZone(t, "zone-1", "Home", true)},
+				"second": {mkZone(t, "zone-1", "Home", true)},
+			}}
+			tc.setup(t, fp, fn, fz)
+			email := &spyEmail{failFor: map[string]error{"first@example.com": errors.New("send failed")}}
+			h := newHandler(fp, fn, fz, &fakeState{}, &fakeDevices{}, email, &spyPush{})
+
+			if err := h.RunHourly(context.Background()); err != nil {
+				t.Fatalf("RunHourly: %v", err)
+			}
+			if got := recipients(email.sent); !slices.Contains(got, "second@example.com") {
+				t.Errorf("recipients: got %v, want second@example.com included", got)
+			}
+			if !slices.Equal(fn.marked, []string{"n-second"}) {
+				t.Errorf("marked: got %v, want [n-second]", fn.marked)
+			}
+		})
+	}
+}
+
+func TestRunHourly_SavedNotificationFirstStillIncludesZoneNotification(t *testing.T) {
+	t.Parallel()
+	p := mkProfile(t, profiles.TierPro, profiles.DefaultPreferences())
+	p.Preferences.EmailDigestEnabled = true
+
+	saved := zoneNotif("uid-S", "")
+	saved.WatchZoneID = nil
+	zoned := zoneNotif("uid-Z", "zone-1")
+
+	fp := &fakeProfiles{byID: map[string]*profiles.UserProfile{testUser: p}}
+	fn := &fakeNotifications{
+		unsentUserIDs: []string{testUser},
+		unsentByUser:  map[string][]notifications.DigestNotification{testUser: {saved, zoned}},
+	}
+	fz := &fakeZones{byUser: map[string][]watchzones.WatchZone{
+		testUser: {mkZone(t, "zone-1", "Home", true)},
+	}}
+	email := &spyEmail{}
+	h := newHandler(fp, fn, fz, &fakeState{}, &fakeDevices{}, email, &spyPush{})
+
+	if err := h.RunHourly(context.Background()); err != nil {
+		t.Fatalf("RunHourly: %v", err)
+	}
+	if !slices.Equal(fn.marked, []string{"n-uid-S", "n-uid-Z"}) {
+		t.Errorf("marked: got %v, want [n-uid-S n-uid-Z]", fn.marked)
+	}
+	if len(email.sent) != 1 {
+		t.Fatalf("emails sent: got %d, want 1", len(email.sent))
+	}
+	body := email.sent[0].HTMLBody
+	for _, want := range []string{"Home", "addr uid-Z", "Saved Applications", "addr uid-S"} {
+		if !contains(body, want) {
+			t.Errorf("body missing %q:\n%s", want, body)
+		}
 	}
 }
