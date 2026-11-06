@@ -95,6 +95,17 @@
   color: var(--tc-text-secondary);
 }
 
+.altPrice {
+  margin-bottom: var(--tc-space-xs);
+}
+
+.altPriceAmount {
+  font-size: var(--tc-text-headline);
+  font-weight: var(--tc-weight-semibold);
+  color: var(--tc-text-primary);
+  margin-right: var(--tc-space-xs);
+}
+
 .trialText {
   font-size: var(--tc-text-caption);
   color: var(--tc-text-secondary);
