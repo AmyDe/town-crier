@@ -76,6 +76,13 @@ type zoneNameReader interface {
 // real watch zone id is the empty string, so it never collides with one.
 const savedBucket = ""
 
+func bucketFor(n notifications.DigestNotification) string {
+	if n.WatchZoneID != nil {
+		return *n.WatchZoneID
+	}
+	return savedBucket
+}
+
 // PushCoalescer accumulates push-eligible notifications during a poll cycle and
 // flushes them at cycle end as at most one push per (user, watch zone), plus
 // one per-user "saved" bucket for zone-less notifications. It owns device
@@ -139,10 +146,7 @@ func (c *PushCoalescer) WithRecovery(pending pendingPushStore, profs profileRead
 // shared saved bucket for a zone-less notification). The coalescer does no
 // gating, so only already push-eligible notifications must be handed to it.
 func (c *PushCoalescer) Add(userID string, n notifications.DigestNotification) {
-	bucket := savedBucket
-	if n.WatchZoneID != nil {
-		bucket = *n.WatchZoneID
-	}
+	bucket := bucketFor(n)
 	if c.items[userID] == nil {
 		c.items[userID] = make(map[string][]notifications.DigestNotification)
 	}
@@ -407,10 +411,7 @@ func (c *PushCoalescer) recoverUser(ctx context.Context, userID string, rows []n
 			c.Add(userID, r.DigestNotification)
 			continue
 		}
-		bucket := savedBucket
-		if r.WatchZoneID != nil {
-			bucket = *r.WatchZoneID
-		}
+		bucket := bucketFor(r.DigestNotification)
 		k := groupKey{bucket: bucket, attempted: r.AttemptedAt.UTC()}
 		g, ok := groups[k]
 		if !ok {

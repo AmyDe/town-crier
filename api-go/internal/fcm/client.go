@@ -36,9 +36,7 @@ const (
 // permanently invalid.
 type fcmErrorResponse struct {
 	Error struct {
-		Code    int    `json:"code"`
 		Status  string `json:"status"`
-		Message string `json:"message"`
 		Details []struct {
 			ErrorCode string `json:"errorCode"`
 		} `json:"details"`

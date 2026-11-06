@@ -226,9 +226,6 @@ func (s *PostgresStore) ByUserSince(ctx context.Context, userID string, since ti
 	if err != nil {
 		return nil, fmt.Errorf("scan notifications since for %q: %w", userID, err)
 	}
-	if items == nil {
-		return []DigestNotification{}, nil
-	}
 	return items, nil
 }
 
@@ -246,9 +243,6 @@ func (s *PostgresStore) AllByUser(ctx context.Context, userID string) ([]DigestN
 	if err != nil {
 		return nil, fmt.Errorf("scan all notifications for %q: %w", userID, err)
 	}
-	if items == nil {
-		return []DigestNotification{}, nil
-	}
 	return items, nil
 }
 
@@ -265,9 +259,6 @@ func (s *PostgresStore) UnsentEmailsByUser(ctx context.Context, userID string) (
 	items, err := pgx.CollectRows(rows, scanDigestRow)
 	if err != nil {
 		return nil, fmt.Errorf("scan unsent emails for %q: %w", userID, err)
-	}
-	if items == nil {
-		return []DigestNotification{}, nil
 	}
 	return items, nil
 }
