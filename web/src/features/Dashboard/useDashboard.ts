@@ -8,7 +8,7 @@ interface DashboardData {
 }
 
 export function useDashboard(port: DashboardPort) {
-  const { data, isLoading, error, refresh } = useFetchData<DashboardData>(
+  const { data, isLoading, error } = useFetchData<DashboardData>(
     async () => {
       const zones = await port.fetchWatchZones();
 
@@ -27,6 +27,5 @@ export function useDashboard(port: DashboardPort) {
     recentApplications: data?.recentApplications ?? [],
     isLoading,
     error,
-    refresh,
   };
 }
