@@ -10,12 +10,15 @@ interface Feature {
 
 const FEATURES: Feature[] = [
   { label: 'Watch Zones', free: '1', personal: '3', pro: 'Unlimited' },
-  { label: 'Radius', free: '500m', personal: '2km', pro: '5km' },
+  { label: 'Radius', free: '2km', personal: '5km', pro: '10km' },
   { label: 'Custom Shapes', free: 'Circle only', personal: 'Yes', pro: 'Yes' },
   { label: 'Notifications', free: 'Weekly digest', personal: 'Instant', pro: 'Instant' },
-  { label: 'Search', free: 'Basic', personal: 'Advanced', pro: 'Advanced + Filters' },
-  { label: 'Historical Data', free: 'None', personal: '6 months', pro: '5 years' },
 ];
+
+interface AltPrice {
+  amount: string;
+  period: string;
+}
 
 interface Tier {
   name: string;
@@ -23,6 +26,7 @@ interface Tier {
   period?: string;
   recommended?: boolean;
   trialText?: string;
+  altPrices?: AltPrice[];
   note?: string;
 }
 
@@ -33,7 +37,11 @@ const TIERS: Tier[] = [
     name: 'Pro',
     price: '£4.99',
     period: '/mo',
-    note: 'Or £29.99 a year, or £69.99 once, in the iOS app.',
+    altPrices: [
+      { amount: '£29.99', period: '/yr' },
+      { amount: '£69.99', period: 'once, for life' },
+    ],
+    note: 'Yearly and lifetime plans are in the iOS app.',
   },
 ];
 
@@ -58,6 +66,12 @@ export function Pricing() {
             {tier.trialText && (
               <p className={styles.trialText}>{tier.trialText}</p>
             )}
+            {tier.altPrices?.map((alt) => (
+              <p key={alt.amount} className={styles.altPrice}>
+                <span className={styles.altPriceAmount}>{alt.amount}</span>
+                <span className={styles.pricePeriod}>{alt.period}</span>
+              </p>
+            ))}
             {tier.note && <p className={styles.trialText}>{tier.note}</p>}
             <ul className={styles.featureList}>
               {FEATURES.map((feature) => {
