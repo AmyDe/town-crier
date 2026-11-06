@@ -208,12 +208,7 @@ struct TownCrierApp: App {
     reporter.start()
     crashReporter = reporter
 
-    // Wire the push registrar into the AppDelegate so the UIKit lifecycle
-    // callbacks (didRegisterForRemoteNotificationsWithDeviceToken /
-    // didFailToRegisterForRemoteNotificationsWithError) can forward to it.
     appDelegate.registrar = registrar
-    // Mirrors the registrar wiring above: lets the AppDelegate's Universal
-    // Link fallback forward to the coordinator (tc-28x2, GH #763 Problem 1).
     appDelegate.coordinator = appCoordinator
   }
 
