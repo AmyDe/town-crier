@@ -86,7 +86,6 @@ type userMatch struct {
 func (d *DecisionDispatcher) Dispatch(ctx context.Context, app applications.PlanningApplication) error {
 	matches := map[string]*userMatch{}
 
-	// Zone matchers — only meaningful when the application has coordinates.
 	if app.Latitude != nil && app.Longitude != nil {
 		zones, err := d.zones.FindZonesContaining(ctx, *app.Latitude, *app.Longitude)
 		if err != nil {

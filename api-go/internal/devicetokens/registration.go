@@ -71,7 +71,7 @@ func NewRegistration(userID, token string, platform DevicePlatform, now time.Tim
 }
 
 // Refresh stamps RegisteredAt to now unconditionally, even when it is earlier
-// than the stored instant: the client's clock is authoritative.
+// than the stored instant.
 func (r *DeviceRegistration) Refresh(now time.Time) {
 	r.RegisteredAt = now
 }

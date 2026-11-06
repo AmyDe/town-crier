@@ -25,28 +25,6 @@ function createFakeFetch(
 const baseUrl = 'https://api.example.com';
 const getToken = async () => 'token';
 
-describe('notificationStateApi.getState', () => {
-  it('GETs /v1/me/notification-state and returns the wire snapshot', async () => {
-    const { fetch: fakeFetch, calls } = createFakeFetch(200, {
-      lastReadAt: '2026-05-04T12:00:00Z',
-      version: 3,
-      totalUnreadCount: 7,
-    });
-    const client = createApiClient(baseUrl, getToken, fakeFetch);
-
-    const result = await notificationStateApi(client).getState();
-
-    expect(calls).toHaveLength(1);
-    expect(calls[0]!.url).toBe('https://api.example.com/v1/me/notification-state');
-    expect(calls[0]!.init.method).toBe('GET');
-    expect(result).toEqual({
-      lastReadAt: '2026-05-04T12:00:00Z',
-      version: 3,
-      totalUnreadCount: 7,
-    });
-  });
-});
-
 describe('notificationStateApi.markAllRead', () => {
   it('POSTs /v1/me/notification-state/mark-all-read with no body', async () => {
     const { fetch: fakeFetch, calls } = createFakeFetch(204, null);

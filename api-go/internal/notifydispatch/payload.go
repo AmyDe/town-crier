@@ -145,11 +145,6 @@ func buildDecisionBody(n notifications.DigestNotification) string {
 	return n.ApplicationAddress + " — " + label
 }
 
-// alertTitleBody, zoneSummaryTitleBody, and savedSummaryTitleBody render the
-// server-side title/body copy each push shape carries. They are shared by the
-// APNs and FCM builders so the two platforms always render byte-identical
-// strings for the same event — the copy can never drift between them.
-
 // alertTitleBody renders the instant-push title/body: a zone-matched
 // notification is titled "Planning update near you", a saved-only one "Town
 // Crier"; a decision update body appends the UK display label, otherwise the

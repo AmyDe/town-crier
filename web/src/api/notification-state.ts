@@ -1,11 +1,8 @@
 import type { ApiClient } from './client';
-import type { NotificationStateSnapshot } from '../domain/types';
 
 /** HTTP client for the notification read-state endpoints. */
 export function notificationStateApi(client: ApiClient) {
   return {
-    getState: () =>
-      client.get<NotificationStateSnapshot>('/v1/me/notification-state'),
     markAllRead: () =>
       client.post<void>('/v1/me/notification-state/mark-all-read'),
     /**

@@ -8,8 +8,7 @@
 // the watchzones package already imports notifications (for the latest-unread
 // projection), and the dispatchers depend on watchzones, profiles,
 // devicetokens, notificationstate, savedapplications and the notifications
-// store. Keeping notifications a leaf store package and composing here is the
-// idiomatic Go resolution.
+// store.
 //
 // Idempotency is the load-bearing property: every dispatch is gated on a
 // (userId, applicationUid, authorityId, eventType) dedup read, so a re-poll of

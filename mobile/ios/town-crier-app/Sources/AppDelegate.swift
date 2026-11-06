@@ -1,29 +1,23 @@
 import TownCrierPresentation
 import UIKit
 
-/// Hosts the UIKit lifecycle hooks SwiftUI does not surface natively —
-/// the APNs registration callbacks, and (tc-28x2) a belt-and-braces
-/// fallback for inbound Universal Links. Forwards captured device tokens
-/// (and registration failures) to the `PushNotificationRegistrar`, and
-/// forwards continued browsing activities to the `AppCoordinator`.
+/// Hosts the UIKit lifecycle hooks SwiftUI does not surface natively: the APNs
+/// registration callbacks and a fallback for inbound Universal Links.
 final class AppDelegate: NSObject, UIApplicationDelegate {
   /// Set by `TownCrierApp.init()` so the delegate can forward APNs callbacks
   /// to the registrar. Optional because `@UIApplicationDelegateAdaptor`
   /// requires a no-arg init and the registrar is built in the composition root.
   var registrar: PushNotificationRegistrar?
 
-  /// Set by `TownCrierApp.init()`, mirroring `registrar` above, so the
-  /// UIKit-level Universal Link fallback below can forward to the existing
-  /// `AppCoordinator.handleDeepLink` seam (tc-28x2).
+  /// Set by `TownCrierApp.init()` so the Universal Link fallback below can
+  /// forward to `AppCoordinator.handleDeepLink`.
   var coordinator: AppCoordinator?
 
   func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
-    // Re-register on every launch so the backend always has the freshest
-    // token. APNs may rotate tokens between launches; `didRegister...` will
-    // be called with the (possibly new) token.
+    // APNs may rotate tokens between launches, so re-register every launch.
     application.registerForRemoteNotifications()
     return true
   }
@@ -43,21 +37,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     Task { await registrar?.didFailToRegister(error: error) }
   }
 
-  /// UIKit-level Universal Link fallback (tc-28x2, GH #763 Problem 1).
-  /// SwiftUI's `.onContinueUserActivity` (TownCrierApp.swift) is the
-  /// primary handler, but was confirmed on a physical device to sometimes
-  /// not fire at all — this is the belt-and-braces second path. Apple's
-  /// docs state the system calls this method for both a warm continuation
-  /// (app already running) and a cold launch (after
-  /// `application(_:didFinishLaunchingWithOptions:)` returns), so one
-  /// implementation covers both cases. Reuses the existing
-  /// `UniversalLinkParser` / `AppCoordinator.handleDeepLink` seam — parsing
-  /// is not duplicated here.
-  ///
-  /// Deprecated by Apple in iOS 26 in favour of `UIScene`'s
-  /// `scene(_:continue:)`, but still functional and the lowest-risk
-  /// fallback given this app has no custom `UISceneDelegate` (SwiftUI owns
-  /// scene lifecycle here) — kept for the iOS 17+ deployment target.
+  /// UIKit-level Universal Link fallback: SwiftUI's `.onContinueUserActivity`
+  /// was observed on a device to sometimes not fire. The system calls this for
+  /// both warm continuation and cold launch. Deprecated in iOS 26 in favour of
+  /// `scene(_:continue:)`, but kept because SwiftUI owns the scene lifecycle.
   ///
   /// `@escaping` below is required even though this implementation never
   /// calls `restorationHandler`: the closure is bridged from an

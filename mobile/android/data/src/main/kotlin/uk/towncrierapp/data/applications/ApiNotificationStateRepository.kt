@@ -9,10 +9,6 @@ import uk.towncrierapp.domain.applications.NotificationState
 import uk.towncrierapp.domain.applications.NotificationStateRepository
 import uk.towncrierapp.domain.applications.PlanningApplicationId
 
-/**
- * `NotificationStateRepository` over the Town Crier API (ADR 0035). [markRead]
- * batches at [MARK_READ_BATCH_SIZE] ids per request.
- */
 public class ApiNotificationStateRepository(
     private val apiClient: ApiClient,
     private val json: Json = Json { ignoreUnknownKeys = true },
