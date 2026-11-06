@@ -48,8 +48,7 @@ const notifColumns = "id, user_id, application_uid, application_name, watch_zone
 	"application_address, application_description, application_type, " +
 	"authority_id, decision, event_type, sources, push_sent, email_sent, created_at"
 
-// scanDigestRow hydrates one row into a full DigestNotification. Used by
-// ByUserSince, AllByUser, UnsentEmailsByUser, and GetByUserAndApplication.
+// scanDigestRow hydrates one row into a full DigestNotification.
 func scanDigestRow(row pgx.CollectableRow) (DigestNotification, error) {
 	return scanDigestRowExtra(row)
 }
@@ -101,8 +100,7 @@ func scanDigestRowExtra(row pgx.CollectableRow, extra ...any) (DigestNotificatio
 
 // scanLatestUnreadRow hydrates the minimal 4-column projection used by
 // GetLatestUnreadByApplications (application_uid, decision, event_type,
-// created_at). Coalesces an empty event_type to NewApplication so legacy
-// rows (if any exist post-backfill) remain safe.
+// created_at), coalescing an empty event_type to NewApplication.
 func scanLatestUnreadRow(row pgx.CollectableRow) (LatestUnread, error) {
 	var (
 		applicationUID string
@@ -418,7 +416,6 @@ const pgCountsByUsersQuery = "SELECT user_id, " +
 	"count(*) FILTER (WHERE read_at IS NULL) AS unread " +
 	"FROM notifications WHERE user_id = ANY($1) GROUP BY user_id"
 
-// userCountRow is the scan target for CountsByUsers: (user_id, total, unread).
 type userCountRow struct {
 	userID string
 	total  int

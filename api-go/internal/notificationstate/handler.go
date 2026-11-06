@@ -183,7 +183,7 @@ func (h handler) advance(w http.ResponseWriter, r *http.Request) {
 }
 
 // writeJSON encodes compactly with HTML escaping off and the trailing newline
-// trimmed (same idiom as the legal and profiles handlers).
+// trimmed.
 func (h handler) writeJSON(w http.ResponseWriter, r *http.Request, v any) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)

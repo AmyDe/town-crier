@@ -7,8 +7,7 @@ import "fmt"
 const firebaseMessagingScope = "https://www.googleapis.com/auth/firebase.messaging"
 
 // productionBaseURL is the FCM HTTP v1 host. The per-project send path
-// (/v1/projects/{id}/messages:send) is appended by the client; the host is a
-// well-known Google endpoint, not configurable infrastructure.
+// (/v1/projects/{id}/messages:send) is appended by the client.
 const productionBaseURL = "https://fcm.googleapis.com"
 
 // Options configures the FCM sender. When Enabled is false the caller wires a

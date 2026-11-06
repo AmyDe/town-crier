@@ -7,7 +7,7 @@ import (
 
 // NoOpSender is wired when FCM is disabled (no service-account JSON configured),
 // so a worker job boots cleanly without a real FCM endpoint. It drops every push
-// and reports no invalid tokens — the mirror of apns.NoOpSender.
+// and reports no invalid tokens.
 type NoOpSender struct{}
 
 // NewNoOpSender returns a sender that does nothing.

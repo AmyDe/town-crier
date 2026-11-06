@@ -131,9 +131,9 @@ func NewHandler(
 // RunWeekly generates the weekly digest for every user whose configured digest
 // day is today and who has not yet received one in the current ISO week (UTC,
 // Monday 00:00 start). The first successful channel stamps the ledger, so a
-// re-run in the same week sends neither channel again. For each user it sends a digest email (when email is enabled and
-// the user has an address) and a digest push (Pro tier only, when push is
-// enabled).
+// re-run in the same week sends neither channel again. For each user it sends a
+// digest email (when email is enabled and the user has an address) and a digest
+// push (Pro tier only, when push is enabled).
 func (h *Handler) RunWeekly(ctx context.Context) error {
 	now := h.now().UTC()
 	today := now.Weekday()
@@ -188,7 +188,6 @@ func (h *Handler) RunWeekly(ctx context.Context) error {
 			}
 		}
 		if wantsEmail {
-			// The weekly cycle does not track emailSent; sendDigestEmail logs a failed send.
 			// IsPaid, not IsPaidPro, so a Personal subscriber never sees the free-tier notice.
 			showFreeTierNotice := !profile.EffectiveTier(now).IsPaid()
 			if emailsAttempted > 0 {

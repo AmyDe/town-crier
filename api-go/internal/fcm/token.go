@@ -72,9 +72,8 @@ type tokenResponse struct {
 
 // tokenProvider mints an RS256-signed JWT assertion, exchanges it at the
 // service-account token endpoint for an OAuth access token, and caches that
-// token until shortly before it expires. It mirrors apns/jwt.go's cache-and-mint
-// shape; FCM differs only in that obtaining a bearer requires a network round
-// trip (the JWT is not itself the bearer), so current takes a context.
+// token until shortly before it expires. Obtaining a bearer requires a network
+// round trip (the JWT is not itself the bearer), so current takes a context.
 type tokenProvider struct {
 	key         *rsa.PrivateKey
 	clientEmail string

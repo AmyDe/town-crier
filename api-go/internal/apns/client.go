@@ -65,8 +65,7 @@ type Client struct {
 
 // pushMetricsRecorder is the consumer-side slice of the metrics registry the
 // client records towncrier.push.delivery_failed on. *metrics.Registry
-// satisfies it; nil (the default) leaves the counter dark, matching the
-// notifydispatch.Enqueuer.WithMetrics convention.
+// satisfies it; nil (the default) leaves the counter dark.
 type pushMetricsRecorder interface {
 	PushDeliveryFailed(ctx context.Context, platform string)
 }
@@ -333,14 +332,10 @@ func redactToken(token string) string {
 	return token[:8] + "..."
 }
 
-// redactPushURL rewrites an APNs request URL for telemetry so the device
-// token in the /3/device/<token> path (see do()) is reduced to the same
-// 8-char-prefix redaction the logging layer already uses, instead of shipping
-// the raw token into the "APNs push" client span's url.full attribute
-// (App Insights, 90d retention). Wired as a platform.URLRedactor via
-// platform.RedactingTransport in NewClient. If the expected path prefix isn't
-// present — defensive, since do() always builds the URL this way — the URL is
-// returned unchanged rather than guessing at a redaction.
+// redactPushURL reduces the device token in an APNs request URL's
+// /3/device/<token> path to the log-style 8-char prefix, so the raw token never
+// reaches the client span's url.full attribute. A URL without that prefix is
+// returned unchanged.
 func redactPushURL(r *http.Request) string {
 	full := r.URL.String()
 	idx := strings.Index(full, devicePathPrefix)
@@ -351,7 +346,6 @@ func redactPushURL(r *http.Request) string {
 	return full[:tokenStart] + redactToken(full[tokenStart:])
 }
 
-// compile-time assertions that both senders satisfy the consumer contract.
 var (
 	_ PushSender = (*Client)(nil)
 	_ PushSender = (*NoOpSender)(nil)

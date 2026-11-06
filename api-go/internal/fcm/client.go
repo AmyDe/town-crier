@@ -47,7 +47,7 @@ type fcmErrorResponse struct {
 // token (v1 has no multicast), attaches a cached service-account OAuth bearer,
 // injects each token into the message body, and reports tokens FCM has rejected
 // as permanently invalid (UNREGISTERED / INVALID_ARGUMENT) so the caller can
-// prune them. It mirrors apns.Client's shape and per-device-failure contract.
+// prune them.
 type Client struct {
 	http      *http.Client
 	tokens    *tokenProvider
@@ -59,8 +59,7 @@ type Client struct {
 
 // pushMetricsRecorder is the consumer-side slice of the metrics registry the
 // client records towncrier.push.delivery_failed on. *metrics.Registry
-// satisfies it; nil (the default) leaves the counter dark, mirroring
-// internal/apns.Client's WithMetrics convention.
+// satisfies it; nil (the default) leaves the counter dark.
 type pushMetricsRecorder interface {
 	PushDeliveryFailed(ctx context.Context, platform string)
 }
@@ -126,17 +125,11 @@ func (c *Client) Send(ctx context.Context, tokens []string, payload json.RawMess
 	return invalid, nil
 }
 
-// sendOneTraced wraps sendOne in an "FCM delivery" span — distinct from the
-// transport-level "FCM push" HTTP client spans platform.WrapHTTPClient
-// attaches to each individual request — so a genuine per-device delivery
-// failure is visible as a single dependency with Error status even when the
-// failure happened before the FCM send itself (e.g. the OAuth token
-// exchange). On failure it also records towncrier.push.delivery_failed
-// (platform=fcm) so the same failure is queryable/alertable through
-// AppMetrics, not just the "fcm send failed" slog line Send still emits. A
-// routine permanently-invalid-token rejection (rejected=true, err=nil) is
-// expected churn the caller prunes, not a failure — it is deliberately left
-// off both the span's error status and the counter.
+// sendOneTraced wraps sendOne in an "FCM delivery" span so a per-device failure
+// shows as one errored dependency even when it happened before the send itself
+// (e.g. the OAuth token exchange), and records towncrier.push.delivery_failed.
+// An invalid-token rejection (rejected=true, err=nil) is expected churn the
+// caller prunes, so it is deliberately left off the span status and counter.
 func (c *Client) sendOneTraced(ctx context.Context, token string, payload json.RawMessage) (rejected bool, err error) {
 	ctx, span := otel.Tracer(tracerName).Start(ctx, "FCM delivery")
 	defer span.End()
@@ -261,7 +254,6 @@ func redactToken(token string) string {
 	return token[:8] + "..."
 }
 
-// compile-time assertions that both senders satisfy the consumer contract.
 var (
 	_ PushSender = (*Client)(nil)
 	_ PushSender = (*NoOpSender)(nil)
