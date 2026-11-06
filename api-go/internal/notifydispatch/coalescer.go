@@ -19,7 +19,8 @@ import (
 )
 
 // deviceReader lists a user's device tokens for a push and prunes the ones a
-// platform sender reports permanently invalid. *devicetokens.PostgresStore satisfies it.
+// platform sender reports permanently invalid. *devicetokens.PostgresStore
+// satisfies it.
 type deviceReader interface {
 	ListByUser(ctx context.Context, userID string) ([]devicetokens.DeviceRegistration, error)
 	Delete(ctx context.Context, userID, token string) error
