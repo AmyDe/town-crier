@@ -112,6 +112,15 @@ func (p *NotificationProcessor) Process(ctx context.Context, signedPayload strin
 	return wasNew, nil
 }
 
+func activateSubscription(profile *profiles.UserProfile, txn DecodedTransaction) (bool, error) {
+	tier, err := TierForProduct(txn.ProductID)
+	if err != nil {
+		return false, err
+	}
+	profile.ActivateAppStoreSubscription(tier, txn.ExpiresDate, txn.ProductID, txn.IsFreeTrial())
+	return true, nil
+}
+
 // applyNotification mutates the profile per the App Store notification type and
 // reports whether any state changed (a no-change event needs no save/sync). A
 // non-consumable (lifetime) transaction only ever touches the lifetime grant.
@@ -122,21 +131,11 @@ func applyNotification(profile *profiles.UserProfile, notification DecodedNotifi
 
 	switch notification.NotificationType {
 	case "SUBSCRIBED", "OFFER_REDEEMED", "DID_RENEW":
-		tier, err := TierForProduct(txn.ProductID)
-		if err != nil {
-			return false, err
-		}
-		profile.ActivateAppStoreSubscription(tier, txn.ExpiresDate, txn.ProductID, txn.IsFreeTrial())
-		return true, nil
+		return activateSubscription(profile, txn)
 
 	case "DID_CHANGE_RENEWAL_PREF":
 		if notification.Subtype == "UPGRADE" {
-			tier, err := TierForProduct(txn.ProductID)
-			if err != nil {
-				return false, err
-			}
-			profile.ActivateAppStoreSubscription(tier, txn.ExpiresDate, txn.ProductID, txn.IsFreeTrial())
-			return true, nil
+			return activateSubscription(profile, txn)
 		}
 		// DOWNGRADE: no state change — it takes effect at the next renewal.
 		return false, nil
