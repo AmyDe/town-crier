@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import type { RedeemOfferCodeClient } from './api/redeemOfferCode';
 import { RedeemError, type RedeemErrorCode, type RedeemResult } from './api/types';
 
-export type RedeemStatus = 'idle' | 'submitting' | 'success' | 'error';
+type RedeemStatus = 'idle' | 'submitting' | 'success' | 'error';
 
 interface RedeemState {
   status: RedeemStatus;
@@ -18,7 +18,7 @@ const INITIAL_STATE: RedeemState = {
   errorMessage: null,
 };
 
-export interface UseRedeemOfferCodeOptions {
+interface UseRedeemOfferCodeOptions {
   /** Called once after a successful redemption with the parsed API result. */
   readonly onSuccess?: (result: RedeemResult) => void;
 }

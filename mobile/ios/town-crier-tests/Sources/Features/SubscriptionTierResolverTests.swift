@@ -4,11 +4,6 @@ import TownCrierDomain
 
 @testable import TownCrierPresentation
 
-/// Tests for the shared `SubscriptionTierResolver` that both `AppCoordinator`
-/// and `SettingsViewModel` delegate to. The resolver folds the three tier
-/// sources (server profile, StoreKit, JWT claim) into a single answer and
-/// guarantees a paying user is never silently downgraded to `.free` due to a
-/// transient server failure.
 @Suite("SubscriptionTierResolver")
 struct SubscriptionTierResolverTests {
 
@@ -61,9 +56,7 @@ struct SubscriptionTierResolverTests {
 
   @Test
   func whenServerFailsAndPreviousTierWasPro_preservesPro() async {
-    // Regression: server fetch fails (returns nil), JWT and StoreKit both
-    // .free, but previousTier was .pro. The resolver MUST preserve .pro
-    // and never silently downgrade the user.
+    // Regression: a failed server fetch must not downgrade a paying user.
     let (sut, _) = makeSUT(
       serverTier: nil,
       storeKitEntitlement: nil
@@ -100,10 +93,8 @@ struct SubscriptionTierResolverTests {
 
   @Test
   func whenAllSourcesReturnFree_resolvesFreeAndLogsNotice() async {
-    // Even when all sources genuinely report .free, the resolver returns
-    // .free (after a single refreshSession retry attempt) — the log notice
-    // is for diagnostic purposes and is verified by behaviour, not via a
-    // log spy: we observe that refreshSession() was called exactly once.
+    // The diagnostic log has no spy; it is verified indirectly by
+    // refreshSession() being called exactly once.
     let (sut, authSpy) = makeSUT(
       serverTier: .free,
       storeKitEntitlement: nil,
@@ -122,9 +113,6 @@ struct SubscriptionTierResolverTests {
 
   @Test
   func whenWinnerIsFree_andRefreshSessionPromotesJwtToPro_secondPassResolvesPro() async {
-    // First pass: jwtTier=.free, server=.free, storeKit=nil → winner .free.
-    // The resolver calls refreshSession(); the new session's JWT carries
-    // .pro. Re-resolving picks that up and returns .pro.
     let (sut, authSpy) = makeSUT(
       serverTier: .free,
       storeKitEntitlement: nil,
@@ -162,8 +150,6 @@ struct SubscriptionTierResolverTests {
 
   @Test
   func whenRefreshSessionThrows_resolverStillReturnsFreeWithoutLooping() async {
-    // refreshSession() failures must be tolerated: the resolver returns the
-    // first-pass result (.free) without crashing or looping.
     let (sut, authSpy) = makeSUT(
       serverTier: .free,
       storeKitEntitlement: nil,

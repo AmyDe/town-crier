@@ -9,10 +9,6 @@ import uk.towncrierapp.presentation.MainDispatcherExtension
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/**
- * Pre-login force-update gate: `GET /v1/version-config` vs the running
- * build's version; a check failure must never block the user (fail open).
- */
 @ExtendWith(MainDispatcherExtension::class)
 class ForceUpdateViewModelTest {
     @Test

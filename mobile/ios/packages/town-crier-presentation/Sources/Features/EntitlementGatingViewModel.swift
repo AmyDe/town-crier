@@ -6,19 +6,6 @@ import TownCrierDomain
 /// Conformers must provide both `error` (from ``ErrorHandlingViewModel``) and
 /// `entitlementGate`. The default `handleError` override routes entitlement
 /// errors to the gate binding while forwarding all other errors normally.
-///
-/// Usage in a ViewModel:
-/// ```swift
-/// @MainActor
-/// final class WatchZoneEditorViewModel: ObservableObject, EntitlementGatingViewModel {
-///     @Published var error: DomainError?
-///     @Published var entitlementGate: Entitlement?
-///     ...
-///     func save() async {
-///         do { ... } catch { handleError(error) }
-///     }
-/// }
-/// ```
 @MainActor
 protocol EntitlementGatingViewModel: ErrorHandlingViewModel {
   var entitlementGate: Entitlement? { get set }

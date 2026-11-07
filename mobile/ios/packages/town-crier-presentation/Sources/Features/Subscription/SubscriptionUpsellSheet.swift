@@ -2,9 +2,6 @@ import SwiftUI
 import TownCrierDomain
 
 /// A reusable sheet presented when a user attempts an action above their subscription tier.
-///
-/// Presented via `.sheet(item:)` binding on a `@Published var entitlementGate: Entitlement?`
-/// property on ViewModels that need gating.
 public struct SubscriptionUpsellSheet: View {
   private let entitlement: Entitlement
   private let onViewPlans: () -> Void

@@ -3,11 +3,7 @@ package uk.towncrierapp.domain.subscriptions
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 
-/**
- * Single-pass formula `max(serverTier ?? max(cachedTier, jwtTier), jwtTier)`;
- * the retry-once-on-free orchestration lives in `:presentation`'s auth
- * coordinator.
- */
+/** The retry-once-on-free orchestration lives in `:presentation`'s auth coordinator, not here. */
 class TierResolutionTest {
     @Test
     fun `a present server tier wins outright when it is the richest source`() {

@@ -39,7 +39,7 @@ type jwtClaims struct {
 func parseP8Key(pemBytes []byte) (*ecdsa.PrivateKey, error) {
 	block, _ := pem.Decode(pemBytes)
 	if block == nil {
-		return nil, fmt.Errorf("%w", ErrInvalidSigningKey)
+		return nil, ErrInvalidSigningKey
 	}
 	parsed, err := x509.ParsePKCS8PrivateKey(block.Bytes)
 	if err != nil {
