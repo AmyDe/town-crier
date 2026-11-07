@@ -41,13 +41,10 @@ type profileStore interface {
 	Save(ctx context.Context, p *profiles.UserProfile) error
 }
 
-// tierSync is the Auth0 Management client subset used here: push the new tier
-// into Auth0's app_metadata. profiles.Auth0Manager satisfies it.
 type tierSync interface {
 	UpdateSubscriptionTier(ctx context.Context, userID, tier string) error
 }
 
-// subscriptionNotifier is told about each successful tier-changing save.
 type subscriptionNotifier interface {
 	Changed(ctx context.Context, before, after subscriptionevents.Snapshot, source subscriptionevents.Source)
 }
@@ -112,7 +109,7 @@ func (h *handler) redeem(w http.ResponseWriter, r *http.Request) {
 	code, err := h.codes.Get(r.Context(), canonical)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
-			h.writeError(r, w, http.StatusNotFound, "invalid_code", "Offer code '"+canonical+"' was not found.")
+			h.writeCodeNotFound(r, w, canonical)
 			return
 		}
 		h.serverError(w, r, "load offer code", err)
@@ -130,7 +127,7 @@ func (h *handler) redeem(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if code.IsFullyRedeemed() {
-		h.writeError(r, w, http.StatusConflict, "code_already_redeemed", "Offer code '"+canonical+"' has already been redeemed.")
+		h.writeCodeAlreadyRedeemed(r, w, canonical)
 		return
 	}
 
@@ -153,7 +150,7 @@ func (h *handler) redeem(w http.ResponseWriter, r *http.Request) {
 	switch redeemErr := h.codes.RedeemWithCAS(r.Context(), canonical, userID, now); {
 	case redeemErr == nil:
 	case errors.Is(redeemErr, ErrNotFound):
-		h.writeError(r, w, http.StatusNotFound, "invalid_code", "Offer code '"+canonical+"' was not found.")
+		h.writeCodeNotFound(r, w, canonical)
 		return
 	case errors.Is(redeemErr, ErrAlreadyRedeemedByUser):
 		at, err := h.codes.RedemptionTime(r.Context(), canonical, userID)
@@ -164,7 +161,7 @@ func (h *handler) redeem(w http.ResponseWriter, r *http.Request) {
 		h.heal(w, r, userID, code, at)
 		return
 	case errors.Is(redeemErr, ErrAlreadyRedeemed):
-		h.writeError(r, w, http.StatusConflict, "code_already_redeemed", "Offer code '"+canonical+"' has already been redeemed.")
+		h.writeCodeAlreadyRedeemed(r, w, canonical)
 		return
 	default:
 		h.serverError(w, r, "redeem offer code", redeemErr)
@@ -210,7 +207,7 @@ func (h *handler) heal(w http.ResponseWriter, r *http.Request, userID string, co
 	expiry := redeemedAt.AddDate(0, 0, code.DurationDays)
 	now := h.now().Truncate(time.Microsecond)
 	if !expiry.After(now) {
-		h.writeError(r, w, http.StatusConflict, "code_already_redeemed", "Offer code '"+code.Code+"' has already been redeemed.")
+		h.writeCodeAlreadyRedeemed(r, w, code.Code)
 		return
 	}
 	var profile *profiles.UserProfile
@@ -230,7 +227,7 @@ func (h *handler) heal(w http.ResponseWriter, r *http.Request, userID string, co
 		return h.profiles.Save(ctx, current)
 	})
 	if errors.Is(err, errGrantNotHealable) {
-		h.writeError(r, w, http.StatusConflict, "code_already_redeemed", "Offer code '"+code.Code+"' has already been redeemed.")
+		h.writeCodeAlreadyRedeemed(r, w, code.Code)
 		return
 	}
 	if err != nil {
@@ -278,6 +275,14 @@ func (h *handler) writeError(r *http.Request, w http.ResponseWriter, status int,
 	if _, err := w.Write(body); err != nil {
 		h.logger.ErrorContext(r.Context(), "write offer-code error body", "error", err)
 	}
+}
+
+func (h *handler) writeCodeNotFound(r *http.Request, w http.ResponseWriter, code string) {
+	h.writeError(r, w, http.StatusNotFound, "invalid_code", "Offer code '"+code+"' was not found.")
+}
+
+func (h *handler) writeCodeAlreadyRedeemed(r *http.Request, w http.ResponseWriter, code string) {
+	h.writeError(r, w, http.StatusConflict, "code_already_redeemed", "Offer code '"+code+"' has already been redeemed.")
 }
 
 func (h *handler) serverError(w http.ResponseWriter, r *http.Request, op string, err error) {

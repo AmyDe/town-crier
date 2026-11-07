@@ -24,39 +24,31 @@ const maxBodyBytes = 1 << 20
 // before the expensive X.509 chain check.
 const maxWebhookPayloadBytes = 32 * 1024
 
-// jwsVerifier verifies and decodes an Apple StoreKit JWS. *JWSVerifier satisfies it.
 type jwsVerifier interface {
 	VerifyAndDecode(signedPayload string) (string, error)
 }
 
-// profileByUser is the verify path's store: load the caller's profile by user
-// id and save it back.
 type profileByUser interface {
 	Get(ctx context.Context, userID string) (*profiles.UserProfile, error)
 	Save(ctx context.Context, p *profiles.UserProfile) error
 }
 
-// profileByTxn is the webhook path's store: App Store notifications carry no
-// user id, so the subscriber is found by their Apple original transaction id
-// (cross-partition). profiles.AdminStore satisfies it.
+// profileByTxn looks the subscriber up by Apple original transaction id because
+// App Store notifications carry no user id.
 type profileByTxn interface {
 	GetByOriginalTransactionID(ctx context.Context, originalTransactionID string) (*profiles.UserProfile, error)
 	Save(ctx context.Context, p *profiles.UserProfile) error
 }
 
-// tierSync is the consumer-side interface for Auth0 tier sync: push the new tier
-// into Auth0's app_metadata. profiles.Auth0Manager satisfies it.
 type tierSync interface {
 	UpdateSubscriptionTier(ctx context.Context, userID, tier string) error
 }
 
-// idempotencyStore gives the webhook at-most-once processing.
 type idempotencyStore interface {
 	IsProcessed(ctx context.Context, notificationUUID string) (bool, error)
 	MarkProcessed(ctx context.Context, notificationUUID string) error
 }
 
-// subscriptionNotifier is told about each successful tier-changing save.
 type subscriptionNotifier interface {
 	Changed(ctx context.Context, before, after subscriptionevents.Snapshot, source subscriptionevents.Source)
 }
