@@ -8,15 +8,12 @@ import TownCrierDomain
 @MainActor
 struct EntitlementGateModifierTests {
 
-  // The `.sheet(item:)` modifier cannot have its `.body` called outside
-  // a SwiftUI render pass without a fatal error. These tests verify the
-  // modifier compiles and can be applied — the runtime sheet presentation
-  // is validated by the SubscriptionUpsellSheet render tests.
+  // `.sheet(item:)` cannot have its `.body` called outside a SwiftUI render
+  // pass, so these tests only check the modifier applies.
 
   @Test func modifier_canBeAppliedToView_withEntitlement() {
     var gate: Entitlement? = .statusChangeAlerts
     let binding = Binding(get: { gate }, set: { gate = $0 })
-    // Verifies the modifier compiles and returns an opaque View.
     _ = AnyView(
       Text("Hello")
         .entitlementGateSheet(entitlement: binding) {}
