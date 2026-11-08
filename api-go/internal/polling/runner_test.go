@@ -505,6 +505,33 @@ func TestRunner_ShortWindowIsNotReadAgainInTheSameRun(t *testing.T) {
 	}
 }
 
+func TestRunner_OvercountWindowDoesNotStopTheRun(t *testing.T) {
+	t.Parallel()
+	r := newRunnerRig(t, londonAt(6, 10, 20, 0), nil)
+	r.world.script = func(w *runWorld, item PlannedWork) WindowReadResult {
+		if len(w.reads) == 1 {
+			return WindowReadResult{Pages: 2, Short: true}
+		}
+		return w.complete(item)
+	}
+
+	res, err := r.runner.Run(context.Background())
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.world.reads) < 2 {
+		t.Fatalf("reads = %d, want the run to go on to the next window", len(r.world.reads))
+	}
+	first, next := r.world.reads[0], r.world.reads[1]
+	if next.Axis == first.Axis && next.Day.Equal(first.Day) {
+		t.Fatalf("second read %+v repeats the short window", next)
+	}
+	if res.Stop == StopError {
+		t.Fatalf("stop = %s, want the run not to end with an error", res.Stop)
+	}
+}
+
 func TestRunner_DayRunsDeltaOnly(t *testing.T) {
 	t.Parallel()
 	r := newRunnerRig(t, londonAt(6, 10, 9, 30), nil)
