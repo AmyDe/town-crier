@@ -27,7 +27,6 @@ type profileStore interface {
 	Delete(ctx context.Context, userID string) error
 }
 
-// handler serves the /v1/me lifecycle.
 type handler struct {
 	store         profileStore
 	auth0         Auth0Manager
@@ -37,7 +36,6 @@ type handler struct {
 	logger        *slog.Logger
 }
 
-// newHandler builds the /v1/me handler.
 func newHandler(store profileStore, auth0 Auth0Manager, cascade CascadeDeleters, exportReaders ExportReaders, now func() time.Time, logger *slog.Logger) *handler {
 	return &handler{
 		store:         store,
@@ -140,13 +138,8 @@ func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 // envelope is backfilled by middleware).
 func (h *handler) get(w http.ResponseWriter, r *http.Request) {
 	subject := auth.Subject(r.Context())
-	profile, err := h.store.Get(r.Context(), subject)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-		h.serverError(w, r, "load profile", err)
+	profile, ok := h.loadProfile(w, r, subject)
+	if !ok {
 		return
 	}
 	h.writeJSON(w, r, profileResultFrom(profile, h.now()))
@@ -226,13 +219,8 @@ func (h *handler) delete(w http.ResponseWriter, r *http.Request) {
 // a bodyless 404.
 func (h *handler) exportData(w http.ResponseWriter, r *http.Request) {
 	subject := auth.Subject(r.Context())
-	profile, err := h.store.Get(r.Context(), subject)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-		h.serverError(w, r, "load profile", err)
+	profile, ok := h.loadProfile(w, r, subject)
+	if !ok {
 		return
 	}
 	export, err := newExportUserData(r.Context(), profile, h.exportReaders)
@@ -288,6 +276,21 @@ func (h *handler) writeJSON(w http.ResponseWriter, r *http.Request, v any) {
 	if _, err := w.Write(bytes.TrimRight(buf.Bytes(), "\n")); err != nil {
 		h.logger.ErrorContext(r.Context(), "write response", "error", err)
 	}
+}
+
+// loadProfile reports false after answering a bodyless 404 for a missing
+// profile or a server error for any other load failure.
+func (h *handler) loadProfile(w http.ResponseWriter, r *http.Request, subject string) (*UserProfile, bool) {
+	profile, err := h.store.Get(r.Context(), subject)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			w.WriteHeader(http.StatusNotFound)
+			return nil, false
+		}
+		h.serverError(w, r, "load profile", err)
+		return nil, false
+	}
+	return profile, true
 }
 
 // serverError answers a bodyless error status chosen by platform.ClassifyRequestError
