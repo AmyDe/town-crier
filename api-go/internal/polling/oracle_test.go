@@ -1,9 +1,11 @@
 package polling
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -253,5 +255,70 @@ func TestOracle_FetchFailureStopsWithoutMarkingDone(t *testing.T) {
 	}
 	if !errors.As(err, new(*planit.RateLimitError)) {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func shortWidePages(apps ...applications.PlanningApplication) map[int]planit.FetchPageResult {
+	total := len(apps) + 5
+	return map[int]planit.FetchPageResult{
+		0:         {From: 0, Applications: apps, Total: &total, HasMorePages: true},
+		len(apps): {From: len(apps)},
+	}
+}
+
+func TestOracle_ShortWideReadSkipsClassificationButStillFindsDiffsAndRecordsDone(t *testing.T) {
+	t.Parallel()
+	found := londonAt(6, 10, 2, 0)
+	r := newOracleRig(t, shortWidePages(startApp("served", oracleDay)))
+	var logs bytes.Buffer
+	r.oracle = NewOracle(r.fetch, r.members, r.diffs, r.events, func() time.Time { return r.now }, slog.New(slog.NewTextHandler(&logs, nil)))
+	r.members.byAxis[planit.AxisStart] = map[time.Time]WindowMembers{oracleDay: {ReadAt: found.Add(24 * time.Hour), Keys: keys()}}
+	r.diffs.pending = map[planit.Axis][]OracleDiff{planit.AxisStart: {{Axis: planit.AxisStart, Day: oracleDay, UID: "beyond-the-cut", AreaID: 1, FoundAt: found}}}
+
+	out, err := r.oracle.Run(context.Background(), r.now)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.diffs.classified) != 0 || len(out.Classified) != 0 {
+		t.Fatalf("classified = %+v / %+v", r.diffs.classified, out.Classified)
+	}
+	if len(r.diffs.inserted) != 1 || r.diffs.inserted[0].UID != "served" {
+		t.Fatalf("diffs = %+v", r.diffs.inserted)
+	}
+	if len(r.events.written) != 2 || r.events.written[0].Kind != EventOracleDone || r.events.written[0].Axis != planit.AxisStart {
+		t.Fatalf("events = %+v", r.events.written)
+	}
+	if got := logs.String(); !strings.Contains(got, "poll.oracle_short") || !strings.Contains(got, "read=1") || !strings.Contains(got, "total=6") {
+		t.Fatalf("logs = %s", got)
+	}
+}
+
+func TestOracle_CompleteOrUnknownTotalWideReadStillClassifiesPlanItGone(t *testing.T) {
+	t.Parallel()
+	found := londonAt(6, 10, 2, 0)
+	nilTotal := map[int]planit.FetchPageResult{0: {From: 0}}
+	tests := []struct {
+		name  string
+		pages map[int]planit.FetchPageResult
+	}{
+		{"complete read", widePage()},
+		{"page 0 total unknown", nilTotal},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			r := newOracleRig(t, tt.pages)
+			r.members.byAxis[planit.AxisStart] = map[time.Time]WindowMembers{oracleDay: {ReadAt: found.Add(24 * time.Hour), Keys: keys()}}
+			r.diffs.pending = map[planit.Axis][]OracleDiff{planit.AxisStart: {{Axis: planit.AxisStart, Day: oracleDay, UID: "x", AreaID: 1, FoundAt: found}}}
+
+			if _, err := r.oracle.Run(context.Background(), r.now); err != nil {
+				t.Fatal(err)
+			}
+
+			if got := r.diffs.classified["x"]; got != "planit_deleted" {
+				t.Fatalf("reason = %q", got)
+			}
+		})
 	}
 }
