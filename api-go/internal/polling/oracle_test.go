@@ -272,7 +272,7 @@ func TestOracle_ShortWideReadSkipsClassificationButStillFindsDiffsAndRecordsDone
 	r := newOracleRig(t, shortWidePages(startApp("served", oracleDay)))
 	var logs bytes.Buffer
 	r.oracle = NewOracle(r.fetch, r.members, r.diffs, r.events, func() time.Time { return r.now }, slog.New(slog.NewTextHandler(&logs, nil)))
-	r.members.byAxis[planit.AxisStart] = map[time.Time]WindowMembers{oracleDay: {ReadAt: found.Add(24 * time.Hour), Keys: keys()}}
+	r.members.byAxis[planit.AxisStart] = map[time.Time]WindowMembers{oracleDay: {ReadAt: found.Add(12 * time.Hour), Keys: keys()}}
 	r.diffs.pending = map[planit.Axis][]OracleDiff{planit.AxisStart: {{Axis: planit.AxisStart, Day: oracleDay, UID: "beyond-the-cut", AreaID: 1, FoundAt: found}}}
 
 	out, err := r.oracle.Run(context.Background(), r.now)
