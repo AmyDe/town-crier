@@ -117,7 +117,7 @@ func TestFetchWindowPage_MissingTotalFallsBackToLengthHeuristic(t *testing.T) {
 	}
 }
 
-func TestFetchWindowPage_ZeroRecordsWithMoreRemaining_ReturnsError(t *testing.T) {
+func TestFetchWindowPage_ZeroRecordsAfterFirstPageEndsTheResultSet(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"total":500,"from":200,"records":[]}`))
@@ -125,9 +125,39 @@ func TestFetchWindowPage_ZeroRecordsWithMoreRemaining_ReturnsError(t *testing.T)
 	t.Cleanup(srv.Close)
 
 	c := newWindowClient(t, srv.URL, nil)
-	_, err := c.FetchWindowPage(context.Background(), testQuery(200))
+	res, err := c.FetchWindowPage(context.Background(), testQuery(200))
+	if err != nil {
+		t.Fatalf("FetchWindowPage: %v", err)
+	}
+	if len(res.Applications) != 0 || len(res.Skipped) != 0 {
+		t.Errorf("got apps=%d skipped=%d, want 0 and 0", len(res.Applications), len(res.Skipped))
+	}
+	if res.HasMorePages {
+		t.Error("HasMorePages should be false for an empty page")
+	}
+	if res.Total == nil || *res.Total != 500 {
+		t.Errorf("Total: got %v, want 500", res.Total)
+	}
+	if res.From != 200 {
+		t.Errorf("From: got %d, want 200", res.From)
+	}
+}
+
+func TestFetchWindowPage_ZeroRecordsOnFirstPageWithTotalReturnsError(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"total":18,"from":0,"records":[]}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	c := newWindowClient(t, srv.URL, nil)
+	_, err := c.FetchWindowPage(context.Background(), testQuery(0))
 	if !errors.Is(err, ErrZeroProgress) {
 		t.Fatalf("expected ErrZeroProgress, got %v", err)
+	}
+	var re *ResponseError
+	if !errors.As(err, &re) || re.StatusCode != http.StatusOK {
+		t.Fatalf("err = %v, want *ResponseError with status 200", err)
 	}
 }
 
@@ -366,7 +396,7 @@ func TestFetchWindowPage_BodyFailuresCarryTheResponseStatus(t *testing.T) {
 		wantSent error
 	}{
 		{"malformed json", `{"records": [`, nil},
-		{"zero progress", `{"total":500,"from":200,"records":[]}`, ErrZeroProgress},
+		{"zero progress", `{"total":500,"from":0,"records":[]}`, ErrZeroProgress},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -377,7 +407,7 @@ func TestFetchWindowPage_BodyFailuresCarryTheResponseStatus(t *testing.T) {
 			t.Cleanup(srv.Close)
 
 			c := newWindowClient(t, srv.URL, nil)
-			_, err := c.FetchWindowPage(context.Background(), testQuery(200))
+			_, err := c.FetchWindowPage(context.Background(), testQuery(0))
 			var re *ResponseError
 			if !errors.As(err, &re) || re.StatusCode != http.StatusOK {
 				t.Fatalf("err = %v, want *ResponseError with status 200", err)

@@ -92,7 +92,7 @@ func (o *Oracle) runAxis(ctx context.Context, axis planit.Axis, res *OracleOutco
 	today := dateOnly(wideStart.In(budgetLocation))
 	from := today.AddDate(0, 0, -coverageBandMaxAge)
 
-	wide, err := o.wideRead(ctx, axis, from, today, res)
+	wide, short, err := o.wideRead(ctx, axis, from, today, res)
 	if err != nil {
 		return err
 	}
@@ -100,8 +100,15 @@ func (o *Oracle) runAxis(ctx context.Context, axis planit.Axis, res *OracleOutco
 	if err != nil {
 		return fmt.Errorf("load poll_window_member: %w", err)
 	}
-	if err := o.classifyPending(ctx, axis, wide, members, res); err != nil {
-		return err
+	// PlanIt's total can overcount, or a page can come back empty early, so an
+	// incomplete wide read must not mark pending records as deleted.
+	if !short.short {
+		if err := o.classifyPending(ctx, axis, wide, members, res); err != nil {
+			return err
+		}
+	} else {
+		o.log.WarnContext(ctx, "poll.oracle_short",
+			slog.String("axis", axisName(axis)), slog.Int("read", short.read), slog.Int("total", short.total))
 	}
 	if err := o.findDiffs(ctx, axis, wide, members, wideStart, today, res); err != nil {
 		return err
@@ -115,33 +122,50 @@ func (o *Oracle) runAxis(ctx context.Context, axis planit.Axis, res *OracleOutco
 	return nil
 }
 
-func (o *Oracle) wideRead(ctx context.Context, axis planit.Axis, from, to time.Time, res *OracleOutcome) (map[AppKey]time.Time, error) {
+type wideShortfall struct {
+	short bool
+	read  int
+	total int
+}
+
+func (o *Oracle) wideRead(ctx context.Context, axis planit.Axis, from, to time.Time, res *OracleOutcome) (map[AppKey]time.Time, wideShortfall, error) {
 	work := planit.WorkOracleStart
 	if axis == planit.AxisDecided {
 		work = planit.WorkOracleDecided
 	}
 	q := planit.WindowQuery{Work: work, Axis: axis, From: from, To: to}
 	wide := map[AppKey]time.Time{}
+	var total *int
+	read := 0
 	for pages := 0; ; {
 		p, err := o.fetch.FetchPage(ctx, q)
 		if err != nil {
 			res.Stop = stopReasonFor(err)
-			return nil, fmt.Errorf("oracle wide read: %w", err)
+			return nil, wideShortfall{}, fmt.Errorf("oracle wide read: %w", err)
+		}
+		if pages == 0 {
+			total = p.Total
 		}
 		pages++
 		res.Pages++
 		res.WideRecords += p.Read()
+		read += p.Read()
 		for _, app := range p.Applications {
 			if d := axisDate(app, axis); d != nil {
 				wide[AppKey{UID: app.UID, AreaID: app.AreaID}] = dateOnly(*d)
 			}
 		}
 		if !p.HasMorePages || p.Read() == 0 {
-			return wide, nil
+			sf := wideShortfall{read: read}
+			if total != nil {
+				sf.total = *total
+				sf.short = read < *total
+			}
+			return wide, sf, nil
 		}
 		if pages >= oracleMaxPages {
 			res.Stop = StopError
-			return nil, fmt.Errorf("oracle wide read: more than %d pages", oracleMaxPages)
+			return nil, wideShortfall{}, fmt.Errorf("oracle wide read: more than %d pages", oracleMaxPages)
 		}
 		q.Index = p.From + p.Read()
 	}

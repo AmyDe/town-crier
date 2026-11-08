@@ -219,6 +219,23 @@ func TestWindowReader_ShortReadLeavesWindowDue(t *testing.T) {
 	}
 }
 
+func TestWindowReader_TotalAboveRecordsEndsShortWithoutError(t *testing.T) {
+	t.Parallel()
+	r := newReaderRig(t, map[int]planit.FetchPageResult{0: page(0, 17, 18), 17: endPage(17, 0, 18)})
+
+	res := r.reader.ReadWindow(context.Background(), testWindow(), WindowState{})
+
+	if !res.Short || res.Complete || res.Stop != "" || res.Err != nil || res.Pages != 2 {
+		t.Fatalf("res = %+v", res)
+	}
+	if len(r.writer.fulls) != 0 || len(r.writer.probes) != 0 {
+		t.Fatalf("a short read must not mark anything, got %+v", r.writer)
+	}
+	if !strings.Contains(r.logs.String(), "poll.window_short") {
+		t.Fatalf("logs = %s", r.logs.String())
+	}
+}
+
 func TestWindowReader_DuplicatesDoNotCountTowardsCompleteness(t *testing.T) {
 	t.Parallel()
 	dup := page(0, 300, 400)
