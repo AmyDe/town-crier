@@ -302,8 +302,6 @@ func TestPostgresStore_LegacyCoalesceRoundTrip(t *testing.T) {
 	}
 }
 
-// ---- Admin store integration tests ----
-
 // TestPostgresAdminStore_GetByEmail verifies point-read by email address and
 // ErrNotFound for a non-existent email.
 func TestPostgresAdminStore_GetByEmail(t *testing.T) {

@@ -14,10 +14,8 @@ func discardLogger() *slog.Logger { return slog.New(slog.DiscardHandler) }
 func TestNewAuth0Validator_DenyAllWhenUnconfigured(t *testing.T) {
 	t.Parallel()
 
-	// With no Auth0 domain/audience (the dev Go app's current env), the
-	// validator must still deny every token rather than fail open. Validation
-	// returns an error without any network call, so all protected routes 401 —
-	// matching the contract-test reality until infra wires the env vars (it3+).
+	// With no Auth0 domain/audience the validator must deny every token rather
+	// than fail open, without any network call.
 	tests := []struct {
 		name     string
 		domain   string

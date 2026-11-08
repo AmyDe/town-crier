@@ -24,10 +24,7 @@ type Claims struct {
 	SubscriptionTier string
 }
 
-// TokenValidator validates a raw bearer token and returns its claims. The
-// concrete *Auth0Validator satisfies it; unit tests substitute a hand-written
-// fake so no JWKS network call happens. It is exported because the binary's
-// wiring (cmd/api) names it when assembling the router.
+// TokenValidator validates a raw bearer token and returns its claims.
 type TokenValidator interface {
 	ValidateToken(ctx context.Context, token string) (Claims, error)
 }
@@ -82,14 +79,11 @@ func RequireAuth(v TokenValidator, mux routeMatcher, anonymousPatterns map[strin
 }
 
 // WithClaims returns a copy of ctx carrying the authenticated user's claims.
-// RequireAuth calls it after a successful validation; tests use it to inject
-// claims when exercising a handler in isolation.
 func WithClaims(ctx context.Context, claims Claims) context.Context {
 	return context.WithValue(ctx, claimsKey{}, claims)
 }
 
-// WithSubject is a convenience that threads only the subject, used by handler
-// tests that do not exercise the email/tier claims.
+// WithSubject returns a copy of ctx carrying claims with only the subject set.
 func WithSubject(ctx context.Context, subject string) context.Context {
 	return WithClaims(ctx, Claims{Subject: subject})
 }

@@ -14,10 +14,7 @@ import (
 )
 
 // ChildDeleter erases every document a single per-user container holds for the
-// account being deleted. The per-container cascade stores expose this exact
-// method, so the notifications / watchzones / savedapplications / devicetokens
-// stores satisfy it directly; the notification-state store is bridged by
-// NotificationStateChild. Each store tolerates a 404 on an individual delete
+// account being deleted. Each store tolerates a 404 on an individual delete
 // internally, so any error returned here is real and must abort the cascade.
 type ChildDeleter interface {
 	DeleteAllByUserID(ctx context.Context, userID string) error
@@ -31,14 +28,12 @@ type RedemptionAnonymiser interface {
 	AnonymiseRedemptionsByUserID(ctx context.Context, userID string) error
 }
 
-// ProfileDeleter erases the user profile document itself. The profile store's
-// Delete satisfies it.
+// ProfileDeleter erases the user profile document itself.
 type ProfileDeleter interface {
 	Delete(ctx context.Context, userID string) error
 }
 
-// Auth0Deleter removes the user from Auth0 via the Management (M2M) API. The real
-// Auth0 client and the no-op fallback both satisfy it.
+// Auth0Deleter removes the user from Auth0 via the Management (M2M) API.
 type Auth0Deleter interface {
 	DeleteUser(ctx context.Context, userID string) error
 }

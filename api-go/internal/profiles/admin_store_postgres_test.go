@@ -278,8 +278,6 @@ func TestLapsedPaid_ExcludesLifetimeHolderWithPastExpiry(t *testing.T) {
 	}
 }
 
-// --- PaidCandidates ---
-
 // paidUserRow builds a full userSelectCols projection for a paid-tier user. The
 // expiry (time.Time or nil) and original-transaction id (string or nil) are
 // passed as raw column values, matching how fakeScanRow wraps nullable columns.
@@ -319,8 +317,6 @@ func TestPaidCandidates_LoadsAllUnfiltered(t *testing.T) {
 		t.Fatalf("candidates: got %d, want 2 (lapsed NOT filtered out)", len(got))
 	}
 }
-
-// --- UserStats ---
 
 // genRows is a pgx.Rows over pre-baked []any tuples for the aggregate queries.
 type genRows struct {
