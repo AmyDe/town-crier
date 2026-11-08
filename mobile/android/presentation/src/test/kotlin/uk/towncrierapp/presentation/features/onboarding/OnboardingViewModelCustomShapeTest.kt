@@ -26,7 +26,8 @@ private fun OnboardingViewModel.addPolygonVertex(coordinate: Coordinate) =
 private fun OnboardingViewModel.closePolygon() = onShapeEvent(WatchZoneShapeEvent.PolygonClosed)
 
 /**
- * Onboarding's custom-shape (polygon) drawing step: the already-entitled re-entry point ([OnboardingViewModel.selectCustomShape]),
+ * Onboarding's custom-shape (polygon) drawing step: the already-entitled
+ * re-entry point ([OnboardingViewModel.selectCustomShape]),
  * the mid-flow purchase swap ([OnboardingViewModel.reconcileTierAfterCustomShapeUpgrade]),
  * boundary confirmation ([OnboardingViewModel.confirmBoundary]), and
  * back-navigation routing to whichever of Radius/BoundaryDrawing the
