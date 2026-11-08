@@ -3,8 +3,7 @@ package uk.towncrierapp.domain.auth
 /**
  * Hand-written fake for [AuthenticationService], shared (via `:domain`'s
  * `testFixtures` source set) by `:data`'s `ApiClient` tests and
- * `:presentation`'s auth-coordinator/ViewModel tests — see testing.md's
- * cross-module fake-sharing convention.
+ * `:presentation`'s auth-coordinator/ViewModel tests.
  */
 public class FakeAuthenticationService(
     public var currentSessionResult: AuthSession? = anAuthSession(),

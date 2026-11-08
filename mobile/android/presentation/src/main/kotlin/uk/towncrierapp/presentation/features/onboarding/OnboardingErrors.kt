@@ -5,9 +5,8 @@ import uk.towncrierapp.domain.auth.DomainError
 import uk.towncrierapp.presentation.R
 
 /**
- * Maps a postcode-step [DomainError] to its inline-error string resource
- * (compose-ui.md: user-facing copy is a `:presentation` resource, keyed off
- * the sealed outcome). [DomainError.GeocodingFailed] is the local
+ * Maps a postcode-step [DomainError] to its inline-error string resource.
+ * [DomainError.GeocodingFailed] is the local
  * format-validation failure (never reached the network); every other case
  * came back from the geocoder itself.
  */

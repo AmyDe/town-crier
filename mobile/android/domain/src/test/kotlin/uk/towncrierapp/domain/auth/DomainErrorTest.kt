@@ -5,11 +5,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/**
- * Port of iOS `DomainError`'s `isRetryable` catalogue (user-facing
- * `userTitle`/`userMessage` strings stay in `:presentation` resources per the
- * bead — see LoginScreen's error captions).
- */
 class DomainErrorTest {
     @Test
     fun `transient failures are retryable`() {

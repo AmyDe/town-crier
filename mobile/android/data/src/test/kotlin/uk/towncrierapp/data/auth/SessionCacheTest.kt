@@ -17,7 +17,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 
 /**
- * In-memory session cache (iOS tc-3d7b): a hit while the access token has
+ * In-memory session cache: a hit while the access token has
  * >= [SessionCache]'s lead time to expiry avoids a `SecureCredentialsManager`
  * read on every call, and concurrent cold reads single-flight to one loader
  * invocation rather than each hitting the credentials store.

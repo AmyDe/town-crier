@@ -17,8 +17,7 @@ import kotlin.test.assertTrue
  * permission request lives in the Route (`rememberLauncherForActivityResult`
  * needs a composable scope), so this ViewModel only needs to prove the flag
  * is right and that both `requestNotificationPermission` and
- * `skipNotifications` complete the wizard the same way (tc-7ttz). Port of
- * iOS `OnboardingViewModelTests`'s notification-step cases.
+ * `skipNotifications` complete the wizard the same way.
  */
 @ExtendWith(MainDispatcherExtension::class)
 class OnboardingViewModelNotificationTest {

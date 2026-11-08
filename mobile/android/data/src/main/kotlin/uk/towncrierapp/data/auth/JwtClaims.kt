@@ -12,8 +12,7 @@ import java.util.Base64
  * Decodes JWT payloads and extracts the individual claims
  * `Auth0AuthenticationService` needs — base64url decode of the payload
  * segment only, **no signature verification** (Auth0 already validated the
- * token; this is purely for reading claims client-side). Port of iOS
- * `JWTSubscriptionTierExtractor`.
+ * token; this is purely for reading claims client-side).
  */
 public object JwtClaims {
     /** Extracts the `subscription_tier` claim. Defaults to [SubscriptionTier.FREE] when absent, unrecognised, or malformed. */
@@ -49,8 +48,8 @@ public object JwtClaims {
     /**
      * Whether [accessToken] was issued for [expectedAudience]. **Fails
      * open**: a token whose `aud` claim is absent or undecodable is treated
-     * as matching, so a parsing hiccup never signs a user out (#680 aud-
-     * mismatch wipe semantics — the wipe only fires on a genuine mismatch).
+     * as matching, so a parsing hiccup never signs a user out; the wipe only
+     * fires on a genuine mismatch.
      */
     public fun audienceMatches(
         accessToken: String,
@@ -64,7 +63,7 @@ public object JwtClaims {
     /** Decodes the base64url JSON payload segment of [token] into a [JsonObject], or `null` if malformed. */
     @Suppress("SwallowedException")
     // Malformed/foreign tokens are expected, routine input here (not a bug to
-    // diagnose) — every caller's contract is "null means fail open" (#680).
+    // diagnose) — every caller's contract is "null means fail open".
     internal fun decodePayload(token: String): JsonObject? {
         val segments = token.split(".")
         if (segments.size < 2) return null

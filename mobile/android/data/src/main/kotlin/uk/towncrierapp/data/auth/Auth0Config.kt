@@ -1,6 +1,6 @@
 package uk.towncrierapp.data.auth
 
-/** Auth0 tenant configuration for one build flavor. Both flavors share [clientId] and [domain]; only [audience] differs (epic #770 D4). */
+/** Auth0 tenant configuration for one build flavor. Both flavors share [clientId] and [domain]; only [audience] differs. */
 public data class Auth0Config(
     val clientId: String,
     val domain: String,

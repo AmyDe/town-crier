@@ -18,7 +18,7 @@ import kotlin.test.assertFalse
 /**
  * The `isOnboardingComplete` DataStore Preferences latch - a fast-path hint
  * only, never the source of truth for whether the wizard is required
- * (tc-7ttz; see `AuthCoordinator`). `PreferenceDataStoreFactory.create` over
+ * (see `AuthCoordinator`). `PreferenceDataStoreFactory.create` over
  * a temp file runs on the plain JVM - no Robolectric needed.
  */
 class DataStoreOnboardingRepositoryTest {
@@ -74,7 +74,7 @@ class DataStoreOnboardingRepositoryTest {
         }
 }
 
-/** A [DataStore] whose `updateData` (and so `edit { }`) always throws [exception] — proves write methods guard against it (tc-l31ve). */
+/** A [DataStore] whose `updateData` (and so `edit { }`) always throws [exception] — proves write methods guard against it. */
 private class ThrowingDataStore(
     private val exception: Throwable,
 ) : DataStore<Preferences> {
