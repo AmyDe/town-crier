@@ -38,9 +38,9 @@ var (
 	ErrInsecureBaseURL = errors.New("planit base URL must be https (except localhost)")
 )
 
-// ErrZeroProgress is returned when PlanIt responds 200 with zero records while
-// its own total reports more records remain (from < total). Without this guard
-// a caller that resumes at the same index would loop forever.
+// ErrZeroProgress is returned only when PlanIt answers the first page (index 0)
+// with 200 and no records while its total is above zero. An empty page at any
+// later index is the end of the result set, not an error.
 var ErrZeroProgress = errors.New("planit: zero-progress response (0 records, from < total)")
 
 // ResponseError wraps a failure to read or decode a response that PlanIt did
@@ -211,16 +211,19 @@ func decodePage(resp *http.Response, authorityIDForMetrics, startIndex int) (Fet
 		from = *parsed.From
 	}
 
-	// No records while from < total would livelock a caller that resumes at the
-	// same index, so it is a hard error.
 	read := len(apps) + len(skipped)
-	if read == 0 && parsed.Total != nil && from < *parsed.Total {
+	if read == 0 && startIndex == 0 && parsed.Total != nil && *parsed.Total > 0 {
 		return FetchPageResult{}, &ResponseError{StatusCode: resp.StatusCode, Err: fmt.Errorf("planit fetch (authority %d) at index %d: %w", authorityIDForMetrics, startIndex, ErrZeroProgress)}
 	}
 
+	// PlanIt's total can overcount the records it serves, so an empty page ends
+	// the result set even when from < total.
 	hasMorePages := read >= nationalPageSize
 	if parsed.Total != nil {
 		hasMorePages = from+read < *parsed.Total
+	}
+	if read == 0 {
+		hasMorePages = false
 	}
 
 	return FetchPageResult{
