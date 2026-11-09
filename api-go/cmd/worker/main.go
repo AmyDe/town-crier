@@ -189,7 +189,7 @@ func run() int {
 
 // buildNotifyFanOut returns the collaborators the poll runner's event
 // dispatcher needs. WithMetrics on the enqueuer and decision dispatcher is left
-// to the caller; st may be nil in tests.
+// to the caller.
 func buildNotifyFanOut(cfg platform.Config, registry *metrics.Registry, zoneStore watchzones.Store, st *stores, logger *slog.Logger) (*notifydispatch.DecisionDispatcher, *notifydispatch.Enqueuer, *notifydispatch.PushCoalescer) {
 	var (
 		notifStore     *notifications.PostgresStore
@@ -382,7 +382,6 @@ func buildAppStoreReconcile(cfg platform.Config, st *stores, logger *slog.Logger
 	return appstorereconcile.New(apiClient, jwsVerifier, st.appleNotif, processor, lookback, cfg.AppStoreReconcileApplyEnabled, logger, time.Now)
 }
 
-// buildEmailSender returns a NoOp when no ACS connection string is set.
 func buildEmailSender(cfg platform.Config, logger *slog.Logger) acsemail.EmailSender {
 	conn := cfg.ACSConnectionString.Expose()
 	if conn == "" {
@@ -397,7 +396,6 @@ func buildEmailSender(cfg platform.Config, logger *slog.Logger) acsemail.EmailSe
 	return client
 }
 
-// buildPushSender returns a NoOp when APNs is disabled. A nil registry is a safe no-op.
 func buildPushSender(cfg platform.Config, registry *metrics.Registry, logger *slog.Logger) apns.PushSender {
 	if !cfg.APNsEnabled {
 		logger.Info("apns disabled; digest pushes disabled (NoOp sender)")
@@ -418,7 +416,6 @@ func buildPushSender(cfg platform.Config, registry *metrics.Registry, logger *sl
 	return client.WithMetrics(registry)
 }
 
-// buildFCMSender returns a NoOp when FCM is disabled.
 func buildFCMSender(cfg platform.Config, registry *metrics.Registry, logger *slog.Logger) fcm.PushSender {
 	if !cfg.FCMEnabled {
 		logger.Info("fcm disabled; android pushes disabled (NoOp sender)")

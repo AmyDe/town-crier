@@ -198,7 +198,6 @@ func TestFetchWindowPage_429SurfacesRateLimitWithRetryAfterAndIsNotRetried(t *te
 	if rl.RetryAfter == nil || *rl.RetryAfter != 120*time.Second {
 		t.Errorf("RetryAfter: got %v, want 120s", rl.RetryAfter)
 	}
-	// 429 must NOT be retried (the Pacer owns backoff).
 	if calls != 1 {
 		t.Errorf("429 should not be retried: got %d calls, want 1", calls)
 	}
