@@ -14,7 +14,6 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/planit"
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
 	"github.com/AmyDe/town-crier/api-go/internal/polling"
-	"github.com/AmyDe/town-crier/api-go/internal/worker"
 )
 
 // version is the build version sent in the PlanIt User-Agent. Set with
@@ -158,5 +157,3 @@ func parseDeltaSlots(raw string) ([]polling.CivilTime, error) {
 	}
 	return slots, nil
 }
-
-var _ worker.PollRunner = (*pollRunnerAdapter)(nil)

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"sync"
 	"time"
 
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
@@ -131,19 +130,12 @@ type WindowReader struct {
 	now    func() time.Time
 	log    *slog.Logger
 
-	hooks  ReadHooks
-	mu     sync.Mutex
-	shorts map[shortKey]int
-}
-
-type shortKey struct {
-	ref       WindowRef
-	budgetDay time.Time
+	hooks ReadHooks
 }
 
 // NewWindowReader wires a WindowReader.
 func NewWindowReader(fetch windowPageFetcher, ingest applicationIngester, store windowStateWriter, cfg WindowReadConfig, now func() time.Time, log *slog.Logger) *WindowReader {
-	return &WindowReader{fetch: fetch, ingest: ingest, store: store, cfg: cfg, now: now, log: log, shorts: map[shortKey]int{}}
+	return &WindowReader{fetch: fetch, ingest: ingest, store: store, cfg: cfg, now: now, log: log}
 }
 
 // AppKey identifies an application as PlanIt does: uid within an area.
@@ -219,7 +211,6 @@ func (r *WindowReader) ReadWindow(ctx context.Context, w PlannedWork, state Wind
 		total = *first.Total
 	}
 	if len(seen)+skipped < total {
-		r.recordShort(ref, now)
 		if r.hooks != nil {
 			r.hooks.WindowShort(ctx, ref, len(seen), total)
 		}
@@ -260,29 +251,6 @@ func (r *WindowReader) ReadDelta(ctx context.Context, w PlannedWork) WindowReadR
 		}
 		q.Index = res.From + res.Read()
 	}
-}
-
-// ShortWindows returns the windows that were short at least twice in the
-// budget day containing now. The count is held in memory, so it covers the
-// life of this reader.
-func (r *WindowReader) ShortWindows(now time.Time) []WindowRef {
-	day, _ := BudgetDay(now)
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	var out []WindowRef
-	for k, n := range r.shorts {
-		if n >= 2 && k.budgetDay.Equal(day) {
-			out = append(out, k.ref)
-		}
-	}
-	return out
-}
-
-func (r *WindowReader) recordShort(ref WindowRef, now time.Time) {
-	day, _ := BudgetDay(now)
-	r.mu.Lock()
-	r.shorts[shortKey{ref: ref, budgetDay: day}]++
-	r.mu.Unlock()
 }
 
 func (r *WindowReader) ingestPage(ctx context.Context, q planit.WindowQuery, p planit.FetchPageResult) error {

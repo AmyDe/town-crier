@@ -10,8 +10,6 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-var _ LeaseAccess = (*PostgresLeaseStore)(nil)
-
 type fakeLeaseQuerier struct {
 	acquireRowErr error
 
@@ -80,46 +78,6 @@ func (f *fakeLeaseQuerier) QueryRow(_ context.Context, _ string, _ ...any) pgx.R
 func newPGLeaseStore(q querier) *PostgresLeaseStore {
 	clock := func() time.Time { return time.Date(2026, 6, 14, 12, 0, 0, 0, time.UTC) }
 	return NewPostgresLeaseStore(q, clock)
-}
-
-// fakeConfirmQuerier panics on Exec and Query because Confirm uses only QueryRow.
-type fakeConfirmQuerier struct {
-	row pgx.Row
-}
-
-func (f *fakeConfirmQuerier) Exec(context.Context, string, ...any) (pgconn.CommandTag, error) {
-	panic("Confirm must not call Exec")
-}
-
-func (f *fakeConfirmQuerier) Query(context.Context, string, ...any) (pgx.Rows, error) {
-	panic("Confirm must not call Query")
-}
-
-func (f *fakeConfirmQuerier) QueryRow(context.Context, string, ...any) pgx.Row {
-	return f.row
-}
-
-func TestPostgresLeaseStore_ConfirmCAS(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name string
-		row  pgx.Row
-		want bool
-	}{
-		{"row returned: still held by us and live", &fakeLeaseRow{holderID: "h1"}, true},
-		{"no rows: expired or held by a peer", &fakeLeaseRow{err: pgx.ErrNoRows}, false},
-		{"query error: transient failure absorbed as not confirmed", &fakeLeaseRow{err: errors.New("connection refused")}, false},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			store := newPGLeaseStore(&fakeConfirmQuerier{row: tc.row})
-			got := store.Confirm(context.Background(), LeaseHandle{ETag: "h1"}, 4*time.Minute)
-			if got != tc.want {
-				t.Errorf("Confirm: got %v, want %v", got, tc.want)
-			}
-		})
-	}
 }
 
 func TestPostgresLeaseStore_TryAcquireHeldWhenNoRow(t *testing.T) {

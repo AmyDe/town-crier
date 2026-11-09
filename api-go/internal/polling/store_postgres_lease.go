@@ -18,15 +18,6 @@ type querier interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
-// LeaseAccess is the lease-store method set the worker wiring depends on.
-type LeaseAccess interface {
-	TryAcquire(ctx context.Context, ttl time.Duration) (LeaseAcquireResult, error)
-	Release(ctx context.Context, handle LeaseHandle) LeaseReleaseOutcome
-	Confirm(ctx context.Context, handle LeaseHandle, extend time.Duration) bool
-}
-
-var _ LeaseAccess = (*PostgresLeaseStore)(nil)
-
 // PostgresLeaseStore is the Postgres-backed polling lease: one row in leases
 // keyed by id='polling', taken and released by conditional SQL. LeaseHandle.ETag
 // holds this process's random holder id, which gates Release and Confirm so one
@@ -88,33 +79,6 @@ func (s *PostgresLeaseStore) TryAcquire(ctx context.Context, ttl time.Duration) 
 		return LeaseAcquireResult{TransientErr: fmt.Errorf("acquire polling lease: %w", err)}, nil
 	}
 	return LeaseAcquireResult{Acquired: true, Handle: LeaseHandle{ETag: holderID}}, nil
-}
-
-// confirmLeaseQuery checks ownership and liveness and extends expiry in one
-// statement, so there is no gap between the check and a subsequent publish.
-const confirmLeaseQuery = `
-UPDATE leases SET expires_at = $4
-WHERE id = $1 AND holder_id = $2 AND expires_at > $3
-RETURNING holder_id`
-
-// Confirm reports whether handle's holder still owns a live polling lease, and
-// if so atomically extends its expiry by extend from now. It never returns a
-// hard error — a lost lease (expired, held by a peer, or a database failure) all
-// report false, so a caller's next-trigger publish gate degrades to "skip
-// publish".
-func (s *PostgresLeaseStore) Confirm(ctx context.Context, handle LeaseHandle, extend time.Duration) bool {
-	now := s.now().UTC()
-	newExpiresAt := now.Add(extend)
-
-	var holderID string
-	err := s.db.QueryRow(ctx, confirmLeaseQuery,
-		leaseDocumentID,
-		handle.ETag,
-		now,
-		newExpiresAt,
-	).Scan(&holderID)
-
-	return err == nil
 }
 
 // Release performs a conditional delete using the handle's holder id. It never
