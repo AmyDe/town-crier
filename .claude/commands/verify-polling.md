@@ -82,7 +82,7 @@ for rg in rg-town-crier-prod rg-town-crier-shared; do
     --query "value[].{name:name, sev:properties.essentials.severity, cond:properties.essentials.monitorCondition, resource:properties.essentials.targetResourceName, started:properties.essentials.startDateTime}" -o table
 done
 ```
-- The polling alerts are `alert-planit-poll-critical-shared` (Sev 1, `poll.health == "critical"` in 1h), `alert-planit-poll-degraded-shared` (Sev 2, `degraded` in 2h) and `alert-planit-poll-heartbeat-shared` (Sev 2, no `PlanIt poll run` span in 2h). The spans carry `deployment.environment`, and dev alerts are Sev 3.
+- The polling alerts are `alert-planit-poll-critical-shared` (Sev 1, `poll.health == "critical"` in 2h) and `alert-planit-poll-heartbeat-shared` (Sev 2, no `PlanIt poll run` span in 2h), prod only, checked hourly. `degraded` pages nobody; this check is where it surfaces. The spans carry `deployment.environment`.
 - `cond: Fired` is **currently open**: treat it as a lead. `alert-job-failed-*` goes to Check 2, `alert-planit-poll-*` to Checks 3 to 5, `alert-pg-*` to Postgres capacity.
 - `cond: Resolved` within the window is a closed incident: a one-line footnote, not a ❌.
 - If the call 403s, mark this check UNKNOWN. Don't report a clean board on the strength of an error.
