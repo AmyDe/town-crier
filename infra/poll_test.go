@@ -98,12 +98,8 @@ func TestPlanitPollAlertSpecs_SeveritiesAndScope(t *testing.T) {
 	t.Parallel()
 
 	wantSev := map[string]float64{
-		"alert-planit-poll-critical-shared":      1,
-		"alert-planit-poll-degraded-shared":      2,
-		"alert-planit-poll-heartbeat-shared":     2,
-		"alert-planit-poll-critical-dev-shared":  3,
-		"alert-planit-poll-degraded-dev-shared":  3,
-		"alert-planit-poll-heartbeat-dev-shared": 3,
+		"alert-planit-poll-critical-shared":  1,
+		"alert-planit-poll-heartbeat-shared": 2,
 	}
 	specs := planitPollAlertSpecs()
 	if len(specs) != len(wantSev) {
@@ -121,12 +117,18 @@ func TestPlanitPollAlertSpecs_SeveritiesAndScope(t *testing.T) {
 		if !strings.Contains(s.query, `Name == "PlanIt poll run"`) {
 			t.Errorf("%s query does not target the poll run span", s.name)
 		}
-		env := "prod"
-		if strings.Contains(s.name, "-dev-") {
-			env = "dev"
+		if !strings.Contains(s.query, `deployment.environment"]) == "prod"`) {
+			t.Errorf("%s query is not scoped to prod", s.name)
 		}
-		if !strings.Contains(s.query, `deployment.environment"]) == "`+env+`"`) {
-			t.Errorf("%s query is not scoped to %s", s.name, env)
+	}
+}
+
+func TestPlanitPollAlertSpecs_CheckHourly(t *testing.T) {
+	t.Parallel()
+
+	for _, s := range planitPollAlertSpecs() {
+		if s.freq != "PT1H" {
+			t.Errorf("%s freq = %q, want PT1H", s.name, s.freq)
 		}
 	}
 }

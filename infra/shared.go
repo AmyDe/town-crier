@@ -539,62 +539,6 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		return err
 	}
 
-	// Scheduled query (log) alert — PlanIt non-429 dependency failure ratio over the last 24
-	// hours, computed from AppDependencies on this shared Log Analytics workspace. Go emits no AppMetrics by design (no Go Azure Monitor metrics exporter), so a
-	// log-based alert is the only option here. The query requires >=20 calls in the window so a
-	// quiet hour with one stray failure can't read as 100%. ResultCode on these dependency spans
-	// is the OTel span status ('0'/'2'), NOT the HTTP status — hence filtering on
-	// Properties['http.response.status_code'] instead, per the issue.
-	//
-	// Location is pinned to uksouth (rather than left to the provider default the way the
-	// workspace above is) because, unlike the Global action group, Log Analytics-based scheduled
-	// query rules are regional and must be explicit — mirrors the same rationale documented on
-	// the Service Bus namespace in environment.go.
-	const planitFailureRatioQuery = `AppDependencies
-| where Target has "planit"
-| summarize Total = count(), NonRetryableFailures = countif(Success == false and tostring(Properties["http.response.status_code"]) != "429")
-| where Total >= 20
-| extend FailureRatioPercent = round(100.0 * NonRetryableFailures / Total, 1)
-| where FailureRatioPercent > 30`
-
-	_, err = monitor.NewScheduledQueryRule(ctx, "alert-planit-failure-rate-shared", &monitor.ScheduledQueryRuleArgs{
-		RuleName:            pulumi.String("alert-planit-failure-rate-shared"),
-		ResourceGroupName:   resourceGroup.Name,
-		Location:            pulumi.String("uksouth"),
-		Kind:                pulumi.String("LogAlert"),
-		Description:         pulumi.String("PlanIt non-429 dependency failure ratio exceeded 30% over the last 24 hours (>=20 calls). See GH #938."),
-		DisplayName:         pulumi.String("PlanIt non-429 failure rate"),
-		Severity:            pulumi.Float64(2), // Warning
-		Enabled:             pulumi.Bool(true),
-		EvaluationFrequency: pulumi.String("PT15M"),
-		// WindowSize is P1D: PlanIt (ADR 0006) has frequent multi-hour outages that are not
-		// actionable until they last a full day, and shorter windows paged on short-lived
-		// degradation several times a week.
-		WindowSize: pulumi.String("P1D"),
-		Scopes:     pulumi.StringArray{logAnalytics.ID()},
-		Criteria: monitor.ScheduledQueryRuleCriteriaArgs{
-			AllOf: monitor.ConditionArray{
-				monitor.ConditionArgs{
-					Query: pulumi.String(planitFailureRatioQuery),
-					// The query already filters down to failing windows (FailureRatioPercent >
-					// 30 with >=20 calls); "count of rows produced > 0" is the standard
-					// scheduled-query-rule pattern for "fire when the filtered query returns
-					// anything", so no MetricMeasureColumn is needed.
-					TimeAggregation: pulumi.String("Count"),
-					Operator:        pulumi.String("GreaterThan"),
-					Threshold:       pulumi.Float64(0),
-				},
-			},
-		},
-		Actions: monitor.ActionsArgs{
-			ActionGroups: pulumi.StringArray{actionGroup.ID()},
-		},
-		Tags: tags,
-	})
-	if err != nil {
-		return err
-	}
-
 	for _, spec := range planitPollAlertSpecs() {
 		if err = createLogAlert(ctx, resourceGroup, logAnalytics.ID(), actionGroup, tags, spec); err != nil {
 			return err
@@ -718,7 +662,9 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		{"storage", "storage_percent", "GreaterThan", 80, "PT30M", "PT15M", 2},
 		{"cpu-credits", "cpu_credits_remaining", "LessThan", 30, "PT30M", "PT15M", 2},
 		{"connections", "active_connections", "GreaterThan", 25, "PT30M", "PT15M", 3},
-		{"alive", "is_db_alive", "LessThan", 1, "PT5M", "PT5M", 1},
+		// Average < 0.75 over the hour means down for more than 15 minutes, so Azure's
+		// self-healing maintenance restarts (2 and 13 minutes seen) do not page.
+		{"alive", "is_db_alive", "LessThan", 0.75, "PT1H", "PT1H", 1},
 	}
 	for _, spec := range postgresAlerts {
 		alertName := fmt.Sprintf("alert-pg-%s-shared", spec.suffix)
@@ -876,10 +822,10 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 	if err = createLogAlert(ctx, resourceGroup, logAnalytics.ID(), actionGroup, tags, logAlertSpec{
 		name:        "alert-api-5xx-prod",
 		displayName: "API 5xx errors (prod)",
-		description: "More than 10 prod API requests returned a 5xx status in the last 15 minutes.",
+		description: "More than 10 prod API requests returned a 5xx status in the last hour.",
 		severity:    1,
-		window:      "PT15M",
-		freq:        "PT5M",
+		window:      "PT1H",
+		freq:        "PT1H",
 		query:       apiFiveXXQuery,
 		threshold:   10,
 	}); err != nil {
@@ -1391,8 +1337,8 @@ func createAvailabilityCheck(ctx *pulumi.Context, resourceGroup *resources.Resou
 		Severity:            pulumi.Int(1),
 		Enabled:             pulumi.Bool(true),
 		AutoMitigate:        pulumi.Bool(true),
-		EvaluationFrequency: pulumi.String("PT5M"),
-		WindowSize:          pulumi.String("PT30M"),
+		EvaluationFrequency: pulumi.String("PT1H"),
+		WindowSize:          pulumi.String("PT1H"),
 		Scopes:              pulumi.StringArray{webTest.ID(), appInsights.ID()},
 		Criteria: monitor.WebtestLocationAvailabilityCriteriaArgs{
 			OdataType:           pulumi.String("Microsoft.Azure.Monitor.WebtestLocationAvailabilityCriteria"),
@@ -1575,54 +1521,31 @@ func createSharePageAnalytics(ctx *pulumi.Context, resourceGroup *resources.Reso
 const planitPollRunSpanFilter = `AppDependencies
 | where Name == "PlanIt poll run"`
 
-// planitPollAlertSpecs returns the PlanIt poll run alerts: critical, degraded and heartbeat
-// for prod (Sev 1, 2, 2) and the same three for dev at Sev 3. The run span carries
-// deployment.environment and poll.health, computed in Go by the poll job. The query decides
-// whether to fire; the alert fires on any returned row.
+// planitPollAlertSpecs returns the prod PlanIt poll run alerts: critical (Sev 1) and
+// heartbeat (Sev 2). The run span carries deployment.environment and poll.health, computed in
+// Go by the poll job. The query decides whether to fire; the alert fires on any returned row.
 func planitPollAlertSpecs() []logAlertSpec {
-	type envSeverity struct {
-		env, suffix, label       string
-		critical, degraded, beat float64
+	envFilter := `| where tostring(Properties["deployment.environment"]) == "prod"`
+	return []logAlertSpec{
+		{
+			name:        "alert-planit-poll-critical-shared",
+			displayName: "PlanIt poll health critical (prod)",
+			description: "A prod PlanIt poll run reported poll.health == critical in the last 2 hours (a 403 or an event surge). A person must act.",
+			severity:    1,
+			window:      "PT2H",
+			freq:        "PT1H",
+			query:       planitPollRunSpanFilter + "\n" + envFilter + "\n" + `| where tostring(Properties["poll.health"]) == "critical"`,
+			threshold:   0,
+		},
+		{
+			name:        "alert-planit-poll-heartbeat-shared",
+			displayName: "PlanIt poll heartbeat missing (prod)",
+			description: "No prod PlanIt poll run span in the last 2 hours; the hourly poll job is not running or not reporting.",
+			severity:    2,
+			window:      "PT2H",
+			freq:        "PT1H",
+			query:       planitPollRunSpanFilter + "\n" + envFilter + "\n" + `| summarize runs = count()` + "\n" + `| where runs == 0`,
+			threshold:   0,
+		},
 	}
-	envs := []envSeverity{
-		{env: "prod", suffix: "", label: "prod", critical: 1, degraded: 2, beat: 2},
-		{env: "dev", suffix: "-dev", label: "dev", critical: 3, degraded: 3, beat: 3},
-	}
-	specs := make([]logAlertSpec, 0, 3*len(envs))
-	for _, e := range envs {
-		envFilter := fmt.Sprintf(`| where tostring(Properties["deployment.environment"]) == %q`, e.env)
-		specs = append(specs,
-			logAlertSpec{
-				name:        fmt.Sprintf("alert-planit-poll-critical%s-shared", e.suffix),
-				displayName: fmt.Sprintf("PlanIt poll health critical (%s)", e.label),
-				description: fmt.Sprintf("A %s PlanIt poll run reported poll.health == critical in the last 2 hours (a 403 or an event surge). A person must act.", e.label),
-				severity:    e.critical,
-				window:      "PT2H",
-				freq:        "PT5M",
-				query:       planitPollRunSpanFilter + "\n" + envFilter + "\n" + `| where tostring(Properties["poll.health"]) == "critical"`,
-				threshold:   0,
-			},
-			logAlertSpec{
-				name:        fmt.Sprintf("alert-planit-poll-degraded%s-shared", e.suffix),
-				displayName: fmt.Sprintf("PlanIt poll health degraded (%s)", e.label),
-				description: fmt.Sprintf("A %s PlanIt poll run reported poll.health == degraded in the last 2 hours. See poll.health_reasons on the span.", e.label),
-				severity:    e.degraded,
-				window:      "PT2H",
-				freq:        "PT15M",
-				query:       planitPollRunSpanFilter + "\n" + envFilter + "\n" + `| where tostring(Properties["poll.health"]) == "degraded"`,
-				threshold:   0,
-			},
-			logAlertSpec{
-				name:        fmt.Sprintf("alert-planit-poll-heartbeat%s-shared", e.suffix),
-				displayName: fmt.Sprintf("PlanIt poll heartbeat missing (%s)", e.label),
-				description: fmt.Sprintf("No %s PlanIt poll run span in the last 2 hours; the hourly poll job is not running or not reporting.", e.label),
-				severity:    e.beat,
-				window:      "PT2H",
-				freq:        "PT15M",
-				query:       planitPollRunSpanFilter + "\n" + envFilter + "\n" + `| summarize runs = count()` + "\n" + `| where runs == 0`,
-				threshold:   0,
-			},
-		)
-	}
-	return specs
 }

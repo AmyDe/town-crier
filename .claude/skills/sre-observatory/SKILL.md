@@ -529,7 +529,7 @@ Do **not** close if the issue is intermittent (check the 7-day baseline first), 
 | Replica crash-loop / OOM / step change in `ContainerAppSystemLogs` warnings | P1-P2 | `ReplicaUnhealthy` jumping 10x on one revision |
 | Postgres `storage_percent` > 60%, or slope crossing 80% within 90 days | P2 | Auto-grow is OFF; 100% = read-only outage |
 | Postgres CPU credits trending to zero | P2 | Burstable SKU throttling |
-| `PlanIt poll run` `poll.health` `degraded` or `critical`, or PlanIt 429s with the alert band unverified | P1-P2 | Poll starvation, not backoff. Alerts: `alert-planit-poll-critical-shared`, `alert-planit-poll-degraded-shared` |
+| `PlanIt poll run` `poll.health` `degraded` or `critical`, or PlanIt 429s with the alert band unverified | P1-P2 | Poll starvation, not backoff. Alert: `alert-planit-poll-critical-shared` (`degraded` has no alert) |
 | Non-429 dependency failures > 5% | P1-P2 | PlanIt 5xx, ACS send failures |
 | Expected cycle target absent from `AppDependencies` | P2 | `PlanIt poll run` missing for 2 hours (`alert-planit-poll-heartbeat-shared`) |
 | P99 latency regression > 50% vs baseline, with real volume | P2 | `/v1/applications` p99 200ms → 400ms |
