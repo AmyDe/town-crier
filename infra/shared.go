@@ -662,7 +662,9 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		{"storage", "storage_percent", "GreaterThan", 80, "PT30M", "PT15M", 2},
 		{"cpu-credits", "cpu_credits_remaining", "LessThan", 30, "PT30M", "PT15M", 2},
 		{"connections", "active_connections", "GreaterThan", 25, "PT30M", "PT15M", 3},
-		{"alive", "is_db_alive", "LessThan", 0.5, "PT1H", "PT1H", 1},
+		// Average < 0.75 over the hour means down for more than 15 minutes, so Azure's
+		// self-healing maintenance restarts (2 and 13 minutes seen) do not page.
+		{"alive", "is_db_alive", "LessThan", 0.75, "PT1H", "PT1H", 1},
 	}
 	for _, spec := range postgresAlerts {
 		alertName := fmt.Sprintf("alert-pg-%s-shared", spec.suffix)
