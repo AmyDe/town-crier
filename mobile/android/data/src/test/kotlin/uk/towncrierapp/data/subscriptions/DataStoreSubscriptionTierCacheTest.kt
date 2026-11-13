@@ -16,13 +16,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 
-/**
- * The `cachedSubscriptionTier` DataStore Preferences latch — the fast-path
- * read on cold start, before [uk.towncrierapp.domain.subscriptions.resolveTier]'s
- * network round-trip completes.
- * `PreferenceDataStoreFactory.create` over a temp file runs on the plain JVM
- * — no Robolectric needed.
- */
+/** `PreferenceDataStoreFactory.create` over a temp file runs on the plain JVM, so no Robolectric is needed. */
 class DataStoreSubscriptionTierCacheTest {
     private fun aDataStore(directory: File) =
         PreferenceDataStoreFactory.create { File(directory, "test.preferences_pb") }

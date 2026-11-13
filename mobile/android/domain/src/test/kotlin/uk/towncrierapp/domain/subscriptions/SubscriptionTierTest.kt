@@ -5,11 +5,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/**
- * `SubscriptionTier` is ordered Free < Personal < Pro so tier
- * merging (`maxOf`) picks the richer tier, and its wire strings are the
- * server's PascalCase vocabulary ("Free"/"Personal"/"Pro").
- */
 class SubscriptionTierTest {
     @Test
     fun `tiers are ordered Free less than Personal less than Pro`() {

@@ -167,7 +167,6 @@ struct AppCoordinatorTierResolutionTests {
   // MARK: - Tier preservation when all sources fail
 
   @Test func resolveSubscriptionTier_preservesPreviousTier_whenAllSourcesFail() async {
-    // First resolution: server returns .pro, others return .free
     let (sut, authSpy, subscriptionSpy, profileSpy) = makeSUT(
       authSession: .valid,
       serverProfile: makeServerProfile(tier: .pro)
@@ -175,19 +174,16 @@ struct AppCoordinatorTierResolutionTests {
     await sut.resolveSubscriptionTier()
     #expect(sut.subscriptionTier == .pro)
 
-    // Second resolution: all sources fail/return .free
     authSpy.currentSessionResult = nil
     subscriptionSpy.currentEntitlementResult = nil
     profileSpy.createResult = .failure(DomainError.networkUnavailable)
 
     await sut.resolveSubscriptionTier()
 
-    // Should preserve the previous .pro tier, not fall back to .free
     #expect(sut.subscriptionTier == .pro)
   }
 
   @Test func resolveSubscriptionTier_updatesToFree_whenServerExplicitlyReturnsFree() async {
-    // First resolution: server returns .pro
     let (sut, authSpy, subscriptionSpy, profileSpy) = makeSUT(
       authSession: .valid,
       serverProfile: makeServerProfile(tier: .pro)
@@ -195,14 +191,12 @@ struct AppCoordinatorTierResolutionTests {
     await sut.resolveSubscriptionTier()
     #expect(sut.subscriptionTier == .pro)
 
-    // Second resolution: server explicitly returns .free (user downgraded)
     authSpy.currentSessionResult = nil
     subscriptionSpy.currentEntitlementResult = nil
     profileSpy.createResult = .success(makeServerProfile(tier: .free))
 
     await sut.resolveSubscriptionTier()
 
-    // Should update to .free because server explicitly returned .free
     #expect(sut.subscriptionTier == .free)
   }
 
@@ -230,7 +224,7 @@ struct AppCoordinatorTierResolutionTests {
     #expect(sut.subscriptionTier == .pro)
   }
 
-  // MARK: - Shared resolver delegation (tc-exg6.1)
+  // MARK: - Shared resolver delegation
 
   @Test
   func resolveSubscriptionTier_delegatesToSharedResolver_passingJwtAndPreviousTiers() async throws {

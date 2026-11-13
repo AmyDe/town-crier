@@ -17,10 +17,7 @@ export function ConnectedSettingsPage() {
   );
 
   const redeemOfferCodeClient = useMemo(
-    () => createRedeemOfferCodeClient(
-      () => getAccessTokenSilently(),
-      API_BASE_URL,
-    ),
+    () => createRedeemOfferCodeClient(getAccessTokenSilently, API_BASE_URL),
     [getAccessTokenSilently],
   );
 

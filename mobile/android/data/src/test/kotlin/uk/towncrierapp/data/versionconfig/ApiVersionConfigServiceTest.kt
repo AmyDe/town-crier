@@ -11,12 +11,6 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 
-/**
- * `GET /v1/version-config` is anonymous — no session, no `Authorization`
- * header — so it goes over the raw [uk.towncrierapp.data.api.HttpTransport],
- * never through [uk.towncrierapp.data.api.ApiClient] (which always requires
- * a session first). Must work before login for the force-update gate.
- */
 class ApiVersionConfigServiceTest {
     private val baseUrl = "https://api-dev.towncrierapp.uk"
 
