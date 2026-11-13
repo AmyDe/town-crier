@@ -1,28 +1,13 @@
 import SwiftUI
 import TownCrierDomain
 
-/// A "stamp" rendering of a planning application's status.
-///
-/// The pill follows the design language's stamp
-/// specification (uppercase kerned label, 1.5pt outline in `status.displayColor`,
-/// no fill, paired SF Symbol icon for colour-blind accessibility) and
-/// delegates all label / icon / colour decisions to ``ApplicationStatus``
-/// display extensions so there is a single source of truth for the UK
-/// planning vocabulary.
-///
-/// Read/unread state is signalled by the leading accent dot on
-/// ``ApplicationListRow``, not by mutating the pill's saturation. Keeping the
-/// pill stateless makes its rendering deterministic from `status` alone.
+/// Read/unread state is signalled by the accent dot on ``ApplicationListRow``, not
+/// here, so the pill renders from `status` alone.
 struct ApplicationStatusPill: View {
   let status: ApplicationStatus
 
-  /// The user-facing label rendered in the pill. Mirrors
-  /// ``ApplicationStatus.displayLabel`` so tests can assert vocabulary
-  /// without scraping the SwiftUI render tree.
   var label: String { status.displayLabel }
 
-  /// The SF Symbol name rendered in the pill. Mirrors
-  /// ``ApplicationStatus.displayIcon``.
   var iconName: String { status.displayIcon }
 
   var body: some View {

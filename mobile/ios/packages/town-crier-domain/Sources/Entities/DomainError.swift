@@ -23,21 +23,18 @@ public enum DomainError: Error, Equatable, Sendable {
   case invalidWatchZoneBoundaryOutOfBounds
   /// A custom-shape watch zone boundary's enclosing radius exceeds the
   /// server's 10km ceiling (or the caller's tier cap). Mirrors the server's
-  /// `boundary_too_large` (`400`). Grouped with the other boundary-shape
-  /// cases above -- from the user's perspective this is the same category of
-  /// problem, fixed the same way (redraw a smaller shape). GH#1085.
+  /// `boundary_too_large` (`400`).
   case invalidWatchZoneBoundaryTooLarge
   /// A pre-canned watch-zone filter key is not recognised by the server's
   /// catalog. Mirrors the server's `filter_key_invalid` (`400`). This is a
   /// write-path (POST/PATCH) validation error only -- the client submits
   /// `WatchZone.filterKey` as an opaque string with no client-side
   /// validation against the fetched catalog, so this guards against a stale
-  /// client submitting a key the server no longer recognises (GH#1098,
-  /// GH#1104).
+  /// client submitting a key the server no longer recognises.
   case invalidWatchZoneFilterKey
   /// Saving a watch zone failed because the name duplicates an existing
   /// watch zone for the same user. Mirrors the server's `zone_name_taken`
-  /// (`409`). GH#1085.
+  /// (`409`).
   case watchZoneNameTaken
   /// A StoreKit transaction's `originalTransactionId` is already linked to a
   /// different Town Crier account. Mirrors the server's
@@ -57,10 +54,7 @@ public enum DomainError: Error, Equatable, Sendable {
   case unexpected(String)
   case insufficientEntitlement(required: String)
   /// Attempted to save a NEW device-local zone while already at
-  /// ``DeviceLocalZone/maxZoneCount`` (GH#888: now 1, matching the Free
-  /// tier). The Zones tab UI no longer offers a create path — only edit — so
-  /// this now guards only defensively (e.g. a stale client); the repository
-  /// cap stays in place regardless. Distinct from `.insufficientEntitlement`:
+  /// ``DeviceLocalZone/maxZoneCount``. Distinct from `.insufficientEntitlement`:
   /// this is an on-device cap with no subscription tier behind it, so the UI
   /// routes to a sign-up CTA rather than the paywall.
   case deviceLocalZoneLimitReached

@@ -4,7 +4,6 @@ import SwiftUI
 /// outline, and a 2pt top rule (`tcTextPrimary` normally, `tcAmber` when the
 /// card represents unread content).
 public struct NoticeCardStyle: ViewModifier {
-  /// 2pt — top rule thickness.
   static let topRuleHeight: CGFloat = 2
 
   private let isUnread: Bool
@@ -27,9 +26,6 @@ public struct NoticeCardStyle: ViewModifier {
       )
   }
 
-  /// The top rule's colour: `tcAmber` for unread content, `tcTextPrimary`
-  /// otherwise. A pure function so the read/unread switch is testable
-  /// without rendering SwiftUI.
   static func topRuleColor(isUnread: Bool) -> Color {
     isUnread ? .tcAmber : .tcTextPrimary
   }
