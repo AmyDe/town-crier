@@ -216,11 +216,12 @@ func decodePage(resp *http.Response, authorityIDForMetrics, startIndex int) (Fet
 		return FetchPageResult{}, &ResponseError{StatusCode: resp.StatusCode, Err: fmt.Errorf("planit fetch (authority %d) at index %d: %w", authorityIDForMetrics, startIndex, ErrZeroProgress)}
 	}
 
-	// PlanIt's total can overcount the records it serves, so an empty page ends
-	// the result set even when from < total.
+	// PlanIt's total can be wrong in either direction: an empty page ends the
+	// result set even when from < total, and a full page continues even when
+	// from+read >= total.
 	hasMorePages := read >= nationalPageSize
-	if parsed.Total != nil {
-		hasMorePages = from+read < *parsed.Total
+	if parsed.Total != nil && from+read < *parsed.Total {
+		hasMorePages = true
 	}
 	if read == 0 {
 		hasMorePages = false

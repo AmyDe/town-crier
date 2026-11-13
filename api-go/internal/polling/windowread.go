@@ -228,6 +228,13 @@ func (r *WindowReader) ReadWindow(ctx context.Context, w PlannedWork, state Wind
 			slog.Int("distinct", len(seen)), slog.Int("total", total), slog.Int("pages", pages))
 		return WindowReadResult{Pages: pages, Short: true}
 	}
+	if first.Total != nil && len(seen)+skipped > total {
+		r.log.WarnContext(ctx, "poll.window_total_low",
+			slog.Int("axis", int(w.Axis)), slog.String("day", w.Day.Format(time.DateOnly)),
+			slog.Int("distinct", len(seen)), slog.Int("skipped", skipped),
+			slog.Int("total", total), slog.Int("pages", pages))
+		total = len(seen) + skipped
+	}
 	if r.hooks != nil {
 		if err := r.hooks.FullReadComplete(ctx, ref, startedAt, now, seen); err != nil {
 			return stopped(pages, err)

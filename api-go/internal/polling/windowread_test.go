@@ -528,3 +528,73 @@ func TestWindowReader_ReadDeltaAdvancesPastSkippedRecords(t *testing.T) {
 		t.Errorf("res=%+v queries=%+v", res, r.fetch.queries)
 	}
 }
+
+func fullPage(from, n, total int) planit.FetchPageResult {
+	p := page(from, n, total)
+	p.HasMorePages = n >= 300
+	return p
+}
+
+func TestWindowReader_TotalBelowRecordsReadsToEndAndStoresCountRead(t *testing.T) {
+	t.Parallel()
+	r := newReaderRig(t, map[int]planit.FetchPageResult{
+		0:   fullPage(0, 300, 400),
+		300: fullPage(300, 300, 400),
+		600: fullPage(600, 50, 400),
+	})
+
+	res := r.reader.ReadWindow(context.Background(), testWindow(), WindowState{})
+
+	if !res.Complete || res.Short || res.Pages != 3 || res.Stop != "" {
+		t.Fatalf("res = %+v", res)
+	}
+	if len(r.writer.fulls) != 1 || r.writer.fulls[0].total != 650 {
+		t.Fatalf("fulls = %+v, want one with total 650", r.writer.fulls)
+	}
+	logs := r.logs.String()
+	for _, want := range []string{"poll.window_total_low", "distinct=650", "total=400", "skipped=0", "pages=3"} {
+		if !strings.Contains(logs, want) {
+			t.Fatalf("logs missing %q: %s", want, logs)
+		}
+	}
+}
+
+func TestWindowReader_ProbeRejectsTotalBelowStoredCount(t *testing.T) {
+	t.Parallel()
+	r := newReaderRig(t, map[int]planit.FetchPageResult{
+		0:   fullPage(0, 300, 400),
+		300: fullPage(300, 300, 400),
+		600: fullPage(600, 50, 400),
+	})
+	state := WindowState{LastTotal: intPtr(650), LastFullReadAt: tp(r.now.AddDate(0, 0, -1))}
+
+	res := r.reader.ReadWindow(context.Background(), testWindow(), state)
+
+	if res.Probe || !res.Complete || res.Pages != 3 {
+		t.Fatalf("res = %+v", res)
+	}
+	if len(r.writer.probes) != 0 || len(r.writer.fulls) != 1 {
+		t.Fatalf("writer = %+v", r.writer)
+	}
+}
+
+func TestWindowReader_ExactMultipleOfPageSizeEndsOnEmptyPage(t *testing.T) {
+	t.Parallel()
+	r := newReaderRig(t, map[int]planit.FetchPageResult{
+		0:   fullPage(0, 300, 600),
+		300: fullPage(300, 300, 600),
+		600: endPage(600, 0, 600),
+	})
+
+	res := r.reader.ReadWindow(context.Background(), testWindow(), WindowState{})
+
+	if !res.Complete || res.Short || res.Pages != 3 {
+		t.Fatalf("res = %+v", res)
+	}
+	if len(r.writer.fulls) != 1 || r.writer.fulls[0].total != 600 {
+		t.Fatalf("fulls = %+v, want one with total 600", r.writer.fulls)
+	}
+	if strings.Contains(r.logs.String(), "poll.window_total_low") {
+		t.Fatalf("unexpected total_low warning: %s", r.logs.String())
+	}
+}

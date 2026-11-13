@@ -96,9 +96,9 @@ The FAQ also says "you can safely make one request to the /api/applics endpoint 
 
 24. **PlanIt answers 429 after about 20 calls in one hour, even at 60 s spacing.** On the first night of the rebuilt poller, every hourly run got a 429 after 26 to 30 calls. `Retry-After` was 2,318 to 2,499 s, and every backoff ended at hh:07:59, so PlanIt appears to count calls in fixed hours that start at about :08. Each run made 8 calls before :08 and then 18 to 22 more before the 429. The old poller also stopped after 18 to 20 calls per hour on 2026-10-05. The operator's "one request every minute" (see "Operator guidance") is therefore not safe as a sustained rate. The pacer caps calls at 15 in any rolling hour to stay well below the observed limit.
 
-### Observed count drift (prod, 2026-11-04 to 08)
+### Observed count drift (prod, 2026-11-04 to 11)
 
-25. PlanIt's `total` can be higher than the records it returns for the same query. From 2026-11-04 to 2026-11-08 the `start_date=2026-10-31` window reported a total above its record count from the evening until between 00:03 and 01:00 UTC each night, when the two agreed again. Paging to `from + records` then returns an empty page. The poller treats an empty page after page 0 as the end of the result set; the completeness check then marks the window short.
+25. **On some evenings PlanIt returns the wrong `total` for a day window: the total of a different day window read the same evening.** Observed: the 30 Oct and 31 Oct windows returned the totals of the 2 Nov and 3 Nov windows. The URLs were correct. The wrong total can be higher or lower than the real count, and it corrects itself some time after 00:00 UTC, usually by about 01:00. If it is higher, paging to `from + records` returns an empty page. The poller treats an empty page after page 0 as the end of the result set, and the completeness check marks the window short. If it is lower, the poller no longer trusts it: a full page always asks for the next page, and paging ends only on a page of fewer than 300 records or an empty page. When the records read exceed the total, the window completes, the count actually read is stored as `last_total`, and the poller logs a WARN `poll.window_total_low`. Storing the count read means a later count probe does not accept the same wrong total again.
 
 ## Requirements
 
@@ -135,6 +135,7 @@ Entitlements (who gets instant push, email or only the weekly digest) are decide
 
 - **Null `start_date`.** A record with no `start_date` is in no start window, and the day delta is masked by `start_date`. GH#1178 pre-work P1 measures how many exist. A probe found none with a null `decided_date`.
 - **Late by more than 14 days.** A record first seen more than 14 days after its date is stored if it is at most 30 days old (the coverage band reads ages 15 to 30 at least every 7 days) but does not alert. A record first seen more than 30 days after its date is never read.
+- **A total that is too low.** It used to end a read early and mark the window complete, so the newest records were never read. Paging no longer trusts the total (fact 25). A window of exactly N x 300 records costs one extra empty request.
 - **Records PlanIt does not have** (fact 19) cannot be found.
 - **The day delta slots are outside the operator's 18:00 to 06:00 guidance.** About 50 calls a day are in the daytime. We have not asked the operator whether that is acceptable, and ADR 0006 planned to contact him after the MVP with no record that we did.
 - **Dev proves the subset only.** The oracle checks one authority, not the country.
