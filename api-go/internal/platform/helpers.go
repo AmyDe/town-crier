@@ -18,10 +18,6 @@ func Sleep(ctx context.Context, d time.Duration) error {
 	}
 }
 
-// Ptr returns a pointer to v. Handy for populating optional struct fields whose
-// type is *T from a literal value.
-func Ptr[T any](v T) *T { return &v }
-
 // DateOnlyPtrToTime converts an optional DateOnly to the *time.Time the domain
 // carries, preserving nil so an absent value stays absent.
 func DateOnlyPtrToTime(d *DateOnly) *time.Time {
