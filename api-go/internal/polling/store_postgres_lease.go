@@ -20,8 +20,8 @@ type querier interface {
 
 // PostgresLeaseStore is the Postgres-backed polling lease: one row in leases
 // keyed by id='polling', taken and released by conditional SQL. LeaseHandle.ETag
-// holds this process's random holder id, which gates Release and Confirm so one
-// worker cannot release or extend another's lease.
+// holds this process's random holder id, which gates Release so one worker
+// cannot release another's lease.
 type PostgresLeaseStore struct {
 	db       querier
 	now      func() time.Time
