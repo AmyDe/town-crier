@@ -225,7 +225,6 @@ describe('ApplicationCard — open callback', () => {
 
     await user.click(screen.getByRole('link'));
 
-    // Navigation proceeded (the probe route rendered with the carried state).
     expect(screen.getByTestId('state-name')).toHaveTextContent('2026/0042/FUL');
   });
 });

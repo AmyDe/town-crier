@@ -67,7 +67,6 @@ describe('useFetchData', () => {
 
     await new Promise((r) => setTimeout(r, 50));
 
-    // No state update occurs after unmount.
     expect(result.current.isLoading).toBe(true);
     expect(result.current.data).toBeNull();
   });
