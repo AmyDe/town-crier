@@ -14,11 +14,8 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
 )
 
-// notifyZoneConsumer mirrors notifydispatch's unexported zoneMatcher: the notify
-// fan-out's only watch-zone dependency, the FindZonesContaining containment
-// lookup. The worker threads the watchzones.Store into the fan-out, so the
-// interface must satisfy this — the proof that FindZonesContaining reaches the
-// store.
+// notifyZoneConsumer mirrors notifydispatch's unexported zoneMatcher; the
+// assertion below proves watchzones.Store satisfies it.
 type notifyZoneConsumer interface {
 	FindZonesContaining(ctx context.Context, latitude, longitude float64) ([]watchzones.WatchZone, error)
 }
@@ -34,11 +31,8 @@ func testRegistry() *metrics.Registry {
 }
 
 // TestEnqueuer_FindZonesContainingFlowsThroughInterface proves the notify fan-out
-// reaches the watch-zone store solely through the watchzones.Store interface:
-// EnqueueForApplication's entry point is FindZonesContaining, so whichever backend
-// the flag selects is consumed identically. It mirrors the enqueuer wirePollFanOut
-// builds. A zero-zone result keeps the test scoped to the containment lookup — the
-// downstream collaborators are never reached.
+// reaches the watch-zone store only through watchzones.Store.FindZonesContaining.
+// A zero-zone result keeps the downstream collaborators out of the test.
 func TestEnqueuer_FindZonesContainingFlowsThroughInterface(t *testing.T) {
 	t.Parallel()
 

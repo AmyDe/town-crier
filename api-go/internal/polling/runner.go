@@ -314,7 +314,6 @@ func (r *Runner) releaseLease(ctx context.Context, h LeaseHandle) {
 	}
 }
 
-// finish refreshes calls_today for the span once the loop has ended.
 func (r *Runner) finish(ctx context.Context, res *RunResult, now time.Time) error {
 	calls, err := r.d.Calls.CallsToday(context.WithoutCancel(ctx), now)
 	if err != nil {
@@ -383,8 +382,7 @@ func windowStateFor(state WindowPlanState, item *PlannedWork) WindowState {
 // alertBandComplete reports whether it is night and every alert-band window
 // has completed since the night began.
 func alertBandComplete(state WindowPlanState, now time.Time) bool {
-	local := now.In(budgetLocation)
-	if isDay(local) {
+	if isDay(now.In(budgetLocation)) {
 		return false
 	}
 	return unverifiedWindows(state.Windows, now) == 0

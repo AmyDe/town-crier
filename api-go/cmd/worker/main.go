@@ -189,36 +189,19 @@ func run() int {
 
 // buildNotifyFanOut returns the collaborators the poll runner's event
 // dispatcher needs. WithMetrics on the enqueuer and decision dispatcher is left
-// to the caller; st may be nil in tests.
+// to the caller.
 func buildNotifyFanOut(cfg platform.Config, registry *metrics.Registry, zoneStore watchzones.Store, st *stores, logger *slog.Logger) (*notifydispatch.DecisionDispatcher, *notifydispatch.Enqueuer, *notifydispatch.PushCoalescer) {
-	var (
-		notifStore     *notifications.PostgresStore
-		profileStore   *profiles.PostgresStore
-		deviceStore    *devicetokens.PostgresStore
-		statePushStore *notificationstate.PostgresStore
-		savedStore     *savedapplications.PostgresStore
-		appStore       *applications.PostgresStore
-	)
-	if st != nil {
-		notifStore = st.notification
-		profileStore = st.profile
-		deviceStore = st.device
-		statePushStore = st.notifState
-		savedStore = st.savedApp
-		appStore = st.app
-	}
-
 	pushDispatcher := buildPlatformDispatcher(cfg, registry, logger)
-	coalescer := notifydispatch.NewPushCoalescer(deviceStore, statePushStore, pushDispatcher, zoneStore, notifStore, time.Now, logger)
+	coalescer := notifydispatch.NewPushCoalescer(st.device, st.notifState, pushDispatcher, zoneStore, st.notification, time.Now, logger)
 	if cfg.NotifyPushRecoveryEnabled {
-		coalescer = coalescer.WithRecovery(notifStore, profileStore)
+		coalescer = coalescer.WithRecovery(st.notification, st.profile)
 	}
 	enqueuer := notifydispatch.NewEnqueuer(
-		notifStore, zoneStore, profileStore, coalescer, appStore,
+		st.notification, zoneStore, st.profile, coalescer, st.app,
 		uuid.NewString, time.Now, logger,
 	)
 	dispatcher := notifydispatch.NewDecisionDispatcher(
-		notifStore, zoneStore, savedStore, profileStore, coalescer,
+		st.notification, zoneStore, st.savedApp, st.profile, coalescer,
 		uuid.NewString, time.Now, logger,
 	)
 	return dispatcher, enqueuer, coalescer
@@ -382,7 +365,6 @@ func buildAppStoreReconcile(cfg platform.Config, st *stores, logger *slog.Logger
 	return appstorereconcile.New(apiClient, jwsVerifier, st.appleNotif, processor, lookback, cfg.AppStoreReconcileApplyEnabled, logger, time.Now)
 }
 
-// buildEmailSender returns a NoOp when no ACS connection string is set.
 func buildEmailSender(cfg platform.Config, logger *slog.Logger) acsemail.EmailSender {
 	conn := cfg.ACSConnectionString.Expose()
 	if conn == "" {
@@ -397,7 +379,6 @@ func buildEmailSender(cfg platform.Config, logger *slog.Logger) acsemail.EmailSe
 	return client
 }
 
-// buildPushSender returns a NoOp when APNs is disabled. A nil registry is a safe no-op.
 func buildPushSender(cfg platform.Config, registry *metrics.Registry, logger *slog.Logger) apns.PushSender {
 	if !cfg.APNsEnabled {
 		logger.Info("apns disabled; digest pushes disabled (NoOp sender)")
@@ -418,7 +399,6 @@ func buildPushSender(cfg platform.Config, registry *metrics.Registry, logger *sl
 	return client.WithMetrics(registry)
 }
 
-// buildFCMSender returns a NoOp when FCM is disabled.
 func buildFCMSender(cfg platform.Config, registry *metrics.Registry, logger *slog.Logger) fcm.PushSender {
 	if !cfg.FCMEnabled {
 		logger.Info("fcm disabled; android pushes disabled (NoOp sender)")

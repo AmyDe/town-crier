@@ -99,11 +99,8 @@ func TestToDomain_ParsesNoTimezoneFractionalLastDifferent(t *testing.T) {
 	}
 }
 
-// TestToDomain_AbsentLastDifferentMapsToZeroTime pins ADR 0047's Lane E
-// consequence: the light recent-sweep projection omits last_different on
-// purpose, so a record arrives with an empty last_different string. toDomain
-// must map that to the zero time, not error — while a non-empty malformed
-// value still errors.
+// TestToDomain_AbsentLastDifferentMapsToZeroTime: a projection that omits
+// last_different maps to the zero time, while a malformed value still errors.
 func TestToDomain_AbsentLastDifferentMapsToZeroTime(t *testing.T) {
 	t.Parallel()
 

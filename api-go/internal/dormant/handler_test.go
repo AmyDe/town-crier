@@ -180,10 +180,8 @@ func TestHandler_Run_FinderErrorPropagates(t *testing.T) {
 
 func TestHandler_Run_ProfileNotFoundIsToleratedAndCounted(t *testing.T) {
 	t.Parallel()
-	// A concurrent delete between the scan and the cascade leaves the profile
-	// gone; the cascade must tolerate ErrNotFound on the profile delete (via the
-	// ProfileAbsent predicate) and still count the account as removed (its end
-	// state is achieved).
+	// A concurrent delete leaves the profile absent; ErrNotFound is tolerated via
+	// ProfileAbsent and the account still counts as removed.
 	finder := &fakeFinder{dormant: []*profiles.UserProfile{profile(t, "auth0|gone")}}
 	cascade := newCascadeRecorder()
 	cascade.profileErr["auth0|gone"] = profiles.ErrNotFound
@@ -197,7 +195,6 @@ func TestHandler_Run_ProfileNotFoundIsToleratedAndCounted(t *testing.T) {
 	if deleted != 1 {
 		t.Errorf("deleted count: got %d, want 1 (not-found is tolerated)", deleted)
 	}
-	// A tolerated profile-absent still proceeds to delete the Auth0 user.
 	if len(auth0.deleted) != 1 || auth0.deleted[0] != "auth0|gone" {
 		t.Errorf("auth0 deletes: got %v, want [auth0|gone]", auth0.deleted)
 	}
@@ -222,7 +219,6 @@ func TestHandler_Run_ChildCascadeErrorAbortsThatAccountButContinues(t *testing.T
 	if deleted != 0 {
 		t.Errorf("deleted count: got %d, want 0 (child failure aborts that account)", deleted)
 	}
-	// The profile and Auth0 must be untouched when a child step aborts the cascade.
 	if cascade.profile["auth0|fails"] || cascade.profile["auth0|ok"] {
 		t.Errorf("profile must survive a child-cascade failure")
 	}

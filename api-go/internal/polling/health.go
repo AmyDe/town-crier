@@ -122,8 +122,7 @@ func ComputeHealth(in HealthInputs, now time.Time) Health {
 // alertBandUnverified judges only between 06:00 and 18:00, when the night that
 // just ended is the one to verify.
 func alertBandUnverified(windows []WindowState, now time.Time) bool {
-	local := now.In(budgetLocation)
-	if !isDay(local) {
+	if !isDay(now.In(budgetLocation)) {
 		return false
 	}
 	return unverifiedWindows(windows, now) > 0

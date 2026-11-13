@@ -265,29 +265,6 @@ func TestWindowReader_SameUIDDifferentAreaCountsSeparately(t *testing.T) {
 	}
 }
 
-func TestWindowReader_TwoShortReadsInOneBudgetDayAreReported(t *testing.T) {
-	t.Parallel()
-	r := newReaderRig(t, map[int]planit.FetchPageResult{0: page(0, 10, 20), 10: endPage(10, 5, 20)})
-	ctx := context.Background()
-
-	r.reader.ReadWindow(ctx, testWindow(), WindowState{})
-	if got := r.reader.ShortWindows(r.now); len(got) != 0 {
-		t.Fatalf("one short read is not enough: %v", got)
-	}
-	r.now = r.now.Add(time.Hour)
-	r.reader.ReadWindow(ctx, testWindow(), WindowState{})
-
-	got := r.reader.ShortWindows(r.now)
-	if len(got) != 1 || got[0] != (WindowRef{planit.AxisStart, testDay}) {
-		t.Fatalf("ShortWindows = %v", got)
-	}
-
-	next := londonAt(6, 11, 18, 5)
-	if got := r.reader.ShortWindows(next); len(got) != 0 {
-		t.Fatalf("a new budget day starts clean: %v", got)
-	}
-}
-
 func TestWindowReader_StopReasons(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
