@@ -10,10 +10,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// panicDetail is the fixed generic message written into the client-facing 500
-// Detail field on a recovered panic. The actual panic error is always logged
-// server-side (see logger.ErrorContext call in Recover); it is deliberately
-// never echoed to the client to prevent leaking Go runtime internals.
+// panicDetail is the client-facing 500 Detail on a recovered panic; the real
+// error is only logged, so Go runtime internals never leak to the client.
 const panicDetail = "An unexpected error occurred."
 
 // Recover converts a panic in a downstream handler into a 500 response.
@@ -44,7 +42,6 @@ func Recover(logger *slog.Logger) func(http.Handler) http.Handler {
 				span.RecordError(err)
 				span.SetStatus(codes.Error, err.Error())
 				if rw.started {
-					// Response already on the wire; cannot replace it.
 					return
 				}
 				SetDetail(ctx, panicDetail)
@@ -55,11 +52,9 @@ func Recover(logger *slog.Logger) func(http.Handler) http.Handler {
 	}
 }
 
-// recoverWriter tracks whether the response has started so the deferred recover
-// knows whether it may still write the 500 envelope. WriteHeader for a >= 400
-// status does not mark the response started, because ErrorBody (the next writer
-// down) defers flushing those until a body write — so the recover path can
-// still set status 500 after a handler called WriteHeader(>=400) and panicked.
+// recoverWriter tracks whether the response has started. A >= 400 WriteHeader
+// does not count, because ErrorBody defers flushing it, so a later panic can
+// still become a 500.
 type recoverWriter struct {
 	http.ResponseWriter
 	started bool

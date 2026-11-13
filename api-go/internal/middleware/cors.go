@@ -24,25 +24,16 @@ func CORS(allowedOrigins []string) func(http.Handler) http.Handler {
 			}
 
 			if _, ok := allowed[origin]; !ok {
-				// Origin not configured: emit no CORS headers. The request is
-				// still served; the browser blocks the response client-side.
 				next.ServeHTTP(w, r)
 				return
 			}
 
 			w.Header().Set("Access-Control-Allow-Origin", origin)
-			// Vary: Origin prevents a shared cache from serving one origin's
-			// CORS-decorated response to a request from a different origin.
 			w.Header().Add("Vary", "Origin")
-			// Expose X-Next-Cursor so a browser fetch() can read the keyset
-			// pagination cursor cross-origin. Set on the matched-origin
-			// branch before the preflight check so it applies to both the 204
-			// preflight and the normal pass-through response.
+			// Set before the preflight check so it covers both the 204 preflight
+			// and the normal response.
 			w.Header().Set("Access-Control-Expose-Headers", "X-Next-Cursor")
 
-			// Preflight: an OPTIONS request carrying Access-Control-Request-Method.
-			// AllowAnyMethod / AllowAnyHeader means we echo exactly what the
-			// browser asked for, then answer 204 without invoking the handler.
 			if reqMethod := r.Header.Get("Access-Control-Request-Method"); r.Method == http.MethodOptions && reqMethod != "" {
 				w.Header().Set("Access-Control-Allow-Methods", reqMethod)
 				if reqHeaders := r.Header.Get("Access-Control-Request-Headers"); reqHeaders != "" {

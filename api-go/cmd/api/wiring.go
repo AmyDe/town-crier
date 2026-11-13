@@ -274,26 +274,11 @@ func newRouter(
 	health.Routes(mux, logger)
 	versionconfig.Routes(mux, logger)
 	legal.Routes(mux, logger)
-	// The filter catalog is static Go-literal content with no store dependency
-	// (see filter.go), so it is registered unconditionally, outside the
-	// watchZoneStore-guarded block below, mirroring legal.Routes immediately
-	// above.
 	watchzones.CatalogRoutes(mux, logger)
 	authorities.Routes(mux, logger)
 	api.Routes(mux, logger)
-	// The Apple App Site Association document is stateless and needs
-	// no store, so it is registered unconditionally on the share host. The App ID
-	// is composed from the canonical team + bundle constants (fixed contract), not
-	// runtime config.
 	aasa.Routes(mux, platform.AppleUniversalLinkAppID(), logger)
-	// The Android Digital Asset Links document is stateless and needs
-	// no store, so it is registered unconditionally on the share host, mirroring
-	// AASA above. The package/fingerprint contract is composed from fixed
-	// constants (not runtime config): see assetlinks.DefaultPackages.
 	assetlinks.Routes(mux, assetlinks.DefaultPackages(), logger)
-	// Geocode and designations are authed (absent from anonymousPatterns) and
-	// have no store dependency — they call outbound UK services — so they are
-	// always wired, even on a store-less local boot.
 	geocoding.Routes(mux, geocodeClient, logger)
 	designations.Routes(mux, designationClient, logger)
 
@@ -304,19 +289,9 @@ func newRouter(
 			middleware.RecordActivity(profiles.NewActivityRecorder(store), time.Now, logger)(mux),
 		)
 	}
-	// AnonRateLimit always wraps whatever dispatch chain was built above — unlike
-	// RateLimit/RecordActivity, it needs no profile store, so it must not be
-	// skipped on a store-less boot: that would leave every anonymous route (a
-	// scraping target for a future public geo endpoint, and load that
-	// ultimately lands on PlanIt) completely unmetered. It is a no-op for
-	// authenticated requests, so it never interferes with the per-subject
-	// RateLimit it wraps.
-	//
-	// The exemption predicate recognises a valid X-Build-Key via
-	// applications.BuildKeyMatches: the build-key SEO endpoints (internal/seopage) authenticate inside the handler rather
-	// than via Auth0, so without this exemption the Worker's traffic is wrongly
-	// metered as anonymous. A missing or wrong key still exempts nothing,
-	// preserving the anti-scraping posture for everyone else.
+	// AnonRateLimit needs no profile store, so it wraps dispatch even on a
+	// store-less boot. Build-key requests are exempt because the SEO endpoints
+	// authenticate inside the handler, not via Auth0.
 	anonRefillPerSecond := float64(anonRateLimitRefillPerMinute) / 60
 	buildKeyExempt := func(r *http.Request) bool { return applications.BuildKeyMatches(r, siteBuildKey) }
 	dispatch = middleware.AnonRateLimit(middleware.NewAnonRateLimitStore(anonRefillPerSecond), anonRateLimitBurst, buildKeyExempt, logger)(dispatch)
@@ -327,15 +302,8 @@ func newRouter(
 		notificationstate.Routes(mux, stateStore, time.Now, logger)
 	}
 	if watchZoneStore != nil {
-		// The delete path decrements the watch-zone quota counter on the profile
-		// via CAS, so it needs the CAS-capable profile store. Only pass the option
-		// when the profile store is genuinely present — passing a typed-nil
-		// *profiles.PostgresStore would wrap into a non-nil interface and defeat the
-		// handler's nil-check (the same typed-nil gotcha guarded for the saved
-		// store above). The list/patch handlers read the same store to compute
-		// each zone's derived "paused" field: a downgrade that leaves a
-		// user over their new tier's watch-zone limit pauses the over-quota zones
-		// in API responses without deleting or mutating them.
+		// Only pass the profile options when store != nil: a typed-nil
+		// *profiles.PostgresStore would defeat the handler's nil check.
 		zoneOpts := []watchzones.Option{watchzones.WithMetricsRecorder(registry)}
 		if store != nil {
 			zoneOpts = append(zoneOpts, watchzones.WithProfileCAS(store))
@@ -345,53 +313,24 @@ func newRouter(
 	}
 	sharepage.RobotsRoutes(mux)
 	if appStore != nil {
-		// Refresh-on-tap heals a saved row's snapshot when the user views an app
-		// they've saved; it needs the saved store. Pass a genuine nil interface
-		// (not a typed-nil pointer) when saving isn't wired, so the handler's
-		// nil-check disables the side effect cleanly.
+		// Pass a genuine nil interface, not a typed-nil pointer, when saving isn't
+		// wired, so the handler's nil check disables refresh-on-tap.
 		if savedStore != nil {
 			applications.Routes(mux, appStore, savedapplications.NewSnapshotRefresher(savedStore, time.Now), authorities.NewLookup(), logger)
 		} else {
 			applications.Routes(mux, appStore, nil, authorities.NewLookup(), logger)
 		}
-		// The anonymous application search reads from the same store; it needs no build key since it is the public-facing endpoint the
-		// /search web page calls directly from a visitor's browser. It is
-		// anonymous to Auth0 (see anonymousPatterns) and, like every other anonymous
-		// route, metered by the per-IP AnonRateLimit (above): the
-		// per-subject RateLimit no-ops on a request with no subject, but
-		// AnonRateLimit does not — it is the scheme that actually covers this route.
 		applications.SearchRoutes(mux, appStore, authorities.NewLookup(), logger)
-		// The public applications-near-a-point endpoint reads from the same store
-		// and, like SearchRoutes, resolves each result's authoritySlug. It is
-		// anonymous to Auth0 (see anonymousPatterns) and, like every other anonymous route,
-		// metered by the per-IP AnonRateLimit plus its own
-		// radius/limit clamps.
 		applications.NearPointRoutes(mux, appStore, authorities.NewLookup(), logger)
-		// The public anonymous clusters endpoint reads from the same
-		// store: it calls the same FindClustersInZone grid-aggregation primitive as
-		// the authed watch-zone clusters route (watchzones.NearbyRoutes above), with
-		// the centre/radius/viewport supplied by the caller instead of a stored zone.
-		// It is anonymous to Auth0 (see anonymousPatterns) and, like every other
-		// anonymous route, metered by the per-IP AnonRateLimit plus
-		// its own radius clamp (identical to near-point's).
 		applications.ClustersRoutes(mux, appStore, authorities.NewLookup(), logger)
-		// The public share page: an anonymous, server-rendered HTML page for a
-		// single application at GET /a/{authoritySlug}/{ref...}. It point-reads the
-		// same applications store and resolves the authority slug via the static
-		// authority lookup; it reads no user data and emits only public planning data.
 		// A nil shareClicks must reach Routes as a nil interface, not a typed nil.
 		if shareClicks != nil {
 			sharepage.Routes(mux, appStore, authorities.NewLookup(), shareClicks, logger)
 		} else {
 			sharepage.Routes(mux, appStore, authorities.NewLookup(), nil, logger)
 		}
-		// The og:image map card: an anonymous GET /og/{slug}/{ref}.png
-		// serving a baked OSM map of the site as the share page's unfurl image. It
-		// reuses the same applications store + authority lookup and the real OSM tile
-		// client. The cache is the Azure share-cards Blob container (ADR 0037); it is
-		// optional. When SHARE_CARDS_BLOB_URL is unset shareCardCache is a nil pointer,
-		// and we MUST pass a genuine nil interface (not the typed-nil *blobstore.Store)
-		// so the handler's cache==nil check disables caching and regenerates on demand.
+		// shareCardCache is nil when SHARE_CARDS_BLOB_URL is unset; pass a genuine nil
+		// interface so the handler's cache==nil check disables caching.
 		if shareCardCache != nil {
 			sharepage.ImageRoutes(mux, appStore, authorities.NewLookup(), sharepage.NewOSMTileClient(), shareCardCache, logger)
 		} else {
