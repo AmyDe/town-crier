@@ -67,11 +67,6 @@ public class ApiClient(
         ) { accessToken -> executeAndDecode(endpoint, accessToken, serializer) }
     }
 
-    /**
-     * Runs [action] with [initialAccessToken]; on a 401, refreshes the
-     * session exactly once and retries [action] exactly once with the
-     * refreshed token.
-     */
     @Suppress("SwallowedException", "TooGenericExceptionCaught")
     // The deliberately generic catches below are the policy (401 -> refresh and
     // retry once; IOException -> NetworkUnavailable; anything else ->
@@ -93,7 +88,6 @@ public class ApiClient(
             } catch (e2: IOException) {
                 throw DomainError.NetworkUnavailable
             } catch (e2: UnauthorizedException) {
-                // The retry itself got another 401: stop here rather than loop.
                 throw DomainError.SessionExpired
             }
         } catch (e: IOException) {
@@ -109,9 +103,8 @@ public class ApiClient(
     }
 
     /**
-     * Refreshes the session: [IOException] -> [DomainError.NetworkUnavailable],
-     * anything else -> [DomainError.SessionExpired]. The final catch is the
-     * policy's deliberately generic "anything else" case.
+     * Any non-IO refresh failure maps to [DomainError.SessionExpired], so the
+     * final catch is deliberately generic.
      */
     @Suppress("SwallowedException", "TooGenericExceptionCaught")
     private suspend fun refreshOrThrow(): AuthSession =
@@ -264,7 +257,6 @@ private fun <T> decode(
     try {
         json.decodeFromString(serializer, body)
     } catch (e: IllegalArgumentException) {
-        // SerializationException extends IllegalArgumentException.
         throw DomainError.Unexpected("Failed to decode response: ${e.message}", cause = e)
     }
 

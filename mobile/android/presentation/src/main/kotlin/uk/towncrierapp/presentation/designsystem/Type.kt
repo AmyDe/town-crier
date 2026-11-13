@@ -53,7 +53,6 @@ internal val TownCrierTypography =
         titleSmall = baseTypography.titleSmall.copy(fontFamily = InterFontFamily),
     )
 
-/** tcBodyEmphasis: bodyLarge's metrics at SemiBold — see [TownCrierTypography] doc. */
 internal val bodyEmphasisTextStyle = TownCrierTypography.bodyLarge.copy(fontWeight = FontWeight.SemiBold)
 
 /**

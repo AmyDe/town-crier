@@ -16,7 +16,6 @@ private val NOTICE_CARD_TOP_RULE_THICKNESS = 2.dp
 
 private val NOTICE_CARD_BORDER_THICKNESS = 1.dp
 
-/** The top rule's colour: `amber` for new/unread content, `onSurface` otherwise. */
 internal fun noticeCardTopRuleColor(
     isNew: Boolean,
     onSurface: Color,

@@ -73,7 +73,6 @@ public fun ApplicationRow(
     }
 }
 
-/** Mono document-header strip: reference left, received date right — see [ApplicationRow] doc. */
 @Composable
 private fun DocHeaderStrip(
     reference: String,

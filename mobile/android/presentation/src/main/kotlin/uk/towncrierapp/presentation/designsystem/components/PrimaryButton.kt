@@ -33,7 +33,6 @@ public fun PrimaryButton(
             modifier
                 .fillMaxWidth()
                 .heightIn(min = 44.dp),
-        // minimum tap target, design-language skill
         enabled = enabled,
         shape = MaterialTheme.shapes.medium,
         colors =

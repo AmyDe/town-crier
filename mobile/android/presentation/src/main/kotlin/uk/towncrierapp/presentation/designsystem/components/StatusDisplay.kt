@@ -16,7 +16,7 @@ import uk.towncrierapp.domain.applications.wireValue
 import uk.towncrierapp.presentation.R
 import uk.towncrierapp.presentation.designsystem.TownCrierTheme
 
-/** The resolved label/color/icon for one [ApplicationStatus] — feeds [StatusBadge] wherever a status renders. Port of iOS's status display mapping (GH#775). */
+/** The resolved label/color/icon for one [ApplicationStatus]. */
 public data class StatusDisplay(
     public val label: String,
     public val color: Color,
