@@ -3,6 +3,7 @@ package planit
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -85,6 +86,46 @@ func TestFetchWindowPage_TruncatedPageWithTotal_HasMorePagesTrue(t *testing.T) {
 	}
 	if len(res.Applications) != 87 {
 		t.Errorf("applications: got %d, want 87 (truncated)", len(res.Applications))
+	}
+}
+
+func fetchPageAtOffset(t *testing.T, total, from, n int) FetchPageResult {
+	t.Helper()
+	var sb strings.Builder
+	fmt.Fprintf(&sb, `{"total":%d,"from":%d,"records":[`, total, from)
+	for i := range n {
+		if i > 0 {
+			sb.WriteString(",")
+		}
+		sb.WriteString(`{"name":"r","uid":"u","area_name":"a","area_id":1,"address":"x","description":"d","app_type":"t","app_state":"s","last_different":"2026-06-10T09:00:00Z"}`)
+	}
+	sb.WriteString(`]}`)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(sb.String()))
+	}))
+	t.Cleanup(srv.Close)
+
+	c := newWindowClient(t, srv.URL, nil)
+	res, err := c.FetchWindowPage(context.Background(), testQuery(from))
+	if err != nil {
+		t.Fatalf("FetchWindowPage: %v", err)
+	}
+	return res
+}
+
+func TestFetchWindowPage_FullPageAtOrPastTotalHasMorePages(t *testing.T) {
+	t.Parallel()
+	res := fetchPageAtOffset(t, 1611, 1500, 300)
+	if !res.HasMorePages {
+		t.Error("full page must report HasMorePages=true even when from+read >= total")
+	}
+}
+
+func TestFetchWindowPage_ShortPageAtOrPastTotalEndsResultSet(t *testing.T) {
+	t.Parallel()
+	res := fetchPageAtOffset(t, 1611, 1500, 111)
+	if res.HasMorePages {
+		t.Error("short page at the total must end the result set")
 	}
 }
 
