@@ -13,9 +13,8 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * `login()`/`logout()`/`checkExistingSession()` — port of iOS
- * `LoginViewModelTests`. Error copy is verbatim iOS wording, resolved as
- * string resources (compose-ui.md), asserted here by resource id.
+ * `login()`/`logout()`/`checkExistingSession()`. Error copy is asserted by
+ * string resource id.
  */
 @ExtendWith(MainDispatcherExtension::class)
 class LoginViewModelTest {

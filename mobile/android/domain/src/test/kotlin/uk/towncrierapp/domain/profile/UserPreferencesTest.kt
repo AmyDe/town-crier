@@ -6,7 +6,7 @@ import kotlin.test.assertEquals
 
 /**
  * [UserPreferences] is the exact `PATCH /v1/me` body shape — always all five
- * fields (epic #770 pre-resolved decision: never a partial update).
+ * fields, never a partial update.
  * [ServerProfile.preferences] is the starting point a setter copies from
  * when only one field is changing.
  */

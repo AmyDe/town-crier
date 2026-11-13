@@ -7,8 +7,6 @@ import (
 	"testing"
 )
 
-// --- hand-written fakes -----------------------------------------------------
-
 // recordingChild appends "<label>:<userID>" to a shared log on each call and
 // returns its configured error, so a test can assert both coverage and order
 // across the whole cascade.
@@ -71,8 +69,6 @@ func recordingDeleters(log *[]string) Deleters {
 		Auth0:               recordingAuth0{log: log},
 	}
 }
-
-// --- tests ------------------------------------------------------------------
 
 func TestCascade_RunsEveryStepInFixedOrder(t *testing.T) {
 	t.Parallel()

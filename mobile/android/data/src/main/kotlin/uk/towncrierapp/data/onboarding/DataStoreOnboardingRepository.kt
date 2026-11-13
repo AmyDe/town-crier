@@ -14,8 +14,7 @@ private val IS_ONBOARDING_COMPLETE_KEY = booleanPreferencesKey("isOnboardingComp
 
 /**
  * DataStore Preferences-backed [OnboardingRepository] - the
- * `isOnboardingComplete` device latch (epic #770, same key iOS uses in
- * `UserDefaults`). A one-shot suspend read/write, not a `Flow`: this is a
+ * `isOnboardingComplete` device latch. A one-shot suspend read/write, not a `Flow`: this is a
  * fast-path hint, not something the UI observes live.
  */
 public class DataStoreOnboardingRepository(

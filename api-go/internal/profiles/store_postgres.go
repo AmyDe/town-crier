@@ -55,7 +55,6 @@ type AdminProfileStore interface {
 	List(ctx context.Context, emailSearch string, pageSize int, continuationToken string) (Page, error)
 }
 
-// Compile-time check: the stores satisfy their exported interfaces.
 var (
 	_ Store = (*PostgresStore)(nil)
 

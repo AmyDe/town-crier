@@ -25,7 +25,7 @@ private fun Request.bodyAsString(): String {
     return buffer.readUtf8()
 }
 
-/** `POST/GET/PATCH/DELETE /v1/me` + `GET /v1/me/data` (epic #770 / #778). */
+/** `POST/GET/PATCH/DELETE /v1/me` + `GET /v1/me/data`. */
 class ApiUserProfileRepositoryTest {
     private fun makeSut(transport: FakeHttpTransport = FakeHttpTransport()): ApiUserProfileRepository {
         val apiClient = ApiClient("https://api-dev.towncrierapp.uk", transport, FakeAuthenticationService())

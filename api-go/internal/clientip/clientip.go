@@ -103,7 +103,6 @@ func FromRequest(r *http.Request) netip.Addr {
 func peerAddr(remoteAddr string) netip.Addr {
 	host, _, err := net.SplitHostPort(remoteAddr)
 	if err != nil {
-		// No port (or otherwise unsplittable): treat the whole string as the host.
 		host = remoteAddr
 	}
 	addr, err := netip.ParseAddr(host)
@@ -113,7 +112,6 @@ func peerAddr(remoteAddr string) netip.Addr {
 	return addr.Unmap()
 }
 
-// isCloudflare reports whether addr falls within any vendored Cloudflare range.
 func isCloudflare(addr netip.Addr) bool {
 	return slices.ContainsFunc(cloudflareRanges, func(p netip.Prefix) bool { return p.Contains(addr) })
 }

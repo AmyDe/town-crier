@@ -18,8 +18,7 @@ import kotlin.test.assertTrue
 /**
  * The postcode step: local format validation (never spends a network call on
  * a garbage string) before `PostcodeGeocoder`, mixed-case/optional-space
- * acceptance, and inline retryable errors from the `DomainError` catalogue
- * (tc-7ttz). Port of iOS `OnboardingViewModelTests`'s postcode-step cases.
+ * acceptance, and inline retryable errors from the `DomainError` catalogue.
  */
 @ExtendWith(MainDispatcherExtension::class)
 class OnboardingViewModelPostcodeTest {

@@ -48,13 +48,8 @@ func (h *handler) getZonePreferences(w http.ResponseWriter, r *http.Request) {
 	subject := auth.Subject(r.Context())
 	zoneID := r.PathValue("zoneId")
 
-	profile, err := h.store.Get(r.Context(), subject)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-		h.serverError(w, r, "load profile", err)
+	profile, ok := h.loadProfile(w, r, subject)
+	if !ok {
 		return
 	}
 	h.writeJSON(w, r, zonePreferencesResultFrom(zoneID, profile.GetZonePreferences(zoneID)))

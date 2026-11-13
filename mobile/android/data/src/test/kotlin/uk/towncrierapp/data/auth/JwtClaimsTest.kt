@@ -11,8 +11,7 @@ import kotlin.test.assertTrue
  * `JwtClaims` decodes the JWT payload segment (base64url JSON, no signature
  * verification — the server already validated the token; this is purely for
  * reading claims client-side) and exposes the individual claims
- * `Auth0AuthenticationService` needs. Port of iOS
- * `JWTSubscriptionTierExtractor`.
+ * `Auth0AuthenticationService` needs.
  */
 class JwtClaimsTest {
     @Test

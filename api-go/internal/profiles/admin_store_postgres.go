@@ -403,8 +403,6 @@ func (s *PostgresAdminStore) List(ctx context.Context, emailSearch string, pageS
 		return Page{}, fmt.Errorf("list profiles: decode: %w", err)
 	}
 
-	// Emit a continuation token only when we got a full page — an undersized
-	// page means we reached the end.
 	nextToken := ""
 	if len(profiles) == pageSize {
 		last := profiles[len(profiles)-1]

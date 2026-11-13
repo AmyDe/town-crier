@@ -3,7 +3,7 @@ package uk.towncrierapp.domain.auth
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 
-/** Auth method is derived from the JWT `sub` claim prefix (port of iOS `UserProfile.authMethod`). */
+/** Auth method is derived from the JWT `sub` claim prefix. */
 class UserProfileTest {
     @Test
     fun `auth0 prefix derives EmailPassword`() {

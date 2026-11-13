@@ -16,9 +16,7 @@ import kotlin.test.assertTrue
  * The radius step: tier-max clamping, the large-radius warning threshold,
  * `confirmRadius` building the in-memory `WatchZone` (nothing saved yet),
  * and [OnboardingViewModel.reconcileTierAfterUpgrade] raising the max on the
- * SAME live instance without resetting anything already entered (tc-7ttz).
- * Port of iOS `OnboardingViewModelTests`'s radius-step + paywall-return
- * cases.
+ * SAME live instance without resetting anything already entered.
  */
 @ExtendWith(MainDispatcherExtension::class)
 class OnboardingViewModelRadiusTest {
@@ -126,8 +124,8 @@ class OnboardingViewModelRadiusTest {
 
     @Test
     fun `canUnlockLargerRadius is always false while paywallAvailable is false, regardless of tier`() {
-        // #783 hasn't shipped - the chip must be hidden entirely, not merely
-        // routed to a dead tap target, so this must be false even below Pro.
+        // With no paywall the chip must be hidden entirely, not merely routed
+        // to a dead tap target, so this must be false even below Pro.
         assertFalse(aViewModelOnRadiusStep(SubscriptionTier.FREE).uiState.value.canUnlockLargerRadius)
         assertFalse(aViewModelOnRadiusStep(SubscriptionTier.PERSONAL).uiState.value.canUnlockLargerRadius)
     }

@@ -13,10 +13,10 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * Completion is best-effort (tc-7ttz, iOS `try?` parity): the in-memory zone
+ * Completion is best-effort: the in-memory zone
  * is saved via `WatchZoneRepository.create`, the device latch is always set,
  * and a save failure still completes the wizard rather than trapping the
- * user in it. Port of iOS `OnboardingViewModelTests`'s completion cases.
+ * user in it.
  */
 @ExtendWith(MainDispatcherExtension::class)
 class OnboardingViewModelCompletionTest {

@@ -21,14 +21,11 @@ import kotlin.test.assertEquals
 
 /**
  * The signed-in transition: `POST /v1/me` (ensure-profile) BEFORE tier
- * resolution (#549 ordering), `max(serverTier ?? max(cachedTier, jwtTier),
+ * resolution, `max(serverTier ?? max(cachedTier, jwtTier),
  * jwtTier)` with a single refresh-and-retry when the first pass lands on
  * Free, persistence to the `cachedSubscriptionTier` device latch, and -
- * strictly after all of that (tc-7ttz) - the onboarding account-state gate:
- * zero watch zones means the wizard is required. Port of iOS
- * `AppCoordinator.resolveSubscriptionTier()` / `SubscriptionTierResolver` /
- * `AppCoordinator+Onboarding`, degraded to the 2-way tier merge this issue
- * implements (no store tier until #783).
+ * strictly after all of that - the onboarding account-state gate:
+ * zero watch zones means the wizard is required.
  */
 class AuthCoordinatorTest {
     @Test
@@ -207,8 +204,8 @@ class AuthCoordinatorTest {
     }
 
     /**
-     * The reproduction test for tc-k9fk/#549: evaluating the watch-zone gate
-     * before ensure-profile completes crashed onboarding in production. Two
+     * Evaluating the watch-zone gate before ensure-profile completes crashes
+     * onboarding. Two
      * purpose-built local fakes (not the shared `Fake*` fixtures) record into
      * one shared list so the ordering, not just the outcome, is asserted.
      */

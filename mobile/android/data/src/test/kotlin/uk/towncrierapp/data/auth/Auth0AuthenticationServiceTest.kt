@@ -21,10 +21,7 @@ private const val DEV_AUDIENCE = "https://api-dev.towncrierapp.uk"
 /**
  * `currentSession()`/`refreshSession()` are the unit-testable surface of
  * [Auth0AuthenticationService] — `login()`/`logout()` need a real Activity
- * and Custom Tabs and are verified on-device (epic #770 test strategy: "one
- * Auth0-SDK-boundary integration is accepted as emulator-verified"). Covers
- * the four ported bug fixes: #680 (aud-mismatch wipe, fail-open), tc-funq
- * (renewability), and the refresh unrecoverable-vs-transient split.
+ * and Custom Tabs and are verified on-device.
  */
 class Auth0AuthenticationServiceTest {
     private fun aCredentials(

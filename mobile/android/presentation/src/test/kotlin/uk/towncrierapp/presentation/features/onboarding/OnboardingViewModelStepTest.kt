@@ -11,8 +11,7 @@ import uk.towncrierapp.presentation.MainDispatcherExtension
 import kotlin.test.assertEquals
 
 /**
- * Linear step order, with no back navigation from [OnboardingStep.Welcome]
- * (tc-7ttz). Port of iOS `OnboardingViewModelTests`'s step-navigation cases.
+ * Linear step order, with no back navigation from [OnboardingStep.Welcome].
  */
 @ExtendWith(MainDispatcherExtension::class)
 class OnboardingViewModelStepTest {
