@@ -191,34 +191,17 @@ func run() int {
 // dispatcher needs. WithMetrics on the enqueuer and decision dispatcher is left
 // to the caller.
 func buildNotifyFanOut(cfg platform.Config, registry *metrics.Registry, zoneStore watchzones.Store, st *stores, logger *slog.Logger) (*notifydispatch.DecisionDispatcher, *notifydispatch.Enqueuer, *notifydispatch.PushCoalescer) {
-	var (
-		notifStore     *notifications.PostgresStore
-		profileStore   *profiles.PostgresStore
-		deviceStore    *devicetokens.PostgresStore
-		statePushStore *notificationstate.PostgresStore
-		savedStore     *savedapplications.PostgresStore
-		appStore       *applications.PostgresStore
-	)
-	if st != nil {
-		notifStore = st.notification
-		profileStore = st.profile
-		deviceStore = st.device
-		statePushStore = st.notifState
-		savedStore = st.savedApp
-		appStore = st.app
-	}
-
 	pushDispatcher := buildPlatformDispatcher(cfg, registry, logger)
-	coalescer := notifydispatch.NewPushCoalescer(deviceStore, statePushStore, pushDispatcher, zoneStore, notifStore, time.Now, logger)
+	coalescer := notifydispatch.NewPushCoalescer(st.device, st.notifState, pushDispatcher, zoneStore, st.notification, time.Now, logger)
 	if cfg.NotifyPushRecoveryEnabled {
-		coalescer = coalescer.WithRecovery(notifStore, profileStore)
+		coalescer = coalescer.WithRecovery(st.notification, st.profile)
 	}
 	enqueuer := notifydispatch.NewEnqueuer(
-		notifStore, zoneStore, profileStore, coalescer, appStore,
+		st.notification, zoneStore, st.profile, coalescer, st.app,
 		uuid.NewString, time.Now, logger,
 	)
 	dispatcher := notifydispatch.NewDecisionDispatcher(
-		notifStore, zoneStore, savedStore, profileStore, coalescer,
+		st.notification, zoneStore, st.savedApp, st.profile, coalescer,
 		uuid.NewString, time.Now, logger,
 	)
 	return dispatcher, enqueuer, coalescer
