@@ -16,7 +16,7 @@ let package = Package(
     .library(name: "TownCrierPresentation", targets: ["TownCrierPresentation"]),
   ],
   dependencies: [
-    .package(url: "https://github.com/auth0/Auth0.swift.git", from: "2.0.0")
+    .package(url: "https://github.com/auth0/Auth0.swift.git", from: "3.3.0")
   ],
   targets: [
     .target(
