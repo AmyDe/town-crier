@@ -1,5 +1,4 @@
-// Command tc is the Town Crier admin CLI: generate offer codes, grant
-// subscriptions, and list users against the admin API.
+// Command tc is the Town Crier admin CLI for the admin API.
 package main
 
 import (
