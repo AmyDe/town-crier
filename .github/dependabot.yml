@@ -1,0 +1,76 @@
+# Version updates only; security updates are enabled in repo settings and
+# ignore the cooldown. Minor and patch bumps are grouped into one PR per
+# directory to keep review load low; majors arrive as separate PRs.
+# No bundler entry: mobile/ios has no committed Gemfile.lock.
+version: 2
+
+updates:
+  - package-ecosystem: gomod
+    directories:
+      - /api-go
+      - /cli
+      - /infra
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: Europe/London
+    cooldown:
+      default-days: 7
+    groups:
+      go-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directories:
+      - /web
+      - /cloudflare/apex-worker
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: Europe/London
+    cooldown:
+      default-days: 7
+    groups:
+      npm-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: Europe/London
+    cooldown:
+      default-days: 7
+    groups:
+      actions-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directory: /api-go
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: Europe/London
+    cooldown:
+      default-days: 7
+    groups:
+      docker-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: swift
+    directory: /mobile/ios
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: Europe/London
+    cooldown:
+      default-days: 7
+    groups:
+      swift-minor-patch:
+        update-types: [minor, patch]
