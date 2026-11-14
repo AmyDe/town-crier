@@ -100,7 +100,7 @@ func runGenerateOfferCodes(ctx context.Context, client *Client, env Env, args *P
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxRespBytes))
-		fmt.Fprintf(env.Err, "API error (%d): %s\n", resp.StatusCode, string(body))
+		fmt.Fprintf(env.Err, "API error (%d): %s\n", resp.StatusCode, body)
 		return exitRuntime
 	}
 
