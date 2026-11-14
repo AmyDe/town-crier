@@ -76,7 +76,7 @@ func (c *Client) GetJSON(ctx context.Context, path string, out any) error {
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxRespBytes))
-		return fmt.Errorf("API error (%d): %s", resp.StatusCode, string(body))
+		return fmt.Errorf("API error (%d): %s", resp.StatusCode, body)
 	}
 
 	return json.NewDecoder(io.LimitReader(resp.Body, maxRespBytes)).Decode(out)

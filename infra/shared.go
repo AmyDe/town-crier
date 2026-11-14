@@ -585,16 +585,14 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		return err
 	}
 
-	// Diagnostic Setting routes ACS email logs to the shared Log Analytics workspace, giving
-	// us an independent send/delivery audit trail — during the tc-wr7r investigation ACS
-	// metrics (ApiRequests/DeliveryStatusUpdate) read 0 even when real email was delivered, so
-	// they can't be trusted as a send signal on their own. Only two named categories, not the
-	// "allLogs" group: EmailSendMailOperational (aggregate send-volume metadata, no PII) and
-	// EmailStatusUpdateOperational (per-recipient delivery status — Delivered/Bounced/Failed/
-	// etc). The latter includes the recipient's email address in a RecipientId field; that is
-	// an accepted, deliberate tradeoff already discussed, not an oversight — no scrubbing or
-	// extra config gating here. No RetentionPolicy override — inherits the workspace's
-	// existing 30-day default, same as every other table there.
+	// Diagnostic Setting routes ACS email logs to the shared Log Analytics workspace as an
+	// independent send/delivery audit trail, because ACS metrics (ApiRequests/
+	// DeliveryStatusUpdate) can read 0 even when real email was delivered. Only two named
+	// categories, not the "allLogs" group: EmailSendMailOperational (aggregate send-volume
+	// metadata, no PII) and EmailStatusUpdateOperational (per-recipient delivery status). The
+	// latter includes the recipient's email address in a RecipientId field; that is a
+	// deliberate tradeoff. No RetentionPolicy override, so it inherits the workspace's 30-day
+	// default.
 	_, err = monitor.NewDiagnosticSetting(ctx, "diag-acs-town-crier-uk", &monitor.DiagnosticSettingArgs{
 		Name:        pulumi.String("diag-acs-town-crier-uk"),
 		ResourceUri: communicationServiceUk.ID(),
@@ -849,9 +847,9 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		return err
 	}
 
-	// Same shape as the PlanIt rule above: the query itself computes the failure ratio and
-	// emits a row only when the >=10-call, >20%-failure threshold is breached, so the alert
-	// condition is just "did the query return anything" (threshold 0, Count aggregation).
+	// The query itself computes the failure ratio and emits a row only when the >=10-call,
+	// >20%-failure threshold is breached, so the alert condition is just "did the query return
+	// anything" (threshold 0, Count aggregation).
 	const apnsFailureRateQuery = `AppDependencies
 | where Name == "APNs push"
 | where tostring(Properties["deployment.environment"]) == "prod"
@@ -1371,7 +1369,7 @@ type logAlertSpec struct {
 
 // createLogAlert provisions one ScheduledQueryRule (Kind LogAlert) scoped to the shared Log
 // Analytics workspace, wired to actionGroup. Every query is expected to already filter itself
-// down to the rows that should fire the alert (mirrors the PlanIt rule above), so the criterion
+// down to the rows that should fire the alert, so the criterion
 // is always "count of returned rows compares against threshold" with Count aggregation.
 func createLogAlert(ctx *pulumi.Context, resourceGroup *resources.ResourceGroup, logAnalyticsID pulumi.IDOutput, actionGroup *monitor.ActionGroup, tags pulumi.StringMap, spec logAlertSpec) error {
 	condition := monitor.ConditionArgs{
@@ -1481,7 +1479,7 @@ AppRequests
 // calls IsLikelyBot — hence the explicit DependsOn below, so a fresh shared-stack apply creates
 // IsLikelyBot first. Analytics-layer only: both read existing AppRequests telemetry
 // (user_agent.original, url.path, TimeGenerated), which is already privacy-clean (client IPs
-// are already collapsed to the shared ingress IP, PR #998/tc-ig52w) — this adds no new logging,
+// are already collapsed to the shared ingress IP) — this adds no new logging,
 // no new stored data, nothing new tracked.
 //
 // SavedSearch's Tags field is Azure's per-search portal categorization (Name/Value pairs used

@@ -90,7 +90,7 @@ func runDeleteUser(ctx context.Context, client *Client, env Env, args *ParsedArg
 func reportDeleteUserFailure(env Env, status int, body []byte) {
 	var failure deleteUserFailure
 	if status != http.StatusInternalServerError || json.Unmarshal(body, &failure) != nil {
-		fmt.Fprintf(env.Err, "API error (%d): %s\n", status, string(body))
+		fmt.Fprintf(env.Err, "API error (%d): %s\n", status, body)
 		return
 	}
 	for _, id := range failure.ErasedUserIDs {
