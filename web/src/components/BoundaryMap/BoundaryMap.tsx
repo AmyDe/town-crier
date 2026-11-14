@@ -28,16 +28,13 @@ const OPEN_RING_OPTIONS = {
 };
 
 interface Props {
-  /** Initial map centre — the zone's postcode lookup or existing centroid. */
   centre: Coordinates;
   vertices: readonly Coordinates[];
   isClosed: boolean;
   onAddVertex: (coordinate: Coordinates) => void;
   onMoveVertex: (index: number, coordinate: Coordinates) => void;
   onCloseRing: () => void;
-  /** Reopens a closed ring, or removes the last vertex while still drawing. */
   onUndo: () => void;
-  /** Clears the ring entirely so drawing can start over. */
   onReset: () => void;
 }
 

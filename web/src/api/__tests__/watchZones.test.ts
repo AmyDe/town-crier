@@ -9,10 +9,6 @@ interface RecordedRequest {
   readonly init: RequestInit | undefined;
 }
 
-/**
- * Hand-written fetch spy — records the request and returns a caller-supplied
- * Response. No `vi.fn()`, in keeping with the no-mocking-frameworks policy.
- */
 class SpyFetch {
   calls: RecordedRequest[] = [];
   response: Response = new Response('null', { status: 200 });

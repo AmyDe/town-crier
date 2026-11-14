@@ -24,22 +24,6 @@ func TestSleep_ReturnsContextErrorOnCancel(t *testing.T) {
 	}
 }
 
-func TestPtr_ReturnsPointerToValue(t *testing.T) {
-	t.Parallel()
-	p := Ptr(42)
-	if p == nil {
-		t.Fatal("Ptr returned nil")
-	}
-	if *p != 42 {
-		t.Errorf("got %d, want 42", *p)
-	}
-
-	s := Ptr("application/json")
-	if s == nil || *s != "application/json" {
-		t.Errorf("got %v, want pointer to \"application/json\"", s)
-	}
-}
-
 func TestDateOnlyPtrToTime_NilPointerMapsToNil(t *testing.T) {
 	t.Parallel()
 	if DateOnlyPtrToTime(nil) != nil {

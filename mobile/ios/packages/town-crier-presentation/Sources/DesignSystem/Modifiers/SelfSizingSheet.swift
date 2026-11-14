@@ -1,12 +1,5 @@
 import SwiftUI
 
-/// Sizes the enclosing sheet to its content's natural height.
-///
-/// A fixed `.presentationDetents([.medium])` clips short, text-heavy sheets: when
-/// the content's intrinsic height exceeds the medium detent the body text is
-/// compressed and truncates (worse at larger Dynamic Type sizes). This modifier
-/// measures the content at its ideal height and makes that the sole detent, so
-/// the copy is always shown in full.
 private struct SelfSizingSheetModifier: ViewModifier {
   @State private var contentHeight: CGFloat?
 

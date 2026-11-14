@@ -9,18 +9,14 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// routeMatcher is the subset of *http.ServeMux RouteSpan needs to resolve the
-// pattern a request matches, mirroring auth.RequireAuth's matcher. Declared
-// here, consumer-side, so the middleware depends only on the two methods it
-// uses and *http.ServeMux satisfies it implicitly.
+// routeMatcher is the subset of *http.ServeMux RouteSpan needs.
 type routeMatcher interface {
 	http.Handler
 	Handler(r *http.Request) (h http.Handler, pattern string)
 }
 
-// statusWriter captures the response status code so RouteSpan can record it on
-// the request span. It defaults to 200, matching net/http's behaviour when a
-// handler writes a body without an explicit WriteHeader.
+// statusWriter records the response status for the span, defaulting to 200 like
+// net/http.
 type statusWriter struct {
 	http.ResponseWriter
 	status      int

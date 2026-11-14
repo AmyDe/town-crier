@@ -1,19 +1,10 @@
-// Package metrics holds the Town Crier business-metric registry: the
-// towncrier.* OpenTelemetry instruments, registered against the global OTel
-// MeterProvider (wired in internal/platform/telemetry.go via the OTLP/gRPC
-// metric exporter -> the ACA managed-environment OTel agent -> App Insights
-// AppMetrics). It covers the PlanIt error rate, notification, push and
-// watch-zone counters the SRE team monitors.
+// Package metrics holds the towncrier.* OpenTelemetry business-metric
+// instruments, registered against the global MeterProvider.
 //
 // Instrument names and tag keys are stable: changing them would
 // break the App Insights dashboards and alerts that key on them.
 //
-// Registry exposes recording METHODS rather than raw instruments so every call
-// site stays trivial and the tag conventions live in one place. Recording
-// packages depend on a small consumer-side interface (the methods they use), not
-// on this concrete type, so *Registry satisfies them structurally. A nil
-// *Registry is a no-op on every method, so a call site can hold a nil registry
-// when telemetry is unconfigured without branching.
+// A nil *Registry is a no-op on every method.
 package metrics
 
 import (
@@ -31,10 +22,7 @@ const MeterName = "towncrier"
 
 // Registry holds the registered towncrier.* instruments. Build it once at boot
 // from otel.Meter(MeterName) (after platform.SetupTelemetry has installed the
-// global MeterProvider) and inject it through constructors. All instrument
-// construction errors are swallowed at build time — a failed instrument records
-// nothing rather than failing the boot, matching the OTel "metrics never break
-// the app" contract.
+// global MeterProvider) and inject it through constructors.
 type Registry struct {
 	planitHTTPErrors metric.Int64Counter
 
@@ -52,11 +40,8 @@ type Registry struct {
 func New(meter metric.Meter) *Registry {
 	r := &Registry{}
 
-	// counter / histogram / gauge drop the construction error deliberately: a
-	// failed instrument is left nil, and every recording method nil-checks it and
-	// no-ops, so a metric never aborts startup or a request. This is the OTel
-	// "metrics must not break the app" contract, and it keeps each registration
-	// below to one readable line while satisfying errcheck.
+	// A failed instrument is left nil and its recording method no-ops, so a
+	// metric never aborts startup or a request.
 	counter := func(name string, opts ...metric.Int64CounterOption) metric.Int64Counter {
 		inst, err := meter.Int64Counter(name, opts...)
 		if err != nil {

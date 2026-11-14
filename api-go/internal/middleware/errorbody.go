@@ -1,6 +1,6 @@
 // Package middleware holds the cross-cutting http.Handler wrappers.
 // Composition is plain func(http.Handler) http.Handler, chained by hand in
-// cmd/api/main.go.
+// cmd/api/wiring.go.
 package middleware
 
 import (
@@ -23,10 +23,8 @@ type errorResponse struct {
 	Detail *string `json:"Detail"`
 }
 
-// detailHolder is a per-request mailbox for the error Detail. Go contexts are
-// immutable, so a pointer installed once by ErrorBody and mutated by Recover
-// (which runs further down the chain) is the shared-write channel. ErrorBody
-// reads it after next returns.
+// detailHolder carries Recover's Detail back up to ErrorBody: contexts are
+// immutable, so a shared pointer is the write channel.
 type detailHolder struct {
 	detail *string
 }

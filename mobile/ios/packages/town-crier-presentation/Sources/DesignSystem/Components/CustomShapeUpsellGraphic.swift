@@ -52,17 +52,8 @@ struct CustomShapePolygon: Shape {
   }
 }
 
-/// Pure geometry for ``CustomShapePolygon``, factored out of the view so the
-/// point generation is unit-testable without instantiating SwiftUI.
-///
-/// Vertices are placed at evenly-spaced angles around the centre of the
-/// given rect, each pulled in from a shared base radius by a fixed,
-/// hand-picked multiplier no greater than `1.0` (so every vertex stays
-/// inscribed within the rect passed to it — no overflow into a neighbouring
-/// element). The multipliers are deliberately irregular (not a smooth curve
-/// or true randomness) so the outline reads as a hand-drawn boundary rather
-/// than a regular polygon — deterministic and simple, since this is a
-/// decorative graphic rather than data-driven geometry.
+/// Multipliers never exceed `1.0`, so every vertex stays inside the rect, and are
+/// deliberately irregular so the outline reads as hand-drawn.
 enum CustomShapePolygonGeometry {
   static let radiusMultipliers: [CGFloat] = [0.9, 0.6, 1.0, 0.55, 0.85, 0.5, 0.95, 0.65]
 

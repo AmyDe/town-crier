@@ -36,7 +36,6 @@ extension Color {
 }
 
 extension Color {
-  /// Initializes a Color from a hex value (e.g., 0xD4910A).
   init(hex: UInt32) {
     let red = Double((hex >> 16) & 0xFF) / 255.0
     let green = Double((hex >> 8) & 0xFF) / 255.0
