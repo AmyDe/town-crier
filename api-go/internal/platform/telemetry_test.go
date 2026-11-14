@@ -9,7 +9,6 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/log/global"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -40,20 +39,16 @@ func TestDeploymentEnvironment(t *testing.T) {
 	}
 }
 
-// restoreOTelGlobals captures the process-global TracerProvider, propagator,
-// LoggerProvider and MeterProvider and reinstates them when the test ends, so a
-// test that installs a real SDK provider doesn't bleed into the rest of the
-// suite.
 func restoreOTelGlobals(t *testing.T) {
 	t.Helper()
 	tp := otel.GetTracerProvider()
 	prop := otel.GetTextMapPropagator()
-	lp := global.GetLoggerProvider()
+	lp := otel.GetLoggerProvider()
 	mp := otel.GetMeterProvider()
 	t.Cleanup(func() {
 		otel.SetTracerProvider(tp)
 		otel.SetTextMapPropagator(prop)
-		global.SetLoggerProvider(lp)
+		otel.SetLoggerProvider(lp)
 		otel.SetMeterProvider(mp)
 	})
 }
@@ -125,21 +120,15 @@ func TestSetupTelemetry_DisabledWhenEndpointUnset(t *testing.T) {
 		t.Fatal("SetupTelemetry: shutdown func is nil")
 	}
 
-	// The global TracerProvider must be untouched — still the SDK's no-op default,
-	// not one of our SDK providers.
 	if got := otel.GetTracerProvider(); got != before {
 		t.Errorf("global TracerProvider was replaced while disabled: got %T", got)
 	}
 	if _, ok := otel.GetTracerProvider().(*sdktrace.TracerProvider); ok {
 		t.Error("an SDK TracerProvider was installed while telemetry is disabled")
 	}
-	// The global LoggerProvider must likewise stay the no-op default, so bridged
-	// slog records are dropped (only stdout JSON appears).
-	if _, ok := global.GetLoggerProvider().(*sdklog.LoggerProvider); ok {
+	if _, ok := otel.GetLoggerProvider().(*sdklog.LoggerProvider); ok {
 		t.Error("an SDK LoggerProvider was installed while telemetry is disabled")
 	}
-	// The global MeterProvider must stay the no-op default so towncrier.*
-	// instruments record nothing locally.
 	if _, ok := otel.GetMeterProvider().(*sdkmetric.MeterProvider); ok {
 		t.Error("an SDK MeterProvider was installed while telemetry is disabled")
 	}
@@ -189,18 +178,13 @@ func TestSetupTelemetry_EnabledWhenEndpointSet(t *testing.T) {
 	if _, ok := otel.GetTracerProvider().(*sdktrace.TracerProvider); !ok {
 		t.Errorf("expected an SDK TracerProvider installed as global, got %T", otel.GetTracerProvider())
 	}
-	// SetupTelemetry must also install an SDK LoggerProvider so slog records
-	// bridge to OTel logs (-> AppTraces).
-	if _, ok := global.GetLoggerProvider().(*sdklog.LoggerProvider); !ok {
-		t.Errorf("expected an SDK LoggerProvider installed as global, got %T", global.GetLoggerProvider())
+	if _, ok := otel.GetLoggerProvider().(*sdklog.LoggerProvider); !ok {
+		t.Errorf("expected an SDK LoggerProvider installed as global, got %T", otel.GetLoggerProvider())
 	}
-	// SetupTelemetry must also install an SDK MeterProvider so towncrier.*
-	// instruments (and Go runtime + http.client metrics) flow to AppMetrics.
 	if _, ok := otel.GetMeterProvider().(*sdkmetric.MeterProvider); !ok {
 		t.Errorf("expected an SDK MeterProvider installed as global, got %T", otel.GetMeterProvider())
 	}
 
-	// Shutdown must be callable without hanging even though no collector exists.
 	shutdownDone := make(chan error, 1)
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)

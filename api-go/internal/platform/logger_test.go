@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/log"
 	"go.opentelemetry.io/otel/log/embedded"
-	"go.opentelemetry.io/otel/log/global"
 )
 
 // recordingLogProcessor is a hand-written in-memory log processor (no mocking
@@ -51,14 +51,12 @@ func (l *fakeLogger) Emit(_ context.Context, rec log.Record) {
 
 func (l *fakeLogger) Enabled(context.Context, log.EnabledParameters) bool { return true }
 
-// installFakeLoggerProvider swaps the global OTel LoggerProvider for the
-// recorder, restoring the previous provider on cleanup.
 func installFakeLoggerProvider(t *testing.T) *recordingLogProcessor {
 	t.Helper()
-	prev := global.GetLoggerProvider()
+	prev := otel.GetLoggerProvider()
 	proc := &recordingLogProcessor{}
-	global.SetLoggerProvider(&fakeLoggerProvider{proc: proc})
-	t.Cleanup(func() { global.SetLoggerProvider(prev) })
+	otel.SetLoggerProvider(&fakeLoggerProvider{proc: proc})
+	t.Cleanup(func() { otel.SetLoggerProvider(prev) })
 	return proc
 }
 
