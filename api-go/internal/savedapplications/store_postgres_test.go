@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type fakeSavedQuerier struct {
@@ -62,6 +63,7 @@ func (r *countSavedRows) FieldDescriptions() []pgconn.FieldDescription { return 
 func (r *countSavedRows) Values() ([]any, error)                       { return nil, nil }
 func (r *countSavedRows) RawValues() [][]byte                          { return nil }
 func (r *countSavedRows) Conn() *pgx.Conn                              { return nil }
+func (r *countSavedRows) TypeMap() *pgtype.Map                         { return nil }
 
 // intSavedRow is a pgx.Row that scans a single int (the Count total) or a
 // pre-configured error.
@@ -89,6 +91,7 @@ func (r *emptySavedRows) Scan(_ ...any) error                          { return 
 func (r *emptySavedRows) Values() ([]any, error)                       { return nil, nil }
 func (r *emptySavedRows) RawValues() [][]byte                          { return nil }
 func (r *emptySavedRows) Conn() *pgx.Conn                              { return nil }
+func (r *emptySavedRows) TypeMap() *pgtype.Map                         { return nil }
 
 type errSavedRow struct{ err error }
 

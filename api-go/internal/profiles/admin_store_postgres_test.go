@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // fakeUserRows is a pgx.Rows over pre-baked user-column slices. Each element is
@@ -41,6 +42,7 @@ func (r *fakeUserRows) FieldDescriptions() []pgconn.FieldDescription { return ni
 func (r *fakeUserRows) RawValues() [][]byte                          { return nil }
 func (r *fakeUserRows) Values() ([]any, error)                       { return nil, nil }
 func (r *fakeUserRows) Conn() *pgx.Conn                              { return nil }
+func (r *fakeUserRows) TypeMap() *pgtype.Map                         { return nil }
 
 // recordingQuerier captures the SQL and args of the single Query it serves and
 // returns pre-baked rows. Exec/QueryRow panic — List only uses Query.
@@ -360,6 +362,7 @@ func (r *genRows) FieldDescriptions() []pgconn.FieldDescription { return nil }
 func (r *genRows) Values() ([]any, error)                       { return nil, nil }
 func (r *genRows) RawValues() [][]byte                          { return nil }
 func (r *genRows) Conn() *pgx.Conn                              { return nil }
+func (r *genRows) TypeMap() *pgtype.Map                         { return nil }
 
 // fifoQuerier serves a fixed sequence of Query results (UserStats issues three:
 // scalar aggregate, tier group-by, most-recent). Exec/QueryRow are unused.

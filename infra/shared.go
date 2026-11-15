@@ -217,8 +217,8 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		Name:        pulumi.String("diag-cae-town-crier-shared"),
 		ResourceUri: containerAppsEnv.ID(),
 		WorkspaceId: logAnalytics.ID(),
-		Logs: monitor.LogSettingsArray{
-			&monitor.LogSettingsArgs{
+		Logs: monitor.DiagnosticsLogSettingsArray{
+			&monitor.DiagnosticsLogSettingsArgs{
 				CategoryGroup: pulumi.String("allLogs"),
 				Enabled:       pulumi.Bool(true),
 			},
@@ -516,8 +516,8 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		Location:          pulumi.String("Global"),
 		GroupShortName:    pulumi.String("tcalerts"),
 		Enabled:           pulumi.Bool(true),
-		EmailReceivers: monitor.EmailReceiverArray{
-			monitor.EmailReceiverArgs{
+		EmailReceivers: monitor.MicrosoftCommonEmailReceiverArray{
+			monitor.MicrosoftCommonEmailReceiverArgs{
 				Name:                 pulumi.String("owner"),
 				EmailAddress:         pulumi.String(alertEmail),
 				UseCommonAlertSchema: pulumi.Bool(true),
@@ -597,12 +597,12 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		Name:        pulumi.String("diag-acs-town-crier-uk"),
 		ResourceUri: communicationServiceUk.ID(),
 		WorkspaceId: logAnalytics.ID(),
-		Logs: monitor.LogSettingsArray{
-			&monitor.LogSettingsArgs{
+		Logs: monitor.DiagnosticsLogSettingsArray{
+			&monitor.DiagnosticsLogSettingsArgs{
 				Category: pulumi.String("EmailSendMailOperational"),
 				Enabled:  pulumi.Bool(true),
 			},
-			&monitor.LogSettingsArgs{
+			&monitor.DiagnosticsLogSettingsArgs{
 				Category: pulumi.String("EmailStatusUpdateOperational"),
 				Enabled:  pulumi.Bool(true),
 			},
