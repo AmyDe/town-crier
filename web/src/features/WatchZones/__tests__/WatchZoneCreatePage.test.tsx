@@ -323,7 +323,6 @@ describe('WatchZoneCreatePage', () => {
       await reachDetailsStep('Pro');
 
       expect(screen.getByRole('radiogroup', { name: /shape/i })).toBeInTheDocument();
-      // Defaults to circle mode, so the radius picker is still visible.
       expect(screen.getByRole('radiogroup', { name: /radius/i })).toBeInTheDocument();
       expect(
         screen.queryByRole('heading', { name: /draw any shape/i }),

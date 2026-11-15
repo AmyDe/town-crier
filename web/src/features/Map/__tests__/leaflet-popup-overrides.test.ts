@@ -2,7 +2,6 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, it, expect } from 'vitest';
 
-/** Leaflet's hardcoded white popup background hides light text in dark mode. */
 describe('Leaflet popup dark-mode overrides', () => {
   const cssPath = resolve(__dirname, '..', 'leaflet-overrides.css');
   let css: string;

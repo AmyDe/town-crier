@@ -17,10 +17,6 @@ interface MapRegion {
   readonly zoom: number;
 }
 
-/**
- * ViewModel for the watch-zone map: refetches server-side clusters for the
- * active zone's viewport (debounced) and point-reads a single-member pin.
- */
 export function useMapData(port: MapPort) {
   const [zones, setZones] = useState<readonly WatchZoneSummary[]>([]);
   const [selectedZoneId, setSelectedZoneId] = useState<WatchZoneId | null>(null);
