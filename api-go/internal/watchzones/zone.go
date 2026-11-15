@@ -303,11 +303,8 @@ func onSegment(a, b, p Coordinate) bool {
 		p.Latitude >= math.Min(a.Latitude, b.Latitude) && p.Latitude <= math.Max(a.Latitude, b.Latitude)
 }
 
-// earthRadiusMetres is the mean Earth radius used by haversineMetres.
 const earthRadiusMetres = 6371000.0
 
-// haversineMetres returns the great-circle distance between two lat/lon
-// points, in metres.
 func haversineMetres(lat1, lon1, lat2, lon2 float64) float64 {
 	const degToRad = math.Pi / 180
 	phi1, phi2 := lat1*degToRad, lat2*degToRad

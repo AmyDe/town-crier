@@ -122,8 +122,6 @@ func TestWatchZone_WithUpdates_EmptyUpdateIsIdentity(t *testing.T) {
 	}
 }
 
-// --- Boundary (custom-shape) tests ---------------------------------------
-
 // londonSquare is a small closed square near central London, well within UK
 // bounds, symmetric about (51.5074, -0.1278) with an offset chosen so it is
 // roughly a 1km-radius shape (dLat = r/111320, dLon = r/(111320*cos(lat))).

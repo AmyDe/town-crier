@@ -22,16 +22,12 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 )
 
-// quotaExceededMessage is the error text for a watch-zone quota breach (403).
-// The iOS client treats any 403 on create as a quota breach and routes
-// to the paywall, so this prose body produces the same Upgrade-Required UX as a
-// structured one.
+// The iOS client routes any 403 on create to the paywall, so a prose body is
+// enough.
 const quotaExceededMessage = "Watch zone quota exceeded. Upgrade your subscription for more zones."
 
-// errProfileCASNotWired signals a wiring bug: the create path requires the
-// CAS-backed profile store and refuses to run an unprotected quota check
-// without it. Unreachable in production, where NearbyRoutes is always wired
-// WithProfileCAS.
+// errProfileCASNotWired signals a wiring bug: create refuses to run an
+// unprotected quota check without the CAS-backed profile store.
 var errProfileCASNotWired = errors.New("profile CAS store not wired")
 
 // profileReader loads the caller's profile so the create handler can read the
@@ -284,17 +280,12 @@ func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 		filterKey = FilterKey(*req.FilterKey)
 	}
 
-	// Atomic quota gate: the CAS-backed profile counter is the ONLY create path,
-	// so there is no non-atomic footgun. A nil profileCAS at request time is a
-	// wiring bug (never reachable in production, where NearbyRoutes is always
-	// wired WithProfileCAS); fail closed with a 500 rather than running an
+	// A nil profileCAS is a wiring bug; fail closed rather than run an
 	// unprotected count-then-save.
 	if h.profileCAS == nil {
 		h.serverError(w, r, "quota gate", errProfileCASNotWired)
 		return
 	}
-	// Quota is keyed on the effective tier: a lapsed paid subscription
-	// (EffectiveTier) falls back to the Free limit.
 	ok, casErr := h.atomicQuotaIncrement(r.Context(), userID, tier.WatchZoneLimit())
 	if casErr != nil {
 		h.serverError(w, r, "atomic quota check", casErr)
@@ -314,9 +305,6 @@ func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 		h.serverError(w, r, "build watch zone", err)
 		return
 	}
-	// Attach the already-validated boundary directly (mirroring scanZone's
-	// read-path pattern) rather than re-deriving it through WithBoundary: the
-	// centroid/radius above were already computed from the same b.
 	zone.Boundary = boundary
 	zone.FilterKey = filterKey
 	if err := h.store.Save(r.Context(), zone); err != nil {
@@ -351,9 +339,7 @@ type latestUnreadEventWire struct {
 
 // applications implements GET /v1/me/watch-zones/{zoneId}/applications: load the
 // zone (404 if absent), find the applications in it, and augment each row with
-// its latest unread notification. When the caller has no read-watermark yet
-// (first touch) the unread lookup is skipped and every row's latestUnreadEvent
-// is null.
+// its latest unread notification.
 //
 // Routing: a param-less call (no ?sort=) keeps the nearest-first path
 // (FindNearbyPage, default 500) for older clients. A ?sort= call uses the
@@ -379,16 +365,12 @@ func (h *handler) applications(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// ?status= filters on the raw app_state; "All"/absent means no filter, any
-	// other non-vocabulary value is a clean 400.
 	status, statusOK := parseStatus(r.URL.Query().Get("status"))
 	if !statusOK {
 		h.writeError(w, r, http.StatusBadRequest, invalidStatusMessage)
 		return
 	}
 
-	// ?unread=true restricts to applications with an unread notification for the
-	// caller; false/absent means no unread filter. Anything else is a clean 400.
 	unreadFilter, unreadOK := parseUnread(r.URL.Query().Get("unread"))
 	if !unreadOK {
 		h.writeError(w, r, http.StatusBadRequest, invalidUnreadMessage)
@@ -402,8 +384,6 @@ func (h *handler) applications(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// decodeCursor strips the transport-layer base64 wrapping; a malformed wrapper
-	// is a clean 400. The unwrapped token is the store's opaque keyset cursor.
 	cursor, ok := decodeCursor(r.URL.Query().Get("cursor"))
 	if !ok {
 		h.writeError(w, r, http.StatusBadRequest, invalidCursorMessage)

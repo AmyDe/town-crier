@@ -931,7 +931,7 @@ func TestValid_RejectsNonFiniteCoordinates(t *testing.T) {
 // TestCreate_Boundary_FreeTierIs403 proves a Free-tier caller supplying a
 // non-null boundary on create is rejected with 403 boundary_requires_paid_tier
 // before any shape validation or persistence -- the entitlement gate runs
-// first (acceptance criteria 4).
+// first.
 func TestCreate_Boundary_FreeTierIs403(t *testing.T) {
 	t.Parallel()
 	d := nearbyDeps{
@@ -966,7 +966,7 @@ func TestCreate_Boundary_FreeTierIs403(t *testing.T) {
 // TestCreate_Boundary_DerivesLatLonRadiusAndPersistsShape proves a paid-tier
 // caller's boundary-carrying create derives latitude/longitude/radiusMetres
 // server-side from the shape, returns all of them plus the boundary in the
-// response (acceptance criteria 2), and persists a custom-shape zone.
+// response, and persists a custom-shape zone.
 func TestCreate_Boundary_DerivesLatLonRadiusAndPersistsShape(t *testing.T) {
 	t.Parallel()
 	vertices := squareVertices(51.5, -0.12, 500)
@@ -1069,7 +1069,7 @@ func TestCreate_Boundary_TooLarge(t *testing.T) {
 // TestCreate_Boundary_InvalidShapeIs400 proves a paid-tier caller's malformed
 // shape (here, fewer than the domain's minimum 3 vertices) surfaces as 400
 // boundary_invalid, reusing zone.go's own NewBoundary validation rather than
-// re-implementing a geometry check at the HTTP layer (acceptance criteria 5).
+// re-implementing a geometry check at the HTTP layer.
 func TestCreate_Boundary_InvalidShapeIs400(t *testing.T) {
 	t.Parallel()
 	d := nearbyDeps{
@@ -1109,7 +1109,7 @@ func TestCreate_Boundary_InvalidShapeIs400(t *testing.T) {
 // TestCreate_FilterKey_FreeOrPersonalTierIs403 proves a non-Pro caller
 // supplying a non-empty filterKey on create is rejected with 403
 // filter_requires_pro_tier and never persisted -- Pro-only, deliberately
-// narrower than the boundary gate's IsPaid() (acceptance criteria).
+// narrower than the boundary gate's IsPaid().
 func TestCreate_FilterKey_FreeOrPersonalTierIs403(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

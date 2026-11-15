@@ -11,11 +11,8 @@ import (
 	"strings"
 )
 
-// errCrossHostRedirect is returned by CheckRedirect when a redirect target's
-// host differs from the configured base host.
 var errCrossHostRedirect = errors.New("geocoding: cross-host redirect refused")
 
-// maxRespBytes bounds the postcodes.io response body read.
 const maxRespBytes = 1 << 20
 
 // Coordinates is the geocoded location: { latitude, longitude }.
@@ -43,8 +40,6 @@ func NewClient(baseURL string, httpClient *http.Client) (*Client, error) {
 		return nil, fmt.Errorf("geocoding: parse base URL: %w", err)
 	}
 	configuredHost := u.Host // host:port or bare host; must match exactly
-	// Copy by value so we never mutate the caller's client (avoids data races
-	// when the same *http.Client is reused across multiple NewClient calls).
 	hc := *httpClient
 	hc.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 		if req.URL.Host != configuredHost {
@@ -58,7 +53,6 @@ func NewClient(baseURL string, httpClient *http.Client) (*Client, error) {
 	return &Client{baseURL: trimmed, http: &hc}, nil
 }
 
-// postcodesIoResponse mirrors the postcodes.io envelope.
 type postcodesIoResponse struct {
 	Status int                `json:"status"`
 	Result *postcodesIoResult `json:"result"`

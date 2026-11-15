@@ -19,7 +19,6 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 )
 
-// maxBodyBytes caps the request body the PATCH handler reads.
 const maxBodyBytes = 1 << 20
 
 const invalidPayloadMessage = "Invalid watch zone payload."
@@ -184,12 +183,11 @@ type watchZoneSummary struct {
 
 func summaryOf(z WatchZone, paused bool) watchZoneSummary {
 	return watchZoneSummary{
-		ID:           z.ID,
-		Name:         z.Name,
-		Latitude:     z.Latitude,
-		Longitude:    z.Longitude,
-		RadiusMetres: z.RadiusMetres,
-		// Hardcoded 0 for older iOS clients' strict decode; no client reads it.
+		ID:                  z.ID,
+		Name:                z.Name,
+		Latitude:            z.Latitude,
+		Longitude:           z.Longitude,
+		RadiusMetres:        z.RadiusMetres,
 		AuthorityID:         0,
 		PushEnabled:         z.PushEnabled,
 		EmailInstantEnabled: z.EmailInstantEnabled,
