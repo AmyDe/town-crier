@@ -203,9 +203,6 @@ private struct WatchZoneRow: View {
       .clipShape(RoundedRectangle(cornerRadius: TCCornerRadius.small))
 
       VStack(alignment: .leading, spacing: TCSpacing.extraSmall) {
-        // Mono header strip: radius reads as the zone's metadata line,
-        // ahead of its name (GH#857) — mirrors the planning-reference strip
-        // on ApplicationListRow.
         Text(formatRadius(zone.radiusMetres))
           .font(TCTypography.mono)
           .foregroundStyle(Color.tcTextSecondary)
@@ -228,12 +225,11 @@ private struct WatchZoneRow: View {
 
 }
 
-/// Dismissible row surfaced while device-local zones (GH#879 Phase 4) remain
-/// unconverted after sign-up. Tapping the body reopens the "Add your other
-/// areas" conversion sheet; the trailing "x" opens a delete-confirmation
-/// alert (tc-luq4u) offering an explicit "Delete" (permanent) or "Keep for
-/// later" (session-only dismissal, reappears next launch while zones still
-/// remain) — the row previously had no permanent way to decline.
+/// Dismissible row surfaced while device-local zones remain unconverted after
+/// sign-up. Tapping the body reopens the "Add your other areas" conversion
+/// sheet; the trailing "x" opens a delete-confirmation alert offering an
+/// explicit "Delete" (permanent) or "Keep for later" (session-only dismissal,
+/// reappears next launch while zones still remain).
 private struct UnconvertedLocalZoneRow: View {
   let count: Int
   let onTap: () -> Void

@@ -84,8 +84,6 @@ public struct WatchZoneInlineUpsellCard: View {
     .background(Color.tcSurfaceElevated)
     .clipShape(RoundedRectangle(cornerRadius: TCCornerRadius.medium))
     .overlay(
-      // Amber 1.5pt border (GH#857) — an upsell surface, not a status stamp,
-      // but the same no-fill "outline reads as the accent" language.
       RoundedRectangle(cornerRadius: TCCornerRadius.medium)
         .strokeBorder(Color.tcAmber, lineWidth: 1.5)
     )

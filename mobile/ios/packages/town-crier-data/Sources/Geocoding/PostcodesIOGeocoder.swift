@@ -1,17 +1,12 @@
 import Foundation
 import TownCrierDomain
 
-/// Geocodes UK postcodes by calling postcodes.io directly from the device —
-/// never via our own `/v1/geocode/{postcode}` (GH#868 Phase 3).
-///
-/// The anonymous browse flow has no account and no Auth0 session, so it
-/// cannot use the authenticated server-side proxy. Exposing that proxy
-/// anonymously would funnel unmetered third-party postcodes.io lookups
-/// through our single server IP — the exact blacklist risk client-side
-/// postcode lookups exist to avoid (see the `postcode_lookup_client_side`
-/// project decision). Errors are mapped to the same ``DomainError
-/// .geocodingFailed(_:)`` case ``APIPostcodeGeocoder`` uses, so downstream
-/// error handling never needs to branch on which geocoder produced it.
+/// Geocodes UK postcodes by calling postcodes.io directly from the device,
+/// never via our own `/v1/geocode/{postcode}`: the anonymous browse flow has
+/// no Auth0 session, and exposing that proxy anonymously would funnel
+/// unmetered lookups through our single server IP (blacklist risk). Errors
+/// map to the same ``DomainError/geocodingFailed(_:)`` case
+/// ``APIPostcodeGeocoder`` uses.
 public final class PostcodesIOGeocoder: PostcodeGeocoder, Sendable {
   private let baseURL: URL
   private let transport: HTTPTransport

@@ -22,8 +22,6 @@ public struct MapView: View {
   }
 
   public var body: some View {
-    // On iOS, ClusteredMapView owns the camera — no onChange needed.
-    // On macOS (SPM compile-time target), fall back to SwiftUI Map + updateMapPosition.
     #if canImport(UIKit)
       contentStack
     #else

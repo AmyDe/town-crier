@@ -9,14 +9,14 @@ public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
   public let pushEnabled: Bool
   public let emailInstantEnabled: Bool
   /// Whether this zone currently exceeds the user's effective tier quota and
-  /// has stopped generating new notifications (GH#889 P1/P2). Purely a
-  /// server-derived display flag — never computed or mutated by the client.
+  /// has stopped generating new notifications. Purely a server-derived
+  /// display flag — never computed or mutated by the client.
   /// A paused zone remains fully listed, editable, and deletable; it is
   /// automatically revived (server-side, with no client action) once the
   /// user upgrades or deletes older zones.
   public let paused: Bool
-  /// The custom-shape polygon for this zone, or `nil` for a circle
-  /// (GH#1031). `centre`/`radiusMetres` remain always-present: for a
+  /// The custom-shape polygon for this zone, or `nil` for a circle.
+  /// `centre`/`radiusMetres` remain always-present: for a
   /// custom-shape zone they hold the polygon's derived centroid and
   /// enclosing radius, so every existing circle-shaped read path (map
   /// centring, list rows, distance sort) keeps working unchanged. A
@@ -24,8 +24,8 @@ public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
   /// see ``isCustomShape``.
   public let boundary: WatchZoneBoundary?
   /// The pre-canned notification filter applied to this zone, or `nil` for
-  /// unfiltered (GH#1098). An opaque key round-tripped verbatim to/from the
-  /// API (GH#1104, tc-m8j90.2) -- display copy for a given key is resolved
+  /// unfiltered. An opaque key round-tripped verbatim to/from the API --
+  /// display copy for a given key is resolved
   /// separately from the fetched ``FilterCatalogEntry`` catalog, not stored
   /// or validated here. Mirrors `boundary`'s optionality -- there is no
   /// `.none`/`.unfiltered` sentinel, so "no filter" is never representable
