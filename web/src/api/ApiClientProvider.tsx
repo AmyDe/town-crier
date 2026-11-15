@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { useMemo } from 'react';
-import { useAuth0 } from '@auth0/auth0-react';
+import { useAccessToken } from '../auth/useAccessToken';
 import { createApiClient } from './client';
 import { ApiClientProvider as ApiClientCtxProvider } from './useApiClient';
 
@@ -11,11 +11,11 @@ interface Props {
 }
 
 export function ApiClientProvider({ children }: Props) {
-  const { getAccessTokenSilently } = useAuth0();
+  const getAccessToken = useAccessToken();
 
   const client = useMemo(
-    () => createApiClient(API_BASE_URL, getAccessTokenSilently),
-    [getAccessTokenSilently],
+    () => createApiClient(API_BASE_URL, getAccessToken),
+    [getAccessToken],
   );
 
   return (
