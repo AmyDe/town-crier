@@ -219,7 +219,7 @@ private fun SwipeToDeleteRow(
 
 /**
  * A single watch-zone row, styled as a Public Notice "filed notice" card
- * ([noticeCard], epic #848 R5). The radius reads as the row's mono metadata
+ * ([noticeCard]). The radius reads as the row's mono metadata
  * line ahead of the zone's name — mirrors the planning-reference strip on
  * [uk.towncrierapp.presentation.designsystem.components.ApplicationRow] and
  * iOS `WatchZoneRow`.

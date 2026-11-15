@@ -56,9 +56,8 @@ internal data class ZonePreferencesDestination(
  * `previousBackStackEntry`'s `SavedStateHandle` on a successful save so
  * [WatchZonesTab] — which never observes the editor's own state directly,
  * ViewModels/Routes don't navigate — knows to call
- * [WatchZoneListViewModel.reload] instead of relying on the tc-hlbx
- * load-once guard's default no-op. Standard Compose Navigation
- * "returning a result" pattern.
+ * [WatchZoneListViewModel.reload] instead of relying on the load-once
+ * guard's default no-op.
  */
 private const val ZONE_SAVED_RESULT_KEY = "zone_saved"
 
@@ -90,11 +89,11 @@ private fun WatchZoneEditorDestination.toEditingZone(): WatchZone? {
 /**
  * The watch-zones tab: rebuilds [WatchZoneListViewModel] whenever
  * [subscriptionTier] changes (`key(subscriptionTier)`) so the upgrade
- * badge/upsell state never goes stale after a tier change (tc-ujct parity).
+ * badge/upsell state never goes stale after a tier change.
  * [backStackEntry] is this destination's own back-stack entry — its
  * `SavedStateHandle` is where a successful zone edit/create leaves the
  * [ZONE_SAVED_RESULT_KEY] result telling this tab to
- * [WatchZoneListViewModel.reload], bypassing the tc-hlbx load-once guard
+ * [WatchZoneListViewModel.reload], bypassing the load-once guard
  * for that one explicit "something changed" signal — a plain tab revisit
  * with no such signal still does not refetch.
  */
@@ -176,8 +175,7 @@ internal fun WatchZoneEditorDestinationContent(
             navController.popBackStack()
         },
         onDismiss = navController::popBackStack,
-        // #783 hasn't shipped the paywall yet — dismiss the editor (matching
-        // the "quota breach" UX) and no-op the rest.
+        // No paywall destination yet: dismiss the editor.
         onUpgradeRequired = { navController.popBackStack() },
     )
 }

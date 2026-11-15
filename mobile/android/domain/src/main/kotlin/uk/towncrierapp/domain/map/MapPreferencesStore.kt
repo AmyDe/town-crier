@@ -3,8 +3,7 @@ package uk.towncrierapp.domain.map
 import uk.towncrierapp.domain.watchzones.WatchZoneId
 
 /**
- * The Map tab's one device latch: `lastSelectedZone.map` (epic #770 iOS-key
- * parity — same key name as iOS `UserDefaults`, distinct from the
+ * The Map tab's one device latch: `lastSelectedZone.map` (same key name as iOS `UserDefaults`, distinct from the
  * applications list's own `lastSelectedZone.applications`). A one-shot
  * suspend read/write, not a `Flow` — this is the cold-start restore value,
  * not something the UI observes live (mirrors

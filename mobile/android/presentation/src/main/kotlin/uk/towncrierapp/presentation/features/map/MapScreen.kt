@@ -290,7 +290,7 @@ private fun MapOverlayCard(
  * (status-tinted pin or amber count bubble, see [rememberMapMarkerIcons]),
  * and the two camera effects — [MapUiState.pendingCameraTarget] (a zone
  * switch or a splittable-bubble zoom-in, moved with no server round-trip)
- * and the debounced camera-idle refetch (a pan/zoom settling, GH#776).
+ * and the debounced camera-idle refetch (a pan/zoom settling).
  */
 @Composable
 private fun GoogleMapContent(

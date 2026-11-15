@@ -13,7 +13,7 @@ import uk.towncrierapp.presentation.R
  * instead of rendering inline (see `WatchZoneEditorViewModel.save`).
  * [DomainError.GeocodingFailed] is likewise listed for exhaustiveness only —
  * this editor's postcode field never produces it (that's the onboarding
- * wizard's postcode step, tc-7ttz); grouped with [DomainError.NotFound]
+ * wizard's postcode step); grouped with [DomainError.NotFound]
  * since the copy fits either way.
  */
 @StringRes
