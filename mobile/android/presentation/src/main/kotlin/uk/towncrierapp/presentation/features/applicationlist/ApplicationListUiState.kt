@@ -8,12 +8,8 @@ import uk.towncrierapp.domain.watchzones.WatchZone
 import uk.towncrierapp.domain.watchzones.WatchZoneId
 
 /**
- * `ApplicationListScreen` state. [unreadCount] is CLIENT-derived from
- * currently-loaded [applications] (never a server `totalUnreadCount` — that
- * field drives the OS badge only). [hasMore] is a page's
- * `nextCursor != null`. [availableSorts] hides
- * [ApplicationSortOrder.DISTANCE] whenever no zone is active (nothing to be
- * distant from).
+ * [unreadCount] is derived from the loaded [applications], never the server `totalUnreadCount` (which drives
+ * the OS badge only). [availableSorts] hides [ApplicationSortOrder.DISTANCE] whenever no zone is active.
  */
 public data class ApplicationListUiState(
     val zones: List<WatchZone> = emptyList(),

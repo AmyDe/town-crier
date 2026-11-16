@@ -17,13 +17,7 @@ import androidx.compose.ui.res.stringResource
 import uk.towncrierapp.domain.applications.ApplicationSortOrder
 import uk.towncrierapp.presentation.R
 
-/**
- * The top-app-bar sort menu: [availableSorts] already has `distance` filtered
- * out by [ApplicationListUiState.availableSorts] whenever no zone is active —
- * this composable has no opinion on that, it just renders whatever list it's
- * given with a checkmark on the current selection. Split into its own file
- * to keep `ApplicationListScreen.kt` under detekt's per-file function budget.
- */
+/** Split out to keep `ApplicationListScreen.kt` under detekt's per-file function budget. */
 @Composable
 internal fun SortMenu(
     currentSort: ApplicationSortOrder,

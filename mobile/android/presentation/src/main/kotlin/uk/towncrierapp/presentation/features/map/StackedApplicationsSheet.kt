@@ -30,14 +30,7 @@ import uk.towncrierapp.presentation.designsystem.TownCrierTheme
 import uk.towncrierapp.presentation.designsystem.components.statusDisplay
 import java.time.LocalDate
 
-/**
- * The disambiguation list a stacked (unsplittable) cluster tap opens:
- * every application coincident at that point, each row
- * routing to its own summary sheet via [onSelect]. Presentation-only — no
- * ViewModel dependency — so `MapViewModel.selectFromStack` is the only place
- * that decides what happens next (compose-ui.md: ViewModels never navigate,
- * this composable just emits the tap).
- */
+/** The disambiguation list a stacked (unsplittable) cluster tap opens; each row emits [onSelect]. */
 @Composable
 internal fun StackedApplicationsSheetContent(
     applications: List<PlanningApplication>,

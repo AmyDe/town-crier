@@ -23,12 +23,7 @@ private val FILTERABLE_STATUSES =
         ApplicationStatus.Appealed,
     )
 
-/**
- * The All/6-status/Unread chip row — single-select, status vs unread
- * mutually exclusive BY [ApplicationFilter]'s shape (see the type itself),
- * not a runtime check here. Split into its own file to keep
- * `ApplicationListScreen.kt` under detekt's per-file function budget.
- */
+/** Split out to keep `ApplicationListScreen.kt` under detekt's per-file function budget. */
 @Composable
 internal fun FilterChipsRow(
     filter: ApplicationFilter,
