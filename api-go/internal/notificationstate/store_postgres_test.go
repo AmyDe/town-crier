@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // --- fakes ---
@@ -105,6 +106,7 @@ func (r *fakeNSRows) FieldDescriptions() []pgconn.FieldDescription { return nil 
 func (r *fakeNSRows) RawValues() [][]byte                          { return nil }
 func (r *fakeNSRows) Values() ([]any, error)                       { return nil, nil }
 func (r *fakeNSRows) Conn() *pgx.Conn                              { return nil }
+func (r *fakeNSRows) TypeMap() *pgtype.Map                         { return nil }
 
 // --- Get ---
 

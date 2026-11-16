@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // fakeQuerier is a hand-written fake implementing the querier interface for
@@ -66,6 +67,7 @@ func (r *countDeviceRows) FieldDescriptions() []pgconn.FieldDescription { return
 func (r *countDeviceRows) Values() ([]any, error)                       { return nil, nil }
 func (r *countDeviceRows) RawValues() [][]byte                          { return nil }
 func (r *countDeviceRows) Conn() *pgx.Conn                              { return nil }
+func (r *countDeviceRows) TypeMap() *pgtype.Map                         { return nil }
 
 // intDeviceRow is a pgx.Row that scans a single int (the Count total) or a
 // pre-configured error.
@@ -95,6 +97,7 @@ func (r *emptyDeviceRows) Scan(_ ...any) error                          { return
 func (r *emptyDeviceRows) Values() ([]any, error)                       { return nil, nil }
 func (r *emptyDeviceRows) RawValues() [][]byte                          { return nil }
 func (r *emptyDeviceRows) Conn() *pgx.Conn                              { return nil }
+func (r *emptyDeviceRows) TypeMap() *pgtype.Map                         { return nil }
 
 // errDeviceRow is a pgx.Row whose Scan always returns the stored error (or nil).
 type errDeviceRow struct{ err error }

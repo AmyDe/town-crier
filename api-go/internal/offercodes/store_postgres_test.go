@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 )
@@ -209,6 +210,7 @@ func (r *fakeEmptyRows) RawValues() [][]byte                          { return n
 func (r *fakeEmptyRows) FieldDescriptions() []pgconn.FieldDescription { return nil }
 func (r *fakeEmptyRows) CommandTag() pgconn.CommandTag                { return pgconn.CommandTag{} }
 func (r *fakeEmptyRows) Conn() *pgx.Conn                              { return nil }
+func (r *fakeEmptyRows) TypeMap() *pgtype.Map                         { return nil }
 
 // ---------------------------------------------------------------------------
 // Compile-time check: PostgresStore satisfies the handler's consumer interface,
@@ -491,6 +493,7 @@ func (r *fakeRedeemedRows) RawValues() [][]byte                          { retur
 func (r *fakeRedeemedRows) FieldDescriptions() []pgconn.FieldDescription { return nil }
 func (r *fakeRedeemedRows) CommandTag() pgconn.CommandTag                { return pgconn.CommandTag{} }
 func (r *fakeRedeemedRows) Conn() *pgx.Conn                              { return nil }
+func (r *fakeRedeemedRows) TypeMap() *pgtype.Map                         { return nil }
 
 // TestPostgresStore_RedeemedByUserID_QueryError confirms that a Query error is
 // wrapped and returned.
@@ -736,6 +739,7 @@ func (r *fakeListedRows) RawValues() [][]byte                          { return 
 func (r *fakeListedRows) FieldDescriptions() []pgconn.FieldDescription { return nil }
 func (r *fakeListedRows) CommandTag() pgconn.CommandTag                { return pgconn.CommandTag{} }
 func (r *fakeListedRows) Conn() *pgx.Conn                              { return nil }
+func (r *fakeListedRows) TypeMap() *pgtype.Map                         { return nil }
 
 // TestPostgresStore_List_QueryError wraps a Query failure.
 func TestPostgresStore_List_QueryError(t *testing.T) {

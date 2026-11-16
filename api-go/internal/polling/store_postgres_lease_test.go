@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type fakeLeaseQuerier struct {
@@ -147,3 +148,4 @@ func (r *fakePollRows) RawValues() [][]byte                          { return ni
 func (r *fakePollRows) FieldDescriptions() []pgconn.FieldDescription { return nil }
 func (r *fakePollRows) CommandTag() pgconn.CommandTag                { return pgconn.CommandTag{} }
 func (r *fakePollRows) Conn() *pgx.Conn                              { return nil }
+func (r *fakePollRows) TypeMap() *pgtype.Map                         { return nil }
