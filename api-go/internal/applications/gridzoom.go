@@ -19,9 +19,7 @@ const (
 // zoomGridDegrees is the server-owned zoom -> grid-cell-size lookup. Index z
 // holds the cell size in degrees for slippy zoom z: baseGridDegrees / 2^z, so
 // the cell halves with every zoom level (45 deg at z=0 down to ~4.3e-5 deg at
-// z=20, where each application is effectively its own cell). Keeping this
-// table here lets density be retuned without touching a store or shipping a
-// client release.
+// z=20, where each application is effectively its own cell).
 var zoomGridDegrees = func() [maxZoom + 1]float64 {
 	var table [maxZoom + 1]float64
 	for z := range table {
