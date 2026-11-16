@@ -33,8 +33,6 @@
   gap: var(--tc-space-sm);
 }
 
-/* Stamp language (Public Notice component vocabulary): outlined, uppercase,
-   letter-spaced — matches ApplicationCard's status stamp. */
 .locationChip {
   display: inline-flex;
   align-items: center;

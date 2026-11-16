@@ -11,9 +11,8 @@ export interface SearchOutcome {
 }
 
 /**
- * A resolved query point — the browser-supplied `lat`/`lon` the API's KNN
- * nearest-first search ranks results from. Field names
- * match the API's query-string parameters exactly.
+ * The `lat`/`lon` the API's nearest-first search ranks results from. Field
+ * names match the API's query-string parameters exactly.
  */
 export interface SearchLocation {
   readonly lat: number;
@@ -32,9 +31,7 @@ export interface SearchPort {
    * @param authority optional authority id-or-slug filter; `null` searches
    *   across all authorities.
    * @param location mandatory query point — the API 400s without it, and
-   *   results are nearest-first from this point. Never optional: a location
-   *   must be resolved (postcode, "use my location", or a map tap) before a
-   *   search can run at all (see `useSearch`'s gating).
+   *   results are nearest-first from this point.
    */
   search(query: string, authority: string | null, location: SearchLocation): Promise<SearchOutcome>;
 }

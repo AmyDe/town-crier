@@ -6,10 +6,9 @@ import type {
 } from '../types';
 
 /**
- * One page request for a watch zone's applications, driving sort and the
- * status/unread filter **server-side**. `status` and `unread`
- * are mutually exclusive (the caller enforces single-select). `cursor` is the
- * opaque, sort-aware continuation token — `null` fetches the first page.
+ * One page request for a watch zone's applications, sorted and filtered
+ * server-side. `status` and `unread` are mutually exclusive. `cursor` is the
+ * opaque, sort-aware continuation token; `null` fetches the first page.
  */
 export interface ApplicationsBrowseQuery {
   readonly zoneId: WatchZoneId;
