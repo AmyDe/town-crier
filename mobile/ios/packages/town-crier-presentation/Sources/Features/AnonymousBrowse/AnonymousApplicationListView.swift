@@ -1,20 +1,10 @@
 import SwiftUI
 import TownCrierDomain
 
-/// The anonymous (pre-signup) Applications tab: a single
-/// nearest-first page of planning applications, reusing the same
-/// ``ApplicationListRow`` the authenticated Applications tab uses. No
-/// sort/filter chips (pre-resolved: v1 is nearest-first only).
-///
-/// GH#879 Phase 4: when a device-local zone exists, a zone picker chip row
-/// appears above the list — mirroring the authed `ApplicationListView`'s
-/// zone chips (`ApplicationListView.swift:120-140`) but over
-/// ``DeviceLocalZone``. Switching the active zone re-fetches this list and
-/// re-centres the Map tab.
-///
-/// GH#888: the on-device cap is now one zone, so the chip row (with its
-/// trailing "Add area" chip) always renders once a zone exists — it is no
-/// longer gated on a second zone existing to make it a meaningful choice.
+/// The anonymous (pre-signup) Applications tab: a single page of planning
+/// applications reusing ``ApplicationListRow``, with no sort or filter chips.
+/// Once a ``DeviceLocalZone`` exists, a zone chip row with a trailing
+/// "Add area" chip always renders above the list.
 public struct AnonymousApplicationListView: View {
   @StateObject private var viewModel: AnonymousApplicationListViewModel
 

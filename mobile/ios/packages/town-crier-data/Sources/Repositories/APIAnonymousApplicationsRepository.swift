@@ -87,16 +87,9 @@ public final class APIAnonymousApplicationsRepository: AnonymousApplicationsRepo
 
 // MARK: - Cluster DTO
 
-/// Wire shape for one cell of the anonymous map clusters endpoint (GH#924
-/// Phase 2) — field-for-field identical to `MapClusterDTO` plus
-/// `authoritySlug` on each carried member (the anonymous by-slug point-read
-/// needs it; the authed map instead point-reads by id). A `count > 1` cell
-/// has a null `applicationId` and a multi-status `statusCounts`; a
-/// `count == 1` cell carries the lone application's identity and a
-/// single-entry `statusCounts`. An *unsplittable* multi-member cell
-/// additionally carries `applicationIds`, the capped list of its members'
-/// identities — omitted/null for every splittable cell, so `members`
-/// defaults to empty.
+/// Wire shape for one cell of the anonymous map clusters endpoint: `MapClusterDTO`
+/// plus `authoritySlug` on each carried member, which the anonymous by-slug
+/// point-read needs.
 struct AnonymousMapClusterDTO: Decodable, Sendable {
   let latitude: Double
   let longitude: Double
