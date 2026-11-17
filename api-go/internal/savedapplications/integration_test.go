@@ -40,7 +40,6 @@ func assertSavedAppEqual(t *testing.T, got, want SavedApplication) {
 	}
 	g, w := got, want
 	g.SavedAt, w.SavedAt = time.Time{}, time.Time{}
-	// Nil-snapshot paths: compare Application pointer vs nil.
 	if (g.Application == nil) != (w.Application == nil) {
 		t.Errorf("Application nil mismatch: got %v, want %v", g.Application, w.Application)
 		return
@@ -186,7 +185,6 @@ func TestSavedPostgresStore_GetByUserID_OrderedAndScoped(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("GetByUserID: got %d records, want 2", len(got))
 	}
-	// Ordered by saved_at: app-a first.
 	if got[0].ApplicationUID != NewSavedApplication("auth0|u1", pgApp("app-a", 100), t1).ApplicationUID {
 		t.Errorf("first record: got %q, want app-a uid", got[0].ApplicationUID)
 	}
@@ -202,7 +200,6 @@ func TestSavedPostgresStore_Save_Upsert(t *testing.T) {
 		t.Fatalf("Save first: %v", err)
 	}
 
-	// Update the application state so the snapshot changes.
 	state := "Permitted"
 	app.AppState = &state
 	updated := NewSavedApplication("auth0|u1", app, time.Date(2026, 6, 27, 0, 0, 0, 0, time.UTC))
@@ -227,7 +224,6 @@ func TestSavedPostgresStore_UserIDsForApplication(t *testing.T) {
 	app := pgApp("24/00001/FUL", 100)
 	now := time.Date(2026, 6, 27, 0, 0, 0, 0, time.UTC)
 
-	// Three users in authority 100 save the same application.
 	for _, userID := range []string{"auth0|u1", "auth0|u2", "auth0|u3"} {
 		sa := NewSavedApplication(userID, app, now)
 		if err := store.Save(ctx, sa); err != nil {
@@ -235,7 +231,7 @@ func TestSavedPostgresStore_UserIDsForApplication(t *testing.T) {
 		}
 	}
 	// One user in a different authority (200) saves an application with the same uid.
-	otherApp := pgApp("24/00001/FUL", 200) // same planit_name, different authority
+	otherApp := pgApp("24/00001/FUL", 200)
 	sa := NewSavedApplication("auth0|u4", otherApp, now)
 	if err := store.Save(ctx, sa); err != nil {
 		t.Fatalf("Save u4 (authority 200): %v", err)
@@ -248,7 +244,6 @@ func TestSavedPostgresStore_UserIDsForApplication(t *testing.T) {
 	if len(got) != 3 {
 		t.Fatalf("UserIDsForApplication: got %d users, want 3 (authority 100 only)", len(got))
 	}
-	// Authority 200 user must not appear.
 	for _, uid := range got {
 		if uid == "auth0|u4" {
 			t.Errorf("UserIDsForApplication: auth0|u4 (authority 200) leaked into authority 100 result")

@@ -178,8 +178,6 @@ func (h *handler) list(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, r, entries)
 }
 
-// isLegacyKeyed reports whether a row is keyed on a legacy bare-ref uid rather
-// than the canonical {areaId}/{name} uid.
 func isLegacyKeyed(record SavedApplication) bool {
 	return record.Application != nil && record.ApplicationUID != record.Application.CanonicalUID()
 }
@@ -208,9 +206,8 @@ func (h *handler) hydrate(ctx context.Context, record SavedApplication) (SavedAp
 	return record, true, nil
 }
 
-// reKeyToCanonical re-keys a legacy-format saved row to the canonical
-// {areaId}/{name} uid: it writes the canonical row unless one already exists,
-// then deletes the legacy row.
+// reKeyToCanonical rewrites a legacy-keyed row under the canonical
+// {areaId}/{name} uid and removes the legacy row.
 func (h *handler) reKeyToCanonical(ctx context.Context, legacy SavedApplication) (SavedApplication, error) {
 	canonical := NewSavedApplication(legacy.UserID, *legacy.Application, legacy.SavedAt)
 

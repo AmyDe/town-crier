@@ -6,9 +6,8 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
 )
 
-// SnapshotDocument is the embedded planning-application snapshot stored inline on
-// a saved-application document; the case reference is the "name" key.
-// savedapplications embeds it so the GeoJSON and date mapping is not duplicated.
+// SnapshotDocument is the planning-application snapshot embedded as jsonb on a
+// saved-application row; the case reference is the "name" key.
 type SnapshotDocument struct {
 	Name          string              `json:"name"`
 	UID           string              `json:"uid"`

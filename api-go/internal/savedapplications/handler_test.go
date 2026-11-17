@@ -38,9 +38,7 @@ func (f *fakeSavedStore) GetByUserID(_ context.Context, _ string) ([]SavedApplic
 }
 
 type fakeApps struct {
-	// byUID supports the lazy-backfill GetByUID path used during list hydration.
-	byUID map[string]applications.PlanningApplication
-	// byAuthorityAndName supports the look-up path used by save.
+	byUID              map[string]applications.PlanningApplication
 	byAuthorityAndName map[string]applications.PlanningApplication
 }
 
@@ -137,7 +135,6 @@ func TestHandler_Save_MissingUidOrName(t *testing.T) {
 func TestHandler_Delete(t *testing.T) {
 	t.Parallel()
 	store := &fakeSavedStore{}
-	// The catch-all captures a slash-bearing canonical uid whole.
 	rec := doReq(t, testMux(t, store, &fakeApps{}), http.MethodDelete, "/v1/me/saved-applications/471/24/0123/FUL", "")
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("status: got %d, want 204", rec.Code)
@@ -202,7 +199,6 @@ func TestHandler_List_BackfillsNilSnapshotFromMaster(t *testing.T) {
 	if !ok || app["uid"] != "ABC-24-0123" {
 		t.Errorf("snapshot not embedded after backfill: %+v", got[0]["application"])
 	}
-	// The backfilled snapshot is persisted so subsequent reads are zero-hydration.
 	if len(store.saved) != 1 || store.saved[0].Application == nil {
 		t.Errorf("backfilled row must be persisted: %+v", store.saved)
 	}
@@ -223,7 +219,6 @@ func TestHandler_List_ReKeysLegacyUidToCanonical(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC)
 	app := testApp(t)
-	// Legacy row: snapshot present but keyed on the raw PlanIt bare ref.
 	legacy := SavedApplication{UserID: user, ApplicationUID: "ABC-1", AuthorityID: 471, SavedAt: now, Application: &app}
 	store := &fakeSavedStore{rows: []SavedApplication{legacy}, exists: false}
 
@@ -250,7 +245,6 @@ func TestHandler_List_DedupsLegacyAndCanonicalPair(t *testing.T) {
 	app := testApp(t)
 	legacy := SavedApplication{UserID: user, ApplicationUID: "ABC-1", AuthorityID: 471, SavedAt: now, Application: &app}
 	canonical := NewSavedApplication(user, testApp(t), now)
-	// Both rows resolve to the same canonical uid; the canonical doc already exists.
 	store := &fakeSavedStore{rows: []SavedApplication{legacy, canonical}, exists: true}
 
 	rec := doReq(t, testMux(t, store, &fakeApps{}), http.MethodGet, "/v1/me/saved-applications", "")
