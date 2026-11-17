@@ -21,7 +21,6 @@ extension SavedApplication {
     savedAt: Date = Date(timeIntervalSince1970: 1_700_000_000),
     status: ApplicationStatus = .undecided
   ) -> SavedApplication {
-    // uid doubles as the PlanningApplicationId name; authority is "TEST".
     SavedApplication(
       applicationUid: uid,
       savedAt: savedAt,
