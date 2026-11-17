@@ -28,8 +28,9 @@ func NewSnapshotRefresher(store snapshotStore, now func() time.Time) *SnapshotRe
 
 // RefreshSnapshot re-saves the user's saved row for app with a fresh embedded
 // snapshot, preserving the original SavedAt (or using now if the row vanished
-// mid-flight). It is a no-op when the user has not saved the application. Callers treat it as best-effort: an error here
-// must never fail the user's read.
+// mid-flight). It is a no-op when the user has not saved the application.
+// Callers treat it as best-effort: an error here must never fail the user's
+// read.
 func (r *SnapshotRefresher) RefreshSnapshot(ctx context.Context, userID string, app applications.PlanningApplication) error {
 	// Saved rows are keyed on the canonical uid, not the master record's raw uid.
 	canonicalUID := app.CanonicalUID()
