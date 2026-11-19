@@ -42,8 +42,6 @@ func (f *fakeSavedQuerier) QueryRow(_ context.Context, _ string, _ ...any) pgx.R
 	return &errSavedRow{err: f.rowErr}
 }
 
-// countSavedRows is a pgx.Rows over pre-baked (user_id, count) tuples for the
-// batched CountsByUsers query.
 type countSavedRows struct {
 	rows [][2]any
 	idx  int
@@ -65,8 +63,6 @@ func (r *countSavedRows) RawValues() [][]byte                          { return 
 func (r *countSavedRows) Conn() *pgx.Conn                              { return nil }
 func (r *countSavedRows) TypeMap() *pgtype.Map                         { return nil }
 
-// intSavedRow is a pgx.Row that scans a single int (the Count total) or a
-// pre-configured error.
 type intSavedRow struct {
 	n   int
 	err error
