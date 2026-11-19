@@ -47,6 +47,10 @@ runs:
     - name: Apply migrations
       shell: bash
       working-directory: api-go
+      # The runner's IMDS endpoint answers 401, which ends the default chain at
+      # ManagedIdentityCredential before it reaches the az login session.
+      env:
+        AZURE_TOKEN_CREDENTIALS: AzureCLICredential
       run: |
         go run ./cmd/pgmigrate \
           -host psql-town-crier-shared.postgres.database.azure.com \
