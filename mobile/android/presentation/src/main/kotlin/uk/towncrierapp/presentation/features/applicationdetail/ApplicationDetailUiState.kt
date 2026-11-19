@@ -4,12 +4,9 @@ import uk.towncrierapp.domain.applications.PlanningApplication
 import uk.towncrierapp.domain.auth.DomainError
 
 /**
- * `ApplicationDetailScreen` state. [application] starts as the row passed in
- * from the list/saved screen (stale-while-revalidate: rendered instantly,
- * never a blank/loading flash) and is replaced once [ApplicationDetailViewModel.refresh]'s
- * by-id fetch completes. [canShare] is only true once that fetch has supplied
- * an `authoritySlug` — share needs the by-slug identity, which list/saved
- * rows never carry.
+ * [application] starts as the row passed in from the list or saved screen and is replaced once
+ * [ApplicationDetailViewModel.refresh]'s by-id fetch completes. [canShare] is true only once that fetch has
+ * supplied an `authoritySlug`, which list and saved rows never carry.
  */
 public data class ApplicationDetailUiState(
     val application: PlanningApplication,

@@ -364,9 +364,7 @@ describe('ApplicationsPage — Load more (keyset pagination)', () => {
     await user.click(loadMore);
 
     await waitFor(() => expect(screen.getByText('SECOND/0002')).toBeInTheDocument());
-    // First page row is still present (appended, not replaced).
     expect(screen.getByText('FIRST/0001')).toBeInTheDocument();
-    // Last page reached — the button is gone.
     expect(screen.queryByRole('button', { name: /load more/i })).not.toBeInTheDocument();
   });
 

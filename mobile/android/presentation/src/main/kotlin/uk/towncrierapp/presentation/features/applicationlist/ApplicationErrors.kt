@@ -4,14 +4,7 @@ import androidx.annotation.StringRes
 import uk.towncrierapp.domain.auth.DomainError
 import uk.towncrierapp.presentation.R
 
-/**
- * Maps a [DomainError] to the inline-error string resource shared by the
- * three applications-browsing screens (list/saved/detail) — `internal` is
- * module-wide in Kotlin, so this single mapping is reused across those
- * feature packages rather than duplicated per screen (compose-ui.md:
- * user-facing copy is a `:presentation` resource, keyed off the sealed
- * outcome).
- */
+/** Maps a [DomainError] to the inline-error string resource shared by the list, saved and detail screens. */
 @StringRes
 internal fun applicationErrorMessageRes(error: DomainError): Int =
     when (error) {

@@ -31,15 +31,7 @@ import uk.towncrierapp.presentation.designsystem.noticeCard
 import java.time.LocalDate
 import java.time.OffsetDateTime
 
-/**
- * A single applications-list row, styled as a Public Notice "filed notice"
- * card ([noticeCard]): a mono document-header strip (reference
- * left, received date right), status stamp, address/description, and an 8dp
- * leading unread dot in `tcAmber` when [PlanningApplication.latestUnreadEvent]
- * is present — the card's top rule doubles as the same unread signal
- * ([noticeCard]'s `isNew`). Status is never color-alone: [StatusBadge]
- * always pairs its color with an icon and label too.
- */
+/** A single applications-list row; unread when [PlanningApplication.latestUnreadEvent] is present. */
 @Composable
 public fun ApplicationRow(
     application: PlanningApplication,
@@ -98,9 +90,7 @@ private fun UnreadDot(
     Box(modifier = modifier.size(8.dp).background(color, CircleShape))
 }
 
-// Preview-only sample data — cannot reuse :domain's testFixtures from the
-// main source set (compose-ui.md: previews can't see test/testFixtures
-// source sets), so a small duplicate lives here instead.
+// Previews cannot see :domain's testFixtures from the main source set.
 private val previewApplication =
     PlanningApplication(
         id = PlanningApplicationId("42", "24/0001"),

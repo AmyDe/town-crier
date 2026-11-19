@@ -18,11 +18,6 @@ import uk.towncrierapp.presentation.designsystem.TownCrierSpacing
 import uk.towncrierapp.presentation.designsystem.TownCrierTheme
 import uk.towncrierapp.presentation.designsystem.noticeCard
 
-/**
- * The detail screen's address/reference/authority/received-date card, styled
- * as a Public Notice "filed notice" ([noticeCard]). Reference and received-date use [TownCrierTheme.mono] —
- * the two metadata fields the mono role targets — the rest stay body text.
- */
 @Composable
 internal fun FieldsCard(
     application: PlanningApplication,

@@ -47,17 +47,13 @@ const (
 // rather than hold a shared pool connection.
 const nearPointTimeout = 8 * time.Second
 
-// nearPointStore is the consumer-side store the near-point handler needs:
-// FindNearbyPage is the generic KNN + ST_DWithin keyset page already used by
-// the authed watch-zone nearby endpoints and the anonymous demo account
-// (?sort=distance, the default); RecentNearPoint is the real-lifecycle-date
-// ordered, ST_DWithin-filtered single page (?sort=recent).
+// nearPointStore: FindNearbyPage serves ?sort=distance (the default);
+// RecentNearPoint serves ?sort=recent.
 type nearPointStore interface {
 	FindNearbyPage(ctx context.Context, latitude, longitude, radiusMetres float64, limit int, cursor string) ([]PlanningApplication, string, error)
 	RecentNearPoint(ctx context.Context, latitude, longitude, radiusMetres float64, limit int) ([]PlanningApplication, error)
 }
 
-// nearPointHandler serves the public applications-near-a-point endpoint.
 type nearPointHandler struct {
 	store    nearPointStore
 	resolver authoritySlugResolver
@@ -65,9 +61,7 @@ type nearPointHandler struct {
 }
 
 // NearPointRoutes registers the public GET /v1/applications/near-point
-// endpoint. It is kept in cmd/api/wiring.go's
-// anonymousPatterns and reads only public planning data from Postgres. The resolver populates each
-// result's AuthoritySlug, mirroring SearchRoutes, so an
+// endpoint. The resolver populates each result's AuthoritySlug so an
 // anonymously-loaded application can build a share URL or a by-slug detail
 // fetch.
 func NearPointRoutes(mux *http.ServeMux, store nearPointStore, resolver authoritySlugResolver, logger *slog.Logger) {
@@ -75,17 +69,10 @@ func NearPointRoutes(mux *http.ServeMux, store nearPointStore, resolver authorit
 	mux.HandleFunc("GET /v1/applications/near-point", h.nearPoint)
 }
 
-// nearPoint validates lat/lng (required), sort (optional, one of
-// nearPointSortDistance/nearPointSortRecent), radius/limit (optional,
-// clamped), and cursor (optional, opaque — meaningful only for
-// nearPointSortDistance), then returns one page of applications within radius
-// of (lat, lng), ordered per sort. A missing/invalid lat/lng, an unrecognised
-// sort, or a malformed cursor is a bodyless 400; a store failure is a bodyless
-// 500 (both envelopes backfilled by middleware.ErrorBody). The response body
-// is a bare JSON array of NearbyResult, with the continuation token (when
-// present) in the X-Next-Cursor header — exact parity with the authed nearby
-// list for the distance sort; the recent sort never sets it (RecentNearPoint
-// does not paginate, see its doc comment).
+// nearPoint returns one page of applications within radius of (lat, lng) as a
+// bare JSON array of NearbyResult. Invalid lat/lng, sort or cursor is a
+// bodyless 400 and a store failure a bodyless 500 (envelopes backfilled by
+// middleware.ErrorBody). Only the distance sort sets X-Next-Cursor.
 func (h *nearPointHandler) nearPoint(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 
@@ -104,10 +91,8 @@ func (h *nearPointHandler) nearPoint(w http.ResponseWriter, r *http.Request) {
 	radius := parseNearPointRadius(q.Get("radius"))
 	limit := parseNearPointLimit(q.Get("limit"))
 
-	// decodeNearPointCursor strips the transport-layer base64 wrapping; a
-	// malformed wrapper is a clean 400, never a silent reset to page one. It
-	// runs unconditionally (even for sort=recent, which ignores the decoded
-	// value) so cursor validation stays uniform and independent of sort.
+	// Runs even for sort=recent, which ignores the value, so cursor validation
+	// is independent of sort.
 	cursor, ok := decodeNearPointCursor(q.Get("cursor"))
 	if !ok {
 		w.WriteHeader(http.StatusBadRequest)
@@ -139,19 +124,15 @@ func (h *nearPointHandler) nearPoint(w http.ResponseWriter, r *http.Request) {
 		results = append(results, result)
 	}
 
-	// Set the continuation header before writeJSON, which calls WriteHeader;
-	// omitted entirely when the page is the last.
+	// Must precede writeJSON, which calls WriteHeader.
 	if nextCursor != "" {
 		w.Header().Set("X-Next-Cursor", encodeNearPointCursor(nextCursor))
 	}
 	writeJSON(w, r, h.logger, results)
 }
 
-// parseNearPointCoordinates parses and validates the required lat/lng query
-// params: both must parse as finite floats in valid geographic range
-// ([-90,90] / [-180,180]), mirroring watchzones.createRequest.valid(). Note
-// strconv.ParseFloat accepts the literal strings "NaN"/"Inf"/"+Inf"/"-Inf", so
-// the finiteness check is required even though ParseFloat itself succeeded.
+// strconv.ParseFloat accepts "NaN" and "Inf", so the finiteness check is
+// required even when parsing succeeds.
 func parseNearPointCoordinates(rawLat, rawLng string) (lat, lng float64, ok bool) {
 	lat, err := strconv.ParseFloat(strings.TrimSpace(rawLat), 64)
 	if err != nil {
@@ -173,11 +154,8 @@ func parseNearPointCoordinates(rawLat, rawLng string) (lat, lng float64, ok bool
 	return lat, lng, true
 }
 
-// parseNearPointRadius clamps the optional ?radius= into
-// [nearPointMinRadiusMetres, nearPointMaxRadiusMetres]. Unset, empty,
-// non-numeric, or non-finite falls back to nearPointDefaultRadiusMetres; any
-// other parseable value (including zero or negative) is clamped into the
-// bound rather than rejected.
+// parseNearPointRadius clamps rather than rejects: unparseable falls back to
+// the default, out-of-range values (including zero or negative) are clamped.
 func parseNearPointRadius(raw string) float64 {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -196,10 +174,7 @@ func parseNearPointRadius(raw string) float64 {
 	return n
 }
 
-// parseNearPointLimit clamps the optional ?limit= into [1, nearPointMaxLimit].
-// Unset, empty, or non-numeric falls back to nearPointDefaultLimit; any other
-// parseable value (including zero or negative) is clamped into the bound
-// rather than rejected.
+// parseNearPointLimit clamps rather than rejects, like parseNearPointRadius.
 func parseNearPointLimit(raw string) int {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -218,10 +193,8 @@ func parseNearPointLimit(raw string) int {
 	return n
 }
 
-// parseNearPointSort validates the optional ?sort= query param. An empty value
-// or "distance" normalises to nearPointSortDistance; "recent" normalises to
-// nearPointSortRecent. Any other value is rejected (ok == false): unlike the
-// radius and limit, there is no sensible value to clamp to.
+// parseNearPointSort rejects unknown values: unlike radius and limit, there is
+// no sensible value to clamp to.
 func parseNearPointSort(raw string) (string, bool) {
 	switch raw {
 	case "", nearPointSortDistance:
@@ -233,13 +206,9 @@ func parseNearPointSort(raw string) (string, bool) {
 	}
 }
 
-// decodeNearPointCursor base64url-decodes an opaque ?cursor= value into the
-// store's raw keyset continuation token, mirroring
-// watchzones.decodeCursor/encodeCursor's exact semantics (that package is
-// unexported, so this is a deliberate parallel implementation, not a shared
-// one). An empty value means the first page (ok). A malformed value is
-// rejected (ok == false) so a garbage cursor is a clean 400, not a silent
-// reset to the first page.
+// decodeNearPointCursor deliberately parallels watchzones' unexported cursor
+// codec. A malformed value is rejected so a garbage cursor is a clean 400, not
+// a silent reset to the first page.
 func decodeNearPointCursor(raw string) (string, bool) {
 	if raw == "" {
 		return "", true
@@ -251,8 +220,6 @@ func decodeNearPointCursor(raw string) (string, bool) {
 	return string(b), true
 }
 
-// encodeNearPointCursor base64url-encodes the store's raw keyset continuation
-// token for the X-Next-Cursor response header — header- and URL-safe, unpadded.
 func encodeNearPointCursor(token string) string {
 	return base64.RawURLEncoding.EncodeToString([]byte(token))
 }

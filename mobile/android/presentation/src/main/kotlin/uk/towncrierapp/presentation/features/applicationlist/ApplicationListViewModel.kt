@@ -20,10 +20,6 @@ import uk.towncrierapp.domain.auth.DomainError
 import uk.towncrierapp.domain.watchzones.WatchZoneId
 import uk.towncrierapp.domain.watchzones.WatchZoneRepository
 
-/**
- * Drives the Applications tab: zone chips, status/unread filter chips, sort
- * persistence, cursor-based infinite scroll, tap-to-read, and mark-all-read.
- */
 public class ApplicationListViewModel(
     private val applicationRepository: PlanningApplicationRepository,
     private val watchZoneRepository: WatchZoneRepository,
@@ -76,7 +72,7 @@ public class ApplicationListViewModel(
         fetchFirstPage()
     }
 
-    /** Sets the active chip. [ApplicationFilter]'s shape makes status/unread mutual exclusivity automatic — this always replaces the whole filter. */
+    /** Sets the active chip, replacing the whole filter. */
     public fun selectFilter(filter: ApplicationFilter) {
         _uiState.update { it.copy(filter = filter, applications = emptyList(), nextCursor = null) }
         fetchFirstPage()

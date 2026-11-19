@@ -249,18 +249,11 @@ type appIdentity struct {
 	name   string
 }
 
-// Search runs the three match tiers' KNN queries (searchTier1Query,
-// searchTier2Query, searchTier3Query — sequentially, not concurrently) against the mandatory (lat, lon) query
-// point, merges their rows deduplicated by (area_id, planit_name), sorts the
-// deduplicated set by distance ascending then planit_name ascending, and
-// reports whether more matches exist beyond limit: each tier query already
-// asks for limit+1 rows (see the tier query doc comment for why that cap is
-// still correct under distance-first merging), so if the deduplicated,
-// re-sorted set has more than limit rows, Search truncates to limit and
-// returns true (the v1 "no cursor — tell the caller to refine" signal,
-// SearchResponse.RefineQuery). authorityCode "" applies no authority filter,
-// passed to each query as a genuine SQL NULL (not empty-string equality) so
-// "($n::text IS NULL OR ...)" reads naturally.
+// Search runs the three match tiers' KNN queries sequentially against the
+// (lat, lon) query point, merges their rows deduplicated by
+// (area_id, planit_name), and sorts by distance then planit_name. It truncates
+// to limit and returns true when more matches exist (each tier asks for
+// limit+1 rows). authorityCode "" applies no authority filter.
 func (s *PostgresStore) Search(ctx context.Context, query, authorityCode string, lat, lon float64, limit int) ([]PlanningApplication, bool, error) {
 	var authorityArg any
 	if authorityCode != "" {

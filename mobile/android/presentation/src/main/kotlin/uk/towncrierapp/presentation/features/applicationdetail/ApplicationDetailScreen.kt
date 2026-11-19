@@ -47,13 +47,6 @@ import uk.towncrierapp.presentation.features.applicationlist.applicationErrorMes
 import uk.towncrierapp.presentation.sharing.ShareUrl
 import java.time.LocalDate
 
-/**
- * A full navigation destination (Material idiom — not a bottom sheet):
- * status badge, description headline, fields card, [StatusTimeline], a
- * "View on Council Portal" Custom Tab button when present, and toolbar
- * save-toggle + share (share enabled only once the by-id refresh supplies an
- * `authoritySlug`).
- */
 @Composable
 public fun ApplicationDetailRoute(
     viewModel: ApplicationDetailViewModel,
@@ -141,10 +134,7 @@ private fun ApplicationDetailTopBar(
                         ),
                 )
             }
-            // Share is hidden entirely when the slug is unknown (list-payload-only
-            // state, before the by-id refresh completes) OR when ShareUrl.build
-            // still declines the pair (e.g. an empty ref) — never a disabled/dead
-            // button.
+            // Hidden, never disabled, until the by-id refresh supplies a slug or when ShareUrl.build declines the pair.
             val shareUrl = authoritySlug?.let { slug -> ShareUrl.build(authoritySlug = slug, ref = applicationName) }
             if (shareUrl != null) {
                 IconButton(onClick = { onShareClick(shareUrl) }) {
@@ -211,8 +201,7 @@ private fun shareApplication(
     context.startActivity(Intent.createChooser(sendIntent, null))
 }
 
-// Preview-only sample data — cannot reuse :domain's testFixtures from the
-// main source set (compose-ui.md).
+// Previews cannot see :domain's testFixtures from the main source set.
 private val previewApplication =
     PlanningApplication(
         id = PlanningApplicationId("42", "24/0001"),

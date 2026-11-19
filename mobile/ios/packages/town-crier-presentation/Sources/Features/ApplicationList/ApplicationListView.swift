@@ -3,24 +3,13 @@ import TownCrierDomain
 
 /// Filterable list of planning applications within a watch zone.
 ///
-/// Uses a single `List` as the sole scroll container. Previous designs
-/// stacked horizontal `ScrollView`s in a `VStack` above the `List`; back when
-/// this screen used `.navigationBarTitleDisplayMode(.large)`, the large-title
-/// navigation bar hijacked the first scroll view for its collapse animation,
-/// corrupting its rendering (chips invisible but still tappable). The
-/// single-`List` architecture avoids that regardless of title mode, and the
-/// screen now renders `.inline` with the system title suppressed — see
-/// `mastheadNavigationBar()` — so the `MastheadView` row is the single
-/// visible title.
+/// Uses a single `List` as the sole scroll container: horizontal `ScrollView`s
+/// stacked above a `List` let a large-title navigation bar hijack the first
+/// scroll view's collapse, leaving the chips invisible but still tappable.
 ///
-/// The unread-watermark UI layers on:
-/// - an Unread filter chip (visible only when `hasUnread`) that mirrors the
-///   web bead's single-select behaviour with the existing status chips,
-/// - a sort menu in the toolbar with the four sort modes from the spec,
-/// - a Mark-All-Read toolbar action, visible whenever the app-icon badge has
-///   something to clear (`hasClearableUnread`, the GLOBAL unread count) —
-///   deliberately decoupled from the per-zone `hasUnread` chip so the badge
-///   stays reachable even when the active zone has no unread rows of its own.
+/// Mark-All-Read is gated on `hasClearableUnread` (the global unread count),
+/// deliberately decoupled from the per-zone `hasUnread` chip so the badge stays
+/// clearable when the active zone has no unread rows of its own.
 public struct ApplicationListView: View {
   @StateObject private var viewModel: ApplicationListViewModel
 

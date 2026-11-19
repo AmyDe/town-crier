@@ -12,15 +12,10 @@ import (
 // same reason as nearPointTimeout.
 const clustersTimeout = 8 * time.Second
 
-// clustersStore is the consumer-side store the anonymous clusters handler
-// needs: the same grid-aggregation primitive the authed watch-zone clusters
-// endpoint uses, taking a caller-supplied centre/radius instead of a stored
-// zone. *PostgresStore satisfies it structurally.
 type clustersStore interface {
 	FindClustersInZone(ctx context.Context, q ClusterQuery) ([]Cluster, error)
 }
 
-// clustersHandler serves the public anonymous clusters endpoint.
 type clustersHandler struct {
 	store    clustersStore
 	resolver authoritySlugResolver
@@ -28,23 +23,16 @@ type clustersHandler struct {
 }
 
 // ClustersRoutes registers the public GET /v1/applications/clusters endpoint,
-// serving the same grid-aggregated clusters as the authed watch-zone map
-// (FindClustersInZone). It is kept in cmd/api/wiring.go's
-// anonymousPatterns, mirroring NearPointRoutes.
+// serving the same grid-aggregated clusters as the authed watch-zone map.
 func ClustersRoutes(mux *http.ServeMux, store clustersStore, resolver authoritySlugResolver, logger *slog.Logger) {
 	h := &clustersHandler{store: store, resolver: resolver, logger: logger}
 	mux.HandleFunc("GET /v1/applications/clusters", h.clusters)
 }
 
-// clusters validates lat/lng (required), bbox (required), zoom (required, 0..
-// maxZoom), radius (optional, clamped like near-point) and status (optional,
-// same vocabulary as the authed zone-clusters endpoint), then returns the
-// grid-aggregated clusters for the caller-supplied centre/radius/viewport as a
-// bare JSON array (never null). A missing/invalid lat/lng, bbox, zoom, or
-// status is a bodyless 400; a store failure is a bodyless 500 (both envelopes
-// backfilled by middleware.ErrorBody, mirroring nearPointHandler.nearPoint).
-// Every result identity (Member and every Members entry) is enriched with its
-// AuthoritySlug before encoding.
+// clusters returns the grid-aggregated clusters for the caller-supplied
+// centre, radius and viewport as a bare JSON array (never null), each member
+// identity enriched with its AuthoritySlug. Invalid lat/lng, bbox, zoom or
+// status is a bodyless 400 and a store failure a bodyless 500.
 func (h *clustersHandler) clusters(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 
@@ -87,9 +75,7 @@ func (h *clustersHandler) clusters(w http.ResponseWriter, r *http.Request) {
 		North:           box.North,
 		GridSizeDegrees: gridSize,
 		Status:          status,
-		// The coalesce threshold is always the finest (zoom-20) grid cell size,
-		// independent of the request's own zoom/grid — see FinestGridDegrees's
-		// doc comment, mirroring watchzones' clusters handler.
+		// Always the finest grid cell size, independent of the request's zoom.
 		CoalesceThresholdDegrees: FinestGridDegrees(),
 	})
 	if err != nil {
@@ -97,7 +83,6 @@ func (h *clustersHandler) clusters(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Encode a bare JSON array, never null, for an empty viewport.
 	if clusters == nil {
 		clusters = []Cluster{}
 	}
@@ -105,10 +90,7 @@ func (h *clustersHandler) clusters(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, h.logger, clusters)
 }
 
-// parseClustersZoom resolves the required ?zoom= to a grid cell size via
-// GridDegreesForZoom. Unlike parseNearPointRadius (which clamps), zoom has no
-// sensible default: an absent, non-integer, or out-of-range value is a clean
-// 400, mirroring watchzones' parseZoom.
+// parseClustersZoom rejects rather than clamps: zoom has no sensible default.
 func parseClustersZoom(raw string) (float64, bool) {
 	z, err := strconv.Atoi(raw)
 	if err != nil {
@@ -117,9 +99,8 @@ func parseClustersZoom(raw string) (float64, bool) {
 	return GridDegreesForZoom(z)
 }
 
-// parseClustersStatus resolves the optional ?status= to an app_state filter,
-// mirroring watchzones' parseStatus (same vocabulary; "All"/absent both mean
-// no filter).
+// parseClustersStatus mirrors watchzones' parseStatus: "All" or absent means
+// no filter.
 func parseClustersStatus(raw string) (string, bool) {
 	if raw == "" || raw == "All" {
 		return "", true
@@ -130,9 +111,6 @@ func parseClustersStatus(raw string) (string, bool) {
 	return "", false
 }
 
-// enrichAuthoritySlugs populates AuthoritySlug on every member identity in
-// clusters: a single-member cell's Member, and every entry of an unsplittable
-// multi-member cell's Members disambiguation list.
 func (h *clustersHandler) enrichAuthoritySlugs(ctx context.Context, clusters []Cluster) {
 	for i := range clusters {
 		if clusters[i].Member != nil {
@@ -144,14 +122,9 @@ func (h *clustersHandler) enrichAuthoritySlugs(ctx context.Context, clusters []C
 	}
 }
 
-// attachAuthoritySlug resolves id.Authority (the area_id rendered as a decimal
-// string, see PlanningApplicationID's doc comment) to its URL slug via
-// resolver.SlugForAreaID and sets id.AuthoritySlug. A malformed authority
-// string, or an area id absent from the static authorities table (should
-// never happen — the table covers every real authority), is a warn-logged
-// miss that leaves the slug empty, mirroring resolveAuthoritySlugFor's warn
-// posture but with no AreaName to fall back to slugifying (a Cluster member
-// carries none).
+// attachAuthoritySlug treats a malformed authority or an area id missing from
+// the static authorities table as a warn-logged miss that leaves the slug
+// empty; unlike resolveAuthoritySlugFor there is no AreaName to slugify.
 func (h *clustersHandler) attachAuthoritySlug(ctx context.Context, id *PlanningApplicationID) {
 	areaID, err := strconv.Atoi(id.Authority)
 	if err != nil {

@@ -252,7 +252,7 @@ export function useApplications(options: UseApplicationsOptions) {
     const snap = latestRef.current;
     if (snap.zone === null) return;
     const zoneId = snap.zone.id;
-    const requestId = ++requestIdRef.current; // supersede any in-flight load-more
+    const requestId = ++requestIdRef.current;
     const countRequestId = ++countUnreadRequestIdRef.current;
     await Promise.all([
       browsePort
@@ -292,7 +292,6 @@ export function useApplications(options: UseApplicationsOptions) {
         .catch(() => {
           // Intentionally ignored — the next fetch is the source of truth.
         });
-      // Clamped so repeat opens can't drive the count negative.
       setState((prev) => ({
         ...prev,
         unreadCount: Math.max(0, prev.unreadCount - 1),

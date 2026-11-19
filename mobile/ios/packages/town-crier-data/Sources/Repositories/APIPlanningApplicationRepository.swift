@@ -106,11 +106,7 @@ public final class APIPlanningApplicationRepository: PlanningApplicationReposito
   public func fetchApplication(by id: PlanningApplicationId) async throws -> PlanningApplication {
     let dto: PlanningApplicationDTO
     do {
-      // New endpoint: /v1/applications/{authorityCode}/{**name}
-      // `authorityCode` is `authority` (areaId as decimal string); `name` is the
-      // PlanIt case reference. The greedy `{**name}` segment preserves slashes in
-      // the reference (e.g. "22/1234/FUL"). This is a single-partition point read
-      // (~1 RU) replacing the old cross-partition uid scan.
+      // The greedy `{**name}` segment preserves slashes in the reference (e.g. "22/1234/FUL").
       dto = try await apiClient.request(
         .get("/v1/applications/\(id.authority)/\(id.name)")
       )
@@ -128,10 +124,7 @@ public final class APIPlanningApplicationRepository: PlanningApplicationReposito
     -> PlanningApplication {
     let dto: PlanningApplicationDTO
     do {
-      // Anonymous public read: /v1/applications/by-slug/{authoritySlug}/{**ref}.
-      // The greedy `{**ref}` segment preserves slashes in the full area-prefixed
-      // PlanIt name, so `ref` interpolates raw exactly like `id.name` does in the
-      // by-id read above.
+      // The greedy `{**ref}` segment preserves slashes, so `ref` interpolates raw like `id.name` above.
       dto = try await apiClient.request(
         .get("/v1/applications/by-slug/\(authoritySlug)/\(ref)")
       )
@@ -159,7 +152,7 @@ public final class APIPlanningApplicationRepository: PlanningApplicationReposito
 /// finest grid cell, so zoom can never separate them — additionally carries
 /// `applicationIds`, the capped list of its members' `{authority, name}` ids.
 /// It is omitted/null for every splittable cell, so `members` defaults
-/// to empty and existing behaviour is unchanged.
+/// to empty.
 struct MapClusterDTO: Decodable, Sendable {
   let latitude: Double
   let longitude: Double

@@ -50,10 +50,6 @@ import uk.towncrierapp.presentation.designsystem.components.CapsuleChip
 import uk.towncrierapp.presentation.designsystem.components.Masthead
 import uk.towncrierapp.presentation.designsystem.components.PrimaryButton
 
-/**
- * The Applications tab: zone chips, status/unread filter chips, a sort menu
- * in the top app bar, and cursor-based infinite scroll.
- */
 @Composable
 public fun ApplicationListRoute(
     viewModel: ApplicationListViewModel,
@@ -197,9 +193,7 @@ private fun ApplicationsList(
         contentPadding = PaddingValues(horizontal = TownCrierSpacing.md, vertical = TownCrierSpacing.sm),
     ) {
         itemsIndexed(applications, key = { _, application -> application.id.value }) { index, application ->
-            // Hand-rolled prefetch trigger (no Paging 3): firing once per row
-            // as it enters composition is enough for the ~40-line cursor
-            // loop this app deliberately keeps simple.
+            // Hand-rolled prefetch (deliberately no Paging 3): fires once per row as it enters composition.
             LaunchedEffect(index) { onItemVisible(index) }
             ApplicationRow(application = application, onClick = { onApplicationClick(application) })
         }
@@ -287,8 +281,7 @@ private fun EmptyApplicationsState(modifier: Modifier = Modifier) {
     }
 }
 
-// Preview-only sample data — cannot reuse :domain's testFixtures from the
-// main source set (compose-ui.md).
+// Previews cannot see :domain's testFixtures from the main source set.
 private val previewZone =
     WatchZone(id = WatchZoneId("wz-1"), name = "Home", centre = Coordinate(51.5074, -0.1278), radiusMetres = 500.0)
 

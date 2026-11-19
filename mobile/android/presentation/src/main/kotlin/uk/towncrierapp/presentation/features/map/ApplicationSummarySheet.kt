@@ -32,12 +32,6 @@ import uk.towncrierapp.presentation.designsystem.components.StatusBadge
 import uk.towncrierapp.presentation.designsystem.components.statusDisplay
 import java.time.LocalDate
 
-/**
- * The bottom sheet a single-pin (or disambiguation-list-row) tap opens:
- * status badge, save toggle, reference, description, address, received
- * date, and "View full details". Same field set as iOS
- * `ApplicationSummarySheet`.
- */
 @Composable
 internal fun ApplicationSummarySheetContent(
     application: PlanningApplication,
@@ -105,7 +99,7 @@ internal fun ApplicationSummarySheetContent(
     }
 }
 
-// Preview-only sample data — cannot reuse :domain's testFixtures from the main source set (compose-ui.md).
+// Previews cannot see :domain's testFixtures from the main source set.
 private val previewApplication =
     PlanningApplication(
         id = PlanningApplicationId("42", "24/0001"),

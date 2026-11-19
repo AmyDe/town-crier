@@ -1,34 +1,14 @@
 import Foundation
 import TownCrierDomain
 
-/// Drives the anonymous (pre-signup) Applications tab: a
-/// single page of planning applications, reusing the same
-/// ``ApplicationListRow`` the authenticated Applications tab uses. No
-/// sort/filter chips — matching the pre-resolved v1 scope decision (parity
-/// can follow if anonymous usage justifies it).
+/// Drives the anonymous (pre-signup) Applications tab: a single page of
+/// planning applications for the persisted active ``DeviceLocalZone``.
 ///
-/// GH#912 Phase 3: the fetch requests ``NearbyApplicationSortOrder/recent``
-/// (most-recently-updated-first) rather than the repository's default
-/// `.distance` — a fixed, silent default with no user-facing control (the
-/// anonymous map keeps `.distance`; see ``AnonymousMapViewModel``, which
-/// this change deliberately leaves untouched).
-///
-/// GH#879 Phase 4: the query is now zone-driven. The persisted active
-/// ``DeviceLocalZone`` supplies the coordinate/radius; a zone picker mirrors
-/// the authed ``ApplicationListViewModel``'s pattern
-/// (`showZonePicker`/`zones`/`selectedZone`/`selectZone(_:)`), but over
-/// device-local zones instead of server-side watch zones.
-/// `fallbackCoordinate`/`fallbackRadiusMetres` back the query only in the
-/// practically-unreachable case no device-local zone exists at all (e.g.
-/// before the legacy-state migration has ever run).
-///
-/// GH#888: the on-device cap dropped to one zone, so the picker row is now
-/// always shown once any zone exists (``showZonePicker``), rather than only
-/// once a second zone made a picker a meaningful choice. A trailing
-/// "Add area" chip renders alongside it, routing to the same sign-up CTA
-/// sheet every other anonymous zone-limit affordance uses
-/// (``isSignUpCTAPresented``) — adding a second area now requires an
-/// account.
+/// The fetch requests ``NearbyApplicationSortOrder/recent`` rather than the
+/// repository's default `.distance`, with no user-facing control; the anonymous
+/// map keeps `.distance`. `fallbackCoordinate`/`fallbackRadiusMetres` apply only
+/// when no device-local zone exists. The "Add area" chip routes to the sign-up
+/// CTA (``isSignUpCTAPresented``).
 @MainActor
 public final class AnonymousApplicationListViewModel: ObservableObject, ErrorHandlingViewModel {
   @Published public private(set) var applications: [PlanningApplication] = []
