@@ -321,13 +321,11 @@
         if cluster.count > 1 {
           if cluster.isStacked {
             // Members are coincident (or closer than the finest grid cell), so no
-            // zoom level can ever split them. Open the disambiguation list of the
-            // stacked applications instead of zooming forever (GH#722).
+            // zoom level can ever split them: open the disambiguation list instead
+            // of zooming forever.
             let capturedViewModel = self.viewModel
             Task { await capturedViewModel.selectStack(cluster) }
           } else {
-            // Splittable cell: zoom into it so its members spread into finer cells
-            // on the next (debounced) refetch.
             var region = mapView.region
             region.center = annotation.coordinate
             region.span = MKCoordinateSpan(

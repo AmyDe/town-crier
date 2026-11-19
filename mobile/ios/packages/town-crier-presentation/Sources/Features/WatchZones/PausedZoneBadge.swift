@@ -1,9 +1,7 @@
 import SwiftUI
 
 /// A compact "Paused" indicator shown on a watch zone row that currently
-/// exceeds the user's tier quota and has stopped generating notifications
-/// (GH#889 P1/P2 — a subscription downgrade left the user over quota; oldest
-/// zones stay active, newest are paused).
+/// exceeds the user's tier quota and has stopped generating notifications.
 ///
 /// The badge doubles as its own upgrade affordance: tapping it opens the
 /// subscription paywall via the host's `onUpgrade` closure, which
@@ -12,14 +10,12 @@ import SwiftUI
 /// free-tier inline upsell card, so every "upgrade" entry point on the Watch
 /// Zones screen converges on one paywall presentation path.
 ///
-/// Follows the design language's stamp treatment (GH#857): uppercase kerned
+/// Follows the design language's stamp treatment: uppercase kerned
 /// label, 1.5pt outline, no fill, paired icon — using `tcStatusWithdrawn`,
 /// the same "no longer active" grey used for withdrawn applications, since a
 /// paused zone is, in the same sense, currently dormant. The zone itself is
 /// never deleted, edited, or hidden while paused; only new notifications
-/// stop. The amber "upgrade" glyph a paused stamp previously carried is
-/// dropped deliberately (amber-rationing rule) — upgrade emphasis belongs on
-/// the paywall screen this badge opens, not inside the stamp itself.
+/// stop.
 struct PausedZoneBadge: View {
   /// User-facing copy, kept in one place so it can be unit-tested directly.
   enum Copy {

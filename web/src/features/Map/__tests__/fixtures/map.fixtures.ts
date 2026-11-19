@@ -37,9 +37,7 @@ export function aSecondZone(overrides?: Partial<WatchZoneSummary>): WatchZoneSum
   };
 }
 
-/** A GeoJSON boundary for a custom-shape zone — vertex tuples are
- * `[longitude, latitude]` (GeoJSON/RFC 7946 order), the reverse of this
- * codebase's `Coordinates`/Leaflet convention. */
+/** Vertex tuples are `[longitude, latitude]` (GeoJSON order), the reverse of `Coordinates`. */
 export function aPolygonBoundary(
   overrides?: Partial<WatchZoneBoundary>,
 ): WatchZoneBoundary {
@@ -82,7 +80,6 @@ export function anApplication(overrides?: Partial<PlanningApplication>): Plannin
   };
 }
 
-/** A multi-member cell — renders as an amber count bubble; `member` is null. */
 export function aBubbleCluster(overrides?: Partial<MapCluster>): MapCluster {
   return {
     latitude: 52.2,
@@ -94,7 +91,6 @@ export function aBubbleCluster(overrides?: Partial<MapCluster>): MapCluster {
   };
 }
 
-/** A single-member cell — renders as a status-coloured pin carrying its member. */
 export function aSinglePinCluster(overrides?: Partial<MapCluster>): MapCluster {
   const member: ClusterMember = { authority: '1', name: '22/1234/FUL' };
   return {

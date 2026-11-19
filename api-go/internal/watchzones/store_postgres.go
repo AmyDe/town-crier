@@ -11,21 +11,13 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// pgUniqueViolationCode is the Postgres SQLSTATE for a unique-constraint
-// violation. Save uses it to detect a name collision against the
-// watch_zones_user_id_name_key constraint.
 const pgUniqueViolationCode = "23505"
 
-// isUniqueViolation reports whether err is a Postgres unique-constraint
-// violation (SQLSTATE 23505).
 func isUniqueViolation(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == pgUniqueViolationCode
 }
 
-// querier is the consumer-side slice of *pgxpool.Pool the store uses. Defining it
-// here keeps the store decoupled from the concrete pool; both *pgxpool.Pool and
-// pgx.Tx satisfy it structurally.
 type querier interface {
 	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)

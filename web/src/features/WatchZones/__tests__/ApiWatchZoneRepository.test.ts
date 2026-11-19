@@ -30,9 +30,7 @@ class StubApiClient implements ApiClient {
     return this.postResult as T;
   }
 
-  async put(): Promise<void> {
-    // no-op
-  }
+  async put(): Promise<void> {}
 
   async patch<T>(path: string, body?: unknown): Promise<T> {
     this.lastPatchPath = path;
@@ -40,9 +38,7 @@ class StubApiClient implements ApiClient {
     return this.patchResult as T;
   }
 
-  async delete(): Promise<void> {
-    // no-op
-  }
+  async delete(): Promise<void> {}
 }
 
 describe('ApiWatchZoneRepository', () => {

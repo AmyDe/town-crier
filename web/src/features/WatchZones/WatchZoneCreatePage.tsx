@@ -129,26 +129,25 @@ export function WatchZoneCreatePage({ repository, geocodingPort, navigate, tier 
 
       {step === 'confirm' && (
         <section className={styles.section}>
-          {isCustomShape
-            ? coordinates && (
-                <BoundaryMap
-                  centre={coordinates}
-                  vertices={drawing.vertices}
-                  isClosed={drawing.isClosed}
-                  onAddVertex={drawing.addVertex}
-                  onMoveVertex={drawing.moveVertex}
-                  onCloseRing={drawing.closeRing}
-                  onUndo={drawing.undo}
-                  onReset={drawing.reset}
-                />
-              )
-            : coordinates && (
-                <ConfirmMap
-                  latitude={coordinates.latitude}
-                  longitude={coordinates.longitude}
-                  radiusMetres={radiusMetres}
-                />
-              )}
+          {coordinates &&
+            (isCustomShape ? (
+              <BoundaryMap
+                centre={coordinates}
+                vertices={drawing.vertices}
+                isClosed={drawing.isClosed}
+                onAddVertex={drawing.addVertex}
+                onMoveVertex={drawing.moveVertex}
+                onCloseRing={drawing.closeRing}
+                onUndo={drawing.undo}
+                onReset={drawing.reset}
+              />
+            ) : (
+              <ConfirmMap
+                latitude={coordinates.latitude}
+                longitude={coordinates.longitude}
+                radiusMetres={radiusMetres}
+              />
+            ))}
           <div className={styles.confirmDetails}>
             <div className={styles.confirmRow}>
               <span className={styles.confirmLabel}>Postcode</span>

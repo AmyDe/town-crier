@@ -62,26 +62,20 @@ public final class WatchZoneListViewModel: ObservableObject, ErrorHandlingViewMo
   /// Hides the unconverted-zones row for the rest of this session. The row
   /// reappears on next launch (a fresh view model) while zones still remain
   /// — local zones are never silently discarded, only converted or
-  /// explicitly deleted. This is the "keep for later" choice in the
-  /// delete-confirmation dialog (tc-luq4u).
+  /// explicitly deleted.
   public func dismissLocalZoneRow() {
     isLocalZoneRowDismissed = true
     isDiscardConfirmationPresented = false
   }
 
-  /// Opens the row's delete-confirmation dialog (tc-luq4u) — the "x" button
-  /// no longer dismisses directly, since dismissal alone gave a pre-signup
-  /// user with no onboarding-wizard run no way to ever decline the zones the
-  /// row nags about.
+  /// Opens the row's delete-confirmation dialog.
   public func presentDiscardConfirmation() {
     isDiscardConfirmationPresented = true
   }
 
-  /// Permanently deletes every unconverted device-local zone (tc-luq4u) —
-  /// the explicit "no" the row previously lacked. Deletes each from the
-  /// injected repository, then clears the published list so
-  /// ``showsLocalZoneRow`` becomes false immediately and stays false on
-  /// every later ``load()`` (the repository itself is now empty).
+  /// Permanently deletes every unconverted device-local zone, then clears the
+  /// published list so ``showsLocalZoneRow`` stays false on later ``load()``
+  /// calls.
   public func discardLocalZones() {
     for zone in unconvertedLocalZones {
       deviceLocalZoneRepository?.delete(zone.id)

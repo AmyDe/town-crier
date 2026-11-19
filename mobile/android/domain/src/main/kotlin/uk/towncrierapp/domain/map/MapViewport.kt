@@ -6,8 +6,7 @@ import kotlin.math.log2
 import kotlin.math.max
 
 /**
- * The visible map rectangle expressed as a WGS84 bounding box (GH#698,
- * GH#776). The map sends this with an integer slippy [zoom] so the server
+ * The visible map rectangle expressed as a WGS84 bounding box. The map sends this with an integer slippy [zoom] so the server
  * returns only the cluster aggregates inside the current view. Edges are
  * decimal degrees: [west]/[east] are longitudes, [south]/[north] are
  * latitudes.
@@ -78,8 +77,8 @@ public data class MapViewport(
  * The viewport produced by zooming into a splittable bubble tapped at
  * [target]: both spans halve (floored at [MapViewport.MIN_SPAN_DEGREES]) and
  * the new rectangle is centred on [target] — no server round-trip, purely
- * client-side camera math (GH#776, matching iOS `ClusteredMapView`'s
- * `didSelect` handling). Port of iOS's halve-span-then-floor zoom-in.
+ * client-side camera math, matching iOS `ClusteredMapView`'s `didSelect`
+ * handling.
  */
 public fun MapViewport.zoomedInto(target: Coordinate): MapViewport {
     val newLatSpan = max((north - south) / 2, MapViewport.MIN_SPAN_DEGREES)

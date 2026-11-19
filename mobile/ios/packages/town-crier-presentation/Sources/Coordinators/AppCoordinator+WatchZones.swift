@@ -4,15 +4,10 @@ extension AppCoordinator {
   // MARK: - Watch Zone Factories
 
   public func makeWatchZoneListViewModel() -> WatchZoneListViewModel {
-    // Reuse the cached VM only while its gate still reflects the current tier.
-    // The tier resolves from the default `.free` to a paid tier *after* the VM
-    // is first built (resolveSubscriptionTier runs asynchronously at launch),
-    // and the list is keyed `.id(subscriptionTier)` so the view rebuilds on the
-    // change. Returning a stale `.free` gate kept the upgrade badge on the +
-    // button once the 1-zone free limit was hit, blocking paid users below
-    // their actual limit (tc-ujct). Rebuild with a fresh gate when the tier
-    // differs; same-tier calls still return a stable instance so the editor's
-    // post-save reload path converges on the retained VM.
+    // Reuse the cached VM only while its gate matches the current tier: the
+    // tier resolves from `.free` asynchronously after first build, and a stale
+    // gate would block paid users below their real limit. Same-tier calls
+    // return the retained VM so the editor's post-save reload converges on it.
     if let cached = watchZoneListViewModel, cached.featureGate.tier == subscriptionTier {
       return cached
     }
@@ -30,8 +25,7 @@ extension AppCoordinator {
     viewModel.onViewPlans = { [weak self] in
       self?.isSubscriptionPresented = true
     }
-    // Unconverted device-local zones row (GH#879 Phase 5): reopens the same
-    // conversion sheet completeOnboarding() presents post-wizard.
+    // Reopens the same conversion sheet completeOnboarding() presents post-wizard.
     viewModel.onConvertLocalZones = { [weak self] in
       self?.reopenDeviceLocalZoneConversion()
     }
@@ -53,13 +47,13 @@ extension AppCoordinator {
     )
     let isEditing = zone != nil
     viewModel.onUpgradeRequired = { [weak self] in
-      // Quota breach on save (tc-gpjk): close the editor sheet and present the
+      // Quota breach on save: close the editor sheet and present the
       // subscription paywall instead of showing an inline error.
       self?.isAddingWatchZone = false
       self?.editingWatchZone = nil
       self?.isSubscriptionPresented = true
-      // Hitting a quota wall is a friction moment — never ask for a review in
-      // the same session (GH #628).
+      // Hitting a quota wall is a friction moment: never ask for a review in
+      // the same session.
       self?.reviewPromptTracker?.suppressThisSession()
     }
     viewModel.onSave = { [weak self] saved in
@@ -68,7 +62,7 @@ extension AppCoordinator {
       self?.pendingWatchZoneRefresh = Task { [weak self] in
         // Invalidate the per-zone applications cache before reloading so a
         // radius/centre change does not serve a stale cache hit on the
-        // Apps view for up to the cache TTL (tc-9vid).
+        // Apps view for up to the cache TTL.
         if isEditing, let offlineRepository = self?.offlineRepository {
           await offlineRepository.invalidateCache(for: saved.id)
         }

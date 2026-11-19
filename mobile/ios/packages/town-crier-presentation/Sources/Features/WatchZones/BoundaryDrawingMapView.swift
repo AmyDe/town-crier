@@ -2,23 +2,14 @@ import MapKit
 import TownCrierDomain
 
 /// Computes the map region ``BoundaryDrawingMapView`` shows on first
-/// appearance (GH#1031, bead tc-7se1w.2): a fixed close-in region centred
-/// on the postcode-geocoded centre when there are no vertices yet (a
-/// brand-new custom shape — today's behaviour, unchanged), or a region
-/// that fits the bounding box of the existing vertices with margin when
-/// re-opening a zone that already has a drawn polygon. Without this, the
-/// fixed 1000m default clips a large polygon's vertices/edges outside the
-/// visible map on reopen.
+/// appearance: a fixed close-in region around the postcode-geocoded centre
+/// when there are no vertices yet, or a region fitting the existing vertices
+/// with margin so a reopened large polygon is not clipped.
 ///
-/// A free-standing, non-generic type (rather than a member of the generic
-/// `BoundaryDrawingMapView<ViewModel>`) so the zoom-to-fit math is
-/// directly unit-testable without a concrete `ViewModel` or a
-/// `UIViewRepresentable` context. Deliberately outside the `canImport(UIKit)`
-/// guard below — it only needs `MapKit`/`CoreLocation`, both available on
-/// macOS, so `swift test`'s bare-macOS build (no UIKit) can still see it.
+/// Non-generic and deliberately outside the `canImport(UIKit)` guard so the
+/// zoom-to-fit math is unit-testable in `swift test`'s bare-macOS build.
 enum BoundaryDrawingRegion {
-  /// The fixed region size (metres) used when there are no vertices yet —
-  /// matches the region this view always used before tc-7se1w.2.
+  /// The fixed region size (metres) used when there are no vertices yet.
   static let freshDrawRegionMetres: CLLocationDistance = 1000
 
   /// Extra room around the tightest bounding box of the vertices, as a
@@ -31,11 +22,9 @@ enum BoundaryDrawingRegion {
   /// few vertices from producing an absurdly close-in zoom.
   static let minimumSpanDegrees = 0.006
 
-  /// Delegates the non-empty-vertices case to ``PolygonBoundingRegion``
-  /// (extracted in tc-7se1w.3, which needs the identical bounding-box-with-
-  /// margin math to frame the main Map page's camera on a custom-shape
-  /// zone) — only the "no vertices yet" fixed-region fallback is specific
-  /// to this editor.
+  /// Delegates the non-empty-vertices case to ``PolygonBoundingRegion``;
+  /// only the "no vertices yet" fixed-region fallback is specific to this
+  /// editor.
   static func fitting(vertices: [Coordinate], initialCentre: Coordinate) -> MKCoordinateRegion {
     guard
       let fitted = PolygonBoundingRegion.fitting(

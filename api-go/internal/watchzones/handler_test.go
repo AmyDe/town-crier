@@ -225,12 +225,11 @@ func TestHandler_Patch_UpdatesEveryMappedField(t *testing.T) {
 		t.Fatalf("decode: %v", err)
 	}
 	want := watchZoneSummary{
-		ID:           z.ID,
-		Name:         "Renamed Office",
-		Latitude:     52.4862,
-		Longitude:    -1.8904,
-		RadiusMetres: 3000,
-		// Back-compat shim: always 0, never resolved.
+		ID:                  z.ID,
+		Name:                "Renamed Office",
+		Latitude:            52.4862,
+		Longitude:           -1.8904,
+		RadiusMetres:        3000,
 		AuthorityID:         0,
 		PushEnabled:         false,
 		EmailInstantEnabled: false,
@@ -401,10 +400,10 @@ func TestHandler_Patch_Boundary_AbsentLeavesShapeUnchanged(t *testing.T) {
 
 // TestHandler_Patch_Boundary_ExplicitNullConvertsToCircle proves a literal
 // `"boundary":null` reverts a custom-shape zone to a circle while preserving
-// its existing centre and radius (acceptance criteria 3), and that this
+// its existing centre and radius, and that this
 // revert path needs no tier check at all -- testMux wires no profile reader,
 // and the request still succeeds, because the tier gate only applies to
-// setting a non-null boundary (acceptance criteria 4).
+// setting a non-null boundary.
 func TestHandler_Patch_Boundary_ExplicitNullConvertsToCircle(t *testing.T) {
 	t.Parallel()
 	base := testZone(t)
@@ -439,7 +438,7 @@ func TestHandler_Patch_Boundary_ExplicitNullConvertsToCircle(t *testing.T) {
 
 // TestHandler_Patch_Boundary_ValueRequiresPaidTier403 proves a Free-tier
 // caller's PATCH that sets a non-null boundary is rejected with 403
-// boundary_requires_paid_tier (acceptance criteria 4) and never persisted.
+// boundary_requires_paid_tier and never persisted.
 func TestHandler_Patch_Boundary_ValueRequiresPaidTier403(t *testing.T) {
 	t.Parallel()
 	z := testZone(t)
@@ -469,7 +468,7 @@ func TestHandler_Patch_Boundary_ValueRequiresPaidTier403(t *testing.T) {
 
 // TestHandler_Patch_Boundary_ValueSetsShape proves a paid-tier caller's PATCH
 // that sets a valid boundary derives and persists the new centroid/enclosing
-// radius (acceptance criteria 3's "value" branch).
+// radius.
 func TestHandler_Patch_Boundary_ValueSetsShape(t *testing.T) {
 	t.Parallel()
 	z := testZone(t)
@@ -501,7 +500,7 @@ func TestHandler_Patch_Boundary_ValueSetsShape(t *testing.T) {
 // TestHandler_Patch_Boundary_TooLargeIs400 proves a paid-tier caller's PATCH
 // that sets a boundary exceeding their own tier's radius cap (but under the
 // hard server ceiling) is rejected with 400 boundary_too_large and never
-// persisted (acceptance criteria 6, Gate B).
+// persisted.
 func TestHandler_Patch_Boundary_TooLargeIs400(t *testing.T) {
 	t.Parallel()
 	z := testZone(t)
@@ -536,7 +535,7 @@ func TestHandler_Patch_Boundary_TooLargeIs400(t *testing.T) {
 // TestHandler_Patch_Boundary_InvalidShapeIs400 proves a paid-tier caller's
 // PATCH that sets a malformed shape (here, fewer than the domain's minimum 3
 // vertices) surfaces as 400 boundary_invalid via WithUpdates' own NewBoundary
-// validation, not a re-implemented HTTP-layer check (acceptance criteria 5).
+// validation, not a re-implemented HTTP-layer check.
 func TestHandler_Patch_Boundary_InvalidShapeIs400(t *testing.T) {
 	t.Parallel()
 	z := testZone(t)
