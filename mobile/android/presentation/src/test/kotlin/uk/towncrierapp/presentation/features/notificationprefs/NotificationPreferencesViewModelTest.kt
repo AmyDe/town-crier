@@ -26,8 +26,6 @@ class NotificationPreferencesViewModelTest {
         savedDecisionEmail = savedDecisionEmail,
     )
 
-    // region Load
-
     @Test
     fun `load populates fields from the fetched profile`() {
         val repository =
@@ -78,10 +76,6 @@ class NotificationPreferencesViewModelTest {
 
         assertEquals(true, viewModel.uiState.value.savedDecisionPush)
     }
-
-    // endregion
-
-    // region Setters — full five-field round trip
 
     @Test
     fun `setSavedDecisionPush PATCHes the full five-field body and round-trips other fields`() {
@@ -205,10 +199,6 @@ class NotificationPreferencesViewModelTest {
         assertEquals(DigestDay.SATURDAY, viewModel.uiState.value.digestDay)
     }
 
-    // endregion
-
-    // region Rollback / error
-
     @Test
     fun `a failed PATCH rolls the toggle back to its prior value`() {
         val initial = aProfile(savedDecisionPush = true)
@@ -239,6 +229,4 @@ class NotificationPreferencesViewModelTest {
         assertEquals(false, state.emailDigestEnabled)
         assertEquals(false, state.savedDecisionEmail)
     }
-
-    // endregion
 }
