@@ -279,12 +279,9 @@ struct TownCrierApp: App {
         await forceUpdateViewModel.checkVersion()
       }
       .onChange(of: scenePhase) { oldPhase, newPhase in
-        // Reconcile the app icon badge with the server-side unread watermark on
-        // every foreground entry — we pull rather than rely on silent push so
-        // cross-device read-state changes propagate without server-side fan-out
-        // (docs/specs/notifications-unread-watermark.md#ios-badge-foreground-push).
+        // Pull on every foreground entry rather than rely on silent push, so cross-device
+        // read-state changes propagate without server-side fan-out.
         guard newPhase == .active else { return }
-        // Loyalty review signal: only a background→active re-entry counts (#628).
         coordinator.recordAppForegrounded(isReactivation: oldPhase == .background)
         Task { await coordinator.syncBadge() }
       }
