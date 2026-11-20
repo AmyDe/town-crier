@@ -75,10 +75,6 @@ func scanDigestRowExtra(row pgx.CollectableRow, extra ...any) (DigestNotificatio
 	if err := row.Scan(dest...); err != nil {
 		return DigestNotification{}, err
 	}
-	et := EventNewApplication
-	if eventType != "" {
-		et = EventType(eventType)
-	}
 	return DigestNotification{
 		ID:                     id,
 		UserID:                 userID,
@@ -90,7 +86,7 @@ func scanDigestRowExtra(row pgx.CollectableRow, extra ...any) (DigestNotificatio
 		ApplicationType:        applicationType,
 		AuthorityID:            authorityID,
 		Decision:               decision,
-		EventType:              et,
+		EventType:              eventTypeOrDefault(eventType),
 		Sources:                sources,
 		PushSent:               pushSent,
 		EmailSent:              emailSent,
@@ -111,13 +107,9 @@ func scanLatestUnreadRow(row pgx.CollectableRow) (LatestUnread, error) {
 	if err := row.Scan(&applicationUID, &decision, &eventType, &createdAt); err != nil {
 		return LatestUnread{}, err
 	}
-	et := EventNewApplication
-	if eventType != "" {
-		et = EventType(eventType)
-	}
 	return LatestUnread{
 		ApplicationUID: applicationUID,
-		EventType:      et,
+		EventType:      eventTypeOrDefault(eventType),
 		Decision:       decision,
 		CreatedAt:      createdAt,
 	}, nil
@@ -491,4 +483,12 @@ func (s *PostgresStore) PurgeOlderThan(ctx context.Context, cutoff time.Time) (i
 		return 0, fmt.Errorf("purge notifications older than %v: %w", cutoff, err)
 	}
 	return tag.RowsAffected(), nil
+}
+
+// eventTypeOrDefault maps an empty event_type column to EventNewApplication.
+func eventTypeOrDefault(s string) EventType {
+	if s == "" {
+		return EventNewApplication
+	}
+	return EventType(s)
 }

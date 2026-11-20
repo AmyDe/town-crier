@@ -120,10 +120,7 @@ type watchZoneDigest struct {
 // and folds the remaining groups into "+K more" rather than trying to list
 // them all and risk truncation in a notification/inbox preview.
 func buildDigestSubject(totalCount int, sections []watchZoneDigest, saved []notifications.DigestNotification) string {
-	plural := "s"
-	if totalCount == 1 {
-		plural = ""
-	}
+	plural := pluralSuffix(totalCount)
 
 	groups := len(sections)
 	if len(saved) > 0 {
@@ -162,10 +159,7 @@ func buildDigestHTML(zoneSections []watchZoneDigest, savedApplications []notific
 		}
 	}
 
-	plural := "s"
-	if totalCount == 1 {
-		plural = ""
-	}
+	plural := pluralSuffix(totalCount)
 
 	freeTierNotice := ""
 	if showFreeTierNotice {

@@ -29,11 +29,7 @@ const digestTitle = "Town Crier"
 // week"). Shared by the APNs and FCM builders so the two platforms render
 // byte-identical copy for the same digest.
 func digestBody(applicationCount int) string {
-	plural := "s"
-	if applicationCount == 1 {
-		plural = ""
-	}
-	return fmt.Sprintf("%d new application%s this week", applicationCount, plural)
+	return fmt.Sprintf("%d new application%s this week", applicationCount, pluralSuffix(applicationCount))
 }
 
 // buildDigestPayload renders the APNs digest push body. applicationCount is the
@@ -93,4 +89,11 @@ func buildDigestFCMPayload(applicationCount int) (json.RawMessage, error) {
 		return nil, fmt.Errorf("marshal digest fcm payload: %w", err)
 	}
 	return raw, nil
+}
+
+func pluralSuffix(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
 }
