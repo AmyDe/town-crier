@@ -1,26 +1,19 @@
-// Package notifydispatch is the poll-path notification fan-out: the per-app
-// orchestration the poll runner's event dispatcher runs for a new or decided
-// planning application. It implements two dispatch paths: the new-application zone
-// fan-out (Enqueuer) and the non-decision → decision transition fan-out
-// (DecisionDispatcher).
+// Package notifydispatch is the poll-path notification fan-out for a new or
+// decided planning application: the new-application zone fan-out (Enqueuer)
+// and the non-decision to decision transition fan-out (DecisionDispatcher).
 //
-// It lives in its own package, not in notifications, to avoid an import cycle:
-// the watchzones package already imports notifications (for the latest-unread
-// projection), and the dispatchers depend on watchzones, profiles,
-// devicetokens, notificationstate, savedapplications and the notifications
-// store.
+// It lives outside notifications to avoid an import cycle, because watchzones
+// already imports notifications and the dispatchers depend on watchzones.
 //
-// Idempotency is the load-bearing property: every dispatch is gated on a
-// (userId, applicationUid, authorityId, eventType) dedup read, so a re-poll of
-// an unchanged application never double-notifies. Free-tier users get the
-// notification record (which feeds the weekly digest) but no instant push —
-// matching the server-enforced tier entitlement.
+// Every dispatch is gated on a (userId, applicationUid, authorityId, eventType)
+// dedup read, so a re-poll of an unchanged application never double-notifies.
+// Free-tier users get the notification record (which feeds the weekly digest)
+// but no instant push.
 //
-// Neither dispatcher sends a push itself: a push-eligible notification is
-// handed to a pushQueue (*PushCoalescer in production), which coalesces the
-// whole poll cycle's queued notifications into at most one push per (user,
-// watch zone) — plus one per-user "saved" bucket — at cycle end. The
-// dispatchers do the gating; the coalescer does no gating of its own.
+// Neither dispatcher sends a push itself: a push-eligible notification goes to
+// a pushQueue (*PushCoalescer in production), which sends at most one push per
+// (user, watch zone) plus one per-user "saved" bucket at cycle end. The
+// dispatchers do the gating; the coalescer does none.
 package notifydispatch
 
 import (

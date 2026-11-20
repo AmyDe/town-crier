@@ -24,8 +24,6 @@ const (
 	testEmail = "u1@example.com"
 )
 
-// ---- hand-written fakes ----
-
 type fakeProfiles struct {
 	byDay    map[time.Weekday][]*profiles.UserProfile
 	byID     map[string]*profiles.UserProfile
@@ -178,8 +176,6 @@ func (d *fakeDispatcher) Send(ctx context.Context, iosTokens []string, iosPayloa
 	return invalid, nil
 }
 
-// ---- helpers ----
-
 func testLogger() *slog.Logger {
 	return slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
 }
@@ -235,8 +231,6 @@ func newHandlerWithDispatcher(p *fakeProfiles, n *fakeNotifications, z *fakeZone
 	})
 }
 
-// ---- weekly tests ----
-
 func TestRunWeekly_EmailGroupsByZoneAndSavedSection(t *testing.T) {
 	t.Parallel()
 	prefs := profiles.DefaultPreferences()
@@ -276,7 +270,6 @@ func TestRunWeekly_EmailGroupsByZoneAndSavedSection(t *testing.T) {
 	if !contains(msg.HTMLBody, "addr uid-A") || !contains(msg.HTMLBody, "addr uid-B") {
 		t.Errorf("body missing notification addresses:\n%s", msg.HTMLBody)
 	}
-	// The weekly cycle must tag its "Email send" span digest-weekly (tc-3jx8d).
 	if len(email.kinds) != 1 || email.kinds[0] != "digest-weekly" {
 		t.Errorf("email kinds: got %v, want [digest-weekly]", email.kinds)
 	}
@@ -429,8 +422,6 @@ func TestRunWeekly_SkipsUsersWithNoNotifications(t *testing.T) {
 	}
 }
 
-// ---- hourly tests ----
-
 func TestRunHourly_PaidTierSendsAndMarksEmailSent(t *testing.T) {
 	t.Parallel()
 	prefs := profiles.DefaultPreferences()
@@ -458,7 +449,6 @@ func TestRunHourly_PaidTierSendsAndMarksEmailSent(t *testing.T) {
 	if len(email.sent) != 1 {
 		t.Fatalf("emails sent: got %d, want 1", len(email.sent))
 	}
-	// The hourly cycle must tag its "Email send" span digest-hourly (tc-3jx8d).
 	if len(email.kinds) != 1 || email.kinds[0] != "digest-hourly" {
 		t.Errorf("email kinds: got %v, want [digest-hourly]", email.kinds)
 	}
@@ -472,7 +462,7 @@ func TestRunHourly_EmailSendFailureDoesNotMarkSent(t *testing.T) {
 	t.Parallel()
 	// If the ACS send fails, the notifications must NOT be flipped emailSent — the
 	// next cycle must retry. A swallowed send error that marks sent anyway is silent
-	// data loss (tc-qvds).
+	// data loss.
 	prefs := profiles.DefaultPreferences()
 	prefs.EmailDigestEnabled = true
 	p := mkProfile(t, profiles.TierPro, prefs)
@@ -754,7 +744,7 @@ func TestRunWeekly_DuplicatePairCollapsesPushCountToUniqueApplications(t *testin
 	t.Parallel()
 	// The weekly PUSH body count must match the deduped email application
 	// count: a NewApplication+DecisionUpdate pair for the same application is
-	// ONE application, not two (tc-txkm1).
+	// ONE application, not two.
 	prefs := profiles.DefaultPreferences()
 	prefs.EmailDigestEnabled = false
 	prefs.PushEnabled = true
@@ -1140,8 +1130,6 @@ func TestRunWeekly_LedgerFromEarlierCycleDoesNotSkip(t *testing.T) {
 		t.Errorf("emails sent: got %d, want 1", len(email.sent))
 	}
 }
-
-// ---- weekly batching tests ----
 
 type funcEmail struct {
 	sent []acsemail.Message

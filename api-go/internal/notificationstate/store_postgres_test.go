@@ -11,8 +11,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-// --- fakes ---
-
 type fakeNSQuerier struct {
 	execResponses  []execResp
 	execIdx        int
@@ -108,8 +106,6 @@ func (r *fakeNSRows) Values() ([]any, error)                       { return nil,
 func (r *fakeNSRows) Conn() *pgx.Conn                              { return nil }
 func (r *fakeNSRows) TypeMap() *pgtype.Map                         { return nil }
 
-// --- Get ---
-
 func TestPostgresNSStore_Get_NotFound(t *testing.T) {
 	t.Parallel()
 	q := &fakeNSQuerier{queryResponses: []queryResp{{rows: newNSRows(nil)}}}
@@ -167,8 +163,6 @@ func TestPostgresNSStore_Get_PropagatesQueryError(t *testing.T) {
 	}
 }
 
-// --- Save ---
-
 func TestPostgresNSStore_Save_Success(t *testing.T) {
 	t.Parallel()
 	q := &fakeNSQuerier{execResponses: []execResp{{tag: pgconn.NewCommandTag("INSERT 0 1")}}}
@@ -194,8 +188,6 @@ func TestPostgresNSStore_Save_PropagatesExecError(t *testing.T) {
 		t.Fatalf("got %v, want wrapped %v", err, boom)
 	}
 }
-
-// --- UnreadCount ---
 
 func TestPostgresNSStore_UnreadCount_ReturnsCount(t *testing.T) {
 	t.Parallel()
@@ -243,8 +235,6 @@ func TestPostgresNSStore_UnreadCount_ZeroWhenNoRows(t *testing.T) {
 		t.Errorf("count: got %d, want 0", count)
 	}
 }
-
-// --- MarkAllRead / MarkApplicationsRead (count parsing + error propagation) ---
 
 func TestPostgresNSStore_MarkAllRead_ReturnsClearedCount(t *testing.T) {
 	t.Parallel()
@@ -300,8 +290,6 @@ func TestPostgresNSStore_MarkApplicationsRead_PropagatesQueryError(t *testing.T)
 	}
 }
 
-// --- MarkReadUpTo (temporary advance compat shim, tc-ekii) ---
-
 func TestPostgresNSStore_MarkReadUpTo_ReturnsClearedCount(t *testing.T) {
 	t.Parallel()
 	q := &fakeNSQuerier{queryResponses: []queryResp{{rows: newNSRows([][]any{{int64(2)}})}}}
@@ -327,8 +315,6 @@ func TestPostgresNSStore_MarkReadUpTo_PropagatesQueryError(t *testing.T) {
 		t.Fatalf("got %v, want wrapped %v", err, boom)
 	}
 }
-
-// --- DeleteByUserID ---
 
 func TestPostgresNSStore_DeleteByUserID_Success(t *testing.T) {
 	t.Parallel()

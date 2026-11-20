@@ -11,8 +11,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-// --- fakes ---
-
 // fakeQuerier implements querier using pre-configured responses. A single
 // Exec error or Query/scan configuration is set per test; multiple calls
 // can be sequenced via a slice of responses.
@@ -129,8 +127,6 @@ func (r *fakeRows) Values() ([]any, error)                       { return nil, n
 func (r *fakeRows) Conn() *pgx.Conn                              { return nil }
 func (r *fakeRows) TypeMap() *pgtype.Map                         { return nil }
 
-// --- helpers ---
-
 func newTestNotification() DigestNotification {
 	return DigestNotification{
 		ID:                     "notif-id-1",
@@ -145,8 +141,6 @@ func newTestNotification() DigestNotification {
 		CreatedAt:              time.Date(2026, 6, 26, 12, 0, 0, 0, time.UTC),
 	}
 }
-
-// --- Create ---
 
 func TestPostgresStore_Create_Success(t *testing.T) {
 	t.Parallel()
@@ -177,8 +171,6 @@ func TestPostgresStore_Create_PropagatesExecError(t *testing.T) {
 		t.Fatalf("Create: got err %v, want wrapped %v", err, boom)
 	}
 }
-
-// --- GetLatestUnreadByApplications ---
 
 func TestPostgresStore_GetLatestUnreadByApplications_EmptyUIDs(t *testing.T) {
 	t.Parallel()
@@ -254,8 +246,6 @@ func TestPostgresStore_GetLatestUnreadByApplications_ReturnsLatestPerUID(t *test
 	}
 }
 
-// --- GetByUserAndApplication ---
-
 func TestPostgresStore_GetByUserAndApplication_NotFound(t *testing.T) {
 	t.Parallel()
 	q := &fakeQuerier{
@@ -297,8 +287,6 @@ func TestPostgresStore_GetByUserAndApplication_Found(t *testing.T) {
 	}
 }
 
-// --- ByUserSince / AllByUser ---
-
 func TestPostgresStore_ByUserSince_PropagatesQueryError(t *testing.T) {
 	t.Parallel()
 	boom := errors.New("since boom")
@@ -336,8 +324,6 @@ func TestPostgresStore_AllByUser_PropagatesQueryError(t *testing.T) {
 		t.Fatalf("got %v, want wrapped %v", err, boom)
 	}
 }
-
-// --- UnsentEmailsByUser / UserIDsWithUnsentEmails ---
 
 func TestPostgresStore_UnsentEmailsByUser_PropagatesQueryError(t *testing.T) {
 	t.Parallel()
@@ -384,8 +370,6 @@ func TestPostgresStore_UserIDsWithUnsentEmails_PropagatesQueryError(t *testing.T
 		t.Fatalf("got %v, want wrapped %v", err, boom)
 	}
 }
-
-// --- CountsByUsers ---
 
 func TestPostgresStore_CountsByUsers_EmptyUsers(t *testing.T) {
 	t.Parallel()
@@ -450,8 +434,6 @@ func TestPostgresStore_CountsByUsers_MapsPerUser(t *testing.T) {
 	}
 }
 
-// --- Totals ---
-
 func TestPostgresStore_Totals_ReturnsSentAndUnread(t *testing.T) {
 	t.Parallel()
 	// count(*) with no GROUP BY always yields exactly one row.
@@ -485,8 +467,6 @@ func TestPostgresStore_Totals_PropagatesQueryError(t *testing.T) {
 	}
 }
 
-// --- MarkEmailSent ---
-
 func TestPostgresStore_MarkEmailSent_PropagatesExecError(t *testing.T) {
 	t.Parallel()
 	boom := errors.New("mark boom")
@@ -498,8 +478,6 @@ func TestPostgresStore_MarkEmailSent_PropagatesExecError(t *testing.T) {
 		t.Fatalf("got %v, want wrapped %v", err, boom)
 	}
 }
-
-// --- DeleteAllByUserID ---
 
 func TestPostgresStore_DeleteAllByUserID_Success(t *testing.T) {
 	t.Parallel()
@@ -522,8 +500,6 @@ func TestPostgresStore_DeleteAllByUserID_PropagatesExecError(t *testing.T) {
 		t.Fatalf("got %v, want wrapped %v", err, boom)
 	}
 }
-
-// --- PurgeOlderThan ---
 
 func TestPostgresStore_PurgeOlderThan_ReturnsRowsDeleted(t *testing.T) {
 	t.Parallel()

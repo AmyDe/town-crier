@@ -103,8 +103,6 @@ func TestPlatformDispatcher_OnePlatformErrorDoesNotBlockOther(t *testing.T) {
 	}
 }
 
-// ---- coalescer platform-split tests ----
-
 func newMixedCoalescer(t *testing.T) (*PushCoalescer, *fakeDevices, *fakePush, *fakePush) {
 	t.Helper()
 	devs := &fakeDevices{byUser: map[string][]devicetokens.DeviceRegistration{

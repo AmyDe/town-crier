@@ -40,8 +40,6 @@ func intNotif(id, userID, applicationUID string, eventType EventType, createdAt 
 	}
 }
 
-// --- Create / GetByUserAndApplication (dedup) ---
-
 func TestIntegration_Notifications_CreateAndGetByUserAndApplication(t *testing.T) {
 	s := newPGNotifStore(t)
 	ctx := context.Background()
@@ -103,8 +101,6 @@ func TestIntegration_Notifications_GetByUserAndApplication_NotFound(t *testing.T
 		t.Errorf("expected nil for absent notification, got %+v", got)
 	}
 }
-
-// --- GetLatestUnreadByApplications ---
 
 func TestIntegration_Notifications_GetLatestUnreadByApplications(t *testing.T) {
 	s := newPGNotifStore(t)
@@ -173,8 +169,6 @@ func TestIntegration_Notifications_GetLatestUnreadByApplications_ExcludesRead(t 
 	}
 }
 
-// --- ByUserSince / AllByUser ---
-
 func TestIntegration_Notifications_ByUserSince(t *testing.T) {
 	s := newPGNotifStore(t)
 	ctx := context.Background()
@@ -233,8 +227,6 @@ func TestIntegration_Notifications_AllByUser(t *testing.T) {
 		t.Errorf("first row ID: got %q, want n1 (oldest first)", got[0].ID)
 	}
 }
-
-// --- UnsentEmailsByUser / UserIDsWithUnsentEmails / MarkEmailSent ---
 
 func TestIntegration_Notifications_UnsentEmailsFlow(t *testing.T) {
 	s := newPGNotifStore(t)
@@ -295,8 +287,6 @@ func TestIntegration_Notifications_UserIDsWithUnsentEmails(t *testing.T) {
 	}
 }
 
-// --- DeleteAllByUserID ---
-
 func TestIntegration_Notifications_DeleteAllByUserID(t *testing.T) {
 	s := newPGNotifStore(t)
 	ctx := context.Background()
@@ -334,8 +324,6 @@ func TestIntegration_Notifications_DeleteAllByUserID(t *testing.T) {
 		t.Errorf("user-2 notifications after user-1 delete: got %d, want 1", len(other))
 	}
 }
-
-// --- PurgeOlderThan ---
 
 func TestIntegration_Notifications_PurgeOlderThan(t *testing.T) {
 	s := newPGNotifStore(t)
@@ -452,8 +440,6 @@ func TestIntegration_Notifications_Totals(t *testing.T) {
 		t.Errorf("Totals: got %+v, want {4 3}", got)
 	}
 }
-
-// --- push lifecycle ---
 
 type pushState struct {
 	status      *string

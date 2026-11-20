@@ -11,7 +11,7 @@ import (
 // zoneNotif("uid-A", zoneID), with its own record ID and a UK-displayable
 // "Permitted" decision (renders as the "[Approved]" stamp). This mirrors the
 // real duplicate the polling ingester can produce when an application is
-// first seen already-decided (tc-txkm1 root cause): both a NewApplication and
+// first seen already-decided: both a NewApplication and
 // a DecisionUpdate record land for one (ApplicationUID, AuthorityID) pair.
 func decisionNotif(zoneID string) notifications.DigestNotification {
 	const uid = "uid-A"
