@@ -237,8 +237,6 @@ func TestPostgresStore_PurgeOlderThan_PropagatesExecError(t *testing.T) {
 	}
 }
 
-// --- CountsByUsers ---
-
 // TestPostgresStore_CountsByUsers_Empty short-circuits an empty user set with no
 // query and an empty, non-nil map.
 func TestPostgresStore_CountsByUsers_Empty(t *testing.T) {
@@ -294,8 +292,6 @@ func TestPostgresStore_CountsByUsers_MapsPerUser(t *testing.T) {
 		t.Error("auth0|u3 must be absent (defaults to zero at the call site)")
 	}
 }
-
-// --- Count ---
 
 // TestPostgresStore_Count_ReturnsTotal returns the scalar count(*).
 func TestPostgresStore_Count_ReturnsTotal(t *testing.T) {

@@ -13,16 +13,12 @@ public enum MainTab: Hashable, Sendable {
 }
 
 extension AppCoordinator {
-  /// Presents the in-app `NotificationPreferencesView` from Settings. The
-  /// Settings sheet observes `isNotificationPreferencesPresented` and pushes
-  /// the screen via `.navigationDestination(isPresented:)`.
+  /// Presents the in-app `NotificationPreferencesView` from Settings.
   public func showNotificationPreferences() {
     isNotificationPreferencesPresented = true
   }
 
-  /// Factory for the in-app notification-preferences ViewModel. Injects the
-  /// shared profile + watch-zone repositories so the screen can load the
-  /// current preferences and the watch-zone count badge in one task.
+  /// Factory for the in-app notification-preferences ViewModel.
   public func makeNotificationPreferencesViewModel() -> NotificationPreferencesViewModel {
     NotificationPreferencesViewModel(
       userProfileRepository: userProfileRepository,

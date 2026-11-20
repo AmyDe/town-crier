@@ -4,8 +4,7 @@
 /// can drive the badge without importing UIKit.
 ///
 /// Used by ``AppCoordinator`` to reconcile the badge with the server-side
-/// `totalUnreadCount` whenever the app enters the foreground (spec
-/// `docs/specs/notifications-unread-watermark.md#ios-badge-foreground-push`).
+/// `totalUnreadCount` whenever the app enters the foreground.
 public protocol BadgeSetting: Sendable {
   /// Sets the application icon badge to `count`. Negative values are
   /// implementation-defined; conforming types should clamp to zero.

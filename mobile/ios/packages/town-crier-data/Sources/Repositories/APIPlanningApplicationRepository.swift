@@ -285,7 +285,7 @@ struct PlanningApplicationDTO: Decodable, Sendable {
 /// Wire shape for the per-row `latestUnreadEvent` descriptor returned by the
 /// per-zone applications endpoint. Older API builds may omit the
 /// field entirely; absence and explicit `null` both decode to `nil` on the
-/// domain entity. Spec: `docs/specs/notifications-unread-watermark.md`.
+/// domain entity.
 struct LatestUnreadEventDTO: Decodable, Sendable {
   let type: String
   let decision: String?

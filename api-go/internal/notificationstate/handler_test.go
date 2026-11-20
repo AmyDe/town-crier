@@ -74,8 +74,7 @@ func (f *fakeStateStore) MarkApplicationsRead(_ context.Context, _ string, refs 
 	return int64(len(refs)), nil
 }
 
-// MarkReadUpTo backs the temporary advance compat shim (tc-ekii): it records the
-// parsed asOf and now so the handler test can assert the translation.
+// MarkReadUpTo records the parsed asOf and now.
 func (f *fakeStateStore) MarkReadUpTo(_ context.Context, _ string, asOf, now time.Time) (int64, error) {
 	f.markUpToCalls++
 	f.markUpToAsOf = asOf
@@ -298,11 +297,8 @@ func TestHandler_MarkRead(t *testing.T) {
 	})
 }
 
-// TestHandler_Advance covers the TEMPORARY backward-compat shim (tc-ekii): the
-// re-added POST /v1/me/notification-state/advance translates the old
-// {asOf}-watermark request to a read_at MarkReadUpTo(asOf, now) call and returns
-// an idempotent 204. New iOS/web clients do not call this route (they use
-// /v1/me/applications/mark-read); remove per tc-v5w8 once the new iOS build is live.
+// TestHandler_Advance covers the backward-compat shim that translates the old
+// {asOf}-watermark request to MarkReadUpTo(asOf, now) and returns an idempotent 204.
 func TestHandler_Advance(t *testing.T) {
 	t.Parallel()
 

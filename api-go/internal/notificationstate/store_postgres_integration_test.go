@@ -90,8 +90,6 @@ func unreadCountFor(t *testing.T, pool *pgxpool.Pool, userID string) int {
 	return n
 }
 
-// --- Get / Save round-trip ---
-
 func TestIntegration_NotificationState_GetSave(t *testing.T) {
 	s, _ := newPGStateStore(t)
 	ctx := context.Background()
@@ -159,8 +157,6 @@ func TestIntegration_NotificationState_Save_Idempotent(t *testing.T) {
 	}
 }
 
-// --- UnreadCount over read_at IS NULL, equivalent to a watermark fixture ---
-
 // TestIntegration_NotificationState_UnreadCount proves UnreadCount under
 // read_at IS NULL equals the count an equivalent watermark fixture (created_at >
 // last_read_at, backfilled per migration 0015) would give. Watermark at t1 → the
@@ -211,8 +207,6 @@ func TestIntegration_NotificationState_UnreadCount(t *testing.T) {
 	})
 }
 
-// --- MarkAllRead ---
-
 // TestIntegration_NotificationState_MarkAllRead proves mark-all clears every unread
 // notification (a subsequent UnreadCount is 0) and bumps the version change token,
 // upserting the state row when the user has none.
@@ -257,8 +251,6 @@ func TestIntegration_NotificationState_MarkAllRead(t *testing.T) {
 		t.Errorf("version after second mark-all: got %+v, want 2", st)
 	}
 }
-
-// --- MarkApplicationsRead ---
 
 // TestIntegration_NotificationState_MarkApplicationsRead_MatchesNameNotUID is the
 // #733 regression guard. The mutation must scope by application_name (= a.Name, the
@@ -405,15 +397,8 @@ func readAtOf(t *testing.T, pool *pgxpool.Pool, id string) *time.Time {
 	return readAt
 }
 
-// --- MarkReadUpTo (temporary advance compat shim, tc-ekii) ---
-
-// TestIntegration_NotificationState_MarkReadUpTo proves the read_at translation of
-// the retired watermark advance: notifications created at or before asOf are marked
-// read (read_at NOT NULL), a later notification stays unread, a repeat clears zero
-// (idempotent), the version token bumps only when a row was cleared, and a first-touch
-// user gets a state row created on the first clear. This is real-DB behaviour (the
-// created_at <= asOf predicate and the conditional CTE bump) the fake querier cannot
-// model. Remove with the shim per bead tc-v5w8.
+// TestIntegration_NotificationState_MarkReadUpTo covers the created_at <= asOf
+// predicate and the conditional CTE version bump, which the fake querier cannot model.
 func TestIntegration_NotificationState_MarkReadUpTo(t *testing.T) {
 	s, pool := newPGStateStore(t)
 	ctx := context.Background()
@@ -480,8 +465,6 @@ func TestIntegration_NotificationState_MarkReadUpTo(t *testing.T) {
 		t.Errorf("unread after advance: got %d, want 1 (only the post-asOf row)", got)
 	}
 }
-
-// --- DeleteByUserID ---
 
 func TestIntegration_NotificationState_DeleteByUserID(t *testing.T) {
 	s, _ := newPGStateStore(t)

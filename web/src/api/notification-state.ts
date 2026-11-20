@@ -1,6 +1,5 @@
 import type { ApiClient } from './client';
 
-/** HTTP client for the notification read-state endpoints. */
 export function notificationStateApi(client: ApiClient) {
   return {
     markAllRead: () =>
