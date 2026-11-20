@@ -4,7 +4,6 @@ import {
   type WatchZoneId,
   type AuthorityId,
   type LatestUnreadEvent,
-  type NotificationStateSnapshot,
   asApplicationUid,
   asWatchZoneId,
   asAuthorityId,
@@ -38,17 +37,6 @@ describe("notification-state types", () => {
     expect(event.type).toBe("DecisionUpdate");
     expect(event.decision).toBe("Permitted");
     expect(event.createdAt).toBe("2026-05-04T12:00:00Z");
-  });
-
-  it("NotificationStateSnapshot surfaces lastReadAt, version and totalUnreadCount", () => {
-    const state: NotificationStateSnapshot = {
-      lastReadAt: "2026-05-04T12:00:00Z",
-      version: 3,
-      totalUnreadCount: 7,
-    };
-    expect(state.lastReadAt).toBe("2026-05-04T12:00:00Z");
-    expect(state.version).toBe(3);
-    expect(state.totalUnreadCount).toBe(7);
   });
 });
 
