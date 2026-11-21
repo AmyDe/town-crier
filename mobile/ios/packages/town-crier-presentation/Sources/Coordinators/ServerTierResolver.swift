@@ -6,9 +6,7 @@ import os
 /// subscription tier.
 ///
 /// `POST /v1/me` is idempotent server-side: it returns the existing profile
-/// when one is already present, and creates one otherwise. Calling it on every
-/// tier resolution backfills profiles for users who signed in before this code
-/// path existed.
+/// when one is already present, and creates one otherwise.
 public final class ServerTierResolver: Sendable {
   private static let logger = Logger(
     subsystem: "uk.towncrierapp",
