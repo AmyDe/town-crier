@@ -21,11 +21,6 @@ func testLogger() *slog.Logger {
 	return slog.New(slog.DiscardHandler)
 }
 
-// ---------------------------------------------------------------------------
-// Fake querier — sequential QueryRow queue, fixed Exec outcome, Query error,
-// plus Begin() returning a configurable fake transaction.
-// ---------------------------------------------------------------------------
-
 // fakeOfferCodeQuerier is a hand-written test double for the pool interface.
 // QueryRow calls are served from a FIFO queue so tests can configure the exact
 // sequence of row responses for multi-step methods; Begin returns the
@@ -212,16 +207,7 @@ func (r *fakeEmptyRows) CommandTag() pgconn.CommandTag                { return p
 func (r *fakeEmptyRows) Conn() *pgx.Conn                              { return nil }
 func (r *fakeEmptyRows) TypeMap() *pgtype.Map                         { return nil }
 
-// ---------------------------------------------------------------------------
-// Compile-time check: PostgresStore satisfies the handler's consumer interface,
-// so a divergence is a compile error.
-// ---------------------------------------------------------------------------
-
 var _ codeStore = (*PostgresStore)(nil)
-
-// ---------------------------------------------------------------------------
-// Get
-// ---------------------------------------------------------------------------
 
 // TestPostgresStore_Get_Miss confirms that a pgx.ErrNoRows from the point-read
 // query surfaces as ErrNotFound (not a raw pgx error).
@@ -309,10 +295,6 @@ func TestPostgresStore_Get_NullLabelCoalescesToEmpty(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Save
-// ---------------------------------------------------------------------------
-
 // TestPostgresStore_Save_DatabaseError confirms that an Exec error is wrapped
 // and returned.
 func TestPostgresStore_Save_DatabaseError(t *testing.T) {
@@ -325,10 +307,6 @@ func TestPostgresStore_Save_DatabaseError(t *testing.T) {
 		t.Fatalf("Save db error: got %v, want wrapped %v", err, boom)
 	}
 }
-
-// ---------------------------------------------------------------------------
-// RedeemWithCAS
-// ---------------------------------------------------------------------------
 
 // TestPostgresStore_RedeemWithCAS_Success confirms that when the insert
 // succeeds and the atomic UPDATE matches and returns a row, RedeemWithCAS
@@ -448,10 +426,6 @@ func TestPostgresStore_RedeemWithCAS_BeginError(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// RedeemedByUserID / RedeemedByUsers
-// ---------------------------------------------------------------------------
-
 // fakeRedeemedRow scans the 5-column join projection used by
 // RedeemedByUserID/RedeemedByUsers: code, tier, duration_days, redeemed_at,
 // user_id.
@@ -551,10 +525,6 @@ func TestPostgresStore_RedeemedByUserID_Hit(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// RedeemedByUsers (batched)
-// ---------------------------------------------------------------------------
-
 // TestPostgresStore_RedeemedByUsers_Empty short-circuits an empty user set with
 // no query and an empty, non-nil map.
 func TestPostgresStore_RedeemedByUsers_Empty(t *testing.T) {
@@ -632,10 +602,6 @@ func TestPostgresStore_RedeemedByUsers_IgnoresNilUserID(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// AnonymiseRedemptionsByUserID
-// ---------------------------------------------------------------------------
-
 // TestPostgresStore_AnonymiseRedemptionsByUserID_Success confirms both scrub
 // statements run and the transaction commits.
 func TestPostgresStore_AnonymiseRedemptionsByUserID_Success(t *testing.T) {
@@ -687,10 +653,6 @@ func TestPostgresStore_AnonymiseRedemptionsByUserID_LegacyExecError(t *testing.T
 		t.Error("must not commit when the legacy scrub fails")
 	}
 }
-
-// ---------------------------------------------------------------------------
-// List
-// ---------------------------------------------------------------------------
 
 // fakeListedRow scans the 8-column projection used by List: code, tier,
 // duration_days, created_at, label, max_redemptions, redemption_count,

@@ -2,10 +2,6 @@ import TownCrierDomain
 
 /// A protocol for ViewModels that intercept `DomainError.insufficientEntitlement`
 /// and present the subscription upsell sheet instead of a generic error state.
-///
-/// Conformers must provide both `error` (from ``ErrorHandlingViewModel``) and
-/// `entitlementGate`. The default `handleError` override routes entitlement
-/// errors to the gate binding while forwarding all other errors normally.
 @MainActor
 protocol EntitlementGatingViewModel: ErrorHandlingViewModel {
   var entitlementGate: Entitlement? { get set }

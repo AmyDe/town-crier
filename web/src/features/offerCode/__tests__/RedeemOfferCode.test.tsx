@@ -3,8 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { RedeemOfferCode } from '../RedeemOfferCode';
 import { SpyRedeemOfferCodeClient } from './spies/spy-redeem-offer-code-client';
-import type { RedeemResult } from '../api/types';
-import { RedeemError } from '../api/types';
+import { RedeemError, type RedeemResult } from '../api/types';
 
 const PRO_RESULT: RedeemResult = {
   tier: 'Pro',

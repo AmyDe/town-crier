@@ -89,8 +89,7 @@ public final class SubscriptionViewModel: ObservableObject, ErrorHandlingViewMod
 
   /// Shown when a purchase or restore's Apple ID transaction is already
   /// linked to a different Town Crier account. Never names or hints at the
-  /// other account -- the app holds no information about it that it is
-  /// allowed to show.
+  /// other account.
   public static let transactionClaimedAlertTitle = "This subscription is on another account"
   public static let transactionClaimedAlertMessage =
     "The subscription on this Apple ID is already linked to a different Town Crier "
