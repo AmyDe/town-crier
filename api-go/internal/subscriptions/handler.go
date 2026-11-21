@@ -91,8 +91,6 @@ func isCompactJWS(s string) bool {
 	return len(third) > 0 && !strings.Contains(third, ".")
 }
 
-// envAllowed reports whether env appears in the allowlist, comparing
-// case-insensitively and after trimming whitespace.
 func envAllowed(env string, allowed []string) bool {
 	env = strings.TrimSpace(env)
 	for _, a := range allowed {
@@ -200,10 +198,8 @@ type lifetimeCandidate struct {
 	purchasedAt           time.Time
 }
 
-// runVerify verifies every supplied JWS, applies the highest active subscription
-// and the highest lifetime purchase to the caller's profile, persists it, and
-// syncs Auth0. It never revokes a lifetime grant: the JWS list is
-// client-supplied, so a missing transaction is not proof of a refund.
+// runVerify never revokes a lifetime grant: the JWS list is client-supplied, so
+// a missing transaction is not proof of a refund.
 func (h *handler) runVerify(ctx context.Context, userID string, signedTransactions []string) (verifyResponse, error) {
 	var resp verifyResponse
 	err := profiles.RetryOnConflict(ctx, profiles.DefaultSaveAttempts, func(ctx context.Context) error {

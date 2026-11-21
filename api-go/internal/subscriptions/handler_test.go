@@ -31,8 +31,6 @@ var testNow = time.Date(2026, 6, 13, 12, 0, 0, 0, time.UTC)
 func futureExpiryMs() int64 { return testNow.AddDate(0, 1, 0).UnixMilli() }
 func pastExpiryMs() int64   { return testNow.AddDate(0, -1, 0).UnixMilli() }
 
-// --- fakes ---
-
 type fakeVerifier struct {
 	results   map[string]string
 	errs      map[string]error
@@ -183,8 +181,6 @@ func (f *fakeIdempotency) MarkProcessed(_ context.Context, uuid string) error {
 	return nil
 }
 
-// --- harness ---
-
 type testDeps struct {
 	verifier    *fakeVerifier
 	byUser      *fakeProfileByUser
@@ -291,8 +287,6 @@ func decodeError(t *testing.T, rec *httptest.ResponseRecorder) apiErrorResponse 
 	}
 	return e
 }
-
-// --- verify tests ---
 
 func TestVerify_PurchaseActivatesPro(t *testing.T) {
 	t.Parallel()
@@ -735,8 +729,6 @@ func TestVerify_ErrorContract(t *testing.T) {
 	}
 }
 
-// --- webhook tests ---
-
 func notificationJSON(notifType, uuid, signedTxn string) string {
 	return fmt.Sprintf(`{"notificationType":%q,"notificationUUID":%q,"data":{"signedTransactionInfo":%q}}`,
 		notifType, uuid, signedTxn)
@@ -992,8 +984,6 @@ func TestWebhook_StampsNotificationTypeEvenWhenIgnored(t *testing.T) {
 	}
 }
 
-// --- applyNotification (pure) tests ---
-
 func TestApplyNotification(t *testing.T) {
 	t.Parallel()
 	future := testNow.AddDate(0, 1, 0).UTC()
@@ -1067,8 +1057,6 @@ func TestApplyNotification(t *testing.T) {
 		})
 	}
 }
-
-// --- F1: environment allowlist tests ---
 
 func TestVerify_RejectsSandboxTransactionInProduction(t *testing.T) {
 	t.Parallel()
@@ -1242,8 +1230,6 @@ func TestVerify_AllowsFirstTimeClaim(t *testing.T) {
 		t.Error("profile not saved as Pro on first claim")
 	}
 }
-
-// --- F7: webhook cheap pre-check tests ---
 
 // TestWebhook_RejectsMalformedPayloadBeforeVerify asserts that a SignedPayload
 // that is not a valid compact JWS (header.payload.signature) is rejected with

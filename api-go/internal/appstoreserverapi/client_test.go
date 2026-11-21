@@ -58,8 +58,6 @@ func newTestOptions(pemBytes []byte, environment string) Options {
 	}
 }
 
-// --- JWT shape ---
-
 // TestClient_FetchNotificationHistory_MintsValidJWT decodes the
 // Authorization: Bearer header server-side and asserts the header/claims
 // shape the spec pins: alg=ES256/kid=<KeyID>, iss=<IssuerID>,
@@ -132,8 +130,6 @@ func TestClient_FetchNotificationHistory_MintsValidJWT(t *testing.T) {
 	}
 }
 
-// --- base URL selection ---
-
 func TestClient_BaseURLSelection(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -157,8 +153,6 @@ func TestClient_BaseURLSelection(t *testing.T) {
 		})
 	}
 }
-
-// --- single-page fetch ---
 
 func writeHistoryResponse(w http.ResponseWriter, resp historyResponse) {
 	w.Header().Set("Content-Type", "application/json")
@@ -210,8 +204,6 @@ func TestClient_FetchNotificationHistory_SinglePage(t *testing.T) {
 		t.Errorf("paginationToken = %q, want empty on first page", capturedBody.PaginationToken)
 	}
 }
-
-// --- multi-page fetch ---
 
 func TestClient_FetchNotificationHistory_MultiPageThreadsToken(t *testing.T) {
 	t.Parallel()
@@ -269,8 +261,6 @@ func TestClient_FetchNotificationHistory_MultiPageThreadsToken(t *testing.T) {
 		}
 	}
 }
-
-// --- 429 handling ---
 
 func TestClient_FetchNotificationHistory_RetriesOn429WithSecondsRetryAfter(t *testing.T) {
 	t.Parallel()
@@ -364,8 +354,6 @@ func TestClient_FetchNotificationHistory_RetriesExhaustedReturnsError(t *testing
 	}
 }
 
-// --- non-429 error ---
-
 func TestClient_FetchNotificationHistory_NonRetryableStatusFailsImmediately(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -404,8 +392,6 @@ func TestClient_FetchNotificationHistory_NonRetryableStatusFailsImmediately(t *t
 	}
 }
 
-// --- max-page cap guard ---
-
 func TestClient_FetchNotificationHistory_MaxPageCapGuardsAgainstInfiniteLoop(t *testing.T) {
 	t.Parallel()
 	pemBytes := newTestKeyPEM(t)
@@ -435,8 +421,6 @@ func TestClient_FetchNotificationHistory_MaxPageCapGuardsAgainstInfiniteLoop(t *
 		t.Errorf("callCount = %d, want exactly maxHistoryPages=%d (defensive cap fired)", callCount, maxHistoryPages)
 	}
 }
-
-// --- options validation ---
 
 func TestNewClient_RejectsIncompleteOptions(t *testing.T) {
 	t.Parallel()

@@ -12,8 +12,6 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/subscriptionevents"
 )
 
-// --- hand-written fakes -----------------------------------------------------
-
 type fakeFinder struct {
 	lapsed []*profiles.UserProfile
 	err    error
@@ -93,8 +91,6 @@ func newHandler(finder Finder, saver Saver, auth0 Auth0Syncer, now time.Time) *H
 func newHandlerNotifying(finder Finder, saver Saver, auth0 Auth0Syncer, notify Notifier, now time.Time) *Handler {
 	return New(finder, saver, auth0, notify, slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil)), func() time.Time { return now })
 }
-
-// --- tests ------------------------------------------------------------------
 
 func TestHandler_Run_PassesNowToFinder(t *testing.T) {
 	t.Parallel()

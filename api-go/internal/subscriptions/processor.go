@@ -121,9 +121,8 @@ func activateSubscription(profile *profiles.UserProfile, txn DecodedTransaction)
 	return true, nil
 }
 
-// applyNotification mutates the profile per the App Store notification type and
-// reports whether any state changed (a no-change event needs no save/sync). A
-// non-consumable (lifetime) transaction only ever touches the lifetime grant.
+// applyNotification reports whether any state changed, so a no-change event
+// skips save and sync.
 func applyNotification(profile *profiles.UserProfile, notification DecodedNotification, txn DecodedTransaction) (bool, error) {
 	if txn.Type == TransactionTypeNonConsumable {
 		return applyLifetimeNotification(profile, notification, txn)
