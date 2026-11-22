@@ -228,15 +228,6 @@ func NewProfile(userID, email string, now time.Time) (*UserProfile, error) {
 	}, nil
 }
 
-// RecordActivity advances LastActiveAt to now only when now is later
-// (forward-only). The dormancy-cleanup worker relies on this timestamp
-// (UK GDPR Art. 5(1)(e)).
-func (p *UserProfile) RecordActivity(now time.Time) {
-	if now.After(p.LastActiveAt) {
-		p.LastActiveAt = now
-	}
-}
-
 // BackfillEmail sets the email only if it is currently absent. An already-set
 // email is never overwritten.
 func (p *UserProfile) BackfillEmail(email string) {

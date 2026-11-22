@@ -68,25 +68,6 @@ func TestNewProfile_NilEmailWhenBlank(t *testing.T) {
 	}
 }
 
-func TestProfile_RecordActivity_OnlyAdvances(t *testing.T) {
-	t.Parallel()
-
-	base := time.Date(2026, 6, 11, 12, 0, 0, 0, time.UTC)
-	p, _ := NewProfile("u1", "", base)
-
-	// Earlier time is ignored (LastActiveAt only moves forward).
-	p.RecordActivity(base.Add(-time.Hour))
-	if !p.LastActiveAt.Equal(base) {
-		t.Errorf("RecordActivity backwards moved LastActiveAt to %v", p.LastActiveAt)
-	}
-
-	later := base.Add(48 * time.Hour)
-	p.RecordActivity(later)
-	if !p.LastActiveAt.Equal(later) {
-		t.Errorf("RecordActivity: got %v, want %v", p.LastActiveAt, later)
-	}
-}
-
 func TestProfile_BackfillEmail(t *testing.T) {
 	t.Parallel()
 
