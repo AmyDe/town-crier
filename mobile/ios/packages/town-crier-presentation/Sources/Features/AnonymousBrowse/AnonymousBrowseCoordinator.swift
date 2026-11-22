@@ -1,8 +1,8 @@
 import Foundation
 import TownCrierDomain
 
-/// Owns navigation for the anonymous (pre-signup) browse flow (GH#868 Phase
-/// 3): welcome -> postcode entry -> map, plus the handoff into the existing
+/// Owns navigation for the anonymous (pre-signup) browse flow: welcome ->
+/// postcode entry -> map, plus the handoff into the existing
 /// Auth0 flow from any of the three screens. Mirrors the extension-per-concern
 /// composition pattern `AppCoordinator+Onboarding.swift` establishes, kept as
 /// its own type (rather than an `AppCoordinator` extension) because this flow
@@ -23,8 +23,7 @@ public final class AnonymousBrowseCoordinator: ObservableObject {
     case tabs
   }
 
-  /// The anonymous tab shell's tabs, in display order (GH#879 Phase 3;
-  /// `.zones` added Phase 4). Deliberately no `.saved` case — saving is
+  /// The anonymous tab shell's tabs, in display order. Deliberately no `.saved` case — saving is
   /// account-bound (ADR 0035) and stays the conversion pitch. `CaseIterable`
   /// so tests can assert the tab set is exactly these four, with no silent
   /// additions.
@@ -92,24 +91,17 @@ public final class AnonymousBrowseCoordinator: ObservableObject {
   /// to `loginViewModel.login()`.
   public var onRequestSignIn: (() -> Void)?
 
-  /// Fired by the anonymous map's "View full details" handoff (GH#879 Phase
-  /// 2). Wired by the composition root to present the shared root detail
+  /// Fired by the anonymous map's "View full details" handoff. Wired by the composition root to present the shared root detail
   /// sheet in anonymous mode (`AppCoordinator.showAnonymousApplicationDetail`).
   public var onShowApplicationDetail: ((PlanningApplication) -> Void)?
 
-  /// Fired by the anonymous Settings tab's "Privacy Policy" row (GH#879
-  /// Phase 3). Wired by the composition root to the shared
-  /// `AppCoordinator.showPrivacyPolicy()` — legal documents are loaded from a
-  /// bundled JSON resource with no network/auth dependency, so both the
-  /// authed and anonymous surfaces can safely reuse the same presentation
-  /// mechanism on the always-present `AppCoordinator` instance.
+  /// Fired by the anonymous Settings tab's "Privacy Policy" row. Wired by the
+  /// composition root to the shared `AppCoordinator.showPrivacyPolicy()`.
   public var onShowPrivacyPolicy: (() -> Void)?
-  /// Fired by the anonymous Settings tab's "Terms of Service" row (GH#879
-  /// Phase 3). See ``onShowPrivacyPolicy``.
+  /// Fired by the anonymous Settings tab's "Terms of Service" row. See ``onShowPrivacyPolicy``.
   public var onShowTermsOfService: (() -> Void)?
-  /// Fired by the anonymous Settings tab's "Rate the App" row (GH#879 Phase
-  /// 3). Wired by the composition root to the shared
-  /// `AppCoordinator.rateApp()`.
+  /// Fired by the anonymous Settings tab's "Rate the App" row. Wired by the
+  /// composition root to the shared `AppCoordinator.rateApp()`.
   public var onRateApp: (() -> Void)?
 
   public init(
@@ -131,8 +123,8 @@ public final class AnonymousBrowseCoordinator: ObservableObject {
     self.screen = .welcome
     self.mapViewModel = nil
 
-    // Relaunch persistence (GH#868 Phase 3.5): a saved anonymous session
-    // routes straight to the tab shell, never back through welcome.
+    // A saved anonymous session routes straight to the tab shell, never back
+    // through welcome.
     if let state = stateRepository.load() {
       currentState = state
       screen = .tabs
@@ -162,7 +154,7 @@ public final class AnonymousBrowseCoordinator: ObservableObject {
   }
 
   /// Returns the flow to its zero state and clears any persisted anonymous
-  /// session — called on sign-out (GH#868 Phase 3.6), a deliberate return to
+  /// session — called on sign-out, a deliberate return to
   /// the welcome screen rather than back to the anonymous tab shell.
   /// Idempotent: safe to call even when nothing was ever persisted (e.g. a
   /// user who was never anonymous before signing in).
@@ -199,16 +191,9 @@ public final class AnonymousBrowseCoordinator: ObservableObject {
     viewModel.onShowApplicationDetail = { [weak self] application in
       self?.onShowApplicationDetail?(application)
     }
-    // Switching the active zone (a picker chip tap) re-centres the Map tab
-    // to match (GH#879 Phase 4 acceptance criteria). Mutates the EXISTING
-    // `mapViewModel` in place via `updateActiveZone(_:)` rather than
-    // replacing the published property with a new instance — live simulator
-    // verification found that replacing it left the Map tab frozen on the
-    // previous zone until a full relaunch, because `AnonymousMapView` holds
-    // the view model in a `@StateObject`, which SwiftUI keeps bound to
-    // whichever instance was FIRST passed to it (see
-    // `AnonymousMapViewModel.updateActiveZone(_:)`'s own docs for the full
-    // writeup).
+    // Mutates the EXISTING `mapViewModel` in place rather than replacing it:
+    // `AnonymousMapView` holds it in a `@StateObject`, which stays bound to the
+    // first instance, so a replacement would leave the Map tab frozen.
     viewModel.onActiveZoneChanged = { [weak self] zone in
       self?.mapViewModel?.updateActiveZone(zone)
     }
@@ -222,7 +207,7 @@ public final class AnonymousBrowseCoordinator: ObservableObject {
   /// Builds the Zones tab's view model, sharing the same anonymous
   /// `PostcodeGeocoder` instance postcode entry uses (never `/v1/geocode`).
   ///
-  /// GH#888: a successful edit fires ``DeviceLocalZoneListViewModel/onZonesChanged``
+  /// A successful edit fires ``DeviceLocalZoneListViewModel/onZonesChanged``
   /// with the saved zone. That mutates the EXISTING `mapViewModel` in place
   /// via `updateActiveZone(_:)` — the same identity-preserving requirement
   /// `onActiveZoneChanged` above satisfies, and for the same reason (see
@@ -282,12 +267,8 @@ public final class AnonymousBrowseCoordinator: ObservableObject {
     onRateApp?()
   }
 
-  /// Seeds the map from `state.radiusMetres` (GH#912 Phase 4: chosen once on
-  /// the postcode-entry screen, no longer re-persisted from a map-slider
-  /// change — the map has no radius control of its own any more; the only
-  /// way to change it afterwards is `DeviceLocalZoneEditorView` on the Zones
-  /// tab, which flows through ``AnonymousMapViewModel/updateActiveZone(_:)``
-  /// instead, via `onZonesChanged` below).
+  /// Seeds the map from `state.radiusMetres`; later radius edits flow through
+  /// ``AnonymousMapViewModel/updateActiveZone(_:)`` via `onZonesChanged`.
   private func makeMapViewModel(state: AnonymousBrowseState) -> AnonymousMapViewModel {
     let viewModel = AnonymousMapViewModel(
       repository: applicationsRepository,
