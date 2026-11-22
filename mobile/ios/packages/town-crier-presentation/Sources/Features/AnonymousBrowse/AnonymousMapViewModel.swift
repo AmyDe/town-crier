@@ -246,7 +246,8 @@ public final class AnonymousMapViewModel: ObservableObject, ErrorHandlingViewMod
     onShowApplicationDetail?(pending)
   }
 
-  /// Re-centres this SAME view model on `zone` when the active device-local zone changes — e.g. a zone-picker chip tap
+  /// Re-centres this SAME view model on `zone` when the active device-local
+  /// zone changes — e.g. a zone-picker chip tap
   /// on the Applications tab, or a save in `DeviceLocalZoneEditorView`.
   /// Deliberately mutates in place rather than the coordinator replacing the
   /// whole `AnonymousMapViewModel` instance: `AnonymousMapView` holds this

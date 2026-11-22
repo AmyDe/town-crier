@@ -91,8 +91,9 @@ public final class AnonymousBrowseCoordinator: ObservableObject {
   /// to `loginViewModel.login()`.
   public var onRequestSignIn: (() -> Void)?
 
-  /// Fired by the anonymous map's "View full details" handoff. Wired by the composition root to present the shared root detail
-  /// sheet in anonymous mode (`AppCoordinator.showAnonymousApplicationDetail`).
+  /// Fired by the anonymous map's "View full details" handoff. Wired by the
+  /// composition root to present the shared root detail sheet in anonymous
+  /// mode (`AppCoordinator.showAnonymousApplicationDetail`).
   public var onShowApplicationDetail: ((PlanningApplication) -> Void)?
 
   /// Fired by the anonymous Settings tab's "Privacy Policy" row. Wired by the
