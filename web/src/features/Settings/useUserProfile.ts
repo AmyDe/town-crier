@@ -64,11 +64,10 @@ export function useUserProfile(
       link.download = 'town-crier-data.json';
       link.click();
       URL.revokeObjectURL(url);
-      setIsExporting(false);
     } catch (err) {
-      const message = extractErrorMessage(err, 'Failed to export data');
+      setActionError(extractErrorMessage(err, 'Failed to export data'));
+    } finally {
       setIsExporting(false);
-      setActionError(message);
     }
   }, [repository]);
 
