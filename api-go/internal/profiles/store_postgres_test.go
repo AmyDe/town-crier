@@ -209,7 +209,7 @@ func TestPostgresStore_Save_WrapsDatabaseError(t *testing.T) {
 
 // TestPostgresStore_Delete_MissReturnsErrNotFound verifies that zero rows
 // affected on the DELETE statement surfaces as ErrNotFound (not a wrapped
-// database error), matching the Cosmos store's contract.
+// database error).
 func TestPostgresStore_Delete_MissReturnsErrNotFound(t *testing.T) {
 	t.Parallel()
 	// CommandTag "DELETE 0" → RowsAffected() == 0
@@ -246,7 +246,7 @@ func TestPostgresStore_Delete_WrapsDatabaseError(t *testing.T) {
 }
 
 // TestPostgresStore_UpdateZoneCountWithCAS_InvalidEtag verifies that a
-// non-numeric etag (e.g. a raw Cosmos _etag string) is rejected with a
+// non-numeric etag is rejected with a
 // descriptive error before any SQL is issued.
 func TestPostgresStore_UpdateZoneCountWithCAS_InvalidEtag(t *testing.T) {
 	t.Parallel()

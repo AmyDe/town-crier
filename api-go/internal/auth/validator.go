@@ -28,9 +28,7 @@ const allowedClockSkew = 30 * time.Second
 
 // Auth0Validator adapts the auth0 go-jwt-middleware validator to the
 // consumer-side tokenValidator interface, returning the JWT subject on success.
-// It validates iss/aud/exp/nbf and verifies signatures against the issuer's
-// JWKS (cached, background-refreshed). When constructed without Auth0 config it
-// becomes a deny-all validator.
+// When constructed without Auth0 config it becomes a deny-all validator.
 type Auth0Validator struct {
 	inner *validator.Validator
 }

@@ -228,7 +228,7 @@ func TestHandler_CreateProfile_ReturnsOkCamelCase(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	// CreateUserProfileResult: { userId, pushEnabled, tier } in camelCase, tier as string.
+	// { userId, pushEnabled, tier } in camelCase, tier as string.
 	if got["userId"] != "auth0|new" {
 		t.Errorf("userId: got %v", got["userId"])
 	}
@@ -289,7 +289,7 @@ func TestHandler_GetProfile_OkAndNotFound(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	// GetUserProfileResult camelCase; DigestDay serialised as the enum NAME.
+	// camelCase; DigestDay serialised as the enum NAME.
 	if got["userId"] != "auth0|abc" || got["digestDay"] != "Wednesday" || got["tier"] != "Personal" {
 		t.Errorf("body wrong: %v", got)
 	}
@@ -591,8 +591,8 @@ func TestHandler_DeleteProfile_OfferCodeAnonymiseFailureLeavesProfileAndAuth0Int
 }
 
 // Auth0 is deleted last: an Auth0 Management-API failure must not strand
-// un-erased Cosmos data, so by the time it runs every container and the profile
-// document are already gone.
+// un-erased data, so by the time it runs every container and the profile row
+// are already gone.
 func TestHandler_DeleteProfile_Auth0DeletedAfterAllCosmosData(t *testing.T) {
 	t.Parallel()
 

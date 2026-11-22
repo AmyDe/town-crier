@@ -246,8 +246,8 @@ func TestNewExportUserData_SubscriptionLifetimeDefaults(t *testing.T) {
 	}
 }
 
-// TestNewExportUserData_NilReadersYieldEmptyArrays guards the Cosmos-less local
-// boot: when the readers are absent (zero-valued bundle) every child collection
+// TestNewExportUserData_NilReadersYieldEmptyArrays guards the zero-valued
+// ExportReaders bundle: every child collection
 // must still render as [] — never null.
 func TestNewExportUserData_NilReadersYieldEmptyArrays(t *testing.T) {
 	t.Parallel()
