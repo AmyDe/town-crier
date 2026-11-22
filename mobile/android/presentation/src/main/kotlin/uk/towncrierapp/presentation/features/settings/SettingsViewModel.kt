@@ -19,14 +19,9 @@ import uk.towncrierapp.presentation.appearance.AppearanceCoordinator
 import uk.towncrierapp.presentation.designsystem.Appearance
 
 /**
- * Bundles the two sign-out-adjacent dependencies so [SettingsViewModel]'s own
- * constructor parameter list stays under detekt's threshold (same rationale
- * as `AppGraphOptions`/`SettingsLeaves` in `:app`). [deviceTokenRepository]
- * defaults to `null` since #777 hasn't landed a real device-token
- * registration yet — every removal attempt is a true no-op until it does.
- * [onSignedOut] defaults to a no-op so every pre-existing call site (tests)
- * keeps compiling unchanged; the composition root wires it to
- * `LoginViewModel.markSignedOut()` so the shell routes back to Login.
+ * Bundles the sign-out-adjacent dependencies so [SettingsViewModel]'s
+ * constructor stays under detekt's parameter threshold. A `null`
+ * [deviceTokenRepository] makes every device-token removal a no-op.
  */
 public class SettingsSignOutSupport(
     public val deviceTokenRepository: DeviceTokenRepository? = null,
@@ -36,10 +31,7 @@ public class SettingsSignOutSupport(
 /**
  * Drives the Settings screen: account display, the four-way appearance
  * picker, sign-out, and account deletion (UK GDPR Art. 17 ordering — see
- * [confirmDeleteAccount]). Notification preferences, legal documents, and
- * data-attribution rows are static or delegate to their own screens; this
- * ViewModel owns only what genuinely needs server/session state. Port of
- * iOS `SettingsViewModel`.
+ * [confirmDeleteAccount]).
  */
 public class SettingsViewModel(
     private val authenticationService: AuthenticationService,
@@ -159,8 +151,8 @@ public class SettingsViewModel(
     }
 
     @Suppress("SwallowedException", "TooGenericExceptionCaught")
-    // Best-effort by design (epic #770 / #778): a missing or failing
-    // device-token removal must never block sign-out or account deletion.
+    // Best-effort: a missing or failing device-token removal must never
+    // block sign-out or account deletion.
     private suspend fun removeDeviceTokenBestEffort() {
         try {
             deviceTokenRepository?.removeDeviceToken()
