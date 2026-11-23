@@ -120,3 +120,4 @@ ec83f0e4e102b701  # api-go/internal/applications/thinclusters_test.go:35 high-en
 a428ef3737ab1fc3  # api-go/internal/applications/thinclusters_test.go:36 high-entropy-string: SHA-256 digest of query text
 2c7a10bc42c3d903  # api-go/internal/applications/thinclusters_test.go:37 high-entropy-string: SHA-256 digest of query text
 b60e6711f69f86c5  # infra/shared.go:379 secret-assignment: PasswordAuth set to the literal Disabled, not a password
+e4966108672f2b1b  # .github/actions/pgmigrate/action.yml:53 secret-assignment: AZURE_TOKEN_CREDENTIALS set to the credential type name AzureCLICredential, not a secret
