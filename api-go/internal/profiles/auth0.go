@@ -20,9 +20,7 @@ import (
 var ErrAuth0UserNotFound = errors.New("auth0 user not found")
 
 // Auth0Manager is the consumer-side interface the profile handlers use to keep
-// Auth0's app_metadata in sync and to remove users on account deletion. Both the
-// real *Auth0Client and the NoOpAuth0Client satisfy it; the handlers never see
-// the concrete type.
+// Auth0's app_metadata in sync and to remove users on account deletion.
 type Auth0Manager interface {
 	UpdateSubscriptionTier(ctx context.Context, userID, tier string) error
 	DeleteUser(ctx context.Context, userID string) error

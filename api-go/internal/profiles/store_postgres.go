@@ -26,12 +26,6 @@ type querier interface {
 
 // Store is the full point-store method set *PostgresStore satisfies and the
 // exported consumer-side interface the handlers and wiring depend on.
-//
-// The set covers:
-//   - the profileStore interface in handler.go (Get/Save/Delete)
-//   - the profileCAS interface in watchzones/handler.go (GetWithETag/UpdateZoneCountWithCAS)
-//   - erasure.ProfileDeleter (Delete)
-//   - middleware adapters NewTierLookup/NewActivityRecorder (Get/RecordActivity)
 type Store interface {
 	Get(ctx context.Context, userID string) (*UserProfile, error)
 	Save(ctx context.Context, p *UserProfile) error
@@ -376,36 +370,9 @@ func (s *PostgresStore) GetWithETag(ctx context.Context, userID string) (*UserPr
 	return p, strconv.Itoa(version), nil
 }
 
-const pgUpdateZoneCountCASQuery = `
-UPDATE users SET
-	email                            = $2,
-	push_enabled                     = $3,
-	digest_day                       = $4,
-	email_digest_enabled             = $5,
-	saved_decision_push              = $6,
-	saved_decision_email             = $7,
-	zone_preferences                 = $8::jsonb,
-	tier                             = $9,
-	subscription_expiry              = $10,
-	original_transaction_id          = $11,
-	grace_period_expiry              = $12,
-	lifetime_tier                    = $13,
-	lifetime_original_transaction_id = $14,
-	lifetime_purchased_at            = $15,
-	subscription_product_id          = $16,
-	subscription_in_trial            = $17,
-	last_active_at                   = $18,
-	last_active_at_epoch             = $19,
-	watch_zone_count                 = $20,
-	version                          = version + 1
-WHERE user_id = $1 AND version = $21`
-
 // UpdateZoneCountWithCAS replaces the profile row only when the stored version
-// matches the expected version encoded in etag. The version is atomically
-// incremented on success.
-//
-// Zero rows affected (version guard fired — concurrent writer won) returns
-// platform.ErrCASPreconditionFailed wrapped via %w.
+// matches the expected version encoded in etag, returning a wrapped
+// platform.ErrCASPreconditionFailed when a concurrent writer won.
 func (s *PostgresStore) UpdateZoneCountWithCAS(ctx context.Context, userID string, p *UserProfile, etag string) error {
 	expectedVersion, err := strconv.Atoi(etag)
 	if err != nil {
@@ -420,7 +387,7 @@ func (s *PostgresStore) UpdateZoneCountWithCAS(ctx context.Context, userID strin
 	savedPush := p.Preferences.SavedDecisionPush
 	savedEmail := p.Preferences.SavedDecisionEmail
 
-	tag, err := s.db.Exec(ctx, pgUpdateZoneCountCASQuery,
+	tag, err := s.db.Exec(ctx, pgUpdateUserQuery,
 		userID,
 		p.Email, p.Preferences.PushEnabled, int(p.Preferences.DigestDay),
 		&emailDigest, &savedPush, &savedEmail, zonePrefText,

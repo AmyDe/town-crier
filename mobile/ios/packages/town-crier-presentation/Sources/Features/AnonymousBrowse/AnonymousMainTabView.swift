@@ -2,8 +2,7 @@ import SwiftUI
 
 /// The anonymous (pre-signup) tab shell, parallel to the
 /// authenticated `MainTabView` (`town-crier-app/Sources/MainTabView.swift`):
-/// four tabs — Applications, Map, Zones, Settings (Zones added Phase 4,
-/// matching the authed shell's tab order and its `mappin.and.ellipse` icon).
+/// four tabs — Applications, Map, Zones, Settings.
 /// No Saved tab (saving is account-bound, ADR 0035). Replaces the bare
 /// `AnonymousMapView` as the post-postcode destination, and as what a
 /// persisted anonymous session relaunches into.

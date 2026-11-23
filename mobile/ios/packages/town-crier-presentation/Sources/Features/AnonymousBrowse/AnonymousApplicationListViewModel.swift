@@ -29,7 +29,7 @@ public final class AnonymousApplicationListViewModel: ObservableObject, ErrorHan
   private let fallbackRadiusMetres: Double
 
   /// Fired when a row is tapped, handing the already-loaded application
-  /// straight to the coordinator — the established GH#879 Phase 2 handoff
+  /// straight to the coordinator
   /// (``AnonymousBrowseCoordinator/onShowApplicationDetail`` ->
   /// `AppCoordinator.showAnonymousApplicationDetail`). No network call: the
   /// row's `PlanningApplication` came from this same `fetchNearby` response.

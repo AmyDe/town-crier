@@ -52,16 +52,10 @@ extension AppCoordinator {
       await self?.resolveSubscriptionTier()
     }
 
-    // Anonymous browse post-signup handoff (GH#868 Phase 3.5, extended
-    // GH#879 Phase 5): prefer the active device-local zone (name/centre/
-    // radius) over the legacy single AnonymousBrowseState blob — a user who
-    // created explicit local zones (Phase 4) gets their active area carried
-    // straight into the wizard. Only applies on fresh construction (never
-    // the cached-instance return above), so it fires at most once per
-    // session. Unlike the legacy blob (cleared immediately below), the
-    // device-local zone is NOT deleted here — only once completeOnboarding()
-    // confirms the wizard actually saved it server-side, so abandoning the
-    // wizard mid-flow never silently loses the zone.
+    // Prefer the active device-local zone over the legacy AnonymousBrowseState
+    // blob. Unlike the blob, the zone is NOT deleted here, only once
+    // completeOnboarding() confirms the server save, so abandoning the wizard
+    // never loses it.
     let activeZone: DeviceLocalZone? = deviceLocalZoneRepository.flatMap { repository in
       repository.activeZoneId().flatMap { activeId in
         repository.loadAll().first { $0.id == activeId }
@@ -92,8 +86,7 @@ extension AppCoordinator {
   ///
   /// MUST run after profile-ensure (`POST /v1/me`, performed by
   /// ``resolveSubscriptionTier()``) so the wizard's first watch-zone save has a
-  /// server profile to attach to — otherwise that save 500s on its quota check
-  /// (the GA bug fixed in tc-k9fk).
+  /// server profile to attach to — otherwise that save 500s on its quota check.
   ///
   /// The gate is the user's watch-zone count: zero zones means show the wizard.
   /// We only drop back to `.undetermined` (the loading screen) when the device
@@ -118,7 +111,7 @@ extension AppCoordinator {
   /// Invoked when the wizard saves the user's first zone. Flips the gate so the
   /// root view falls through to the main app and releases the wizard VM.
   ///
-  /// GH#879 Phase 5: if the wizard was prefilled from a device-local zone,
+  /// If the wizard was prefilled from a device-local zone,
   /// this is the moment it is actually deleted from local storage — only now
   /// that the server save is confirmed, never at prefill time. If any other
   /// local zones remain, offers them for conversion

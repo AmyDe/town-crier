@@ -9,10 +9,8 @@ import TownCrierDomain
 @MainActor
 public final class DeviceLocalZoneListViewModel: ObservableObject {
   @Published public private(set) var zones: [DeviceLocalZone] = []
-  /// The zone currently open in the editor sheet. `DeviceLocalZone` is
-  /// already `Identifiable`, so this binds directly to `.sheet(item:)`
-  /// without a separate wrapper enum — unlike GH#879 Phase 4, there is no
-  /// "new" case any more since the add path is gone.
+  /// The zone currently open in the editor sheet; binds directly to
+  /// `.sheet(item:)` since `DeviceLocalZone` is `Identifiable`.
   @Published public var editorTarget: DeviceLocalZone?
   @Published public var isSignUpCTAPresented = false
 

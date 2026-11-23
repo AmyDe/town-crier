@@ -40,9 +40,9 @@ public class AuthCoordinator(
      * reproduces a production bug.
      */
     @Suppress("SwallowedException")
-    // Both catches below are deliberate degrade paths (epic #770): a refresh
-    // failure keeps the pre-refresh jwtTier; an ensure-profile failure yields
-    // "server tier unknown" to resolveTier — neither cares WHY, just THAT.
+    // Both catches below are deliberate degrade paths: a refresh failure keeps
+    // the pre-refresh jwtTier; an ensure-profile failure yields "server tier
+    // unknown" to resolveTier.
     public suspend fun onSignedIn() {
         val cachedTier = tierCache.read() ?: SubscriptionTier.FREE
         val jwtTier = authService.currentSession()?.subscriptionTier ?: SubscriptionTier.FREE

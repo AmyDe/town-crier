@@ -54,25 +54,19 @@ public final class AnonymousMapViewModel: ObservableObject, ErrorHandlingViewMod
   /// must show its true radius, not a falsely small preview.
   @Published public private(set) var radiusMetres: Double
 
-  /// The `near-point` page cap the anonymous LIST view still uses (GH#924
-  /// Phase 2 moved the MAP off `near-point` entirely, onto server-side
-  /// clusters — see this type's header). Kept here because
-  /// `AnonymousApplicationListViewModel.defaultLimit` derives from this
-  /// constant; moving it would be a needless, out-of-scope edit to that
-  /// call site for a Phase 2 change that never touches the list.
+  /// The `near-point` page cap for the anonymous list view, which derives
+  /// `AnonymousApplicationListViewModel.defaultLimit` from it. The map uses
+  /// server-side clusters instead.
   public static let defaultLimit = 200
 
   private let repository: AnonymousApplicationsRepository
   private let detailRepository: AnonymousApplicationDetailRepository
   private let debounceNanoseconds: UInt64
   /// Debounces ``updateActiveZone(_:)``'s fetch so a rapid run of zone
-  /// switches collapses to a single cluster swap (GH#879 Phase 4 crash fix —
-  /// see that method's docs).
+  /// switches collapses to a single cluster swap (see that method's docs).
   private var pendingActiveZoneTask: Task<Void, Never>?
 
-  /// Fired by the persistent CTA banner's "Create account"/"Sign in" buttons
-  /// (full detail no longer requires an account — GH#879 Phase 2 replaced the
-  /// summary sheet's own sign-up handoff with ``onShowApplicationDetail``).
+  /// Fired by the persistent CTA banner's "Create account"/"Sign in" buttons.
   public var onRequestSignUp: (() -> Void)?
   /// Fired by ``presentPendingDetailIfNeeded()`` once the summary sheet has
   /// dismissed, handing the full application to the coordinator to present
@@ -225,7 +219,6 @@ public final class AnonymousMapViewModel: ObservableObject, ErrorHandlingViewMod
     stackedApplications = nil
   }
 
-  /// The CTA banner itself routes to sign-up — full detail no longer does.
   public func requestSignUp() {
     onRequestSignUp?()
   }
@@ -253,8 +246,8 @@ public final class AnonymousMapViewModel: ObservableObject, ErrorHandlingViewMod
     onShowApplicationDetail?(pending)
   }
 
-  /// Re-centres this SAME view model on `zone` (GH#879 Phase 4 defect fix)
-  /// when the active device-local zone changes — e.g. a zone-picker chip tap
+  /// Re-centres this SAME view model on `zone` when the active device-local
+  /// zone changes — e.g. a zone-picker chip tap
   /// on the Applications tab, or a save in `DeviceLocalZoneEditorView`.
   /// Deliberately mutates in place rather than the coordinator replacing the
   /// whole `AnonymousMapViewModel` instance: `AnonymousMapView` holds this
@@ -267,12 +260,10 @@ public final class AnonymousMapViewModel: ObservableObject, ErrorHandlingViewMod
   ///
   /// Anchor/radius update IMMEDIATELY (synchronously) so the camera and
   /// radius overlay reframe as soon as the zone switches, to the zone's
-  /// ACTUAL radius (GH#912 Phase 4 — never clamped to any preview cap, so
-  /// the drawn circle always matches the fetch boundary exactly). The FETCH
+  /// ACTUAL radius, so the drawn circle always matches the fetch boundary. The FETCH
   /// — and therefore the full cluster-set swap it produces — is debounced.
-  /// This is a crash fix: live simulator verification hit a
-  /// MapKit-internal SIGABRT reproducibly when the active zone was switched
-  /// rapidly — MapKit's own deferred clustering pass cannot tolerate the
+  /// This is a crash fix: MapKit hits an internal SIGABRT when the active
+  /// zone is switched rapidly, because its own deferred clustering pass cannot tolerate the
   /// annotation set being replaced faster than it can settle. Debouncing
   /// collapses a rapid run of zone switches to a single cluster swap for the
   /// LAST zone selected, rather than one overlapping swap per tap.

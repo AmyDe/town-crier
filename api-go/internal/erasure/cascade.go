@@ -55,9 +55,7 @@ type Deleters struct {
 	ProfileAbsent       func(error) bool
 }
 
-// profileAbsent reports whether err means the profile is already gone. A nil
-// predicate is treated as "never absent", so every profile-delete error is
-// fatal.
+// profileAbsent reports whether err means the profile is already gone.
 func (d Deleters) profileAbsent(err error) bool {
 	return d.ProfileAbsent != nil && d.ProfileAbsent(err)
 }

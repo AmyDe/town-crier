@@ -32,7 +32,7 @@ public class SessionCache(
     @Suppress("RedundantSuspendModifier")
     // False positive: this genuinely suspends via mutex.withLock (suspend
     // inline fun) — detekt 1.23.8's type-resolution against Kotlin 2.4.0
-    // doesn't see through the inline call (tracked: tc side-quest bead).
+    // doesn't see through the inline call.
     public suspend fun current(clock: Clock): AuthSession? = mutex.withLock { validOrNull(clock) }
 
     private fun validOrNull(clock: Clock): AuthSession? =
