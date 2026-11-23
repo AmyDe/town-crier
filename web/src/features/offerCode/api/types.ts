@@ -1,4 +1,4 @@
-export type Tier = 'Personal' | 'Pro';
+type Tier = 'Personal' | 'Pro';
 
 export interface RedeemResult {
   readonly tier: Tier;

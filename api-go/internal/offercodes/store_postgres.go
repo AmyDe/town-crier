@@ -410,8 +410,7 @@ LIMIT $2`
 // List returns codes ordered created_at DESC, each annotated with its most
 // recent redemption time (nil if never redeemed), optionally filtered to
 // labels containing labelFilter (case-insensitive substring match). limit
-// bounds the result set; there is no pagination beyond it (the table is
-// admin-minted and small).
+// bounds the result set; there is no pagination beyond it.
 func (s *PostgresStore) List(ctx context.Context, labelFilter *string, limit int) ([]ListedOfferCode, error) {
 	rows, err := s.db.Query(ctx, pgListCodesQuery, labelFilter, limit)
 	if err != nil {

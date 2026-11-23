@@ -4,15 +4,7 @@ import TownCrierDomain
 /// without a network round-trip.
 ///
 /// Wraps a ``SubscriptionTier`` and delegates to ``EntitlementMap`` for all
-/// business logic. ViewModels receive this from the session tier at construction
-/// time, enabling them to disable/badge features before the user taps.
-///
-/// Usage:
-/// ```swift
-/// let gate = FeatureGate(tier: session.subscriptionTier)
-/// if gate.hasEntitlement(.statusChangeAlerts) { ... }
-/// if gate.shouldShowUpgradeBadge(for: .watchZones, currentCount: zones.count) { ... }
-/// ```
+/// business logic.
 public struct FeatureGate: Equatable, Sendable {
   /// The subscription tier this gate was initialised with.
   public let tier: SubscriptionTier

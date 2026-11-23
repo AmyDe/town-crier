@@ -11,8 +11,6 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/appstoreserverapi"
 )
 
-// --- fakes ---
-
 type fakeHistoryFetcher struct {
 	items        []appstoreserverapi.NotificationHistoryItem
 	err          error
@@ -84,8 +82,6 @@ func (f *fakeApplier) Process(_ context.Context, signedPayload string) (bool, er
 	return f.wasNew[signedPayload], nil
 }
 
-// --- test helpers ---
-
 func notificationJSON(notifType, subtype, uuid string) string {
 	if subtype == "" {
 		return fmt.Sprintf(`{"notificationType":%q,"notificationUUID":%q,"data":{"signedTransactionInfo":"INNER"}}`, notifType, uuid)
@@ -115,8 +111,6 @@ func newTestHandler(applyEnabled bool) (*Handler, *testDeps) {
 		slog.New(slog.DiscardHandler), func() time.Time { return testNow })
 	return h, d
 }
-
-// --- tests ---
 
 func TestRun_ZeroItemsCycle(t *testing.T) {
 	t.Parallel()

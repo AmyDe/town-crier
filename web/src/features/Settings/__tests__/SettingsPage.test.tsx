@@ -8,7 +8,6 @@ import { freeUserProfile, proUserProfile } from './fixtures/user-profile.fixture
 import { AuthProvider } from '../../../auth/auth-context';
 import { SpyAuthPort } from '../../../auth/__tests__/spies/spy-auth-port';
 
-// ThemeToggle takes theme/toggleTheme as props, so a stub is enough.
 vi.mock('../../../hooks/useTheme', () => ({
   useTheme: () => ({ theme: 'light' as const, toggleTheme: vi.fn() }),
 }));

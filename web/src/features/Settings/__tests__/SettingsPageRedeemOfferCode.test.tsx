@@ -66,7 +66,6 @@ describe('SettingsPage — RedeemOfferCode integration', () => {
       </MemoryRouter>,
     );
 
-    // Wait for page to finish loading so the assertion isn't racing the skeleton.
     await screen.findByRole('heading', { name: /settings/i });
     expect(
       screen.queryByRole('heading', { name: /redeem offer code/i }),
