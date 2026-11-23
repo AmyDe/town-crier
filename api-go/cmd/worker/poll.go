@@ -20,7 +20,6 @@ import (
 // -ldflags "-X main.version=<v>".
 var version = "dev"
 
-// pollRunnerAdapter runs one polling.Runner and logs its summary.
 type pollRunnerAdapter struct {
 	runner *polling.Runner
 	logger *slog.Logger

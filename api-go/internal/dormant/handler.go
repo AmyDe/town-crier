@@ -13,9 +13,8 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 )
 
-// retentionMonths is the inactivity window after which an account is erased. It
-// is a constant, not configuration, so the retention promise is enforced
-// uniformly in code.
+// retentionMonths is the inactivity window after which an account is erased; it
+// is a constant, not configuration, so the retention promise is uniform.
 const retentionMonths = 12
 
 // Finder returns the dormant-account set: every profile last active strictly

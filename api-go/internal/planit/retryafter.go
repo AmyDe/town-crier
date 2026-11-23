@@ -31,17 +31,15 @@ func ParseRetryAfter(header string, now time.Time) (time.Duration, bool) {
 	return 0, false
 }
 
-// http1123 parses an HTTP-date in the three formats RFC 7231 permits, in the
-// order browsers and the Go net/http stack try them. The result is in UTC so
-// the delta against an absolute now is computed in a single timezone.
+// http1123 parses an HTTP-date in the formats RFC 7231 permits and returns it
+// in UTC.
 func http1123(value string) (time.Time, error) {
 	for _, layout := range []string{time.RFC1123, time.RFC1123Z, time.RFC850, time.ANSIC} {
 		if t, err := time.Parse(layout, value); err == nil {
 			return t.UTC(), nil
 		}
 	}
-	// time.RFC1123 expects "GMT"; some servers send "UTC" or an offset. Fall
-	// back to RFC3339 for robustness, then give up.
+	// time.RFC1123 expects "GMT"; some servers send "UTC" or an offset.
 	t, err := time.Parse(time.RFC3339, value)
 	return t.UTC(), err
 }

@@ -35,10 +35,8 @@ func (q *recordingQuerier) QueryRow(_ context.Context, _ string, _ ...any) pgx.R
 	panic("recordingQuerier.QueryRow not expected in this test")
 }
 
-// TestBuildDormant_FinderIsPostgresAdminStore proves the dormant-cleanup finder
-// scans the live Postgres users, so inactive accounts keep being erased. The
-// other deleters are built from nil store fields but are never reached: Run
-// aborts on the finder's sentinel error first.
+// The other deleters are built from nil store fields; Run aborts on the
+// finder's sentinel error before reaching them.
 func TestBuildDormant_FinderIsPostgresAdminStore(t *testing.T) {
 	t.Parallel()
 

@@ -38,10 +38,8 @@ func NewPostgresRetentionStore(db querier) *PostgresRetentionStore {
 	return &PostgresRetentionStore{db: db}
 }
 
-// Purge deletes rows older than each table's retention relative to now: the
-// call log, events and oracle diffs after 90 days, delta_seen after 14 days and
-// poll_window and its members after 120 days. It returns the rows deleted per
-// table and stops at the first error.
+// Purge deletes rows older than each table's retention relative to now and
+// returns the rows deleted per table. It stops at the first error.
 func (s *PostgresRetentionStore) Purge(ctx context.Context, now time.Time) (map[string]int64, error) {
 	deleted := make(map[string]int64, len(retentionRules))
 	for _, r := range retentionRules {

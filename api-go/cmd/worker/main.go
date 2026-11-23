@@ -1,9 +1,6 @@
 // Command worker runs the Town Crier background-worker modes as short-lived
 // Container Apps Jobs. One process per job: WORKER_MODE selects the mode,
 // the process runs it once, flushes telemetry, and exits with a status code.
-//
-// Every store is backed by Postgres + PostGIS; the shared pool is built once at
-// boot and a pool failure is fatal.
 package main
 
 import (
@@ -188,8 +185,7 @@ func run() int {
 }
 
 // buildNotifyFanOut returns the collaborators the poll runner's event
-// dispatcher needs. WithMetrics on the enqueuer and decision dispatcher is left
-// to the caller.
+// dispatcher needs; the caller adds WithMetrics.
 func buildNotifyFanOut(cfg platform.Config, registry *metrics.Registry, zoneStore watchzones.Store, st *stores, logger *slog.Logger) (*notifydispatch.DecisionDispatcher, *notifydispatch.Enqueuer, *notifydispatch.PushCoalescer) {
 	pushDispatcher := buildPlatformDispatcher(cfg, registry, logger)
 	coalescer := notifydispatch.NewPushCoalescer(st.device, st.notifState, pushDispatcher, zoneStore, st.notification, time.Now, logger)

@@ -10,8 +10,8 @@ import (
 func newHolderID() string {
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {
-		// crypto/rand.Read never fails on supported platforms; fall back to a
-		// constant rather than panicking in library code — the id is diagnostic.
+		// crypto/rand.Read never fails on supported platforms, and the id is only
+		// diagnostic, so fall back to a constant rather than panic.
 		return "unknown-holder"
 	}
 	return hex.EncodeToString(b[:])
