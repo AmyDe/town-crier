@@ -102,13 +102,11 @@ func (o *Oracle) runAxis(ctx context.Context, axis planit.Axis, res *OracleOutco
 	}
 	// PlanIt's total can overcount, or a page can come back empty early, so an
 	// incomplete wide read must not mark pending records as deleted.
-	if !short.short {
-		if err := o.classifyPending(ctx, axis, wide, members, res); err != nil {
-			return err
-		}
-	} else {
+	if short.short {
 		o.log.WarnContext(ctx, "poll.oracle_short",
 			slog.String("axis", axisName(axis)), slog.Int("read", short.read), slog.Int("total", short.total))
+	} else if err := o.classifyPending(ctx, axis, wide, members, res); err != nil {
+		return err
 	}
 	if err := o.findDiffs(ctx, axis, wide, members, wideStart, today, res); err != nil {
 		return err
