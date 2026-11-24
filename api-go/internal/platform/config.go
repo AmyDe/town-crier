@@ -214,7 +214,6 @@ type Config struct {
 	NotifyPushRecoveryEnabled bool
 }
 
-// defaultPlanItBaseURL is the live PlanIt applications API.
 const defaultPlanItBaseURL = "https://www.planit.org.uk/"
 
 // defaultAPNsKeyID and defaultAPNsTeamID are the identifiers Apple issued for

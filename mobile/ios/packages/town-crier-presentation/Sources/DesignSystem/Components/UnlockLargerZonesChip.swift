@@ -5,7 +5,6 @@ import SwiftUI
 /// Tapping it opens the subscription paywall. Uses the brand amber at 15%
 /// opacity so it reads as an invitation, not an error.
 public struct UnlockLargerZonesChip: View {
-  /// User-facing copy, kept in one place so it can be unit-tested and reused.
   enum Copy {
     static let title = "Do more with a plan"
     static let benefits =

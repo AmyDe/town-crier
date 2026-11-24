@@ -114,7 +114,6 @@ func SetupTelemetry(ctx context.Context, logger *slog.Logger) (func(context.Cont
 
 	logExporter, err := otlploggrpc.New(ctx)
 	if err != nil {
-		// Tear the tracer provider down so a half-built pipeline doesn't leak.
 		if shutdownErr := tp.Shutdown(ctx); shutdownErr != nil {
 			logger.ErrorContext(ctx, "tracer shutdown after log-exporter failure", "error", shutdownErr)
 		}
@@ -128,8 +127,6 @@ func SetupTelemetry(ctx context.Context, logger *slog.Logger) (func(context.Cont
 
 	metricExporter, err := otlpmetricgrpc.New(ctx)
 	if err != nil {
-		// Tear the already-built providers down so a half-built pipeline doesn't
-		// leak, mirroring the tracer-teardown-on-log-failure path above.
 		if shutdownErr := tp.Shutdown(ctx); shutdownErr != nil {
 			logger.ErrorContext(ctx, "tracer shutdown after metric-exporter failure", "error", shutdownErr)
 		}
@@ -144,20 +141,13 @@ func SetupTelemetry(ctx context.Context, logger *slog.Logger) (func(context.Cont
 	)
 	otel.SetMeterProvider(mp)
 
-	// Start Go runtime metrics (GC, goroutines, memory) against the new provider.
-	// http.client metrics come from the otelhttp transport using this
-	// same global MeterProvider; the towncrier.* business metrics come from
-	// internal/metrics built on otel.Meter("towncrier"). A runtime.Start failure
-	// is non-fatal — runtime metrics are a nice-to-have, not worth aborting the
-	// whole telemetry pipeline (and the rest of the metrics still flow).
+	// A runtime.Start failure is non-fatal: the rest of the telemetry pipeline still flows.
 	if rerr := runtime.Start(runtime.WithMeterProvider(mp)); rerr != nil {
 		logger.ErrorContext(ctx, "runtime metrics start failed; continuing without them", "error", rerr)
 	}
 
 	logger.InfoContext(ctx, "telemetry enabled", "endpoint", endpoint, "service", serviceName)
 
-	// Combined shutdown flushes/shuts down all three providers, returning the
-	// first error so no flush is skipped.
 	return func(shutdownCtx context.Context) error {
 		errTrace := tp.Shutdown(shutdownCtx)
 		errLog := lp.Shutdown(shutdownCtx)

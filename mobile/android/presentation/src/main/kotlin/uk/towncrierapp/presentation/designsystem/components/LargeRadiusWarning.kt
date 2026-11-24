@@ -28,15 +28,13 @@ import uk.towncrierapp.presentation.designsystem.TownCrierTheme
  * Threshold (metres) at or above which [LargeRadiusWarning] should be shown.
  * Set just above the free tier's 2 km cap so a free user pinned at their
  * maximum never trips it — only paid tiers, which can exceed 2 km, see it.
- * Port of iOS `LargeRadiusWarning.thresholdMetres`.
  */
 public const val LARGE_RADIUS_WARNING_THRESHOLD_METRES: Float = 2_100f
 
 /**
  * Callout that a watch zone with a large radius may generate a high volume
  * of notifications — amber-at-15%-opacity so it reads as a heads-up, not an
- * error (the radius itself is still allowed). Port of iOS
- * `LargeRadiusWarningView`.
+ * error (the radius itself is still allowed).
  */
 @Composable
 public fun LargeRadiusWarning(modifier: Modifier = Modifier) {

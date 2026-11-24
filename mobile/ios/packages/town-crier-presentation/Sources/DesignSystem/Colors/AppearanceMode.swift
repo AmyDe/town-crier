@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// User's preferred appearance mode, persisted via `@AppStorage`.
+/// User's preferred appearance mode.
 public enum AppearanceMode: String, CaseIterable, Sendable {
   case system
   case light

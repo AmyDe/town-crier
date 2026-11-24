@@ -158,7 +158,6 @@ type notifStoreReader interface {
 // savedStoreReader is the saved-application store the router wires into the
 // feature routes plus the admin surface. It embeds the full savedapplications
 // Store (feature routes) and adds the admin-read batched count + global total.
-// *savedapplications.PostgresStore satisfies it.
 type savedStoreReader interface {
 	savedapplications.Store
 	CountsByUsers(ctx context.Context, userIDs []string) (map[string]int, error)
@@ -168,7 +167,6 @@ type savedStoreReader interface {
 // deviceStoreReader is the device-registration store the router wires into the
 // device routes plus the admin surface. It embeds the full devicetokens Store
 // and adds the admin-read batched count + global total.
-// *devicetokens.PostgresStore satisfies it.
 type deviceStoreReader interface {
 	devicetokens.Store
 	CountsByUsers(ctx context.Context, userIDs []string) (map[string]int, error)
@@ -178,7 +176,6 @@ type deviceStoreReader interface {
 // offerStoreReader is the offer-code store the router wires into the redeem
 // routes plus the admin surface. It embeds the full offercodes Store and adds
 // the admin-read batched redemption lookup plus the admin code listing.
-// *offercodes.PostgresStore satisfies it.
 type offerStoreReader interface {
 	offercodes.Store
 	RedeemedByUsers(ctx context.Context, userIDs []string) (map[string][]offercodes.RedeemedOfferCode, error)
@@ -358,14 +355,9 @@ func newRouter(
 		watchzones.NearbyRoutes(mux, watchZoneStore, store, appStore, notifStore, uuid.NewString, time.Now, logger, watchzones.WithMetricsRecorder(registry), watchzones.WithProfileCAS(store))
 	}
 	if savedStore != nil && appStore != nil {
-		// The save path looks up the master application record (appStore) to verify
-		// it exists, then writes only the per-user saved row. Both stores are
-		// required to wire the endpoints.
 		savedapplications.Routes(mux, savedStore, appStore, time.Now, logger)
 	}
 	if store != nil && offerStore != nil {
-		// Offer-code redeem is authed: it loads the caller's profile, grants the
-		// coded tier, and syncs Auth0. Needs both the profile and offer-code stores.
 		offercodes.Routes(mux, offerStore, store, auth0, notifier, time.Now, logger)
 	}
 	if adminStore != nil && offerStore != nil {
@@ -397,9 +389,6 @@ func newRouter(
 		admin.ReadPathRoutes(mux, adminKey, pollingAdmin.ReadPath, time.Now, logger)
 	}
 	if store != nil && adminStore != nil && jwsVerifier != nil && appleNotifStore != nil {
-		// Subscriptions: verify (authed, by user id via the profile store) and the
-		// App Store webhook (anonymous, by original transaction id via the admin
-		// store, deduped through the AppleNotifications idempotency store).
 		subscriptions.Routes(mux, jwsVerifier, store, adminStore, auth0, appleNotifStore, appleBundleID, appleEnvironments, notifier, time.Now, logger)
 	}
 

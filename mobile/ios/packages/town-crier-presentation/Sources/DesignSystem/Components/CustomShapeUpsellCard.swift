@@ -5,7 +5,6 @@ import SwiftUI
 /// a circle. Tapping it opens the paywall. Distinct from
 /// ``UnlockLargerZonesChip``; both may show together.
 public struct CustomShapeUpsellCard: View {
-  /// User-facing copy, kept in one place so it can be unit-tested and reused.
   enum Copy {
     static let title = "Draw your own shape"
     static let benefits =

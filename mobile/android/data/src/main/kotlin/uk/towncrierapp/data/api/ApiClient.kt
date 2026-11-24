@@ -51,7 +51,7 @@ public class ApiClient(
         serializer: KSerializer<T>,
     ): PagedResult<T> = performRequest(endpoint, serializer)
 
-    /** Returns the raw response body bytes untouched — for opaque payloads (e.g. a future GDPR export). */
+    /** Returns the raw response body bytes untouched, for opaque payloads. */
     internal suspend fun requestBytes(endpoint: ApiEndpoint): ByteArray {
         val session = requireSession()
         return withRetryOn401(session.accessToken) { accessToken -> executeBytes(endpoint, accessToken) }

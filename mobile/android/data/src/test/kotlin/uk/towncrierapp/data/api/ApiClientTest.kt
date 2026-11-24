@@ -14,8 +14,7 @@ import kotlin.test.assertNull
 
 /**
  * Core `ApiClient` behaviour: headers, JSON decoding, and HTTP status
- * mapping to `DomainError` — port of iOS `URLSessionAPIClientTests` (epic
- * #770 "API contract essentials"). 401-refresh-retry and paging have their
+ * mapping to `DomainError`. 401-refresh-retry and paging have their
  * own files ([ApiClientTokenRefreshTest], [ApiClientPagedTest]).
  */
 class ApiClientTest {

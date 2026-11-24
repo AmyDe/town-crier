@@ -16,8 +16,6 @@ func validParams() bootstrapParams {
 	}
 }
 
-// --- Phase 1 (admin DB: postgres) ---
-
 func TestBuildPrincipalSQL_ContainsPrincipalCreateAndConnectGrant(t *testing.T) {
 	t.Parallel()
 	sql, err := buildPrincipalSQL(validParams())
@@ -76,8 +74,6 @@ func TestBuildPrincipalSQL_GrantsNoElevatedPrivilege(t *testing.T) {
 		}
 	}
 }
-
-// --- Phase 2 (app DB: town_crier_dev) ---
 
 func TestBuildGrantsSQL_ContainsDMLGrants(t *testing.T) {
 	t.Parallel()
@@ -168,8 +164,6 @@ func TestBuildGrantsSQL_ReadonlyFalse_SelectsDefaultDMLTemplate(t *testing.T) {
 	}
 }
 
-// --- Shared: identifier/UUID validation ---
-
 func TestBuildPrincipalSQL_RejectsInvalidIdentifiers(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -204,8 +198,6 @@ func stripSQLComments(sql string) string {
 	}
 	return b.String()
 }
-
-// --- Phase 2 backup variant ---
 
 func TestBuildBackupGrantsSQL_SelectsExactlyTheBackupTables(t *testing.T) {
 	t.Parallel()

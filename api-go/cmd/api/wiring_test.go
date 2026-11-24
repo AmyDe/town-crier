@@ -772,11 +772,7 @@ func TestRouter_AuthenticatedPipeline(t *testing.T) {
 		t.Errorf("GET /v1/me/saved-applications body = %s, want []", got)
 	}
 
-	// application-authorities was removed with authority_id. A regression check that the route is genuinely gone: with
-	// no pattern left to match, auth.RequireAuth's deny-by-default policy
-	// (internal/auth/middleware.go) rejects the request with 401 before the mux
-	// ever gets a chance to 404 it -- a valid bearer token no longer helps, since
-	// there is no authenticated handler behind this path any more.
+	// With no pattern left to match, RequireAuth's deny-by-default returns 401 before the mux can 404.
 	rec = serveReq(t, h, http.MethodGet, "/v1/me/application-authorities", "", "Bearer tok")
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("GET /v1/me/application-authorities status = %d, want 401 (route removed)", rec.Code)
