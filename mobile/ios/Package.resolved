@@ -1,13 +1,13 @@
 {
-  "originHash" : "1e73df50c9452a22c2e20f3995ea06c04c17bea86daeb9a7b74ddccfa243e55b",
+  "originHash" : "b157ab5a1450c5da744c17794ec26379d3ee9f1c0f3a728b811cf94bb2ea8ee1",
   "pins" : [
     {
       "identity" : "auth0.swift",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/auth0/Auth0.swift.git",
       "state" : {
-        "revision" : "4ef92edb3c4b630d541a1b28f410bf0095e81c60",
-        "version" : "2.18.0"
+        "revision" : "aee409f35a4ed5a26f52de15d3cffcadab01d6d4",
+        "version" : "3.3.1"
       }
     },
     {
@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/auth0/JWTDecode.swift.git",
       "state" : {
-        "revision" : "36a5ce735a61c4bc119593f43ce2c027b4ca7392",
-        "version" : "3.3.0"
+        "revision" : "c4e60d71afb09c1e7f8a11a7db629469da92630b",
+        "version" : "4.0.0"
       }
     },
     {
