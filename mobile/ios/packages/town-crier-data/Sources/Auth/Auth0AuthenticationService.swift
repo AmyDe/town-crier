@@ -44,7 +44,7 @@ public final class Auth0AuthenticationService: TownCrierDomain.AuthenticationSer
         .audience(config.audience)
         .start()
 
-      _ = credentialsManager.store(credentials: credentials)
+      try? credentialsManager.store(credentials: credentials)
       let session = Self.mapToSession(credentials)
       await sessionCache.store(session)
       return session
@@ -60,8 +60,8 @@ public final class Auth0AuthenticationService: TownCrierDomain.AuthenticationSer
 
   public func logout() async throws {
     do {
-      try await Auth0.webAuth(clientId: config.clientId, domain: config.domain).clearSession()
-      _ = credentialsManager.clear()
+      try await Auth0.webAuth(clientId: config.clientId, domain: config.domain).logout()
+      try? credentialsManager.clear()
       await sessionCache.clear()
     } catch {
       throw DomainError.logoutFailed(error.localizedDescription)
@@ -74,10 +74,8 @@ public final class Auth0AuthenticationService: TownCrierDomain.AuthenticationSer
       guard Self.audienceMatches(
         accessToken: credentials.accessToken, expected: config.audience
       ) else {
-        // The stored token was minted for a different API audience (a
-        // prod-build -> dev-build flip). It is still un-expired, so handing it
-        // back would 401 against the new API. Wipe it and force a fresh login.
-        _ = credentialsManager.clear()
+        // An un-expired token minted for another audience (env flip) would 401, so force a fresh login.
+        try? credentialsManager.clear()
         await sessionCache.clear()
         throw DomainError.sessionExpired
       }
@@ -86,7 +84,7 @@ public final class Auth0AuthenticationService: TownCrierDomain.AuthenticationSer
       return session
     } catch let error as CredentialsManagerError {
       if Self.isUnrecoverable(error) {
-        _ = credentialsManager.clear()
+        try? credentialsManager.clear()
         await sessionCache.clear()
       }
       throw DomainError.sessionExpired
@@ -96,10 +94,10 @@ public final class Auth0AuthenticationService: TownCrierDomain.AuthenticationSer
   }
 
   public func deleteAccount() async throws {
-    _ = credentialsManager.clear()
+    try? credentialsManager.clear()
     await sessionCache.clear()
     do {
-      try await Auth0.webAuth(clientId: config.clientId, domain: config.domain).clearSession()
+      try await Auth0.webAuth(clientId: config.clientId, domain: config.domain).logout()
     } catch {
       throw DomainError.logoutFailed(error.localizedDescription)
     }
@@ -123,10 +121,8 @@ public final class Auth0AuthenticationService: TownCrierDomain.AuthenticationSer
         guard Self.audienceMatches(
           accessToken: credentials.accessToken, expected: config.audience
         ) else {
-          // Stored token targets a different API audience (env flip).
-          // Discard it; returning nil also nulls the session cache via
-          // `currentOrLoad`, so the next call re-authenticates.
-          _ = credentialsManager.clear()
+          // Returning nil also clears the session cache through `currentOrLoad`.
+          try? credentialsManager.clear()
           return nil
         }
         return Self.mapToSession(credentials)
@@ -185,7 +181,7 @@ public final class Auth0AuthenticationService: TownCrierDomain.AuthenticationSer
     return AuthSession(
       accessToken: credentials.accessToken,
       idToken: credentials.idToken,
-      expiresAt: credentials.expiresIn,
+      expiresAt: credentials.expiresAt,
       userProfile: profile,
       subscriptionTier: tier
     )
