@@ -6,7 +6,6 @@ import SwiftUI
 /// title, and caption) with copy for a paying user, without the paywall
 /// framing.
 public struct CustomShapeAvailableCard: View {
-  /// User-facing copy, kept in one place so it can be unit-tested and reused.
   enum Copy {
     static let title = "Draw a custom shape"
     static let benefits = "Trace the exact area you want to watch, instead of a circle."
