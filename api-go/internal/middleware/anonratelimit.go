@@ -132,9 +132,7 @@ func NewAnonRateLimitStore(refillPerSecond float64) *anonRateLimitStore {
 // checkAndIncrement refills addr's bucket for elapsed time since its last
 // touch (capped at burst, the per-call capacity), then either spends one
 // token (returning the remaining balance) or denies the request (returning
-// the retry-after until one token is earned back). See rateLimitStore.
-// checkAndIncrement for the sibling per-subject store this generalises from a
-// fixed window to continuous refill.
+// the retry-after until one token is earned back).
 func (s *anonRateLimitStore) checkAndIncrement(addr netip.Addr, burst int) rateLimitResult {
 	s.mu.Lock()
 	defer s.mu.Unlock()

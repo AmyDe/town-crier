@@ -54,10 +54,6 @@ func main() {
 	// it before SetupTelemetry is correct (ADR 0027).
 	logger := platform.NewOTelLogger(os.Stdout, cfg.LogLevel)
 
-	// SetupTelemetry self-disables when OTEL_EXPORTER_OTLP_ENDPOINT is unset, so
-	// local/dev boots leave the no-op Tracer and Logger providers in place. When
-	// the ACA OTel agent injects the endpoint, traces and logs export to it over
-	// OTLP/gRPC.
 	shutdownTelemetry, err := platform.SetupTelemetry(context.Background(), logger)
 	if err != nil {
 		log.Fatal(err)
@@ -70,17 +66,10 @@ func main() {
 		}
 	}()
 
-	// The business-metric registry is built from the global MeterProvider that
-	// SetupTelemetry just installed (a no-op provider when telemetry is disabled,
-	// so the instruments record nothing locally). It is passed to newRouter for the
-	// watch-zone lifecycle counters.
+	// Built after SetupTelemetry so it binds to the installed global MeterProvider.
 	registry := metrics.New(otel.Meter(metrics.MeterName))
 
-	// Strictly non-fatal passwordless-connectivity probe. When the
-	// API is configured for Azure managed-identity Postgres auth, prove from the
-	// logs that we can connect with an Entra token and no stored password. It runs
-	// in its own short-lived, self-terminating goroutine so it never blocks boot,
-	// wires no route or store, and only logs (Info on success, Warn on any failure).
+	// Non-fatal passwordless-connectivity probe; runs in its own goroutine and only logs.
 	if os.Getenv("POSTGRES_AUTH") == "azure-managed-identity" {
 		go probePostgresManagedIdentity(logger)
 	}
@@ -156,8 +145,6 @@ func main() {
 		OfferCodeRedemptions: offerCodeExportReader{store: offerStore},
 	}
 
-	// The JWS verifier embeds the Apple Root CA - G3 and needs no datastore, so it
-	// is always available.
 	appleRoots, err := subscriptions.LoadAppleRootCertificates()
 	if err != nil {
 		log.Fatal(err)
@@ -167,7 +154,6 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// Real M2M client only when fully configured; otherwise the no-op fallback.
 	var manager profiles.Auth0Manager = profiles.NoOpAuth0Client{}
 	if cfg.Auth0M2MConfigured() {
 		// Wrap the transport so Auth0 token/PATCH/DELETE calls emit OTel client
@@ -185,9 +171,6 @@ func main() {
 		)
 	}
 
-	// Geocode and designation clients call live UK services (the config defaults);
-	// each gets its own timeout-bounded HTTP client. Construction can only fail
-	// with an unparseable base URL, which is a startup misconfiguration.
 	geocodeClient, err := geocoding.NewClient(cfg.PostcodesIoBaseURL, &http.Client{Timeout: 30 * time.Second})
 	if err != nil {
 		log.Fatalf("geocoding client: %v", err)

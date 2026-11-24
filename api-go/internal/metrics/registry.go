@@ -40,8 +40,6 @@ type Registry struct {
 func New(meter metric.Meter) *Registry {
 	r := &Registry{}
 
-	// A failed instrument is left nil and its recording method no-ops, so a
-	// metric never aborts startup or a request.
 	counter := func(name string, opts ...metric.Int64CounterOption) metric.Int64Counter {
 		inst, err := meter.Int64Counter(name, opts...)
 		if err != nil {
