@@ -180,8 +180,8 @@ func TestHandler_Run_FinderErrorPropagates(t *testing.T) {
 
 func TestHandler_Run_ProfileNotFoundIsToleratedAndCounted(t *testing.T) {
 	t.Parallel()
-	// A concurrent delete leaves the profile absent; ErrNotFound is tolerated via
-	// ProfileAbsent and the account still counts as removed.
+	// A concurrently deleted profile is absent: ErrNotFound is tolerated and the
+	// account still counts.
 	finder := &fakeFinder{dormant: []*profiles.UserProfile{profile(t, "auth0|gone")}}
 	cascade := newCascadeRecorder()
 	cascade.profileErr["auth0|gone"] = profiles.ErrNotFound
@@ -202,8 +202,6 @@ func TestHandler_Run_ProfileNotFoundIsToleratedAndCounted(t *testing.T) {
 
 func TestHandler_Run_ChildCascadeErrorAbortsThatAccountButContinues(t *testing.T) {
 	t.Parallel()
-	// A child-step failure leaves the profile intact so the next run retries; the
-	// account is NOT counted as deleted, and the run continues to the next account.
 	finder := &fakeFinder{dormant: []*profiles.UserProfile{profile(t, "auth0|fails"), profile(t, "auth0|ok")}}
 	cascade := newCascadeRecorder()
 	cascade.notifErr = errors.New("notifications delete failed")
@@ -214,8 +212,6 @@ func TestHandler_Run_ChildCascadeErrorAbortsThatAccountButContinues(t *testing.T
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	// Both accounts hit the notifications step first; both fail it, so none are
-	// counted, but the run completes without erroring out.
 	if deleted != 0 {
 		t.Errorf("deleted count: got %d, want 0 (child failure aborts that account)", deleted)
 	}

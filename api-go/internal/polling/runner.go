@@ -261,7 +261,7 @@ func (r *Runner) loop(ctx context.Context) (RunResult, error) {
 			if oerr != nil {
 				r.d.Log.WarnContext(ctx, "poll.oracle_failed", slog.Any("error", oerr))
 			}
-			if stop := r.budgetAware(out.Stop, ctx, budgetCtx); stop != "" {
+			if stop := budgetAware(out.Stop, ctx, budgetCtx); stop != "" {
 				res.Stop = stop
 				return res, r.finish(ctx, &res, r.d.Now())
 			}
@@ -284,7 +284,7 @@ func (r *Runner) loop(ctx context.Context) (RunResult, error) {
 		if ctx.Err() != nil {
 			return cancelled(res), nil
 		}
-		if stop := r.budgetAware(out.Stop, ctx, budgetCtx); stop != "" {
+		if stop := budgetAware(out.Stop, ctx, budgetCtx); stop != "" {
 			if out.Err != nil && stop != StopRunBudget {
 				r.d.Log.WarnContext(ctx, "poll.read_stopped", slog.String("work", string(item.Work)), slog.String("stop", string(stop)), slog.Any("error", out.Err))
 			}
@@ -325,7 +325,7 @@ func (r *Runner) finish(ctx context.Context, res *RunResult, now time.Time) erro
 
 // budgetAware maps a read's stop reason, treating a timeout caused by the run
 // budget's own deadline as run_budget.
-func (r *Runner) budgetAware(stop StopReason, parent, budget context.Context) StopReason {
+func budgetAware(stop StopReason, parent, budget context.Context) StopReason {
 	if stop == StopTimeout && budget.Err() != nil && parent.Err() == nil {
 		return StopRunBudget
 	}

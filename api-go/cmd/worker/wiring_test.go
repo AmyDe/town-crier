@@ -30,8 +30,6 @@ func testRegistry() *metrics.Registry {
 	return metrics.New(otel.Meter(metrics.MeterName))
 }
 
-// TestEnqueuer_FindZonesContainingFlowsThroughInterface proves the notify fan-out
-// reaches the watch-zone store only through watchzones.Store.FindZonesContaining.
 // A zero-zone result keeps the downstream collaborators out of the test.
 func TestEnqueuer_FindZonesContainingFlowsThroughInterface(t *testing.T) {
 	t.Parallel()

@@ -1,7 +1,6 @@
 // Package pgpurge implements the pg-purge worker mode: a scheduled DELETE sweep
-// enforcing row retention for Notifications (90 days), DeviceRegistrations
-// (180 days) and the polling tables. Postgres has no native time-to-live, so a
-// periodic purge job runs in its place.
+// enforcing row retention for notifications, device registrations and the
+// polling tables, since Postgres has no native time-to-live.
 package pgpurge
 
 import (
@@ -23,10 +22,7 @@ type pollPurger interface {
 	Purge(ctx context.Context, now time.Time) (map[string]int64, error)
 }
 
-// Handler runs one pg-purge cycle: deletes notifications older than
-// notifRetention and device registrations older than deviceRetention. It
-// returns the count of rows deleted from each table so the caller can record
-// them as telemetry.
+// Handler runs one pg-purge cycle and returns the rows deleted per table.
 type Handler struct {
 	notifs          notifPurger
 	devices         devicePurger

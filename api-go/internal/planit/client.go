@@ -22,7 +22,7 @@ import (
 )
 
 // maxResponseBytes bounds a PlanIt JSON body so a hostile or broken upstream
-// cannot exhaust memory. A 300-record page is well under this.
+// cannot exhaust memory.
 const maxResponseBytes = 10 << 20 // 10 MiB
 
 // errorBodyPrefixBytes bounds the error body classify captures onto HTTPError
@@ -219,13 +219,7 @@ func decodePage(resp *http.Response, authorityIDForMetrics, startIndex int) (Fet
 	// PlanIt's total can be wrong in either direction: an empty page ends the
 	// result set even when from < total, and a full page continues even when
 	// from+read >= total.
-	hasMorePages := read >= nationalPageSize
-	if parsed.Total != nil && from+read < *parsed.Total {
-		hasMorePages = true
-	}
-	if read == 0 {
-		hasMorePages = false
-	}
+	hasMorePages := read > 0 && (read >= nationalPageSize || (parsed.Total != nil && from+read < *parsed.Total))
 
 	return FetchPageResult{
 		From:         from,

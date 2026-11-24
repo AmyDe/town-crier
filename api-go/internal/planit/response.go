@@ -164,10 +164,9 @@ func (r planItRecord) toDomain() (applications.PlanningApplication, error) {
 	}, nil
 }
 
-// planItInstantLayouts are tried in order when parsing PlanIt's last_different.
-// PlanIt emits a naive UTC timestamp with variable fractional seconds and NO
-// timezone (e.g. "2026-06-13T00:06:34.112581"); RFC3339Nano is kept first so a
-// TZ-bearing value (should PlanIt ever send one) still parses.
+// planItInstantLayouts: PlanIt's last_different is a naive UTC timestamp with
+// variable fractional seconds and no zone (e.g. "2026-06-13T00:06:34.112581");
+// RFC3339Nano stays first so a zoned value still parses.
 var planItInstantLayouts = []string{
 	time.RFC3339Nano,
 	"2006-01-02T15:04:05.999999",

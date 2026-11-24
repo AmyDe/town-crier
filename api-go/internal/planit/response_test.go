@@ -99,8 +99,6 @@ func TestToDomain_ParsesNoTimezoneFractionalLastDifferent(t *testing.T) {
 	}
 }
 
-// TestToDomain_AbsentLastDifferentMapsToZeroTime: a projection that omits
-// last_different maps to the zero time, while a malformed value still errors.
 func TestToDomain_AbsentLastDifferentMapsToZeroTime(t *testing.T) {
 	t.Parallel()
 

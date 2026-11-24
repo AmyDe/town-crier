@@ -157,10 +157,9 @@ func nextDelta(cfg WindowPlanConfig, state WindowPlanState, local, today time.Ti
 		{planit.WorkDeltaStart, planit.AxisStart},
 		{planit.WorkDeltaDecided, planit.AxisDecided},
 	} {
-		if started, ok := state.DeltaStartedAt[c.work]; ok && !started.Before(slot) {
-			continue
+		if started, ok := state.DeltaStartedAt[c.work]; !ok || started.Before(slot) {
+			return &PlannedWork{Work: c.work, Axis: c.axis, From: from, DifferentStart: &diff, MaxPages: cfg.DeltaMaxPages}
 		}
-		return &PlannedWork{Work: c.work, Axis: c.axis, From: from, DifferentStart: &diff, MaxPages: cfg.DeltaMaxPages}
 	}
 	return nil
 }

@@ -128,8 +128,8 @@ func (o pgIngestOpener) Begin(ctx context.Context) (ingestUnit, error) {
 
 var errNestedTx = errors.New("polling: transactions cannot be started inside an ingest unit")
 
-// txQuerier lets the ingest transaction back an applications store, which only
-// needs Exec/Query/QueryRow here; it never starts a transaction of its own.
+// txQuerier lets the ingest transaction back an applications store without it
+// ever starting a nested transaction.
 type txQuerier struct{ pgx.Tx }
 
 func (txQuerier) BeginTx(context.Context, pgx.TxOptions) (pgx.Tx, error) { return nil, errNestedTx }
