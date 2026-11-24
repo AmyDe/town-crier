@@ -11,7 +11,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 
-/** Town Crier's appearance preference; mirrors the iOS `AppearanceMode` enum. */
+/** Town Crier's appearance preference. */
 public enum class Appearance {
     System,
     Light,

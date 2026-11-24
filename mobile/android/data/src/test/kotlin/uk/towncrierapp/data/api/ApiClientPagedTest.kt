@@ -15,10 +15,8 @@ private data class PagedRow(
 
 /**
  * `requestPaged` surfaces the opaque `X-Next-Cursor` response header
- * alongside the decoded body — used by keyset-paged list endpoints (later
- * issues). `requestBytes` returns the raw response body untouched, for
- * opaque payloads (e.g. the future GDPR export). Port of iOS
- * `URLSessionAPIClientPagedTests`.
+ * alongside the decoded body. `requestBytes` returns the raw response body
+ * untouched.
  */
 class ApiClientPagedTest {
     private val baseUrl = "https://api-dev.towncrierapp.uk"

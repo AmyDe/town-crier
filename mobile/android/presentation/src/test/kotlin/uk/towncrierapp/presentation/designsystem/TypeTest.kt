@@ -5,15 +5,7 @@ import androidx.compose.ui.text.font.FontWeight
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 
-/**
- * Sans standardisation (issue #912 Phase 5): the display/headline M3 roles
- * that previously used a bundled display serif now use the same Inter
- * family as body/caption — the serif treatment is dropped everywhere, per
- * the 2026-07-10 owner decision. Every other Public Notice element (mono
- * role, stamps, filed-notice cards, kerned uppercase) is unaffected. These
- * are pure-JVM assertions against the `TextStyle`/`FontFamily` values — no
- * Robolectric, no device (android-coding-standards skill, testing.md).
- */
+/** Display/headline M3 roles use the same Inter family as body/caption (no serif). */
 class TypeTest {
     @Test
     fun `headlineLarge, titleLarge and titleMedium use Inter SemiBold`() {

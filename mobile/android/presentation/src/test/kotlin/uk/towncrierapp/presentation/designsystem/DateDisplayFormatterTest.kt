@@ -5,8 +5,7 @@ import java.time.LocalDate
 import kotlin.test.assertEquals
 
 /**
- * Absolute dates ONLY, never relative/"time ago" text, anywhere (GH#775 —
- * byte-exact port of iOS `Date+TownCrier.swift`'s shared formatter):
+ * Absolute dates ONLY, never relative/"time ago" text, anywhere:
  * `d MMM yyyy`, en-GB.
  */
 class DateDisplayFormatterTest {

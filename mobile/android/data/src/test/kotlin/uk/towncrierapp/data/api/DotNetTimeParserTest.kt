@@ -7,9 +7,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 /**
- * Port of iOS `DotNetTimeParserTests` — one shared parser for the Go
- * backend's `platform.DotNetTime` wire format, applied per-field by DTO
- * mappers (epic #770 "API contract essentials"). Fractional seconds appear
+ * One shared parser for the Go backend's `platform.DotNetTime` wire format,
+ * applied per-field by DTO mappers. Fractional seconds appear
  * on the wire only when the sub-second part is non-zero, and the offset is
  * spelled either `Z` or `±hh:mm` — the parser must accept every combination,
  * and never throw on garbage.

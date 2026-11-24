@@ -11,8 +11,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 
 /**
- * The single 401-refresh-retry policy (epic #770 "API contract essentials",
- * acceptance criteria) — port of iOS `URLSessionAPIClientTokenRefreshTests`.
+ * The single 401-refresh-retry policy.
  * Refresh throwing [IOException] maps to [DomainError.NetworkUnavailable];
  * any other refresh failure maps to [DomainError.SessionExpired]. No status
  * code other than 401 ever triggers a retry.

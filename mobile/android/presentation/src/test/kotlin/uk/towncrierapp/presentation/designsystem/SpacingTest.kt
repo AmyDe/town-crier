@@ -7,10 +7,8 @@ import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 
 /**
- * Public Notice sharpens the corner-radius scale (epic #848 R5, design-language
- * skill): sm 8dp→3dp, md 12dp→6dp, lg 16dp→12dp. [TownCrierShapes] derives from
- * these constants, so asserting it here catches any accidental hand-edit that
- * would let the two drift apart (android-coding-standards skill).
+ * [TownCrierShapes] derives from these constants, so asserting it here catches
+ * any accidental hand-edit that would let the two drift apart.
  */
 class SpacingTest {
     @Test

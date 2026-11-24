@@ -5,8 +5,7 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 /**
- * Absolute dates ONLY — no relative/"time ago" text anywhere in the app
- * (byte-exact port of iOS `Date+TownCrier.swift`'s shared formatter). Any
+ * Absolute dates ONLY — no relative/"time ago" text anywhere in the app. Any
  * `OffsetDateTime`/`Instant` this formats has already been reduced to a UTC
  * [LocalDate] by the data layer's mapping, so no timezone conversion happens
  * here.

@@ -33,7 +33,6 @@ import uk.towncrierapp.presentation.designsystem.TownCrierTheme
  * tier caps their radius below Pro's 10 km ceiling — a tappable chip rather
  * than a drag-past-the-cap gesture. Sells the whole upgrade, not just a
  * bigger radius (copy shared verbatim with [uk.towncrierapp.presentation.features.watchzones.WatchZoneInlineUpsellCard]).
- * Port of iOS `UnlockLargerZonesChip`.
  */
 @Composable
 public fun UnlockLargerZonesChip(

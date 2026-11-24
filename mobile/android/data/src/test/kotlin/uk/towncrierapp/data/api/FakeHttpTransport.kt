@@ -9,8 +9,7 @@ import java.io.IOException
 
 /**
  * Hand-written [HttpTransport] fake: a queue of scripted per-request
- * responses (or failures), no MockWebServer (epic #770 "API contract
- * essentials" test strategy). Each [execute] call records the [Request] it
+ * responses (or failures), no MockWebServer. Each [execute] call records the [Request] it
  * received so tests can assert headers/method/URL, and pops the next
  * queued response/failure.
  */
