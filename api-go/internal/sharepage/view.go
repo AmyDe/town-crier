@@ -79,9 +79,16 @@ func buildPageView(app applications.PlanningApplication, slug, ref string) pageV
 		place = strings.TrimSpace(app.AreaName)
 	}
 
-	headline := ref
+	// The edge merges "//" in the request path, so the stored name is the only
+	// faithful source for visible text; URLs keep the request ref.
+	displayRef := strings.TrimSpace(app.Name)
+	if displayRef == "" {
+		displayRef = ref
+	}
+
+	headline := displayRef
 	if place != "" {
-		headline = ref + " · " + place
+		headline = displayRef + " · " + place
 	}
 
 	canonical := shareOrigin + "/a/" + slug + "/" + ref
@@ -96,7 +103,7 @@ func buildPageView(app applications.PlanningApplication, slug, ref string) pageV
 		AppleAppID:    appleAppID,
 		CTAHref:       appStoreRedirectPath,
 		HomeURL:       homeURL,
-		Ref:           ref,
+		Ref:           displayRef,
 		Address:       app.Address,
 		Description:   app.Description,
 	}
