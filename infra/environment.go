@@ -31,7 +31,8 @@ const (
 	// devPollingAreaID is the PlanIt area_id of Kingston upon Thames, the one authority the dev
 	// poll job reads. Changing it resets the dev data set.
 	devPollingAreaID = "314"
-	// 0 forces a full read on every dev poll run.
+	// 0 forces a full read on every dev poll run; reset to prodPollingFullReadMaxAgeDays when the dev
+	// trial ends.
 	devPollingFullReadMaxAgeDays  = "0"
 	prodPollingFullReadMaxAgeDays = "7"
 	// PlanIt is one client across both envs, so the two daily caps must sum to at most 300.
@@ -45,7 +46,8 @@ const (
 	devPollingDayAllowance  = "15"
 )
 
-// cloudflareIPv4Ranges is a snapshot of https://www.cloudflare.com/ips-v4. IPv4 only on purpose:
+// cloudflareIPv4Ranges is a snapshot of https://www.cloudflare.com/ips-v4 taken 2026-06-19; refresh it
+// when Cloudflare publishes new ranges. IPv4 only on purpose:
 // the origin has no AAAA record and ACA ipSecurityRestrictions accepts only IPv4 CIDRs.
 var cloudflareIPv4Ranges = []string{
 	"173.245.48.0/20",
