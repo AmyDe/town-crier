@@ -41,9 +41,6 @@ var readPathSwitchFlags = []readPathSwitchFlag{
 	{"thin-map", "thinMap", func(s readPathStatus) bool { return s.ThinMap }},
 }
 
-// runReadPathSwitch implements `tc read-path-switch`: it sets the named
-// switches of one environment, reads the state back and verifies it. Without a
-// switch flag it only prints the state.
 func runReadPathSwitch(ctx context.Context, cfgs map[string]Config, env Env, args *ParsedArgs) int {
 	target, err := args.GetRequired("env")
 	target = strings.ToLower(target)
