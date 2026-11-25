@@ -195,6 +195,28 @@ func TestCreate_DeleteFreesQuota(t *testing.T) {
 	}
 }
 
+func TestCreate_IgnoresLegacyAuthorityIDInBody(t *testing.T) {
+	t.Parallel()
+
+	p, err := profiles.NewProfile(testUser, "", nearbyNow)
+	if err != nil {
+		t.Fatalf("NewProfile: %v", err)
+	}
+	casFake := newFakeProfileCAS(p)
+	d := nearbyDeps{
+		store:    &fakeZoneStore{},
+		profiles: &fakeProfileReader{profile: p},
+		apps:     &fakeAppFinder{},
+		unread:   &fakeUnread{},
+	}
+	mux := newNearbyMuxWithCAS(t, d, casFake)
+	body := `{"name":"New Zone","latitude":51.5,"longitude":-0.12,"radiusMetres":1000,"authorityId":42}`
+	rec := doReq(t, mux, http.MethodPost, "/v1/me/watch-zones", body)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create: got %d, want 201 (body=%s)", rec.Code, rec.Body)
+	}
+}
+
 // TestCreate_LegacyProfileLazyInit verifies that a legacy profile (nil
 // WatchZoneCount) that already has 1 zone cannot create a 2nd zone under the
 // Free tier limit of 1. The lazy-init path reads the live zone count from the

@@ -161,15 +161,13 @@ func Routes(mux *http.ServeMux, store zoneStore, logger *slog.Logger, opts ...Op
 
 // watchZoneSummary is the per-zone wire shape returned by list and update.
 // createdAt is deliberately absent. Paused is derived, never stored (see
-// pausedIDs). AuthorityID is always 0 and stays only for older clients'
-// strict decoding.
+// pausedIDs).
 type watchZoneSummary struct {
 	ID                  string  `json:"id"`
 	Name                string  `json:"name"`
 	Latitude            float64 `json:"latitude"`
 	Longitude           float64 `json:"longitude"`
 	RadiusMetres        float64 `json:"radiusMetres"`
-	AuthorityID         int     `json:"authorityId"`
 	PushEnabled         bool    `json:"pushEnabled"`
 	EmailInstantEnabled bool    `json:"emailInstantEnabled"`
 	Paused              bool    `json:"paused"`
@@ -188,7 +186,6 @@ func summaryOf(z WatchZone, paused bool) watchZoneSummary {
 		Latitude:            z.Latitude,
 		Longitude:           z.Longitude,
 		RadiusMetres:        z.RadiusMetres,
-		AuthorityID:         0,
 		PushEnabled:         z.PushEnabled,
 		EmailInstantEnabled: z.EmailInstantEnabled,
 		Paused:              paused,
