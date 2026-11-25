@@ -302,24 +302,6 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		return err
 	}
 
-	// User-assigned managed identity for the dev-only dev-seed job's read-only
-	// access to town_crier_prod. Deliberately separate from cosmosDataIdentity
-	// (which every other Container App/Job in both dev and prod shares, and
-	// which already holds full DML on both databases): a bug in this job's SQL
-	// must not be able to write to prod. Mapped to a SELECT-only Postgres role
-	// via `pgbootstrap -readonly` — see
-	// docs/adr/0038-dev-seed-least-privilege-prod-read.md. Consumed by the
-	// dev-seed Container Apps Job created in infra/environment.go;
-	// not wired into any resource in this file.
-	devSeedReaderIdentity, err := managedidentity.NewUserAssignedIdentity(ctx, "id-town-crier-dev-seed-reader", &managedidentity.UserAssignedIdentityArgs{
-		ResourceName:      pulumi.String("id-town-crier-dev-seed-reader"),
-		ResourceGroupName: resourceGroup.Name,
-		Tags:              tags,
-	})
-	if err != nil {
-		return err
-	}
-
 	// Azure Database for PostgreSQL — Flexible Server, shared by the dev and prod databases.
 	// Burstable B1ms, single-AZ, public network access, 7-day non-geo-redundant backups.
 	// Protect stops Pulumi from deleting or replacing the server, which would drop both databases.
@@ -716,6 +698,7 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		{name: "dormant-cleanup", windowSize: "PT30M", threshold: 0},
 		{name: "subscription-sweep", windowSize: "PT30M", threshold: 0},
 		{name: "pg-purge", windowSize: "PT30M", threshold: 0},
+		{name: "appstore-reconcile", windowSize: "PT30M", threshold: 0},
 	}
 	for _, job := range prodFailedExecutionJobs {
 		alertName := fmt.Sprintf("alert-job-failed-%s-prod", job.name)
@@ -1134,12 +1117,6 @@ expected
 	// PrincipalId is required by env-stack role assignments, which are keyed to the principal
 	// (object) ID.
 	ctx.Export("cosmosDataIdentityPrincipalId", cosmosDataIdentity.PrincipalId)
-	ctx.Export("devSeedReaderIdentityId", devSeedReaderIdentity.ID())
-	ctx.Export("devSeedReaderIdentityClientId", devSeedReaderIdentity.ClientId)
-	// PrincipalId is the OID pgbootstrap maps to the SELECT-only Postgres role
-	// (pgaadauth_create_principal_with_oid) — see
-	// docs/adr/0038-dev-seed-least-privilege-prod-read.md.
-	ctx.Export("devSeedReaderIdentityPrincipalId", devSeedReaderIdentity.PrincipalId)
 	ctx.Export("containerAppsEnvironmentId", containerAppsEnv.ID())
 	// Postgres Flexible Server. The admin password
 	// is a Pulumi secret (RandomPassword.Result); env stacks read these to build per-env
@@ -1537,12 +1514,12 @@ func planitPollAlertSpecs() []logAlertSpec {
 		},
 		{
 			name:        "alert-planit-poll-heartbeat-shared",
-			displayName: "PlanIt poll heartbeat missing (prod)",
-			description: "No prod PlanIt poll run span in the last 2 hours; the hourly poll job is not running or not reporting.",
+			displayName: "PlanIt poll heartbeat missing or polling switched off (prod)",
+			description: "Either no prod PlanIt poll run span in the last 2 hours (the hourly poll job is not running or not reporting), or every run in that window reported poll.enabled == false (polling switched off for the whole window).",
 			severity:    2,
 			window:      "PT2H",
 			freq:        "PT1H",
-			query:       planitPollRunSpanFilter + "\n" + envFilter + "\n" + `| summarize runs = count()` + "\n" + `| where runs == 0`,
+			query:       planitPollRunSpanFilter + "\n" + envFilter + "\n" + `| summarize runs = count(), enabledRuns = countif(tostring(Properties["poll.enabled"]) =~ "true")` + "\n" + `| where enabledRuns == 0`,
 			threshold:   0,
 		},
 	}
