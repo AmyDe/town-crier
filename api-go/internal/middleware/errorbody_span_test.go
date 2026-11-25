@@ -55,7 +55,7 @@ func serveSpanChain(t *testing.T, next http.HandlerFunc) sdktrace.ReadOnlySpan {
 }
 
 // TestErrorBody_500MarksRequestSpanFailed pins that a handler that
-// returns a bodyless 500 (e.g. the Cosmos-timeout notification-state path) must
+// returns a bodyless 500 (e.g. a database timeout) must
 // leave the request span marked Error so AppRequests shows it as failed and the
 // 500 is queryable — without the handler having to RecordError itself.
 func TestErrorBody_500MarksRequestSpanFailed(t *testing.T) {

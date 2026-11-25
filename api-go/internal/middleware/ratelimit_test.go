@@ -15,8 +15,6 @@ import (
 // on responses, not logs.
 func slogDiscard() *slog.Logger { return slog.New(slog.DiscardHandler) }
 
-// fakeTierLookup returns a fixed paid/free decision per user, standing in for
-// the Cosmos profile lookup the real middleware uses.
 type fakeTierLookup struct {
 	paid map[string]bool
 	err  error

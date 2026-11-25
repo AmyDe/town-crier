@@ -30,15 +30,15 @@ func TestPollingRebuildMigration_CreatesTables(t *testing.T) {
 	}
 }
 
-func TestPollingRebuildMigration_LegacyStateTablesRemain(t *testing.T) {
+func TestPollingRebuildMigration_LegacyStateTablesDropped(t *testing.T) {
 	pool := pgtest.New(t)
 	for _, table := range []string{"poll_state", "backfill_state", "recent_sweep_state"} {
 		var exists bool
 		if err := pool.QueryRow(context.Background(), `SELECT to_regclass($1) IS NOT NULL`, table).Scan(&exists); err != nil {
 			t.Fatalf("lookup %s: %v", table, err)
 		}
-		if !exists {
-			t.Errorf("legacy table %s must not be dropped", table)
+		if exists {
+			t.Errorf("legacy table %s must be dropped", table)
 		}
 	}
 }

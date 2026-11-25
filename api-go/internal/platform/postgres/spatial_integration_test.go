@@ -121,8 +121,7 @@ func TestSpatial_RadiusFilter(t *testing.T) {
 }
 
 // TestSpatial_NearestFirst proves the KNN <-> operator orders by true distance:
-// the 100 m app comes before the 500 m app. This server-side ordering is exactly
-// what the Cosmos Gateway refuses to do across partitions.
+// the 100 m app comes before the 500 m app.
 func TestSpatial_NearestFirst(t *testing.T) {
 	ctx := context.Background()
 	pool := pgtest.New(t)
@@ -138,8 +137,7 @@ func TestSpatial_NearestFirst(t *testing.T) {
 }
 
 // TestSpatial_AccurateCount proves a cross-cutting count(*) over a spatial filter
-// returns the exact number (2). This is the aggregate Cosmos rejects with
-// BadRequest substatus 1004 across partitions.
+// returns the exact number (2).
 func TestSpatial_AccurateCount(t *testing.T) {
 	ctx := context.Background()
 	pool := pgtest.New(t)

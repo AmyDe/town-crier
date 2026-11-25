@@ -153,7 +153,7 @@ func TestHandler_Run_NoLapsedProfilesDoesNothing(t *testing.T) {
 
 func TestHandler_Run_FinderErrorPropagates(t *testing.T) {
 	t.Parallel()
-	finder := &fakeFinder{err: errors.New("cosmos down")}
+	finder := &fakeFinder{err: errors.New("db down")}
 	h := newHandler(finder, newFakeSaver(), newFakeAuth0(), time.Now())
 
 	if _, err := h.Run(context.Background()); err == nil {
@@ -180,7 +180,7 @@ func TestHandler_Run_SaveFailureIsolatedAndContinues(t *testing.T) {
 	}
 	// A failed Save must not reach Auth0 for that profile.
 	if _, synced := auth0.synced["auth0|fails"]; synced {
-		t.Error("auth0 must not be synced when the Cosmos save failed")
+		t.Error("auth0 must not be synced when the save failed")
 	}
 	// The healthy profile still gets downgraded and synced.
 	if saver.saved["auth0|ok"] != profiles.TierFree || auth0.synced["auth0|ok"] != "Free" {
