@@ -1,13 +1,7 @@
 // Package assetlinks serves the Android Digital Asset Links document on the
 // public share host (Android App Links). Android's package manager
 // fetches GET /.well-known/assetlinks.json over HTTPS to verify a package
-// claiming an https intent-filter with android:autoVerify="true" — the
-// Android equivalent of internal/aasa's apple-app-site-association document,
-// served from the same share host.
-//
-// The endpoint is stateless (no store) and emits only the fixed, public
-// association document, so wiring registers it unconditionally alongside
-// AASA.
+// claiming an https intent-filter with android:autoVerify="true".
 package assetlinks
 
 import (

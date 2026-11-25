@@ -5,10 +5,6 @@
 // document declares the Universal Links applinks component for the share-page
 // path /a/*, associated with the app's App ID (TeamID.BundleID), so a shared
 // link https://share.towncrierapp.uk/a/{slug}/{ref} opens the installed app.
-//
-// The endpoint is stateless (no store) and emits only the fixed, public
-// association document, so wiring registers it unconditionally alongside the
-// other stateless routes.
 package aasa
 
 import (

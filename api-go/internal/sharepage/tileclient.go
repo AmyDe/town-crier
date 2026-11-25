@@ -34,9 +34,7 @@ type OSMTileClient struct {
 }
 
 // NewOSMTileClient builds the production tile client against
-// tile.openstreetmap.org with a bounded HTTP client. Construction opens no
-// connections (they open lazily on first fetch), so wiring can build it
-// unconditionally.
+// tile.openstreetmap.org. Construction opens no connections.
 func NewOSMTileClient() *OSMTileClient {
 	return newOSMTileClient(osmTileBaseURL, &http.Client{
 		Timeout: 30 * time.Second,
@@ -48,15 +46,12 @@ func NewOSMTileClient() *OSMTileClient {
 	})
 }
 
-// newOSMTileClient is the seam the tests use to point the client at a local
-// httptest server.
 func newOSMTileClient(baseURL string, httpClient *http.Client) *OSMTileClient {
 	return &OSMTileClient{http: httpClient, baseURL: baseURL}
 }
 
-// Fetch GETs the z/x/y tile and decodes it. It bounds the request time (a
-// per-tile timeout on top of the client timeout) and the response body, and
-// treats any non-200 as a permanent error for that tile.
+// Fetch GETs the z/x/y tile and decodes it, treating any non-200 as a permanent
+// error for that tile.
 func (c *OSMTileClient) Fetch(ctx context.Context, z, x, y int) (image.Image, error) {
 	ctx, cancel := context.WithTimeout(ctx, tileFetchTimeout)
 	defer cancel()
