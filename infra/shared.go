@@ -302,24 +302,6 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		return err
 	}
 
-	// User-assigned managed identity for the dev-only dev-seed job's read-only
-	// access to town_crier_prod. Deliberately separate from cosmosDataIdentity
-	// (which every other Container App/Job in both dev and prod shares, and
-	// which already holds full DML on both databases): a bug in this job's SQL
-	// must not be able to write to prod. Mapped to a SELECT-only Postgres role
-	// via `pgbootstrap -readonly` — see
-	// docs/adr/0038-dev-seed-least-privilege-prod-read.md. Consumed by the
-	// dev-seed Container Apps Job created in infra/environment.go;
-	// not wired into any resource in this file.
-	devSeedReaderIdentity, err := managedidentity.NewUserAssignedIdentity(ctx, "id-town-crier-dev-seed-reader", &managedidentity.UserAssignedIdentityArgs{
-		ResourceName:      pulumi.String("id-town-crier-dev-seed-reader"),
-		ResourceGroupName: resourceGroup.Name,
-		Tags:              tags,
-	})
-	if err != nil {
-		return err
-	}
-
 	// Azure Database for PostgreSQL — Flexible Server, shared by the dev and prod databases.
 	// Burstable B1ms, single-AZ, public network access, 7-day non-geo-redundant backups.
 	// Protect stops Pulumi from deleting or replacing the server, which would drop both databases.
@@ -1134,12 +1116,6 @@ expected
 	// PrincipalId is required by env-stack role assignments, which are keyed to the principal
 	// (object) ID.
 	ctx.Export("cosmosDataIdentityPrincipalId", cosmosDataIdentity.PrincipalId)
-	ctx.Export("devSeedReaderIdentityId", devSeedReaderIdentity.ID())
-	ctx.Export("devSeedReaderIdentityClientId", devSeedReaderIdentity.ClientId)
-	// PrincipalId is the OID pgbootstrap maps to the SELECT-only Postgres role
-	// (pgaadauth_create_principal_with_oid) — see
-	// docs/adr/0038-dev-seed-least-privilege-prod-read.md.
-	ctx.Export("devSeedReaderIdentityPrincipalId", devSeedReaderIdentity.PrincipalId)
 	ctx.Export("containerAppsEnvironmentId", containerAppsEnv.ID())
 	// Postgres Flexible Server. The admin password
 	// is a Pulumi secret (RandomPassword.Result); env stacks read these to build per-env
