@@ -67,9 +67,8 @@ type listUsersItem struct {
 	OfferCode          *string `json:"offerCode"`
 }
 
-// statsResponse mirrors the pinned GET /v1/admin/stats JSON contract
-// byte-for-field (api-go/internal/admin/stats.go). Field names and nesting are
-// load-bearing: the API side is authoritative and this type must not drift.
+// statsResponse mirrors the GET /v1/admin/stats contract in
+// api-go/internal/admin/stats.go; field names and nesting must match.
 type statsResponse struct {
 	Users    statsUsers    `json:"users"`
 	Paying   statsPaying   `json:"paying"`

@@ -29,8 +29,6 @@ func TestAssetLinks_ServesJSONDocument(t *testing.T) {
 	mux := http.NewServeMux()
 	Routes(mux, []Package{{Name: pkgName, Fingerprints: []string{fingerprint}}}, slog.New(slog.DiscardHandler))
 
-	// Android's package manager fetches the extensionless well-known path over
-	// HTTPS to verify the autoVerify intent filter.
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/.well-known/assetlinks.json", nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)

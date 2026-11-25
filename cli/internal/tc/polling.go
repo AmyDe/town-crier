@@ -135,11 +135,9 @@ func runPollingStatus(ctx context.Context, cfgs map[string]Config, env Env) int 
 	return exitOK
 }
 
-// runPollingSwitch implements `tc polling-switch`: it turns every environment
-// except the target off, waits until no request from them can still be less
-// than a minute before the target's first request, then turns the target on.
-// Each write is verified by reading it back. It never leaves two environments
-// on: a failure stops before the target is turned on.
+// runPollingSwitch never leaves two environments on: it turns the others off and
+// waits until none of their requests can still be under a minute before the
+// target's first, and any failure stops before the target is turned on.
 func runPollingSwitch(ctx context.Context, cfgs map[string]Config, env Env, args *ParsedArgs, clock pollingClock) int {
 	target, err := args.GetRequired("to")
 	target = strings.ToLower(target)

@@ -103,7 +103,7 @@ func Routes(mux *http.ServeMux, adminKey string, profileStore profileAdminStore,
 func (h *handler) writeJSON(r *http.Request, w http.ResponseWriter, v any) {
 	body, err := httputil.EncodeJSON(v)
 	if err != nil {
-		h.serverError(w, r, "encode response", err)
+		failRequest(h.logger, w, r, "encode response", err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -113,7 +113,7 @@ func (h *handler) writeJSON(r *http.Request, w http.ResponseWriter, v any) {
 	}
 }
 
-func (h *handler) serverError(w http.ResponseWriter, r *http.Request, op string, err error) {
-	h.logger.ErrorContext(r.Context(), "admin request failed", "op", op, "error", err)
+func failRequest(logger *slog.Logger, w http.ResponseWriter, r *http.Request, op string, err error) {
+	logger.ErrorContext(r.Context(), "admin request failed", "op", op, "error", err)
 	w.WriteHeader(http.StatusInternalServerError)
 }

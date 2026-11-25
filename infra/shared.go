@@ -23,7 +23,6 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
 
-// dashboardTimespan24HoursMs is the relative timespan (ms) for the dashboard metric tiles.
 const dashboardTimespan24HoursMs = 86400000
 
 // subscriptionFromID extracts the subscription ID (segment 2) from an ARM resource ID.
@@ -47,7 +46,6 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 	ciServicePrincipalID := conf.Require("ciServicePrincipalId")
 	monitorServicePrincipalID := conf.Require("monitorServicePrincipalId")
 
-	// Resource Group
 	resourceGroup, err := resources.NewResourceGroup(ctx, "rg-town-crier-shared", &resources.ResourceGroupArgs{
 		ResourceGroupName: pulumi.String("rg-town-crier-shared"),
 		Tags:              tags,
@@ -292,7 +290,8 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		}
 	}
 
-	// User-assigned managed identity for Cosmos DB data access
+	// Postgres data-access identity shared by every Container App and Job; the "cosmos" name is
+	// kept because renaming it would replace the identity.
 	cosmosDataIdentity, err := managedidentity.NewUserAssignedIdentity(ctx, "id-town-crier-cosmos-data", &managedidentity.UserAssignedIdentityArgs{
 		ResourceName:      pulumi.String("id-town-crier-cosmos-data"),
 		ResourceGroupName: resourceGroup.Name,
@@ -1138,7 +1137,6 @@ expected
 	return nil
 }
 
-// dashboardPart builds one positioned dashboard part from a metadata tile.
 func dashboardPart(x, y, colSpan, rowSpan int, metadata portal.DashboardPartMetadataArgs) portal.DashboardPartsArgs {
 	return portal.DashboardPartsArgs{
 		Position: portal.DashboardPartsPositionArgs{

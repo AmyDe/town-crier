@@ -148,8 +148,7 @@ func TestRoutes_LegalDocument_UnknownTypeReturns404(t *testing.T) {
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("status: got %d, want %d", resp.StatusCode, http.StatusNotFound)
 	}
-	// The handler returns a bodyless 404; middleware.ErrorBody (added in the
-	// middleware chain) adds the PascalCase envelope.
+	// The handler returns a bodyless 404; middleware.ErrorBody adds the PascalCase envelope.
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatalf("read body: %v", err)

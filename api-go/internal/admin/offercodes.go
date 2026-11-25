@@ -64,7 +64,6 @@ func (h *handler) generateOfferCodes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validation order: count, tier, duration, label, maxRedemptions.
 	if req.Count < 1 || req.Count > maxOfferCodeCount {
 		h.writeBadRequest(r, w, argOutOfRange("Count must be between 1 and 1000.", req.Count))
 		return
@@ -95,16 +94,16 @@ func (h *handler) generateOfferCodes(w http.ResponseWriter, r *http.Request) {
 	for range req.Count {
 		canonical, err := h.generator.Generate()
 		if err != nil {
-			h.serverError(w, r, "generate offer code", err)
+			failRequest(h.logger, w, r, "generate offer code", err)
 			return
 		}
 		code, err := offercodes.NewOfferCode(canonical, tier, req.DurationDays, req.Label, maxRedemptions, now)
 		if err != nil {
-			h.serverError(w, r, "build offer code", err)
+			failRequest(h.logger, w, r, "build offer code", err)
 			return
 		}
 		if err := h.codes.Save(r.Context(), code); err != nil {
-			h.serverError(w, r, "save offer code", err)
+			failRequest(h.logger, w, r, "save offer code", err)
 			return
 		}
 		formatted = append(formatted, offercodes.Format(canonical))
@@ -156,7 +155,7 @@ func (h *handler) listOfferCodes(w http.ResponseWriter, r *http.Request) {
 
 	codes, err := h.codes.List(r.Context(), labelFilter, limit)
 	if err != nil {
-		h.serverError(w, r, "list offer codes", err)
+		failRequest(h.logger, w, r, "list offer codes", err)
 		return
 	}
 
@@ -187,7 +186,7 @@ func formatOptionalTime(t *time.Time) *string {
 func (h *handler) writeBadRequest(r *http.Request, w http.ResponseWriter, message string) {
 	body, err := httputil.EncodeJSON(apiErrorResponse{Error: message, Message: nil})
 	if err != nil {
-		h.serverError(w, r, "encode error", err)
+		failRequest(h.logger, w, r, "encode error", err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
