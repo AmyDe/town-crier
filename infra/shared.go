@@ -698,6 +698,7 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		{name: "dormant-cleanup", windowSize: "PT30M", threshold: 0},
 		{name: "subscription-sweep", windowSize: "PT30M", threshold: 0},
 		{name: "pg-purge", windowSize: "PT30M", threshold: 0},
+		{name: "appstore-reconcile", windowSize: "PT30M", threshold: 0},
 	}
 	for _, job := range prodFailedExecutionJobs {
 		alertName := fmt.Sprintf("alert-job-failed-%s-prod", job.name)
