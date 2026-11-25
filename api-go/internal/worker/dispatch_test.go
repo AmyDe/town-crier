@@ -186,7 +186,7 @@ func TestRun_DigestModeWithoutHandlerExitsOne(t *testing.T) {
 
 func TestRun_DigestCycleErrorExitsOne(t *testing.T) {
 	t.Parallel()
-	d := &fakeDigester{weeklyErr: errors.New("cosmos down")}
+	d := &fakeDigester{weeklyErr: errors.New("db down")}
 	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
 
 	code := Run(context.Background(), "digest", d, nil, nil, nil, nil, nil, nil, nil, logger)
@@ -225,7 +225,7 @@ func TestRun_DormantCleanupWithoutHandlerExitsOne(t *testing.T) {
 
 func TestRun_DormantCleanupCycleErrorExitsOne(t *testing.T) {
 	t.Parallel()
-	d := &fakeDormant{err: errors.New("cosmos down")}
+	d := &fakeDormant{err: errors.New("db down")}
 	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
 
 	code := Run(context.Background(), "dormant-cleanup", nil, d, nil, nil, nil, nil, nil, nil, logger)
@@ -264,7 +264,7 @@ func TestRun_SubscriptionSweepWithoutHandlerExitsOne(t *testing.T) {
 
 func TestRun_SubscriptionSweepCycleErrorExitsOne(t *testing.T) {
 	t.Parallel()
-	s := &fakeSweep{err: errors.New("cosmos down")}
+	s := &fakeSweep{err: errors.New("db down")}
 	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
 
 	code := Run(context.Background(), "subscription-sweep", nil, nil, nil, s, nil, nil, nil, nil, logger)

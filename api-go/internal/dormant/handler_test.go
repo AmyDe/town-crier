@@ -170,7 +170,7 @@ func TestHandler_Run_NoDormantAccountsDeletesNothing(t *testing.T) {
 
 func TestHandler_Run_FinderErrorPropagates(t *testing.T) {
 	t.Parallel()
-	finder := &fakeFinder{err: errors.New("cosmos down")}
+	finder := &fakeFinder{err: errors.New("db down")}
 	h := newHandler(finder, newCascadeRecorder(), &fakeAuth0{}, time.Now())
 
 	if _, err := h.Run(context.Background()); err == nil {

@@ -79,7 +79,7 @@ func TestRecordActivity_AnonymousRequestSkipped(t *testing.T) {
 func TestRecordActivity_FailureSwallowed(t *testing.T) {
 	t.Parallel()
 
-	rec := &fakeActivityRecorder{err: errors.New("cosmos down")}
+	rec := &fakeActivityRecorder{err: errors.New("db down")}
 	clock := &fixedClock{t: time.Unix(2000, 0)}
 	mw := RecordActivity(rec, clock.now, slogDiscard())
 

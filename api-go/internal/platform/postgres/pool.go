@@ -136,8 +136,7 @@ type tokenSource interface {
 // test-integration, and docker-compose are unaffected. When it is
 // "azure-managed-identity" it builds a passwordless pool that injects a fresh
 // Entra token (scope azurePostgresTokenScope) as the connection password on
-// every new physical connection, honouring AZURE_CLIENT_ID exactly as the
-// Cosmos and Service Bus clients do.
+// every new physical connection, honouring AZURE_CLIENT_ID.
 func NewPoolFromEnv(ctx context.Context, opts ...PoolOption) (*pgxpool.Pool, error) {
 	if os.Getenv("POSTGRES_AUTH") != authModeAzureManagedIdentity {
 		return NewPool(ctx, DSNFromEnv(), opts...)

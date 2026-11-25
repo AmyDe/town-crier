@@ -126,7 +126,7 @@ func TestHandler_Register_StoreFailure(t *testing.T) {
 	t.Parallel()
 
 	store := newFakeRegStore()
-	store.saveErr = errors.New("cosmos down")
+	store.saveErr = errors.New("db down")
 	rec := doReq(t, testMux(t, store, time.Now()), http.MethodPut, "/v1/me/device-token", `{"token":"tok-1","platform":"ios"}`)
 	if rec.Code != http.StatusInternalServerError {
 		t.Errorf("status = %d, want 500", rec.Code)

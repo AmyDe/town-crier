@@ -98,7 +98,7 @@ func TestCascade_ChildFailureAbortsBeforeProfileAndAuth0(t *testing.T) {
 	t.Parallel()
 	var log []string
 	d := recordingDeleters(&log)
-	d.WatchZones = recordingChild{label: "watchZones", log: &log, err: errors.New("cosmos down")}
+	d.WatchZones = recordingChild{label: "watchZones", log: &log, err: errors.New("db down")}
 
 	err := Cascade(context.Background(), "auth0|abc", d)
 	if err == nil {
@@ -116,7 +116,7 @@ func TestCascade_OfferCodeAnonymiseFailureAbortsBeforeProfileAndAuth0(t *testing
 	t.Parallel()
 	var log []string
 	d := recordingDeleters(&log)
-	d.OfferCodes = recordingAnonymiser{log: &log, err: errors.New("cosmos down")}
+	d.OfferCodes = recordingAnonymiser{log: &log, err: errors.New("db down")}
 
 	err := Cascade(context.Background(), "auth0|abc", d)
 	if err == nil {
