@@ -545,7 +545,7 @@ func TestHandler_DeleteProfile_ChildCascadeFailureLeavesProfileAndAuth0Intact(t 
 	store.byID["auth0|abc"] = existing
 	a0 := newFakeAuth0()
 	cascade := recordingCascade(nil)
-	cascade.WatchZones = fakeChildDeleter{label: "watchZones", err: errors.New("cosmos down")}
+	cascade.WatchZones = fakeChildDeleter{label: "watchZones", err: errors.New("db down")}
 	h := newTestHandlerCascade(store, a0, cascade)
 
 	rec := httptest.NewRecorder()
@@ -573,7 +573,7 @@ func TestHandler_DeleteProfile_OfferCodeAnonymiseFailureLeavesProfileAndAuth0Int
 	store.byID["auth0|abc"] = existing
 	a0 := newFakeAuth0()
 	cascade := recordingCascade(nil)
-	cascade.OfferCodes = fakeRedemptionAnonymiser{err: errors.New("cosmos down")}
+	cascade.OfferCodes = fakeRedemptionAnonymiser{err: errors.New("db down")}
 	h := newTestHandlerCascade(store, a0, cascade)
 
 	rec := httptest.NewRecorder()

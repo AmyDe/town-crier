@@ -1,8 +1,7 @@
 # Local Postgres + PostGIS for real-database integration tests.
 #
 # This stands up the throwaway database the `integration`-tagged tests run
-# against. It is NOT a production or deployment artifact — Cosmos remains the
-# live datastore. See docs/memo/0010 for the migration rationale.
+# against. It is NOT a production or deployment artifact.
 #
 #   docker compose -f docker-compose.yml up -d --wait   # boot, wait for healthy
 #   TEST_DATABASE_URL=postgres://towncrier:towncrier@localhost:5433/towncrier_test?sslmode=disable \

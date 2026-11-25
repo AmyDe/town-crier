@@ -8,7 +8,7 @@ import (
 
 // TestDotNetTime_WireFormat pins the timestamp wire shape: ISO 8601 with a
 // numeric UTC offset ("+00:00"), never Go's RFC 3339 "Z" suffix, with trailing
-// fractional zeros trimmed. Every Cosmos timestamp the API writes or returns
+// fractional zeros trimmed. Every timestamp the API writes or returns
 // must use this layout.
 func TestDotNetTime_WireFormat(t *testing.T) {
 	t.Parallel()
@@ -49,7 +49,7 @@ func TestDotNetTime_WireFormat(t *testing.T) {
 }
 
 // TestDotNetTime_RoundTrip confirms a value survives marshal then unmarshal, so
-// stored Cosmos documents carrying a DotNetTime hydrate back to the same
+// stored values carrying a DotNetTime hydrate back to the same
 // instant. The unmarshal side accepts both the "+00:00" form and Go's "Z"
 // form so all stored documents parse.
 func TestDotNetTime_RoundTrip(t *testing.T) {
