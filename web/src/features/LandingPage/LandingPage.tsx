@@ -22,7 +22,6 @@ export function LandingPage() {
     fetch(`${API_BASE_URL}/health`).catch(() => {});
   }, []);
 
-  // Remove the query param so the toast doesn't reappear on refresh
   useEffect(() => {
     if (searchParams.has('signed_out')) {
       searchParams.delete('signed_out');
