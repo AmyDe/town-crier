@@ -16,36 +16,23 @@ import (
 )
 
 const (
-	// containerCpu is the CPU cores allocated to each container (App and Job).
-	containerCpu = 0.25
-	// containerMemory is the memory allocated to each container (App and Job).
+	containerCpu    = 0.25
 	containerMemory = "0.5Gi"
-	// apnsBundleID is the iOS app identifier; not user-configurable per stack.
-	apnsBundleID = "uk.towncrierapp.mobile"
-	// apiContainerPort is the port the Go API listens on (api-go/internal/platform/config.go
-	// defaults PORT to "8080"). Shared by the ingress target port and the health probes below
-	// so the two can't drift.
+	apnsBundleID    = "uk.towncrierapp.mobile"
+	// apiContainerPort is shared by the ingress target port and the health probes so the two can't drift.
 	apiContainerPort = 8080
-	// apiHealthPath is the health-check route the liveness/readiness probes hit. It is
-	// registered anonymously (no Auth0 bearer token required — see
-	// api-go/internal/auth/middleware.go's anonymousPatterns) and does no work per request: a
-	// pre-encoded static body with no dependency calls (api-go/internal/health/handler.go), so
-	// probing it on every cycle costs nothing and can't itself fail from a downstream outage.
+	// apiHealthPath is anonymous and makes no dependency calls, so probing it every cycle is free
+	// and can't fail from a downstream outage.
 	apiHealthPath = "/health"
 	// apiOriginCertName is the Cloudflare Origin CA certificate uploaded to the shared
 	// Container Apps environment. Both api hosts share it, so it is not per-stack.
 	apiOriginCertName = "cert-api-origin-ca"
-	// planItBaseURL is the PlanIt origin the poll job reads from.
-	planItBaseURL = "https://www.planit.org.uk/"
-	// devPollingAreaID is the PlanIt area_id of Kingston upon Thames, the one authority the
-	// dev poll job reads. Changing it resets the dev data set. Taken from authorityId in
-	// api-go/internal/seocatalog/resources/towns.json, which is PlanIt's area_id.
+	planItBaseURL     = "https://www.planit.org.uk/"
+	// devPollingAreaID is the PlanIt area_id of Kingston upon Thames, the one authority the dev
+	// poll job reads. Changing it resets the dev data set.
 	devPollingAreaID = "314"
-	// devPollingFullReadMaxAgeDays is the dev poll job's POLLING_FULL_READ_MAX_AGE_DAYS during
-	// the dev trial (0 forces a full read every run). Reset to prodPollingFullReadMaxAgeDays
-	// when the trial ends.
-	devPollingFullReadMaxAgeDays = "0"
-	// prodPollingFullReadMaxAgeDays is the steady-state POLLING_FULL_READ_MAX_AGE_DAYS.
+	// 0 forces a full read on every dev poll run.
+	devPollingFullReadMaxAgeDays  = "0"
 	prodPollingFullReadMaxAgeDays = "7"
 	// PlanIt is one client across both envs, so the two daily caps must sum to at most 300.
 	prodPollingDailyCallCap = "240"
@@ -58,21 +45,8 @@ const (
 	devPollingDayAllowance  = "15"
 )
 
-// cloudflareIPv4Ranges is Cloudflare's published list of IPv4 origin-pull ranges.
-//
-// Snapshot of https://www.cloudflare.com/ips-v4, fetched 2026-06-19. The Go API
-// container app is fronted by the Cloudflare orange-cloud proxy; these
-// ranges are applied as Allow rules on the ACA ingress (see
-// cloudflareIngressIPRestrictions) so the *.azurecontainerapps.io origin only
-// accepts traffic that arrives via Cloudflare.
-//
-// IPv4 ONLY — and deliberately so: the prod origin FQDN
-// ca-town-crier-api-go-prod.<env>.uksouth.azurecontainerapps.io has an A record
-// only and no AAAA (resolves to 85.210.27.198), so Cloudflare reaches the origin
-// over IPv4. ACA ipSecurityRestrictions also only accepts IPv4 CIDRs. Adding the
-// IPv6 ranges (https://www.cloudflare.com/ips-v6) would therefore be both
-// unreachable in practice and rejected by ACA. Refresh this snapshot if
-// Cloudflare publishes new ranges.
+// cloudflareIPv4Ranges is a snapshot of https://www.cloudflare.com/ips-v4. IPv4 only on purpose:
+// the origin has no AAAA record and ACA ipSecurityRestrictions accepts only IPv4 CIDRs.
 var cloudflareIPv4Ranges = []string{
 	"173.245.48.0/20",
 	"103.21.244.0/22",
@@ -95,10 +69,6 @@ var cloudflareIPv4Ranges = []string{
 // one Allow rule per Cloudflare IPv4 range. Once any Allow rule is present, ACA
 // denies every other source, so only Cloudflare can reach the origin. The same
 // list is applied to both prod and dev (api-dev is also Cloudflare-proxied).
-//
-// This is safe and fully reversible: ACME managed-certificate renewal and all
-// real client traffic arrive via the proxied hostname, so their source is a
-// Cloudflare IP and is allowed. Removing the rules restores open ingress.
 func cloudflareIngressIPRestrictions() app.IpSecurityRestrictionRuleArray {
 	rules := make(app.IpSecurityRestrictionRuleArray, 0, len(cloudflareIPv4Ranges))
 	for i, cidr := range cloudflareIPv4Ranges {
@@ -112,13 +82,8 @@ func cloudflareIngressIPRestrictions() app.IpSecurityRestrictionRuleArray {
 	return rules
 }
 
-// apiHealthProbes builds the liveness and readiness probes for the Go API's Container App.
-// Both hit GET /health on apiContainerPort: it is
-// registered anonymously (no bearer token) and returns a pre-encoded static body with no
-// downstream calls, so it is safe and cheap to probe on every cycle and can't itself flap from
-// a dependency outage. Timing/threshold fields are left unset so ACA applies its own defaults
-// (10s period, 3 failure threshold, 1s timeout) — the endpoint does no work, so there is no
-// latency profile here that would justify overriding them.
+// apiHealthProbes leaves timing and threshold fields unset so ACA applies its defaults; the
+// endpoint does no work, so there is no latency profile to tune for.
 func apiHealthProbes() app.ContainerAppProbeArray {
 	httpGet := &app.ContainerAppProbeHttpGetArgs{
 		Path: pulumi.String(apiHealthPath),
@@ -165,9 +130,8 @@ type envContext struct {
 func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, tags pulumi.StringMap) error {
 	frontendDomain := conf.Require("frontendDomain")
 	apiDomain := conf.Require("apiDomain")
-	// Optional public share-page host. When set, it is bound as a SECOND custom
-	// domain on the existing API ACA app (managed cert, CNAME validation). Unset (empty) skips
-	// the cert + binding entirely — prod is a later staged step, so only dev sets it for now.
+	// Optional public share-page host, bound as a second custom domain on the API app. Empty
+	// skips the cert and binding.
 	shareDomain := conf.Get("shareDomain")
 	auth0Domain := conf.Require("auth0Domain")
 	// CI OIDC identity (the town-crier-github-actions service principal) object ID. Granted
@@ -210,7 +174,6 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 	fcmProjectID := conf.Require("fcmProjectId")
 	fcmServiceAccountJSON := conf.RequireSecret("fcmServiceAccountJson")
 
-	// Shared stack outputs
 	shared, err := pulumi.NewStackReference(ctx, "AmyDe/town-crier/shared", nil)
 	if err != nil {
 		return err
@@ -233,7 +196,6 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 		return ""
 	}).(pulumi.StringOutput)
 
-	// Resource Group
 	resourceGroup, err := resources.NewResourceGroup(ctx, ResourceGroupName(env), &resources.ResourceGroupArgs{
 		ResourceGroupName: pulumi.String(ResourceGroupName(env)),
 		Tags:              tags,
@@ -375,9 +337,6 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 		secrets = append(secrets, &app.SecretArgs{Name: pulumi.String("subscription-webhooks"), Value: *subscriptionWebhooks})
 	}
 
-	// Build the API container env-var array. Postgres connection vars are dev-only: the dev
-	// API authenticates to town_crier_dev via Entra managed identity. AZURE_CLIENT_ID
-	// is already present and reused for the token fetch — no duplication.
 	apiEnvVars := app.EnvironmentVarArray{
 		app.EnvironmentVarArgs{Name: pulumi.String("OTEL_SERVICE_NAME"), Value: pulumi.String(ImageRepoAPI)},
 		// Read by the in-process Azure Monitor metrics exporter.
@@ -391,21 +350,14 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 		app.EnvironmentVarArgs{Name: pulumi.String("ADMIN_API_KEY"), SecretRef: pulumi.String("admin-api-key"), Value: pulumi.String("")},
 		app.EnvironmentVarArgs{Name: pulumi.String("POLLING_ENABLED_DEFAULT"), Value: pulumi.String(pollingEnabledDefault(env))},
 		app.EnvironmentVarArgs{Name: pulumi.String("SITE_BUILD_KEY"), SecretRef: pulumi.String("site-build-key"), Value: pulumi.String("")},
-		// Blob endpoint for the share-cards container: the share-page OG handler
-		// caches baked map cards here. Computed directly from env because the account name is
-		// deterministic (sttowncrier{env}); this avoids a cross-resource dependency on the storage
-		// account, which is created later in this stack (after apiEnvVars is built). Always set for
-		// both dev and prod (DNS-independent); empty-safe on the consumer side.
+		// Computed from env (the account name is deterministic) to avoid depending on the storage
+		// account, which is created later in this stack.
 		app.EnvironmentVarArgs{Name: pulumi.String("SHARE_CARDS_BLOB_URL"), Value: pulumi.String(fmt.Sprintf("https://sttowncrier%s.blob.core.windows.net", env))},
 	}
 	if subscriptionWebhooks != nil {
 		apiEnvVars = append(apiEnvVars, app.EnvironmentVarArgs{Name: pulumi.String("SUBSCRIPTION_WEBHOOKS"), SecretRef: pulumi.String("subscription-webhooks"), Value: pulumi.String("")})
 	}
-	// Both env stacks (dev + prod) run on Postgres single-store. The API authenticates to
-	// town_crier_<env> via Entra managed identity (POSTGRES_AUTH); the connection vars are
-	// explicit and identical across envs except POSTGRES_DB. env is exactly "dev"/"prod"
-	// here, so "town_crier_"+env mirrors the addGoWorkerEnv idiom. AZURE_CLIENT_ID is already
-	// set above and reused for the token fetch — no duplication.
+	// AZURE_CLIENT_ID, set above, doubles as the identity for the Entra MI token fetch.
 	apiEnvVars = append(apiEnvVars,
 		app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_HOST"), Value: shared.GetStringOutput(pulumi.String("postgresServerFqdn"))},
 		app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_DB"), Value: pulumi.String("town_crier_" + env)},
@@ -480,11 +432,7 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 						Memory: pulumi.String(containerMemory),
 					},
 					Env: apiEnvVars,
-					// Liveness + readiness against GET /health. Without an explicit
-					// Probes list ACA falls back to a bare TCP check, which only proves the port
-					// is open, not that the process can serve a request. Applies to both env
-					// stacks (this same function builds both dev and prod's API Container App) —
-					// there's no reason to gate prod's traffic on real health but leave dev on TCP.
+					// Without explicit probes ACA falls back to a TCP check that only proves the port is open.
 					Probes: apiHealthProbes(),
 				},
 			},
@@ -515,20 +463,16 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 	if err = createWorkerJob(ctx, ec, "dormant-cleanup", "30 3 * * *", 600, "dormant-cleanup"); err != nil {
 		return err
 	}
-	// Subscription sweep — daily at 04:30 UTC (offset an hour from dormant-cleanup so the two
-	// full-scan jobs don't contend). Reverts lapsed offer-code/App Store paid tiers to Free in
-	// Cosmos and syncs Auth0 metadata (ADR 0010 reconciliation).
+	// Subscription sweep — daily at 04:30 UTC, offset an hour from dormant-cleanup so the two
+	// full-scan jobs don't contend.
 	if err = createWorkerJob(ctx, ec, "subscription-sweep", "30 4 * * *", 600, "subscription-sweep"); err != nil {
 		return err
 	}
 	if err = createWorkerJob(ctx, ec, "appstore-reconcile", "15 */6 * * *", 600, "appstore-reconcile"); err != nil {
 		return err
 	}
-	// pg-purge — daily at 02:00 UTC. Runs WORKER_MODE=pg-purge which calls Postgres
-	// PurgeOlderThan to enforce the 90-day (Notifications) and 180-day (DeviceRegistrations)
-	// retention defaults.
-	// Created for both envs: it enforces retention against town_crier_dev on dev, the same as
-	// prod against town_crier_prod.
+	// pg-purge — daily at 02:00 UTC. Enforces the 90-day Notifications and 180-day
+	// DeviceRegistrations retention.
 	if err = createWorkerJob(ctx, ec, "pg-purge", "0 2 * * *", 600, "pg-purge"); err != nil {
 		return err
 	}
@@ -551,7 +495,6 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 		return err
 	}
 
-	// Static Web App (Landing Page)
 	staticWebApp, err := web.NewStaticSite(ctx, StaticWebAppName(env), &web.StaticSiteArgs{
 		Name:              pulumi.String(StaticWebAppName(env)),
 		ResourceGroupName: resourceGroup.Name,
@@ -604,7 +547,6 @@ const manualTrigger = ""
 // createWorkerJob creates a Container Apps Job for a background worker. It is Schedule-triggered
 // unless cronExpression is manualTrigger.
 func createWorkerJob(ctx *pulumi.Context, ec envContext, nameSuffix, cronExpression string, replicaTimeout int, workerMode string) error {
-	// Base env shared by every worker job.
 	envVars := app.EnvironmentVarArray{
 		app.EnvironmentVarArgs{Name: pulumi.String("OTEL_SERVICE_NAME"), Value: pulumi.String(ImageRepoWorker)},
 		app.EnvironmentVarArgs{Name: pulumi.String("WORKER_MODE"), Value: pulumi.String(workerMode)},
@@ -696,10 +638,8 @@ func createWorkerJob(ctx *pulumi.Context, ec envContext, nameSuffix, cronExpress
 // addGoWorkerEnv appends the Go worker's env vars (SINGLE-underscore names). The consumer
 // is api-go/internal/platform/config.go.
 func addGoWorkerEnv(envVars app.EnvironmentVarArray, ec envContext, workerMode string) app.EnvironmentVarArray {
-	// Both envs: every worker job runs on Postgres single-store. POSTGRES_DB is per-env
-	// (town_crier_dev / town_crier_prod) — ec.env is
-	// exactly "dev"/"prod". AZURE_CLIENT_ID is already set on every worker job
-	// (createWorkerJob) and reused for the Entra MI token fetch, so it is not duplicated here.
+	// AZURE_CLIENT_ID, set on every worker job by createWorkerJob, doubles as the identity for the
+	// Entra MI token fetch.
 	envVars = append(envVars,
 		app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_HOST"), Value: ec.postgresServerFqdn},
 		app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_DB"), Value: pulumi.String("town_crier_" + ec.env)},
@@ -839,8 +779,8 @@ func pollJobEnv(env string) app.EnvironmentVarArray {
 // (cosmosDataIdentity) Storage Blob Data Contributor so it can cache-once baked cards. The CI
 // OIDC identity also keeps Storage Blob Data Contributor on the account.
 //
-// It uses the smallest/cheapest profile: StorageV2, Standard_LRS, Hot. Shared-key access is disabled, so all data-plane access is
-// AAD/RBAC only — CI authenticates via OIDC and must use `--auth-mode login` for blob I/O.
+// Shared-key access is disabled, so all data-plane access is AAD/RBAC only: CI must use
+// `--auth-mode login` for blob I/O.
 func createBlobStorage(ctx *pulumi.Context, env string, resourceGroupName pulumi.StringOutput, ciServicePrincipalID string, cosmosDataIdentityPrincipalID pulumi.StringOutput, tags pulumi.StringMap) error {
 	// Storage account names are 3-24 chars, lowercase alphanumeric, globally unique. "st" prefix
 	// follows the resource-type naming convention; the hyphens from the usual "-town-crier-"
@@ -871,7 +811,6 @@ func createBlobStorage(ctx *pulumi.Context, env string, resourceGroupName pulumi
 		return err
 	}
 
-	// share-cards holds the cache-once baked OG map cards for the public share page.
 	_, err = storage.NewBlobContainer(ctx, fmt.Sprintf("share-cards-%s", env), &storage.BlobContainerArgs{
 		AccountName:       account.Name,
 		ResourceGroupName: resourceGroupName,
@@ -898,10 +837,7 @@ func createBlobStorage(ctx *pulumi.Context, env string, resourceGroupName pulumi
 		return err
 	}
 
-	// Same built-in role for the API's user-assigned managed identity (cosmosDataIdentity, whose
-	// client id is injected as AZURE_CLIENT_ID). The share-page OG handler runs as the API app and
-	// needs data-plane read+write to cache-once baked cards into the share-cards container.
-	// Scoped to the whole account, mirroring the CI grant above.
+	// Same role for the API's managed identity, so the share-page OG handler can cache baked cards.
 	_, err = authorization.NewRoleAssignment(ctx, fmt.Sprintf("share-cards-blob-contributor-%s", env), &authorization.RoleAssignmentArgs{
 		Scope: account.ID(),
 		RoleDefinitionId: pulumi.Sprintf(

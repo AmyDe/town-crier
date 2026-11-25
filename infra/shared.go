@@ -23,7 +23,6 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
 
-// dashboardTimespan24HoursMs is the relative timespan (ms) for the dashboard metric tiles.
 const dashboardTimespan24HoursMs = 86400000
 
 // subscriptionFromID extracts the subscription ID (segment 2) from an ARM resource ID.
@@ -47,7 +46,6 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 	ciServicePrincipalID := conf.Require("ciServicePrincipalId")
 	monitorServicePrincipalID := conf.Require("monitorServicePrincipalId")
 
-	// Resource Group
 	resourceGroup, err := resources.NewResourceGroup(ctx, "rg-town-crier-shared", &resources.ResourceGroupArgs{
 		ResourceGroupName: pulumi.String("rg-town-crier-shared"),
 		Tags:              tags,
@@ -292,7 +290,8 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		}
 	}
 
-	// User-assigned managed identity for Cosmos DB data access
+	// Postgres data-access identity shared by every Container App and Job; the "cosmos" name is
+	// kept because renaming it would replace the identity.
 	cosmosDataIdentity, err := managedidentity.NewUserAssignedIdentity(ctx, "id-town-crier-cosmos-data", &managedidentity.UserAssignedIdentityArgs{
 		ResourceName:      pulumi.String("id-town-crier-cosmos-data"),
 		ResourceGroupName: resourceGroup.Name,
@@ -302,15 +301,8 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		return err
 	}
 
-	// User-assigned managed identity for the dev-only dev-seed job's read-only
-	// access to town_crier_prod. Deliberately separate from cosmosDataIdentity
-	// (which every other Container App/Job in both dev and prod shares, and
-	// which already holds full DML on both databases): a bug in this job's SQL
-	// must not be able to write to prod. Mapped to a SELECT-only Postgres role
-	// via `pgbootstrap -readonly` — see
-	// docs/adr/0038-dev-seed-least-privilege-prod-read.md. Consumed by the
-	// dev-seed Container Apps Job created in infra/environment.go;
-	// not wired into any resource in this file.
+	// Read-only identity for the dev-seed job, separate from cosmosDataIdentity (full DML on both
+	// databases) so a bug in that job's SQL cannot write to prod. See ADR 0038.
 	devSeedReaderIdentity, err := managedidentity.NewUserAssignedIdentity(ctx, "id-town-crier-dev-seed-reader", &managedidentity.UserAssignedIdentityArgs{
 		ResourceName:      pulumi.String("id-town-crier-dev-seed-reader"),
 		ResourceGroupName: resourceGroup.Name,
@@ -1161,7 +1153,6 @@ expected
 	return nil
 }
 
-// dashboardPart builds one positioned dashboard part from a metadata tile.
 func dashboardPart(x, y, colSpan, rowSpan int, metadata portal.DashboardPartMetadataArgs) portal.DashboardPartsArgs {
 	return portal.DashboardPartsArgs{
 		Position: portal.DashboardPartsPositionArgs{
