@@ -286,3 +286,40 @@ func TestBuildPageView_AuthorityBacklink(t *testing.T) {
 		}
 	})
 }
+
+func TestBuildPageView_VisibleTextUsesStoredName(t *testing.T) {
+	t.Parallel()
+	const stored = "Bromley/23/00178//CON6"
+	const reqRef = "Bromley/23/00178/CON6"
+
+	tests := []struct {
+		name     string
+		appName  string
+		wantText string
+	}{
+		{"stored name with double slash", stored, stored},
+		{"empty stored name falls back to request ref", "", reqRef},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			v := buildPageView(applications.PlanningApplication{Name: tt.appName, Address: "1 High St", AreaID: 165}, "bromley", reqRef)
+			head := tt.wantText + " · 1 High St"
+			if v.Ref != tt.wantText {
+				t.Errorf("Ref = %q, want %q", v.Ref, tt.wantText)
+			}
+			if v.OGTitle != head {
+				t.Errorf("OGTitle = %q, want %q", v.OGTitle, head)
+			}
+			if v.Title != head+" · Town Crier" {
+				t.Errorf("Title = %q", v.Title)
+			}
+			if want := shareOrigin + "/a/bromley/" + reqRef; v.CanonicalURL != want || v.OGURL != want {
+				t.Errorf("canonical/og:url = %q/%q, want %q", v.CanonicalURL, v.OGURL, want)
+			}
+			if want := shareOrigin + "/og/bromley/" + reqRef + ".png"; v.OGImage != want {
+				t.Errorf("OGImage = %q, want %q", v.OGImage, want)
+			}
+		})
+	}
+}
