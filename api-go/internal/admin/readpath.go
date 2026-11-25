@@ -53,7 +53,7 @@ func ReadPathRoutes(mux *http.ServeMux, adminKey string, sw readPathSwitch, now 
 func (h *readPathHandler) get(w http.ResponseWriter, r *http.Request) {
 	st, err := h.sw.State(r.Context())
 	if err != nil {
-		h.fail(w, r, "read read-path switches", err)
+		failRequest(h.logger, w, r, "read read-path switches", err)
 		return
 	}
 	h.respond(w, r, st)
@@ -68,12 +68,12 @@ func (h *readPathHandler) put(w http.ResponseWriter, r *http.Request) {
 	}
 	before, err := h.sw.State(r.Context())
 	if err != nil {
-		h.fail(w, r, "read read-path switches", err)
+		failRequest(h.logger, w, r, "read read-path switches", err)
 		return
 	}
 	after, err := h.sw.Set(r.Context(), applications.ReadPathPatch{ThinSync: req.ThinSync, ThinList: req.ThinList, ThinMap: req.ThinMap}, req.Reason, h.now())
 	if err != nil {
-		h.fail(w, r, "write read-path switches", err)
+		failRequest(h.logger, w, r, "write read-path switches", err)
 		return
 	}
 	h.logger.InfoContext(r.Context(), "admin.read_path_switched",
@@ -90,16 +90,11 @@ func (h *readPathHandler) respond(w http.ResponseWriter, r *http.Request, st app
 		Source: st.Source, Reason: st.Reason, UpdatedAt: st.UpdatedAt,
 	})
 	if err != nil {
-		h.fail(w, r, "encode read-path status", err)
+		failRequest(h.logger, w, r, "encode read-path status", err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	if _, err := w.Write(body); err != nil {
 		h.logger.ErrorContext(r.Context(), "write admin response", "error", err)
 	}
-}
-
-func (h *readPathHandler) fail(w http.ResponseWriter, r *http.Request, op string, err error) {
-	h.logger.ErrorContext(r.Context(), "admin request failed", "op", op, "error", err)
-	w.WriteHeader(http.StatusInternalServerError)
 }

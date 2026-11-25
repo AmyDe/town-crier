@@ -93,29 +93,29 @@ func (h *handler) stats(w http.ResponseWriter, r *http.Request) {
 
 	us, err := h.profiles.UserStats(ctx, now)
 	if err != nil {
-		h.serverError(w, r, "stats: user stats", err)
+		failRequest(h.logger, w, r, "stats: user stats", err)
 		return
 	}
 
 	candidates, err := h.profiles.PaidCandidates(ctx)
 	if err != nil {
-		h.serverError(w, r, "stats: paid candidates", err)
+		failRequest(h.logger, w, r, "stats: paid candidates", err)
 		return
 	}
 
 	savedTotal, err := h.savedTotal(ctx)
 	if err != nil {
-		h.serverError(w, r, "stats: saved total", err)
+		failRequest(h.logger, w, r, "stats: saved total", err)
 		return
 	}
 	deviceTotal, err := h.deviceTotal(ctx)
 	if err != nil {
-		h.serverError(w, r, "stats: device total", err)
+		failRequest(h.logger, w, r, "stats: device total", err)
 		return
 	}
 	notifTotals, err := h.notifTotals(ctx)
 	if err != nil {
-		h.serverError(w, r, "stats: notification totals", err)
+		failRequest(h.logger, w, r, "stats: notification totals", err)
 		return
 	}
 

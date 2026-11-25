@@ -65,7 +65,7 @@ func (h *handler) grantSubscription(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		h.serverError(w, r, "save profile", err)
+		failRequest(h.logger, w, r, "save profile", err)
 		return
 	}
 	if h.notifier != nil {
@@ -74,7 +74,7 @@ func (h *handler) grantSubscription(w http.ResponseWriter, r *http.Request) {
 	// Postgres is the authority. A failed sync is a 500 so the admin re-sends
 	// the same grant, which is idempotent.
 	if err := h.auth0.UpdateSubscriptionTier(r.Context(), profile.UserID, profile.Tier.String()); err != nil {
-		h.serverError(w, r, "sync auth0 tier", err)
+		failRequest(h.logger, w, r, "sync auth0 tier", err)
 		return
 	}
 

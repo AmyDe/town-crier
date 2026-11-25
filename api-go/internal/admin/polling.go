@@ -61,7 +61,7 @@ func PollingRoutes(mux *http.ServeMux, adminKey string, sw pollingSwitch, calls 
 func (h *pollingHandler) get(w http.ResponseWriter, r *http.Request) {
 	st, err := h.sw.State(r.Context())
 	if err != nil {
-		h.fail(w, r, "read polling switch", err)
+		failRequest(h.logger, w, r, "read polling switch", err)
 		return
 	}
 	h.respond(w, r, st)
@@ -76,12 +76,12 @@ func (h *pollingHandler) put(w http.ResponseWriter, r *http.Request) {
 	}
 	before, err := h.sw.State(r.Context())
 	if err != nil {
-		h.fail(w, r, "read polling switch", err)
+		failRequest(h.logger, w, r, "read polling switch", err)
 		return
 	}
 	after, err := h.sw.Set(r.Context(), *req.Enabled, req.Reason, h.now())
 	if err != nil {
-		h.fail(w, r, "write polling switch", err)
+		failRequest(h.logger, w, r, "write polling switch", err)
 		return
 	}
 	h.logger.InfoContext(r.Context(), "admin.polling_switched",
@@ -93,7 +93,7 @@ func (h *pollingHandler) respond(w http.ResponseWriter, r *http.Request, st poll
 	out := pollingStatus{Enabled: st.Enabled, Source: st.Source, Reason: st.Reason, UpdatedAt: st.UpdatedAt}
 	latest, err := h.calls.Latest(r.Context())
 	if err != nil {
-		h.fail(w, r, "read latest planit call", err)
+		failRequest(h.logger, w, r, "read latest planit call", err)
 		return
 	}
 	if latest != nil {
@@ -102,21 +102,16 @@ func (h *pollingHandler) respond(w http.ResponseWriter, r *http.Request, st poll
 	}
 	from, to := polling.BudgetDay(h.now())
 	if out.CallsToday, err = h.calls.CountBetween(r.Context(), from, to); err != nil {
-		h.fail(w, r, "count planit calls", err)
+		failRequest(h.logger, w, r, "count planit calls", err)
 		return
 	}
 	body, err := httputil.EncodeJSON(out)
 	if err != nil {
-		h.fail(w, r, "encode polling status", err)
+		failRequest(h.logger, w, r, "encode polling status", err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	if _, err := w.Write(body); err != nil {
 		h.logger.ErrorContext(r.Context(), "write admin response", "error", err)
 	}
-}
-
-func (h *pollingHandler) fail(w http.ResponseWriter, r *http.Request, op string, err error) {
-	h.logger.ErrorContext(r.Context(), "admin request failed", "op", op, "error", err)
-	w.WriteHeader(http.StatusInternalServerError)
 }

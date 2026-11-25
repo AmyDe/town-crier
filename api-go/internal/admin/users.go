@@ -54,7 +54,7 @@ func (h *handler) listUsers(w http.ResponseWriter, r *http.Request) {
 
 	page, err := h.profiles.List(r.Context(), search, pageSize, continuationToken)
 	if err != nil {
-		h.serverError(w, r, "list users", err)
+		failRequest(h.logger, w, r, "list users", err)
 		return
 	}
 
@@ -62,22 +62,22 @@ func (h *handler) listUsers(w http.ResponseWriter, r *http.Request) {
 	// profiles; an unwired store is skipped and absent users default to zero.
 	counts, err := h.notificationCountsFor(r, page)
 	if err != nil {
-		h.serverError(w, r, "list users: counts", err)
+		failRequest(h.logger, w, r, "list users: counts", err)
 		return
 	}
 	savedCounts, err := h.savedCountsFor(r, page)
 	if err != nil {
-		h.serverError(w, r, "list users: saved counts", err)
+		failRequest(h.logger, w, r, "list users: saved counts", err)
 		return
 	}
 	deviceCounts, err := h.deviceCountsFor(r, page)
 	if err != nil {
-		h.serverError(w, r, "list users: device counts", err)
+		failRequest(h.logger, w, r, "list users: device counts", err)
 		return
 	}
 	redemptions, err := h.redemptionsFor(r, page)
 	if err != nil {
-		h.serverError(w, r, "list users: redemptions", err)
+		failRequest(h.logger, w, r, "list users: redemptions", err)
 		return
 	}
 	now := h.now()
