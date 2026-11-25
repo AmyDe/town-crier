@@ -1514,12 +1514,12 @@ func planitPollAlertSpecs() []logAlertSpec {
 		},
 		{
 			name:        "alert-planit-poll-heartbeat-shared",
-			displayName: "PlanIt poll heartbeat missing (prod)",
-			description: "No prod PlanIt poll run span in the last 2 hours; the hourly poll job is not running or not reporting.",
+			displayName: "PlanIt poll heartbeat missing or polling switched off (prod)",
+			description: "Either no prod PlanIt poll run span in the last 2 hours (the hourly poll job is not running or not reporting), or every run in that window reported poll.enabled == false (polling switched off for the whole window).",
 			severity:    2,
 			window:      "PT2H",
 			freq:        "PT1H",
-			query:       planitPollRunSpanFilter + "\n" + envFilter + "\n" + `| summarize runs = count()` + "\n" + `| where runs == 0`,
+			query:       planitPollRunSpanFilter + "\n" + envFilter + "\n" + `| summarize runs = count(), enabledRuns = countif(tostring(Properties["poll.enabled"]) =~ "true")` + "\n" + `| where enabledRuns == 0`,
 			threshold:   0,
 		},
 	}
