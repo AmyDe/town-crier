@@ -154,7 +154,8 @@ func NewRunner(cfg RunnerConfig, deps RunnerDeps) *Runner {
 // WindowReader. It then dispatches pending events, flushes pushes, drains
 // webhooks, computes health (not for a switched-off run) and releases the
 // lease. Dispatch runs even when no page was read, so events held over quiet
-// hours go out at the first run after quiet hours end. A held lease returns without work.
+// hours go out at the first run after quiet hours end. A held lease returns
+// without work.
 // Limits such as backoff, the daily cap, 429, 403 and timeouts end the run
 // normally; only lease and state failures return an error. When ctx is
 // cancelled the run stops with StopCancelled and no error: it flushes pushes
