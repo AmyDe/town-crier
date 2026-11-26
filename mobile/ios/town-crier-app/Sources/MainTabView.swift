@@ -117,9 +117,6 @@ struct MainTabView: View {
     }
   }
 
-  /// Settings sheet — presented from the gear icon installed on every tab.
-  /// Hosts the existing SettingsView and the legal/notification/manage-sub
-  /// side-effects that were previously bound to the Settings tab.
   @ViewBuilder
   private var settingsSheet: some View {
     NavigationStack {
@@ -140,6 +137,9 @@ struct MainTabView: View {
         onViewPlans: {
           coordinator.showPlansFromSettings()
         },
+        onWebhooks: {
+          coordinator.showWebhooks()
+        },
         onRateApp: coordinator.rateApp
       )
       .navigationDestination(isPresented: $coordinator.isNotificationPreferencesPresented) {
@@ -153,6 +153,11 @@ struct MainTabView: View {
             coordinator.showSystemNotificationSettings()
           }
         )
+      }
+      .navigationDestination(isPresented: $coordinator.isWebhooksPresented) {
+        // Rebuilt when the tier changes, so a purchase from the paywall shows at once.
+        WebhookView(viewModel: coordinator.makeWebhookViewModel())
+          .id(coordinator.subscriptionTier)
       }
     }
     .sheet(item: $coordinator.presentedLegalDocument) { documentType in

@@ -119,7 +119,9 @@ struct TownCrierApp: App {
       appearanceStore: sharedAppearanceStore,
       anonymousApplicationDetailRepository: anonymousApplicationDetailRepository,
       deviceLocalZoneRepository: deviceLocalZoneRepository,
-      shareEventReporter: APIShareEventReporter(apiClient: anonymousApiClient)
+      shareEventReporter: APIShareEventReporter(apiClient: anonymousApiClient),
+      webhookRepository: APIWebhookRepository(apiClient: apiClient),
+      clipboardWriter: PasteboardClipboardWriter()
     )
     reviewRequester.coordinator = appCoordinator  // weak; coordinator owns the tracker
     _coordinator = StateObject(wrappedValue: appCoordinator)

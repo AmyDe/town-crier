@@ -10,6 +10,7 @@ public struct SettingsView: View {
   private var onTermsOfService: (() -> Void)?
   private var onViewPlans: (() -> Void)?
   private var onRateApp: (() -> Void)?
+  private var onWebhooks: (() -> Void)?
 
   public init(
     viewModel: SettingsViewModel,
@@ -18,6 +19,7 @@ public struct SettingsView: View {
     onPrivacyPolicy: (() -> Void)? = nil,
     onTermsOfService: (() -> Void)? = nil,
     onViewPlans: (() -> Void)? = nil,
+    onWebhooks: (() -> Void)? = nil,
     onRateApp: (() -> Void)? = nil
   ) {
     _viewModel = StateObject(wrappedValue: viewModel)
@@ -27,6 +29,19 @@ public struct SettingsView: View {
     self.onTermsOfService = onTermsOfService
     self.onViewPlans = onViewPlans
     self.onRateApp = onRateApp
+    self.onWebhooks = onWebhooks
+  }
+
+  /// The list's sections, in display order.
+  enum SectionKind: CaseIterable {
+    case account, appearance, notifications, webhooks, subscription, attribution, legal,
+      dangerZone, appInfo
+  }
+
+  /// Test-only seam: invoke the webhooks callback as if the user had tapped
+  /// the "Webhooks" row.
+  public func requestWebhooks() {
+    onWebhooks?()
   }
 
   /// Test-only seam: whether the "View Plans" row would render — mirrors the
@@ -59,7 +74,7 @@ public struct SettingsView: View {
 
   /// Test-only seam: invoke the rate-app callback as if the user had tapped the
   /// "Rate the App" row in Settings. Mirrors `requestViewPlans` so the
-  /// wiring is verifiable without UI-level automation (GH #629).
+  /// wiring is verifiable without UI-level automation.
   public func requestRateApp() {
     onRateApp?()
   }
@@ -86,14 +101,9 @@ public struct SettingsView: View {
 
   private var listContent: some View {
     List {
-      accountSection
-      appearanceSection
-      notificationSection
-      subscriptionSection
-      attributionSection
-      legalSection
-      dangerZoneSection
-      appInfoSection
+      ForEach(SectionKind.allCases, id: \.self) { kind in
+        section(kind)
+      }
     }
     .alert("Delete Account", isPresented: $viewModel.isShowingDeleteConfirmation) {
       Button("Delete", role: .destructive) {
@@ -109,13 +119,20 @@ public struct SettingsView: View {
     }
   }
 
-  // MARK: - Helpers
-  //
-  // Row/section chrome (`settingRow`, `settingLabel`, `settingValue`,
-  // `settingCaption`, `navigationRow`, `settingChevron`) lives in
-  // `SettingsRowStyling`, shared with `AnonymousSettingsView` (GH#879 Phase 3)
-  // so the two Settings surfaces render identical row chrome with no
-  // duplicated helpers.
+  @ViewBuilder
+  private func section(_ kind: SectionKind) -> some View {
+    switch kind {
+    case .account: accountSection
+    case .appearance: appearanceSection
+    case .notifications: notificationSection
+    case .webhooks: webhooksSection
+    case .subscription: subscriptionSection
+    case .attribution: attributionSection
+    case .legal: legalSection
+    case .dangerZone: dangerZoneSection
+    case .appInfo: appInfoSection
+    }
+  }
 
   // MARK: - Account
 
@@ -166,6 +183,19 @@ public struct SettingsView: View {
       }
     } header: {
       Text("Notifications")
+        .font(TCTypography.captionEmphasis)
+    }
+  }
+
+  // MARK: - Webhooks
+
+  private var webhooksSection: some View {
+    Section {
+      SettingsRowStyling.navigationRow(WebhookCopy.title, systemImage: "arrow.up.forward.app") {
+        onWebhooks?()
+      }
+    } header: {
+      Text(WebhookCopy.title)
         .font(TCTypography.captionEmphasis)
     }
   }
