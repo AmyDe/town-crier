@@ -177,7 +177,7 @@ public final class URLSessionAPIClient: Sendable {
 
     #if DEBUG
       let statusCode = httpResponse.statusCode
-      let bodyPreview = String(data: data.prefix(500), encoding: .utf8) ?? "<binary>"
+      let bodyPreview = Self.logPreview(of: data, path: endpoint.path)
       Self.logger.debug("← HTTP \(statusCode) (\(data.count) bytes): \(bodyPreview)")
     #endif
 
@@ -196,6 +196,12 @@ public final class URLSessionAPIClient: Sendable {
       #endif
       throw APIError.decodingFailed(error.localizedDescription)
     }
+  }
+
+  // Webhook responses can carry the signing secret, which must never reach a log.
+  static func logPreview(of data: Data, path: String) -> String {
+    guard !path.hasPrefix("/v1/me/webhook") else { return "<redacted>" }
+    return String(data: data.prefix(500), encoding: .utf8) ?? "<binary>"
   }
 
   private func buildRequest(
