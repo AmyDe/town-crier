@@ -6,7 +6,7 @@ import TownCrierDomain
 /// When the user has reached their tier's zone limit, the add button is replaced
 /// with an ``UpgradeBadgeView`` and tapping it triggers the upgrade flow.
 ///
-/// A zone paused by a subscription downgrade (GH#889 P1/P2) shows a
+/// A zone paused by a subscription downgrade shows a
 /// ``PausedZoneBadge`` on its row; tapping the badge routes to the same
 /// subscription paywall via ``WatchZoneListViewModel/viewPlans()``.
 public struct WatchZoneListView: View {

@@ -34,11 +34,8 @@ private val THUMBNAIL_PADDING = 6.dp
 /**
  * Static Canvas-drawn thumbnail of a custom-shape watch zone's
  * [WatchZoneBoundary] polygon — the list-row equivalent of [ZoneMapPlaceholder]
- * for zones with a drawn shape rather than a circle (GH#1072 Scope: "list-row
- * rendering of a drawn shape"). A real GoogleMap-based thumbnail is out of
- * scope until #776 (see [ZoneMapPlaceholder]'s doc comment), so this draws the
- * polygon geometry itself — scaled and letterboxed to fit — rather than a live
- * map tile.
+ * for zones with a drawn shape rather than a circle. It draws the polygon
+ * geometry itself — scaled and letterboxed to fit — rather than a live map tile.
  *
  * Matches [ZoneMapPlaceholder]'s size/shape/background contract exactly so
  * [WatchZoneRow]'s layout doesn't shift between circle and custom-shape zones;

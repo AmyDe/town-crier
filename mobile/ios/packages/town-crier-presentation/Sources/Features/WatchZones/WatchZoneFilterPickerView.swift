@@ -1,14 +1,12 @@
 import SwiftUI
 import TownCrierDomain
 
-/// Picker for the pre-canned watch-zone filter catalog (GH#1098, GH#1104,
-/// bead tc-m8j90.2): "None" plus the fetched
+/// Picker for the pre-canned watch-zone filter catalog: "None" plus the fetched
 /// ``WatchZoneEditorViewModel/filterCatalog`` entries, a checkmark on the
 /// current selection. Tapping a row selects it and pops back to the editor,
 /// following this app's existing push-a-list-picker idiom
 /// (`WatchZoneEditorView`'s `Form`/`Section` + `NavigationLink` pattern).
-/// Renders fetched data rather than a hardcoded enum's `allCases` -- the
-/// entire point of GH#1104 -- so a loading row and a retry row cover the
+/// Renders fetched data rather than a hardcoded enum's `allCases`, so a loading row and a retry row cover the
 /// fetch-pending and fetch-failed states.
 public struct WatchZoneFilterPickerView: View {
   @ObservedObject private var viewModel: WatchZoneEditorViewModel

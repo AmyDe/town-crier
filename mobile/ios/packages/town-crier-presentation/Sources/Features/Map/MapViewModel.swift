@@ -2,11 +2,11 @@ import Combine
 import Foundation
 import TownCrierDomain
 
-/// ViewModel driving the map view with server-computed cluster aggregates
-/// (GH#698). Instead of eager-draining every application in the zone, the map
+/// ViewModel driving the map view with server-computed cluster aggregates.
+/// Instead of eager-draining every application in the zone, the map
 /// fetches only the clusters inside the current viewport and refetches
 /// (debounced) on pan/zoom, so a dense 22k zone stays smooth. Status filtering
-/// is free for all subscription tiers (tc-acf0) and is applied server-side: a
+/// is free for all subscription tiers and is applied server-side: a
 /// chip change refetches clusters with `status=` rather than filtering an
 /// in-memory set. `canSave` and the bookmark icon on the summary sheet remain —
 /// that's the per-application save flow, not a list-level filter.
@@ -29,7 +29,7 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
   /// avoids SwiftUI's two-sheets-at-once race.
   @Published private(set) var pendingDetailApplication: PlanningApplication?
   /// The applications stacked at the tapped unsplittable cell, presented as a
-  /// disambiguation list (GH#722). Nil when no stacked cell is open. Published
+  /// disambiguation list. Nil when no stacked cell is open. Published
   /// only on a fully-successful read of every member (see ``selectStack(_:)``).
   @Published private(set) var stackedApplications: StackedApplications?
   /// The application whose *summary* sheet should open once the disambiguation
@@ -48,13 +48,12 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
   @Published private(set) var centreLon: Double = -0.1278
   @Published private(set) var radiusMetres: Double = 2000
 
-  /// The selected zone's custom-shape polygon vertices (GH#1031), or `nil`
+  /// The selected zone's custom-shape polygon vertices, or `nil`
   /// for a circle zone. Derived from ``selectedZone`` rather than stored
   /// separately, so it always tracks the current selection with no extra
   /// state to keep in sync. `ClusteredMapView` uses this to draw an
   /// `MKPolygon` overlay instead of the default `MKCircle` for a
-  /// custom-shape zone (tc-7se1w.3 — the polygon already drives application
-  /// filtering; this makes the overlay match it).
+  /// custom-shape zone.
   var boundaryVertices: [Coordinate]? {
     selectedZone?.boundary?.vertices
   }
@@ -79,7 +78,7 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
   }
 
   /// Whether the interactive map (``ClusteredMapView`` on iOS, the SwiftUI
-  /// `Map` fallback on macOS) should be mounted. tc-edyvn: a zero-cluster
+  /// `Map` fallback on macOS) should be mounted. A zero-cluster
   /// viewport must never unmount the map — it's the only surface the user has
   /// to pan/zoom back out with, and it already draws the zone boundary
   /// overlay independent of marker count. So this is true whenever the
@@ -192,7 +191,7 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
   }
 
   /// Applies a status filter chip by refetching the current viewport's clusters
-  /// server-side with `status=` (GH#698) — never by filtering a held set.
+  /// server-side with `status=` — never by filtering a held set.
   public func applyStatusFilter(_ status: ApplicationStatus?) async {
     selectedStatusFilter = status
     guard let viewport = lastViewport, let zoom = lastZoom else { return }
@@ -251,7 +250,7 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
 
   /// Routes a tap on a *stacked* (unsplittable) cell — a cluster whose members
   /// are coincident or closer than the finest grid cell, so zoom can never split
-  /// them (GH#722). Point-reads every carried member concurrently (one ~1-row
+  /// them. Point-reads every carried member concurrently (one ~1-row
   /// read each, via the same `fetchApplication(by:)` a single-pin tap uses) and
   /// publishes them as the disambiguation list, preserving the cluster's
   /// ``MapCluster/members`` order — a `TaskGroup` completes out of order, so the
@@ -292,7 +291,7 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
   /// as ``pendingSummaryApplication`` and clears ``stackedApplications`` to
   /// dismiss the list. The list sheet's `onDismiss` then calls
   /// ``presentPendingSummaryIfNeeded()`` so the summary opens only after the list
-  /// has gone — never two sheets at once (GH#722).
+  /// has gone — never two sheets at once.
   public func selectFromStack(_ application: PlanningApplication) {
     pendingSummaryApplication = application
     stackedApplications = nil

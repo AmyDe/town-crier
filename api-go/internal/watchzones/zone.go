@@ -261,7 +261,7 @@ func (b Boundary) selfIntersects() bool {
 
 // segmentsIntersect reports whether segments p1-p2 and p3-p4 intersect,
 // including one touching the other at an endpoint or lying collinearly on
-// it. Standard orientation-based test (see e.g. CLRS §33.1).
+// it.
 func segmentsIntersect(p1, p2, p3, p4 Coordinate) bool {
 	d1 := orientation(p3, p4, p1)
 	d2 := orientation(p3, p4, p2)

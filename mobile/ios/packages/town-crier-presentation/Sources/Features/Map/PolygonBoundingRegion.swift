@@ -3,10 +3,8 @@ import TownCrierDomain
 
 /// Fits a map region to a polygon's bounding box: the shared "zoom to fit
 /// these vertices" math behind ``BoundaryDrawingRegion`` (the boundary-
-/// drawing editor, GH#1031 bead tc-7se1w.2) and ``ClusteredMapView``'s
-/// camera framing for a custom-shape zone on the main Map page (bead
-/// tc-7se1w.3 — the polygon already drives application filtering; this
-/// makes the camera framing match it instead of always fitting a circle).
+/// drawing editor) and ``ClusteredMapView``'s camera framing for a
+/// custom-shape zone on the main Map page.
 ///
 /// A free-standing, non-generic type outside any `#if canImport(UIKit)`
 /// guard — it only needs `MapKit`/`CoreLocation`, both available on macOS,

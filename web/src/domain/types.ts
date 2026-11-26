@@ -129,16 +129,10 @@ export interface ZoneNotificationPreferences {
 // ---------------------------------------------------------------------------
 
 /**
- * GeoJSON `Polygon` wire shape for a custom-shape watch zone's boundary
- * (tc-6he3x, paid-tier entitlement). Mirrors the API's `boundaryGeoJSON`
- * (`api-go/internal/watchzones/store_postgres.go`) byte-for-byte — this
- * layer does no client-side transformation, matching how every other domain
- * type in this file passes the wire shape straight through.
- *
- * `coordinates` holds exactly one ring (the outer boundary; no holes, no
- * multi-polygon — see GH#1031 "Out of Scope"), and each vertex tuple is
- * `[longitude, latitude]` — GeoJSON/RFC 7946 order, the reverse of this
- * file's `Coordinates` type. Easy to get backwards; do not flip it.
+ * GeoJSON `Polygon` wire shape for a custom-shape watch zone's boundary.
+ * `coordinates` holds exactly one ring (no holes, no multi-polygon), and each
+ * vertex is `[longitude, latitude]` (RFC 7946 order), the reverse of
+ * `Coordinates`.
  */
 export interface WatchZoneBoundary {
   readonly type: 'Polygon';
@@ -154,17 +148,14 @@ export interface WatchZoneSummary {
   readonly pushEnabled: boolean;
   readonly emailInstantEnabled: boolean;
   /**
-   * True when this zone exceeds the caller's current tier zone limit and has
-   * stopped generating new notifications (GH#889). Derived server-side from
-   * `(createdAt, id)` rank against `EffectiveTier(now).WatchZoneLimit()` —
-   * never computed client-side. Additive, always present on the wire.
+   * True when the zone exceeds the caller's tier zone limit and no longer
+   * generates notifications. Derived server-side; never compute it client-side.
    */
   readonly paused: boolean;
   /**
-   * `null` for a plain circle zone, a GeoJSON `Polygon` for a custom-shape
-   * one (tc-6he3x). Always present on the wire — `latitude`/`longitude`/
-   * `radiusMetres` remain the shape's derived centroid/enclosing radius
-   * either way, so every circle-only consumer keeps working unchanged.
+   * `null` for a circle zone, a GeoJSON `Polygon` for a custom shape.
+   * `latitude`/`longitude`/`radiusMetres` stay the derived centroid and
+   * enclosing radius either way.
    */
   readonly boundary: WatchZoneBoundary | null;
 }
@@ -379,8 +370,7 @@ export interface CreateWatchZoneRequest {
   /**
    * Optional GeoJSON `Polygon`. When present, `latitude`/`longitude`/
    * `radiusMetres` above are ignored — the server derives them from the
-   * boundary's centroid/enclosing radius. Omitted entirely for a plain
-   * circle create (unchanged existing behaviour).
+   * boundary's centroid/enclosing radius.
    */
   readonly boundary?: WatchZoneBoundary;
 }

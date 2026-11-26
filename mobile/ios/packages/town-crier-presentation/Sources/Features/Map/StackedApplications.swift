@@ -7,7 +7,7 @@ import TownCrierDomain
 /// spurious second sheet.
 ///
 /// Shared between the authenticated map (``MapViewModel``) and the anonymous
-/// map (``AnonymousMapViewModel``, GH#877) — both present the same
+/// map (``AnonymousMapViewModel``) — both present the same
 /// ``StackedApplicationsSheet``, so this wrapper lives in its own file rather
 /// than inside either view model. `public` because ``AnonymousMapViewModel``
 /// exposes its `stackedApplications` property publicly, unlike the

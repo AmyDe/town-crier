@@ -61,7 +61,7 @@ public struct MapView: View {
         ApplicationSummarySheet(application: application, viewModel: viewModel)
       }
     )
-    // Disambiguation list for an unsplittable (stacked) cluster (GH#722). Its
+    // Disambiguation list for an unsplittable (stacked) cluster. Its
     // `onDismiss` presents the chosen row's summary, so the list always finishes
     // dismissing before the summary appears — the two `.sheet`s are never both up.
     .sheet(
@@ -81,7 +81,7 @@ public struct MapView: View {
   /// Donated as a `safeAreaInset` rather than a leading `VStack` sibling so
   /// the map layer below keeps its full-bleed frame — edge to edge, behind
   /// this header — instead of being squeezed down to whatever height
-  /// remains (tc-3b1hj: "the map gains real height"). A `VStack` with two
+  /// remains. A `VStack` with two
   /// `if`-gated children that are both absent collapses to zero size, so an
   /// empty header reserves no dead space either.
   @ViewBuilder
@@ -99,7 +99,7 @@ public struct MapView: View {
   // MARK: - Floating Settings Button
 
   /// Replaces the nav-bar gear (`.settingsToolbar`) now the nav bar is
-  /// hidden on this screen (tc-3b1hj). A `ZStack` sibling of the (safe-
+  /// hidden on this screen. A `ZStack` sibling of the (safe-
   /// area-ignoring) map, rather than an `.overlay` on top of it, so it
   /// keeps the ordinary safe-area layout the map opts out of — it lands
   /// below the status bar/notch, and below `headerSection` when that's
@@ -237,7 +237,7 @@ public struct MapView: View {
               .onTapGesture {
                 // Mirror the UIKit didSelect routing: a stacked (unsplittable)
                 // cell opens the disambiguation list; everything else point-reads
-                // its single member (GH#722). Splittable bubbles have no zoom-in
+                // its single member. Splittable bubbles have no zoom-in
                 // affordance in this macOS fallback, so they no-op as before.
                 if cluster.isStacked {
                   Task { await viewModel.selectStack(cluster) }

@@ -13,16 +13,16 @@ public final class WatchZoneListViewModel: ObservableObject, ErrorHandlingViewMo
   @Published public private(set) var isLoading = false
   @Published public internal(set) var error: DomainError?
   @Published public var isUpgradePromptPresented = false
-  /// Device-local zones (GH#879 Phase 4) not yet converted to a real
+  /// Device-local zones not yet converted to a real
   /// `WatchZone` — populated by ``load()`` from the injected
   /// `deviceLocalZoneRepository`. Always empty when no repository was
   /// injected (existing call sites/tests are unaffected).
   @Published public private(set) var unconvertedLocalZones: [DeviceLocalZone] = []
-  /// Session-only dismissal of the unconverted-zones row (GH#879 Phase 5).
+  /// Session-only dismissal of the unconverted-zones row.
   /// Never persisted — a fresh `WatchZoneListViewModel` (next app launch)
   /// always starts un-dismissed, so the row reappears while zones remain.
   @Published public private(set) var isLocalZoneRowDismissed = false
-  /// Drives the row's delete-confirmation dialog (tc-luq4u) — set by
+  /// Drives the row's delete-confirmation dialog — set by
   /// ``presentDiscardConfirmation()`` when the user taps the row's "x", and
   /// cleared by whichever choice they make (``discardLocalZones()`` or
   /// ``dismissLocalZoneRow()``).
@@ -35,7 +35,7 @@ public final class WatchZoneListViewModel: ObservableObject, ErrorHandlingViewMo
   var onEditZone: ((WatchZone) -> Void)?
   var onUpgradeRequired: (() -> Void)?
   var onViewPlans: (() -> Void)?
-  /// Fired when the user taps the unconverted-zones row (GH#879 Phase 5) —
+  /// Fired when the user taps the unconverted-zones row —
   /// wired by the coordinator to reopen the conversion sheet.
   var onConvertLocalZones: (() -> Void)?
 
@@ -113,7 +113,7 @@ public final class WatchZoneListViewModel: ObservableObject, ErrorHandlingViewMo
     featureGate.tier == .free && !canAddZone
   }
 
-  /// Local-vs-server centre match tolerance for duplicate cleanup (tc-luq4u)
+  /// Local-vs-server centre match tolerance for duplicate cleanup
   /// — 1e-4 degrees is roughly 11 m of latitude (~7 m of longitude at UK
   /// latitudes): generous enough to absorb floating-point drift from a
   /// conversion round-trip while never matching two genuinely distinct areas,
@@ -146,7 +146,7 @@ public final class WatchZoneListViewModel: ObservableObject, ErrorHandlingViewMo
   /// within ``duplicateCentreToleranceDegrees`` on both latitude and
   /// longitude) — a redundant leftover from a conversion that saved
   /// server-side but never cleaned up its local copy. Only ever called
-  /// after a successful server load (tc-luq4u): a local zone is never
+  /// after a successful server load: a local zone is never
   /// deleted against an unknown server state.
   private func discardIfDuplicatesServerZone(_ localZone: DeviceLocalZone) -> Bool {
     let isDuplicate = zones.contains { serverZone in

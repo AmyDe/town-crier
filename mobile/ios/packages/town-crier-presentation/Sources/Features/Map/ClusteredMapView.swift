@@ -4,7 +4,7 @@
   import TownCrierDomain
 
   /// A UIKit `MKMapView` wrapped for SwiftUI that renders the server-computed
-  /// cluster aggregates for the current viewport (GH#698). The device holds only
+  /// cluster aggregates for the current viewport. The device holds only
   /// the handful of cells on screen — not the whole zone's 22k pins — so panning
   /// and zooming stay smooth. On a region change it tells the ViewModel
   /// (debounced ~250ms) to refetch clusters for the new visible rect.
@@ -68,7 +68,7 @@
   /// The zone geometry ``ClusteredMapView``'s overlay and camera-framing logic
   /// need, bundled into one value so passing it to ``ClusteredMapView/Coordinator``
   /// stays within SwiftLint's function-parameter-count limit. `boundaryVertices`
-  /// non-nil/non-empty means a custom-shape zone (GH#1031, tc-7se1w.3); `nil`
+  /// non-nil/non-empty means a custom-shape zone; `nil`
   /// means a circle, framed/overlaid from `centreLat`/`centreLon`/`radius` as
   /// before.
   struct ClusteredZoneFraming: Equatable {
@@ -110,13 +110,12 @@
       private var renderedCentreLat: Double?
       private var renderedCentreLon: Double?
       private var renderedRadius: Double?
-      /// The currently-rendered polygon (custom-shape zones, GH#1031) and the
+      /// The currently-rendered polygon (custom-shape zones) and the
       /// vertices it was drawn for, so we redraw it only when the boundary
       /// actually changes. ``applyZoneOverlay(to:framing:)`` shows at most one
       /// of `radiusOverlay`/`polygonOverlay` at a time — the other is torn down
       /// when the selected zone's shape mode differs from what's currently on
-      /// screen (tc-7se1w.3: the overlay must match whichever shape drives
-      /// application filtering for this zone).
+      /// screen.
       private var polygonOverlay: MKPolygon?
       private var renderedVertices: [Coordinate]?
 
@@ -125,9 +124,7 @@
       private var refetchTask: Task<Void, Never>?
 
       /// Extra room around the polygon's bounding box when framing the camera
-      /// for a custom-shape zone — mirrors `BoundaryDrawingRegion.marginFraction`,
-      /// which tc-7se1w.2 uses for the same "zoom to fit" need in the
-      /// boundary-drawing editor.
+      /// for a custom-shape zone — mirrors `BoundaryDrawingRegion.marginFraction`.
       private static let polygonMarginFraction = 0.3
       /// Mirrors `BoundaryDrawingRegion.minimumSpanDegrees`.
       private static let polygonMinimumSpanDegrees = 0.006
@@ -163,12 +160,10 @@
       // MARK: - Zone overlay (circle or custom-shape polygon)
 
       /// Shows exactly one overlay for the selected zone: an `MKPolygon`
-      /// outline for a custom shape (GH#1031), or the existing `MKCircle`
+      /// outline for a custom shape, or the existing `MKCircle`
       /// radius overlay otherwise. Tears down the other kind first, so
       /// switching between a circle zone and a custom-shape zone never leaves
-      /// a stale overlay of the wrong kind on screen (tc-7se1w.3 — the overlay
-      /// must match whichever shape actually drives application filtering for
-      /// this zone).
+      /// a stale overlay of the wrong kind on screen.
       func applyZoneOverlay(to mapView: MKMapView, framing: ClusteredZoneFraming) {
         guard let boundaryVertices = framing.boundaryVertices, !boundaryVertices.isEmpty else {
           clearPolygonOverlay(from: mapView)
@@ -252,7 +247,7 @@
       }
 
       /// The region to frame for a zone: fitted to the polygon's bounding box
-      /// for a custom shape (tc-7se1w.3), or the existing 2.5x-radius span for
+      /// for a custom shape, or the existing 2.5x-radius span for
       /// a circle.
       private static func cameraRegion(framing: ClusteredZoneFraming) -> MKCoordinateRegion {
         guard let boundaryVertices = framing.boundaryVertices, !boundaryVertices.isEmpty else {
