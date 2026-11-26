@@ -311,6 +311,33 @@ func TestServe_RendersHomepageLink(t *testing.T) {
 	}
 }
 
+// TestServe_RendersAboutTownCrier: the page ends with a product description,
+// above the attribution footer, that links to the homepage.
+func TestServe_RendersAboutTownCrier(t *testing.T) {
+	t.Parallel()
+	store := &fakeStore{app: fullApp(t), found: true}
+	resolver := &fakeResolver{slugs: map[string]int{"croydon": 165}}
+
+	rec := serve(t, store, resolver, "/a/croydon/23/03456/FUL")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	want := `<p class="about-tc"><a href="https://towncrierapp.uk/">About Town Crier</a>: it sends you an alert when a planning application is submitted or decided near you, anywhere in the UK. Free for one area, with a weekly email digest.</p>`
+	aboutIdx := strings.Index(body, want)
+	if aboutIdx == -1 {
+		t.Fatalf("body missing about paragraph %q", want)
+	}
+	footerIdx := strings.Index(body, `<footer class="attribution">`)
+	if footerIdx == -1 {
+		t.Fatal("body missing attribution footer")
+	}
+	if aboutIdx > footerIdx {
+		t.Error("about paragraph must render above the attribution footer")
+	}
+}
+
 // TestServe_RendersHeaderAboveHeroWithBrandLockup: a header above the hero
 // carries a brand lockup linking to the marketing homepage.
 func TestServe_RendersHeaderAboveHeroWithBrandLockup(t *testing.T) {
