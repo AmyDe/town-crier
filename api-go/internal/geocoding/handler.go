@@ -8,8 +8,6 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/httputil"
 )
 
-// geocoder resolves a normalised postcode to coordinates; the handler test
-// substitutes a hand fake.
 type geocoder interface {
 	Geocode(ctx context.Context, postcode string) (Coordinates, bool, error)
 }
@@ -25,12 +23,10 @@ func Routes(mux *http.ServeMux, g geocoder, logger *slog.Logger) {
 	mux.HandleFunc("GET /v1/geocode/{postcode}", h.geocode)
 }
 
-// geocodeResult is the JSON response shape: { coordinates }.
 type geocodeResult struct {
 	Coordinates Coordinates `json:"coordinates"`
 }
 
-// apiErrorResponse is the error JSON shape: { error, message:null }.
 type apiErrorResponse struct {
 	Error   string  `json:"error"`
 	Message *string `json:"message"`

@@ -56,8 +56,10 @@ type unreadReader interface {
 	GetLatestUnreadByApplications(ctx context.Context, userID string, applicationUIDs []string) (map[string]notifications.LatestUnread, error)
 }
 
-// NearbyRoutes registers POST /v1/me/watch-zones (create) and GET /v1/me/watch-zones/{zoneId}/applications. newID mints the
-// zone id (a GUID in production); now stamps the zone's creation time.
+// NearbyRoutes registers POST /v1/me/watch-zones (create), GET
+// /v1/me/watch-zones/{zoneId}/applications and GET
+// /v1/me/watch-zones/{zoneId}/applications/clusters. newID mints the zone id (a
+// GUID in production); now stamps the zone's creation time.
 func NearbyRoutes(
 	mux *http.ServeMux,
 	store zoneStore,
@@ -109,59 +111,31 @@ type createRequest struct {
 // bump this value server-side first before shipping the iOS change.
 const maxRadiusMetres = 10_000
 
-// defaultNearbyLimit, defaultSortedLimit and maxNearbyLimit bound the per-request
-// page of nearby applications, so a dense urban zone cannot blow the server write
-// timeout.
-//
-// The param-less path keeps the 500 default (backward-compat contract). The
-// sort-aware path (?sort=) uses a smaller 150 default for a
-// snappier first paint and infinite-scroll increment. maxNearbyLimit
-// is the shared clamp ceiling for both.
+// Bounded so a dense urban zone cannot blow the server write timeout. The
+// param-less path keeps the 500 default as a backward-compat contract.
 const (
 	defaultNearbyLimit = 500
 	defaultSortedLimit = 150
 	maxNearbyLimit     = 500
 )
 
-// invalidCursorMessage is the 400 body when ?cursor= is not a valid continuation
-// token: a malformed base64url wrapper, a token that is not a keyset cursor, or a
-// cursor minted under a different ?sort= than the request carries.
 const invalidCursorMessage = "Invalid cursor."
 
-// invalidSortMessage is the 400 body when ?sort= is outside the supported set
-// ({distance, newest, oldest, status, recent-activity}).
 const invalidSortMessage = "Invalid sort."
 
-// invalidStatusMessage is the 400 body when ?status= is outside the app_state
-// filter vocabulary (and not "All"/absent, which mean no filter).
 const invalidStatusMessage = "Invalid status filter."
 
-// invalidBBoxMessage is the 400 body when ?bbox= is not four in-range,
-// well-ordered finite decimal degrees (west,south,east,north).
 const invalidBBoxMessage = "Invalid bbox."
 
-// invalidZoomMessage is the 400 body when ?zoom= is not an integer in the slippy
-// range 0..maxZoom.
 const invalidZoomMessage = "Invalid zoom."
 
-// invalidUnreadMessage is the 400 body when ?unread= is neither "true", "false"
-// nor absent.
 const invalidUnreadMessage = "Invalid unread filter."
 
-// filterConflictMessage is the 400 body when a real ?status= filter and
-// ?unread=true are sent together: they are mutually exclusive (mirroring the
-// client rule). "All" is not a real status filter, so it does not conflict.
+// "All" is not a real status filter, so it does not conflict with ?unread=true.
 const filterConflictMessage = "status and unread filters are mutually exclusive."
 
-// valid reports whether the create request passes the pre-handler guard:
-// non-blank name, always; PLUS, for a plain circle request (Boundary
-// absent), positive radius within the server ceiling and in-range
-// coordinates. A boundary-carrying request skips those circle-shaped checks
-// entirely -- Latitude/Longitude/RadiusMetres are ignored and overwritten
-// from the boundary in create, so whatever (or nothing) the caller sent for
-// them is irrelevant; the boundary's own shape and radius are validated
-// separately in create (NewBoundary, then the maxRadiusMetres/tier ceiling
-// gates).
+// A boundary-carrying request skips the circle checks: create overwrites its
+// Latitude/Longitude/RadiusMetres from the boundary and validates the shape there.
 func (req createRequest) valid() bool {
 	if strings.TrimSpace(req.Name) == "" {
 		return false
@@ -191,13 +165,8 @@ func (req createRequest) valid() bool {
 }
 
 // createResult is the POST /v1/me/watch-zones response. Latitude, Longitude,
-// RadiusMetres and Boundary always reflect the persisted zone regardless of
-// which create path was used: for a plain circle request they
-// echo back exactly what the caller sent, and for a boundary-carrying request
-// they carry the server-derived centroid/enclosing-radius/shape -- so an
-// existing client that only reads lat/lon/radius keeps working unchanged, and
-// a boundary-aware client can read the derived circle fields off the same
-// response without a follow-up GET.
+// RadiusMetres and Boundary reflect the persisted zone, so a boundary-carrying
+// request gets back the server-derived centroid and enclosing radius.
 type createResult struct {
 	Latitude     float64          `json:"latitude"`
 	Longitude    float64          `json:"longitude"`
@@ -205,8 +174,7 @@ type createResult struct {
 	Boundary     *boundaryGeoJSON `json:"boundary"`
 	// NearbyApplications is always an empty array, kept so the wire shape is stable.
 	NearbyApplications []applications.NearbyResult `json:"nearbyApplications"`
-	// FilterKey round-trips the persisted filter: nil
-	// for an unfiltered zone, the catalog key string otherwise.
+	// FilterKey is nil for an unfiltered zone, the catalog key otherwise.
 	FilterKey *string `json:"filterKey"`
 }
 
@@ -238,12 +206,8 @@ func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 	}
 	tier := profile.EffectiveTier(h.now())
 
-	// A boundary-carrying request is gated on the caller's tier before its
-	// shape is even parsed (cheapest check first), then on shape validity,
-	// then on the enclosing radius against both the hard server ceiling and
-	// the tier's own cap. On success Latitude/Longitude/RadiusMetres are
-	// overwritten with the boundary's derived values, so the circle-shaped
-	// NewWatchZone step below runs unchanged against them.
+	// Overwriting Latitude/Longitude/RadiusMetres with the boundary's derived
+	// values lets the circle-shaped NewWatchZone step below run unchanged.
 	var boundary Boundary
 	if req.Boundary != nil {
 		if !tier.AllowsCustomBoundary() {

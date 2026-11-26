@@ -2,14 +2,12 @@ package watchzones
 
 import "slices"
 
-// FilterKey identifies one of the seven pre-canned, Pro-tier watch-zone
+// FilterKey identifies one of the pre-canned, Pro-tier watch-zone
 // filters. The zero value ("") means "unfiltered" —
 // it deliberately is not a member of filterCatalog; callers gate on a
 // non-empty value before consulting the catalog (see IsValidFilterKey).
 type FilterKey string
 
-// The seven catalog filter keys. See filterCatalog for each one's display
-// name, description, and to_tsquery expression.
 const (
 	FilterKeyFewerNotifications    FilterKey = "fewer_notifications"
 	FilterKeyHouseBuilder          FilterKey = "house_builder"
@@ -44,12 +42,9 @@ type FilterDefinition struct {
 // index.
 var filterExcludedAppTypes = []string{"Trees", "Conditions", "Amendment", "Advertising", "Telecoms"}
 
-// filterCatalog is the seven pre-canned watch-zone filters, validated
-// against 1.4M rows of real town_crier_prod data. It is
-// deliberately Go code, not a DB table: the catalog is meant to be revisable
-// (adding/removing/retuning a filter) without a migration — see migration
-// 0026_watch_zone_filter_key.sql, which adds an unconstrained filter_key
-// column for exactly this reason.
+// filterCatalog is the pre-canned watch-zone filters. It is deliberately Go
+// code, not a DB table, so a filter can be added, removed or retuned without a
+// migration (filter_key is an unconstrained column).
 //
 // to_tsquery syntax gotchas — read before editing an expression below:
 //
@@ -115,12 +110,8 @@ var filterCatalog = map[FilterKey]FilterDefinition{
 	},
 }
 
-// filterCatalogOrder lists the seven catalog keys in a fixed, deliberate
-// display order (matching the const block above) for anything that serves
-// the catalog to a client — e.g. catalog_handler.go's GET
-// /v1/watch-zones/filter-catalog. Go map iteration order is randomised, so
-// any caller that needs a stable, repeatable order must walk this slice
-// rather than range over filterCatalog directly.
+// filterCatalogOrder fixes the order the catalog is served in; ranging over
+// filterCatalog would be randomised.
 var filterCatalogOrder = []FilterKey{
 	FilterKeyFewerNotifications,
 	FilterKeyHouseBuilder,
@@ -140,10 +131,7 @@ func IsValidFilterKey(key string) bool {
 }
 
 // FilterDefinitionFor returns the catalog entry for key and whether key is a
-// member of the catalog. It is the read-only cross-package entry point the
-// notifydispatch enqueuer uses to evaluate a loaded zone's pre-canned filter
-// without duplicating the catalog
-// data outside this package.
+// member of the catalog.
 func FilterDefinitionFor(key FilterKey) (FilterDefinition, bool) {
 	def, ok := filterCatalog[key]
 	return def, ok
@@ -151,9 +139,7 @@ func FilterDefinitionFor(key FilterKey) (FilterDefinition, bool) {
 
 // IsExcludedAppType reports whether appType is one of the
 // filterExcludedAppTypes values that never generate a notification for any
-// keyword-bearing filter — see that variable's doc comment. The
-// notifydispatch enqueuer checks this in-memory gate before ever calling
-// into a DB-backed keyword matcher.
+// keyword-bearing filter.
 func IsExcludedAppType(appType string) bool {
 	return slices.Contains(filterExcludedAppTypes, appType)
 }
