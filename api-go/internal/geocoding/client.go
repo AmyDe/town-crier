@@ -59,10 +59,8 @@ type postcodesIoResponse struct {
 }
 
 type postcodesIoResult struct {
-	Postcode      string  `json:"postcode"`
-	Latitude      float64 `json:"latitude"`
-	Longitude     float64 `json:"longitude"`
-	AdminDistrict *string `json:"admin_district"`
+	Latitude  float64 `json:"latitude"`
+	Longitude float64 `json:"longitude"`
 }
 
 // Geocode resolves a normalised UK postcode to coordinates. The boolean reports
