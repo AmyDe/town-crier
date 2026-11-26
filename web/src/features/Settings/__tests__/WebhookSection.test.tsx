@@ -94,6 +94,7 @@ describe('WebhookSection', () => {
       const secret = await screen.findByLabelText('Signing secret');
       expect(secret).toHaveValue('tcwh_created');
       expect(secret).toHaveAttribute('readonly');
+      expect(secret.tagName).toBe('TEXTAREA');
       expect(
         screen.getByText(
           "Copy this now. We only show it once. If you lose it, rotate the secret to get a new one.",
