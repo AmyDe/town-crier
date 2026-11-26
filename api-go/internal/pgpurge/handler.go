@@ -1,6 +1,6 @@
 // Package pgpurge implements the pg-purge worker mode: a scheduled DELETE sweep
-// enforcing row retention for notifications, device registrations and the
-// polling tables, since Postgres has no native time-to-live.
+// enforcing row retention for notifications, device registrations, webhook
+// deliveries and the polling tables, since Postgres has no native time-to-live.
 package pgpurge
 
 import (
@@ -18,6 +18,14 @@ type devicePurger interface {
 	PurgeOlderThan(ctx context.Context, cutoff time.Time) (int64, error)
 }
 
+type deliveryPurger interface {
+	PurgeDeliveriesOlderThan(ctx context.Context, cutoff time.Time) (int64, error)
+}
+
+// webhookDeliveryRetention is the period the privacy policy gives for webhook
+// delivery records.
+const webhookDeliveryRetention = 7 * 24 * time.Hour
+
 type pollPurger interface {
 	Purge(ctx context.Context, now time.Time) (map[string]int64, error)
 }
@@ -26,6 +34,7 @@ type pollPurger interface {
 type Handler struct {
 	notifs          notifPurger
 	devices         devicePurger
+	deliveries      deliveryPurger
 	notifRetention  time.Duration
 	deviceRetention time.Duration
 	poll            pollPurger
@@ -34,10 +43,11 @@ type Handler struct {
 }
 
 // New wires the purge handler. notifRetention and deviceRetention are the
-// look-back windows.
+// look-back windows. Webhook deliveries are always kept for seven days.
 func New(
 	notifs notifPurger,
 	devices devicePurger,
+	deliveries deliveryPurger,
 	notifRetention time.Duration,
 	deviceRetention time.Duration,
 	now func() time.Time,
@@ -46,6 +56,7 @@ func New(
 	return &Handler{
 		notifs:          notifs,
 		devices:         devices,
+		deliveries:      deliveries,
 		notifRetention:  notifRetention,
 		deviceRetention: deviceRetention,
 		now:             now,
@@ -59,8 +70,9 @@ func (h *Handler) WithPollRetention(p pollPurger) *Handler {
 	return h
 }
 
-// Run purges notifications, then devices, then poll data, and returns the
-// notification and device counts purged; a failure skips the rest.
+// Run purges notifications, then devices, then webhook deliveries, then poll
+// data, and returns the notification and device counts purged; a failure skips
+// the rest.
 func (h *Handler) Run(ctx context.Context) (int, int, error) {
 	now := h.now()
 
@@ -78,6 +90,11 @@ func (h *Handler) Run(ctx context.Context) (int, int, error) {
 	}
 	devicesPurged := int(d)
 
+	deliveriesDeleted, err := h.deliveries.PurgeDeliveriesOlderThan(ctx, now.Add(-webhookDeliveryRetention))
+	if err != nil {
+		return notifsPurged, devicesPurged, fmt.Errorf("purge webhook deliveries: %w", err)
+	}
+
 	var pollDeleted map[string]int64
 	if h.poll != nil {
 		pollDeleted, err = h.poll.Purge(ctx, now)
@@ -90,6 +107,7 @@ func (h *Handler) Run(ctx context.Context) (int, int, error) {
 		"pollRowsDeleted", pollDeleted,
 		"notificationsDeleted", notifsPurged,
 		"deviceRegistrationsDeleted", devicesPurged,
+		"webhookDeliveriesDeleted", deliveriesDeleted,
 		"notifCutoff", notifCutoff,
 		"deviceCutoff", deviceCutoff)
 
