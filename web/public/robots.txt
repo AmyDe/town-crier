@@ -56,4 +56,11 @@ Allow: /
 User-agent: Applebot-Extended
 Allow: /
 
+# Meta (Meta AI)
+User-agent: Meta-ExternalAgent
+Allow: /
+
+User-agent: Meta-ExternalFetcher
+Allow: /
+
 Sitemap: https://towncrierapp.uk/sitemap.xml
