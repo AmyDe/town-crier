@@ -47,6 +47,9 @@ const ConnectedWatchZoneEditPage = lazy(() =>
 const ConnectedMapPage = lazy(() =>
   import('./features/Map/ConnectedMapPage').then((m) => ({ default: m.ConnectedMapPage })),
 );
+const WebhookDocsPage = lazy(() =>
+  import('./features/WebhookDocs/WebhookDocsPage').then((m) => ({ default: m.WebhookDocsPage })),
+);
 const ConnectedSettingsPage = lazy(() =>
   import('./features/Settings/ConnectedSettingsPage').then((m) => ({ default: m.ConnectedSettingsPage })),
 );
@@ -58,6 +61,7 @@ export function AppRoutes() {
       <Route path="/" element={<LandingPage />} />
       <Route path="/callback" element={<CallbackPage />} />
       <Route path="/legal/:type" element={<ConnectedLegalPage />} />
+      <Route path="/developers/webhooks" element={<Suspense fallback={null}><WebhookDocsPage /></Suspense>} />
       <Route path="/search" element={<Suspense fallback={null}><ConnectedSearchPage /></Suspense>} />
 
       {/* Authenticated routes */}
