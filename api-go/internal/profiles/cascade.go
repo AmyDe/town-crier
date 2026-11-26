@@ -11,5 +11,6 @@ type CascadeDeleters struct {
 	SavedApplications   erasure.ChildDeleter
 	DeviceRegistrations erasure.ChildDeleter
 	NotificationState   erasure.ChildDeleter
+	Webhooks            erasure.ChildDeleter
 	OfferCodes          erasure.RedemptionAnonymiser
 }

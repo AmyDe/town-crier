@@ -49,6 +49,7 @@ type Deleters struct {
 	SavedApplications   ChildDeleter
 	DeviceRegistrations ChildDeleter
 	NotificationState   ChildDeleter
+	Webhooks            ChildDeleter
 	OfferCodes          RedemptionAnonymiser
 	Profile             ProfileDeleter
 	Auth0               Auth0Deleter
@@ -61,9 +62,9 @@ func (d Deleters) profileAbsent(err error) bool {
 }
 
 // Cascade runs the full GDPR Art. 17 erasure for one user in the fixed safety
-// order: every per-user child container first (notifications, watch zones, saved
-// applications, device registrations, notification-state watermark), then the
-// offer-code redemption back-reference is anonymised, then the profile document,
+// order: every per-user child store first (notifications, watch zones, saved
+// applications, device registrations, notification-state watermark, webhook
+// endpoint and its deliveries), then the offer-code redemption back-reference is anonymised, then the profile document,
 // then — last — the Auth0 user.
 //
 // Ordering is the safety contract: every personal-data scrub runs before the
@@ -88,6 +89,9 @@ func Cascade(ctx context.Context, userID string, d Deleters) error {
 	}
 	if err := d.NotificationState.DeleteAllByUserID(ctx, userID); err != nil {
 		return fmt.Errorf("delete notification state: %w", err)
+	}
+	if err := d.Webhooks.DeleteAllByUserID(ctx, userID); err != nil {
+		return fmt.Errorf("delete webhook: %w", err)
 	}
 	if err := d.OfferCodes.AnonymiseRedemptionsByUserID(ctx, userID); err != nil {
 		return fmt.Errorf("anonymise offer-code redemptions: %w", err)

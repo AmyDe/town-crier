@@ -203,6 +203,7 @@ func (h *handler) delete(w http.ResponseWriter, r *http.Request) {
 		SavedApplications:   h.cascade.SavedApplications,
 		DeviceRegistrations: h.cascade.DeviceRegistrations,
 		NotificationState:   h.cascade.NotificationState,
+		Webhooks:            h.cascade.Webhooks,
 		OfferCodes:          h.cascade.OfferCodes,
 		Profile:             h.store,
 		Auth0:               h.auth0,
