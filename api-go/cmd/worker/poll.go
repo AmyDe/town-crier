@@ -14,6 +14,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/planit"
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
 	"github.com/AmyDe/town-crier/api-go/internal/polling"
+	"github.com/AmyDe/town-crier/api-go/internal/webhooks"
 )
 
 // version is the build version sent in the PlanIt User-Agent. Set with
@@ -77,7 +78,7 @@ func buildPoller(cfg platform.Config, pool *pgxpool.Pool, registry *metrics.Regi
 	).WithSwitch(sw)
 	fetcher := polling.NewPacedWindowFetcher(pacer, client)
 
-	decision, enqueuer, coalescer := buildNotifyFanOut(cfg, registry, st.zone, st, logger)
+	decision, enqueuer, coalescer := buildNotifyFanOut(cfg, registry, pool, st.zone, st, logger)
 	enqueuer = enqueuer.WithMetrics(registry)
 	decision = decision.WithMetrics(registry)
 	dispatcher := appevents.NewDispatcher(
@@ -118,9 +119,11 @@ func buildPoller(cfg platform.Config, pool *pgxpool.Pool, registry *metrics.Regi
 		Push:     coalescer,
 		Dispatch: observer,
 		Flusher:  dispatcher,
-		Health:   polling.NewPostgresHealthStore(pool),
-		Now:      now,
-		Log:      logger,
+		Webhooks: webhooks.NewDrainer(st.webhook, webhooks.NewClient(now), st.profile,
+			buildInstrumentedEmailSender(cfg, logger), logger, now),
+		Health: polling.NewPostgresHealthStore(pool),
+		Now:    now,
+		Log:    logger,
 	}
 	if cfg.PollingOracleEnabled {
 		deps.Oracle = polling.NewOracle(fetcher, oracleStore, oracleStore, events, now, logger)

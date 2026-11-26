@@ -8,11 +8,11 @@ import (
 	"unicode/utf8"
 
 	"github.com/AmyDe/town-crier/api-go/internal/seocatalog"
+	"github.com/AmyDe/town-crier/api-go/internal/sharelink"
 )
 
 const (
-	siteOrigin  = "https://towncrierapp.uk"
-	shareOrigin = "https://share.towncrierapp.uk"
+	siteOrigin = "https://towncrierapp.uk"
 
 	appleAppID            = "6764095657"
 	appStoreBaseURL       = "https://apps.apple.com/gb/app/town-crier-planning-alerts/id6764095657"
@@ -34,7 +34,7 @@ var townAttributionLines = append(append([]string(nil), attributionLines...),
 )
 
 func appStoreURL(campaign string) string {
-	return appStoreBaseURL + "?pt=" + appStoreProviderToken + "&ct=" + escapeComponent(campaign) + "&mt=8"
+	return appStoreBaseURL + "?pt=" + appStoreProviderToken + "&ct=" + sharelink.EscapeComponent(campaign) + "&mt=8"
 }
 
 func pagePath(path string) string {
@@ -42,36 +42,6 @@ func pagePath(path string) string {
 		return siteOrigin + "/planning"
 	}
 	return siteOrigin + "/planning/" + path
-}
-
-// escapeComponent mirrors JavaScript's encodeURIComponent: every byte outside
-// A-Z a-z 0-9 - _ . ! ~ * ' ( ) is percent-encoded.
-func escapeComponent(s string) string {
-	const unreserved = "-_.!~*'()"
-	var b strings.Builder
-	for i := range len(s) {
-		c := s[i]
-		switch {
-		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', strings.IndexByte(unreserved, c) >= 0:
-			b.WriteByte(c)
-		default:
-			fmt.Fprintf(&b, "%%%02X", c)
-		}
-	}
-	return b.String()
-}
-
-// shareURL is the share-page URL for an application, or "" when either part is
-// missing. The ref keeps its slashes (PlanIt references contain them).
-func shareURL(authoritySlug, ref string) string {
-	if authoritySlug == "" || ref == "" {
-		return ""
-	}
-	parts := strings.Split(ref, "/")
-	for i, p := range parts {
-		parts[i] = escapeComponent(p)
-	}
-	return shareOrigin + "/a/" + authoritySlug + "/" + strings.Join(parts, "/")
 }
 
 var shortMonths = [...]string{"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sept", "Oct", "Nov", "Dec"}

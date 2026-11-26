@@ -31,13 +31,20 @@ type OfferCodeRedemptionReader interface {
 	OfferCodeRedemptionsByUser(ctx context.Context, userID string) ([]ExportedOfferCodeRedemption, error)
 }
 
+// WebhookReader reads a user's webhook settings for the export. The boolean is
+// false when the user has none.
+type WebhookReader interface {
+	WebhookByUser(ctx context.Context, userID string) (ExportedWebhook, bool, error)
+}
+
 // ExportReaders bundles the per-collection readers GET /v1/me/data uses to source
-// the export's child collections, mirroring CascadeDeleters. A nil field renders
-// its collection as [] (never null).
+// the export's child records, mirroring CascadeDeleters. A nil field renders
+// its collection as [] (never null), or a nil Webhook as null.
 type ExportReaders struct {
 	WatchZones           WatchZoneReader
 	Notifications        NotificationReader
 	SavedApplications    SavedApplicationReader
 	DeviceRegistrations  DeviceRegistrationReader
 	OfferCodeRedemptions OfferCodeRedemptionReader
+	Webhook              WebhookReader
 }

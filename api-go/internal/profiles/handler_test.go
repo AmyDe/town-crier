@@ -177,6 +177,7 @@ func recordingCascade(calls *[]string) CascadeDeleters {
 		SavedApplications:   fakeChildDeleter{label: "savedApplications", calls: calls},
 		DeviceRegistrations: fakeChildDeleter{label: "deviceRegistrations", calls: calls},
 		NotificationState:   fakeChildDeleter{label: "notificationState", calls: calls},
+		Webhooks:            fakeChildDeleter{label: "webhooks", calls: calls},
 		OfferCodes:          fakeRedemptionAnonymiser{calls: calls},
 	}
 }
@@ -521,6 +522,7 @@ func TestHandler_DeleteProfile_CascadesEveryContainerThenProfileThenAuth0(t *tes
 		"savedApplications:auth0|abc",
 		"deviceRegistrations:auth0|abc",
 		"notificationState:auth0|abc",
+		"webhooks:auth0|abc",
 		"offerCodes:auth0|abc",
 	}
 	if !slices.Equal(calls, want) {
@@ -590,6 +592,28 @@ func TestHandler_DeleteProfile_OfferCodeAnonymiseFailureLeavesProfileAndAuth0Int
 	}
 }
 
+func TestHandler_DeleteProfile_WebhookDeleteFailureLeavesProfileAndAuth0Intact(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStore()
+	existing, _ := NewProfile("auth0|abc", "", time.Now())
+	store.byID["auth0|abc"] = existing
+	a0 := newFakeAuth0()
+	cascade := recordingCascade(nil)
+	cascade.Webhooks = fakeChildDeleter{label: "webhooks", err: errors.New("db down")}
+	h := newTestHandlerCascade(store, a0, cascade)
+
+	rec := httptest.NewRecorder()
+	h.delete(rec, withSubject(http.MethodDelete, "/v1/me", "auth0|abc", ""))
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("delete status: got %d, want 500", rec.Code)
+	}
+	if len(store.deleted) != 0 || len(a0.deletedUsers) != 0 {
+		t.Errorf("profile and auth0 must survive, deleted %v and %v", store.deleted, a0.deletedUsers)
+	}
+}
+
 // Auth0 is deleted last: an Auth0 Management-API failure must not strand
 // un-erased data, so by the time it runs every container and the profile row
 // are already gone.
@@ -610,7 +634,7 @@ func TestHandler_DeleteProfile_Auth0DeletedAfterAllCosmosData(t *testing.T) {
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("delete status: got %d, want 500", rec.Code)
 	}
-	if len(calls) != 6 {
+	if len(calls) != 7 {
 		t.Errorf("all child containers and the offer-code anonymise must run before the auth0 step, got %v", calls)
 	}
 	if len(store.deleted) != 1 {
@@ -632,7 +656,7 @@ func TestHandler_DeleteProfile_MissingProfileStillRunsCascadeAndAuth0(t *testing
 	if rec.Body.Len() != 0 {
 		t.Errorf("204 should be bodyless, got %q", rec.Body.String())
 	}
-	if len(calls) != 6 {
+	if len(calls) != 7 {
 		t.Errorf("cascade should run for a missing profile: %v", calls)
 	}
 	if len(a0.deletedUsers) != 1 || a0.deletedUsers[0] != "auth0|missing" {

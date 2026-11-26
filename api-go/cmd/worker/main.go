@@ -15,12 +15,14 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/AmyDe/town-crier/api-go/internal/acsemail"
 	"github.com/AmyDe/town-crier/api-go/internal/apns"
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
 	"github.com/AmyDe/town-crier/api-go/internal/appstorereconcile"
 	"github.com/AmyDe/town-crier/api-go/internal/appstoreserverapi"
+	"github.com/AmyDe/town-crier/api-go/internal/authorities"
 	"github.com/AmyDe/town-crier/api-go/internal/devicetokens"
 	"github.com/AmyDe/town-crier/api-go/internal/digest"
 	"github.com/AmyDe/town-crier/api-go/internal/dormant"
@@ -41,6 +43,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/subscriptions"
 	"github.com/AmyDe/town-crier/api-go/internal/subscriptionsweep"
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
+	"github.com/AmyDe/town-crier/api-go/internal/webhooks"
 	"github.com/AmyDe/town-crier/api-go/internal/worker"
 	"go.opentelemetry.io/otel"
 )
@@ -57,6 +60,24 @@ type stores struct {
 	offerCode    *offercodes.PostgresStore
 	lease        *polling.PostgresLeaseStore
 	appleNotif   *subscriptions.PostgresNotificationStore
+	webhook      *webhooks.PostgresStore
+}
+
+func newStores(pool *pgxpool.Pool, logger *slog.Logger) *stores {
+	return &stores{
+		app:          applications.NewPostgresStore(pool),
+		zone:         watchzones.NewPostgresStore(pool),
+		profile:      profiles.NewPostgresStore(pool),
+		profileAdmin: profiles.NewPostgresAdminStore(pool),
+		notification: notifications.NewPostgresStore(pool),
+		notifState:   notificationstate.NewPostgresStore(pool),
+		device:       devicetokens.NewPostgresStore(pool),
+		savedApp:     savedapplications.NewPostgresStore(pool),
+		offerCode:    offercodes.NewPostgresStore(pool, logger),
+		lease:        polling.NewPostgresLeaseStore(pool, time.Now),
+		appleNotif:   subscriptions.NewPostgresNotificationStore(pool, time.Now),
+		webhook:      webhooks.NewPostgresStore(pool),
+	}
 }
 
 func main() {
@@ -114,32 +135,13 @@ func run() int {
 		return worker.RunApplicationLocations(ctx, mode, buildApplicationLocations(pool, logger), logger)
 	}
 
-	st := &stores{
-		app:          applications.NewPostgresStore(pool),
-		zone:         watchzones.NewPostgresStore(pool),
-		profile:      profiles.NewPostgresStore(pool),
-		profileAdmin: profiles.NewPostgresAdminStore(pool),
-		notification: notifications.NewPostgresStore(pool),
-		notifState:   notificationstate.NewPostgresStore(pool),
-		device:       devicetokens.NewPostgresStore(pool),
-		savedApp:     savedapplications.NewPostgresStore(pool),
-		offerCode:    offercodes.NewPostgresStore(pool, logger),
-		lease:        polling.NewPostgresLeaseStore(pool, time.Now),
-		appleNotif:   subscriptions.NewPostgresNotificationStore(pool, time.Now),
-	}
+	st := newStores(pool, logger)
 
 	digester := buildDigester(cfg, registry, st, logger)
 	dormantRunner := buildDormant(cfg, st, logger)
 	sweepRunner := buildSweep(cfg, st, logger)
 
-	purger := pgpurge.New(
-		st.notification,
-		st.device,
-		time.Duration(cfg.NotificationsRetentionDays)*24*time.Hour,
-		time.Duration(cfg.DeviceRegistrationsRetentionDays)*24*time.Hour,
-		time.Now,
-		logger,
-	).WithPollRetention(polling.NewPostgresRetentionStore(pool))
+	purger := buildPurger(cfg, pool, st, logger)
 
 	// Built only for its own mode so a malformed poll setting fails only that
 	// job. Declared as the interface so the unbuilt case stays a true nil.
@@ -184,22 +186,35 @@ func run() int {
 	return worker.Run(ctx, mode, digester, dormantRunner, poller, sweepRunner, purger, reconciler, seoCataloger, backuper, logger)
 }
 
+func buildPurger(cfg platform.Config, pool *pgxpool.Pool, st *stores, logger *slog.Logger) *pgpurge.Handler {
+	return pgpurge.New(
+		st.notification,
+		st.device,
+		st.webhook,
+		time.Duration(cfg.NotificationsRetentionDays)*24*time.Hour,
+		time.Duration(cfg.DeviceRegistrationsRetentionDays)*24*time.Hour,
+		time.Now,
+		logger,
+	).WithPollRetention(polling.NewPostgresRetentionStore(pool))
+}
+
 // buildNotifyFanOut returns the collaborators the poll runner's event
 // dispatcher needs; the caller adds WithMetrics.
-func buildNotifyFanOut(cfg platform.Config, registry *metrics.Registry, zoneStore watchzones.Store, st *stores, logger *slog.Logger) (*notifydispatch.DecisionDispatcher, *notifydispatch.Enqueuer, *notifydispatch.PushCoalescer) {
+func buildNotifyFanOut(cfg platform.Config, registry *metrics.Registry, pool *pgxpool.Pool, zoneStore watchzones.Store, st *stores, logger *slog.Logger) (*notifydispatch.DecisionDispatcher, *notifydispatch.Enqueuer, *notifydispatch.PushCoalescer) {
 	pushDispatcher := buildPlatformDispatcher(cfg, registry, logger)
 	coalescer := notifydispatch.NewPushCoalescer(st.device, st.notifState, pushDispatcher, zoneStore, st.notification, time.Now, logger)
 	if cfg.NotifyPushRecoveryEnabled {
 		coalescer = coalescer.WithRecovery(st.notification, st.profile)
 	}
+	outbox := webhooks.NewOutbox(pool, authorities.NewLookup(), uuid.NewString, time.Now)
 	enqueuer := notifydispatch.NewEnqueuer(
 		st.notification, zoneStore, st.profile, coalescer, st.app,
 		uuid.NewString, time.Now, logger,
-	)
+	).WithWebhooks(outbox)
 	dispatcher := notifydispatch.NewDecisionDispatcher(
 		st.notification, zoneStore, st.savedApp, st.profile, coalescer,
 		uuid.NewString, time.Now, logger,
-	)
+	).WithWebhooks(outbox)
 	return dispatcher, enqueuer, coalescer
 }
 
@@ -211,9 +226,7 @@ func buildDigester(cfg platform.Config, registry *metrics.Registry, st *stores, 
 		point: st.profile,
 	}
 
-	// InstrumentedSender gives each digest email one "Email send" span, distinct
-	// from the underlying "ACS email send" HTTP client spans.
-	emailSender := acsemail.NewInstrumentedSender(buildEmailSender(cfg, logger))
+	emailSender := buildInstrumentedEmailSender(cfg, logger)
 	dispatcher := buildPlatformDispatcher(cfg, registry, logger)
 
 	return digest.NewHandler(
@@ -249,20 +262,23 @@ func (p digestProfiles) Get(ctx context.Context, userID string) (*profiles.UserP
 }
 
 func buildDormant(cfg platform.Config, st *stores, logger *slog.Logger) *dormant.Handler {
+	return dormant.New(st.profileAdmin, dormantDeleters(cfg, st, logger), logger, time.Now)
+}
+
+func dormantDeleters(cfg platform.Config, st *stores, logger *slog.Logger) erasure.Deleters {
 	// Every deleter must be the Postgres store: the GDPR cascade must not miss a row.
-	deleters := erasure.Deleters{
+	return erasure.Deleters{
 		Notifications:       st.notification,
 		WatchZones:          st.zone,
 		SavedApplications:   st.savedApp,
 		DeviceRegistrations: st.device,
 		NotificationState:   erasure.NotificationStateChild(st.notifState),
+		Webhooks:            st.webhook,
 		OfferCodes:          st.offerCode,
 		Profile:             st.profile,
 		Auth0:               buildAuth0Deleter(cfg, logger),
 		ProfileAbsent:       func(e error) bool { return errors.Is(e, profiles.ErrNotFound) },
 	}
-
-	return dormant.New(st.profileAdmin, deleters, logger, time.Now)
 }
 
 // buildAuth0Deleter returns a no-op when Auth0 M2M is unconfigured, so the
@@ -361,10 +377,16 @@ func buildAppStoreReconcile(cfg platform.Config, st *stores, logger *slog.Logger
 	return appstorereconcile.New(apiClient, jwsVerifier, st.appleNotif, processor, lookback, cfg.AppStoreReconcileApplyEnabled, logger, time.Now)
 }
 
+// buildInstrumentedEmailSender gives each email one "Email send" span, distinct
+// from the underlying "ACS email send" HTTP client spans.
+func buildInstrumentedEmailSender(cfg platform.Config, logger *slog.Logger) *acsemail.InstrumentedSender {
+	return acsemail.NewInstrumentedSender(buildEmailSender(cfg, logger))
+}
+
 func buildEmailSender(cfg platform.Config, logger *slog.Logger) acsemail.EmailSender {
 	conn := cfg.ACSConnectionString.Expose()
 	if conn == "" {
-		logger.Info("acs connection string unset; digest emails disabled (NoOp sender)")
+		logger.Info("acs connection string unset; emails disabled (NoOp sender)")
 		return acsemail.NewNoOpSender()
 	}
 	client, err := acsemail.NewClient(conn, logger, time.Now)

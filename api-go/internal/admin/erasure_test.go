@@ -93,6 +93,7 @@ func (f *erasureFixture) deleters() erasure.Deleters {
 		SavedApplications:   step("saved"),
 		DeviceRegistrations: step("devices"),
 		NotificationState:   step("state"),
+		Webhooks:            step("webhooks"),
 		OfferCodes:          step("offercodes"),
 		Profile:             profile,
 		Auth0:               fakeEraseStep{name: "auth0", calls: &f.calls, err: f.auth0Err, failFor: f.auth0FailID},
@@ -123,7 +124,7 @@ func newErasureFixture(byEmail map[string][]string) *erasureFixture {
 }
 
 func stepsFor(userID string) []string {
-	names := []string{"notifications", "watchzones", "saved", "devices", "state", "offercodes", "profile", "auth0"}
+	names := []string{"notifications", "watchzones", "saved", "devices", "state", "webhooks", "offercodes", "profile", "auth0"}
 	out := make([]string, 0, len(names))
 	for _, name := range names {
 		out = append(out, name+":"+userID)

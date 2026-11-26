@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/AmyDe/town-crier/api-go/internal/planit"
+	"github.com/AmyDe/town-crier/api-go/internal/webhooks"
 )
 
 const (
@@ -21,9 +22,11 @@ const (
 	// A stop signal leaves the container about 30 s before it is killed, so the
 	// work after a cancelled run is bounded to fit inside that grace period.
 	cancelledFlushTimeout = 10 * time.Second
-	// The 55-minute run budget plus endOfRunTimeout must stay under the 3600 s
-	// replica timeout, leaving headroom for health and lease release.
+	// The 55-minute run budget plus endOfRunTimeout and webhookDrainTimeout must
+	// stay under the 3600 s replica timeout, leaving headroom for health and
+	// lease release.
 	endOfRunTimeout     = 2 * time.Minute
+	webhookDrainTimeout = 2 * time.Minute
 	leaseReleaseTimeout = 5 * time.Second
 	runSpanName         = "PlanIt poll run"
 	tracerName          = "github.com/AmyDe/town-crier/api-go/internal/polling"
@@ -74,6 +77,10 @@ type runDispatcher interface {
 	DispatchPending(ctx context.Context)
 }
 
+type webhookDrainer interface {
+	Drain(ctx context.Context) webhooks.DrainResult
+}
+
 type healthSource interface {
 	Inputs(ctx context.Context, now time.Time) (HealthInputs, error)
 }
@@ -93,11 +100,15 @@ type RunnerConfig struct {
 	RunBudget     time.Duration
 	OracleEnabled bool
 	// EndOfRunTimeout bounds the end-of-run dispatch and flush; zero means the
-	// default of five minutes.
+	// default of two minutes.
 	EndOfRunTimeout time.Duration
+	// WebhookDrainTimeout bounds the webhook drain that follows the flush; zero
+	// means the default of two minutes.
+	WebhookDrainTimeout time.Duration
 }
 
-// RunnerDeps are the collaborators of a Runner. Push and Oracle may be nil.
+// RunnerDeps are the collaborators of a Runner. Push, Webhooks and Oracle may
+// be nil.
 type RunnerDeps struct {
 	Switch   pollSwitch
 	Lease    runLease
@@ -108,6 +119,7 @@ type RunnerDeps struct {
 	Push     pushResetter
 	Dispatch runDispatcher
 	Flusher  runFlusher
+	Webhooks webhookDrainer
 	Health   healthSource
 	Oracle   oracleRunner
 	Now      func() time.Time
@@ -139,15 +151,17 @@ func NewRunner(cfg RunnerConfig, deps RunnerDeps) *Runner {
 
 // Run takes the "polling" lease and, until the run budget is spent or the
 // polling switch is off, plans and reads windows and deltas through the
-// WindowReader. It then dispatches pending events, flushes pushes, computes
-// health (not for a switched-off run) and releases the lease. Dispatch runs even
-// when no page was read, so events held over quiet hours go out at the first
-// run after quiet hours end. A held lease returns without work.
+// WindowReader. It then dispatches pending events, flushes pushes, drains
+// webhooks, computes health (not for a switched-off run) and releases the
+// lease. Dispatch runs even when no page was read, so events held over quiet
+// hours go out at the first run after quiet hours end. A held lease returns
+// without work.
 // Limits such as backoff, the daily cap, 429, 403 and timeouts end the run
 // normally; only lease and state failures return an error. When ctx is
 // cancelled the run stops with StopCancelled and no error: it flushes pushes
-// already queued, leaves pending events for the next run, computes no health
-// and releases the lease.
+// already queued, leaves pending events and webhook deliveries for the next
+// run, computes no health and releases the lease. A cancel that arrives during
+// the webhook drain also cuts the drain short.
 func (r *Runner) Run(ctx context.Context) (RunResult, error) {
 	acq, err := r.d.Lease.TryAcquire(ctx, runLeaseTTL)
 	if err != nil {
@@ -193,11 +207,30 @@ func (r *Runner) Run(ctx context.Context) (RunResult, error) {
 	if errors.Is(flushCtx.Err(), context.DeadlineExceeded) && !cancelled {
 		r.d.Log.WarnContext(baseCtx, "poll.end_of_run_timeout", slog.Duration("bound", bound))
 	}
+	if !cancelled && ctx.Err() == nil {
+		r.drainWebhooks(ctx)
+	}
 	if res.Stop != StopDisabled && !cancelled {
 		res.Health = r.health(baseCtx, res.Counts)
 	}
 	r.setSpanAttrs(span, res)
 	return res, err
+}
+
+// drainWebhooks has its own time limit so that a slow receiver cannot take time
+// from the push flush. It stays cancellable so that a stop signal leaves time to
+// release the lease before the container is killed.
+func (r *Runner) drainWebhooks(ctx context.Context) {
+	if r.d.Webhooks == nil {
+		return
+	}
+	bound := r.cfg.WebhookDrainTimeout
+	if bound <= 0 {
+		bound = webhookDrainTimeout
+	}
+	ctx, cancel := context.WithTimeout(ctx, bound)
+	defer cancel()
+	r.d.Webhooks.Drain(ctx)
 }
 
 func (r *Runner) loop(ctx context.Context) (RunResult, error) {

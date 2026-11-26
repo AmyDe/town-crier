@@ -10,6 +10,7 @@ import (
 
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
 	"github.com/AmyDe/town-crier/api-go/internal/seocatalog"
+	"github.com/AmyDe/town-crier/api-go/internal/sharelink"
 )
 
 const (
@@ -179,7 +180,7 @@ func itemListLD(name, canonical, authoritySlug string, apps []applications.Plann
 				label = append(label, s)
 			}
 		}
-		url := firstNonEmpty(shareURL(authoritySlug, app.Name), deref(app.URL), deref(app.Link), canonical)
+		url := firstNonEmpty(sharelink.ApplicationURL(authoritySlug, app.Name), deref(app.URL), deref(app.Link), canonical)
 		elements[i] = map[string]any{"@type": "ListItem", "position": i + 1, "name": strings.Join(label, " — "), "url": url}
 	}
 	return map[string]any{
@@ -229,7 +230,7 @@ func buildLedger(apps []applications.PlanningApplication, authoritySlug, area, m
 			DateLine:    applicationDateLine(app),
 			Modifier:    statusModifier(app.AppState),
 			Label:       statusDisplayLabel(app.AppState),
-			ShareURL:    shareURL(authoritySlug, app.Name),
+			ShareURL:    sharelink.ApplicationURL(authoritySlug, app.Name),
 		}})
 	}
 	if len(apps) >= midListCTAMinApplications {

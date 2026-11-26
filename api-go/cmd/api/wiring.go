@@ -37,6 +37,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/subscriptions"
 	"github.com/AmyDe/town-crier/api-go/internal/versionconfig"
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
+	"github.com/AmyDe/town-crier/api-go/internal/webhooks"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
@@ -190,6 +191,29 @@ type pollingAdminDeps struct {
 	ReadPath *applications.ReadPathSwitch
 }
 
+// webhookStore is the endpoint store behind the /v1/me/webhook routes.
+// *webhooks.PostgresStore satisfies it.
+type webhookStore interface {
+	ByUserID(ctx context.Context, userID string) (webhooks.Endpoint, error)
+	Create(ctx context.Context, e webhooks.Endpoint) error
+	Replace(ctx context.Context, userID, rawURL string, format webhooks.Format, now time.Time) (webhooks.Endpoint, error)
+	RotateSecret(ctx context.Context, userID, secret string, now time.Time) error
+	ClaimTest(ctx context.Context, userID string, now time.Time) (bool, error)
+	DeleteAllByUserID(ctx context.Context, userID string) error
+}
+
+// webhookSender sends the test event. *webhooks.Client satisfies it.
+type webhookSender interface {
+	Send(ctx context.Context, msg webhooks.Message) webhooks.Result
+}
+
+// webhookDeps wires the /v1/me/webhook routes; a zero value leaves them
+// unregistered.
+type webhookDeps struct {
+	store  webhookStore
+	sender webhookSender
+}
+
 // adminUserStore is the admin profile store the router wires into admin.Routes:
 // the full AdminProfileStore plus the two stats aggregates (paid-tier candidates
 // and the whole-base UserStats). *profiles.PostgresAdminStore satisfies it.
@@ -265,6 +289,7 @@ func newRouter(
 	notifier *subscriptionevents.Notifier,
 	seoStore seopage.Store,
 	shareEventStore shareevents.Store,
+	hooks webhookDeps,
 	logger *slog.Logger,
 ) http.Handler {
 	mux := http.NewServeMux()
@@ -292,6 +317,9 @@ func newRouter(
 	anonRefillPerSecond := float64(anonRateLimitRefillPerMinute) / 60
 	buildKeyExempt := func(r *http.Request) bool { return applications.BuildKeyMatches(r, siteBuildKey) }
 	dispatch = middleware.AnonRateLimit(middleware.NewAnonRateLimitStore(anonRefillPerSecond), anonRateLimitBurst, buildKeyExempt, logger)(dispatch)
+	if store != nil && hooks.store != nil {
+		webhooks.Routes(mux, hooks.store, store, hooks.sender, uuid.NewString, time.Now, logger)
+	}
 	if deviceStore != nil {
 		devicetokens.Routes(mux, deviceStore, time.Now, logger)
 	}
@@ -376,6 +404,7 @@ func newRouter(
 			SavedApplications:   cascade.SavedApplications,
 			DeviceRegistrations: cascade.DeviceRegistrations,
 			NotificationState:   cascade.NotificationState,
+			Webhooks:            cascade.Webhooks,
 			OfferCodes:          cascade.OfferCodes,
 			Profile:             store,
 			Auth0:               auth0,

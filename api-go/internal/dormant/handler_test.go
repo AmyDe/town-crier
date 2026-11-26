@@ -24,7 +24,7 @@ func (f *fakeFinder) Dormant(_ context.Context, cutoff time.Time) ([]*profiles.U
 }
 
 // cascadeRecorder fills every erasure slot and counts child calls per user; the
-// five children share DeleteAllByUserID, so tests assert counts, not order.
+// children share DeleteAllByUserID, so tests assert counts, not order.
 type cascadeRecorder struct {
 	childCalls map[string]int   // child DeleteAllByUserID calls per user id
 	offerCodes map[string]int   // AnonymiseRedemptionsByUserID calls per user id
@@ -91,6 +91,7 @@ func newHandler(finder Finder, cascade *cascadeRecorder, auth0 erasure.Auth0Dele
 		SavedApplications:   cascade,
 		DeviceRegistrations: cascade,
 		NotificationState:   cascade,
+		Webhooks:            cascade,
 		OfferCodes:          cascade,
 		Profile:             cascade,
 		Auth0:               auth0,
@@ -130,11 +131,11 @@ func TestHandler_Run_DeletesEachDormantAccountWithFullCascade(t *testing.T) {
 		t.Errorf("deleted count: got %d, want 2", deleted)
 	}
 
-	// Each account runs all five child-container erasures, the offer-code
+	// Each account runs all six child-store erasures, the offer-code
 	// redemption anonymise, plus the profile delete.
 	for _, id := range []string{"auth0|a", "auth0|b"} {
-		if cascade.childCalls[id] != 5 {
-			t.Errorf("%s child erasures: got %d, want 5", id, cascade.childCalls[id])
+		if cascade.childCalls[id] != 6 {
+			t.Errorf("%s child erasures: got %d, want 6", id, cascade.childCalls[id])
 		}
 		if cascade.offerCodes[id] != 1 {
 			t.Errorf("%s offer-code anonymise: got %d, want 1", id, cascade.offerCodes[id])
