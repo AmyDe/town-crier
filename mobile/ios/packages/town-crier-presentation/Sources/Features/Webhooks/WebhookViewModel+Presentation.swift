@@ -16,6 +16,12 @@ enum WebhookAction: CaseIterable {
   }
 }
 
+/// The feedback row that must be on screen. Its value is also the row's scroll identity.
+enum WebhookFeedbackAnchor: Hashable {
+  case testResult
+  case error
+}
+
 enum WebhookStatusTone {
   case active
   case switchedOff
@@ -83,6 +89,11 @@ extension WebhookViewModel {
   var lastFailureReasonText: String? {
     guard let reason = webhook?.lastFailureReason else { return nil }
     return WebhookCopy.failureReason(reason, status: webhook?.lastFailureStatus)
+  }
+
+  var feedbackAnchor: WebhookFeedbackAnchor? {
+    if inlineError != nil || error != nil { return .error }
+    return testResult == nil ? nil : .testResult
   }
 
   var testResultText: String? {

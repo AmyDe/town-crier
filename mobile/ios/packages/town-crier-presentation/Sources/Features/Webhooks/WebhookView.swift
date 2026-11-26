@@ -4,12 +4,26 @@ import TownCrierDomain
 /// The Webhooks screen, pushed from Settings.
 public struct WebhookView: View {
   @StateObject private var viewModel: WebhookViewModel
+  @FocusState private var isURLFocused: Bool
 
   public init(viewModel: WebhookViewModel) {
     _viewModel = StateObject(wrappedValue: viewModel)
   }
 
   public var body: some View {
+    ScrollViewReader { proxy in
+      form
+        .onChange(of: viewModel.feedbackAnchor) { _, anchor in
+          guard let anchor else { return }
+          // The row is not in the list until the update that publishes it has run.
+          Task { @MainActor in
+            withAnimation { proxy.scrollTo(anchor, anchor: .center) }
+          }
+        }
+    }
+  }
+
+  private var form: some View {
     Form {
       content
       feedbackSection
@@ -85,15 +99,20 @@ public struct WebhookView: View {
         .textInputAutocapitalization(.never)
       #endif
       .accessibilityLabel(WebhookCopy.urlLabel)
+      .focused($isURLFocused)
+      .submitLabel(.done)
+      .onSubmit(save)
       Picker(WebhookCopy.formatLabel, selection: $viewModel.format) {
         ForEach(WebhookFormat.allCases, id: \.self) { format in
           Text(WebhookCopy.formatName(format)).tag(format)
         }
       }
-      PrimaryButton(WebhookCopy.save) {
-        Task { await viewModel.save() }
+      Button(action: save) {
+        Text(WebhookCopy.save)
       }
+      .buttonStyle(WebhookSaveButtonStyle())
       .disabled(!viewModel.canSave)
+      .alignmentGuide(.listRowSeparatorLeading) { dimensions in dimensions[.leading] }
       docsLink
     }
   }
@@ -126,11 +145,7 @@ public struct WebhookView: View {
   private var secretSection: some View {
     if let secret = viewModel.revealedSecret {
       Section {
-        Text(secret)
-          .font(TCTypography.mono)
-          .foregroundStyle(Color.tcTextPrimary)
-          .textSelection(.enabled)
-          .fixedSize(horizontal: false, vertical: true)
+        SecretText(secret: secret)
         textButton(WebhookCopy.copySecret) {
           viewModel.copySecret()
         }
@@ -192,11 +207,21 @@ public struct WebhookView: View {
             .foregroundStyle(action == .remove ? Color.tcStatusRejected : Color.tcAmber)
         }
         .disabled(viewModel.isBusy)
+        if action == .sendTest, let text = viewModel.testResultText {
+          feedback(text, isFailure: viewModel.testResult?.delivered == false)
+            .id(WebhookFeedbackAnchor.testResult)
+        }
       }
     }
   }
 
+  private func save() {
+    isURLFocused = false
+    Task { await viewModel.save() }
+  }
+
   private func perform(_ action: WebhookAction) {
+    isURLFocused = false
     switch action {
     case .sendTest:
       Task { await viewModel.sendTest() }
@@ -211,22 +236,27 @@ public struct WebhookView: View {
 
   @ViewBuilder
   private var feedbackSection: some View {
-    if viewModel.isBusy || viewModel.testResultText != nil || viewModel.inlineError != nil
-      || viewModel.error != nil {
+    if viewModel.isBusy || viewModel.feedbackAnchor == .error {
       Section {
         if viewModel.isBusy {
           ProgressView()
             .frame(maxWidth: .infinity)
         }
-        if let text = viewModel.testResultText {
-          feedback(text, isFailure: viewModel.testResult?.delivered == false)
+        if viewModel.feedbackAnchor == .error {
+          errorRows
+            .id(WebhookFeedbackAnchor.error)
         }
-        if let text = viewModel.inlineError {
-          feedback(text, isFailure: true)
-        }
-        if let error = viewModel.error {
-          feedback(error.userMessage, isFailure: true)
-        }
+      }
+    }
+  }
+
+  private var errorRows: some View {
+    VStack(alignment: .leading, spacing: TCSpacing.small) {
+      if let text = viewModel.inlineError {
+        feedback(text, isFailure: true)
+      }
+      if let error = viewModel.error {
+        feedback(error.userMessage, isFailure: true)
       }
     }
   }
@@ -261,5 +291,6 @@ public struct WebhookView: View {
     PrimaryButton(WebhookCopy.viewPlans) {
       viewModel.viewPlans()
     }
+    .alignmentGuide(.listRowSeparatorLeading) { dimensions in dimensions[.leading] }
   }
 }
