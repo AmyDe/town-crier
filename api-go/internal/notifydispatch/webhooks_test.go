@@ -291,7 +291,7 @@ func TestDecisionDispatcher_Webhooks_QueueErrorDoesNotStopFanOut(t *testing.T) {
 	if err := d.Dispatch(context.Background(), decisionApp(t, "Permitted", nil, nil)); err != nil {
 		t.Fatalf("Dispatch: %v, want a webhook error to be swallowed", err)
 	}
-	users := []string{}
+	users := make([]string, 0, len(notifs.created))
 	for _, n := range notifs.created {
 		users = append(users, n.UserID)
 	}
