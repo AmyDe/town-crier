@@ -14,4 +14,14 @@ extension Date {
   public var formattedForDisplay: String {
     Self.displayFormatter.string(from: self)
   }
+
+  /// Formats the date and time in `timeZone` for user-facing display
+  /// (e.g. "14 Nov 2023, 22:13").
+  func formattedWithTimeForDisplay(in timeZone: TimeZone) -> String {
+    let formatter = DateFormatter()
+    formatter.dateFormat = "d MMM yyyy, HH:mm"
+    formatter.locale = Locale(identifier: "en_GB")
+    formatter.timeZone = timeZone
+    return formatter.string(from: self)
+  }
 }

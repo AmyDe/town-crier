@@ -93,6 +93,27 @@ struct SettingsViewTests {
     #expect(tapped)
   }
 
+  @Test("the Webhooks section sits directly after Notifications")
+  func webhooksSection_followsNotifications() throws {
+    let sections = SettingsView.SectionKind.allCases
+
+    let notifications = try #require(sections.firstIndex(of: .notifications))
+
+    #expect(sections.firstIndex(of: .webhooks) == notifications + 1)
+  }
+
+  @Test("SettingsView forwards the webhooks tap to the callback")
+  func webhooksCallback_isInvokedOnRequest() {
+    let vm = makeViewModel()
+    var tapped = false
+    let handler: () -> Void = { tapped = true }
+    let view = SettingsView(viewModel: vm, onWebhooks: handler)
+
+    view.requestWebhooks()
+
+    #expect(tapped)
+  }
+
   @Test("SettingsView forwards the rate-app tap to the callback")
   func rateAppCallback_isInvokedOnRequest() {
     let vm = makeViewModel()

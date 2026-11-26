@@ -29,6 +29,8 @@ public final class AppCoordinator: ObservableObject {
   @Published public var isOpeningAppStoreReview = false  // see rateApp() (GH #629)
   /// In-app preferences: `true` pushes `NotificationPreferencesView` via `.navigationDestination`.
   @Published public var isNotificationPreferencesPresented = false
+  /// `true` pushes `WebhookView` inside the Settings navigation stack.
+  @Published public var isWebhooksPresented = false
   /// Set to `true` by the review-prompt requester at an engagement peak; the app
   /// layer observes it, calls SwiftUI's `requestReview`, then resets it
   /// (mirroring ``isOpeningSystemNotificationSettings``). The OS call is never
@@ -77,6 +79,8 @@ public final class AppCoordinator: ObservableObject {
   // can read it.
   let anonymousApplicationDetailRepository: AnonymousApplicationDetailRepository?
   let shareEventReporter: ShareEventReporter?
+  let webhookRepository: WebhookRepository
+  let clipboardWriter: ClipboardWriter
   // Device-local (pre-signup) zones (GH#879 Phase 4/5). Optional so existing
   // call sites/tests that never exercise anonymous browsing inject nothing.
   // Internal (not private) so AppCoordinator+Onboarding and
@@ -156,7 +160,9 @@ public final class AppCoordinator: ObservableObject {
     appearanceStore: AppearanceStore? = nil,
     anonymousApplicationDetailRepository: AnonymousApplicationDetailRepository? = nil,
     deviceLocalZoneRepository: DeviceLocalZoneRepository? = nil,
-    shareEventReporter: ShareEventReporter? = nil
+    shareEventReporter: ShareEventReporter? = nil,
+    webhookRepository: WebhookRepository? = nil,
+    clipboardWriter: ClipboardWriter? = nil
   ) {
     self.repository = repository
     self.authService = authService
@@ -187,6 +193,8 @@ public final class AppCoordinator: ObservableObject {
     self.anonymousApplicationDetailRepository = anonymousApplicationDetailRepository
     self.deviceLocalZoneRepository = deviceLocalZoneRepository
     self.shareEventReporter = shareEventReporter
+    self.webhookRepository = webhookRepository ?? UnavailableWebhookRepository()
+    self.clipboardWriter = clipboardWriter ?? UnavailableClipboardWriter()
 
     // Restore the last successfully resolved tier so that paying users
     // retain feature access immediately, even before the live resolution
@@ -364,36 +372,5 @@ public final class AppCoordinator: ObservableObject {
   /// push-permission prompt. Replaces flaky `Task.sleep` waits.
   public func waitForPendingPostPurchasePrompt() async {
     await pendingPostPurchasePermissionPrompt?.value
-  }
-
-  // MARK: - Settings Navigation
-
-  public func showPrivacyPolicy() {
-    presentedLegalDocument = .privacyPolicy
-  }
-
-  public func showTermsOfService() {
-    presentedLegalDocument = .termsOfService
-  }
-
-  public func showManageSubscription() {
-    isManageSubscriptionPresented = true
-  }
-
-  /// Presents the subscription paywall nested inside the Settings sheet.
-  public func showPlansFromSettings() {
-    isSettingsPaywallPresented = true
-  }
-
-  /// Presents the Settings view as a sheet from any tab. Bound to the gear
-  /// icon installed via the `.settingsToolbar` ViewModifier.
-  public func showSettings() {
-    isSettingsPresented = true
-  }
-
-  /// Deep-links to iOS system Settings (push permissions). Coordinator stays
-  /// UIKit-free; `TownCrierApp` observes the flag and opens the settings URL.
-  public func showSystemNotificationSettings() {
-    isOpeningSystemNotificationSettings = true
   }
 }
