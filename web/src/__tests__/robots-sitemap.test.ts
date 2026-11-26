@@ -36,6 +36,8 @@ describe('robots.txt SEO additions', () => {
       'Perplexity-User',
       'CCBot',
       'Applebot-Extended',
+      'Meta-ExternalAgent',
+      'Meta-ExternalFetcher',
     ];
     for (const crawler of aiCrawlers) {
       expect(content).toContain(`User-agent: ${crawler}`);
