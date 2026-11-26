@@ -148,7 +148,7 @@ func (t *opaqueTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 
 type opaqueBody struct {
 	io.ReadCloser
-	ctx context.Context //nolint:containedctx // the body lives exactly as long as its request
+	ctx context.Context
 }
 
 func (b *opaqueBody) Read(p []byte) (int, error) {
@@ -156,7 +156,7 @@ func (b *opaqueBody) Read(p []byte) (int, error) {
 	if err != nil && !errors.Is(err, io.EOF) {
 		return n, &deliveryError{reason: classifyError(b.ctx, err)}
 	}
-	return n, err //nolint:wrapcheck // io.EOF must pass through unwrapped
+	return n, err
 }
 
 type deliveryError struct {
