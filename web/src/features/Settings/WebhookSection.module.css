@@ -32,7 +32,7 @@
 .secretInput {
   font-family: var(--tc-font-mono);
   font-size: var(--tc-text-caption);
-  overflow-wrap: anywhere;
+  word-break: break-all;
   resize: none;
 }
 

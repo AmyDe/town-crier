@@ -95,6 +95,7 @@ describe('WebhookSection', () => {
       expect(secret).toHaveValue('tcwh_created');
       expect(secret).toHaveAttribute('readonly');
       expect(secret.tagName).toBe('TEXTAREA');
+      expect(secret).toHaveAttribute('rows', '3');
       expect(
         screen.getByText(
           "Copy this now. We only show it once. If you lose it, rotate the secret to get a new one.",

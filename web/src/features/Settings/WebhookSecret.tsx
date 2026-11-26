@@ -25,7 +25,7 @@ export function WebhookSecret({ secret }: { secret: string }) {
           id="webhook-secret"
           className={styles.secretInput}
           value={secret}
-          rows={2}
+          rows={3}
           spellCheck={false}
           readOnly
           onFocus={(event) => event.currentTarget.select()}
