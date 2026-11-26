@@ -215,7 +215,7 @@ func (c *Client) Send(ctx context.Context, msg Message) Result {
 	defer func() { _ = resp.Body.Close() }()
 	// Draining lets the connection be reused. The status alone decides the
 	// outcome, so a read error changes nothing.
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxResponseBytes))
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxResponseBytes)) //nolint:errcheck // best-effort drain
 
 	switch {
 	case resp.StatusCode >= 200 && resp.StatusCode <= 299:
