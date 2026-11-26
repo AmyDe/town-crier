@@ -130,10 +130,7 @@ public struct WebhookView: View {
     Section {
       message(WebhookCopy.paused)
       viewPlansButton
-      Text(webhook.url)
-        .font(TCTypography.mono)
-        .foregroundStyle(Color.tcTextPrimary)
-        .fixedSize(horizontal: false, vertical: true)
+      ExactText(value: webhook.url)
       SettingsRowStyling.settingRow(
         label: WebhookCopy.formatLabel, value: WebhookCopy.formatName(webhook.format))
     }
@@ -145,7 +142,7 @@ public struct WebhookView: View {
   private var secretSection: some View {
     if let secret = viewModel.revealedSecret {
       Section {
-        SecretText(secret: secret)
+        ExactText(value: secret)
         textButton(WebhookCopy.copySecret) {
           viewModel.copySecret()
         }

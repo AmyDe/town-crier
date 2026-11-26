@@ -6,8 +6,8 @@ import SwiftUI
   import AppKit
 #endif
 
-enum SecretTextLayout {
-  // A secret can contain real hyphens, so a hyphen added at a line break reads as part of it.
+enum ExactTextLayout {
+  // Secrets and URLs can contain real hyphens, so one added at a line break reads as part of them.
   static var paragraphStyle: NSParagraphStyle {
     let style = NSMutableParagraphStyle()
     style.lineBreakMode = .byCharWrapping
@@ -20,8 +20,8 @@ enum SecretTextLayout {
 #if canImport(UIKit)
   // SwiftUI's `Text` hyphenates long unbroken strings and ignores paragraph styles.
   // Display-only break characters would end up in a manual copy.
-  struct SecretText: UIViewRepresentable {
-    let secret: String
+  struct ExactText: UIViewRepresentable {
+    let value: String
 
     func makeUIView(context: Context) -> UITextView {
       let textView = UITextView()
@@ -39,13 +39,13 @@ enum SecretTextLayout {
 
     func updateUIView(_ textView: UITextView, context: Context) {
       textView.attributedText = NSAttributedString(
-        string: secret,
+        string: value,
         attributes: [
           .font: Self.font,
           .foregroundColor: UIColor(Color.tcTextPrimary),
-          .paragraphStyle: SecretTextLayout.paragraphStyle,
+          .paragraphStyle: ExactTextLayout.paragraphStyle,
         ])
-      textView.accessibilityLabel = secret
+      textView.accessibilityLabel = value
       textView.accessibilityValue = ""
     }
 
@@ -64,11 +64,11 @@ enum SecretTextLayout {
     }
   }
 #else
-  struct SecretText: View {
-    let secret: String
+  struct ExactText: View {
+    let value: String
 
     var body: some View {
-      Text(secret)
+      Text(value)
         .font(TCTypography.mono)
         .foregroundStyle(Color.tcTextPrimary)
         .textSelection(.enabled)

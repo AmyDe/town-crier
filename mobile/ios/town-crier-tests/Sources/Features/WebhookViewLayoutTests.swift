@@ -27,11 +27,11 @@ struct WebhookViewLayoutTests {
     return sut
   }
 
-  // MARK: - Secret wrapping
+  // MARK: - Exact text wrapping
 
-  @Test("the secret wraps between characters and is never hyphenated")
-  func secretParagraphStyle_neverHyphenates() {
-    let style = SecretTextLayout.paragraphStyle
+  @Test("secrets and URLs wrap between characters and are never hyphenated")
+  func exactTextParagraphStyle_neverHyphenates() {
+    let style = ExactTextLayout.paragraphStyle
 
     #expect(style.lineBreakMode == .byCharWrapping)
     #expect(style.hyphenationFactor == 0)
