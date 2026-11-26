@@ -1,6 +1,6 @@
 {
   "navigationFallback": {
-    "rewrite": "/index.html",
+    "rewrite": "/app.html",
     "exclude": [
       "*.{css,js,svg,png,jpg,jpeg,gif,ico,woff,woff2,ttf,eot,json,txt}",
       "/planning",

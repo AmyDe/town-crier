@@ -24,10 +24,10 @@ function loadConfig(): StaticWebAppConfig {
 
 describe('staticwebapp.config.json', () => {
   describe('navigationFallback', () => {
-    it('rewrites to /index.html for SPA routing', () => {
+    it('rewrites to the empty app shell for SPA routing', () => {
       const config = loadConfig();
 
-      expect(config.navigationFallback.rewrite).toBe('/index.html');
+      expect(config.navigationFallback.rewrite).toBe('/app.html');
     });
 
     it('excludes static asset paths from fallback', () => {
