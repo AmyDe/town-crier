@@ -114,7 +114,8 @@
 
 .description,
 .active,
-.switchedOff {
+.switchedOff,
+.pausedStatus {
   font-size: var(--tc-text-caption);
   color: var(--tc-text-primary);
   text-align: right;
@@ -128,6 +129,11 @@
 .switchedOff {
   font-weight: var(--tc-weight-semibold);
   color: var(--tc-status-rejected);
+}
+
+.pausedStatus {
+  font-weight: var(--tc-weight-semibold);
+  color: var(--tc-text-secondary);
 }
 
 .secretPanel {

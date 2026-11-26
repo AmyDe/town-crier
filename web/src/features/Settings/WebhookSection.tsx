@@ -25,15 +25,18 @@ function PricingLink() {
 }
 
 function WebhookStatus({ webhook }: { webhook: Webhook }) {
-  const isActive = webhook.status === 'active';
+  const isDisabled = webhook.status === 'disabled';
+  const status = webhook.paused
+    ? { label: 'Paused', className: styles.pausedStatus }
+    : isDisabled
+      ? { label: 'Switched off', className: styles.switchedOff }
+      : { label: 'Active', className: styles.active };
   return (
     <>
       <dl className={styles.details}>
         <div className={styles.detail}>
           <dt className={styles.term}>Status</dt>
-          <dd className={isActive ? styles.active : styles.switchedOff}>
-            {isActive ? 'Active' : 'Switched off'}
-          </dd>
+          <dd className={status.className}>{status.label}</dd>
         </div>
         <div className={styles.detail}>
           <dt className={styles.term}>Last success</dt>
@@ -50,7 +53,7 @@ function WebhookStatus({ webhook }: { webhook: Webhook }) {
           </dd>
         </div>
       </dl>
-      {!isActive && (
+      {isDisabled && (
         <p className={styles.notice}>
           {describeSwitchOff(webhook.disabledReason)}
           {!webhook.paused && ' To switch it back on, check the address and save it again.'}
