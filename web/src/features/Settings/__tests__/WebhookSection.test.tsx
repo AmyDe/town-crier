@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router';
-import { WebhookError, type SubscriptionTier } from '../../../domain/types';
+import { WebhookError, type SubscriptionTier, type Webhook } from '../../../domain/types';
 import { WebhookSection } from '../WebhookSection';
 import { activeWebhook } from './fixtures/webhook.fixtures';
 import { SpyWebhookRepository } from './spies/spy-webhook-repository';
@@ -289,6 +289,19 @@ describe('WebhookSection', () => {
       for (const name of ['Save', 'Send test event', 'Rotate secret']) {
         expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
       }
+    });
+
+    it.each<Partial<Webhook>>([
+      { status: 'active' },
+      { status: 'disabled', disabledReason: 'failures' },
+    ])('shows a Paused status instead of %o', async (state) => {
+      spy.fetchWebhookResult = activeWebhook({ ...state, paused: true });
+
+      await renderSection('Free');
+
+      expect(screen.getByText('Paused')).toBeInTheDocument();
+      expect(screen.queryByText('Active')).not.toBeInTheDocument();
+      expect(screen.queryByText('Switched off')).not.toBeInTheDocument();
     });
   });
 
