@@ -21,10 +21,12 @@ export function WebhookSecret({ secret }: { secret: string }) {
         Signing secret
       </label>
       <div className={styles.secretRow}>
-        <input
+        <textarea
           id="webhook-secret"
           className={styles.secretInput}
           value={secret}
+          rows={2}
+          spellCheck={false}
           readOnly
           onFocus={(event) => event.currentTarget.select()}
         />
