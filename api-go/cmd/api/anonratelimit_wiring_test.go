@@ -60,6 +60,38 @@ func TestRouter_AnonRateLimitAppliesToAnonymousRoutes(t *testing.T) {
 	}
 }
 
+func anonRateLimitRequestFromClient(t *testing.T, h http.Handler, remoteAddr, cfClientIP string) *httptest.ResponseRecorder {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	t.Cleanup(cancel)
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/v1/version-config", nil)
+	req.RemoteAddr = remoteAddr
+	req.Header.Set("CF-Connecting-IP", cfClientIP)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
+// TestRouter_AnonRateLimitKeysOnClientIPBehindIngress proves callers arriving
+// through the same ACA ingress peer are throttled per Cloudflare client IP,
+// not per peer.
+func TestRouter_AnonRateLimitKeysOnClientIPBehindIngress(t *testing.T) {
+	t.Parallel()
+
+	h := newRouterWithAnonLimit(t, slog.New(slog.DiscardHandler), 1, 1)
+	const ingressPeer = "100.100.0.167:4000"
+
+	if rec := anonRateLimitRequestFromClient(t, h, ingressPeer, "198.51.100.1"); rec.Code != http.StatusOK {
+		t.Fatalf("first client: got %d, want 200", rec.Code)
+	}
+	if rec := anonRateLimitRequestFromClient(t, h, ingressPeer, "198.51.100.2"); rec.Code != http.StatusOK {
+		t.Fatalf("second client via same peer: got %d, want 200", rec.Code)
+	}
+	if rec := anonRateLimitRequestFromClient(t, h, ingressPeer, "198.51.100.1"); rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("repeat client: got %d, want 429", rec.Code)
+	}
+}
+
 // TestRouter_AnonRateLimitHealthChecksExemptEvenWithTinyBudget confirms the
 // health-check exemption survives the real wiring: with a limit of 1, five
 // consecutive /v1/health hits from the same IP all succeed.
