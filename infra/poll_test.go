@@ -68,10 +68,14 @@ func TestAddGoWorkerEnv_PollGetsPollEnvAndOthersDoNot(t *testing.T) {
 	}
 }
 
-func TestAddGoWorkerEnv_ACSSecretOnlyOnDigestJobs(t *testing.T) {
+func TestAddGoWorkerEnv_ACSSecretOnlyOnDigestAndPollJobs(t *testing.T) {
 	t.Parallel()
 
-	for mode, want := range map[string]bool{"poll": false, "digest": true, "hourly-digest": true} {
+	modes := map[string]bool{
+		"poll": true, "digest": true, "hourly-digest": true,
+		"pg-purge": false, "dormant-cleanup": false, "subscription-sweep": false, "appstore-reconcile": false,
+	}
+	for mode, want := range modes {
 		got := false
 		for _, in := range addGoWorkerEnv(nil, envContext{env: "prod"}, mode) {
 			if v, ok := in.(app.EnvironmentVarArgs); ok && v.Name == pulumi.String("ACS_CONNECTION_STRING") {

@@ -668,10 +668,8 @@ func addGoWorkerEnv(envVars app.EnvironmentVarArray, ec envContext, workerMode s
 		)
 	}
 
-	// FCM push: the same three jobs that send APNs also send FCM to Android devices.
-	// FCM_SERVICE_ACCOUNT_JSON is the service-account key JSON (secret, on every job like
-	// apns-auth-key); FCM_PROJECT_ID is plain per-stack config. Without these
-	// buildPlatformDispatcher falls back to the FCM NoOp sender (APNs delivery unaffected).
+	// FCM push to Android devices. Without these env vars buildPlatformDispatcher falls back to
+	// the FCM NoOp sender (APNs delivery unaffected).
 	if workerMode == "poll" || workerMode == "digest" || workerMode == "hourly-digest" {
 		envVars = append(envVars,
 			app.EnvironmentVarArgs{Name: pulumi.String("FCM_ENABLED"), Value: pulumi.String("true")},
@@ -680,8 +678,9 @@ func addGoWorkerEnv(envVars app.EnvironmentVarArray, ec envContext, workerMode s
 		)
 	}
 
-	// The poll worker sends no email.
-	if workerMode == "digest" || workerMode == "hourly-digest" {
+	// poll sends email only to tell a user that their webhook is switched off. Without ACS it
+	// silently falls back to the NoOp sender.
+	if workerMode == "poll" || workerMode == "digest" || workerMode == "hourly-digest" {
 		envVars = append(envVars,
 			app.EnvironmentVarArgs{Name: pulumi.String("ACS_CONNECTION_STRING"), SecretRef: pulumi.String("acs-connection-string"), Value: pulumi.String("")},
 		)
