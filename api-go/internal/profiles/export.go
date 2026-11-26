@@ -27,6 +27,7 @@ type exportUserData struct {
 	SavedApplications       []ExportedSavedApplication    `json:"savedApplications"`
 	DeviceRegistrations     []ExportedDeviceRegistration  `json:"deviceRegistrations"`
 	OfferCodeRedemptions    []ExportedOfferCodeRedemption `json:"offerCodeRedemptions"`
+	Webhook                 *ExportedWebhook              `json:"webhook"`
 }
 
 type exportedNotificationPrefs struct {
@@ -118,6 +119,15 @@ type ExportedOfferCodeRedemption struct {
 	RedeemedAt   platform.DotNetTime `json:"redeemedAt"`
 }
 
+// ExportedWebhook is the user's webhook in the export. It deliberately has no
+// field for the signing secret.
+type ExportedWebhook struct {
+	URL       string              `json:"url"`
+	Format    string              `json:"format"`
+	Status    string              `json:"status"`
+	CreatedAt platform.DotNetTime `json:"createdAt"`
+}
+
 // newExportUserData builds the export contract for a profile, sourcing each child
 // collection from its reader and sorting it deterministically so two successive
 // exports of the same data are byte-identical (the iOS share fetches the export
@@ -190,6 +200,17 @@ func newExportUserData(ctx context.Context, p *UserProfile, readers ExportReader
 	}
 	slices.SortFunc(codes, func(a, b ExportedOfferCodeRedemption) int { return cmp.Compare(a.Code, b.Code) })
 
+	var webhook *ExportedWebhook
+	if readers.Webhook != nil {
+		row, found, err := readers.Webhook.WebhookByUser(ctx, p.UserID)
+		if err != nil {
+			return exportUserData{}, fmt.Errorf("export webhook: %w", err)
+		}
+		if found {
+			webhook = &row
+		}
+	}
+
 	return exportUserData{
 		UserID: p.UserID,
 		Email:  p.Email,
@@ -217,5 +238,6 @@ func newExportUserData(ctx context.Context, p *UserProfile, readers ExportReader
 		SavedApplications:    saved,
 		DeviceRegistrations:  devices,
 		OfferCodeRedemptions: codes,
+		Webhook:              webhook,
 	}, nil
 }
