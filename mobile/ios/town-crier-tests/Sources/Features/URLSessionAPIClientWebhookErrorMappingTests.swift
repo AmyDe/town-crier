@@ -62,4 +62,22 @@ struct URLSessionAPIClientWebhookErrorMappingTests {
     #expect(statusCode == 429)
     #expect(message == body)
   }
+
+  @Test(
+    "the debug log preview never contains a webhook response body",
+    arguments: ["/v1/me/webhook", "/v1/me/webhook/secret"])
+  func logPreview_webhookPath_isRedacted(path: String) {
+    let body = Data(#"{"secret":"whsec_abc"}"#.utf8)
+
+    let preview = URLSessionAPIClient.logPreview(of: body, path: path)
+
+    #expect(preview == "<redacted>")
+  }
+
+  @Test("the debug log preview keeps other response bodies")
+  func logPreview_otherPath_keepsBody() {
+    let preview = URLSessionAPIClient.logPreview(of: Data("{}".utf8), path: "/v1/me")
+
+    #expect(preview == "{}")
+  }
 }
