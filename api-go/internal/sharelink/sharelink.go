@@ -1,6 +1,6 @@
-// Package sharelink reads the short random code that the iOS app adds to a
-// shared link. The code measures clicks on a link: it is never tied to an
-// account, an install or a signup.
+// Package sharelink builds application share-page URLs and reads the short
+// random code that the iOS app adds to a shared link. The code measures clicks
+// on a link: it is never tied to an account, an install or a signup.
 package sharelink
 
 import (
