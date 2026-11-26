@@ -48,4 +48,6 @@ var Excluded = []string{
 	"share_event_totals",
 	"share_page_click_totals",
 	"spatial_ref_sys",
+	"webhook_deliveries",
+	"webhook_endpoints",
 }
