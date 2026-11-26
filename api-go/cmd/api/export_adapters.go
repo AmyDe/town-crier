@@ -2,16 +2,76 @@ package main
 
 import (
 	"context"
+	"errors"
 
 	"github.com/AmyDe/town-crier/api-go/internal/devicetokens"
 	"github.com/AmyDe/town-crier/api-go/internal/erasure"
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
+	"github.com/AmyDe/town-crier/api-go/internal/notificationstate"
 	"github.com/AmyDe/town-crier/api-go/internal/offercodes"
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 	"github.com/AmyDe/town-crier/api-go/internal/savedapplications"
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
+	"github.com/AmyDe/town-crier/api-go/internal/webhooks"
 )
+
+// gdprWiring bundles the per-store erasure steps that DELETE /v1/me and
+// POST /v1/admin/users/erase run, and the readers GET /v1/me/data uses. The
+// watch-zone deleter and reader bind to the same store the routes use.
+func gdprWiring(
+	notifs *notifications.PostgresStore,
+	zones watchzones.Store,
+	saved savedapplications.Store,
+	devices devicetokens.Store,
+	state *notificationstate.PostgresStore,
+	offers offercodes.Store,
+	hooks *webhooks.PostgresStore,
+) (profiles.CascadeDeleters, profiles.ExportReaders) {
+	zoneDeleter, zoneReader := gdprWatchZoneWiring(zones)
+	cascade := profiles.CascadeDeleters{
+		Notifications:       notifs,
+		WatchZones:          zoneDeleter,
+		SavedApplications:   saved,
+		DeviceRegistrations: devices,
+		NotificationState:   erasure.NotificationStateChild(state),
+		Webhooks:            hooks,
+		OfferCodes:          offers,
+	}
+	readers := profiles.ExportReaders{
+		WatchZones:           zoneReader,
+		Notifications:        notificationExportReader{store: notifs},
+		SavedApplications:    savedApplicationExportReader{store: saved},
+		DeviceRegistrations:  deviceRegistrationExportReader{store: devices},
+		OfferCodeRedemptions: offerCodeExportReader{store: offers},
+		Webhook:              webhookExportReader{store: hooks},
+	}
+	return cascade, readers
+}
+
+type webhookByUserReader interface {
+	ByUserID(ctx context.Context, userID string) (webhooks.Endpoint, error)
+}
+
+// webhookExportReader adapts the webhook store to profiles.WebhookReader. The
+// signing secret is never copied into the export.
+type webhookExportReader struct{ store webhookByUserReader }
+
+func (r webhookExportReader) WebhookByUser(ctx context.Context, userID string) (profiles.ExportedWebhook, bool, error) {
+	e, err := r.store.ByUserID(ctx, userID)
+	if errors.Is(err, webhooks.ErrNotFound) {
+		return profiles.ExportedWebhook{}, false, nil
+	}
+	if err != nil {
+		return profiles.ExportedWebhook{}, false, err
+	}
+	return profiles.ExportedWebhook{
+		URL:       e.URL,
+		Format:    string(e.Format),
+		Status:    string(e.Status),
+		CreatedAt: platform.DotNetTime(e.CreatedAt),
+	}, true, nil
+}
 
 // gdprWatchZoneWiring binds the GDPR erasure cascade (DELETE /v1/me) and the data
 // export (GET /v1/me/data) to the SAME watch-zone store the routes use, so a
@@ -35,8 +95,7 @@ func gdprWatchZoneWiring(store watchzones.Store) (erasure.ChildDeleter, profiles
 // imports profiles, so a back-import would close a cycle — see
 // profiles/export_readers.go), so the store -> export-row mapping lives here, in
 // cmd/api, as thin adapters that satisfy the consumer-side profiles reader
-// interfaces. This mirrors the cascade adapters built in main.go (the
-// erasure.ChildDeleter wiring): the wiring layer is the one place that depends on
+// interfaces. This mirrors the erasure wiring in gdprWiring: the wiring layer is the one place that depends on
 // both the stores and the profiles row types.
 
 // watchZoneExportReader adapts the watch-zone store to profiles.WatchZoneReader.

@@ -17,7 +17,6 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/blobstore"
 	"github.com/AmyDe/town-crier/api-go/internal/designations"
 	"github.com/AmyDe/town-crier/api-go/internal/devicetokens"
-	"github.com/AmyDe/town-crier/api-go/internal/erasure"
 	"github.com/AmyDe/town-crier/api-go/internal/geocoding"
 	"github.com/AmyDe/town-crier/api-go/internal/metrics"
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
@@ -34,6 +33,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/subscriptionevents"
 	"github.com/AmyDe/town-crier/api-go/internal/subscriptions"
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
+	"github.com/AmyDe/town-crier/api-go/internal/webhooks"
 	"go.opentelemetry.io/otel"
 )
 
@@ -103,6 +103,7 @@ func main() {
 	savedStore := savedapplications.NewPostgresStore(pool)
 	offerStore := offercodes.NewPostgresStore(pool, logger)
 	appleNotifStore := subscriptions.NewPostgresNotificationStore(pool, time.Now)
+	webhookEndpoints := webhooks.NewPostgresStore(pool)
 
 	// The share-card cache is the Azure share-cards Blob container (ADR
 	// 0037), authenticated by the pinned managed identity. It is optional: when
@@ -118,32 +119,7 @@ func main() {
 		}
 	}
 
-	// cascade bundles the per-store deleters DELETE /v1/me and
-	// POST /v1/admin/users/erase run for a complete GDPR erasure. The notification store satisfies erasure.ChildDeleter
-	// (DeleteAllByUserID) directly; the other stores satisfy erasure.ChildDeleter or
-	// erasure.RedemptionAnonymiser on their exported Store interface. The watch-zone
-	// deleter and the export reader bind to the same watch-zone store the routes use.
-	cascadeWatchZoneDeleter, exportWatchZoneReader := gdprWatchZoneWiring(watchZoneStore)
-	cascade := profiles.CascadeDeleters{
-		Notifications:       notifStore,
-		WatchZones:          cascadeWatchZoneDeleter,
-		SavedApplications:   savedStore,
-		DeviceRegistrations: deviceStore,
-		NotificationState:   erasure.NotificationStateChild(stateStore),
-		OfferCodes:          offerStore,
-	}
-
-	// exportReaders bundles the per-collection readers GET /v1/me/data uses to
-	// source the GDPR export's child collections. The adapters
-	// (export_adapters.go) map store records to profiles-local export row types,
-	// keeping store -> row mapping out of profiles.
-	exportReaders := profiles.ExportReaders{
-		WatchZones:           exportWatchZoneReader,
-		Notifications:        notificationExportReader{store: notifStore},
-		SavedApplications:    savedApplicationExportReader{store: savedStore},
-		DeviceRegistrations:  deviceRegistrationExportReader{store: deviceStore},
-		OfferCodeRedemptions: offerCodeExportReader{store: offerStore},
-	}
+	cascade, exportReaders := gdprWiring(notifStore, watchZoneStore, savedStore, deviceStore, stateStore, offerStore, webhookEndpoints)
 
 	appleRoots, err := subscriptions.LoadAppleRootCertificates()
 	if err != nil {
@@ -180,12 +156,12 @@ func main() {
 		log.Fatalf("designations client: %v", err)
 	}
 
-	webhooks, err := subscriptionevents.ParseWebhooks(cfg.SubscriptionWebhooks.Expose())
+	subscriptionWebhooks, err := subscriptionevents.ParseWebhooks(cfg.SubscriptionWebhooks.Expose())
 	if err != nil {
 		logger.Error("subscription webhooks misconfigured; running with none", "error", err)
-		webhooks = nil
+		subscriptionWebhooks = nil
 	}
-	subscriptionNotifier := subscriptionevents.NewNotifier(adminStore, webhooks, subscriptionevents.NewHTTPClient(), logger, time.Now)
+	subscriptionNotifier := subscriptionevents.NewNotifier(adminStore, subscriptionWebhooks, subscriptionevents.NewHTTPClient(), logger, time.Now)
 
 	shareClicks := sharepage.NewClickCounter(sharepage.NewPostgresClickStore(pool), time.Now, logger)
 	clicksCtx, stopClicks := context.WithCancel(context.Background())
@@ -200,7 +176,7 @@ func main() {
 		Switch:   polling.NewSwitch(polling.NewPostgresPollControlStore(pool), cfg.PollingEnabledDefault),
 		Calls:    polling.NewPostgresPlanItCallStore(pool),
 		ReadPath: applications.NewReadPathSwitch(applications.NewPostgresReadPathStore(pool)),
-	}, shareClicks, subscriptionNotifier, seopage.NewPostgresStore(pool, appStore), shareevents.NewPostgresStore(pool), logger))
+	}, shareClicks, subscriptionNotifier, seopage.NewPostgresStore(pool, appStore), shareevents.NewPostgresStore(pool), webhookDeps{store: webhookEndpoints, sender: webhooks.NewClient(time.Now)}, logger))
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

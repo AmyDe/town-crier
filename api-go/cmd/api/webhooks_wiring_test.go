@@ -45,8 +45,8 @@ func (fakeWebhookStore) Replace(context.Context, string, string, webhooks.Format
 	return webhooks.Endpoint{}, webhooks.ErrNotFound
 }
 func (fakeWebhookStore) RotateSecret(context.Context, string, string, time.Time) error { return nil }
-func (fakeWebhookStore) ClaimTest(context.Context, string, time.Time) (bool, error)   { return true, nil }
-func (fakeWebhookStore) DeleteAllByUserID(context.Context, string) error              { return nil }
+func (fakeWebhookStore) ClaimTest(context.Context, string, time.Time) (bool, error)    { return true, nil }
+func (fakeWebhookStore) DeleteAllByUserID(context.Context, string) error               { return nil }
 
 type fakeWebhookSender struct{}
 
