@@ -45,7 +45,7 @@ func TestOutbox_Enqueue(t *testing.T) {
 		t.Fatalf("args = %v", db.args)
 	}
 	args := db.args[0]
-	if args[0] != testEventID || args[1] != "notification-1" || args[2] != "application.decision" ||
+	if args[0] != testEventID || args[1] != "notification-1" || args[2] != EventApplicationDecision ||
 		args[4] != now || args[5] != "auth0|private-user-id" {
 		t.Errorf("args = %v", args)
 	}
