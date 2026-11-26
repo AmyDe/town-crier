@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	siteOrigin  = "https://towncrierapp.uk"
+	siteOrigin = "https://towncrierapp.uk"
 
 	appleAppID            = "6764095657"
 	appStoreBaseURL       = "https://apps.apple.com/gb/app/town-crier-planning-alerts/id6764095657"
