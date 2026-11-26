@@ -258,28 +258,32 @@ func (s *PostgresStore) RecordFailedAttempt(ctx context.Context, ids []string, a
 }
 
 // RecordEndpointSuccess clears the failure count after a run that delivered
-// something.
-func (s *PostgresStore) RecordEndpointSuccess(ctx context.Context, endpointID string, at time.Time) error {
+// something. url is the one the run sent to: when the endpoint no longer has it,
+// nothing changes.
+func (s *PostgresStore) RecordEndpointSuccess(ctx context.Context, endpointID, url string, at time.Time) error {
 	if _, err := s.db.Exec(ctx,
-		"UPDATE webhook_endpoints SET consecutive_failures = 0, last_success_at = $2, updated_at = $2 WHERE id = $1",
-		endpointID, at); err != nil {
+		"UPDATE webhook_endpoints SET consecutive_failures = 0, last_success_at = $3, updated_at = $3 "+
+			"WHERE id = $1 AND url = $2",
+		endpointID, url, at); err != nil {
 		return fmt.Errorf("record success of webhook %q: %w", endpointID, err)
 	}
 	return nil
 }
 
 const pgRecordEndpointFailureQuery = "UPDATE webhook_endpoints SET consecutive_failures = consecutive_failures + 1, " +
-	"last_failure_at = $2, last_failure_reason = $3, last_failure_status = $4, updated_at = $2 " +
-	"WHERE id = $1 RETURNING consecutive_failures"
+	"last_failure_at = $3, last_failure_reason = $4, last_failure_status = $5, updated_at = $3 " +
+	"WHERE id = $1 AND url = $2 RETURNING consecutive_failures"
 
 // RecordEndpointFailure counts one failed run and returns the new consecutive
-// failure count, or ErrNotFound. A zero result.Status is stored as null.
-func (s *PostgresStore) RecordEndpointFailure(ctx context.Context, endpointID string, result Result, at time.Time) (int, error) {
+// failure count. It returns ErrNotFound, and changes nothing, when no endpoint
+// has both endpointID and the url the run sent to. A zero result.Status is
+// stored as null.
+func (s *PostgresStore) RecordEndpointFailure(ctx context.Context, endpointID, url string, result Result, at time.Time) (int, error) {
 	var status *int
 	if result.Status != 0 {
 		status = &result.Status
 	}
-	rows, err := s.db.Query(ctx, pgRecordEndpointFailureQuery, endpointID, at, result.Failure, status)
+	rows, err := s.db.Query(ctx, pgRecordEndpointFailureQuery, endpointID, url, at, result.Failure, status)
 	if err != nil {
 		return 0, fmt.Errorf("record failure of webhook %q: %w", endpointID, err)
 	}
@@ -296,8 +300,8 @@ func (s *PostgresStore) RecordEndpointFailure(ctx context.Context, endpointID st
 const pgDisableEndpointQuery = `
 WITH disabled AS (
     UPDATE webhook_endpoints
-    SET status = 'disabled', disabled_reason = $2, updated_at = $3
-    WHERE id = $1 AND status = 'active'
+    SET status = 'disabled', disabled_reason = $3, updated_at = $4
+    WHERE id = $1 AND url = $2 AND status = 'active'
     RETURNING id
 ), dropped AS (
     UPDATE webhook_deliveries SET status = 'failed'
@@ -305,11 +309,11 @@ WITH disabled AS (
 )
 SELECT count(*) FROM disabled`
 
-// DisableEndpoint switches an active endpoint off and, in the same statement,
-// fails all its pending deliveries. It reports true only when this call
-// switched it off.
-func (s *PostgresStore) DisableEndpoint(ctx context.Context, endpointID string, reason DisabledReason, at time.Time) (bool, error) {
-	rows, err := s.db.Query(ctx, pgDisableEndpointQuery, endpointID, reason, at)
+// DisableEndpoint switches off an active endpoint that still has url and, in the
+// same statement, fails all its pending deliveries. It reports true only when
+// this call switched it off.
+func (s *PostgresStore) DisableEndpoint(ctx context.Context, endpointID, url string, reason DisabledReason, at time.Time) (bool, error) {
+	rows, err := s.db.Query(ctx, pgDisableEndpointQuery, endpointID, url, reason, at)
 	if err != nil {
 		return false, fmt.Errorf("disable webhook %q: %w", endpointID, err)
 	}

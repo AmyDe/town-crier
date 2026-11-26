@@ -110,9 +110,9 @@ func TestPostgresStore_WrapsDatabaseErrors(t *testing.T) {
 		"PendingDeliveries":          func() error { _, err := s.PendingDeliveries(ctx, "e", 1); return err },
 		"MarkDelivered":              func() error { return s.MarkDelivered(ctx, ids, now) },
 		"RecordFailedAttempt":        func() error { _, err := s.RecordFailedAttempt(ctx, ids, now); return err },
-		"RecordEndpointSuccess":      func() error { return s.RecordEndpointSuccess(ctx, "e", now) },
-		"RecordEndpointFailure":      func() error { _, err := s.RecordEndpointFailure(ctx, "e", Result{}, now); return err },
-		"DisableEndpoint":            func() error { _, err := s.DisableEndpoint(ctx, "e", DisabledGone, now); return err },
+		"RecordEndpointSuccess":      func() error { return s.RecordEndpointSuccess(ctx, "e", "u", now) },
+		"RecordEndpointFailure":      func() error { _, err := s.RecordEndpointFailure(ctx, "e", "u", Result{}, now); return err },
+		"DisableEndpoint":            func() error { _, err := s.DisableEndpoint(ctx, "e", "u", DisabledGone, now); return err },
 		"PurgeDeliveriesOlderThan":   func() error { _, err := s.PurgeDeliveriesOlderThan(ctx, now); return err },
 	}
 	for name, call := range calls {

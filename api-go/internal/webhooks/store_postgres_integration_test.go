@@ -280,7 +280,7 @@ func TestIntegration_Webhooks_OutboxEnqueue(t *testing.T) {
 		t.Error("the stored payload does not read back byte for byte")
 	}
 
-	if _, err := s.DisableEndpoint(ctx, endpoint.ID, DisabledFailures, intNow); err != nil {
+	if _, err := s.DisableEndpoint(ctx, endpoint.ID, endpoint.URL, DisabledFailures, intNow); err != nil {
 		t.Fatal(err)
 	}
 	enqueueAt(t, pool, "u1", "n2", deliveryID(4), intNow)
