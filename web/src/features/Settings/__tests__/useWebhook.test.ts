@@ -127,6 +127,18 @@ describe('useWebhook', () => {
     expect(result.current.revealedSecret).toBe('tcwh_rotated');
   });
 
+  it('replace after rotate hides the secret', async () => {
+    spy.fetchWebhookResult = activeWebhook();
+    spy.saveWebhookResult = { webhook: activeWebhook(), secret: null };
+    const { result } = await loadedHook(spy);
+    await act(() => result.current.rotateSecret());
+    expect(result.current.revealedSecret).toBe('tcwh_rotated');
+
+    await act(() => result.current.save(REQUEST));
+
+    expect(result.current.revealedSecret).toBeNull();
+  });
+
   it('returns the test result, and clears it after a save', async () => {
     spy.fetchWebhookResult = activeWebhook();
     spy.sendTestEventResult = { delivered: false, status: 500, failureReason: 'http_status' };
