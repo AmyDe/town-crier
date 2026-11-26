@@ -94,9 +94,7 @@ export function useWebhook(repository: WebhookRepository) {
       run('save', async () => {
         const saved = await repository.saveWebhook(request);
         setWebhook(saved.webhook);
-        if (saved.secret !== null) {
-          setRevealedSecret(saved.secret);
-        }
+        setRevealedSecret(saved.secret);
       }),
     [repository, run],
   );
