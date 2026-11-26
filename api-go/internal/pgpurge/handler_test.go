@@ -1,9 +1,11 @@
 package pgpurge_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -35,7 +37,7 @@ func TestHandler_Run_PurgesBothStoresWithCorrectCutoffs(t *testing.T) {
 	notifs := &fakePurger{rowsResult: 42}
 	devices := &fakePurger{rowsResult: 7}
 
-	h := pgpurge.New(notifs, devices, 90*24*time.Hour, 180*24*time.Hour, fixedClock(testNow), discardLogger())
+	h := pgpurge.New(notifs, devices, &fakeDeliveryPurger{}, 90*24*time.Hour, 180*24*time.Hour, fixedClock(testNow), discardLogger())
 
 	notifsPurged, devicesPurged, err := h.Run(context.Background())
 
@@ -66,7 +68,7 @@ func TestHandler_Run_ErrorOnNotifsPurgeReturnsError(t *testing.T) {
 	notifs := &fakePurger{err: errors.New("postgres down")}
 	devices := &fakePurger{rowsResult: 5}
 
-	h := pgpurge.New(notifs, devices, 90*24*time.Hour, 180*24*time.Hour, fixedClock(testNow), discardLogger())
+	h := pgpurge.New(notifs, devices, &fakeDeliveryPurger{}, 90*24*time.Hour, 180*24*time.Hour, fixedClock(testNow), discardLogger())
 
 	_, _, err := h.Run(context.Background())
 
@@ -84,7 +86,7 @@ func TestHandler_Run_ErrorOnDevicesPurgeReturnsError(t *testing.T) {
 	notifs := &fakePurger{rowsResult: 10}
 	devices := &fakePurger{err: errors.New("constraint violation")}
 
-	h := pgpurge.New(notifs, devices, 90*24*time.Hour, 180*24*time.Hour, fixedClock(testNow), discardLogger())
+	h := pgpurge.New(notifs, devices, &fakeDeliveryPurger{}, 90*24*time.Hour, 180*24*time.Hour, fixedClock(testNow), discardLogger())
 
 	_, _, err := h.Run(context.Background())
 
@@ -99,7 +101,7 @@ func TestHandler_Run_BothCallsReceiveContext(t *testing.T) {
 	notifs := &fakePurger{}
 	devices := &fakePurger{}
 
-	h := pgpurge.New(notifs, devices, 90*24*time.Hour, 180*24*time.Hour, fixedClock(testNow), discardLogger())
+	h := pgpurge.New(notifs, devices, &fakeDeliveryPurger{}, 90*24*time.Hour, 180*24*time.Hour, fixedClock(testNow), discardLogger())
 
 	if _, _, err := h.Run(context.Background()); err != nil {
 		t.Fatalf("Run: %v", err)
@@ -130,7 +132,7 @@ func TestHandler_Run_PurgesPollDataWithTheClock(t *testing.T) {
 	t.Parallel()
 
 	poll := &fakePollPurger{result: map[string]int64{"planit_call": 3}}
-	h := pgpurge.New(&fakePurger{}, &fakePurger{}, 90*24*time.Hour, 180*24*time.Hour, fixedClock(testNow), discardLogger()).
+	h := pgpurge.New(&fakePurger{}, &fakePurger{}, &fakeDeliveryPurger{}, 90*24*time.Hour, 180*24*time.Hour, fixedClock(testNow), discardLogger()).
 		WithPollRetention(poll)
 
 	if _, _, err := h.Run(context.Background()); err != nil {
@@ -145,7 +147,7 @@ func TestHandler_Run_PollPurgeErrorIsReturned(t *testing.T) {
 	t.Parallel()
 
 	poll := &fakePollPurger{err: errors.New("postgres down")}
-	h := pgpurge.New(&fakePurger{rowsResult: 2}, &fakePurger{rowsResult: 1}, 90*24*time.Hour, 180*24*time.Hour, fixedClock(testNow), discardLogger()).
+	h := pgpurge.New(&fakePurger{rowsResult: 2}, &fakePurger{rowsResult: 1}, &fakeDeliveryPurger{}, 90*24*time.Hour, 180*24*time.Hour, fixedClock(testNow), discardLogger()).
 		WithPollRetention(poll)
 
 	n, d, err := h.Run(context.Background())
@@ -160,8 +162,56 @@ func TestHandler_Run_PollPurgeErrorIsReturned(t *testing.T) {
 func TestHandler_Run_WithoutPollRetentionStillWorks(t *testing.T) {
 	t.Parallel()
 
-	h := pgpurge.New(&fakePurger{}, &fakePurger{}, 90*24*time.Hour, 180*24*time.Hour, fixedClock(testNow), discardLogger())
+	h := pgpurge.New(&fakePurger{}, &fakePurger{}, &fakeDeliveryPurger{}, 90*24*time.Hour, 180*24*time.Hour, fixedClock(testNow), discardLogger())
 	if _, _, err := h.Run(context.Background()); err != nil {
 		t.Fatalf("Run: %v", err)
+	}
+}
+
+type fakeDeliveryPurger struct {
+	calls      int
+	lastCutoff time.Time
+	rowsResult int64
+	err        error
+}
+
+func (f *fakeDeliveryPurger) PurgeDeliveriesOlderThan(_ context.Context, cutoff time.Time) (int64, error) {
+	f.calls++
+	f.lastCutoff = cutoff
+	return f.rowsResult, f.err
+}
+
+func TestHandler_Run_PurgesWebhookDeliveriesOlderThanSevenDays(t *testing.T) {
+	t.Parallel()
+
+	deliveries := &fakeDeliveryPurger{rowsResult: 9}
+	var logs bytes.Buffer
+	h := pgpurge.New(&fakePurger{}, &fakePurger{}, deliveries, 90*24*time.Hour, 180*24*time.Hour,
+		fixedClock(testNow), slog.New(slog.NewJSONHandler(&logs, nil)))
+
+	if _, _, err := h.Run(context.Background()); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	want := testNow.Add(-7 * 24 * time.Hour)
+	if deliveries.calls != 1 || !deliveries.lastCutoff.Equal(want) {
+		t.Errorf("calls = %d cutoff = %v, want 1 call with %v", deliveries.calls, deliveries.lastCutoff, want)
+	}
+	if !strings.Contains(logs.String(), `"webhookDeliveriesDeleted":9`) {
+		t.Errorf("log = %s, want the delivery count", logs.String())
+	}
+}
+
+func TestHandler_Run_WebhookPurgeErrorIsReturned(t *testing.T) {
+	t.Parallel()
+
+	down := errors.New("postgres down")
+	h := pgpurge.New(&fakePurger{rowsResult: 2}, &fakePurger{rowsResult: 1}, &fakeDeliveryPurger{err: down},
+		90*24*time.Hour, 180*24*time.Hour, fixedClock(testNow), discardLogger())
+
+	n, d, err := h.Run(context.Background())
+
+	if !errors.Is(err, down) || n != 2 || d != 1 {
+		t.Errorf("Run = (%d, %d, %v), want (2, 1) and the purge error", n, d, err)
 	}
 }
