@@ -122,10 +122,10 @@ func TestIntegration_Webhooks_ReplaceReactivatesAndKeepsSecret(t *testing.T) {
 	s, _ := newIntStore(t)
 	ctx := context.Background()
 	original := createEndpoint(t, s, "u1")
-	if _, err := s.RecordEndpointFailure(ctx, original.ID, Result{Failure: FailureGone, Status: 410}, intNow); err != nil {
+	if _, err := s.RecordEndpointFailure(ctx, original.ID, original.URL, Result{Failure: FailureGone, Status: 410}, intNow); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.DisableEndpoint(ctx, original.ID, DisabledGone, intNow); err != nil {
+	if _, err := s.DisableEndpoint(ctx, original.ID, original.URL, DisabledGone, intNow); err != nil {
 		t.Fatal(err)
 	}
 	later := intNow.Add(time.Hour)
@@ -402,7 +402,7 @@ func TestIntegration_Webhooks_EndpointBookkeeping(t *testing.T) {
 	e := createEndpoint(t, s, "u1")
 
 	for want := 1; want <= 2; want++ {
-		got, err := s.RecordEndpointFailure(ctx, e.ID, Result{Failure: FailureHTTPStatus, Status: 503}, intNow.Add(time.Duration(want)*time.Hour))
+		got, err := s.RecordEndpointFailure(ctx, e.ID, e.URL, Result{Failure: FailureHTTPStatus, Status: 503}, intNow.Add(time.Duration(want)*time.Hour))
 		if err != nil || got != want {
 			t.Fatalf("failure %d: count = %d, %v", want, got, err)
 		}
@@ -414,14 +414,14 @@ func TestIntegration_Webhooks_EndpointBookkeeping(t *testing.T) {
 		t.Errorf("after failures: %#v", got)
 	}
 
-	if _, err := s.RecordEndpointFailure(ctx, e.ID, Result{Failure: FailureTimeout}, intNow.Add(3*time.Hour)); err != nil {
+	if _, err := s.RecordEndpointFailure(ctx, e.ID, e.URL, Result{Failure: FailureTimeout}, intNow.Add(3*time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	if got := mustByUserID(t, s, "u1"); got.LastFailureStatus != nil {
 		t.Errorf("status without a response = %d, want null", *got.LastFailureStatus)
 	}
 
-	if err := s.RecordEndpointSuccess(ctx, e.ID, intNow.Add(4*time.Hour)); err != nil {
+	if err := s.RecordEndpointSuccess(ctx, e.ID, e.URL, intNow.Add(4*time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	got = mustByUserID(t, s, "u1")
@@ -429,7 +429,7 @@ func TestIntegration_Webhooks_EndpointBookkeeping(t *testing.T) {
 		t.Errorf("after success: %#v", got)
 	}
 
-	if _, err := s.RecordEndpointFailure(ctx, uuid.NewString(), Result{Failure: FailureTLS}, intNow); !errors.Is(err, ErrNotFound) {
+	if _, err := s.RecordEndpointFailure(ctx, uuid.NewString(), "https://hooks.example.com/u1", Result{Failure: FailureTLS}, intNow); !errors.Is(err, ErrNotFound) {
 		t.Errorf("failure of a missing endpoint: err = %v", err)
 	}
 }
@@ -447,7 +447,7 @@ func TestIntegration_Webhooks_DisableEndpointDropsPending(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	disabled, err := s.DisableEndpoint(ctx, e.ID, DisabledFailures, intNow.Add(time.Hour))
+	disabled, err := s.DisableEndpoint(ctx, e.ID, e.URL, DisabledFailures, intNow.Add(time.Hour))
 	if err != nil || !disabled {
 		t.Fatalf("DisableEndpoint = %v, %v", disabled, err)
 	}
@@ -461,11 +461,40 @@ func TestIntegration_Webhooks_DisableEndpointDropsPending(t *testing.T) {
 		}
 	}
 
-	if again, err := s.DisableEndpoint(ctx, e.ID, DisabledGone, intNow); err != nil || again {
+	if again, err := s.DisableEndpoint(ctx, e.ID, e.URL, DisabledGone, intNow); err != nil || again {
 		t.Errorf("second disable = %v, %v, want false", again, err)
 	}
 	if got := mustByUserID(t, s, "u1"); *got.DisabledReason != DisabledFailures {
 		t.Errorf("reason changed to %s", *got.DisabledReason)
+	}
+}
+
+func TestIntegration_Webhooks_ReplacedURLIgnoresOldResults(t *testing.T) {
+	s, pool := newIntStore(t)
+	ctx := context.Background()
+	old := createEndpoint(t, s, "u1")
+	enqueueAt(t, pool, "u1", "n1", deliveryID(1), intNow)
+	replaced, err := s.Replace(ctx, "u1", "https://new.example.com/hook", FormatJSON, intNow.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	later := intNow.Add(time.Hour)
+
+	if _, err := s.RecordEndpointFailure(ctx, old.ID, old.URL, Result{Failure: FailureGone, Status: 410}, later); !errors.Is(err, ErrNotFound) {
+		t.Errorf("failure for the old URL: err = %v, want ErrNotFound", err)
+	}
+	if err := s.RecordEndpointSuccess(ctx, old.ID, old.URL, later); err != nil {
+		t.Errorf("success for the old URL: %v", err)
+	}
+	if disabled, err := s.DisableEndpoint(ctx, old.ID, old.URL, DisabledGone, later); err != nil || disabled {
+		t.Errorf("disable for the old URL = %v, %v, want false", disabled, err)
+	}
+
+	if got := mustByUserID(t, s, "u1"); !reflect.DeepEqual(got, replaced) {
+		t.Errorf("the replaced endpoint changed: %#v", got)
+	}
+	if row := readDelivery(t, pool, deliveryID(1)); row.Status != "pending" {
+		t.Errorf("pending delivery = %s, want pending", row.Status)
 	}
 }
 
