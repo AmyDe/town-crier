@@ -8,6 +8,8 @@ import { ConfirmDialog } from '../../components/ConfirmDialog/ConfirmDialog';
 import { Toggle } from '../../components/Toggle/Toggle';
 import { DAY_OF_WEEK_LABELS, type DayOfWeek } from '../../domain/types';
 import type { SettingsRepository } from '../../domain/ports/settings-repository';
+import type { WebhookRepository } from '../../domain/ports/webhook-repository';
+import { WebhookSection } from './WebhookSection';
 import { RedeemOfferCode } from '../offerCode/RedeemOfferCode';
 import type { RedeemOfferCodeClient } from '../offerCode/api/redeemOfferCode';
 import type { RedeemResult } from '../offerCode/api/types';
@@ -15,11 +17,17 @@ import styles from './SettingsPage.module.css';
 
 interface Props {
   repository: SettingsRepository;
+  webhookRepository: WebhookRepository;
   redeemOfferCodeClient?: RedeemOfferCodeClient;
   onRedeemSuccess?: (result: RedeemResult) => void;
 }
 
-export function SettingsPage({ repository, redeemOfferCodeClient, onRedeemSuccess }: Props) {
+export function SettingsPage({
+  repository,
+  webhookRepository,
+  redeemOfferCodeClient,
+  onRedeemSuccess,
+}: Props) {
   const { logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const {
@@ -139,6 +147,8 @@ export function SettingsPage({ repository, redeemOfferCodeClient, onRedeemSucces
           </div>
         </div>
       </section>
+
+      {profile && <WebhookSection repository={webhookRepository} tier={profile.tier} />}
 
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Appearance</h2>

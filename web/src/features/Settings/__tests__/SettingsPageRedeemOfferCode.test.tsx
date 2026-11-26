@@ -63,7 +63,7 @@ describe('SettingsPage — RedeemOfferCode integration', () => {
     render(
       <MemoryRouter>
         <AuthProvider value={spyAuth}>
-          <SettingsPage repository={spyRepo} />
+          <SettingsPage repository={spyRepo} webhookRepository={new SpyWebhookRepository()} />
         </AuthProvider>
       </MemoryRouter>,
     );
