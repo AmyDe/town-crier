@@ -544,7 +544,11 @@ func TestDrain_GoneDisablesAtOnce(t *testing.T) {
 			if after.Status != StatusDisabled || after.DisabledReason == nil || *after.DisabledReason != DisabledGone {
 				t.Errorf("status = %s", after.Status)
 			}
-			assertRow(t, fx.store, "d3", "failed", 0)
+			wantAttempts := 0
+			if tc.format == FormatSlack {
+				wantAttempts = 1
+			}
+			assertRow(t, fx.store, "d3", "failed", wantAttempts)
 			if len(fx.email.sent) != 1 || !strings.Contains(fx.email.sent[0].msg.HTMLBody, "no longer exists") {
 				t.Errorf("emails = %d", len(fx.email.sent))
 			}

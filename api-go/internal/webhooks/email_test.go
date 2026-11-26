@@ -13,8 +13,8 @@ func TestDisabledEmail(t *testing.T) {
 		reason DisabledReason
 		first  string
 	}{
-		{DisabledFailures, "We couldn&#39;t deliver alerts to your webhook for a day, so we&#39;ve switched it off."},
-		{DisabledGone, "Your webhook told us it no longer exists, so we&#39;ve switched it off."},
+		{DisabledFailures, "We couldn't deliver alerts to your webhook for a day, so we've switched it off."},
+		{DisabledGone, "Your webhook told us it no longer exists, so we've switched it off."},
 	} {
 		t.Run(string(tc.reason), func(t *testing.T) {
 			t.Parallel()
