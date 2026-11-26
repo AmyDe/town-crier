@@ -145,9 +145,13 @@ func (fx *handlerFixture) withEndpoint() *Endpoint {
 }
 
 func (fx *handlerFixture) serve(ctx context.Context, method, path, body string) *httptest.ResponseRecorder {
+	return fx.serveWith(ctx, fx.sender, method, path, body)
+}
+
+func (fx *handlerFixture) serveWith(ctx context.Context, sender messageSender, method, path, body string) *httptest.ResponseRecorder {
 	mux := http.NewServeMux()
 	logger := slog.New(slog.NewJSONHandler(fx.logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	Routes(mux, fx.store, fx.profiles, fx.sender, func() string { return "new-id" },
+	Routes(mux, fx.store, fx.profiles, sender, func() string { return "new-id" },
 		func() time.Time { return fx.now }, logger)
 	req := httptest.NewRequestWithContext(auth.WithSubject(ctx, testUser), method, path, strings.NewReader(body))
 	rec := httptest.NewRecorder()
