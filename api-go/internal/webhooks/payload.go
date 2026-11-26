@@ -117,7 +117,7 @@ func BuildTestPayload(eventID string, now time.Time) Payload {
 			AuthoritySlug: new("test"),
 			Address:       "1 Example Street, Testtown",
 			Postcode:      new("ZZ1 1ZZ"),
-			Description:   "Sample application for testing your webhook",
+			Description:   "A made-up planning application, sent to test your webhook",
 			AppType:       new("Full"),
 			AppState:      new("Undecided"),
 			AppSize:       new("Small"),
