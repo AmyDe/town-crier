@@ -1,29 +1,21 @@
 // Package clientip resolves the real client IP for an inbound request when the
-// API sits behind the Cloudflare proxy (orange-cloud).
+// API sits behind the Cloudflare proxy (orange-cloud) and the Azure Container
+// Apps (ACA) ingress.
 //
-// With Cloudflare in front, r.RemoteAddr is a Cloudflare edge IP, not the
-// caller. Cloudflare forwards the real client IP in the CF-Connecting-IP header.
-// That header is only trustworthy when the TCP peer is genuinely Cloudflare:
-// any other peer can forge it. So FromRequest trusts CF-Connecting-IP only when
-// RemoteAddr falls inside a published Cloudflare IP range, and otherwise returns
-// the peer address unchanged.
+// Cloudflare forwards the real client IP in the CF-Connecting-IP header, which is
+// only trustworthy when the TCP peer is a proxy we trust: a Cloudflare edge range
+// or the ACA platform range. FromRequest honours the header only for those peers
+// and otherwise returns the peer address unchanged.
 //
-// X-Forwarded-For is deliberately never read: Cloudflare appends to it but it is
-// trivially spoofable and offers nothing CF-Connecting-IP does not.
+// X-Forwarded-For is deliberately never read: it is trivially spoofable and
+// offers nothing CF-Connecting-IP does not.
 //
-// # Deliberately unwired (privacy / UK GDPR)
+// # Privacy (UK GDPR)
 //
-// This package is the building block for FUTURE per-IP anonymous rate-limiting.
-// It is intentionally NOT wired into logging, telemetry (no span client.address
-// override), or the rate limiter (which stays keyed strictly on the
-// authenticated subject). Recording a client IP anywhere that
-// persists or logs it is processing of personal data: it would require a
-// Privacy Policy update (a legitimate-interest legal basis plus a stated
-// retention period) and a Legitimate Interests Assessment FIRST, because the
-// current policy discloses no IP logging and the data-minimisation principle
-// (UK GDPR Art. 5(1)(c)) forbids collecting it ahead of a documented need. Until
-// that decision is taken, callers may compute the IP for an in-memory,
-// non-persisted purpose only; do not log, store, or export the returned value.
+// The resolved IP feeds the in-memory anonymous rate limiter only. Never log,
+// store, or export it (including span attributes): that would be processing of
+// personal data needing a Privacy Policy update and an LIA first (UK GDPR
+// Art. 5(1)(c)).
 package clientip
 
 import (
@@ -33,6 +25,11 @@ import (
 	"slices"
 	"strings"
 )
+
+// acaIngressRange is the ACA platform range the Envoy ingress connects from.
+// Trusting it is safe because the ingress admits only Cloudflare IPv4 ranges, so
+// only Cloudflare can set CF-Connecting-IP on a request that reaches us.
+var acaIngressRange = netip.MustParsePrefix("100.100.0.0/16")
 
 // cloudflareRanges is the vendored snapshot of Cloudflare's published edge IP
 // ranges, parsed once at package initialisation into []netip.Prefix. There is no
@@ -72,16 +69,16 @@ var cloudflareRanges = []netip.Prefix{
 // FromRequest resolves the real client IP for r.
 //
 // It parses the TCP peer from r.RemoteAddr. If that peer is within a Cloudflare
-// range, it returns the IP from the CF-Connecting-IP header (falling back to the
-// peer when the header is missing or unparseable). If the peer is not Cloudflare,
+// range or the ACA ingress range, it returns the IP from the CF-Connecting-IP header (falling back to the
+// peer when the header is missing or unparseable). If the peer is not a trusted proxy,
 // it returns the peer and ignores any CF-Connecting-IP header (spoofable). The
 // returned addr is the zero (invalid) Addr only when RemoteAddr cannot be parsed.
 //
 // See the package doc: the returned value must not be logged, persisted, or
-// exported without a Privacy Policy update and an LIA.
+// exported.
 func FromRequest(r *http.Request) netip.Addr {
 	peer := peerAddr(r.RemoteAddr)
-	if !peer.IsValid() || !isCloudflare(peer) {
+	if !peer.IsValid() || !isTrustedProxy(peer) {
 		return peer
 	}
 
@@ -112,6 +109,6 @@ func peerAddr(remoteAddr string) netip.Addr {
 	return addr.Unmap()
 }
 
-func isCloudflare(addr netip.Addr) bool {
-	return slices.ContainsFunc(cloudflareRanges, func(p netip.Prefix) bool { return p.Contains(addr) })
+func isTrustedProxy(addr netip.Addr) bool {
+	return acaIngressRange.Contains(addr) || slices.ContainsFunc(cloudflareRanges, func(p netip.Prefix) bool { return p.Contains(addr) })
 }

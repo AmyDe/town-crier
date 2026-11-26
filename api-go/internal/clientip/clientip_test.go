@@ -71,6 +71,41 @@ func TestFromRequest(t *testing.T) {
 			want:       netip.MustParseAddr("104.16.0.1"),
 		},
 		{
+			name:       "aca peer honours an ipv4 CF-Connecting-IP",
+			remoteAddr: "100.100.0.167:12345",
+			headers:    map[string]string{"CF-Connecting-IP": "198.51.100.23"},
+			want:       netip.MustParseAddr("198.51.100.23"),
+		},
+		{
+			name:       "aca peer honours an ipv6 CF-Connecting-IP",
+			remoteAddr: "100.100.0.167:12345",
+			headers:    map[string]string{"CF-Connecting-IP": "2001:db8::99"},
+			want:       netip.MustParseAddr("2001:db8::99"),
+		},
+		{
+			name:       "aca peer with no CF-Connecting-IP falls back to peer",
+			remoteAddr: "100.100.0.167:12345",
+			want:       netip.MustParseAddr("100.100.0.167"),
+		},
+		{
+			name:       "aca peer with unparseable CF-Connecting-IP falls back to peer",
+			remoteAddr: "100.100.0.167:12345",
+			headers:    map[string]string{"CF-Connecting-IP": "not-an-ip"},
+			want:       netip.MustParseAddr("100.100.0.167"),
+		},
+		{
+			name:       "non-aca private peer ignores CF-Connecting-IP",
+			remoteAddr: "10.0.0.5:1",
+			headers:    map[string]string{"CF-Connecting-IP": "198.51.100.23"},
+			want:       netip.MustParseAddr("10.0.0.5"),
+		},
+		{
+			name:       "cgnat peer outside the aca range ignores CF-Connecting-IP",
+			remoteAddr: "100.64.0.1:1",
+			headers:    map[string]string{"CF-Connecting-IP": "198.51.100.23"},
+			want:       netip.MustParseAddr("100.64.0.1"),
+		},
+		{
 			name:       "X-Forwarded-For is never trusted from a cf peer",
 			remoteAddr: "104.16.0.1:443",
 			headers:    map[string]string{"X-Forwarded-For": "9.9.9.9"},
