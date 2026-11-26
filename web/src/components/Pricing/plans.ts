@@ -10,6 +10,7 @@ export const FEATURES: Feature[] = [
   { label: 'Radius', free: '2km', personal: '5km', pro: '10km' },
   { label: 'Custom Shapes', free: 'Circle only', personal: 'Yes', pro: 'Yes' },
   { label: 'Notifications', free: 'Weekly digest', personal: 'Instant', pro: 'Instant' },
+  { label: 'Webhooks (JSON or Slack)', free: 'No', personal: 'No', pro: 'Yes' },
 ];
 
 export interface AltPrice {

@@ -18,7 +18,7 @@ export interface ApiClient {
     params?: Record<string, string>,
   ): Promise<{ body: T; headers: Headers }>;
   post<T>(path: string, body?: unknown): Promise<T>;
-  put(path: string, body?: unknown): Promise<void>;
+  put<T = void>(path: string, body?: unknown): Promise<T>;
   patch<T>(path: string, body?: unknown): Promise<T>;
   delete(path: string): Promise<void>;
 }
@@ -90,7 +90,7 @@ export function createApiClient(
       return { body: body as T, headers: response.headers };
     },
     post: <T>(path: string, body?: unknown) => request<T>('POST', path, body),
-    put: (path: string, body?: unknown) => request<void>('PUT', path, body),
+    put: <T = void>(path: string, body?: unknown) => request<T>('PUT', path, body),
     patch: <T>(path: string, body?: unknown) => request<T>('PATCH', path, body),
     delete: (path: string) => request<void>('DELETE', path),
   };

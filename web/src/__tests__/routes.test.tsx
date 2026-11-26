@@ -95,6 +95,18 @@ describe('AppRoutes', () => {
       // We just verify it doesn't crash and navigates
     });
 
+    it('renders the webhook docs at /developers/webhooks without signing in', async () => {
+      const auth = new SpyAuthPort();
+      auth.isAuthenticated = false;
+
+      renderRoutes({ route: '/developers/webhooks', authSpy: auth });
+
+      expect(
+        await screen.findByRole('heading', { level: 1, name: 'Webhooks' }),
+      ).toBeInTheDocument();
+      expect(auth.loginWithRedirectCalls).toBe(0);
+    });
+
     it('renders legal page at /legal/privacy', () => {
       renderRoutes({ route: '/legal/privacy' });
 

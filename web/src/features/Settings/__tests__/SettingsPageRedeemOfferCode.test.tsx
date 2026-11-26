@@ -4,6 +4,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { MemoryRouter } from 'react-router';
 import { SettingsPage } from '../SettingsPage';
 import { SpySettingsRepository } from './spies/spy-settings-repository';
+import { SpyWebhookRepository } from './spies/spy-webhook-repository';
 import { freeUserProfile, proUserProfile } from './fixtures/user-profile.fixtures';
 import { AuthProvider } from '../../../auth/auth-context';
 import { SpyAuthPort } from '../../../auth/__tests__/spies/spy-auth-port';
@@ -36,6 +37,7 @@ describe('SettingsPage — RedeemOfferCode integration', () => {
         <AuthProvider value={spyAuth}>
           <SettingsPage
             repository={spyRepo}
+            webhookRepository={new SpyWebhookRepository()}
             redeemOfferCodeClient={spyClient.client}
             onRedeemSuccess={options.onRedeemSuccess}
           />
@@ -61,7 +63,7 @@ describe('SettingsPage — RedeemOfferCode integration', () => {
     render(
       <MemoryRouter>
         <AuthProvider value={spyAuth}>
-          <SettingsPage repository={spyRepo} />
+          <SettingsPage repository={spyRepo} webhookRepository={new SpyWebhookRepository()} />
         </AuthProvider>
       </MemoryRouter>,
     );

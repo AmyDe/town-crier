@@ -422,3 +422,61 @@ export interface LegalDocument {
   readonly lastUpdated: string;
   readonly sections: readonly LegalDocumentSection[];
 }
+
+export type WebhookFormat = 'json' | 'slack';
+
+export type WebhookFailureReason =
+  | 'gone'
+  | 'http_status'
+  | 'blocked_address'
+  | 'timeout'
+  | 'tls'
+  | 'connection';
+
+export interface Webhook {
+  readonly url: string;
+  readonly format: WebhookFormat;
+  readonly status: 'active' | 'disabled';
+  readonly disabledReason: 'failures' | 'gone' | null;
+  /** True while the account is not on Pro, so no alerts are queued. */
+  readonly paused: boolean;
+  readonly createdAt: string;
+  readonly lastSuccessAt: string | null;
+  readonly lastFailureAt: string | null;
+  readonly lastFailureReason: WebhookFailureReason | null;
+  readonly lastFailureStatus: number | null;
+}
+
+export interface SaveWebhookRequest {
+  readonly url: string;
+  readonly format: WebhookFormat;
+}
+
+export interface SavedWebhook {
+  readonly webhook: Webhook;
+  /** Set only when the save created the webhook. The API never returns it again. */
+  readonly secret: string | null;
+}
+
+export interface WebhookTestResult {
+  readonly delivered: boolean;
+  readonly status: number | null;
+  readonly failureReason: WebhookFailureReason | null;
+}
+
+export type WebhookErrorCode =
+  | 'webhook_not_found'
+  | 'webhook_requires_pro'
+  | 'webhook_url_invalid'
+  | 'webhook_format_invalid'
+  | 'webhook_test_cooldown';
+
+export class WebhookError extends Error {
+  readonly code: WebhookErrorCode;
+
+  constructor(code: WebhookErrorCode) {
+    super(code);
+    this.name = 'WebhookError';
+    this.code = code;
+  }
+}

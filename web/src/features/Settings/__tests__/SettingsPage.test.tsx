@@ -4,6 +4,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { MemoryRouter } from 'react-router';
 import { SettingsPage } from '../SettingsPage';
 import { SpySettingsRepository } from './spies/spy-settings-repository';
+import { SpyWebhookRepository } from './spies/spy-webhook-repository';
 import { freeUserProfile, proUserProfile } from './fixtures/user-profile.fixtures';
 import { AuthProvider } from '../../../auth/auth-context';
 import { SpyAuthPort } from '../../../auth/__tests__/spies/spy-auth-port';
@@ -19,7 +20,7 @@ function renderSettingsPage(repository: SpySettingsRepository) {
   return render(
     <MemoryRouter>
       <AuthProvider value={spyAuth}>
-        <SettingsPage repository={repository} />
+        <SettingsPage repository={repository} webhookRepository={new SpyWebhookRepository()} />
       </AuthProvider>
     </MemoryRouter>,
   );
@@ -265,5 +266,27 @@ describe('SettingsPage', () => {
     expect(spy.updateProfileCalls).toBe(1);
     expect(spy.updateProfileLastRequest?.savedDecisionPush).toBe(true);
     expect(spy.updateProfileLastRequest?.savedDecisionEmail).toBe(false);
+  });
+
+  it('places the Webhooks section between Notifications and Appearance', async () => {
+    renderSettingsPage(spy);
+    await screen.findByRole('heading', { name: 'Webhooks' });
+
+    const sections = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent);
+    const webhooks = sections.indexOf('Webhooks');
+
+    expect(sections.slice(webhooks - 1, webhooks + 2)).toEqual([
+      'Notifications',
+      'Webhooks',
+      'Appearance',
+    ]);
+  });
+
+  it('gives the Webhooks section the profile tier', async () => {
+    spy.fetchProfileResult = proUserProfile();
+
+    renderSettingsPage(spy);
+
+    expect(await screen.findByLabelText('Webhook URL')).toBeInTheDocument();
   });
 });

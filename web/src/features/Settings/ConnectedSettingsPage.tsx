@@ -3,6 +3,7 @@ import { useAuth0 } from '@auth0/auth0-react';
 import { useApiClient } from '../../api/useApiClient';
 import { useAccessToken } from '../../auth/useAccessToken';
 import { ApiSettingsRepository } from './ApiSettingsRepository';
+import { ApiWebhookRepository } from './ApiWebhookRepository';
 import { SettingsPage } from './SettingsPage';
 import { createRedeemOfferCodeClient } from '../offerCode/api/redeemOfferCode';
 
@@ -17,6 +18,8 @@ export function ConnectedSettingsPage() {
     () => new ApiSettingsRepository(client, API_BASE_URL, getAccessToken),
     [client, getAccessToken],
   );
+
+  const webhookRepository = useMemo(() => new ApiWebhookRepository(client), [client]);
 
   const redeemOfferCodeClient = useMemo(
     () => createRedeemOfferCodeClient(getAccessToken, API_BASE_URL),
@@ -35,6 +38,7 @@ export function ConnectedSettingsPage() {
   return (
     <SettingsPage
       repository={repository}
+      webhookRepository={webhookRepository}
       redeemOfferCodeClient={redeemOfferCodeClient}
       onRedeemSuccess={handleRedeemSuccess}
     />
