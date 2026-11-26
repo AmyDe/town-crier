@@ -77,15 +77,10 @@ func (f *fakeDrainStore) row(id string) fakeRow {
 	return fakeRow{}
 }
 
-func (f *fakeDrainStore) endpoint(id string) Endpoint {
+func (f *fakeDrainStore) firstEndpoint() Endpoint {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	for _, e := range f.endpoints {
-		if e.ID == id {
-			return *e
-		}
-	}
-	return Endpoint{}
+	return *f.endpoints[0]
 }
 
 func (f *fakeDrainStore) match(id, url string) *Endpoint {
@@ -343,7 +338,7 @@ func TestDrain_JSONSendsOldestFirstWithStoredBytes(t *testing.T) {
 		}
 		assertRow(t, fx.store, msg.EventID, "delivered", 1)
 	}
-	if after := fx.store.endpoint("e1"); after.ConsecutiveFailures != 0 || after.LastSuccessAt == nil {
+	if after := fx.store.firstEndpoint(); after.ConsecutiveFailures != 0 || after.LastSuccessAt == nil {
 		t.Errorf("a success did not reset the endpoint: %d", after.ConsecutiveFailures)
 	}
 }
@@ -382,7 +377,7 @@ func TestDrain_JSONStopsAtTheFirstFailure(t *testing.T) {
 			}
 			assertRow(t, fx.store, tc.failAt, "pending", 1)
 			assertRow(t, fx.store, "d3", "pending", 0)
-			if after := fx.store.endpoint("e1"); after.ConsecutiveFailures != tc.wantFailures || after.Status != StatusActive {
+			if after := fx.store.firstEndpoint(); after.ConsecutiveFailures != tc.wantFailures || after.Status != StatusActive {
 				t.Errorf("consecutive failures = %d, want %d", after.ConsecutiveFailures, tc.wantFailures)
 			}
 		})
@@ -444,7 +439,7 @@ func TestDrain_SlackSendsOneSummary(t *testing.T) {
 	t.Parallel()
 	fx := newDrainFixture()
 	fx.store.addEndpoint("e1", FormatSlack)
-	var ids []string
+	ids := make([]string, 0, 13)
 	for i := range 13 {
 		ids = append(ids, fmt.Sprintf("d%02d", i))
 	}
@@ -488,7 +483,7 @@ func TestDrain_SlackFailureCountsEveryRow(t *testing.T) {
 	}
 	assertRow(t, fx.store, "d1", "failed", 6)
 	assertRow(t, fx.store, "d2", "pending", 1)
-	if n := fx.store.endpoint("e1").ConsecutiveFailures; n != 1 {
+	if n := fx.store.firstEndpoint().ConsecutiveFailures; n != 1 {
 		t.Errorf("consecutive failures = %d, want 1 per run", n)
 	}
 }
@@ -540,7 +535,7 @@ func TestDrain_GoneDisablesAtOnce(t *testing.T) {
 			if got.Disabled != 1 {
 				t.Errorf("result = %+v", got)
 			}
-			after := fx.store.endpoint("e1")
+			after := fx.store.firstEndpoint()
 			if after.Status != StatusDisabled || after.DisabledReason == nil || *after.DisabledReason != DisabledGone {
 				t.Errorf("status = %s", after.Status)
 			}
@@ -572,7 +567,7 @@ func TestDrain_24thConsecutiveFailedRunDisablesAndEmailsOnce(t *testing.T) {
 	if got != (DrainResult{Endpoints: 1, Failed: 1, Disabled: 1}) {
 		t.Errorf("24th run = %+v", got)
 	}
-	after := fx.store.endpoint("e1")
+	after := fx.store.firstEndpoint()
 	if after.Status != StatusDisabled || *after.DisabledReason != DisabledFailures {
 		t.Errorf("status = %s", after.Status)
 	}
@@ -645,7 +640,7 @@ func TestDrain_EmailFailureDoesNotUndoTheSwitchOff(t *testing.T) {
 		fx.store.addRows(t, "e1", "d1")
 		fx.sender = always(gone)
 
-		if got := fx.drain(t.Context()); got.Disabled != 1 || fx.store.endpoint("e1").Status != StatusDisabled {
+		if got := fx.drain(t.Context()); got.Disabled != 1 || fx.store.firstEndpoint().Status != StatusDisabled {
 			t.Errorf("%v: result = %+v", sendErr, got)
 		}
 	}
@@ -703,7 +698,7 @@ func TestDrain_CancelledContextCountsNothing(t *testing.T) {
 			}
 			assertRow(t, fx.store, "d1", "pending", 0)
 			assertRow(t, fx.store, "d2", "pending", 0)
-			if after := fx.store.endpoint("e1"); after.ConsecutiveFailures != 23 || after.Status != StatusActive ||
+			if after := fx.store.firstEndpoint(); after.ConsecutiveFailures != 23 || after.Status != StatusActive ||
 				after.LastFailureAt != nil {
 				t.Errorf("endpoint changed: %d %s", after.ConsecutiveFailures, after.Status)
 			}
@@ -729,7 +724,7 @@ func TestDrain_DeliveriesBeforeACancelAreStillRecorded(t *testing.T) {
 	}
 	assertRow(t, fx.store, "d1", "delivered", 1)
 	assertRow(t, fx.store, "d2", "pending", 0)
-	if n := fx.store.endpoint("e1").ConsecutiveFailures; n != 0 {
+	if n := fx.store.firstEndpoint().ConsecutiveFailures; n != 0 {
 		t.Errorf("consecutive failures = %d, want 0", n)
 	}
 }
@@ -755,7 +750,7 @@ func TestDrain_ReplacedURLIsNotPenalised(t *testing.T) {
 			if got.Disabled != 0 || len(fx.email.sent) != 0 {
 				t.Errorf("result = %+v, emails = %d", got, len(fx.email.sent))
 			}
-			after := fx.store.endpoint("e1")
+			after := fx.store.firstEndpoint()
 			if after.Status != StatusActive || after.ConsecutiveFailures != 0 || after.LastFailureAt != nil {
 				t.Errorf("replaced endpoint changed: %s %d", after.Status, after.ConsecutiveFailures)
 			}
@@ -813,22 +808,22 @@ func TestDrain_StoreErrors(t *testing.T) {
 	down := errors.New("database down")
 	for _, tc := range []struct {
 		name      string
-		store     fakeDrainStore
+		store     *fakeDrainStore
 		result    Result
 		wantSends int
 	}{
-		{"load", fakeDrainStore{loadErr: down}, Result{Status: 200}, 0},
-		{"pending", fakeDrainStore{pendingErr: down}, Result{Status: 200}, 0},
-		{"mark delivered stops the endpoint", fakeDrainStore{markErr: down}, Result{Status: 200}, 1},
-		{"record attempt", fakeDrainStore{attemptErr: down}, serverError, 1},
-		{"record success", fakeDrainStore{successErr: down}, Result{Status: 200}, 2},
-		{"record failure", fakeDrainStore{failureErr: down}, serverError, 1},
-		{"disable", fakeDrainStore{disableErr: down}, gone, 1},
+		{"load", &fakeDrainStore{loadErr: down}, Result{Status: 200}, 0},
+		{"pending", &fakeDrainStore{pendingErr: down}, Result{Status: 200}, 0},
+		{"mark delivered stops the endpoint", &fakeDrainStore{markErr: down}, Result{Status: 200}, 1},
+		{"record attempt", &fakeDrainStore{attemptErr: down}, serverError, 1},
+		{"record success", &fakeDrainStore{successErr: down}, Result{Status: 200}, 2},
+		{"record failure", &fakeDrainStore{failureErr: down}, serverError, 1},
+		{"disable", &fakeDrainStore{disableErr: down}, gone, 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			fx := newDrainFixture()
-			fx.store = &tc.store
+			fx.store = tc.store
 			fx.store.addEndpoint("e1", FormatJSON)
 			fx.store.addRows(t, "e1", "d1", "d2")
 			fx.sender = always(tc.result)
