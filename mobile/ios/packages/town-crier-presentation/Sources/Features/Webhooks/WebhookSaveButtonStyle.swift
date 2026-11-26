@@ -11,7 +11,7 @@ struct WebhookSaveButtonStyle: ButtonStyle {
       .frame(maxWidth: .infinity, minHeight: 44)
       .background(
         isEnabled ? Color.tcAmber : Color.tcAmberMuted,
-        in: RoundedRectangle(cornerRadius: TCCornerRadius.medium)
+        in: Capsule()
       )
       .opacity(configuration.isPressed ? 0.8 : 1)
   }
