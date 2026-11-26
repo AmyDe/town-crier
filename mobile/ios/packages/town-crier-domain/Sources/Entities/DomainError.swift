@@ -40,6 +40,21 @@ public enum DomainError: Error, Equatable, Sendable {
   /// different Town Crier account. Mirrors the server's
   /// `transaction_already_claimed` (`409`).
   case transactionAlreadyClaimed
+  /// The webhook URL was rejected. Mirrors the server's
+  /// `webhook_url_invalid` (`400`).
+  case webhookURLInvalid
+  /// The webhook format was rejected. Mirrors the server's
+  /// `webhook_format_invalid` (`400`).
+  case webhookFormatInvalid
+  /// Setting, rotating or testing a webhook needs Pro. Mirrors the server's
+  /// `webhook_requires_pro` (`403`).
+  case webhookRequiresPro
+  /// A test event was requested too soon after the last one. Mirrors the
+  /// server's `webhook_test_cooldown` (`429`).
+  case webhookTestCooldown
+  /// The user has no webhook. Mirrors the server's `webhook_not_found`
+  /// (`404`).
+  case webhookNotFound
   case networkUnavailable
   case serverError(statusCode: Int, message: String?)
   case authenticationFailed(String)
@@ -94,6 +109,9 @@ public enum DomainError: Error, Equatable, Sendable {
       return "Name Already Used"
     case .transactionAlreadyClaimed:
       return "Subscription Already Claimed"
+    case .webhookURLInvalid, .webhookFormatInvalid, .webhookRequiresPro,
+      .webhookTestCooldown, .webhookNotFound:
+      return "Webhook Problem"
     case .invalidCoordinate, .invalidWatchZoneRadius,
       .invalidWatchZoneName, .invalidStatusTransition,
       .notificationPermissionDenied, .unexpected:
@@ -146,6 +164,16 @@ public enum DomainError: Error, Equatable, Sendable {
       return
         "The subscription on this Apple ID is already linked to a different Town Crier account. "
         + "Sign in with that account to use it, or get in touch and we'll sort it out."
+    case .webhookURLInvalid:
+      return "Enter a public https address. Only port 443 works."
+    case .webhookFormatInvalid:
+      return "Choose JSON or Slack."
+    case .webhookRequiresPro:
+      return "Webhooks need a Pro subscription."
+    case .webhookTestCooldown:
+      return "Wait 10 seconds before you send another test."
+    case .webhookNotFound:
+      return "That webhook no longer exists."
     case .invalidCoordinate, .invalidWatchZoneRadius,
       .invalidWatchZoneName, .invalidStatusTransition, .unexpected:
       return "An unexpected error occurred. Please try again."
@@ -156,7 +184,7 @@ public enum DomainError: Error, Equatable, Sendable {
   public var isRetryable: Bool {
     switch self {
     case .networkUnavailable, .serverError, .unexpected, .geocodingFailed,
-      .purchaseFailed, .restoreFailed, .logoutFailed, .sessionExpired:
+      .purchaseFailed, .restoreFailed, .logoutFailed, .sessionExpired, .webhookTestCooldown:
       return true
     case .authenticationFailed, .invalidPostcode,
       .invalidCoordinate, .invalidWatchZoneRadius, .invalidWatchZoneName,
@@ -165,7 +193,8 @@ public enum DomainError: Error, Equatable, Sendable {
       .deviceLocalZoneLimitReached, .invalidWatchZoneBoundaryVertexCount,
       .invalidWatchZoneBoundaryDuplicateVertex, .invalidWatchZoneBoundarySelfIntersecting,
       .invalidWatchZoneBoundaryOutOfBounds, .invalidWatchZoneBoundaryTooLarge,
-      .invalidWatchZoneFilterKey, .watchZoneNameTaken, .transactionAlreadyClaimed:
+      .invalidWatchZoneFilterKey, .watchZoneNameTaken, .transactionAlreadyClaimed,
+      .webhookURLInvalid, .webhookFormatInvalid, .webhookRequiresPro, .webhookNotFound:
       return false
     }
   }

@@ -245,6 +245,8 @@ public final class URLSessionAPIClient: Sendable {
       throw APIError.notFound
     case 409:
       try mapConflict(data: data)
+    case 429:
+      try mapTooManyRequests(data: data)
     default:
       if statusCode >= 400 {
         let message = String(data: data, encoding: .utf8)
@@ -258,14 +260,14 @@ public final class URLSessionAPIClient: Sendable {
       body.error == "insufficient_entitlement" {
       throw DomainError.insufficientEntitlement(required: body.required)
     }
+    if let body = try? decoder.decode(ErrorCodeBody.self, from: data),
+      body.error == "webhook_requires_pro" {
+      throw DomainError.webhookRequiresPro
+    }
     let message = String(data: data, encoding: .utf8)
     throw APIError.serverError(statusCode: 403, message: message)
   }
 
-  /// Maps a watch-zone `400` — a custom-shape boundary whose enclosing
-  /// radius exceeds the server's ceiling, or an unrecognised pre-canned
-  /// filter key. Any other error code, or a decode failure, falls back to the
-  /// generic `serverError` unchanged.
   private func mapBadRequest(data: Data) throws {
     if let body = try? decoder.decode(ErrorCodeBody.self, from: data) {
       if body.error == "boundary_too_large" {
@@ -274,15 +276,17 @@ public final class URLSessionAPIClient: Sendable {
       if body.error == "filter_key_invalid" {
         throw DomainError.invalidWatchZoneFilterKey
       }
+      if body.error == "webhook_url_invalid" {
+        throw DomainError.webhookURLInvalid
+      }
+      if body.error == "webhook_format_invalid" {
+        throw DomainError.webhookFormatInvalid
+      }
     }
     let message = String(data: data, encoding: .utf8)
     throw APIError.serverError(statusCode: 400, message: message)
   }
 
-  /// Maps a `409` conflict body to a specific ``DomainError`` — a duplicate
-  /// watch-zone name, or a StoreKit transaction already claimed by another
-  /// account. Any other error code, or a decode failure, falls back to the
-  /// generic `serverError` unchanged.
   private func mapConflict(data: Data) throws {
     if let body = try? decoder.decode(ErrorCodeBody.self, from: data) {
       if body.error == "zone_name_taken" {
@@ -294,5 +298,14 @@ public final class URLSessionAPIClient: Sendable {
     }
     let message = String(data: data, encoding: .utf8)
     throw APIError.serverError(statusCode: 409, message: message)
+  }
+
+  private func mapTooManyRequests(data: Data) throws {
+    if let body = try? decoder.decode(ErrorCodeBody.self, from: data),
+      body.error == "webhook_test_cooldown" {
+      throw DomainError.webhookTestCooldown
+    }
+    let message = String(data: data, encoding: .utf8)
+    throw APIError.serverError(statusCode: 429, message: message)
   }
 }
