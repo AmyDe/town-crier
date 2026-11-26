@@ -26,6 +26,16 @@ var blockedPrefixes = []netip.Prefix{
 	netip.MustParsePrefix("198.18.0.0/15"),
 	netip.MustParsePrefix("240.0.0.0/4"),
 	netip.MustParsePrefix("64:ff9b::/96"),
+	netip.MustParsePrefix("64:ff9b:1::/48"),
+	// 6to4 and IPv4-compatible addresses embed an IPv4 address, which can be
+	// a private one. fec0::/10 is the deprecated site-local range.
+	netip.MustParsePrefix("2002::/16"),
+	netip.MustParsePrefix("::/96"),
+	netip.MustParsePrefix("fec0::/10"),
+	netip.MustParsePrefix("192.0.2.0/24"),
+	netip.MustParsePrefix("198.51.100.0/24"),
+	netip.MustParsePrefix("203.0.113.0/24"),
+	netip.MustParsePrefix("2001:db8::/32"),
 }
 
 // isPublicAddr reports whether a webhook may connect to addr.
