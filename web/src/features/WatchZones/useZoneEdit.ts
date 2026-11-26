@@ -59,24 +59,14 @@ export function useZoneEdit(
   const save = useCallback(async () => {
     if (!isDirty || boundaryError !== null) return;
 
-    const data: UpdateWatchZoneRequest = {};
-    const mutableData = data as Record<string, unknown>;
-    if (name !== baselineName) {
-      mutableData['name'] = name;
-    }
-    if (radiusMetres !== baselineRadius) {
-      mutableData['radiusMetres'] = radiusMetres;
-    }
-    if (pushEnabled !== baselinePushEnabled) {
-      mutableData['pushEnabled'] = pushEnabled;
-    }
-    if (emailInstantEnabled !== baselineEmailInstantEnabled) {
-      mutableData['emailInstantEnabled'] = emailInstantEnabled;
-    }
-    if (boundaryDirty) {
+    const data: UpdateWatchZoneRequest = {
+      ...(name !== baselineName && { name }),
+      ...(radiusMetres !== baselineRadius && { radiusMetres }),
+      ...(pushEnabled !== baselinePushEnabled && { pushEnabled }),
+      ...(emailInstantEnabled !== baselineEmailInstantEnabled && { emailInstantEnabled }),
       // Omitted when unchanged; explicit null reverts to a circle.
-      mutableData['boundary'] = effectiveBoundary;
-    }
+      ...(boundaryDirty && { boundary: effectiveBoundary }),
+    };
 
     setIsSaving(true);
     setError(null);
