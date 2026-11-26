@@ -6,7 +6,7 @@ public protocol WatchZoneRepository: Sendable {
   func delete(_ id: WatchZoneId) async throws
 
   /// Fetches the pre-canned watch-zone filter catalog from
-  /// `GET /v1/watch-zones/filter-catalog` (GH#1104, bead tc-m8j90.2) --
+  /// `GET /v1/watch-zones/filter-catalog` --
   /// display copy only, resolved separately from ``WatchZone/filterKey``,
   /// which is never validated against this catalog client-side.
   func filterCatalog() async throws -> [FilterCatalogEntry]

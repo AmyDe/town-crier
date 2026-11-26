@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Richer inline upsell card shown beneath a free-tier user's single watch zone,
 /// filling the space they would otherwise see empty once they hit their one-zone
-/// limit (tc-t8hc).
+/// limit.
 ///
 /// It sells the whole plan, not just one feature: bigger zones, custom shapes
 /// instead of a circle, more than one zone, and instant alerts by push and email
@@ -14,9 +14,9 @@ import SwiftUI
 /// Visibility is gated by ``WatchZoneListViewModel/showsFreeTierUpsell`` so paid
 /// users (including a Personal user at their finite 3-zone cap) and below-cap free
 /// users never see it. Copy is shared verbatim with ``UnlockLargerZonesChip``
-/// (tc-42gc) so both surfaces speak in one voice.
+/// so both surfaces speak in one voice.
 ///
-/// Styling follows the Public Notice upsell-surface language (GH#857): an
+/// Styling follows the Public Notice upsell-surface language: an
 /// elevated surface with a 1.5pt amber border and a brass small-caps
 /// eyebrow. The "View Plans" CTA button is the only filled-amber container
 /// on the card — the card itself stays bordered, never filled (amber
@@ -49,7 +49,7 @@ public struct WatchZoneInlineUpsellCard: View {
   public var body: some View {
     VStack(alignment: .leading, spacing: TCSpacing.medium) {
       VStack(alignment: .leading, spacing: TCSpacing.small) {
-        // Brass small-caps eyebrow (GH#857) — the card's border carries the
+        // Brass small-caps eyebrow — the card's border carries the
         // amber accent; the CTA button below stays the only filled-amber
         // surface (amber-rationing rule).
         Text(Copy.eyebrow)

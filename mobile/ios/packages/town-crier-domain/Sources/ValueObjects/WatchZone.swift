@@ -1,6 +1,6 @@
 import Foundation
 
-/// A circular geographic area that a user monitors for planning applications.
+/// A geographic area, a circle or a custom polygon, that a user monitors for planning applications.
 public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
   public let id: WatchZoneId
   public let name: String
@@ -93,15 +93,13 @@ public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
   }
 
   /// Great-circle distance in metres from this zone's centre to the given
-  /// coordinate. Used by the Applications screen's distance sort
-  /// (tc-mso6) and any future "near me"-style features that need a
-  /// stable comparator across the domain layer.
+  /// coordinate.
   public func distance(to coordinate: Coordinate) -> Double {
     centre.distanceMetres(to: coordinate)
   }
 
-  /// Whether this is a custom-shape (polygon) zone rather than a circle
-  /// (GH#1031). Mirrors the server's `WatchZone.IsCustomShape()`.
+  /// Whether this is a custom-shape (polygon) zone rather than a circle.
+  /// Mirrors the server's `WatchZone.IsCustomShape()`.
   public var isCustomShape: Bool {
     boundary != nil
   }

@@ -45,7 +45,7 @@ enum BoundaryDrawingRegion {
   import SwiftUI
 
   /// A UIKit `MKMapView` wrapped for SwiftUI for drawing a custom-shape watch
-  /// zone boundary (GH#1031, bead tc-6he3x.8): tap an empty area to drop a
+  /// zone boundary: tap an empty area to drop a
   /// vertex, drag an existing vertex pin to move it, tap the first vertex
   /// (once at least 3 exist) to close the ring.
   ///
@@ -55,7 +55,7 @@ enum BoundaryDrawingRegion {
   /// overlay. Structure mirrors `ClusteredMapView`.
   ///
   /// Generic over ``BoundaryDrawingViewModel`` rather than tied to the
-  /// concrete `WatchZoneEditorViewModel` (tc-6he3x.10): the onboarding
+  /// concrete `WatchZoneEditorViewModel`: the onboarding
   /// wizard drives its own boundary-drawing state on `OnboardingViewModel`,
   /// and this view only needs the narrow vertex-editing surface both
   /// ViewModels share, not the rest of either one.
@@ -289,11 +289,11 @@ enum BoundaryDrawingRegion {
     }
   }
 
-  /// `WatchZoneEditorViewModel` (tc-6he3x.8) already exposes exactly the
+  /// `WatchZoneEditorViewModel` already exposes exactly the
   /// vertex-editing surface ``BoundaryDrawingViewModel`` requires, so no
   /// changes to that type are needed. The conformance is declared here,
   /// alongside its sole reason for existing, rather than on the type
   /// itself, so the already-shipped `WatchZoneEditorViewModel.swift` stays
-  /// untouched (tc-6he3x.10).
+  /// untouched.
   extension WatchZoneEditorViewModel: BoundaryDrawingViewModel {}
 #endif

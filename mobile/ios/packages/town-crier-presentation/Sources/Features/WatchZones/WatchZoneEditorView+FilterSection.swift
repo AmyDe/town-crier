@@ -1,7 +1,7 @@
 import SwiftUI
 import TownCrierDomain
 
-/// The pre-canned filter section (GH#1098): a three-way triad following the
+/// The pre-canned filter section: a three-way triad following the
 /// exact same structure as `WatchZoneEditorView`'s
 /// `shapeModeSection`/`customShapeUpsellPlaceholder`/`lockedCustomShapeSection`.
 /// A standalone `View` (like `ZoneMapPreview`/`GatedToggle`) rather than an

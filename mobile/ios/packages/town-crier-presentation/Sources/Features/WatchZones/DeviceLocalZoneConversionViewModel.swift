@@ -1,8 +1,8 @@
 import Foundation
 import TownCrierDomain
 
-/// Drives the post-signup "Add your other areas" conversion sheet (GH#879
-/// Phase 5): offers the device-local zones the onboarding wizard did NOT
+/// Drives the post-signup "Add your other areas" conversion sheet:
+/// offers the device-local zones the onboarding wizard did NOT
 /// already convert (that conversion happens separately, via the wizard's own
 /// `WatchZoneRepository.save` call) for server-side creation.
 ///

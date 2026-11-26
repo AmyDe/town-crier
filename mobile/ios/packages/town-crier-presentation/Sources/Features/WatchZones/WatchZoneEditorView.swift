@@ -56,7 +56,7 @@ public struct WatchZoneEditorView: View {
           Button("Save") {
             Task {
               // Dismiss only on success. On a quota breach the coordinator
-              // closes the sheet and opens the paywall (tc-gpjk); on any other
+              // closes the sheet and opens the paywall; on any other
               // failure the editor stays open and shows the inline error.
               if await viewModel.save() {
                 dismiss()
@@ -139,7 +139,7 @@ public struct WatchZoneEditorView: View {
         .foregroundStyle(Color.tcTextSecondary)
 
         if viewModel.canUnlockLargerRadius {
-          // Radius upsell (tc-w3cb.3). Routes through viewPlans()/onUpgradeRequired
+          // Radius upsell. Routes through viewPlans()/onUpgradeRequired
           // like the instant-alert upsell: the editor closes and the paywall
           // opens. After purchase the list rebuilds on the new tier (.id), so a
           // reopened editor offers the larger range.
@@ -158,8 +158,7 @@ public struct WatchZoneEditorView: View {
   /// (mirrors `radiusSection`/`mapPreviewSection`'s visibility gate). Paid
   /// tiers get the segmented control; Free tier sees a minimal upsell
   /// affordance instead (the full onboarding graphic, `CustomShapeUpsellGraphic`,
-  /// is a separate bead — tc-6he3x.10 — this is deliberately a plain-text
-  /// extension point, not that graphic). Free tier editing an existing
+  /// is deliberately not used here). Free tier editing an existing
   /// locked custom shape (``WatchZoneEditorViewModel/isCustomShapeLocked``)
   /// gets nothing here — ``lockedCustomShapeSection`` below is the sole,
   /// non-duplicated explanation for that state.
@@ -189,7 +188,7 @@ public struct WatchZoneEditorView: View {
 
   /// Minimal upsell affordance for a Free-tier user who hasn't drawn a
   /// custom shape yet — text plus a "View Plans" tap-through, not the
-  /// richer onboarding graphic (tc-6he3x.10).
+  /// richer onboarding graphic.
   private var customShapeUpsellPlaceholder: some View {
     Button {
       viewModel.viewPlans()
@@ -359,10 +358,10 @@ public struct WatchZoneEditorView: View {
   }
 
   /// Pinned above the `Form` as a plain `VStack` sibling rather than a
-  /// trailing `Form` `Section` (tc-9oyhw, GH#1085) -- a save failure while
+  /// trailing `Form` `Section` -- a save failure while
   /// scrolled into the custom-shape drawing section with the keyboard open
   /// used to render entirely off-screen. Deliberately NOT a `.safeAreaInset`
-  /// on the `Form` (tried first, reverted in tc-p8oks): `Form`/`List` is
+  /// on the `Form`: `Form`/`List` is
   /// UIKit-backed, and its content-inset doesn't reliably track the inset
   /// view's height when that height changes dynamically (e.g. `userMessage`
   /// wrapping to two lines) -- the first `Form` row rendered underneath the

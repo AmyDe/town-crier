@@ -1,9 +1,9 @@
 import SwiftUI
 import TownCrierDomain
 
-/// Post-signup "Add your other areas" conversion sheet (GH#879 Phase 5).
+/// Post-signup "Add your other areas" conversion sheet.
 ///
-/// Lists the device-local zones (GH#879 Phase 4) the onboarding wizard did
+/// Lists the device-local zones the onboarding wizard did
 /// not already convert, offering to create them as real watch zones. A
 /// single "Add These Areas" action converts every listed zone sequentially,
 /// in order; hitting the tier's watch-zone quota mid-list routes to the

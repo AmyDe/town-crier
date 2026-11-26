@@ -1,7 +1,7 @@
 /// One entry in the pre-canned watch-zone filter catalog, fetched from
-/// `GET /v1/watch-zones/filter-catalog` (GH#1104, bead tc-m8j90.2).
+/// `GET /v1/watch-zones/filter-catalog`.
 ///
-/// Replaces the closed `WatchZoneFilterKey` enum (GH#1098/tc-hogkn): the
+/// Replaces the closed `WatchZoneFilterKey` enum: the
 /// catalog now lives server-side only (`api-go/internal/watchzones/filter.go`)
 /// and is fetched at runtime, so adding, renaming, or retiring a filter is a
 /// Go-only deploy -- no iOS release needed to add an enum `case`. See
@@ -13,7 +13,7 @@ public struct FilterCatalogEntry: Equatable, Hashable, Sendable {
   /// `WatchZone.filterKey`'s wire value. A key with no matching catalog
   /// entry (fetch pending, fetch failed, or a genuinely newer key an older
   /// client build predates) is never treated as invalid client-side --
-  /// display falls back gracefully instead (tc-8z9ri).
+  /// display falls back gracefully instead.
   public let key: String
 
   /// The picker row's primary label.

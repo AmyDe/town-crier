@@ -3,7 +3,7 @@ import Foundation
 import TownCrierDomain
 
 /// Whether a watch zone is drawn as a circle (radius-based, the default) or a
-/// custom polygon shape (GH#1031). Free tier is locked to `.circle`;
+/// custom polygon shape. Free tier is locked to `.circle`;
 /// Personal/Pro may switch to `.custom` — see
 /// ``WatchZoneEditorViewModel/canDrawCustomShape``.
 public enum WatchZoneShapeMode: Hashable, Sendable {
@@ -23,7 +23,7 @@ public final class WatchZoneEditorViewModel: ObservableObject, EntitlementGating
   @Published public private(set) var isLoading = false
   @Published public internal(set) var error: DomainError?
 
-  /// Circle (radius-based) vs. custom polygon shape (GH#1031). Defaults to
+  /// Circle (radius-based) vs. custom polygon shape. Defaults to
   /// `.circle`; populated from the edited zone's `boundary` when present.
   @Published public private(set) var shapeMode: WatchZoneShapeMode = .circle
 
@@ -35,7 +35,7 @@ public final class WatchZoneEditorViewModel: ObservableObject, EntitlementGating
   @Published public private(set) var boundaryVertices: [Coordinate] = []
 
   /// The pre-canned notification filter selected for this zone, or `nil` for
-  /// unfiltered (GH#1098). An opaque `String?` (GH#1104, tc-m8j90.2), never
+  /// unfiltered. An opaque `String?`, never
   /// validated against ``filterCatalog`` client-side. Defaults to `nil`;
   /// populated from the edited zone's `filterKey` when present. `internal(set)`
   /// (not `private(set)`) so `selectFilterKey(_:)` can live in
@@ -45,7 +45,7 @@ public final class WatchZoneEditorViewModel: ObservableObject, EntitlementGating
   @Published public internal(set) var selectedFilterKey: String?
 
   /// The pre-canned watch-zone filter catalog, fetched once per editor
-  /// session and memoized for its lifetime (GH#1104, tc-m8j90.2) -- see
+  /// session and memoized for its lifetime -- see
   /// ``loadFilterCatalogIfNeeded()``. Empty until the first successful
   /// fetch; the picker reads this to render its rows instead of a
   /// hardcoded list.
@@ -57,7 +57,7 @@ public final class WatchZoneEditorViewModel: ObservableObject, EntitlementGating
 
   /// True when the most recent catalog fetch failed -- drives the picker's
   /// "couldn't load, tap to retry" row. Never clears ``selectedFilterKey``:
-  /// a fetch failure only ever degrades display, never data (tc-8z9ri).
+  /// a fetch failure only ever degrades display, never data.
   @Published public internal(set) var filterCatalogLoadFailed = false
 
   /// Set once ``loadFilterCatalogIfNeeded()`` succeeds, so a repeat call
@@ -78,7 +78,7 @@ public final class WatchZoneEditorViewModel: ObservableObject, EntitlementGating
   var onSave: ((WatchZone) -> Void)?
 
   /// Invoked when a save fails because the user has hit their tier's watch-zone
-  /// quota (tc-gpjk). The coordinator dismisses the editor and presents the
+  /// quota. The coordinator dismisses the editor and presents the
   /// subscription paywall — no inline error is shown for this case.
   public var onUpgradeRequired: (() -> Void)?
 
@@ -137,7 +137,7 @@ public final class WatchZoneEditorViewModel: ObservableObject, EntitlementGating
 
   /// Whether the user's tier still has radius headroom to unlock — true for any
   /// tier below the top (Pro, 10 km). Drives the "Unlock larger zones" chip
-  /// shown beneath the radius slider, mirroring the onboarding wizard (tc-w3cb.3).
+  /// shown beneath the radius slider, mirroring the onboarding wizard.
   public var canUnlockLargerRadius: Bool {
     tier < .pro
   }
@@ -151,8 +151,8 @@ public final class WatchZoneEditorViewModel: ObservableObject, EntitlementGating
   /// The entitlement that the per-zone instant push/email toggles are gated behind.
   ///
   /// Instant alerts (push and instant email) are paid-only; free accounts receive
-  /// the weekly digest only and the server never delivers instant alerts to them
-  /// (tc-bd6i). All paid entitlements travel together in ``EntitlementMap``, so any
+  /// the weekly digest only and the server never delivers instant alerts to them.
+  /// All paid entitlements travel together in ``EntitlementMap``, so any
   /// paid-only entitlement correctly distinguishes free (locked) from paid (open).
   public var instantAlertEntitlement: Entitlement {
     .statusChangeAlerts
@@ -160,7 +160,7 @@ public final class WatchZoneEditorViewModel: ObservableObject, EntitlementGating
 
   /// The notifications section is always shown. For free accounts the instant
   /// push/email toggles render locked with an upgrade prompt via ``GatedToggle``;
-  /// for Personal/Pro they are fully interactive (tc-bd6i).
+  /// for Personal/Pro they are fully interactive.
   public var areNotificationTogglesVisible: Bool {
     true
   }
@@ -210,7 +210,7 @@ public final class WatchZoneEditorViewModel: ObservableObject, EntitlementGating
 
   /// True when editing an existing custom-shape zone on a tier that can no
   /// longer draw one (a Free-tier user who downgraded after saving a
-  /// polygon zone — GH#1031's paused-zone posture keeps the zone editable,
+  /// polygon zone — the paused-zone posture keeps the zone editable,
   /// never silently converted). ``shapeMode`` is `.custom` here because it
   /// reflects the zone's actual stored shape, not the tier's entitlement —
   /// see the `editing:` initializer — so the View must check this

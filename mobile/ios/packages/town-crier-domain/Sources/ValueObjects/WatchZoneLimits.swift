@@ -7,11 +7,11 @@ public struct WatchZoneLimits: Equatable, Sendable {
   public let maxZones: Int
   public let maxRadiusMetres: Double
   /// Whether this tier can draw a custom-shape (polygon) zone rather than
-  /// only a circle (GH#1031). Mirrors the server's
+  /// only a circle. Mirrors the server's
   /// `SubscriptionTier.AllowsCustomBoundary()` (`t.IsPaid()`).
   public let allowsCustomBoundary: Bool
   /// Whether this tier may set a pre-canned notification filter on a watch
-  /// zone (GH#1098). Mirrors the server's
+  /// zone. Mirrors the server's
   /// `SubscriptionTier.AllowsWatchZoneFilter()` (`t.IsPaidPro()`) -- Pro
   /// only, narrower than ``allowsCustomBoundary``'s Personal+Pro gate.
   public let allowsWatchZoneFilter: Bool

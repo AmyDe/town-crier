@@ -1,7 +1,7 @@
 import Foundation
 
 /// The pre-canned watch-zone filter catalog fetch, memoization, selection,
-/// and display-name resolution (GH#1104, bead tc-m8j90.2). Split out of
+/// and display-name resolution. Split out of
 /// `WatchZoneEditorViewModel` to keep that file under SwiftLint's
 /// `file_length` ceiling, mirroring the existing split into
 /// `ApplicationListViewModel+GlobalUnread.swift`.
@@ -26,7 +26,7 @@ extension WatchZoneEditorViewModel {
   /// the picker can offer a retry (calling this method again);
   /// ``WatchZoneEditorViewModel/selectedFilterKey`` is never touched by this
   /// method, on success or failure -- a display-layer hiccup must never lose
-  /// or clear an already-stored filter (tc-8z9ri).
+  /// or clear an already-stored filter.
   public func loadFilterCatalogIfNeeded() async {
     guard !hasLoadedFilterCatalog, !isLoadingFilterCatalog else { return }
     isLoadingFilterCatalog = true
@@ -44,7 +44,7 @@ extension WatchZoneEditorViewModel {
   /// ``WatchZoneEditorViewModel/filterCatalog`` -- the catalog fetch is
   /// pending or failed, or the key is a genuinely newer filter this build's
   /// fetched catalog doesn't (yet) contain. Never "None": a set filter must
-  /// always read as set (tc-8z9ri).
+  /// always read as set.
   private static var fallbackFilterDisplayName: String { "Filter applied" }
 
   /// Resolves `key` to its catalog display name, falling back to
