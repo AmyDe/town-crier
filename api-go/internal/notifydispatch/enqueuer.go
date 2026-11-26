@@ -93,6 +93,15 @@ type Enqueuer struct {
 	now           func() time.Time
 	logger        *slog.Logger
 	metrics       notificationMetricsRecorder
+	webhooks      webhookQueue
+}
+
+// WithWebhooks makes the enqueuer queue each record it creates for a Pro user
+// for webhook delivery, and returns the enqueuer for chaining. Nil turns
+// webhooks off.
+func (e *Enqueuer) WithWebhooks(q webhookQueue) *Enqueuer {
+	e.webhooks = q
+	return e
 }
 
 // WithMetrics sets the recorder the enqueuer records
@@ -224,6 +233,7 @@ func (e *Enqueuer) Enqueue(ctx context.Context, app applications.PlanningApplica
 	if queuePush {
 		e.push.Add(zone.UserID, n)
 	}
+	queueWebhook(ctx, e.webhooks, e.logger, profile, e.now(), n, app, zone.Name)
 	if e.metrics != nil {
 		e.metrics.NotificationCreated(ctx, string(n.EventType), n.Sources)
 	}

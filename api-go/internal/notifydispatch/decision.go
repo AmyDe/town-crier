@@ -38,6 +38,15 @@ type DecisionDispatcher struct {
 	now           func() time.Time
 	logger        *slog.Logger
 	metrics       notificationMetricsRecorder
+	webhooks      webhookQueue
+}
+
+// WithWebhooks makes the dispatcher queue each record it creates for a Pro user
+// for webhook delivery, and returns the dispatcher for chaining. Nil turns
+// webhooks off.
+func (d *DecisionDispatcher) WithWebhooks(q webhookQueue) *DecisionDispatcher {
+	d.webhooks = q
+	return d
 }
 
 // WithMetrics sets the recorder the dispatcher records
@@ -72,12 +81,13 @@ func NewDecisionDispatcher(
 	}
 }
 
-// userMatch accumulates which sources matched a user and the first zone id to
-// attribute the notification to (saved-only matches leave it nil).
+// userMatch accumulates which sources matched a user and the first zone to
+// attribute the notification to (saved-only matches leave it nil and "").
 type userMatch struct {
-	zone        bool
-	saved       bool
-	watchZoneID *string
+	zone          bool
+	saved         bool
+	watchZoneID   *string
+	watchZoneName string
 }
 
 // Dispatch fans a decision event out to every matched user. It is idempotent per
@@ -101,6 +111,7 @@ func (d *DecisionDispatcher) Dispatch(ctx context.Context, app applications.Plan
 			if m.watchZoneID == nil {
 				id := zone.ID
 				m.watchZoneID = &id
+				m.watchZoneName = zone.Name
 			}
 		}
 	}
@@ -171,6 +182,7 @@ func (d *DecisionDispatcher) dispatchForUser(ctx context.Context, app applicatio
 	if queuePush {
 		d.push.Add(userID, n)
 	}
+	queueWebhook(ctx, d.webhooks, d.logger, profile, d.now(), n, app, m.watchZoneName)
 	if d.metrics != nil {
 		d.metrics.NotificationCreated(ctx, string(n.EventType), n.Sources)
 	}
