@@ -189,8 +189,8 @@ func assertErrorCode(t *testing.T, rec *httptest.ResponseRecorder, status int, c
 }
 
 var responseKeys = []string{
-	"url", "format", "status", "disabledReason", "paused", "createdAt",
-	"lastSuccessAt", "lastFailureAt", "lastFailureReason", "lastFailureStatus",
+	"createdAt", "disabledReason", "format", "lastFailureAt", "lastFailureReason", "lastFailureStatus",
+	"lastSuccessAt", "paused", "status", "url",
 }
 
 const validPut = `{"url":"https://hooks.example.com/abc","format":"json"}`
@@ -307,7 +307,9 @@ func TestHandler_PutCreatesWithSecret(t *testing.T) {
 
 	assertStatus(t, rec, 201)
 	body := decodeBody(t, rec)
-	assertKeys(t, body, append(slices.Clone(responseKeys), "secret"))
+	withSecret := append(slices.Clone(responseKeys), "secret")
+	slices.Sort(withSecret)
+	assertKeys(t, body, withSecret)
 	stored := fx.store.endpoint
 	if stored == nil || stored.ID != "new-id" || stored.UserID != testUser || stored.Format != FormatSlack {
 		t.Fatalf("stored = %v", stored)
