@@ -5,6 +5,10 @@ export type Theme = 'light' | 'dark';
 const STORAGE_KEY = 'tc-theme';
 
 function getInitialTheme(): Theme {
+  if (typeof window === 'undefined') {
+    return 'light';
+  }
+
   const stored = window.localStorage.getItem(STORAGE_KEY);
   if (stored === 'light' || stored === 'dark') {
     return stored;
@@ -26,7 +30,9 @@ export function useTheme() {
     });
   }, []);
 
-  document.documentElement.setAttribute('data-theme', theme);
+  if (typeof document !== 'undefined') {
+    document.documentElement.setAttribute('data-theme', theme);
+  }
 
   return { theme, toggleTheme } as const;
 }
