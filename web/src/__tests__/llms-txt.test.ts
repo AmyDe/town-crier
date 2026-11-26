@@ -22,6 +22,12 @@ describe('llms.txt product copy', () => {
     expect(llms).toContain('https://towncrierapp.uk/planning');
   });
 
+  it('says under the Pro plan that Pro can send alerts to a webhook, with the docs URL', () => {
+    expect(llms).toMatch(
+      /\n- Pro, [^\n]*\n {2}- Pro can send alerts to a webhook \(JSON or Slack\): https:\/\/towncrierapp\.uk\/developers\/webhooks\n/,
+    );
+  });
+
   it('uses no em or en dashes', () => {
     expect(llms).not.toMatch(/[–—]/);
   });

@@ -192,4 +192,18 @@ describe('Pricing', () => {
     expect(within(freeCard!).queryByRole('link')).not.toBeInTheDocument();
     expect(within(proCard!).queryByRole('link')).not.toBeInTheDocument();
   });
+
+  it('offers webhooks on Pro only', () => {
+    render(<Pricing />);
+
+    const cards = screen.getAllByRole('article');
+    const webhooksFor = (tier: string) => {
+      const card = cards.find((c) => within(c).queryByText(tier));
+      return within(card!).getByText('Webhooks (JSON or Slack)').closest('li');
+    };
+
+    expect(within(webhooksFor('Free')!).getByText('No')).toBeInTheDocument();
+    expect(within(webhooksFor('Personal')!).getByText('No')).toBeInTheDocument();
+    expect(within(webhooksFor('Pro')!).getByText('Yes')).toBeInTheDocument();
+  });
 });
