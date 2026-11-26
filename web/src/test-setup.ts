@@ -27,11 +27,13 @@ function createMemoryStorage(): Storage {
   };
 }
 
-Object.defineProperty(window, 'localStorage', {
-  value: createMemoryStorage(),
-  writable: true,
-  configurable: true,
-});
+if (typeof window !== 'undefined') {
+  Object.defineProperty(window, 'localStorage', {
+    value: createMemoryStorage(),
+    writable: true,
+    configurable: true,
+  });
+}
 
 if (typeof HTMLDialogElement !== 'undefined' && !HTMLDialogElement.prototype.showModal) {
   HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
