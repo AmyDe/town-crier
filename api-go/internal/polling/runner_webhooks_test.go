@@ -2,6 +2,7 @@ package polling
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"testing"
 	"time"
@@ -140,6 +141,41 @@ func TestRunner_CancelDuringFlushSkipsWebhookDrain(t *testing.T) {
 
 	if drainer.calls != 0 {
 		t.Fatalf("drain = %d, want 0 after a stop signal", drainer.calls)
+	}
+}
+
+type stoppedDrainer struct {
+	cancel context.CancelFunc
+	err    error
+}
+
+func (f *stoppedDrainer) Drain(ctx context.Context) webhooks.DrainResult {
+	f.cancel()
+	select {
+	case <-ctx.Done():
+		f.err = ctx.Err()
+	case <-time.After(time.Second):
+	}
+	return webhooks.DrainResult{}
+}
+
+func TestRunner_CancelDuringWebhookDrainCancelsItAndReleasesLease(t *testing.T) {
+	t.Parallel()
+	r, _ := rigWithDrainer(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	drainer := &stoppedDrainer{cancel: cancel}
+	r.runner.d.Webhooks = drainer
+
+	if _, err := r.runner.Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	if !errors.Is(drainer.err, context.Canceled) {
+		t.Fatalf("drain context error = %v, want %v", drainer.err, context.Canceled)
+	}
+	if r.lease.released != 1 || r.lease.releaseErr != nil {
+		t.Fatalf("released = %d releaseCtxErr = %v, want one release on a live context", r.lease.released, r.lease.releaseErr)
 	}
 }
 

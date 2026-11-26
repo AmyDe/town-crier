@@ -160,7 +160,8 @@ func NewRunner(cfg RunnerConfig, deps RunnerDeps) *Runner {
 // normally; only lease and state failures return an error. When ctx is
 // cancelled the run stops with StopCancelled and no error: it flushes pushes
 // already queued, leaves pending events and webhook deliveries for the next
-// run, computes no health and releases the lease.
+// run, computes no health and releases the lease. A cancel that arrives during
+// the webhook drain also cuts the drain short.
 func (r *Runner) Run(ctx context.Context) (RunResult, error) {
 	acq, err := r.d.Lease.TryAcquire(ctx, runLeaseTTL)
 	if err != nil {
@@ -207,7 +208,7 @@ func (r *Runner) Run(ctx context.Context) (RunResult, error) {
 		r.d.Log.WarnContext(baseCtx, "poll.end_of_run_timeout", slog.Duration("bound", bound))
 	}
 	if !cancelled && ctx.Err() == nil {
-		r.drainWebhooks(baseCtx)
+		r.drainWebhooks(ctx)
 	}
 	if res.Stop != StopDisabled && !cancelled {
 		res.Health = r.health(baseCtx, res.Counts)
@@ -217,7 +218,8 @@ func (r *Runner) Run(ctx context.Context) (RunResult, error) {
 }
 
 // drainWebhooks has its own time limit so that a slow receiver cannot take time
-// from the push flush.
+// from the push flush. It stays cancellable so that a stop signal leaves time to
+// release the lease before the container is killed.
 func (r *Runner) drainWebhooks(ctx context.Context) {
 	if r.d.Webhooks == nil {
 		return
