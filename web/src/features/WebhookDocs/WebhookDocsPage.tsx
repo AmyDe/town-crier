@@ -68,9 +68,9 @@ export function WebhookDocsPage() {
           <li>A decision on an application in a watch zone, or on one you&apos;ve saved.</li>
         </ul>
         <p>
-          Your push notification settings don&apos;t affect webhooks. Paused watch zones and
-          keyword filters do, because they stop the alert being created. We don&apos;t queue
-          anything while your webhook is switched off or your account isn&apos;t on Pro.
+          Your push notification settings don&apos;t affect webhooks. Pausing a watch zone does,
+          because it stops the alert being created. We don&apos;t queue anything while your
+          webhook is switched off or your account isn&apos;t on Pro.
         </p>
       </Section>
 
