@@ -61,6 +61,9 @@ describe('WebhookSection', () => {
       await renderSection();
 
       expect(screen.getByRole('heading', { name: 'Webhooks' })).toBeInTheDocument();
+      expect(
+        screen.getByText(/as signed JSON, a Slack message or a Discord message\./),
+      ).toBeInTheDocument();
       expect(screen.getByLabelText('Webhook URL')).toHaveValue('');
       const format = screen.getByLabelText('Format');
       expect(within(format).getAllByRole('option').map((o) => o.textContent)).toEqual([
