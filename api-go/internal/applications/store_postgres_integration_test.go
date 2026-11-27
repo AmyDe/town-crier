@@ -24,9 +24,8 @@ import (
 // (api-go/internal/watchzones/filter.go). filterCatalog itself is
 // unexported and the watchzones package has no exported accessor to read a
 // single entry's Expression from outside the package, so these cannot be
-// pulled in programmatically without adding one to watchzones — out of
-// scope for this bead (tc-w825j.4 stays entirely within
-// internal/applications/). The IsValidFilterKey checks in the test below at
+// pulled in programmatically without adding one to watchzones. The
+// IsValidFilterKey checks in the test below at
 // least tie this file to the real FilterKey constants, so a renamed or
 // removed key fails loudly instead of silently drifting. If watchzones ever
 // grows an exported per-key expression accessor, these two constants should
@@ -40,8 +39,8 @@ const (
 
 // TestPostgresStore_MatchesExpression proves MatchesExpression evaluates real
 // Postgres full-text semantics correctly against a handful of the pre-canned
-// watch-zone filter catalog's own validated expressions (GH#1090, epic
-// tc-w825j) and real example descriptions.
+// watch-zone filter catalog's own validated expressions and real example
+// descriptions.
 func TestPostgresStore_MatchesExpression(t *testing.T) {
 	if !watchzones.IsValidFilterKey(string(watchzones.FilterKeyLoftExtension)) {
 		t.Fatalf("watchzones.FilterKeyLoftExtension is no longer a valid catalog key")
