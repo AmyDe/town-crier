@@ -8,30 +8,12 @@ public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
   public let radiusMetres: Double
   public let pushEnabled: Bool
   public let emailInstantEnabled: Bool
-  /// Whether this zone currently exceeds the user's effective tier quota and
-  /// has stopped generating new notifications. Purely a server-derived
-  /// display flag — never computed or mutated by the client.
-  /// A paused zone remains fully listed, editable, and deletable; it is
-  /// automatically revived (server-side, with no client action) once the
-  /// user upgrades or deletes older zones.
+  /// Server-derived display flag: the zone exceeds the user's tier quota and
+  /// generates no new notifications. The client never computes it.
   public let paused: Bool
-  /// The custom-shape polygon for this zone, or `nil` for a circle.
-  /// `centre`/`radiusMetres` remain always-present: for a
-  /// custom-shape zone they hold the polygon's derived centroid and
-  /// enclosing radius, so every existing circle-shaped read path (map
-  /// centring, list rows, distance sort) keeps working unchanged. A
-  /// non-nil boundary is the sole "this is a custom shape" discriminator —
-  /// see ``isCustomShape``.
+  /// `nil` for a circle. For a custom shape, `centre`/`radiusMetres` hold the
+  /// polygon's centroid and enclosing radius.
   public let boundary: WatchZoneBoundary?
-  /// The pre-canned notification filter applied to this zone, or `nil` for
-  /// unfiltered. An opaque key round-tripped verbatim to/from the API --
-  /// display copy for a given key is resolved
-  /// separately from the fetched ``FilterCatalogEntry`` catalog, not stored
-  /// or validated here. Mirrors `boundary`'s optionality -- there is no
-  /// `.none`/`.unfiltered` sentinel, so "no filter" is never representable
-  /// two different ways. Pro-tier only; see
-  /// ``WatchZoneLimits/allowsWatchZoneFilter``.
-  public let filterKey: String?
 
   public init(
     id: WatchZoneId = WatchZoneId(),
@@ -41,8 +23,7 @@ public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
     pushEnabled: Bool = true,
     emailInstantEnabled: Bool = true,
     paused: Bool = false,
-    boundary: WatchZoneBoundary? = nil,
-    filterKey: String? = nil
+    boundary: WatchZoneBoundary? = nil
   ) throws {
     let trimmed = name.trimmingCharacters(in: .whitespaces)
     guard !trimmed.isEmpty else {
@@ -59,7 +40,6 @@ public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
     self.emailInstantEnabled = emailInstantEnabled
     self.paused = paused
     self.boundary = boundary
-    self.filterKey = filterKey
   }
 
   /// Convenience initializer that derives the zone name from a validated postcode.
@@ -71,8 +51,7 @@ public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
     pushEnabled: Bool = true,
     emailInstantEnabled: Bool = true,
     paused: Bool = false,
-    boundary: WatchZoneBoundary? = nil,
-    filterKey: String? = nil
+    boundary: WatchZoneBoundary? = nil
   ) throws {
     try self.init(
       id: id,
@@ -82,8 +61,7 @@ public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
       pushEnabled: pushEnabled,
       emailInstantEnabled: emailInstantEnabled,
       paused: paused,
-      boundary: boundary,
-      filterKey: filterKey
+      boundary: boundary
     )
   }
 

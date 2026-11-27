@@ -23,8 +23,7 @@ public final class APIWatchZoneRepository: WatchZoneRepository, Sendable {
       radiusMetres: zone.radiusMetres,
       pushEnabled: zone.pushEnabled,
       emailInstantEnabled: zone.emailInstantEnabled,
-      boundary: zone.boundary.map { GeoJSONPolygon(boundary: $0) },
-      filterKey: zone.filterKey
+      boundary: zone.boundary.map { GeoJSONPolygon(boundary: $0) }
     )
     do {
       let _: EmptyResponse = try await apiClient.request(.post("/v1/me/watch-zones", body: body))
@@ -61,8 +60,7 @@ public final class APIWatchZoneRepository: WatchZoneRepository, Sendable {
       radiusMetres: zone.radiusMetres,
       pushEnabled: zone.pushEnabled,
       emailInstantEnabled: zone.emailInstantEnabled,
-      boundary: zone.boundary.map { GeoJSONPolygon(boundary: $0) },
-      filterKey: zone.filterKey
+      boundary: zone.boundary.map { GeoJSONPolygon(boundary: $0) }
     )
     do {
       let _: EmptyResponse = try await apiClient.request(
@@ -111,24 +109,6 @@ public final class APIWatchZoneRepository: WatchZoneRepository, Sendable {
       throw error.toThrowableDomainError()
     }
   }
-
-  /// Fetches the pre-canned watch-zone filter catalog.
-  /// Anonymous server-side (`wiring.go`'s `anonymousPatterns`), but
-  /// `URLSessionAPIClient` doesn't differentiate authed vs anonymous
-  /// requests, so this reuses the same authenticated client as every other
-  /// call on this repository -- sending a bearer token the endpoint doesn't
-  /// require is harmless.
-  public func filterCatalog() async throws -> [FilterCatalogEntry] {
-    let result: FilterCatalogResponse
-    do {
-      result = try await apiClient.request(.get("/v1/watch-zones/filter-catalog"))
-    } catch let domainError as DomainError {
-      throw domainError
-    } catch {
-      throw error.toThrowableDomainError()
-    }
-    return result.filters.map { $0.toDomain() }
-  }
 }
 
 // MARK: - Request/Response DTOs
@@ -141,25 +121,11 @@ struct CreateWatchZoneRequest: Encodable, Sendable {
   let pushEnabled: Bool
   let emailInstantEnabled: Bool
   let boundary: GeoJSONPolygon?
-  /// Omitted from the payload when `nil` (default `Encodable` synthesis) --
-  /// create has no prior value to distinguish "leave alone" from, so
-  /// omission and explicit absence are the same thing. An opaque wire value
-  /// -- sent verbatim, never validated client-side.
-  let filterKey: String?
 }
 
-/// PATCH always sends every field, including `boundary` and `filterKey`:
-/// unlike a partial update, `update(_:)` always encodes the zone's complete
-/// desired state (see `APIWatchZoneRepository.update(_:)`), matching every
-/// other field on this request. A custom `encode(to:)` is required because
-/// Swift's synthesized `Encodable` conformance calls `encodeIfPresent` for
-/// `Optional` properties, which would omit `boundary`/`filterKey` from the
-/// payload entirely when `nil` rather than sending an explicit JSON `null`
-/// -- the server's PATCH handler (`decodeBoundaryUpdate`,
-/// `api-go/internal/watchzones/handler.go`) treats an absent key as "leave
-/// untouched" and an explicit `null` as "clear", so this distinction
-/// matters: a circle zone (`boundary == nil`) and an unfiltered zone
-/// (`filterKey == nil`) always need the latter.
+/// The server's PATCH handler reads an absent `boundary` as "leave untouched"
+/// and an explicit `null` as "clear". Synthesized `Encodable` omits `nil`
+/// optionals, so `encode(to:)` is custom.
 struct UpdateWatchZoneRequest: Encodable, Sendable {
   let name: String
   let latitude: Double
@@ -168,11 +134,9 @@ struct UpdateWatchZoneRequest: Encodable, Sendable {
   let pushEnabled: Bool
   let emailInstantEnabled: Bool
   let boundary: GeoJSONPolygon?
-  let filterKey: String?
 
   private enum CodingKeys: String, CodingKey {
-    case name, latitude, longitude, radiusMetres, pushEnabled, emailInstantEnabled, boundary,
-      filterKey
+    case name, latitude, longitude, radiusMetres, pushEnabled, emailInstantEnabled, boundary
   }
 
   func encode(to encoder: Encoder) throws {
@@ -183,9 +147,7 @@ struct UpdateWatchZoneRequest: Encodable, Sendable {
     try container.encode(radiusMetres, forKey: .radiusMetres)
     try container.encode(pushEnabled, forKey: .pushEnabled)
     try container.encode(emailInstantEnabled, forKey: .emailInstantEnabled)
-    // `encode`, not `encodeIfPresent`: see the type's doc comment.
     try container.encode(boundary, forKey: .boundary)
-    try container.encode(filterKey, forKey: .filterKey)
   }
 }
 
@@ -242,22 +204,11 @@ struct WatchZoneSummaryDTO: Decodable, Sendable {
   let radiusMetres: Double
   let pushEnabled: Bool
   let emailInstantEnabled: Bool
-  /// Server-derived: true when this zone currently exceeds the user's
-  /// effective tier quota and has stopped generating notifications. Absent
-  /// on responses predating this field, so it hydrates to
-  /// `false` (an unpaused zone) — same forward/back-compat treatment as
-  /// `pushEnabled`/`emailInstantEnabled` above.
+  /// Server-derived: true when this zone exceeds the user's tier quota and has
+  /// stopped generating notifications. Hydrates to `false` when absent.
   let paused: Bool
-  /// The custom-shape polygon boundary, or `nil` for a circle zone.
-  /// Absent on responses predating this field, so it hydrates to `nil` (a
-  /// circle) — same back-compat treatment as `paused` above.
+  /// `nil` (including when absent) means a circle zone.
   let boundary: GeoJSONPolygon?
-  /// The pre-canned notification filter applied to this zone, or `nil` for
-  /// unfiltered. Absent on responses predating this field hydrates
-  /// to `nil` -- same back-compat treatment as `boundary` above. Decoded as
-  /// an opaque `String?`: any value round-trips
-  /// verbatim, recognised by this build's fetched catalog or not.
-  let filterKey: String?
 
   init(
     id: String,
@@ -268,8 +219,7 @@ struct WatchZoneSummaryDTO: Decodable, Sendable {
     pushEnabled: Bool = true,
     emailInstantEnabled: Bool = true,
     paused: Bool = false,
-    boundary: GeoJSONPolygon? = nil,
-    filterKey: String? = nil
+    boundary: GeoJSONPolygon? = nil
   ) {
     self.id = id
     self.name = name
@@ -280,7 +230,6 @@ struct WatchZoneSummaryDTO: Decodable, Sendable {
     self.emailInstantEnabled = emailInstantEnabled
     self.paused = paused
     self.boundary = boundary
-    self.filterKey = filterKey
   }
 
   init(from decoder: Decoder) throws {
@@ -293,17 +242,13 @@ struct WatchZoneSummaryDTO: Decodable, Sendable {
     self.pushEnabled = try container.decodeIfPresent(Bool.self, forKey: .pushEnabled) ?? true
     self.emailInstantEnabled =
       try container.decodeIfPresent(Bool.self, forKey: .emailInstantEnabled) ?? true
-    // Absent (older API/back-compat) hydrates to false (not paused).
     self.paused = try container.decodeIfPresent(Bool.self, forKey: .paused) ?? false
-    // Absent (older API/back-compat, or a plain circle zone) hydrates to nil.
     self.boundary = try container.decodeIfPresent(GeoJSONPolygon.self, forKey: .boundary)
-    // Opaque key: round-tripped verbatim, no enum-backed validation.
-    self.filterKey = try container.decodeIfPresent(String.self, forKey: .filterKey)
   }
 
   private enum CodingKeys: String, CodingKey {
     case id, name, latitude, longitude, radiusMetres
-    case pushEnabled, emailInstantEnabled, paused, boundary, filterKey
+    case pushEnabled, emailInstantEnabled, paused, boundary
   }
 
   func toDomain() throws -> WatchZone {
@@ -317,26 +262,7 @@ struct WatchZoneSummaryDTO: Decodable, Sendable {
       pushEnabled: pushEnabled,
       emailInstantEnabled: emailInstantEnabled,
       paused: paused,
-      boundary: domainBoundary,
-      filterKey: filterKey
+      boundary: domainBoundary
     )
-  }
-}
-
-/// Response envelope for `GET /v1/watch-zones/filter-catalog`: a named
-/// wrapper object, matching this codebase's existing
-/// list-shaped response convention (e.g. `ListWatchZonesResponse`'s
-/// `zones`), not a bare array.
-struct FilterCatalogResponse: Decodable, Sendable {
-  let filters: [FilterCatalogEntryDTO]
-}
-
-struct FilterCatalogEntryDTO: Decodable, Sendable {
-  let key: String
-  let displayName: String
-  let description: String
-
-  func toDomain() -> FilterCatalogEntry {
-    FilterCatalogEntry(key: key, displayName: displayName, description: description)
   }
 }
