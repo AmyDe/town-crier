@@ -43,9 +43,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
   @Published private(set) var selectedZone: WatchZone?
   /// Distinct unread applications visible in the current zone. Derived from
   /// the loaded `applications` array so the chip auto-tracks zone switches
-  /// and Mark-All-Read refetches without an extra round-trip. Replaces the
-  /// previous `notification-state.totalUnreadCount` (global event count)
-  /// wiring so the chip aligns with what each zone actually shows.
+  /// and Mark-All-Read refetches without an extra round-trip.
   public var unreadCount: Int {
     applications.filter { $0.latestUnreadEvent != nil }.count
   }
@@ -84,10 +82,8 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
   var zone: WatchZone?
   /// Re-entrancy guard for ``loadApplications()``. A single user action can
   /// trigger the load repeatedly — `.task` firing alongside `.refreshable`, a
-  /// scenePhase change, or the view re-appearing — and each unguarded call
-  /// previously spawned a duplicate fetch. SRE telemetry caught the same
-  /// request firing 3-6 times within seconds, all cancelled (HTTP 499). While
-  /// one load is in flight, further calls short-circuit.
+  /// scenePhase change, or the view re-appearing. While one load is in
+  /// flight, further calls short-circuit.
   private var isLoadInFlight = false
   /// Continuation token for the next server page, or `nil` when no more pages
   /// exist (the last page omits `X-Next-Cursor`) or the active sort is
@@ -98,7 +94,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
   /// The sort the currently-loaded `applications` were fetched under. Lets a
   /// sort change decide whether a refetch is needed (server sorts and any
   /// transition away from one reload; a client→client switch only re-sorts in
-  /// memory, as before).
+  /// memory).
   var loadedSort: ApplicationsSort?
   /// The filter the currently-loaded `applications` were fetched under. Lets a
   /// filter change short-circuit when it would not change the query. Set
@@ -132,8 +128,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
 
   /// True when the zone picker should render — i.e. the user has more than one
   /// real watch zone to choose between. Single-zone users have no meaningful
-  /// choice; the synthetic 'All' chip that previously kept the picker visible
-  /// at one zone was retired alongside the dedicated Saved tab.
+  /// choice.
   public var showZonePicker: Bool {
     zones.count > 1
   }
@@ -330,15 +325,11 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     onApplicationSelected?(id)
   }
 
-  // `markReadOnOpen(_:)` and `waitForPendingMarkRead()` live in the
-  // `+TapToRead` extension file (split out to keep this file under
-  // SwiftLint's `file_length` ceiling).
-
   /// Stamps the watermark to "now" via the notification-state repository,
   /// then refetches the active zone so each row's `latestUnreadEvent` drops
   /// to `nil` (which in turn zeros `unreadCount` via the computed property).
   /// Repository failures are swallowed — a subsequent fetch will reconcile
-  /// any drift. Spec decision #8 (silent optimistic).
+  /// any drift.
   ///
   /// When backed by an `OfflineAwareRepository`, every cached zone is
   /// invalidated before the refetch — mark-all-read is a global mutation

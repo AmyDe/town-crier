@@ -15,8 +15,7 @@ public struct PlanningApplication: Equatable, Identifiable, Sendable {
   /// Per-row unread descriptor surfaced by the per-zone applications endpoint.
   /// `nil` when the application has no unread notification for the user
   /// (server-side `read_at IS NULL`) — drives the muted styling of the row's
-  /// status pill on the Applications screen. See ADR 0035
-  /// (`docs/adr/0035-per-application-notification-read-state.md`).
+  /// status pill on the Applications screen.
   public let latestUnreadEvent: LatestUnreadEvent?
 
   public init(
@@ -45,9 +44,7 @@ public struct PlanningApplication: Equatable, Identifiable, Sendable {
     self.latestUnreadEvent = latestUnreadEvent
   }
 
-  /// Returns a copy with `latestUnreadEvent` replaced. Used to optimistically
-  /// clear a row's unread badge on tap-to-read (ADR 0035) without rebuilding
-  /// every field, and by unread-UI tests to flip the read/unread bit.
+  /// Returns a copy with `latestUnreadEvent` replaced.
   public func withLatestUnreadEvent(_ event: LatestUnreadEvent?) -> PlanningApplication {
     PlanningApplication(
       id: id,

@@ -164,7 +164,7 @@ public struct ApplicationDetailView: View {
     }
   }
 
-  // MARK: - Sign-Up CTA (GH#879 Phase 2)
+  // MARK: - Sign-Up CTA
 
   /// Replaces the Save toolbar affordance for an anonymously-viewed
   /// application. Reuses ``AccountCTABanner/Copy`` so the wording never drifts

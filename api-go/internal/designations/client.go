@@ -45,19 +45,16 @@ type Client struct {
 	http    *http.Client
 }
 
-// NewClient builds a provider over the given base URL and shared HTTP client.
-// A shallow copy of httpClient is taken so the caller's client is not mutated;
-// CheckRedirect is set on the copy to refuse any redirect whose target host
-// differs from the configured base host (defense-in-depth SSRF hardening).
-// Returns an error if baseURL cannot be parsed.
+// NewClient builds a provider over baseURL and a shallow copy of httpClient (the
+// caller's client is not mutated) whose CheckRedirect refuses any redirect to a
+// different host (SSRF hardening). Returns an error if baseURL cannot be parsed.
 func NewClient(baseURL string, httpClient *http.Client) (*Client, error) {
 	trimmed := strings.TrimRight(baseURL, "/")
 	u, err := url.Parse(trimmed)
 	if err != nil {
 		return nil, fmt.Errorf("designations: parse base URL: %w", err)
 	}
-	configuredHost := u.Host // host:port or bare host; must match exactly
-	// Copy by value so the caller's shared client is never mutated.
+	configuredHost := u.Host
 	hc := *httpClient
 	hc.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 		if req.URL.Host != configuredHost {

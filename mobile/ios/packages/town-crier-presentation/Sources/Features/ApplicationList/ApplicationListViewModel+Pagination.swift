@@ -1,13 +1,10 @@
 import Foundation
 import TownCrierDomain
 
-/// Infinite-scroll pagination for the watch-zone list. Split out of
-/// `ApplicationListViewModel` to keep that file under SwiftLint's `file_length`
-/// ceiling. Every UI sort is server-driven now — distance/newest/oldest
-/// (slice 1), status (slice 2) and recent-activity (slice 3, #692) — so the
-/// server owns the ordering and the list follows `X-Next-Cursor` to the end for
-/// all of them. The `serverOrder == nil` fallback below is dormant defensive
-/// plumbing kept generic should a future client-only sort ever be added.
+/// Infinite-scroll pagination for the watch-zone list. Every UI sort is
+/// server-driven, so the list follows `X-Next-Cursor` to the end for all of
+/// them. The `serverOrder == nil` fallback below is dormant defensive plumbing
+/// for a possible future client-only sort.
 extension ApplicationListViewModel {
 
   /// Loads the active zone's first page in the server-ordered, cursor-paged way:

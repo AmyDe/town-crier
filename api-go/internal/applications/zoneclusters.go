@@ -36,8 +36,7 @@ type PlanningApplicationID struct {
 //     ONLY for an unsplittable multi-member cell — one whose member-point extent
 //     has already collapsed below the finest (zoom-20) grid cell, so no further
 //     zoom could separate the pins. For every splittable cell it is nil and the
-//     wire field is omitted (omitempty), leaving today's "tap to zoom in"
-//     behaviour untouched.
+//     wire field is omitted (omitempty), so the client keeps "tap to zoom in".
 type Cluster struct {
 	Latitude     float64                 `json:"latitude"`
 	Longitude    float64                 `json:"longitude"`

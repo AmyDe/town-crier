@@ -6,12 +6,8 @@ import uk.towncrierapp.domain.watchzones.WatchZoneId
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * In-memory, process-lifetime [ApplicationCacheStore] — no persistence, no
- * TTL logic of its own (that policy lives entirely in
- * [uk.towncrierapp.domain.applications.OfflineAwareRepository], which is what
- * lets this be a plain keyed map). A `ConcurrentHashMap` is enough
- * concurrency safety for a handful of zone-keyed reads/writes; no explicit
- * locking is warranted.
+ * In-memory, process-lifetime [ApplicationCacheStore]. TTL policy lives in
+ * [uk.towncrierapp.domain.applications.OfflineAwareRepository].
  */
 public class InMemoryApplicationCacheStore : ApplicationCacheStore {
     private val entries = ConcurrentHashMap<WatchZoneId, CachedApplicationPage>()

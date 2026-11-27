@@ -4,42 +4,18 @@
   import TownCrierDomain
 
   /// A UIKit `MKMapView` wrapped for SwiftUI that renders the anonymous map's
-  /// server-computed cluster aggregates for the current viewport (GH#924
-  /// Phase 2) — 1:1 like the authenticated map's `ClusteredMapView`. The
-  /// device holds only the handful of cells on screen — not every application
-  /// in the radius circle — so panning and zooming stay smooth. On a region
-  /// change it tells the ViewModel (debounced ~250ms) to refetch clusters for
-  /// the new visible rect, exactly like `ClusteredMapView`.
+  /// server-computed cluster aggregates for the current viewport, 1:1 like the
+  /// authenticated map's `ClusteredMapView`. On a region change it tells the
+  /// ViewModel (debounced ~250ms) to refetch clusters for the new visible rect.
+  /// It uses no MapKit auto-clustering identifier.
   ///
-  /// GH#924 Phase 2 superseded the previous approach: near-point returned at
-  /// most 200 individual points, clustered on-device via MapKit's
-  /// `clusteringIdentifier` (`MKClusterAnnotation`) — correct for a small,
-  /// truncated set, but that truncation silently hid applications outside the
-  /// nearest 200. This view now renders server aggregates directly, with no
-  /// MapKit auto-clustering identifier at all (which also kills the stray
-  /// "+N more" MapKit-synthesised titles).
-  ///
-  /// GH#879 Phase 4 crash fix (PRESERVED — do not remove): live simulator
-  /// verification found a reproducible `SIGABRT` inside MapKit's own deferred
-  /// clustering pass
-  /// (`-[MKMapView annotationContainer:requestAddingClusterForAnnotationViews:]`
-  /// → Objective-C message forwarding → `doesNotRecognizeSelector:`),
-  /// triggered by switching the active device-local zone (which replaces the
-  /// map's full annotation set) in combination with tab switches and a radius
-  /// drag, or by rapid zone-switch/tab cycling. `updateUIView` previously
-  /// mutated MapKit's annotations/overlay/camera SYNCHRONOUSLY and
-  /// re-entrantly every time any of several `@Published` properties changed
-  /// — which could land while MapKit's own `NSTimer`-driven clustering pass
-  /// from a PRIOR mutation was still pending, messaging annotation views that
-  /// were mid-rebuild. `Coordinator.scheduleUpdate(_:)` coalesces bursts of
-  /// `updateUIView` calls onto a single deferred application (one actor hop
-  /// later, via `Task { @MainActor in }`), reading the ViewModel's state
-  /// fresh when it runs — this breaks the direct re-entrant call chain and
-  /// collapses rapid churn to one mutation. The exact MapKit internal timing
-  /// this races against cannot be reproduced in `swift test` (no
-  /// `MKMapView`/`NSTimer` harness here, and this type is UIKit-only / has no
-  /// existing unit-test coverage) — verified via a dispatched simulator
-  /// re-run instead.
+  /// `Coordinator.scheduleUpdate(_:)` defers and coalesces `updateUIView`
+  /// mutations onto one later main-actor hop. Mutating annotations, overlay or
+  /// camera synchronously and re-entrantly crashed (`SIGABRT`) inside MapKit's
+  /// deferred clustering pass
+  /// (`-[MKMapView annotationContainer:requestAddingClusterForAnnotationViews:]`)
+  /// on rapid zone or tab switches. Do not remove it; the race cannot be
+  /// reproduced in `swift test`.
   @MainActor
   struct AnonymousClusteredMapView: UIViewRepresentable {
     /// Observed so `updateUIView` re-runs whenever the ViewModel publishes —
@@ -79,10 +55,7 @@
     }
 
     func updateUIView(_ mapView: MKMapView, context: Context) {
-      // Deferred + coalesced (GH#879 Phase 4 crash fix — see this file's
-      // header): mutating MapKit's annotation/overlay state SYNCHRONOUSLY
-      // and possibly re-entrantly from within `updateUIView` reproducibly
-      // crashed on-device inside MapKit's own deferred clustering pass.
+      // Deferred and coalesced to avoid a MapKit crash; see this file's header.
       let coordinator = context.coordinator
       let currentViewModel = viewModel
       coordinator.scheduleUpdate {
@@ -118,9 +91,7 @@
     final class Coordinator: NSObject, MKMapViewDelegate {
       private let viewModel: AnonymousMapViewModel
 
-      /// Guards ``scheduleUpdate(_:)``'s coalescing — see this file's header
-      /// for the crash this fixes. PRESERVED from GH#879 Phase 4 — do not
-      /// remove.
+      /// Guards ``scheduleUpdate(_:)``'s coalescing; see this file's header.
       private var hasScheduledUpdate = false
 
       /// The radius the camera is currently framed on, so a cluster refetch
@@ -134,16 +105,14 @@
 
       /// The pending debounced viewport refetch, cancelled and rescheduled on
       /// each region change so a pan/zoom flurry issues a single fetch when
-      /// it settles (GH#924 Phase 2 — mirrors `ClusteredMapView.Coordinator`;
-      /// GH#912 Phase 4 had removed this entirely for the near-point era,
-      /// where the fetch set was fixed at 200 points).
+      /// it settles.
       private var refetchTask: Task<Void, Never>?
 
       init(viewModel: AnonymousMapViewModel) {
         self.viewModel = viewModel
       }
 
-      // MARK: - Update coalescing (GH#879 Phase 4 crash fix — PRESERVED)
+      // MARK: - Update coalescing
 
       /// Coalesces bursts of `updateUIView` calls (a refetch, a selection, an
       /// active-zone switch — several `@Published` properties can change

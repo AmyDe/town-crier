@@ -80,9 +80,8 @@ func (s *PostgresStore) withNoNestLoop(ctx context.Context, fn func(pgx.Tx) erro
 
 // withKNNWalk runs fn in a read-only transaction with bitmap scans disabled. On a
 // dense zone the planner estimates fewer rows than the LIMIT and reads the whole
-// zone through a bitmap scan instead of walking the GiST index nearest-first;
-// queries inside fn must use pgx.QueryExecModeExec, because a cached generic plan
-// ignores SET LOCAL. Rows must be fully collected inside fn.
+// zone through a bitmap scan instead of walking the GiST index nearest-first.
+// The same QueryExecModeExec and collect-inside-fn rules as withNoNestLoop apply.
 func (s *PostgresStore) withKNNWalk(ctx context.Context, fn func(pgx.Tx) error) error {
 	return s.withLocalSetting(ctx, "SET LOCAL enable_bitmapscan = off", fn)
 }
