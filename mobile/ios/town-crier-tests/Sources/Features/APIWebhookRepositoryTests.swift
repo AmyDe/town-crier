@@ -141,6 +141,30 @@ struct APIWebhookRepositoryTests {
     #expect(webhook.lastFailureStatus == 500)
   }
 
+  @Test("fetch decodes an unknown format as nil and keeps the other fields")
+  func fetch_unknownFormat_isNil() async throws {
+    let (sut, _) = makeSUT(statusCode: 200, body: webhookJSON(format: "carrier-pigeon"))
+
+    let webhook = try #require(try await sut.fetch())
+
+    #expect(webhook.format == nil)
+    #expect(webhook.url == "https://example.com/hook")
+    #expect(webhook.status == .disabled)
+    #expect(webhook.createdAt == date(1_795_701_600))
+    #expect(webhook.lastFailureReason == .httpStatus)
+    #expect(webhook.lastFailureStatus == 500)
+  }
+
+  @Test("fetch still rejects an unknown status")
+  func fetch_unknownStatus_throws() async {
+    let body = emptyHistoryJSON.replacingOccurrences(of: #""active""#, with: #""resting""#)
+    let (sut, _) = makeSUT(statusCode: 200, body: body)
+
+    await #expect(throws: DomainError.self) {
+      _ = try await sut.fetch()
+    }
+  }
+
   @Test("fetch returns nil on 404")
   func fetch_notFound_returnsNil() async throws {
     let (sut, _) = makeSUT(statusCode: 404, body: #"{"error":"webhook_not_found"}"#)
