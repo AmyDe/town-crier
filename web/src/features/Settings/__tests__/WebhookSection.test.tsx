@@ -66,6 +66,7 @@ describe('WebhookSection', () => {
       expect(within(format).getAllByRole('option').map((o) => o.textContent)).toEqual([
         'JSON',
         'Slack',
+        'Discord',
       ]);
       expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
       expect(screen.getByRole('link', { name: 'Read the webhook docs' })).toHaveAttribute(
@@ -107,6 +108,19 @@ describe('WebhookSection', () => {
 
       expect(clipboard.writeTextCalls).toEqual(['tcwh_created']);
       expect(await screen.findByRole('button', { name: 'Copied' })).toBeInTheDocument();
+    });
+
+    it('saves Discord as the format', async () => {
+      const user = userEvent.setup();
+      await renderSection();
+
+      await user.type(screen.getByLabelText('Webhook URL'), 'https://discord.example.com/hook');
+      await user.selectOptions(screen.getByLabelText('Format'), 'discord');
+      await user.click(screen.getByRole('button', { name: 'Save' }));
+
+      expect(spy.saveWebhookCalls).toEqual([
+        { url: 'https://discord.example.com/hook', format: 'discord' },
+      ]);
     });
 
     it('says how to copy by hand when the clipboard refuses', async () => {
@@ -196,6 +210,14 @@ describe('WebhookSection', () => {
 
       expect(screen.getByText('Switched off')).toBeInTheDocument();
       expect(screen.getByText(text)).toBeInTheDocument();
+    });
+
+    it('preselects a loaded Discord format', async () => {
+      spy.fetchWebhookResult = activeWebhook({ format: 'discord' });
+
+      await renderSection();
+
+      expect(screen.getByLabelText('Format')).toHaveValue('discord');
     });
 
     it('saves an edited URL and format', async () => {
@@ -291,6 +313,18 @@ describe('WebhookSection', () => {
       for (const name of ['Save', 'Send test event', 'Rotate secret']) {
         expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
       }
+    });
+
+    it.each([
+      ['json', 'JSON'],
+      ['slack', 'Slack'],
+      ['discord', 'Discord'],
+    ] as const)('names the %s format', async (format, name) => {
+      spy.fetchWebhookResult = activeWebhook({ format, paused: true });
+
+      await renderSection('Free');
+
+      expect(screen.getByText(name)).toBeInTheDocument();
     });
 
     it.each<Partial<Webhook>>([
