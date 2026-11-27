@@ -407,7 +407,7 @@ func TestDrain_SixthFailedAttemptGivesUpTheRow(t *testing.T) {
 
 func TestDrain_ReadsAtMost100RowsPerEndpoint(t *testing.T) {
 	t.Parallel()
-	for _, format := range []Format{FormatJSON, FormatSlack} {
+	for _, format := range []Format{FormatJSON, FormatSlack, FormatDiscord} {
 		t.Run(string(format), func(t *testing.T) {
 			t.Parallel()
 			fx := newDrainFixture()
@@ -468,6 +468,39 @@ func TestDrain_SlackSendsOneSummary(t *testing.T) {
 	}
 }
 
+func TestDrain_DiscordSendsOneSummary(t *testing.T) {
+	t.Parallel()
+	fx := newDrainFixture()
+	fx.store.addEndpoint("e1", FormatDiscord)
+	ids := make([]string, 0, 13)
+	for i := range 13 {
+		ids = append(ids, fmt.Sprintf("d%02d", i))
+	}
+	fx.store.addRows(t, "e1", ids...)
+
+	got := fx.drain(t.Context())
+
+	if got != (DrainResult{Endpoints: 1, Delivered: 13}) {
+		t.Errorf("result = %+v", got)
+	}
+	if len(fx.sender.sent) != 1 {
+		t.Fatalf("messages = %d, want 1", len(fx.sender.sent))
+	}
+	msg := fx.sender.sent[0]
+	if msg.EventID != "d00" || msg.EventType != EventApplicationNew {
+		t.Errorf("event = %s %s, want the oldest row", msg.EventID, msg.EventType)
+	}
+	text := decodeDiscord(t, msg.Body).Content
+	if !strings.HasPrefix(text, "**Town Crier: 13 planning updates**\n") ||
+		!strings.HasSuffix(text, "\n…and 3 more in the Town Crier app") || strings.Count(text, "• ") != 10 ||
+		strings.Index(text, "ref-d00") > strings.Index(text, "ref-d09") {
+		t.Errorf("content = %q", text)
+	}
+	for _, id := range ids {
+		assertRow(t, fx.store, id, "delivered", 1)
+	}
+}
+
 func TestDrain_SlackFailureCountsEveryRow(t *testing.T) {
 	t.Parallel()
 	fx := newDrainFixture()
@@ -517,6 +550,7 @@ func TestDrain_GoneDisablesAtOnce(t *testing.T) {
 		{"first json send", FormatJSON, "d1"},
 		{"json send after a success", FormatJSON, "d2"},
 		{"slack summary", FormatSlack, "d1"},
+		{"discord summary", FormatDiscord, "d1"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -540,7 +574,7 @@ func TestDrain_GoneDisablesAtOnce(t *testing.T) {
 				t.Errorf("status = %s", after.Status)
 			}
 			wantAttempts := 0
-			if tc.format == FormatSlack {
+			if tc.format != FormatJSON {
 				wantAttempts = 1
 			}
 			assertRow(t, fx.store, "d3", "failed", wantAttempts)
@@ -679,7 +713,7 @@ func (c *cancelOnDisable) DisableEndpoint(ctx context.Context, id, url string, r
 
 func TestDrain_CancelledContextCountsNothing(t *testing.T) {
 	t.Parallel()
-	for _, format := range []Format{FormatJSON, FormatSlack} {
+	for _, format := range []Format{FormatJSON, FormatSlack, FormatDiscord} {
 		t.Run(string(format), func(t *testing.T) {
 			t.Parallel()
 			ctx, cancel := context.WithCancel(t.Context())
