@@ -167,7 +167,7 @@ public enum DomainError: Error, Equatable, Sendable {
     case .webhookURLInvalid:
       return "Enter a public https address. Only port 443 works."
     case .webhookFormatInvalid:
-      return "Choose JSON or Slack."
+      return "Choose JSON, Slack or Discord."
     case .webhookRequiresPro:
       return "Webhooks need a Pro subscription."
     case .webhookTestCooldown:

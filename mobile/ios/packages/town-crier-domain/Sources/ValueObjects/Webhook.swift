@@ -45,6 +45,7 @@ public struct Webhook: Equatable, Sendable {
 public enum WebhookFormat: String, CaseIterable, Sendable {
   case json
   case slack
+  case discord
 }
 
 /// Whether the server delivers to the webhook. Raw values are the wire values.
