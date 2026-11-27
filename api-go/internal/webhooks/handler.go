@@ -31,7 +31,7 @@ const (
 	urlInvalidMessage = "Enter a public https address. Only port 443 works."
 
 	formatInvalidCode    = "webhook_format_invalid"
-	formatInvalidMessage = "Choose JSON or Slack."
+	formatInvalidMessage = "Choose JSON, Slack or Discord."
 
 	testCooldownCode    = "webhook_test_cooldown"
 	testCooldownMessage = "Wait 10 seconds before you send another test."
