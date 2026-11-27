@@ -107,7 +107,7 @@ describe('WebhookDocsPage', () => {
       'no signature to check',
       'never ping anyone',
     ]) {
-      expect(section.textContent?.replaceAll('\u2019', "'")).toContain(expected);
+      expect(section.textContent).toContain(expected);
     }
   });
 
