@@ -45,15 +45,15 @@ export function WebhookDocsPage() {
       <h1 className={styles.title}>Webhooks</h1>
       <p className={styles.intro}>
         A webhook sends your Town Crier alerts to a URL you choose, as signed JSON, a Slack message
-        or a Discord message. Use it to feed a CRM, a spreadsheet, a team channel or your own code. Webhooks are
-        part of Pro, and each account can have one.
+        or a Discord message. Use it to feed a CRM, a spreadsheet, a team channel or your own code.
+        Webhooks are part of Pro, and each account can have one.
       </p>
 
       <Section title="Set up a webhook">
         <p>
           Sign in on the web, open <Link to="/settings">Settings</Link>, enter your URL, choose
-          JSON, Slack or Discord and save. We show your signing secret once, so copy it then. If you lose it,
-          rotate it to get a new one. The old one stops working.
+          JSON, Slack or Discord and save. We show your signing secret once, so copy it then. If
+          you lose it, rotate it to get a new one. The old one stops working.
         </p>
         <p>
           Send test event sends a made-up application to your URL straight away, with the type{' '}
@@ -173,7 +173,10 @@ export function WebhookDocsPage() {
             With JSON we send alerts one at a time, oldest first, up to 100 in each hourly run. At
             the first failure we stop, and try again on the next run.
           </li>
-          <li>With Slack or Discord, one failed message counts as a failed attempt for every alert in it.</li>
+          <li>
+            With Slack or Discord, one failed message counts as a failed attempt for every alert in
+            it.
+          </li>
           <li>Each alert gets up to 6 attempts. After that we give up on it.</li>
           <li>We delete delivery records after 7 days, whether they were sent or not.</li>
           <li>
