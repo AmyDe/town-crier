@@ -22,6 +22,7 @@ enum WebhookCopy {
   static let formatJSON = "JSON"
   static let formatSlack = "Slack"
   static let formatDiscord = "Discord"
+  static let formatOther = "Other"
   static let save = "Save"
 
   static let secretLabel = "Signing secret"
@@ -63,11 +64,12 @@ enum WebhookCopy {
   static let errorTest = "We couldn't send the test event. Try again in a moment."
   static let errorRotate = "We couldn't rotate the secret. Try again in a moment."
 
-  static func formatName(_ format: WebhookFormat) -> String {
+  static func formatName(_ format: WebhookFormat?) -> String {
     switch format {
     case .json: formatJSON
     case .slack: formatSlack
     case .discord: formatDiscord
+    case nil: formatOther
     }
   }
 

@@ -3,7 +3,8 @@ import Foundation
 /// The user's outbound webhook for alerts.
 public struct Webhook: Equatable, Sendable {
   public let url: String
-  public let format: WebhookFormat
+  /// `nil` means a format this app version does not know.
+  public let format: WebhookFormat?
   public let status: WebhookStatus
   /// Why the server switched the webhook off. `nil` when unknown or not switched off.
   public let disabledReason: WebhookDisabledReason?
@@ -18,7 +19,7 @@ public struct Webhook: Equatable, Sendable {
 
   public init(
     url: String,
-    format: WebhookFormat,
+    format: WebhookFormat?,
     status: WebhookStatus,
     disabledReason: WebhookDisabledReason?,
     isPaused: Bool,
