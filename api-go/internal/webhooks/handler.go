@@ -260,9 +260,12 @@ func testEventMessage(e Endpoint, eventID string, now time.Time) (Message, error
 	payload := BuildTestPayload(eventID, now)
 	var body []byte
 	var err error
-	if e.Format == FormatSlack {
+	switch e.Format {
+	case FormatSlack:
 		body, err = SlackBody([]Payload{payload})
-	} else {
+	case FormatDiscord:
+		body, err = DiscordBody([]Payload{payload})
+	default:
 		body, err = json.Marshal(payload)
 	}
 	if err != nil {

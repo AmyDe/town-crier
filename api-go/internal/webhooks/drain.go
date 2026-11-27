@@ -125,9 +125,12 @@ func (d *Drainer) drainEndpoint(ctx context.Context, e Endpoint) endpointRun {
 		d.logError(ctx, "webhook drain: load deliveries failed", e.ID, err)
 		return run
 	}
-	if e.Format == FormatSlack {
-		d.sendSlack(ctx, e, pending, &run)
-	} else {
+	switch e.Format {
+	case FormatSlack:
+		d.sendSummary(ctx, e, pending, SlackBody, &run)
+	case FormatDiscord:
+		d.sendSummary(ctx, e, pending, DiscordBody, &run)
+	default:
 		d.sendJSON(ctx, e, pending, &run)
 	}
 	d.recordRun(ctx, e, &run)
@@ -146,7 +149,9 @@ func (d *Drainer) sendJSON(ctx context.Context, e Endpoint, pending []Delivery, 
 	}
 }
 
-func (d *Drainer) sendSlack(ctx context.Context, e Endpoint, pending []Delivery, run *endpointRun) {
+func (d *Drainer) sendSummary(ctx context.Context, e Endpoint, pending []Delivery,
+	build func([]Payload) ([]byte, error), run *endpointRun,
+) {
 	payloads := make([]Payload, 0, len(pending))
 	sent := make([]Delivery, 0, len(pending))
 	var unreadable []string
@@ -166,9 +171,9 @@ func (d *Drainer) sendSlack(ctx context.Context, e Endpoint, pending []Delivery,
 	if len(sent) == 0 {
 		return
 	}
-	body, err := SlackBody(payloads)
+	body, err := build(payloads)
 	if err != nil {
-		d.logError(ctx, "webhook drain: build slack message failed", e.ID, err)
+		d.logError(ctx, "webhook drain: build summary message failed", e.ID, err)
 		return
 	}
 	ids := make([]string, len(sent))
