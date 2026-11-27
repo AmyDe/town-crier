@@ -16,7 +16,7 @@ public final class WebhookViewModel: ObservableObject, ErrorHandlingViewModel {
 
   @Published public private(set) var state: State = .loading
   @Published public var urlText = ""
-  @Published public var format: WebhookFormat = .json
+  @Published public var format: WebhookFormat? = .json
   // The server returns a secret only once, so it lives here and nowhere else.
   @Published public private(set) var revealedSecret: String?
   @Published public private(set) var testResult: WebhookTestResult?
@@ -47,7 +47,7 @@ public final class WebhookViewModel: ObservableObject, ErrorHandlingViewModel {
   }
 
   public var canSave: Bool {
-    !isBusy && !trimmedURL.isEmpty
+    !isBusy && !trimmedURL.isEmpty && format != nil
   }
 
   private var trimmedURL: String {
@@ -74,7 +74,7 @@ public final class WebhookViewModel: ObservableObject, ErrorHandlingViewModel {
   }
 
   public func save() async {
-    guard canSave else { return }
+    guard canSave, let format else { return }
     await perform(failureCopy: WebhookCopy.errorSave) {
       let result = try await repository.save(url: trimmedURL, format: format)
       show(result.webhook)

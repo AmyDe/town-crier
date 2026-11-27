@@ -5,7 +5,7 @@ enum WebhookCopy {
   static let title = "Webhooks"
 
   static let intro =
-    "Send your alerts to your own URL, as signed JSON or a Slack message. "
+    "Send your alerts to your own URL, as signed JSON, a Slack message or a Discord message. "
     + "They go out at the end of each hourly check."
   static let docsLink = "Read the webhook docs"
   static let docsURLString = "https://towncrierapp.uk/developers/webhooks"
@@ -21,6 +21,8 @@ enum WebhookCopy {
   static let formatLabel = "Format"
   static let formatJSON = "JSON"
   static let formatSlack = "Slack"
+  static let formatDiscord = "Discord"
+  static let formatOther = "Other"
   static let save = "Save"
 
   static let secretLabel = "Signing secret"
@@ -52,7 +54,7 @@ enum WebhookCopy {
     + "Your alerts still arrive in the app as normal."
 
   static let errorURLInvalid = "Enter a public https address. Only port 443 works."
-  static let errorFormatInvalid = "Choose JSON or Slack."
+  static let errorFormatInvalid = "Choose JSON, Slack or Discord."
   static let errorRequiresPro = "Webhooks need a Pro subscription."
   static let errorCooldown = "Wait 10 seconds before you send another test."
   static let errorNotFound = "That webhook no longer exists."
@@ -62,10 +64,12 @@ enum WebhookCopy {
   static let errorTest = "We couldn't send the test event. Try again in a moment."
   static let errorRotate = "We couldn't rotate the secret. Try again in a moment."
 
-  static func formatName(_ format: WebhookFormat) -> String {
+  static func formatName(_ format: WebhookFormat?) -> String {
     switch format {
     case .json: formatJSON
     case .slack: formatSlack
+    case .discord: formatDiscord
+    case nil: formatOther
     }
   }
 

@@ -24,12 +24,13 @@ struct APIWebhookRepositoryTests {
     return (APIWebhookRepository(apiClient: apiClient), transport)
   }
 
-  private func webhookJSON(lastFailureReason: String = "\"http_status\"", extra: String = "")
-    -> String {
+  private func webhookJSON(
+    format: String = "slack", lastFailureReason: String = "\"http_status\"", extra: String = ""
+  ) -> String {
     """
     {
       "url": "https://example.com/hook",
-      "format": "slack",
+      "format": "\(format)",
       "status": "disabled",
       "disabledReason": "failures",
       "paused": true,
@@ -140,6 +141,30 @@ struct APIWebhookRepositoryTests {
     #expect(webhook.lastFailureStatus == 500)
   }
 
+  @Test("fetch decodes an unknown format as nil and keeps the other fields")
+  func fetch_unknownFormat_isNil() async throws {
+    let (sut, _) = makeSUT(statusCode: 200, body: webhookJSON(format: "carrier-pigeon"))
+
+    let webhook = try #require(try await sut.fetch())
+
+    #expect(webhook.format == nil)
+    #expect(webhook.url == "https://example.com/hook")
+    #expect(webhook.status == .disabled)
+    #expect(webhook.createdAt == date(1_795_701_600))
+    #expect(webhook.lastFailureReason == .httpStatus)
+    #expect(webhook.lastFailureStatus == 500)
+  }
+
+  @Test("fetch still rejects an unknown status")
+  func fetch_unknownStatus_throws() async {
+    let body = emptyHistoryJSON.replacingOccurrences(of: #""active""#, with: #""resting""#)
+    let (sut, _) = makeSUT(statusCode: 200, body: body)
+
+    await #expect(throws: DomainError.self) {
+      _ = try await sut.fetch()
+    }
+  }
+
   @Test("fetch returns nil on 404")
   func fetch_notFound_returnsNil() async throws {
     let (sut, _) = makeSUT(statusCode: 404, body: #"{"error":"webhook_not_found"}"#)
@@ -173,6 +198,19 @@ struct APIWebhookRepositoryTests {
     #expect(json == ["url": "https://example.com/hook", "format": "slack"])
     #expect(result.secret == "whsec_abc")
     #expect(result.webhook.url == "https://example.com/hook")
+  }
+
+  @Test("save sends the discord wire value")
+  func save_discord_sendsWireValue() async throws {
+    let (sut, transport) = makeSUT(
+      statusCode: 200, body: webhookJSON(format: "discord"))
+
+    let result = try await sut.save(url: "https://example.com/hook", format: .discord)
+
+    let body = try #require(transport.requests.first?.httpBody)
+    let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: String])
+    #expect(json["format"] == "discord")
+    #expect(result.webhook.format == .discord)
   }
 
   @Test("save returns no secret for a replace")
