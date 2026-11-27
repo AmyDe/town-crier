@@ -29,8 +29,6 @@ const (
 
 func pgLatNorth(metres float64) float64 { return pgCentreLat + metres/pgMetresPerLat }
 
-// pgPtr returns a pointer to v. Used to populate the nullable pointer fields of
-// PlanningApplication in test fixtures.
 func pgPtr[T any](v T) *T { return &v }
 
 // newAppPGStore returns a Postgres-backed applications store over a truncated
@@ -595,10 +593,8 @@ func TestPostgresStore_GetByAuthorityAndName_DoesNotSurfaceFullFields(t *testing
 	}
 }
 
-// TestPostgresStore_RecentByAuthority orders by last_different DESC, bounds by
-// cap, and scopes to the authority.
-// TestPostgresStore_RecentByAuthority_OrdersByRealDateDescNullsLast proves the
-// #819 fix directly: ordering is GREATEST(decided_date, start_date) DESC NULLS
+// TestPostgresStore_RecentByAuthority_OrdersByRealDateDescNullsLast proves
+// ordering is GREATEST(decided_date, start_date) DESC NULLS
 // LAST, NOT last_different (a PlanIt re-index marker that can bump to "now" on
 // an old application and float it to the top). A stale-but-recently-reindexed
 // application (bumped LastDifferent, real dates from years ago) must sort
@@ -740,7 +736,7 @@ func TestPostgresStore_FindNearbyPage(t *testing.T) {
 }
 
 // TestPostgresStore_RecentNearPoint_OrdersByRealDateDescNullsLast proves
-// RecentNearPoint (GH#912 Phase 2, ?sort=recent) orders by RecentRealDateOrder —
+// RecentNearPoint (?sort=recent) orders by RecentRealDateOrder —
 // most-recently-decided, falling back to most-recently-submitted, with NULLS
 // LAST on both — while still applying the ST_DWithin radius filter, mirroring
 // TestPostgresStore_RecentByAuthority_OrdersByRealDateDescNullsLast but

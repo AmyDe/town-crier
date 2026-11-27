@@ -4,7 +4,7 @@ import TownCrierDomain
 extension Webhook {
   static func fixture(
     url: String = "https://example.com/hook",
-    format: WebhookFormat = .json,
+    format: WebhookFormat? = .json,
     status: WebhookStatus = .active,
     disabledReason: WebhookDisabledReason? = nil,
     paused: Bool = false,

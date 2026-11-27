@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
@@ -115,6 +116,27 @@ func TestIntegration_Webhooks_EndpointRoundTrip(t *testing.T) {
 	}
 	if err := s.Create(ctx, second); !errors.Is(err, ErrEndpointExists) {
 		t.Errorf("second endpoint: err = %v, want ErrEndpointExists", err)
+	}
+}
+
+func TestIntegration_Webhooks_FormatConstraint(t *testing.T) {
+	s, pool := newIntStore(t)
+	ctx := context.Background()
+	want, err := NewEndpoint(uuid.NewString(), "u1", "https://discord.com/api/webhooks/1/abc", FormatDiscord, intNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Create(ctx, want); err != nil {
+		t.Fatalf("create discord endpoint: %v", err)
+	}
+	if got := mustByUserID(t, s, "u1"); !reflect.DeepEqual(got, want) {
+		t.Errorf("round trip\n got %#v\nwant %#v", got, want)
+	}
+
+	_, err = pool.Exec(ctx, "UPDATE webhook_endpoints SET format = 'teams' WHERE id = $1", want.ID)
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "23514" || pgErr.ConstraintName != "webhook_endpoints_format_check" {
+		t.Errorf("unknown format: err = %v, want a violation of webhook_endpoints_format_check", err)
 	}
 }
 

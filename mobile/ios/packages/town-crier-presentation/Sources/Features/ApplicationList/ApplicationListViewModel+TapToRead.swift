@@ -1,9 +1,7 @@
 import Foundation
 import TownCrierDomain
 
-/// Per-application "tap to read" mark-read flow (ADR 0035). Split out of
-/// `ApplicationListViewModel` to keep that file under SwiftLint's
-/// `file_length` ceiling.
+/// Per-application "tap to read" mark-read flow (ADR 0035).
 extension ApplicationListViewModel {
 
   /// Fires a per-application mark-read when the opened row shows an unread

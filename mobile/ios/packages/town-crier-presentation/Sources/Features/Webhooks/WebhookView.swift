@@ -102,11 +102,7 @@ public struct WebhookView: View {
       .focused($isURLFocused)
       .submitLabel(.done)
       .onSubmit(save)
-      Picker(WebhookCopy.formatLabel, selection: $viewModel.format) {
-        ForEach(WebhookFormat.allCases, id: \.self) { format in
-          Text(WebhookCopy.formatName(format)).tag(format)
-        }
-      }
+      formatField
       Button(action: save) {
         Text(WebhookCopy.save)
       }
@@ -114,6 +110,34 @@ public struct WebhookView: View {
       .disabled(!viewModel.canSave)
       .alignmentGuide(.listRowSeparatorLeading) { dimensions in dimensions[.leading] }
       docsLink
+    }
+  }
+
+  @ViewBuilder
+  private var formatField: some View {
+    if viewModel.format == nil {
+      Menu {
+        ForEach(WebhookFormat.allCases, id: \.self) { format in
+          Button(WebhookCopy.formatName(format)) {
+            viewModel.format = format
+          }
+        }
+      } label: {
+        HStack {
+          SettingsRowStyling.settingLabel(WebhookCopy.formatLabel)
+          Spacer()
+          SettingsRowStyling.settingValue(WebhookCopy.formatName(viewModel.format))
+          Image(systemName: "chevron.up.chevron.down")
+            .font(TCTypography.caption)
+            .foregroundStyle(Color.tcTextSecondary)
+        }
+      }
+    } else {
+      Picker(WebhookCopy.formatLabel, selection: $viewModel.format) {
+        ForEach(WebhookFormat.allCases, id: \.self) { format in
+          Text(WebhookCopy.formatName(format)).tag(WebhookFormat?.some(format))
+        }
+      }
     }
   }
 

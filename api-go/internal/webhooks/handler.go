@@ -31,7 +31,7 @@ const (
 	urlInvalidMessage = "Enter a public https address. Only port 443 works."
 
 	formatInvalidCode    = "webhook_format_invalid"
-	formatInvalidMessage = "Choose JSON or Slack."
+	formatInvalidMessage = "Choose JSON, Slack or Discord."
 
 	testCooldownCode    = "webhook_test_cooldown"
 	testCooldownMessage = "Wait 10 seconds before you send another test."
@@ -260,9 +260,12 @@ func testEventMessage(e Endpoint, eventID string, now time.Time) (Message, error
 	payload := BuildTestPayload(eventID, now)
 	var body []byte
 	var err error
-	if e.Format == FormatSlack {
+	switch e.Format {
+	case FormatSlack:
 		body, err = SlackBody([]Payload{payload})
-	} else {
+	case FormatDiscord:
+		body, err = DiscordBody([]Payload{payload})
+	default:
 		body, err = json.Marshal(payload)
 	}
 	if err != nil {

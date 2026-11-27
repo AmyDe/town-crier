@@ -360,6 +360,30 @@ func TestHandler_PutLosingACreateRaceReplaces(t *testing.T) {
 	}
 }
 
+func TestHandler_PutSavesDiscord(t *testing.T) {
+	t.Parallel()
+	fx := newHandlerFixture()
+
+	rec := fx.do(t, "PUT", "/v1/me/webhook", `{"url":"https://discord.com/api/webhooks/1/abc","format":"discord"}`)
+
+	assertStatus(t, rec, 201)
+	if body := decodeBody(t, rec); body["format"] != "discord" {
+		t.Errorf("format = %v", body["format"])
+	}
+	if stored := fx.store.endpoint; stored == nil || stored.Format != FormatDiscord {
+		t.Errorf("stored = %v", stored)
+	}
+}
+
+func TestHandler_PutNamesEveryFormat(t *testing.T) {
+	t.Parallel()
+	rec := newHandlerFixture().do(t, "PUT", "/v1/me/webhook", `{"url":"https://hooks.example.com","format":"teams"}`)
+
+	if got := decodeBody(t, rec)["message"]; got != "Choose JSON, Slack or Discord." {
+		t.Errorf("message = %v", got)
+	}
+}
+
 func TestHandler_PutRejectsBadInput(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -508,6 +532,18 @@ func TestHandler_Test_SlackBody(t *testing.T) {
 
 	if got := slackSentText(t, fx.sender.sent[0]); got != "*Town Crier: test message*\nYour webhook works." {
 		t.Errorf("text = %q", got)
+	}
+}
+
+func TestHandler_Test_DiscordBody(t *testing.T) {
+	t.Parallel()
+	fx := newHandlerFixture()
+	fx.withEndpoint().Format = FormatDiscord
+
+	assertStatus(t, fx.do(t, "POST", "/v1/me/webhook/test", ""), 200)
+
+	if got := decodeDiscord(t, fx.sender.sent[0].Body).Content; got != "**Town Crier: test message**\nYour webhook works." {
+		t.Errorf("content = %q", got)
 	}
 }
 

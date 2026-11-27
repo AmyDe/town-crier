@@ -91,7 +91,6 @@ private struct WebhookDTO: Decodable, Sendable {
   func toDomain() throws -> Webhook {
     let formatter = ISO8601DateFormatter()
     guard
-      let format = WebhookFormat(rawValue: format),
       let status = WebhookStatus(rawValue: status),
       let createdAt = formatter.date(from: createdAt)
     else {
@@ -99,7 +98,7 @@ private struct WebhookDTO: Decodable, Sendable {
     }
     return Webhook(
       url: url,
-      format: format,
+      format: WebhookFormat(rawValue: format),
       status: status,
       disabledReason: disabledReason.flatMap(WebhookDisabledReason.init(rawValue:)),
       isPaused: paused,

@@ -84,6 +84,37 @@ struct WebhookViewModelTests {
     #expect(sut.format == .slack)
   }
 
+  @Test("a webhook with an unknown format selects no format and cannot be saved")
+  func load_unknownFormat_disablesSave() async {
+    let sut = await makeConfiguredSUT(.fixture(format: nil))
+
+    await sut.save()
+
+    #expect(sut.format == nil)
+    #expect(!sut.canSave)
+    #expect(repository.saveCalls.isEmpty)
+  }
+
+  @Test("picking a format enables Save and sends that format")
+  func save_afterPickingFormat_sendsIt() async {
+    let sut = await makeConfiguredSUT(.fixture(format: nil))
+    sut.format = .discord
+
+    #expect(sut.canSave)
+    await sut.save()
+
+    #expect(repository.saveCalls.map(\.format) == [.discord])
+  }
+
+  @Test("removing a webhook with an unknown format resets the form to JSON")
+  func confirmRemove_unknownFormat_resetsToJSON() async {
+    let sut = await makeConfiguredSUT(.fixture(format: nil))
+
+    await sut.confirmRemove()
+
+    #expect(sut.format == .json)
+  }
+
   @Test("load shows loadFailed on any other error")
   func load_failure_isLoadFailed() async {
     repository.fetchResult = .failure(DomainError.serverError(statusCode: 500, message: nil))
@@ -157,6 +188,18 @@ struct WebhookViewModelTests {
 
     #expect(repository.saveCalls.map(\.url) == ["https://example.com/hook"])
     #expect(repository.saveCalls.map(\.format) == [.slack])
+  }
+
+  @Test("save sends a chosen Discord format")
+  func save_discord() async {
+    let sut = makeSUT()
+    await sut.load()
+    sut.urlText = "https://example.com/hook"
+    sut.format = .discord
+
+    await sut.save()
+
+    #expect(repository.saveCalls.map(\.format) == [.discord])
   }
 
   @Test("save on create reveals the secret and shows the webhook")

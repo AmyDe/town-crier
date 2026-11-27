@@ -14,7 +14,7 @@ const (
 	slackTestMessage         = "*Town Crier: test message*\nYour webhook works."
 )
 
-var errNoPayloads = errors.New("webhooks: slack message needs at least one payload")
+var errNoPayloads = errors.New("webhooks: a summary message needs at least one payload")
 
 var slackEscaper = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;")
 

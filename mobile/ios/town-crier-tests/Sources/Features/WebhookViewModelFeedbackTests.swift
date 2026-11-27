@@ -31,7 +31,7 @@ struct WebhookViewModelFeedbackTests {
 
   nonisolated private static let codeErrors: [(DomainError, String)] = [
     (.webhookURLInvalid, "Enter a public https address. Only port 443 works."),
-    (.webhookFormatInvalid, "Choose JSON or Slack."),
+    (.webhookFormatInvalid, "Choose JSON, Slack or Discord."),
     (.webhookRequiresPro, "Webhooks need a Pro subscription."),
     (.webhookTestCooldown, "Wait 10 seconds before you send another test."),
     (.webhookNotFound, "That webhook no longer exists."),

@@ -23,52 +23,12 @@ public final class WatchZoneEditorViewModel: ObservableObject, EntitlementGating
   @Published public private(set) var isLoading = false
   @Published public internal(set) var error: DomainError?
 
-  /// Circle (radius-based) vs. custom polygon shape. Defaults to
-  /// `.circle`; populated from the edited zone's `boundary` when present.
   @Published public private(set) var shapeMode: WatchZoneShapeMode = .circle
 
-  /// The custom-shape ring being drawn, as an OPEN sequence of vertices in
-  /// drop order — NOT closed (the first vertex is not repeated at the end).
-  /// ``BoundaryDrawingMapView`` renders these as pins plus a preview
-  /// polygon/polyline; ``save()`` closes and validates the ring via
-  /// `WatchZoneBoundary.init` when ``shapeMode`` is `.custom`.
+  /// An OPEN ring in drop order (the first vertex is not repeated at the end).
+  /// ``save()`` closes and validates it.
   @Published public private(set) var boundaryVertices: [Coordinate] = []
 
-  /// The pre-canned notification filter selected for this zone, or `nil` for
-  /// unfiltered. An opaque `String?`, never
-  /// validated against ``filterCatalog`` client-side. Defaults to `nil`;
-  /// populated from the edited zone's `filterKey` when present. `internal(set)`
-  /// (not `private(set)`) so `selectFilterKey(_:)` can live in
-  /// `WatchZoneEditorViewModel+FilterCatalog.swift`, split out to keep this
-  /// file under SwiftLint's `file_length` ceiling -- mirrors `error`'s
-  /// `internal(set)` for the same cross-file-mutation reason.
-  @Published public internal(set) var selectedFilterKey: String?
-
-  /// The pre-canned watch-zone filter catalog, fetched once per editor
-  /// session and memoized for its lifetime -- see
-  /// ``loadFilterCatalogIfNeeded()``. Empty until the first successful
-  /// fetch; the picker reads this to render its rows instead of a
-  /// hardcoded list.
-  @Published public internal(set) var filterCatalog: [FilterCatalogEntry] = []
-
-  /// True while ``loadFilterCatalogIfNeeded()`` has an in-flight fetch --
-  /// drives the picker's `ProgressView` row.
-  @Published public internal(set) var isLoadingFilterCatalog = false
-
-  /// True when the most recent catalog fetch failed -- drives the picker's
-  /// "couldn't load, tap to retry" row. Never clears ``selectedFilterKey``:
-  /// a fetch failure only ever degrades display, never data.
-  @Published public internal(set) var filterCatalogLoadFailed = false
-
-  /// Set once ``loadFilterCatalogIfNeeded()`` succeeds, so a repeat call
-  /// within the same editor session is a no-op (memoization). Left `false`
-  /// after a failed fetch so a retry re-attempts.
-  var hasLoadedFilterCatalog = false
-
-  /// Mirrors `WatchZoneBoundary`'s geometric minimum (3 distinct vertices
-  /// are required to form a polygon) so the UI can gate "finish drawing"
-  /// without constructing (and discarding) a throwaway boundary just to
-  /// check the count.
   private static let minimumBoundaryVertexCount = 3
 
   /// Drives the in-editor subscription upsell sheet. Non-nil while the gate is
@@ -84,14 +44,8 @@ public final class WatchZoneEditorViewModel: ObservableObject, EntitlementGating
 
   public let isEditing: Bool
 
-  /// Whether the editor renders the pre-canned filter section. Defaults to `false`.
-  public let isFilterSectionVisible: Bool
-
   private let geocoder: PostcodeGeocoder
-  /// `internal` (not `private`) so `WatchZoneEditorViewModel+FilterCatalog.swift`
-  /// can call `filterCatalog()` -- split out to keep this file under
-  /// SwiftLint's `file_length` ceiling.
-  let repository: WatchZoneRepository
+  private let repository: WatchZoneRepository
   private let limits: WatchZoneLimits
   private let tier: SubscriptionTier
   private let existingId: WatchZoneId?
@@ -100,8 +54,7 @@ public final class WatchZoneEditorViewModel: ObservableObject, EntitlementGating
     geocoder: PostcodeGeocoder,
     repository: WatchZoneRepository,
     tier: SubscriptionTier,
-    editing zone: WatchZone? = nil,
-    isFilterSectionVisible: Bool = false
+    editing zone: WatchZone? = nil
   ) {
     self.geocoder = geocoder
     self.repository = repository
@@ -109,7 +62,6 @@ public final class WatchZoneEditorViewModel: ObservableObject, EntitlementGating
     self.tier = tier
     self.isEditing = zone != nil
     self.existingId = zone?.id
-    self.isFilterSectionVisible = isFilterSectionVisible
 
     if let zone {
       self.nameInput = zone.name
@@ -119,11 +71,8 @@ public final class WatchZoneEditorViewModel: ObservableObject, EntitlementGating
       self.emailInstantEnabled = zone.emailInstantEnabled
       if let boundary = zone.boundary {
         self.shapeMode = .custom
-        // The ring is closed (last vertex repeats the first); the editor
-        // works with the open sequence and re-closes on save.
         self.boundaryVertices = Array(boundary.vertices.dropLast())
       }
-      self.selectedFilterKey = zone.filterKey
     }
   }
 
@@ -269,25 +218,6 @@ public final class WatchZoneEditorViewModel: ObservableObject, EntitlementGating
     }
   }
 
-  // MARK: - Pre-canned filter (GH#1098)
-
-  /// Whether the current tier may set a pre-canned filter at all -- gates
-  /// showing the filter picker row in the View. Pro only; Free/Personal are
-  /// always `false`. Mirrors the server's
-  /// `SubscriptionTier.AllowsWatchZoneFilter()` via `WatchZoneLimits`.
-  public var canSetWatchZoneFilter: Bool {
-    limits.allowsWatchZoneFilter
-  }
-
-  /// True when editing an existing filtered zone on a tier that can no
-  /// longer set one (a downgraded Pro user who set a filter before
-  /// downgrading) -- same posture as ``isCustomShapeLocked``: the filter
-  /// stays applied and visible, never silently cleared, but the picker is
-  /// unreachable.
-  public var isFilterLocked: Bool {
-    selectedFilterKey != nil && !canSetWatchZoneFilter
-  }
-
   public func submitPostcode() async {
     isLoading = true
     error = nil
@@ -313,21 +243,10 @@ public final class WatchZoneEditorViewModel: ObservableObject, EntitlementGating
     isLoading = false
   }
 
-  /// Persists the zone. Returns `true` on success so the View dismisses only
-  /// when the save actually succeeded.
+  /// Persists the zone. Returns `true` only on success.
   ///
-  /// In `.circle` mode, behaves exactly as before: the geocoded coordinate
-  /// and (clamped) radius drive a circular zone with no boundary. In
-  /// `.custom` mode, ``boundaryVertices`` is closed and validated into a
-  /// `WatchZoneBoundary`, and the zone's `centre`/`radiusMetres` are derived
-  /// from the boundary's centroid/enclosing radius (per `WatchZone.boundary`'s
-  /// doc comment) so every existing circle-shaped read path keeps working.
-  ///
-  /// On a quota breach (`DomainError.insufficientEntitlement`) the editor routes
-  /// to the subscription paywall via `onUpgradeRequired` and leaves `error`
-  /// unset — the coordinator closes the sheet. All other failures (including an
-  /// invalid custom shape) set `error` so the inline error section is shown and
-  /// the editor stays open.
+  /// On `DomainError.insufficientEntitlement` it calls `onUpgradeRequired` and
+  /// leaves `error` unset. All other failures set `error`.
   @discardableResult
   public func save() async -> Bool {
     error = nil
@@ -364,8 +283,7 @@ public final class WatchZoneEditorViewModel: ObservableObject, EntitlementGating
         radiusMetres: radius,
         pushEnabled: pushEnabled,
         emailInstantEnabled: emailInstantEnabled,
-        boundary: boundary,
-        filterKey: selectedFilterKey
+        boundary: boundary
       )
       if isEditing {
         try await repository.update(zone)

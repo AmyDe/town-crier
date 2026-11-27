@@ -32,7 +32,7 @@ public interface PlanningApplicationRepository {
      * Anonymous by-slug detail fetch, used to resolve an inbound public share
      * link (`/a/{authoritySlug}/{ref...}`). The server route itself
      * requires no auth, but Android only ever calls it once the user is
-     * signed in (no signed-out detail view day-1 — see `PendingLinkHolder`).
+     * signed in (see `PendingLinkHolder`).
      * [authoritySlug] is the API-emitted slug and [ref] is the application's
      * full area-prefixed PlanIt name, verbatim (slashes preserved).
      */

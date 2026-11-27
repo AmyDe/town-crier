@@ -126,8 +126,7 @@ func TestSearchHandler_RejectsOversizeQuery(t *testing.T) {
 }
 
 // TestSearchHandler_ValidatesCoordinates proves lat/lon are mandatory
-// (GH#863 API section — the nearest-first redesign has no meaning without a
-// query point): a missing, empty, or unparseable lat or lon is a bodyless 400
+// (nearest-first ranking has no meaning without a query point): a missing, empty, or unparseable lat or lon is a bodyless 400
 // that never reaches the store, mirroring validSearchQuery/
 // resolveAuthorityParam's existing failure convention. A valid pair reaches
 // the store unchanged.
@@ -198,7 +197,7 @@ func TestSearchHandler_ForwardsCoordinatesToStore(t *testing.T) {
 
 // TestSearchHandler_ReturnsMappedResults proves the response envelope shape: the
 // reference field is planit_name (Name), NOT uid — echoing uid would break the
-// share-URL the client builds from it (tc-geq7h.3 decision 2026-07-05).
+// share-URL the client builds from it.
 func TestSearchHandler_ReturnsMappedResults(t *testing.T) {
 	t.Parallel()
 

@@ -12,8 +12,8 @@ import (
 
 // fakeNearPointStore is a hand-written nearPointStore fake that records the
 // last call's arguments and returns caller-configured results. It tracks the
-// distance path (FindNearbyPage) and the recent path (RecentNearPoint, GH#912
-// Phase 2) separately, so a test can assert which one the handler routed to.
+// distance path (FindNearbyPage) and the recent path (RecentNearPoint)
+// separately, so a test can assert which one the handler routed to.
 type fakeNearPointStore struct {
 	apps       []PlanningApplication
 	nextCursor string
@@ -170,7 +170,7 @@ func TestNearPointHandler_ResponseShape(t *testing.T) {
 }
 
 // TestNearPointHandler_AuthoritySlugResolved proves each result carries its
-// authority's resolved URL slug (GH#879 Phase 1) — the field ResultOf leaves
+// authority's resolved URL slug, the field ResultOf leaves
 // unset on the authed embeddings (watchzones/savedapplications), but which the
 // anonymous near-point endpoint needs so a client can build a share URL or a
 // by-slug detail fetch without ever holding a session.
@@ -420,8 +420,8 @@ func TestNearPointHandler_StoreError(t *testing.T) {
 // default (ok, normalised to nearPointSortDistance), "recent" is accepted, and
 // anything else is rejected (ok == false) so the handler can return a clean 400
 // — mirroring parseNearPointCoordinates/decodeNearPointCursor's reject-don't-guess
-// convention rather than the radius/limit clamp-don't-reject convention (GH#912
-// Phase 2: there is no sensible "nearest legal sort" to clamp an unknown value to).
+// convention rather than the radius/limit clamp-don't-reject convention: there
+// is no sensible "nearest legal sort" to clamp an unknown value to.
 func TestParseNearPointSort(t *testing.T) {
 	t.Parallel()
 
@@ -453,7 +453,7 @@ func TestParseNearPointSort(t *testing.T) {
 }
 
 // TestNearPointHandler_InvalidSortIsBadRequest proves an unrecognised ?sort=
-// value is a bodyless 400 and never reaches either store method (GH#912 Phase 2).
+// value is a bodyless 400 and never reaches either store method.
 func TestNearPointHandler_InvalidSortIsBadRequest(t *testing.T) {
 	t.Parallel()
 
@@ -493,8 +493,7 @@ func TestNearPointHandler_InvalidSortIsBadRequest(t *testing.T) {
 // TestNearPointHandler_SortDistanceIsDefaultAndByteIdentical proves an omitted
 // ?sort= and an explicit ?sort=distance both take the legacy FindNearbyPage path
 // and produce byte-identical response bodies — the acceptance requirement that
-// the API change is fully backward compatible for every existing caller (GH#912
-// Phase 2).
+// the endpoint stays backward compatible for every existing caller.
 func TestNearPointHandler_SortDistanceIsDefaultAndByteIdentical(t *testing.T) {
 	t.Parallel()
 
@@ -569,8 +568,7 @@ func TestNearPointHandler_SortRecentCallsRecentNearPoint(t *testing.T) {
 
 // TestNearPointHandler_SortRecentAppliesRadiusAndLimitClamp proves the radius
 // and limit clamps still apply on the recent path exactly as on the distance
-// path (GH#912 Phase 2: "radius clamp [100,5000]/default 2000 and limit clamp
-// [1,200]/default 100 unchanged").
+// path: radius clamp [100,5000]/default 2000 and limit clamp [1,200]/default 100.
 func TestNearPointHandler_SortRecentAppliesRadiusAndLimitClamp(t *testing.T) {
 	t.Parallel()
 

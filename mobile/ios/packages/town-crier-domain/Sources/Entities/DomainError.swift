@@ -25,13 +25,6 @@ public enum DomainError: Error, Equatable, Sendable {
   /// server's 10km ceiling (or the caller's tier cap). Mirrors the server's
   /// `boundary_too_large` (`400`).
   case invalidWatchZoneBoundaryTooLarge
-  /// A pre-canned watch-zone filter key is not recognised by the server's
-  /// catalog. Mirrors the server's `filter_key_invalid` (`400`). This is a
-  /// write-path (POST/PATCH) validation error only -- the client submits
-  /// `WatchZone.filterKey` as an opaque string with no client-side
-  /// validation against the fetched catalog, so this guards against a stale
-  /// client submitting a key the server no longer recognises.
-  case invalidWatchZoneFilterKey
   /// Saving a watch zone failed because the name duplicates an existing
   /// watch zone for the same user. Mirrors the server's `zone_name_taken`
   /// (`409`).
@@ -103,8 +96,6 @@ public enum DomainError: Error, Equatable, Sendable {
       .invalidWatchZoneBoundarySelfIntersecting, .invalidWatchZoneBoundaryOutOfBounds,
       .invalidWatchZoneBoundaryTooLarge:
       return "Invalid Area"
-    case .invalidWatchZoneFilterKey:
-      return "Invalid Filter"
     case .watchZoneNameTaken:
       return "Name Already Used"
     case .transactionAlreadyClaimed:
@@ -156,8 +147,6 @@ public enum DomainError: Error, Equatable, Sendable {
       return "A custom area must be drawn within the UK."
     case .invalidWatchZoneBoundaryTooLarge:
       return "This area is too large. Try drawing a smaller shape."
-    case .invalidWatchZoneFilterKey:
-      return "That filter isn't recognised. Please choose another one."
     case .watchZoneNameTaken:
       return "You already have a watch zone with this name. Choose a different name."
     case .transactionAlreadyClaimed:
@@ -167,7 +156,7 @@ public enum DomainError: Error, Equatable, Sendable {
     case .webhookURLInvalid:
       return "Enter a public https address. Only port 443 works."
     case .webhookFormatInvalid:
-      return "Choose JSON or Slack."
+      return "Choose JSON, Slack or Discord."
     case .webhookRequiresPro:
       return "Webhooks need a Pro subscription."
     case .webhookTestCooldown:
@@ -193,7 +182,7 @@ public enum DomainError: Error, Equatable, Sendable {
       .deviceLocalZoneLimitReached, .invalidWatchZoneBoundaryVertexCount,
       .invalidWatchZoneBoundaryDuplicateVertex, .invalidWatchZoneBoundarySelfIntersecting,
       .invalidWatchZoneBoundaryOutOfBounds, .invalidWatchZoneBoundaryTooLarge,
-      .invalidWatchZoneFilterKey, .watchZoneNameTaken, .transactionAlreadyClaimed,
+      .watchZoneNameTaken, .transactionAlreadyClaimed,
       .webhookURLInvalid, .webhookFormatInvalid, .webhookRequiresPro, .webhookNotFound:
       return false
     }

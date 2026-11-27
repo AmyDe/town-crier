@@ -279,9 +279,6 @@ public final class URLSessionAPIClient: Sendable {
       if body.error == "boundary_too_large" {
         throw DomainError.invalidWatchZoneBoundaryTooLarge
       }
-      if body.error == "filter_key_invalid" {
-        throw DomainError.invalidWatchZoneFilterKey
-      }
       if body.error == "webhook_url_invalid" {
         throw DomainError.webhookURLInvalid
       }

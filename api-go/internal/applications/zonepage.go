@@ -21,8 +21,7 @@ type Sort string
 
 const (
 	// SortDistance orders nearest-first via the KNN <-> operator. It is the
-	// default and the cheapest plan (GiST-served), preserving the legacy
-	// nearest-first browse behaviour.
+	// default and the cheapest plan (GiST-served).
 	SortDistance Sort = "distance"
 	// SortNewest orders by start_date DESC NULLS LAST, then the unique tiebreak
 	// (authority_code, planit_name).
@@ -355,7 +354,7 @@ func (s *PostgresStore) FindInZonePage(ctx context.Context, q InZoneQuery) ([]Pl
 	return s.findDateZonePage(ctx, q.Latitude, q.Longitude, q.RadiusMetres, q.Sort, q.Limit, c)
 }
 
-// findDistanceZonePage serves SortDistance: the legacy KNN nearest-first query
+// findDistanceZonePage serves SortDistance: the KNN nearest-first query
 // with a sort-aware (mode="distance") cursor on (distance, planit_name).
 func (s *PostgresStore) findDistanceZonePage(ctx context.Context, latitude, longitude, radiusMetres float64, limit int, c *pageCursor) ([]PlanningApplication, string, error) {
 	query, args := findNearbyFirstPageQuery, []any{longitude, latitude, radiusMetres, limit}

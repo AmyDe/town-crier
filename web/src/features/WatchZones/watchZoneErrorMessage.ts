@@ -10,8 +10,6 @@ const MESSAGES_BY_CODE: Readonly<Record<string, string>> = {
     'Drawing your own shape needs a paid plan. Use a circle instead, or upgrade.',
   boundary_invalid: 'That shape is not valid. Redraw it so its edges do not cross.',
   boundary_too_large: 'That shape is too big for your plan. Draw a smaller area.',
-  filter_requires_pro_tier: 'Filters are part of the Pro plan. Remove the filter, or upgrade.',
-  filter_key_invalid: 'We did not recognise that filter. Pick one from the list.',
 };
 
 export function watchZoneErrorMessage(err: unknown): string {

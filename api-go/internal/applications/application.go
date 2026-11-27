@@ -38,12 +38,12 @@ type PlanningApplication struct {
 	// The fields below are every remaining top-level PlanIt core field plus
 	// other_fields, minus the three DP-restricted keys. All are silent (see
 	// HasSameSilentFieldsAs): a change in only these updates the stored row
-	// without notification fan-out (ADR 0021, the reindex-flood guard).
-	Reference    *string    // PlanIt's own "reference" field (distinct from Name/UID)
-	Altid        []byte     // raw JSON: PlanIt's altid may be a string OR an array depending on scraper
-	AssociatedID []byte     // raw JSON: same string-or-array shape as Altid
-	LastChanged  *time.Time // PlanIt bookkeeping timestamp; excluded from both comparison methods
-	LastScraped  *time.Time // PlanIt bookkeeping timestamp; excluded from both comparison methods
+	// without notification fan-out.
+	Reference    *string // PlanIt's own "reference" field (distinct from Name/UID)
+	Altid        []byte  // raw JSON: PlanIt's altid may be a string OR an array depending on scraper
+	AssociatedID []byte  // raw JSON: same string-or-array shape as Altid
+	LastChanged  *time.Time
+	LastScraped  *time.Time
 	ScraperName  *string
 	OtherFields  map[string]any // PlanIt's other_fields map, verbatim minus applicant_name/agent_name/case_officer
 }

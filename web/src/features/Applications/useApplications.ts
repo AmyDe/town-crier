@@ -44,7 +44,7 @@ function persistSort(sort: ApplicationsSort): void {
   }
 }
 
-export interface UseApplicationsOptions {
+interface UseApplicationsOptions {
   readonly browsePort: ApplicationsBrowsePort;
   readonly zones: readonly WatchZoneSummary[];
   readonly notificationStateRepository: NotificationStateRepository;

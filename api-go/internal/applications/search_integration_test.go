@@ -163,14 +163,10 @@ func TestPostgresStore_Search_DescriptionFullTextMatch(t *testing.T) {
 	}
 }
 
-// TestPostgresStore_Search_RankingOrder proves the GH#863 redesign's core
-// behaviour change: ranking is distance-first, NOT tier-priority. Before
-// GH#863 this test asserted a fixed reference > address > description order
-// regardless of distance — that assertion is now WRONG BY DESIGN. A NEARBY
-// tier-2 match must outrank a FARTHER tier-1 match: byRef (tier 1, exact uid
-// match) sits 1000m away, byAddress (tier 2, address fuzzy match) sits only
-// 50m away — closer wins, even though it matched a lower-priority tier under
-// the old scheme.
+// TestPostgresStore_Search_RankingOrder proves ranking is distance-first, NOT
+// tier-priority. A NEARBY tier-2 match must outrank a FARTHER tier-1 match:
+// byRef (tier 1, exact uid match) sits 1000m away, byAddress (tier 2, address
+// fuzzy match) sits only 50m away, and closer wins.
 func TestPostgresStore_Search_RankingOrder(t *testing.T) {
 	store := newAppPGStore(t)
 	ctx := context.Background()

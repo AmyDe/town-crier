@@ -14,17 +14,18 @@ type Format string
 
 // Format values.
 const (
-	FormatJSON  Format = "json"
-	FormatSlack Format = "slack"
+	FormatJSON    Format = "json"
+	FormatSlack   Format = "slack"
+	FormatDiscord Format = "discord"
 )
 
-// ErrInvalidFormat reports a format other than json or slack.
+// ErrInvalidFormat reports a format other than json, slack or discord.
 var ErrInvalidFormat = errors.New("webhooks: invalid format")
 
 // ParseFormat returns the Format for its wire value, or ErrInvalidFormat.
 func ParseFormat(s string) (Format, error) {
 	switch f := Format(s); f {
-	case FormatJSON, FormatSlack:
+	case FormatJSON, FormatSlack, FormatDiscord:
 		return f, nil
 	default:
 		return "", ErrInvalidFormat

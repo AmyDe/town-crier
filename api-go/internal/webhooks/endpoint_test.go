@@ -59,12 +59,12 @@ func TestNewEndpoint(t *testing.T) {
 
 func TestParseFormat(t *testing.T) {
 	t.Parallel()
-	for _, in := range []string{"json", "slack"} {
+	for _, in := range []string{"json", "slack", "discord"} {
 		if got, err := ParseFormat(in); err != nil || string(got) != in {
 			t.Errorf("ParseFormat(%q) = %q, %v", in, got, err)
 		}
 	}
-	for _, in := range []string{"", "JSON", "teams"} {
+	for _, in := range []string{"", "JSON", "Discord", "teams"} {
 		if _, err := ParseFormat(in); !errors.Is(err, ErrInvalidFormat) {
 			t.Errorf("ParseFormat(%q) err = %v", in, err)
 		}

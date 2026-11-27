@@ -70,9 +70,7 @@ func (h *handler) getByAuthorityAndName(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Refresh-on-tap: if the requesting user has this application saved, heal
-	// their saved snapshot as a best-effort side effect. It must never fail the
-	// read, so errors are logged and swallowed.
+	// Refresh-on-tap is best-effort: failures are logged and never fail the read.
 	if h.refresher != nil {
 		if userID := auth.Subject(r.Context()); userID != "" {
 			if err := h.refresher.RefreshSnapshot(r.Context(), userID, app); err != nil {
@@ -82,7 +80,7 @@ func (h *handler) getByAuthorityAndName(w http.ResponseWriter, r *http.Request) 
 	}
 
 	result := ResultOf(app)
-	result.AuthoritySlug = h.authoritySlug(r.Context(), app)
+	result.AuthoritySlug = resolveAuthoritySlugFor(r.Context(), h.resolver, h.logger, "authority slug", app)
 	writeJSON(w, r, h.logger, result)
 }
 
@@ -114,10 +112,6 @@ func (h *handler) getBySlug(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result := ResultOf(app)
-	result.AuthoritySlug = h.authoritySlug(r.Context(), app)
+	result.AuthoritySlug = resolveAuthoritySlugFor(r.Context(), h.resolver, h.logger, "authority slug", app)
 	writeJSON(w, r, h.logger, result)
-}
-
-func (h *handler) authoritySlug(ctx context.Context, app PlanningApplication) string {
-	return resolveAuthoritySlugFor(ctx, h.resolver, h.logger, "authority slug", app)
 }

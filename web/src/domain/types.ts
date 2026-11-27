@@ -423,7 +423,7 @@ export interface LegalDocument {
   readonly sections: readonly LegalDocumentSection[];
 }
 
-export type WebhookFormat = 'json' | 'slack';
+export type WebhookFormat = 'json' | 'slack' | 'discord';
 
 export type WebhookFailureReason =
   | 'gone'

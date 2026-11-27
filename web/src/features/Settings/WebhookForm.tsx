@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import type { SaveWebhookRequest, WebhookFormat } from '../../domain/types';
+import { isWebhookFormat } from './webhookCopy';
 import styles from './WebhookSection.module.css';
 
 interface Props {
@@ -42,10 +43,13 @@ export function WebhookForm({ initialUrl, initialFormat, isBusy, isSaving, onSav
         id="webhook-format"
         className={styles.input}
         value={format}
-        onChange={(event) => setFormat(event.target.value === 'slack' ? 'slack' : 'json')}
+        onChange={(event) => {
+          if (isWebhookFormat(event.target.value)) setFormat(event.target.value);
+        }}
       >
         <option value="json">JSON</option>
         <option value="slack">Slack</option>
+        <option value="discord">Discord</option>
       </select>
       <button
         type="submit"
