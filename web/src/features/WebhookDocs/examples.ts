@@ -78,3 +78,8 @@ export const SLACK_EXAMPLE = `*Town Crier: 3 planning updates*
 • New near Home: <shareUrl|26/01234/FUL>, 1 High Street, Leeds. Single-storey rear extension
 • Decision (Permitted): <shareUrl|26/01001/HOU>, 4 Mill Lane, Leeds. Loft conversion
 • New near Office: 26/09999/FUL, 9 Park Row, Leeds. Change of use to café`;
+
+export const DISCORD_EXAMPLE = `**Town Crier: 3 planning updates**
+• New near Home: [26/01234/FUL](shareUrl), 1 High Street, Leeds. Single-storey rear extension
+• Decision (Permitted): [26/01001/HOU](shareUrl), 4 Mill Lane, Leeds. Loft conversion
+• New near Office: 26/09999/FUL, 9 Park Row, Leeds. Change of use to café`;

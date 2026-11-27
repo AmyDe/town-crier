@@ -1,6 +1,7 @@
 import { useEffect, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import {
+  DISCORD_EXAMPLE,
   HEADERS_EXAMPLE,
   NODE_EXAMPLE,
   PAYLOAD_EXAMPLE,
@@ -43,15 +44,15 @@ export function WebhookDocsPage() {
       <Link to="/" className={styles.home}>Town Crier</Link>
       <h1 className={styles.title}>Webhooks</h1>
       <p className={styles.intro}>
-        A webhook sends your Town Crier alerts to a URL you choose, as signed JSON or as a Slack
-        message. Use it to feed a CRM, a spreadsheet, a team channel or your own code. Webhooks are
+        A webhook sends your Town Crier alerts to a URL you choose, as signed JSON, a Slack message
+        or a Discord message. Use it to feed a CRM, a spreadsheet, a team channel or your own code. Webhooks are
         part of Pro, and each account can have one.
       </p>
 
       <Section title="Set up a webhook">
         <p>
-          Sign in on the web, open <Link to="/settings">Settings</Link>, enter your URL, choose JSON
-          or Slack and save. We show your signing secret once, so copy it then. If you lose it,
+          Sign in on the web, open <Link to="/settings">Settings</Link>, enter your URL, choose
+          JSON, Slack or Discord and save. We show your signing secret once, so copy it then. If you lose it,
           rotate it to get a new one. The old one stops working.
         </p>
         <p>
@@ -136,7 +137,7 @@ export function WebhookDocsPage() {
       </Section>
 
       <Section title="Request headers">
-        <p>Every request is a POST with these headers, in both formats.</p>
+        <p>Every request is a POST with these headers, in every format.</p>
         <CodeBlock label="Request headers" code={HEADERS_EXAMPLE} />
         <p>
           Header names aren&apos;t case sensitive, and you might see them written differently, such
@@ -172,7 +173,7 @@ export function WebhookDocsPage() {
             With JSON we send alerts one at a time, oldest first, up to 100 in each hourly run. At
             the first failure we stop, and try again on the next run.
           </li>
-          <li>With Slack, one failed message counts as a failed attempt for every alert in it.</li>
+          <li>With Slack or Discord, one failed message counts as a failed attempt for every alert in it.</li>
           <li>Each alert gets up to 6 attempts. After that we give up on it.</li>
           <li>We delete delivery records after 7 days, whether they were sent or not.</li>
           <li>
@@ -210,6 +211,24 @@ export function WebhookDocsPage() {
           <li>Descriptions are cut off after 150 characters.</li>
           <li>The reference links to the Town Crier page when there is one.</li>
           <li>Slack ignores the Town Crier headers, so you don&apos;t need to check the signature.</li>
+        </ul>
+      </Section>
+
+      <Section title="Discord format">
+        <p>
+          Choose Discord and paste in the webhook URL from your Discord channel&apos;s Integrations
+          settings, just as it is. Don&apos;t add <code>/slack</code> to the end. You get one summary
+          message for each hourly run, not one message for each alert. The message&apos;s{' '}
+          <code>content</code> looks like this.
+        </p>
+        <CodeBlock label="Example Discord message" code={DISCORD_EXAMPLE} />
+        <ul>
+          <li>A message lists up to 10 alerts, then says &quot;…and N more in the Town Crier app&quot;.</li>
+          <li>It lists fewer if they won&apos;t fit in Discord&apos;s limit of 2,000 characters.</li>
+          <li>Descriptions are cut off after 150 characters.</li>
+          <li>The reference links to the Town Crier page when there is one.</li>
+          <li>Discord ignores the Town Crier headers, so there&apos;s no signature to check.</li>
+          <li>Mentions in council text never ping anyone.</li>
         </ul>
       </Section>
     </main>
