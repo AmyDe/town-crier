@@ -4,7 +4,6 @@ package watchzones
 
 import (
 	"errors"
-	"fmt"
 	"math"
 	"slices"
 	"strings"
@@ -35,20 +34,10 @@ var (
 	ErrBoundaryOutOfBounds = errors.New("boundary vertices must be within the UK")
 )
 
-// ErrUnknownFilterKey signals a ZoneUpdate.FilterKey value that is not a
-// member of the filter catalog (see IsValidFilterKey). Consumers should use
-// errors.Is rather than string matching.
-var ErrUnknownFilterKey = errors.New("unknown watch-zone filter key")
-
-// WatchZone is a user's geofenced monitoring area scoped to one planning
-// authority: either a circle (centre + radius) or, when Boundary is non-nil,
-// a custom-shape polygon. A custom-shape zone still carries Latitude,
-// Longitude and RadiusMetres — they hold the polygon's derived centroid and
-// enclosing radius (see WithBoundary) so every existing circle-shaped read
-// path (map centring, list rows, GDPR export) keeps working
-// unchanged; a zero-length Boundary (nil or empty) is the sole "this is a
-// circle" discriminator — see IsCustomShape. Exported fields keep it a plain
-// Go value; the constructor enforces all invariants.
+// WatchZone is a user's geofenced monitoring area: either a circle (centre +
+// radius) or, when Boundary is non-empty, a custom-shape polygon. A
+// custom-shape zone's Latitude, Longitude and RadiusMetres hold the polygon's
+// derived centroid and enclosing radius (see WithBoundary).
 type WatchZone struct {
 	ID                  string
 	UserID              string
@@ -60,9 +49,6 @@ type WatchZone struct {
 	PushEnabled         bool
 	EmailInstantEnabled bool
 	Boundary            Boundary
-	// FilterKey is the zone's pre-canned keyword filter; "" means unfiltered.
-	// Setting it is Pro-only, enforced by the HTTP layer, not here.
-	FilterKey FilterKey
 }
 
 // NewWatchZone validates and constructs a circle watch zone (Boundary nil).
@@ -389,14 +375,6 @@ func (b Boundary) EnclosingRadiusMetres() float64 {
 // This is the domain-level representation of the tri-state; decoding the
 // HTTP PATCH body's `"boundary": null` vs absent vs a value into this shape
 // is a separate, JSON-layer concern (json.RawMessage) handled by the handler.
-//
-// FilterKey is tri-state too, mirroring Boundary's shape exactly (a plain
-// *string cannot distinguish an absent PATCH key from an explicit
-// `"filterKey": null`, since both decode to a nil pointer):
-//   - nil                  — absent: leave the zone's filter alone.
-//   - non-nil, pointing to "" — explicit clear: revert to unfiltered.
-//   - non-nil, pointing to a value — set this filter, validated against
-//     IsValidFilterKey; an unrecognised value returns ErrUnknownFilterKey.
 type ZoneUpdate struct {
 	Name                *string
 	Latitude            *float64
@@ -405,7 +383,6 @@ type ZoneUpdate struct {
 	PushEnabled         *bool
 	EmailInstantEnabled *bool
 	Boundary            *Boundary
-	FilterKey           *string
 }
 
 // WithUpdates returns a copy of the zone with the non-nil fields of u applied,
@@ -436,9 +413,6 @@ func (z WatchZone) WithUpdates(u ZoneUpdate) (WatchZone, error) {
 
 	if u.Boundary != nil {
 		if len(*u.Boundary) == 0 {
-			// Explicit null: revert to a circle, keeping whatever centre and
-			// radius the merge above has settled on (the zone's existing
-			// derived values, unless this same update also set them).
 			updated.Boundary = nil
 		} else {
 			b, err := NewBoundary(*u.Boundary)
@@ -450,17 +424,6 @@ func (z WatchZone) WithUpdates(u ZoneUpdate) (WatchZone, error) {
 			updated.Latitude = lat
 			updated.Longitude = lon
 			updated.RadiusMetres = b.EnclosingRadiusMetres()
-		}
-	}
-
-	if u.FilterKey != nil {
-		switch {
-		case *u.FilterKey == "":
-			updated.FilterKey = ""
-		case !IsValidFilterKey(*u.FilterKey):
-			return WatchZone{}, fmt.Errorf("%w: %q", ErrUnknownFilterKey, *u.FilterKey)
-		default:
-			updated.FilterKey = FilterKey(*u.FilterKey)
 		}
 	}
 
@@ -479,6 +442,5 @@ func (z WatchZone) WithUpdates(u ZoneUpdate) (WatchZone, error) {
 		return WatchZone{}, err
 	}
 	result.Boundary = updated.Boundary
-	result.FilterKey = updated.FilterKey
 	return result, nil
 }

@@ -208,7 +208,7 @@ func buildNotifyFanOut(cfg platform.Config, registry *metrics.Registry, pool *pg
 	}
 	outbox := webhooks.NewOutbox(pool, authorities.NewLookup(), uuid.NewString, time.Now)
 	enqueuer := notifydispatch.NewEnqueuer(
-		st.notification, zoneStore, st.profile, coalescer, st.app,
+		st.notification, zoneStore, st.profile, coalescer,
 		uuid.NewString, time.Now, logger,
 	).WithWebhooks(outbox)
 	dispatcher := notifydispatch.NewDecisionDispatcher(

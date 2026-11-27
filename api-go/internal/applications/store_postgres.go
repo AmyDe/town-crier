@@ -322,19 +322,6 @@ func (s *PostgresStore) GetByUID(ctx context.Context, uid, authorityCode string)
 	return a, true, nil
 }
 
-const matchesExpressionQuery = "SELECT to_tsvector('english', $1::text) @@ to_tsquery('english', $2)"
-
-// MatchesExpression reports whether description matches the given
-// to_tsquery('english', ...) boolean expression under Postgres full-text
-// search. It touches no table.
-func (s *PostgresStore) MatchesExpression(ctx context.Context, description, expression string) (bool, error) {
-	var matches bool
-	if err := s.db.QueryRow(ctx, matchesExpressionQuery, description, expression).Scan(&matches); err != nil {
-		return false, fmt.Errorf("match description against expression %q: %w", expression, err)
-	}
-	return matches, nil
-}
-
 // RecentRealDateOrder orders by the real-world lifecycle date,
 // GREATEST(decided_date, start_date), never last_different, which PlanIt bumps
 // on every re-index and so floats stale applications to the top. GREATEST
