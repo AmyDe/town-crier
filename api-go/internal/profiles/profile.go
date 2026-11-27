@@ -98,10 +98,6 @@ func (t SubscriptionTier) WatchZoneLimit() int {
 // never Free.
 func (t SubscriptionTier) AllowsCustomBoundary() bool { return t.IsPaid() }
 
-// AllowsWatchZoneFilter reports whether the tier may set a pre-canned
-// keyword filter on a watch zone: Pro only, never Free or Personal.
-func (t SubscriptionTier) AllowsWatchZoneFilter() bool { return t.IsPaidPro() }
-
 // MaxZoneRadiusMetres returns the maximum enclosing-circle radius, in metres,
 // permitted for a custom-shape polygon boundary: Free=2000, Personal=5000,
 // Pro=10000, mirroring mobile/ios/packages/town-crier-domain/Sources/

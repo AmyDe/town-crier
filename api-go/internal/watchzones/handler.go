@@ -46,23 +46,8 @@ const (
 	zoneNameTakenMessage = "You already have a watch zone with this name."
 )
 
-// Pre-canned watch-zone filter error codes, shared by the create path
-// (nearby.go) and the patch path.
-const (
-	// filterRequiresProTierCode/-Message: 403, a Free- or Personal-tier caller
-	// supplied a non-empty filterKey on create, or on a PATCH that sets one.
-	// Pro-only -- deliberately narrower than AllowsCustomBoundary's IsPaid()
-	// gate (see profiles.SubscriptionTier.AllowsWatchZoneFilter).
-	filterRequiresProTierCode    = "filter_requires_pro_tier"
-	filterRequiresProTierMessage = "Pre-canned watch-zone filters require a Pro subscription."
-	// filterKeyInvalidCode/-Message: 400, the supplied filterKey is not a
-	// member of the catalog (see IsValidFilterKey / ErrUnknownFilterKey).
-	filterKeyInvalidCode    = "filter_key_invalid"
-	filterKeyInvalidMessage = "Unrecognised filter."
-)
-
-// errProfileReaderNotWired signals a wiring bug: the boundary and filter tier
-// gates refuse to run without a profile reader.
+// errProfileReaderNotWired signals a wiring bug: the boundary tier gate
+// refuses to run without a profile reader.
 var errProfileReaderNotWired = errors.New("profile reader not wired for watch-zone tier gate")
 
 // isBoundaryValidationError reports whether err is one of NewBoundary's
@@ -175,8 +160,6 @@ type watchZoneSummary struct {
 	// custom-shape one, whose Latitude/Longitude/RadiusMetres hold the
 	// derived centroid and enclosing radius.
 	Boundary *boundaryGeoJSON `json:"boundary"`
-	// FilterKey is null for an unfiltered zone, else the catalog key.
-	FilterKey *string `json:"filterKey"`
 }
 
 func summaryOf(z WatchZone, paused bool) watchZoneSummary {
@@ -190,7 +173,6 @@ func summaryOf(z WatchZone, paused bool) watchZoneSummary {
 		EmailInstantEnabled: z.EmailInstantEnabled,
 		Paused:              paused,
 		Boundary:            boundaryToGeoJSON(z.Boundary),
-		FilterKey:           encodeFilterKey(z.FilterKey),
 	}
 }
 
@@ -271,8 +253,8 @@ func pausedIDs(zones []WatchZone, limit int) map[string]bool {
 }
 
 // patchRequest is the PATCH body: every field optional (nil = unchanged).
-// Boundary and FilterKey are tri-state (absent/null/value), so they are
-// json.RawMessage: a pointer would collapse absent and explicit null.
+// Boundary is tri-state (absent/null/value), so it is json.RawMessage: a
+// pointer would collapse absent and explicit null.
 type patchRequest struct {
 	Name                *string         `json:"name"`
 	Latitude            *float64        `json:"latitude"`
@@ -281,7 +263,6 @@ type patchRequest struct {
 	PushEnabled         *bool           `json:"pushEnabled"`
 	EmailInstantEnabled *bool           `json:"emailInstantEnabled"`
 	Boundary            json.RawMessage `json:"boundary"`
-	FilterKey           json.RawMessage `json:"filterKey"`
 }
 
 // rangeValid reports whether the present coordinate/radius fields are in
@@ -303,7 +284,7 @@ func (req patchRequest) rangeValid() bool {
 	return true
 }
 
-func (req patchRequest) toUpdate(boundary *Boundary, filterKey *string) ZoneUpdate {
+func (req patchRequest) toUpdate(boundary *Boundary) ZoneUpdate {
 	return ZoneUpdate{
 		Name:                req.Name,
 		Latitude:            req.Latitude,
@@ -312,7 +293,6 @@ func (req patchRequest) toUpdate(boundary *Boundary, filterKey *string) ZoneUpda
 		PushEnabled:         req.PushEnabled,
 		EmailInstantEnabled: req.EmailInstantEnabled,
 		Boundary:            boundary,
-		FilterKey:           filterKey,
 	}
 }
 
@@ -336,29 +316,11 @@ func decodeBoundaryUpdate(raw json.RawMessage) (*Boundary, error) {
 	return &b, nil
 }
 
-// decodeFilterKeyUpdate mirrors decodeBoundaryUpdate: absent gives (nil, nil),
-// null gives a pointer to "" (clear the filter), and a string gives its value,
-// which WithUpdates validates against the catalog. Non-string JSON returns an error.
-func decodeFilterKeyUpdate(raw json.RawMessage) (*string, error) {
-	if len(raw) == 0 {
-		return nil, nil
-	}
-	if bytes.Equal(raw, []byte("null")) {
-		empty := ""
-		return &empty, nil
-	}
-	var s string
-	if err := json.Unmarshal(raw, &s); err != nil {
-		return nil, fmt.Errorf("decode filter key update: %w", err)
-	}
-	return &s, nil
-}
-
 // patch implements PATCH /v1/me/watch-zones/{zoneId}. A missing zone 404s
-// before any tier gate, and resending the stored boundary or filterKey unchanged
-// is never gated (403 boundary_requires_paid_tier / filter_requires_pro_tier).
-// Invalid shapes, keys and oversized boundaries are 400s; any other domain
-// invariant violation (e.g. a blank name) is a 500.
+// before the tier gate, and resending the stored boundary unchanged is never
+// gated (403 boundary_requires_paid_tier). Invalid shapes and oversized
+// boundaries are 400s; any other domain invariant violation (e.g. a blank
+// name) is a 500.
 func (h *handler) patch(w http.ResponseWriter, r *http.Request) {
 	userID := auth.Subject(r.Context())
 	zoneID := r.PathValue("zoneId")
@@ -380,15 +342,9 @@ func (h *handler) patch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	filterKeyUpdate, err := decodeFilterKeyUpdate(req.FilterKey)
-	if err != nil {
-		h.writeErrorCode(w, r, http.StatusBadRequest, filterKeyInvalidCode, filterKeyInvalidMessage)
-		return
-	}
-
-	// Load the zone before the tier gates: a missing zone must 404 before any
-	// gate, and the gates need the stored FilterKey/Boundary to tell a new value
-	// from a client resending full state unchanged.
+	// Load the zone before the tier gate: a missing zone must 404 first, and the
+	// gate needs the stored Boundary to tell a new value from a client
+	// resending full state unchanged.
 	zone, err := h.store.Get(r.Context(), userID, zoneID)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
@@ -401,12 +357,10 @@ func (h *handler) patch(w http.ResponseWriter, r *http.Request) {
 
 	// Only a changed, non-empty value is gated, so a downgraded caller can PATCH
 	// unrelated fields or clients can resend full state unchanged.
-	settingFilter := filterKeyUpdate != nil && *filterKeyUpdate != "" && *filterKeyUpdate != string(zone.FilterKey)
-
 	settingBoundary := boundaryUpdate != nil && len(*boundaryUpdate) > 0 && !zone.Boundary.Equal(*boundaryUpdate)
 
 	var tier profiles.SubscriptionTier
-	if settingBoundary || settingFilter {
+	if settingBoundary {
 		if h.profiles == nil {
 			h.serverError(w, r, "watch-zone tier gate", errProfileReaderNotWired)
 			return
@@ -424,20 +378,12 @@ func (h *handler) patch(w http.ResponseWriter, r *http.Request) {
 			h.writeErrorCode(w, r, http.StatusForbidden, boundaryRequiresPaidTierCode, boundaryRequiresPaidTierMessage)
 			return
 		}
-		if settingFilter && !tier.AllowsWatchZoneFilter() {
-			h.writeErrorCode(w, r, http.StatusForbidden, filterRequiresProTierCode, filterRequiresProTierMessage)
-			return
-		}
 	}
 
-	updated, err := zone.WithUpdates(req.toUpdate(boundaryUpdate, filterKeyUpdate))
+	updated, err := zone.WithUpdates(req.toUpdate(boundaryUpdate))
 	if err != nil {
 		if isBoundaryValidationError(err) {
 			h.writeErrorCode(w, r, http.StatusBadRequest, boundaryInvalidCode, boundaryInvalidMessage)
-			return
-		}
-		if errors.Is(err, ErrUnknownFilterKey) {
-			h.writeErrorCode(w, r, http.StatusBadRequest, filterKeyInvalidCode, filterKeyInvalidMessage)
 			return
 		}
 		h.serverError(w, r, "apply watch-zone update", err)

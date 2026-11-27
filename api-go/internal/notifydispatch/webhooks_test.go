@@ -64,7 +64,7 @@ func webhookEnqueuer(t *testing.T, profile *profiles.UserProfile, logger *slog.L
 	t.Helper()
 	notifs := newFakeNotifications()
 	profs := &fakeProfiles{byID: map[string]*profiles.UserProfile{profile.UserID: profile}}
-	enq := NewEnqueuer(notifs, &fakeZones{}, profs, &fakePushQueue{}, &fakeDescriptionMatcher{},
+	enq := NewEnqueuer(notifs, &fakeZones{}, profs, &fakePushQueue{},
 		func() string { return "n-fixed" },
 		func() time.Time { return time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC) },
 		logger)

@@ -101,9 +101,6 @@ type createRequest struct {
 	PushEnabled         *bool            `json:"pushEnabled"`
 	EmailInstantEnabled *bool            `json:"emailInstantEnabled"`
 	Boundary            *boundaryGeoJSON `json:"boundary"`
-	// FilterKey: nil and "" both mean no filter (unlike PATCH, create has no
-	// existing value to leave alone). Non-empty requires Pro and a catalog key.
-	FilterKey *string `json:"filterKey"`
 }
 
 // maxRadiusMetres is the server-side ceiling for a watch-zone radius. It matches
@@ -174,8 +171,6 @@ type createResult struct {
 	Boundary     *boundaryGeoJSON `json:"boundary"`
 	// NearbyApplications is always an empty array, kept so the wire shape is stable.
 	NearbyApplications []applications.NearbyResult `json:"nearbyApplications"`
-	// FilterKey is nil for an unfiltered zone, the catalog key otherwise.
-	FilterKey *string `json:"filterKey"`
 }
 
 // create implements POST /v1/me/watch-zones: validate (400), gate a
@@ -229,21 +224,6 @@ func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 		req.RadiusMetres = radius
 	}
 
-	// A non-empty filterKey is Pro-only, checked before the quota claim so a
-	// disallowed or unrecognised filter never consumes a quota slot.
-	var filterKey FilterKey
-	if req.FilterKey != nil && *req.FilterKey != "" {
-		if !tier.AllowsWatchZoneFilter() {
-			h.writeErrorCode(w, r, http.StatusForbidden, filterRequiresProTierCode, filterRequiresProTierMessage)
-			return
-		}
-		if !IsValidFilterKey(*req.FilterKey) {
-			h.writeErrorCode(w, r, http.StatusBadRequest, filterKeyInvalidCode, filterKeyInvalidMessage)
-			return
-		}
-		filterKey = FilterKey(*req.FilterKey)
-	}
-
 	// A nil profileCAS is a wiring bug; fail closed rather than run an
 	// unprotected count-then-save.
 	if h.profileCAS == nil {
@@ -270,7 +250,6 @@ func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	zone.Boundary = boundary
-	zone.FilterKey = filterKey
 	if err := h.store.Save(r.Context(), zone); err != nil {
 		if errors.Is(err, ErrDuplicateName) {
 			h.writeErrorCode(w, r, http.StatusConflict, zoneNameTakenCode, zoneNameTakenMessage)
@@ -289,7 +268,6 @@ func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 		RadiusMetres:       zone.RadiusMetres,
 		Boundary:           boundaryToGeoJSON(zone.Boundary),
 		NearbyApplications: []applications.NearbyResult{},
-		FilterKey:          encodeFilterKey(zone.FilterKey),
 	})
 }
 

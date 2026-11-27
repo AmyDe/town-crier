@@ -51,10 +51,6 @@ var anonymousPatterns = map[string]struct{}{
 	"GET /v1/health":               {},
 	"GET /v1/version-config":       {},
 	"GET /v1/legal/{documentType}": {},
-	// The watch-zone filter catalog is static, non-user-specific content (the
-	// seven pre-canned filters' display copy) that iOS reads before creating an
-	// account, so it is anonymous to Auth0, mirroring the legal endpoint above.
-	"GET /v1/watch-zones/filter-catalog": {},
 	// The live SEO pages and sitemap are anonymous to Auth0; the dedicated
 	// X-Build-Key gate inside the handler is their authentication (ADR 0050).
 	"GET /planning":           {},
@@ -296,7 +292,6 @@ func newRouter(
 	health.Routes(mux, logger)
 	versionconfig.Routes(mux, logger)
 	legal.Routes(mux, logger)
-	watchzones.CatalogRoutes(mux, logger)
 	authorities.Routes(mux, logger)
 	api.Routes(mux, logger)
 	aasa.Routes(mux, platform.AppleUniversalLinkAppID(), logger)

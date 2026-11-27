@@ -340,10 +340,6 @@ func TestRouter_AnonymousRoutesServedWithoutToken(t *testing.T) {
 		{"/v1/version-config", http.StatusOK},
 		{"/v1/legal/privacy", http.StatusOK},
 		{"/v1/legal/unknown", http.StatusNotFound}, // anonymous route, bodyless 404 backfilled
-		// newTestHandler boots with a nil watchZoneStore; the filter catalog must
-		// still serve because it is registered outside the watchZoneStore-guarded
-		// block.
-		{"/v1/watch-zones/filter-catalog", http.StatusOK},
 	} {
 		t.Run(tc.path, func(t *testing.T) {
 			t.Parallel()

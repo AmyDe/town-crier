@@ -43,19 +43,3 @@ func (s *spyZoneStore) Save(_ context.Context, _ watchzones.WatchZone) error { r
 func (s *spyZoneStore) Delete(_ context.Context, _, _ string) error { return nil }
 
 func (s *spyZoneStore) DeleteAllByUserID(_ context.Context, _ string) error { return nil }
-
-// fakeDescriptionMatcher is a double for notifydispatch's descriptionMatcher; the
-// wiring tests never call MatchesExpression.
-type fakeDescriptionMatcher struct {
-	mu      sync.Mutex
-	calls   int
-	matched bool
-	err     error
-}
-
-func (f *fakeDescriptionMatcher) MatchesExpression(_ context.Context, _, _ string) (bool, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.calls++
-	return f.matched, f.err
-}

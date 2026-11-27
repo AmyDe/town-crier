@@ -118,20 +118,6 @@ func TestAnonymousPatterns_IncludesAssetLinks(t *testing.T) {
 	}
 }
 
-// TestAnonymousPatterns_IncludesFilterCatalog pins the anonymity of the
-// watch-zone filter catalog: static, non-user-specific
-// display copy for the seven pre-canned filters, readable before a client has
-// created an account, mirroring the legal document endpoint. The auth
-// middleware keys on the registered pattern string byte-for-byte.
-func TestAnonymousPatterns_IncludesFilterCatalog(t *testing.T) {
-	t.Parallel()
-
-	const filterCatalog = "GET /v1/watch-zones/filter-catalog"
-	if _, ok := anonymousPatterns[filterCatalog]; !ok {
-		t.Errorf("anonymousPatterns must include %q", filterCatalog)
-	}
-}
-
 func TestAnonymousPatterns_IncludesShareLinkRoutes(t *testing.T) {
 	t.Parallel()
 
