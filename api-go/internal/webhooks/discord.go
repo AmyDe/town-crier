@@ -119,7 +119,6 @@ func discordLine(p Payload) string {
 	return b.String()
 }
 
-// discordValue makes an interpolated value safe for one line of Discord markdown.
 func discordValue(s string) string {
 	return discordEscaper.Replace(singleLine(s))
 }

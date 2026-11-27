@@ -219,7 +219,6 @@ func TestDiscordBody_FitsTheLimitInUTF16Units(t *testing.T) {
 	}
 }
 
-// The one-update content is the header, "\n• New: " and the reference.
 func TestDiscordBody_LimitBoundary(t *testing.T) {
 	t.Parallel()
 	const header = "**Town Crier: 1 planning update**"
