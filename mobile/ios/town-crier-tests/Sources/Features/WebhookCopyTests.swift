@@ -1,10 +1,26 @@
 import Foundation
 import Testing
+import TownCrierDomain
 
 @testable import TownCrierPresentation
 
 @Suite("WebhookCopy")
 struct WebhookCopyTests {
+  @Test("the picker offers JSON, Slack and Discord")
+  func formats_areNamed() {
+    #expect(WebhookFormat.allCases.map(WebhookCopy.formatName) == ["JSON", "Slack", "Discord"])
+  }
+
+  @Test("the intro and the format error name all three formats")
+  func copy_namesAllFormats() {
+    #expect(
+      WebhookCopy.intro
+        == "Send your alerts to your own URL, as signed JSON, a Slack message or a Discord message. "
+        + "They go out at the end of each hourly check.")
+    #expect(WebhookCopy.errorFormatInvalid == "Choose JSON, Slack or Discord.")
+    #expect(DomainError.webhookFormatInvalid.userMessage == "Choose JSON, Slack or Discord.")
+  }
+
   @Test("no string in WebhookCopy contains an em dash")
   func source_hasNoEmDash() throws {
     let source = URL(fileURLWithPath: #filePath)

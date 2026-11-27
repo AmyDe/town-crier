@@ -159,6 +159,18 @@ struct WebhookViewModelTests {
     #expect(repository.saveCalls.map(\.format) == [.slack])
   }
 
+  @Test("save sends a chosen Discord format")
+  func save_discord() async {
+    let sut = makeSUT()
+    await sut.load()
+    sut.urlText = "https://example.com/hook"
+    sut.format = .discord
+
+    await sut.save()
+
+    #expect(repository.saveCalls.map(\.format) == [.discord])
+  }
+
   @Test("save on create reveals the secret and shows the webhook")
   func save_create_revealsSecret() async {
     let saved = Webhook.fixture()
