@@ -34,7 +34,6 @@ public struct WatchZoneEditorView: View {
                 LargeZoneWarningView()
               }
             }
-            if viewModel.isFilterSectionVisible { WatchZoneFilterSection(viewModel: viewModel) }
           }
           if viewModel.areNotificationTogglesVisible {
             notificationsSection
@@ -55,9 +54,6 @@ public struct WatchZoneEditorView: View {
         ToolbarItem(placement: .confirmationAction) {
           Button("Save") {
             Task {
-              // Dismiss only on success. On a quota breach the coordinator
-              // closes the sheet and opens the paywall; on any other
-              // failure the editor stays open and shows the inline error.
               if await viewModel.save() {
                 dismiss()
               }
