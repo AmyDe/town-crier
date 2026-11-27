@@ -184,7 +184,7 @@ describe('useWebhook', () => {
 
   it.each<[WebhookErrorCode, string]>([
     ['webhook_url_invalid', 'Enter a public https address. Only port 443 works.'],
-    ['webhook_format_invalid', 'Choose JSON or Slack.'],
+    ['webhook_format_invalid', 'Choose JSON, Slack or Discord.'],
     ['webhook_requires_pro', 'Webhooks need a Pro subscription.'],
     ['webhook_test_cooldown', 'Wait 10 seconds before you send another test.'],
   ])('explains %s', async (code, message) => {

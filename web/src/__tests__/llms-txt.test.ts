@@ -24,7 +24,7 @@ describe('llms.txt product copy', () => {
 
   it('says under the Pro plan that Pro can send alerts to a webhook, with the docs URL', () => {
     expect(llms).toMatch(
-      /\n- Pro, [^\n]*\n {2}- Pro can send alerts to a webhook \(JSON or Slack\): https:\/\/towncrierapp\.uk\/developers\/webhooks\n/,
+      /\n- Pro, [^\n]*\n {2}- Pro can send alerts to a webhook \(JSON, Slack or Discord\): https:\/\/towncrierapp\.uk\/developers\/webhooks\n/,
     );
   });
 

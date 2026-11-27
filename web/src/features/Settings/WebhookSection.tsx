@@ -6,7 +6,12 @@ import type { SubscriptionTier, Webhook, WebhookTestResult } from '../../domain/
 import { useWebhook } from './useWebhook';
 import { WebhookForm } from './WebhookForm';
 import { WebhookSecret } from './WebhookSecret';
-import { describeSwitchOff, describeWebhookFailure, formatWebhookTime } from './webhookCopy';
+import {
+  describeSwitchOff,
+  describeWebhookFailure,
+  formatWebhookTime,
+  WEBHOOK_FORMAT_NAMES,
+} from './webhookCopy';
 import settingsStyles from './SettingsPage.module.css';
 import styles from './WebhookSection.module.css';
 
@@ -134,7 +139,7 @@ export function WebhookSection({ repository, tier }: Props) {
             <PricingLink />
           </p>
           <p className={styles.url}>{webhook.url}</p>
-          <p className={styles.hint}>{webhook.format === 'slack' ? 'Slack' : 'JSON'}</p>
+          <p className={styles.hint}>{WEBHOOK_FORMAT_NAMES[webhook.format]}</p>
           <WebhookStatus webhook={webhook} />
           <div className={styles.actions}>{removeButton}</div>
         </>
@@ -152,8 +157,8 @@ export function WebhookSection({ repository, tier }: Props) {
     return (
       <>
         <p className={styles.hint}>
-          Send your alerts to your own URL, as signed JSON or a Slack message. They go out at the
-          end of each hourly check.{' '}
+          Send your alerts to your own URL, as signed JSON, a Slack message or a Discord message.
+          They go out at the end of each hourly check.{' '}
           <Link to="/developers/webhooks" className={styles.link}>
             Read the webhook docs
           </Link>

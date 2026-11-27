@@ -1,4 +1,14 @@
-import type { Webhook, WebhookFailureReason } from '../../domain/types';
+import type { Webhook, WebhookFailureReason, WebhookFormat } from '../../domain/types';
+
+export const WEBHOOK_FORMAT_NAMES: Record<WebhookFormat, string> = {
+  json: 'JSON',
+  slack: 'Slack',
+  discord: 'Discord',
+};
+
+export function isWebhookFormat(value: string): value is WebhookFormat {
+  return Object.hasOwn(WEBHOOK_FORMAT_NAMES, value);
+}
 
 export function describeWebhookFailure(
   reason: WebhookFailureReason | null,

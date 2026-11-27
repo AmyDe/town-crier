@@ -23,7 +23,7 @@ const CODE_ERRORS: Record<WebhookErrorCode, string> = {
   webhook_not_found: 'That webhook no longer exists.',
   webhook_requires_pro: 'Webhooks need a Pro subscription.',
   webhook_url_invalid: 'Enter a public https address. Only port 443 works.',
-  webhook_format_invalid: 'Choose JSON or Slack.',
+  webhook_format_invalid: 'Choose JSON, Slack or Discord.',
   webhook_test_cooldown: 'Wait 10 seconds before you send another test.',
 };
 
