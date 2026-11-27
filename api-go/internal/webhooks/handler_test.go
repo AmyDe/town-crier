@@ -535,6 +535,18 @@ func TestHandler_Test_SlackBody(t *testing.T) {
 	}
 }
 
+func TestHandler_Test_DiscordBody(t *testing.T) {
+	t.Parallel()
+	fx := newHandlerFixture()
+	fx.withEndpoint().Format = FormatDiscord
+
+	assertStatus(t, fx.do(t, "POST", "/v1/me/webhook/test", ""), 200)
+
+	if got := decodeDiscord(t, fx.sender.sent[0].Body).Content; got != "**Town Crier: test message**\nYour webhook works." {
+		t.Errorf("content = %q", got)
+	}
+}
+
 func TestHandler_Test_Cooldown(t *testing.T) {
 	t.Parallel()
 	fx := newHandlerFixture()

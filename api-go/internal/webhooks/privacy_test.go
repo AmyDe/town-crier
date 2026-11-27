@@ -41,7 +41,7 @@ func TestDrainAndTestRoute_LogsAndSpansNeverCarryURLOrHost(t *testing.T) {
 		{"gone", respond(410), 0, 1},
 		{"switched off after repeated failures", broken, MaxConsecutiveFailures - 1, 1},
 	} {
-		for _, format := range []Format{FormatJSON, FormatSlack} {
+		for _, format := range []Format{FormatJSON, FormatSlack, FormatDiscord} {
 			t.Run(tc.name+" "+string(format), func(t *testing.T) {
 				t.Parallel()
 				rec := tracetest.NewSpanRecorder()
