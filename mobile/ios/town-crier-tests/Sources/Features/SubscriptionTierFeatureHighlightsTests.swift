@@ -25,13 +25,14 @@ struct SubscriptionTierFeatureHighlightsTests {
     )
   }
 
-  @Test("pro tier: unlimited zones, 10 km radius, alerts by push and email")
+  @Test("pro tier: unlimited zones, 10 km radius, alerts by push and email, webhooks")
   func pro() {
     #expect(
       SubscriptionTier.pro.featureHighlights == [
         "Unlimited watch zones",
         "Zones up to 10 km radius",
         "Status & decision alerts by push and email",
+        "Webhooks (JSON, Slack or Discord)",
       ]
     )
   }

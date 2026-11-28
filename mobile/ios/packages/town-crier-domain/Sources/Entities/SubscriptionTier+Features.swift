@@ -1,12 +1,6 @@
 extension SubscriptionTier {
-  /// Concise, user-facing feature highlights for this tier, shown on the paywall.
-  ///
-  /// Derived from ``WatchZoneLimits`` and ``EntitlementMap`` so the copy stays in
-  /// sync with the zone limits and entitlements the app actually enforces. Order
-  /// runs from quotas (zones, radius) to alerting.
-  ///
-  /// Push and email are framed as two channels for the same alerts rather than
-  /// separate features, so the paid tiers collapse to a single alerts line.
+  /// User-facing feature highlights for this tier, shown on the paywall, derived
+  /// from ``WatchZoneLimits`` and ``EntitlementMap``.
   public var featureHighlights: [String] {
     let limits = WatchZoneLimits(tier: self)
     var highlights = [
@@ -17,6 +11,10 @@ extension SubscriptionTier {
       highlights.append("Status & decision alerts by push and email")
     } else {
       highlights.append("Weekly email summary")
+    }
+    // The API gates webhooks on the Pro tier itself, not on an entitlement.
+    if self == .pro {
+      highlights.append("Webhooks (JSON, Slack or Discord)")
     }
     return highlights
   }
