@@ -41,19 +41,61 @@ describe('WebhookSection', () => {
 
   describe('not Pro', () => {
     it.each<SubscriptionTier>(['Free', 'Personal'])(
-      'shows %s users one line that links to pricing',
+      'pitches webhooks to %s users',
       async (tier) => {
         await renderSection(tier);
 
-        expect(screen.getByText(/webhooks are part of pro\./i)).toBeInTheDocument();
-        expect(screen.getByRole('link', { name: 'See Pro pricing' })).toHaveAttribute(
-          'href',
-          '/#pricing',
-        );
+        expect(
+          screen.getByText('Send your alerts to Slack, Discord or your own system'),
+        ).toBeInTheDocument();
+        expect(
+          screen.getByText(
+            'Your planning alerts post to a channel your whole team already reads. No one else needs the app.',
+          ),
+        ).toBeInTheDocument();
+        expect(
+          screen.getByText('Part of Pro, with unlimited watch zones up to 10 km.'),
+        ).toBeInTheDocument();
         expect(screen.queryByLabelText('Webhook URL')).not.toBeInTheDocument();
         expect(screen.queryByRole('button')).not.toBeInTheDocument();
+        expect(document.body.textContent).not.toMatch(/hour/i);
       },
     );
+
+    it('shows an example Slack message as plain text with a bold first line', async () => {
+      await renderSection('Free');
+
+      const card = screen.getByLabelText('Example Slack message');
+      expect(card).toHaveTextContent('Town Crier: 3 planning updates');
+      expect(card).toHaveTextContent(
+        '• New near Home: 26/01234/FUL, 1 High Street, Leeds. Single-storey rear extension',
+      );
+      expect(card).toHaveTextContent(
+        '• Decision (Permitted): 26/01001/HOU, 4 Mill Lane, Leeds. Loft conversion',
+      );
+      expect(card).toHaveTextContent(
+        '• New near Office: 26/09999/FUL, 9 Park Row, Leeds. Change of use to café',
+      );
+      expect(within(card).getByText('Town Crier: 3 planning updates').tagName).toBe('STRONG');
+    });
+
+    it('links the primary action to pricing', async () => {
+      await renderSection('Free');
+
+      expect(screen.getByRole('link', { name: 'See Pro plans' })).toHaveAttribute(
+        'href',
+        '/#pricing',
+      );
+    });
+
+    it('links to the webhook docs', async () => {
+      await renderSection('Personal');
+
+      expect(screen.getByRole('link', { name: 'Read the webhook docs' })).toHaveAttribute(
+        'href',
+        '/developers/webhooks',
+      );
+    });
   });
 
   describe('Pro with no webhook', () => {
