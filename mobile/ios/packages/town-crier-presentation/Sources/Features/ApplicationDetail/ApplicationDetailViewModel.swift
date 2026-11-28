@@ -154,10 +154,8 @@ public final class ApplicationDetailViewModel: ObservableObject {
   }
 
   /// Sets `isSaved` from the server; a no-op if no repository was provided.
-  ///
-  /// The match compares the reconstructed ``PlanningApplicationId`` of each
-  /// saved item's embedded snapshot, never the raw top-level `applicationUid`,
-  /// whose format can differ from the id built by `PlanningApplicationDTO.toDomain()`.
+  /// Matches on the snapshot's reconstructed ``PlanningApplicationId``, never the raw
+  /// `applicationUid`, whose format can differ from `PlanningApplicationDTO.toDomain()`'s id.
   public func loadSavedState() async {
     guard let repository = savedApplicationRepository else { return }
     do {
@@ -224,7 +222,6 @@ public final class ApplicationDetailViewModel: ObservableObject {
     onRequestSignUp?()
   }
 
-  /// Toggles the saved state, calling the repository to persist the change.
   /// No-op if no repository was provided.
   public func toggleSave() async {
     guard let repository = savedApplicationRepository else { return }
