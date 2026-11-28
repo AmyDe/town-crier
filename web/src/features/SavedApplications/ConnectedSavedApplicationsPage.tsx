@@ -11,9 +11,9 @@ export function ConnectedSavedApplicationsPage() {
     () => {
       const api = savedApplicationsApi(client);
       return {
-        listSaved: () => api.list(),
-        save: (application) => api.save(application),
-        remove: (uid) => api.remove(uid),
+        listSaved: api.list,
+        save: api.save,
+        remove: api.remove,
       };
     },
     [client],

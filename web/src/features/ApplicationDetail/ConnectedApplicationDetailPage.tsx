@@ -28,11 +28,14 @@ export function ConnectedApplicationDetailPage() {
   );
 
   const savedApplicationRepository: SavedApplicationRepository = useMemo(
-    () => ({
-      listSaved: () => savedApplicationsApi(client).list(),
-      save: (application) => savedApplicationsApi(client).save(application),
-      remove: (uid) => savedApplicationsApi(client).remove(uid),
-    }),
+    () => {
+      const api = savedApplicationsApi(client);
+      return {
+        listSaved: api.list,
+        save: api.save,
+        remove: api.remove,
+      };
+    },
     [client],
   );
 
