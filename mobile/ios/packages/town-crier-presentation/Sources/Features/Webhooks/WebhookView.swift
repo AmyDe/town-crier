@@ -63,10 +63,7 @@ public struct WebhookView: View {
         }
       }
     case .upsell:
-      Section {
-        message(WebhookCopy.upsell)
-        viewPlansButton
-      }
+      upsellSection
     case .empty:
       formSection
       secretSection
@@ -148,6 +145,48 @@ public struct WebhookView: View {
         .font(TCTypography.body)
         .foregroundStyle(Color.tcAmber)
     }
+  }
+
+  private var upsellSection: some View {
+    Section {
+      VStack(alignment: .leading, spacing: TCSpacing.medium) {
+        Text(WebhookCopy.upsellHeading)
+          .font(TCTypography.displaySmall)
+          .foregroundStyle(Color.tcTextPrimary)
+        message(WebhookCopy.upsellBody)
+        upsellExampleCard
+        Text(WebhookCopy.upsellFootnote)
+          .font(TCTypography.caption)
+          .foregroundStyle(Color.tcTextSecondary)
+      }
+      .listRowBackground(Color.clear)
+      PrimaryButton(WebhookCopy.seeProPlans) {
+        viewModel.viewPlans()
+      }
+      .listRowBackground(Color.clear)
+      docsLink
+        .frame(maxWidth: .infinity)
+        .listRowBackground(Color.clear)
+    }
+  }
+
+  private var upsellExampleCard: some View {
+    VStack(alignment: .leading, spacing: TCSpacing.small) {
+      Text(WebhookCopy.upsellExampleTitle)
+        .font(TCTypography.bodyEmphasis)
+      ForEach(WebhookCopy.upsellExampleLines, id: \.self) { line in
+        Text(line)
+          .font(TCTypography.body)
+      }
+    }
+    .foregroundStyle(Color.tcTextPrimary)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .padding(TCSpacing.medium)
+    .noticeCardStyle()
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel(WebhookCopy.upsellExampleLabel)
+    .accessibilityValue(
+      ([WebhookCopy.upsellExampleTitle] + WebhookCopy.upsellExampleLines).joined(separator: ". "))
   }
 
   private func pausedSection(_ webhook: Webhook) -> some View {
