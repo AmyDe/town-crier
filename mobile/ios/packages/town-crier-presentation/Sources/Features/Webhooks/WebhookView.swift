@@ -160,13 +160,16 @@ public struct WebhookView: View {
           .foregroundStyle(Color.tcTextSecondary)
       }
       .listRowBackground(Color.clear)
+      .listRowSeparator(.hidden)
       PrimaryButton(WebhookCopy.seeProPlans) {
         viewModel.viewPlans()
       }
       .listRowBackground(Color.clear)
+      .listRowSeparator(.hidden)
       docsLink
         .frame(maxWidth: .infinity)
         .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
     }
   }
 
