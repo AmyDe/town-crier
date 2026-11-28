@@ -56,6 +56,12 @@ describe('WebhookDocsPage', () => {
     ]);
   });
 
+  it('does not reveal how often we check for new data', () => {
+    const { container } = renderPage();
+
+    expect(container.textContent).not.toMatch(/hour/i);
+  });
+
   it('documents the headers, limits and de-duplication', () => {
     const { container } = renderPage();
     const text = container.textContent ?? '';
@@ -67,7 +73,7 @@ describe('WebhookDocsPage', () => {
       'X-TownCrier-Signature',
       'TownCrier-Webhooks/1.0 (+https://towncrierapp.uk/developers/webhooks)',
       '6 attempts',
-      '24 failed runs in a row',
+      '24 failed checks in a row',
       '410',
       '5 minutes',
       'at least once',
@@ -100,7 +106,7 @@ describe('WebhookDocsPage', () => {
     for (const expected of [
       'Integrations settings',
       "Don't add /slack",
-      'one summary message for each hourly run',
+      'one summary message for each check',
       'up to 10 alerts',
       '2,000 characters',
       '150 characters',

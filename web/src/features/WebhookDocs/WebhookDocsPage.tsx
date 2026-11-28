@@ -77,8 +77,8 @@ export function WebhookDocsPage() {
 
       <Section title="When requests are sent">
         <p>
-          We check for new planning data every hour. Requests go out at the end of that check,
-          after push notifications. If we hold an alert back, for example overnight, the request
+          We check for new planning data through the day. Requests go out at the end of each
+          check, after push notifications. If we hold an alert back, for example overnight, the request
           waits too.
         </p>
       </Section>
@@ -170,8 +170,8 @@ export function WebhookDocsPage() {
         </p>
         <ul>
           <li>
-            With JSON we send alerts one at a time, oldest first, up to 100 in each hourly run. At
-            the first failure we stop, and try again on the next run.
+            With JSON we send alerts one at a time, oldest first, up to 100 in each check. At the
+            first failure we stop, and try again on the next check.
           </li>
           <li>
             With Slack or Discord, one failed message counts as a failed attempt for every alert in
@@ -180,8 +180,8 @@ export function WebhookDocsPage() {
           <li>Each alert gets up to 6 attempts. After that we give up on it.</li>
           <li>We delete delivery records after 7 days, whether they were sent or not.</li>
           <li>
-            We switch your webhook off after 24 failed runs in a row, which is about a day. A run
-            fails when nothing gets through. Any successful delivery resets the count.
+            We switch your webhook off after 24 failed checks in a row. A check fails when nothing
+            gets through. Any successful delivery resets the count.
           </li>
           <li>
             If your URL answers <code>410 Gone</code>, we switch it off at once.
@@ -205,7 +205,7 @@ export function WebhookDocsPage() {
       <Section title="Slack format">
         <p>
           Choose Slack and paste in a Slack incoming webhook URL. You get one summary message for
-          each hourly run, not one message for each alert. The body is{' '}
+          each check, not one message for each alert. The body is{' '}
           <code>{'{ "text": "..." }'}</code>, and the text looks like this.
         </p>
         <CodeBlock label="Example Slack message" code={SLACK_EXAMPLE} />
@@ -221,7 +221,7 @@ export function WebhookDocsPage() {
         <p>
           Choose Discord and paste in the webhook URL from your Discord channel&apos;s Integrations
           settings, just as it is. Don&apos;t add <code>/slack</code> to the end. You get one summary
-          message for each hourly run, not one message for each alert. The message&apos;s{' '}
+          message for each check, not one message for each alert. The message&apos;s{' '}
           <code>content</code> looks like this.
         </p>
         <CodeBlock label="Example Discord message" code={DISCORD_EXAMPLE} />
