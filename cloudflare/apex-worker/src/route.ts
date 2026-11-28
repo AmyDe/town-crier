@@ -34,17 +34,32 @@ export function isIndexableHost(hostname: string, indexableHosts: string): boole
 
 /**
  * Routes a request: SEO paths to the Go API through the edge cache, everything else
- * to the Static Web App. Adds `X-Robots-Tag: noindex, nofollow` on non-indexable hosts.
+ * to the Static Web App, except `/robots.txt` on non-indexable hosts, which the Worker
+ * answers itself with Disallow-all. Adds `X-Robots-Tag: noindex, nofollow` on non-indexable hosts.
  */
 export async function handle(request: Request, env: Env, deps: Deps): Promise<Response> {
   const url = new URL(request.url);
-  const response = isSeoPath(url.pathname)
-    ? await handleSeo(request, url, env, deps)
-    : await passToSwa(request, url, env, deps);
-  if (!isIndexableHost(url.hostname, env.INDEXABLE_HOSTS)) {
+  const indexable = isIndexableHost(url.hostname, env.INDEXABLE_HOSTS);
+  const response =
+    url.pathname === "/robots.txt" && !indexable
+      ? handleDisallowAllRobots(request)
+      : isSeoPath(url.pathname)
+        ? await handleSeo(request, url, env, deps)
+        : await passToSwa(request, url, env, deps);
+  if (!indexable) {
     response.headers.set("X-Robots-Tag", "noindex, nofollow");
   }
   return response;
+}
+
+function handleDisallowAllRobots(request: Request): Response {
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    return new Response("Method Not Allowed", { status: 405, headers: { Allow: "GET, HEAD" } });
+  }
+  return new Response(request.method === "HEAD" ? null : "User-agent: *\nDisallow: /\n", {
+    status: 200,
+    headers: { "Content-Type": "text/plain; charset=utf-8" },
+  });
 }
 
 async function handleSeo(request: Request, url: URL, env: Env, deps: Deps): Promise<Response> {

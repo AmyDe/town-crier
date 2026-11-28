@@ -128,3 +128,52 @@ describe("robots", () => {
     expect(isIndexableHost("preview.towncrierapp.uk", "towncrierapp.uk")).toBe(false);
   });
 });
+
+describe("robots.txt", () => {
+  const disallowAll = "User-agent: *\nDisallow: /\n";
+
+  it("answers Disallow-all itself on a non-indexable host", async () => {
+    const { fetch, deps } = makeDeps();
+
+    const response = await handle(new Request("https://dev.towncrierapp.uk/robots.txt"), env, deps);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("text/plain; charset=utf-8");
+    expect(response.headers.get("X-Robots-Tag")).toBe("noindex, nofollow");
+    expect(await response.text()).toBe(disallowAll);
+    expect(fetch.calls).toHaveLength(0);
+  });
+
+  it("answers HEAD on a non-indexable host with no body and no upstream fetch", async () => {
+    const { fetch, deps } = makeDeps();
+
+    const response = await handle(new Request("https://dev.towncrierapp.uk/robots.txt", { method: "HEAD" }), env, deps);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("text/plain; charset=utf-8");
+    expect(response.headers.get("X-Robots-Tag")).toBe("noindex, nofollow");
+    expect(await response.text()).toBe("");
+    expect(fetch.calls).toHaveLength(0);
+  });
+
+  it("rejects other methods on a non-indexable host with 405", async () => {
+    const { fetch, deps } = makeDeps();
+
+    const response = await handle(new Request("https://dev.towncrierapp.uk/robots.txt", { method: "POST" }), env, deps);
+
+    expect(response.status).toBe(405);
+    expect(fetch.calls).toHaveLength(0);
+  });
+
+  it("still proxies /robots.txt to the SWA on an indexable host", async () => {
+    const fetch = new FakeFetch(async () => new Response("User-agent: *\nAllow: /\n"));
+    const { deps } = makeDeps({ fetch });
+
+    const response = await handle(new Request("https://towncrierapp.uk/robots.txt"), env, deps);
+
+    expect(fetch.calls).toHaveLength(1);
+    expect(fetch.calls[0]!.url).toBe("https://swa-default.azurestaticapps.net/robots.txt");
+    expect(await response.text()).toBe("User-agent: *\nAllow: /\n");
+    expect(response.headers.get("X-Robots-Tag")).toBeNull();
+  });
+});
