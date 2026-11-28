@@ -157,8 +157,7 @@ export function WebhookSection({ repository, tier }: Props) {
     return (
       <>
         <p className={styles.hint}>
-          Send your alerts to your own URL, as signed JSON, a Slack message or a Discord message.
-          They go out at the end of each hourly check.{' '}
+          Send your alerts to your own URL, as signed JSON, a Slack message or a Discord message.{' '}
           <Link to="/developers/webhooks" className={styles.link}>
             Read the webhook docs
           </Link>

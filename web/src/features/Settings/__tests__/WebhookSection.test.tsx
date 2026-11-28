@@ -57,6 +57,12 @@ describe('WebhookSection', () => {
   });
 
   describe('Pro with no webhook', () => {
+    it('does not reveal how often we check for new data', async () => {
+      await renderSection();
+
+      expect(document.body.textContent).not.toMatch(/hour/i);
+    });
+
     it('offers a URL, a format and Save, and links to the docs', async () => {
       await renderSection();
 

@@ -5,8 +5,7 @@ enum WebhookCopy {
   static let title = "Webhooks"
 
   static let intro =
-    "Send your alerts to your own URL, as signed JSON, a Slack message or a Discord message. "
-    + "They go out at the end of each hourly check."
+    "Send your alerts to your own URL, as signed JSON, a Slack message or a Discord message."
   static let docsLink = "Read the webhook docs"
   static let docsURLString = "https://towncrierapp.uk/developers/webhooks"
   static let upsell = "Webhooks are part of Pro."
