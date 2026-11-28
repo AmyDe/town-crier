@@ -26,6 +26,36 @@ struct WebhookCopyTests {
     #expect(DomainError.webhookFormatInvalid.userMessage == "Choose JSON, Slack or Discord.")
   }
 
+  @Test("the upsell pitch uses the agreed copy")
+  func upsell_usesAgreedCopy() {
+    #expect(WebhookCopy.upsellHeading == "Send your alerts to Slack, Discord or your own system")
+    #expect(
+      WebhookCopy.upsellBody
+        == "Your planning alerts post to a channel your whole team already reads. "
+        + "No one else needs the app.")
+    #expect(WebhookCopy.upsellExampleTitle == "Town Crier: 3 planning updates")
+    #expect(
+      WebhookCopy.upsellExampleLines == [
+        "\u{2022} New near Home: 26/01234/FUL, 1 High Street, Leeds. Single-storey rear extension",
+        "\u{2022} Decision (Permitted): 26/01001/HOU, 4 Mill Lane, Leeds. Loft conversion",
+        "\u{2022} New near Office: 26/09999/FUL, 9 Park Row, Leeds. Change of use to caf\u{00E9}",
+      ])
+    #expect(WebhookCopy.upsellExampleLabel == "Example Slack message")
+    #expect(WebhookCopy.upsellFootnote == "Part of Pro, with unlimited watch zones up to 10 km.")
+    #expect(WebhookCopy.seeProPlans == "See Pro plans")
+    #expect(WebhookCopy.docsLink == "Read the webhook docs")
+  }
+
+  @Test("the upsell copy never mentions how often alerts are checked")
+  func upsell_hasNoCadenceWording() {
+    let upsell =
+      [
+        WebhookCopy.upsellHeading, WebhookCopy.upsellBody, WebhookCopy.upsellExampleTitle,
+        WebhookCopy.upsellExampleLabel, WebhookCopy.upsellFootnote, WebhookCopy.seeProPlans,
+      ] + WebhookCopy.upsellExampleLines
+    #expect(upsell.allSatisfy { !$0.lowercased().contains("hour") })
+  }
+
   @Test("no string in WebhookCopy contains an em dash")
   func source_hasNoEmDash() throws {
     let source = URL(fileURLWithPath: #filePath)
