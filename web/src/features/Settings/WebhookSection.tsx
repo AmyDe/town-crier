@@ -29,6 +29,40 @@ function PricingLink() {
   );
 }
 
+const UPSELL_EXAMPLE_TITLE = 'Town Crier: 3 planning updates';
+const UPSELL_EXAMPLE_LINES = [
+  '• New near Home: 26/01234/FUL, 1 High Street, Leeds. Single-storey rear extension',
+  '• Decision (Permitted): 26/01001/HOU, 4 Mill Lane, Leeds. Loft conversion',
+  '• New near Office: 26/09999/FUL, 9 Park Row, Leeds. Change of use to café',
+];
+
+function WebhookUpsell() {
+  return (
+    <div className={styles.upsell}>
+      <h3 className={styles.upsellHeading}>Send your alerts to Slack, Discord or your own system</h3>
+      <p className={styles.upsellBody}>
+        Your planning alerts post to a channel your whole team already reads. No one else needs
+        the app.
+      </p>
+      <figure className={styles.exampleCard} aria-label="Example Slack message">
+        <strong className={styles.exampleTitle}>{UPSELL_EXAMPLE_TITLE}</strong>
+        {UPSELL_EXAMPLE_LINES.map((line) => (
+          <p key={line} className={styles.exampleLine}>
+            {line}
+          </p>
+        ))}
+      </figure>
+      <p className={styles.hint}>Part of Pro, with unlimited watch zones up to 10 km.</p>
+      <a href="/#pricing" className={styles.upsellCta}>
+        See Pro plans
+      </a>
+      <Link to="/developers/webhooks" className={styles.link}>
+        Read the webhook docs
+      </Link>
+    </div>
+  );
+}
+
 function WebhookStatus({ webhook }: { webhook: Webhook }) {
   const isDisabled = webhook.status === 'disabled';
   const status = webhook.paused
@@ -147,11 +181,7 @@ export function WebhookSection({ repository, tier }: Props) {
     }
 
     if (!webhook && tier !== 'Pro') {
-      return (
-        <p className={styles.hint}>
-          Webhooks are part of Pro. <PricingLink />
-        </p>
-      );
+      return <WebhookUpsell />;
     }
 
     return (
